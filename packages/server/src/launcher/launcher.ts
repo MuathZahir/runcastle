@@ -30,6 +30,7 @@ import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates
 import * as git from '../services/git'
 import {
   getFeatureRow,
+  listSessionsByFeature,
   projectForFeature,
   requireProjectById,
   rowToRun,
@@ -54,6 +55,7 @@ import {
   armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
+  hasCompletedProjectSession,
   landProjectSession,
   lapInFlight,
   markSessionEnded,
@@ -68,6 +70,9 @@ import {
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
+
+const CODEX_RESUME_UNAVAILABLE_MESSAGE =
+  'no resumable conversation was recorded — starting a fresh session'
 
 // Re-exported for the `feature.resendKickoff` router: the launcher is the stable
 // import path for session-terminal behaviour (same arrangement as `endSession`).
@@ -469,6 +474,14 @@ export async function launchSession(
   if (input.kind !== 'waypoint' && input.kind !== 'revisit' && !plan.explicit) {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
+    if (
+      !resumeSessionId &&
+      listSessionsByFeature(ctx, feature.id).some(
+        (prior) => prior.id !== session.id && prior.kind === input.kind && prior.status === 'ended',
+      )
+    ) {
+      resumeUnavailableFrom = input.kind
+    }
   }
 
   // The re-entry cap: past a transcript size or a re-entry count, resuming costs
@@ -519,7 +532,13 @@ export async function launchSession(
     })
   }
 
-  if (input.kind === 'revisit' && resumeUnavailableFrom) {
+  if (runtime.id === 'codex' && resumeUnavailableFrom) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
+  } else if (input.kind === 'revisit' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: 'no resumable conversation for this feature — revisiting fresh from the docs',
@@ -527,7 +546,7 @@ export async function launchSession(
     })
   }
 
-  if (waypoint && resumeUnavailableFrom) {
+  if (runtime.id !== 'codex' && waypoint && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: `waypoint ${waypoint.seq} has no resumable conversation — starting fresh`,
@@ -650,6 +669,16 @@ export async function launchPrepareSession(
       type: 'session.resume_capped',
       message: `starting the preparation session fresh — ${capped.detail}; the recorded findings carry the state`,
       data: { sessionId: session.id, kind: 'prepare', ...capped },
+    })
+  } else if (
+    runtime.id === 'codex' &&
+    !input.fresh &&
+    hasCompletedProjectSession(ctx, project.id, 'prepare')
+  ) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
     })
   }
 
@@ -788,6 +817,17 @@ export async function launchDriveFixSession(
       message: `starting the drive-fix session fresh — ${capped.detail}; the failure is in the brief`,
       data: { sessionId: session.id, kind: 'drive-fix', ...capped },
     })
+  } else if (
+    runtime.id === 'codex' &&
+    listSessionsByFeature(ctx, feature.id).some(
+      (prior) => prior.id !== session.id && prior.kind === 'drive-fix' && prior.status === 'ended',
+    )
+  ) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
   }
 
   const spec = await runtime.writeArtifacts({
@@ -917,8 +957,14 @@ export async function launchProjectSession(
   } else if (resumeRowId) {
     emitProject(ctx, project.id, {
       type: 'session.resume_unavailable',
-      message: 'that conversation was never picked up by Claude Code — starting a new chat instead',
-      data: { sessionId: session.id, resumedFrom: resumeRowId },
+      message:
+        runtime.id === 'codex'
+          ? CODEX_RESUME_UNAVAILABLE_MESSAGE
+          : 'that conversation was never picked up by Claude Code — starting a new chat instead',
+      data: {
+        sessionId: session.id,
+        ...(runtime.id === 'codex' ? {} : { resumedFrom: resumeRowId }),
+      },
     })
   }
 
