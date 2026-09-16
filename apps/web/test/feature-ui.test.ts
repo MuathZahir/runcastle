@@ -205,18 +205,17 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
 })
 
 /**
- * The build phase with an empty ledger. It used to offer an enabled
+ * The build state with an empty ledger. It used to offer an enabled
  * "Burn 0 tickets" as the primary action, directly above an empty state whose
  * own copy contradicted it (findings F25.1).
  */
-describe.skip('nextStep at implementation with no tickets', () => {
+describe('nextStep at building with no tickets', () => {
   const buildFull = (opts: { sessions?: unknown[]; runs?: unknown[] } = {}) =>
     ({
       feature: { id: 'f1', phase: 'building', mapped: false, status: 'active' },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: opts.runs ?? [],
-      gate: { next: { id: 'G4' }, satisfied: false, reason: 'no run' },
     }) as unknown as FeatureFull
 
   it('never offers a burn when there is nothing to burn', () => {
@@ -228,7 +227,7 @@ describe.skip('nextStep at implementation with no tickets', () => {
   it('points at the thing that produces tickets', () => {
     const ns = nextStep(buildFull(), { driving: false })
     expect(ns.primary).toEqual({ label: 'Open a session', kind: 'startGrill' })
-    expect(ns.desc).toContain('planning')
+    expect(ns.desc).toContain('A session breaks the work into tickets')
   })
 
   it('offers to resume the conversation that exists rather than start another', () => {
@@ -244,7 +243,9 @@ describe.skip('nextStep at implementation with no tickets', () => {
     const ns = nextStep(buildFull({ sessions: live }), { driving: false })
     expect(ns.title).toBe('No tickets to burn')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
+    // Merge survives even here: nothing about an empty ledger is a reason to
+    // hide the one click that ships what is on the branch (decisions §3).
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   it('still offers the burn once there is a ticket to burn', () => {
@@ -334,29 +335,27 @@ describe('awaitingCheckIn', () => {
 
 /**
  * Next-step-bar affordance audit — the bar never counsels the human to do the
- * agent's job. While a session is live the bar is a status line: no primary, no
- * secondaries, because the session agent promotes the phase itself. The live
- * check therefore wins over the gate check — `decisions.md` exists minutes into
- * a grill, and the old precedence flipped the bar to "Promote the idea"
- * mid-conversation. With no session live, a satisfied gate keeps `advance` as a
- * quiet escape hatch behind the Resume/Start grill primary.
+ * agent's job. While a session is live the bar is a status line: no primary,
+ * only Merge, because the session writes the artifacts the derived step is read
+ * from (decisions §2) — decisions.md exists minutes into a grill, and a bar
+ * that read it as "your turn" would interrupt the conversation that wrote it.
+ * The one thing that outranks a live session is a batch of tickets it has
+ * already finished: that is the human's click to make.
  */
-describe.skip('nextStep — live sessions go status-only', () => {
+describe('nextStep — live sessions go status-only', () => {
   const auditFull = (opts: {
-    phase?: string
     live?: boolean
     /** The status that session carries; both of these are active sessions. */
     sessionStatus?: 'live' | 'launching'
-    satisfied?: boolean
-    gateId?: string
+    docs?: string[]
     tickets?: number
-    /** The session has completed the tickets phase — what arms the Burn click. */
+    /** The session has reported the tickets done — what arms the Burn click. */
     ticketsReady?: boolean
   }): FeatureFull =>
     ({
       feature: {
         id: 'f1',
-        phase: opts.phase ?? 'planning',
+        phase: 'planning',
         mapped: false,
         status: 'active',
         lap: 1,
@@ -372,22 +371,17 @@ describe.skip('nextStep — live sessions go status-only', () => {
         ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
         : [],
       runs: [],
-      gate: {
-        next: { id: opts.gateId ?? 'G1' },
-        satisfied: opts.satisfied ?? false,
-        reason: null,
-      },
+      docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
     }) as unknown as FeatureFull
 
   const kinds = (ns: ReturnType<typeof nextStep>) =>
     [ns.primary, ...ns.secondary].map((a) => a?.kind)
 
-  it('shows ideation status-only while a grill is live, even once G1 is satisfied', () => {
-    const ns = nextStep(auditFull({ live: true, satisfied: true }), { driving: false })
+  it('stays status-only while a grill is live, even once decisions.md exists', () => {
+    const ns = nextStep(auditFull({ live: true, docs: ['decisions.md'] }), { driving: false })
     expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
-    expect(kinds(ns)).not.toContain('advance')
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   // ui-state-management ticket 3 — the reported lie. The bar used to demand
@@ -400,54 +394,46 @@ describe.skip('nextStep — live sessions go status-only', () => {
     expect(kinds(ns)).not.toContain('startGrill')
   })
 
-  it('offers only the session door once ideation is idle', () => {
-    const ns = nextStep(auditFull({ satisfied: true }), { driving: false })
+  it('offers only the session door once planning is idle', () => {
+    const ns = nextStep(auditFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
-  it('says Resume on the idle satisfied-gate primary when the conversation survives', () => {
-    const full = auditFull({ satisfied: true })
+  it('says Resume on the idle primary when the conversation survives', () => {
+    const full = auditFull({})
     const resumable = {
       ...full,
       sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
     } as unknown as FeatureFull
     const ns = nextStep(resumable, { driving: false })
     expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
-  it('shows spec status-only while a session is live, even once the spec exists', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G2', live: true, satisfied: true }), {
-      driving: false,
-    })
-    expect(ns.kick).toBe('SESSION LIVE')
-    expect(ns.title).toBe('Writing the spec')
-    expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
-  })
-
-  it('offers only the session door once spec is idle', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G2', satisfied: true }), {
-      driving: false,
-    })
+  it('offers only the session door once the spec is written and nothing is live', () => {
+    const ns = nextStep(auditFull({ docs: ['decisions.md', 'spec.md'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
-  it('keeps Burn primary at tickets while live, once the session has finished them', () => {
-    const live = nextStep(
-      auditFull({ phase: 'planning', gateId: 'G3', live: true, tickets: 2, ticketsReady: true }),
-      { driving: false },
-    )
-    expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
-    expect(live.secondary).toEqual([])
-
-    const idle = nextStep(auditFull({ phase: 'planning', gateId: 'G3', tickets: 2 }), {
+  it('keeps Burn primary while live, once the session has finished the tickets', () => {
+    const live = nextStep(auditFull({ live: true, tickets: 2, ticketsReady: true }), {
       driving: false,
     })
+    expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
+    expect(live.secondary).toEqual([MERGE_ACTION])
+
+    const idle = nextStep(auditFull({ tickets: 2 }), { driving: false })
     expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
-    expect(idle.secondary).toEqual([{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }])
+    expect(idle.secondary).toEqual([
+      {
+        label: 'Ask for changes',
+        kind: 'revisit',
+        hint: 'Open a session to change the tickets before burning',
+      },
+      MERGE_ACTION,
+    ])
   })
 
   /**
@@ -457,24 +443,20 @@ describe.skip('nextStep — live sessions go status-only', () => {
    * the server now — and, like the server, only while a session is alive to race.
    */
   it('waits on the session that is still finishing the tickets, instead of arming Burn', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G3', live: true, tickets: 2 }), {
-      driving: false,
-    })
+    const ns = nextStep(auditFull({ live: true, tickets: 2 }), { driving: false })
     expect(ns.kick).toBe('WAITING')
     expect(ns.desc).toContain('The session is finishing the tickets')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   it('arms Burn with no session alive to race, readiness or not', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G3', tickets: 2 }), {
-      driving: false,
-    })
+    const ns = nextStep(auditFull({ tickets: 2 }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
   })
 
   it('ignores a readiness stamped on an earlier lap', () => {
-    const stale = auditFull({ phase: 'planning', gateId: 'G3', live: true, tickets: 2 })
+    const stale = auditFull({ live: true, tickets: 2 })
     const onLapTwo = {
       ...stale,
       feature: { ...stale.feature, lap: 2, ticketsReadyLap: 1 },
@@ -486,26 +468,24 @@ describe.skip('nextStep — live sessions go status-only', () => {
   })
 
   it('waits status-only for the first tickets while the session is emitting them', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G3', live: true }), {
+    const ns = nextStep(auditFull({ live: true, docs: ['decisions.md', 'spec.md'] }), {
       driving: false,
     })
     expect(ns.kick).toBe('WAITING')
     expect(ns.title).toBe('Emitting tickets')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   it('still offers a grill to emit the first tickets when nothing is live', () => {
-    const ns = nextStep(auditFull({ phase: 'planning', gateId: 'G3' }), { driving: false })
+    const ns = nextStep(auditFull({ docs: ['decisions.md', 'spec.md'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('never offers the scroll-to-terminal action in any live state', () => {
-    for (const phase of ['planning', 'planning', 'planning']) {
+    for (const docs of [[], ['decisions.md'], ['decisions.md', 'spec.md']]) {
       for (const tickets of [0, 2]) {
-        const ns = nextStep(auditFull({ phase, live: true, satisfied: true, tickets }), {
-          driving: false,
-        })
+        const ns = nextStep(auditFull({ docs, live: true, tickets }), { driving: false })
         expect(kinds(ns)).not.toContain('openGrill')
       }
     }
