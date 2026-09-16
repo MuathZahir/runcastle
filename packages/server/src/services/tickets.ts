@@ -180,6 +180,48 @@ export function storeTickets(
   return rows.map(rowToTicket)
 }
 
+/**
+ * Move the tickets an Iterate session wrote onto the lap that is about to burn
+ * them — every `pending` row still stamped `from`, re-stamped `to`.
+ *
+ * `storeTickets` stamps the feature's CURRENT lap, which is right for the
+ * planning batch: it is written and burned inside the same lap. The Iterate
+ * road is the exception. The session emits its fix tickets while the feature
+ * is still at review on lap N, and the Burn click that opens lap N+1 comes
+ * after them — so without this every ticket burned in lap N+1 reports lap N,
+ * and everything the `lap` column groups (the trail, per-lap burn reporting,
+ * the review page's account) files the new lap's work under the lap that only
+ * found the bugs.
+ *
+ * Scoped twice, deliberately. Terminal rows never move: they carry the lap
+ * that ran them. And a pending row from an EARLIER lap is standing debt, which
+ * the burn summaries name by the lap that wrote it — only the lap now closing
+ * hands its unburned work forward.
+ *
+ * No event of its own: this is a step inside `burn`, whose `burn.started` says
+ * which lap it opened, and one event is all the UI's resync needs.
+ */
+export function carryPendingTicketsIntoLap(
+  ctx: AppCtx,
+  featureId: string,
+  from: number,
+  to: number,
+): Ticket[] {
+  const moving = pendingTickets(ctx, featureId).filter((ticket) => ticket.lap === from)
+  if (moving.length === 0) return []
+  ctx.db
+    .update(tickets)
+    .set({ lap: to })
+    .where(
+      inArray(
+        tickets.id,
+        moving.map((ticket) => ticket.id),
+      ),
+    )
+    .run()
+  return moving.map((ticket) => ({ ...ticket, lap: to }))
+}
+
 export function getTicket(ctx: AppCtx, id: string): Ticket {
   const row = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
   if (!row) throw new NotFoundError(`ticket ${id} not found`)
