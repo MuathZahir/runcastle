@@ -203,6 +203,12 @@ export const featureRouter = router({
       const feature = getFeatureRow(ctx, input.featureId)
       features.requireNotDraft(feature)
       const project = projectForFeature(ctx, feature)
+      // A test drive of THIS feature holds the main checkout on the feature
+      // branch; stop it first (restores main) so the merge can proceed. This lets
+      // the Merge button work whether or not the branch is currently test-driven.
+      if (git.activeTestDriveFeatureId() === feature.id) {
+        await git.testDrive(ctx, project, feature, 'stop')
+      }
       const delta = await git.mergeDelta(project, feature)
       const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
       const res = await git.mergeFeature(project, feature)

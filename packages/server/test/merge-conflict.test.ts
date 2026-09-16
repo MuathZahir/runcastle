@@ -11,6 +11,7 @@ import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  activeTestDriveFeatureId,
   createFeatureBranch,
   detachWorktree,
   ensureTalkWorktree,
@@ -218,6 +219,32 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     },
     15_000,
   )
+
+  /**
+   * The natural shipping path at Review: drive the feature, like what you see,
+   * click Merge. The git service's active-drive refusal is absolute — it tests
+   * that ANY drive is live, not whose — so the handler has to stop a drive of
+   * THIS feature itself, or the most ordinary route to Shipped dead-ends on
+   * "stop it first".
+   */
+  it('ships while THIS feature is being test-driven — the handler stops the drive first', async () => {
+    await createFeatureBranch(project, 'driven', 'main')
+    await g.checkout('feature/driven')
+    writeFileSync(join(project.repoPath, 'driven.txt'), 'work\n')
+    await g.add(['driven.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+    const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
+    const start = await testDrive(ctx, project, feature, 'start')
+    expect(start.ok).toBe(true)
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(true)
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
+    expect(activeTestDriveFeatureId()).toBeUndefined()
+  }, 15_000)
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')
