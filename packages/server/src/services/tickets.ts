@@ -206,9 +206,9 @@ export function carryPendingTicketsIntoLap(
   featureId: string,
   from: number,
   to: number,
-): Ticket[] {
+): void {
   const moving = pendingTickets(ctx, featureId).filter((ticket) => ticket.lap === from)
-  if (moving.length === 0) return []
+  if (moving.length === 0) return
   ctx.db
     .update(tickets)
     .set({ lap: to })
@@ -219,7 +219,6 @@ export function carryPendingTicketsIntoLap(
       ),
     )
     .run()
-  return moving.map((ticket) => ({ ...ticket, lap: to }))
 }
 
 export function getTicket(ctx: AppCtx, id: string): Ticket {
