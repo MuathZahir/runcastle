@@ -188,6 +188,17 @@ export function resolvePlanning(input: ResolverInput): NextStep {
             [mergeAction],
           )
     case 'spec':
+      // A mapped feature with decisions and no spec is a converge session that
+      // ended before it finished writing: the road back is that session, which
+      // picks up from the map and the decisions, not a fresh conversation.
+      if (feature.mapped)
+        return step(
+          'NEXT STEP',
+          'Finish converging',
+          'The converge session ended before the spec and tickets were written. Resume it — it picks up from the map and the decisions.',
+          { label: 'Resume converge', kind: 'resumeConverge' },
+          [mergeAction],
+        )
       return step(
         'NEXT STEP',
         'Write the spec',

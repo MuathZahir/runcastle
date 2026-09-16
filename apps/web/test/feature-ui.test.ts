@@ -2448,34 +2448,27 @@ describe('parseMapSections', () => {
 
 /** A waypoint row as the wire sends it, for the two rail derivations below. */
 /**
- * Improve-map-workflow ticket 6 — the next-step bar owns convergence. For a
- * mapped feature at ideation the bar's primary IS Converge once G1 is satisfied;
- * while waypoints are open it carries the blocking reason and the
- * override-with-reason affordance instead. Remaining fog rides along as a
- * warning that never gates the button, and the scroll-to-terminal action is gone.
+ * Improve-map-workflow ticket 6 — the next-step bar owns convergence. The map
+ * survives the four-state collapse as a MODE inside planning (ADR-0001), so
+ * this is the same bar it always was: Converge is the primary once every
+ * waypoint is terminal, Work next while any is open, and remaining fog rides
+ * along as a note that never gates the button.
  */
-describe.skip('nextStep — mapped ideation owns Converge', () => {
-  function mappedIdeation(
-    opts: { satisfied?: boolean; reason?: string | null; live?: boolean } = {},
-  ): FeatureFull {
-    const satisfied = opts.satisfied ?? false
+describe('nextStep — the map mode inside planning owns Converge', () => {
+  function mappedIdeation(opts: { complete?: boolean; live?: boolean } = {}): FeatureFull {
+    const complete = opts.complete ?? false
     return {
-      feature: { id: 'f1', phase: 'planning', mapped: true, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', mapped: true, lap: 1, status: 'active' },
       tickets: [],
       sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'waypoint' }] : [],
       runs: [],
       docs: [],
-      gate: {
-        next: { id: 'G1' },
-        satisfied,
-        reason: opts.reason === undefined ? '2 waypoints still open' : opts.reason,
-      },
       waypoints: [
-        wp({ id: 'late', seq: 8, title: 'Later choice' }),
+        wp({ id: 'late', seq: 8, title: 'Later choice', ...(complete ? { status: 'resolved' as const } : {}) }),
         wp({ id: 'done', seq: 1, title: 'Finished', status: 'resolved' }),
-        wp({ id: 'next', seq: 3, title: 'Choose storage' }),
+        wp({ id: 'next', seq: 3, title: 'Choose storage', ...(complete ? { status: 'dropped' as const } : {}) }),
       ],
-      frontierIds: satisfied ? [] : ['late', 'next'],
+      frontierIds: complete ? [] : ['late', 'next'],
     } as unknown as FeatureFull
   }
 
@@ -2488,9 +2481,9 @@ describe.skip('nextStep — mapped ideation owns Converge', () => {
   ].join('\n')
 
   it('makes Converge the primary action once every waypoint is terminal', () => {
-    const ns = nextStep(mappedIdeation({ satisfied: true }), { driving: false })
+    const ns = nextStep(mappedIdeation({ complete: true }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(ns.title).toBe('The map is complete')
   })
 
@@ -2499,7 +2492,7 @@ describe.skip('nextStep — mapped ideation owns Converge', () => {
     expect(ns.primary).toEqual({ label: 'Work next', kind: 'workNext', waypointId: 'next' })
     expect(ns.desc).toContain('1 of 3 waypoints done · 2 ready to work')
     expect(ns.desc).toContain('next: Choose storage')
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   it('surfaces unspecified map text as one note without gating Work next', () => {
@@ -2518,8 +2511,8 @@ describe.skip('nextStep — mapped ideation owns Converge', () => {
   })
 
   it('never offers the scroll-to-terminal action, live session or not', () => {
-    for (const satisfied of [true, false]) {
-      const ns = nextStep(mappedIdeation({ satisfied, live: true }), { driving: false })
+    for (const complete of [true, false]) {
+      const ns = nextStep(mappedIdeation({ complete, live: true }), { driving: false })
       const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
       expect(kinds).not.toContain('openGrill')
     }
@@ -2535,48 +2528,68 @@ describe.skip('nextStep — mapped ideation owns Converge', () => {
   })
 })
 
-describe.skip('nextStep — spec and tickets use one lap-scoped door', () => {
-  it('resumes a mapped converge that ended before artifacts landed', () => {
-    const mapped = full({ phase: 'planning', mapped: true })
-    mapped.feature = { ...mapped.feature, phase: 'planning', mapped: true }
-    expect(nextStep(mapped, { driving: false }).primary).toEqual({
-      label: 'Resume converge',
-      kind: 'resumeConverge',
-    })
+/**
+ * The doors out of planning, now that one state covers what spec and tickets
+ * used to: which one the bar offers is read off the artifacts (decisions §2),
+ * so the copy can never contradict the document in the pane beside it.
+ */
+describe('nextStep at planning — which door the artifacts open', () => {
+  const docs = (...relPaths: string[]) =>
+    relPaths.map((relPath) => ({ relPath: `docs/features/demo/${relPath}` })) as FeatureFull['docs']
+
+  it('resumes a mapped converge that ended before the spec landed', () => {
+    const mapped = full({ phase: 'planning' })
+    mapped.feature = { ...mapped.feature, mapped: true }
+    mapped.docs = docs('decisions.md')
+    const ns = nextStep(mapped, { driving: false })
+    expect(ns.title).toBe('Finish converging')
+    expect(ns.primary).toEqual({ label: 'Resume converge', kind: 'resumeConverge' })
   })
 
-  it('stops claiming "no spec yet" once spec.md sits in the pane beside the bar', () => {
+  it('asks for tickets, not a spec, once spec.md sits in the pane beside the bar', () => {
     const written = full({ phase: 'planning' })
-    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    written.docs = docs('decisions.md', 'spec.md')
     const ns = nextStep(written, { driving: false })
-    expect(ns.title).toBe('Break the spec into tickets')
-    expect(ns.desc).not.toContain('No spec yet')
+    expect(ns.title).toBe('Emit the tickets')
     expect(ns.desc).toContain('The spec is written')
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
   })
 
   it('offers Resume on a written spec whose conversation is still on disk', () => {
-    const written = full({ phase: 'planning', mapped: true })
-    written.docs = [{ relPath: 'docs/features/demo/spec.md' }] as FeatureFull['docs']
+    const written = full({ phase: 'planning' })
+    written.docs = docs('decisions.md', 'spec.md')
     written.sessions = [
       { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
     ] as unknown as FeatureFull['sessions']
     const ns = nextStep(written, { driving: false })
-    expect(ns.title).toBe('Break the spec into tickets')
+    expect(ns.title).toBe('Emit the tickets')
     expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
   })
 
-  it('counts only current-lap non-cancelled tickets', () => {
-    const feature = full({ phase: 'planning', lap: 2 })
-    feature.feature = { ...feature.feature, phase: 'planning', lap: 2 }
-    feature.tickets = [
-      ...Array.from({ length: 11 }, (_, i) => ({ id: `old-${i}`, lap: 1, status: 'done' })),
-    ] as FeatureFull['tickets']
-    expect(nextStep(feature, { driving: false }).title).toBe('Waiting for tickets')
+  /**
+   * An earlier lap's finished batch is not this lap's tickets — the burn would
+   * run none of them, which is exactly what `hasTickets` asks (decisions §2).
+   */
+  it('reads only the tickets a burn would still run', () => {
+    const feature = full({ phase: 'planning' })
+    feature.feature = { ...feature.feature, lap: 2 }
+    feature.sessions = [
+      { id: 's1', status: 'ended', kind: 'revisit', lap: 2, ccSessionId: 'cc-1' },
+    ] as unknown as FeatureFull['sessions']
+    feature.docs = docs('decisions.md', 'spec.md')
+    feature.tickets = Array.from({ length: 11 }, (_, i) => ({
+      id: `old-${i}`,
+      lap: 1,
+      status: 'done',
+    })) as FeatureFull['tickets']
+    expect(nextStep(feature, { driving: false }).title).toBe('Emit the tickets')
     feature.tickets.push(
       ...(['a', 'b', 'c'].map((id) => ({ id, lap: 2, status: 'pending' })) as FeatureFull['tickets']),
     )
-    expect(nextStep(feature, { driving: false }).primary).toEqual({ label: 'Burn 3 tickets', kind: 'burn' })
+    expect(nextStep(feature, { driving: false }).primary).toEqual({
+      label: 'Burn 3 tickets',
+      kind: 'burn',
+    })
   })
 })
 
