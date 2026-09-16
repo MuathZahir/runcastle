@@ -46,7 +46,7 @@ function feature(overrides: Partial<Feature> = {}): Feature {
     title: 'Dark mode',
     oneLiner: 'a dark theme',
     mapped: false,
-    phase: 'ideation',
+    phase: 'planning',
     branch: 'feature/dark-mode',
     status: 'active',
     createdAt: 0,
@@ -293,7 +293,7 @@ describe('renderSystemPrompt', () => {
       renderSystemPrompt(feature(), 'ideation'),
       renderSystemPrompt(feature(), 'qa'),
       renderSystemPrompt(feature({ mapped: true }), 'waypoint'),
-      renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge'),
+      renderSystemPrompt(feature({ mapped: true, phase: 'planning' }), 'converge'),
       renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
     ]
     for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
@@ -344,7 +344,7 @@ describe('renderSystemPrompt', () => {
   })
 
   it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
-    const p = renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')
+    const p = renderSystemPrompt(feature({ phase: 'building' }), 'revisit')
     expect(p).toContain('/runcastle:revisit')
     expect(p).toContain('decisions.md')
     // a revisit never moves the pipeline
@@ -367,7 +367,7 @@ describe('renderSystemPrompt', () => {
     // advances from within the session
     expect(review).toMatch(/click Burn/i)
     // the section is review-only — an implementation revisit never carries it
-    expect(renderSystemPrompt(feature({ phase: 'implementation' }), 'revisit')).not.toContain(
+    expect(renderSystemPrompt(feature({ phase: 'building' }), 'revisit')).not.toContain(
       'Review iteration',
     )
   })
@@ -380,7 +380,7 @@ describe('renderSystemPrompt', () => {
    * lap briefing the same session was about to be typed (F2).
    */
   it('renders the lap framing when a lap is passed, and drops the complete_phase ban', () => {
-    const p = renderSystemPrompt(feature({ phase: 'ideation', lap: 2 }), 'revisit', undefined, 2)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'revisit', undefined, 2)
     expect(p).toContain('This is lap 2')
     expect(p).toContain('ideation → spec → tickets')
     // its two optional inputs, and that missing ones are normal
@@ -395,7 +395,7 @@ describe('renderSystemPrompt', () => {
   })
 
   it('leaves a plain revisit exactly as it was — no lap framing, ban intact', () => {
-    const p = renderSystemPrompt(feature({ phase: 'implementation', lap: 3 }), 'revisit')
+    const p = renderSystemPrompt(feature({ phase: 'building', lap: 3 }), 'revisit')
     expect(p).not.toContain('This is lap')
     expect(p).toMatch(/Do NOT call `complete_phase`/i)
   })
@@ -404,7 +404,7 @@ describe('renderSystemPrompt', () => {
     for (const p of [
       renderSystemPrompt(feature(), 'ideation'),
       renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
-      renderSystemPrompt(feature({ phase: 'ideation', lap: 2 }), 'revisit', undefined, 2),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'revisit', undefined, 2),
     ]) {
       expect(p).toMatch(/Talk sessions do not write code/)
       // and it says where the line is, and where the change goes instead
@@ -427,7 +427,7 @@ describe('renderSystemPrompt', () => {
   })
 
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
-    const p = renderSystemPrompt(feature({ mapped: true, phase: 'spec' }), 'converge')
+    const p = renderSystemPrompt(feature({ mapped: true, phase: 'planning' }), 'converge')
     expect(p).toContain('/runcastle:converge')
     // reads only the compressed knowledge — map + decisions, never transcripts
     expect(p).toContain('map.md')
@@ -454,14 +454,14 @@ describe('renderSystemPrompt', () => {
    * precedence, and the `lap` parameter never read on that path.
    */
   it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
-    const p = renderSystemPrompt(feature({ phase: 'ideation', lap: 3 }), 'ideation', undefined, 3)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'ideation', undefined, 3)
     expect(p).toContain('This is lap 3')
     expect(p).toContain('/runcastle:revisit')
     expect(p).not.toContain('/runcastle:ideate')
     expect(p).toMatch(/DO call `complete_phase`/)
     // and it is byte-identical to the revisit rendering of the same lap
     expect(p).toBe(
-      renderSystemPrompt(feature({ phase: 'ideation', lap: 3 }), 'revisit', undefined, 3),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'revisit', undefined, 3),
     )
   })
 
@@ -497,7 +497,7 @@ describe('renderSystemPrompt', () => {
   it('refuses to render one revisit as both a lap and a conflict resolution', () => {
     expect(() =>
       renderSystemPrompt(
-        feature({ phase: 'ideation', lap: 2 }),
+        feature({ phase: 'planning', lap: 2 }),
         'revisit',
         undefined,
         2,

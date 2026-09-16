@@ -92,7 +92,7 @@ describe('project-session MCP tools', () => {
     const calls: [string, () => unknown][] = [
       ['get_feature_context', () => toolGetFeatureContext(ctx, session)],
       ['emit_tickets', () => toolEmitTickets(ctx, session, { tickets: [] })],
-      ['complete_phase', () => toolCompletePhase(ctx, session, { phase: 'ideation' })],
+      ['complete_phase', () => toolCompletePhase(ctx, session, { phase: 'tickets' })],
       ['emit_waypoints', () => toolEmitWaypoints(ctx, session, { waypoints: [] })],
       [
         'resolve_waypoint',

@@ -47,10 +47,7 @@ export function seedProject(ctx: AppCtx, repoPath: string = tmpRepo()): Project 
 export function seedFeature(
   ctx: AppCtx,
   projectId: string,
-  overrides: Omit<Partial<Feature>, 'phase'> & {
-    baseBranch?: string | null
-    phase?: Feature['phase'] | 'ideation' | 'spec' | 'tickets' | 'implementation'
-  } = {},
+  overrides: Partial<Feature> & { baseBranch?: string | null } = {},
 ): Feature {
   const slug = overrides.slug ?? 'demo'
   const inserted = ctx.db
@@ -65,12 +62,7 @@ export function seedFeature(
       mapped: overrides.mapped ?? false,
       lap: overrides.lap ?? 1,
       ticketsReadyLap: overrides.ticketsReadyLap ?? null,
-      phase:
-        overrides.phase === 'implementation'
-          ? 'building'
-          : overrides.phase === 'ideation' || overrides.phase === 'spec' || overrides.phase === 'tickets'
-            ? 'planning'
-            : (overrides.phase ?? 'planning'),
+      phase: overrides.phase ?? 'planning',
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,
       status: overrides.status ?? 'active',

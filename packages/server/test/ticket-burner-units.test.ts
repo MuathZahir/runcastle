@@ -107,7 +107,7 @@ const feature: Feature = {
   title: 'My Feature',
   oneLiner: 'does a thing',
   mapped: false,
-  phase: 'implementation',
+  phase: 'building',
   branch: 'feature/my-feature',
   status: 'active',
   createdAt: 0,

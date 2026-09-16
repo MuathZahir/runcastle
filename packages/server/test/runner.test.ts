@@ -36,7 +36,7 @@ describe('workflow runner', () => {
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     workflowRegistry.set(successDef.id, successDef)
     workflowRegistry.set(throwDef.id, throwDef)
   })
@@ -229,7 +229,7 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
     await g.commit('initial commit')
 
     project = seedProject(ctx, repo)
-    feature = seedFeature(ctx, project.id, { slug: 'runwt', phase: 'implementation' })
+    feature = seedFeature(ctx, project.id, { slug: 'runwt', phase: 'building' })
     await createFeatureBranch(project, feature.slug, 'main')
     talkWt = await ensureTalkWorktree(project, feature)
   })

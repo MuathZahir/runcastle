@@ -52,7 +52,7 @@ const feature: Feature = {
   title: 'Demo',
   oneLiner: 'x',
   mapped: false,
-  phase: 'implementation',
+  phase: 'building',
   branch: 'feature/demo',
   status: 'active',
   createdAt: 0,

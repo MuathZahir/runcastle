@@ -45,7 +45,7 @@ runMigrations(db)
 const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
 const repoPath = mkdtempSync(join(tmpdir(), 'runcastle-tcp-'))
 const project = seedProject(ctx, repoPath)
-const feature = seedFeature(ctx, project.id, { slug: 'large-batch', phase: 'ideation' })
+const feature = seedFeature(ctx, project.id, { slug: 'large-batch', phase: 'planning' })
 const session = createSessionRow(ctx, {
   featureId: feature.id,
   kind: 'ideation',

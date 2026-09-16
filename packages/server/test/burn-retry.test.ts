@@ -50,7 +50,7 @@ describe('feature.burn — retry resets failed tickets', () => {
   })
 
   it('restart resets failed → pending (error cleared), leaves done/cancelled alone', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a, b, c] = storeTickets(ctx, featureId, [
       ticketInput('failed-one'),
       ticketInput('done-one'),
@@ -75,7 +75,7 @@ describe('feature.burn — retry resets failed tickets', () => {
   })
 
   it('a fresh burn from the tickets phase crosses G3 without touching statuses', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [ticketInput('one'), reviewInput()])
 
     await burn(ctx, featureId)
@@ -86,7 +86,7 @@ describe('feature.burn — retry resets failed tickets', () => {
   })
 
   it('warn-only policy lets a review-less lap burn', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [ticketInput('build it')])
 
     await burn(ctx, featureId)
@@ -94,7 +94,7 @@ describe('feature.burn — retry resets failed tickets', () => {
   })
 
   it('refuses when every ticket is cancelled', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [only] = storeTickets(ctx, featureId, [ticketInput('only')])
     updateTicket(ctx, only.id, { status: 'cancelled' })
 
@@ -103,7 +103,7 @@ describe('feature.burn — retry resets failed tickets', () => {
   })
 
   it('still refuses with no tickets at all', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     await expect(burn(ctx, featureId)).rejects.toThrow(/no tickets to burn/)
   })
 })

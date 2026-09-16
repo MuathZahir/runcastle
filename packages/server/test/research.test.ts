@@ -262,7 +262,7 @@ describe('research run through the runner (stubbed sandcastle)', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { mapped: true, phase: 'ideation' })
+    feature = seedFeature(ctx, project.id, { mapped: true, phase: 'planning' })
   })
 
   afterEach(() => {
@@ -355,7 +355,7 @@ describe('workWaypoint routes research to a run', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { mapped: true, phase: 'ideation' })
+    feature = seedFeature(ctx, project.id, { mapped: true, phase: 'planning' })
     workflowRegistry.set('research', {
       id: 'research',
       run: (c) =>

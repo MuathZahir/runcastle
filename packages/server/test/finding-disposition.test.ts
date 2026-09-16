@@ -38,7 +38,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     ctx = await makeTestCtx()
     repoPath = tmpRepo()
     project = seedProject(ctx, repoPath)
-    feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'ideation' })
+    feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     reviewTicket = storeTickets(ctx, feature.id, [
       { ...ticketInput('Review'), kind: 'review' },
     ])[0]

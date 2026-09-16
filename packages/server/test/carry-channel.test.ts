@@ -212,7 +212,7 @@ describe('the carry channel into the next lap', () => {
     openDefect()
 
     const prompt = renderSystemPrompt(
-      { ...feature, phase: 'ideation', lap: 2 },
+      { ...feature, phase: 'planning', lap: 2 },
       'revisit',
       undefined,
       2,
@@ -231,7 +231,7 @@ describe('the carry channel into the next lap', () => {
     openDefect()
 
     const prompt = renderSystemPrompt(
-      { ...feature, phase: 'ideation', lap: 2 },
+      { ...feature, phase: 'planning', lap: 2 },
       'revisit',
       undefined,
       2,

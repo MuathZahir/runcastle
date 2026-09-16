@@ -184,7 +184,7 @@ describe('feature delete', () => {
   })
 
   it('removes DB rows, the talk worktree, and the feature branch; leaves committed docs untouched', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'del-me', phase: 'implementation' })
+    const feature = seedFeature(ctx, project.id, { slug: 'del-me', phase: 'building' })
     await createFeatureBranch(project, feature.slug, 'main')
     const worktree = await ensureTalkWorktree(project, feature)
 
@@ -222,7 +222,7 @@ describe('feature delete', () => {
   })
 
   it('deletes matching runcastle temp branches, keeps unrelated branches', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'temps', phase: 'implementation' })
+    const feature = seedFeature(ctx, project.id, { slug: 'temps', phase: 'building' })
     await createFeatureBranch(project, feature.slug, 'main')
 
     const g = simpleGit(project.repoPath)
@@ -244,7 +244,7 @@ describe('feature delete', () => {
   })
 
   it('emits a project-scoped feature.deleted event (surviving the row deletion)', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'evt', phase: 'tickets' })
+    const feature = seedFeature(ctx, project.id, { slug: 'evt', phase: 'planning' })
     await createFeatureBranch(project, feature.slug, 'main')
 
     await deleteFeature(ctx, feature.id)
@@ -265,7 +265,7 @@ describe('feature delete', () => {
   })
 
   it('tears down a live session and an active run before deleting, without throwing', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'live', phase: 'implementation' })
+    const feature = seedFeature(ctx, project.id, { slug: 'live', phase: 'building' })
     await createFeatureBranch(project, feature.slug, 'main')
     await ensureTalkWorktree(project, feature)
 
@@ -311,7 +311,7 @@ describe('feature delete', () => {
   it.skipIf(process.platform === 'win32')(
     'leaves the feature row present and retryable when worktree removal fails',
     async () => {
-      const feature = seedFeature(ctx, project.id, { slug: 'locked', phase: 'implementation' })
+      const feature = seedFeature(ctx, project.id, { slug: 'locked', phase: 'building' })
       await createFeatureBranch(project, feature.slug, 'main')
       const worktree = await ensureTalkWorktree(project, feature)
       seedAllRows(ctx, feature.id)

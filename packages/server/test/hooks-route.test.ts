@@ -34,7 +34,7 @@ describe('hooks route', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     featureId = feature.id
     const session = createSessionRow(ctx, {
       featureId,

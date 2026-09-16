@@ -56,7 +56,7 @@ describe('mcp tools', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'dark-mode'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -369,7 +369,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'big-feature'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -528,7 +528,7 @@ describe('mcp qa read-only contract', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     repoPath = tmpRepo()
-    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'ideation' })
+    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'planning' })
     featureId = feature.id
     qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
     setRuntimeCtx(ctx)
@@ -542,7 +542,7 @@ describe('mcp qa read-only contract', () => {
       ['emit_tickets', () => toolEmitTickets(ctx, qa, { tickets: [ticket('new')] })],
       ['update_ticket', () => toolUpdateTicket(ctx, qa, { id: existing.id, title: 'x' })],
       ['cancel_ticket', () => toolCancelTicket(ctx, qa, { id: existing.id })],
-      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'ideation' })],
+      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'tickets' })],
     ]
     for (const [name, call] of calls) {
       let thrown: unknown

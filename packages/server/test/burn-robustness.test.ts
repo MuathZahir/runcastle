@@ -464,7 +464,7 @@ describe('retryTicket', () => {
   })
 
   it('resets ONLY the target (and starts a run), leaving other failed tickets failed', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [target, other] = storeTickets(ctx, featureId, [
       ticketInput('target'),
       ticketInput('other-failed'),
@@ -483,7 +483,7 @@ describe('retryTicket', () => {
   })
 
   it('pulls failed blockers along transitively (retrying a dependent alone is pointless)', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [root, mid, leaf, unrelated] = storeTickets(ctx, featureId, [
       ticketInput('root'),
       ticketInput('mid', [1]),
@@ -505,7 +505,7 @@ describe('retryTicket', () => {
   })
 
   it('keeps attemptBranch on a plain retry (resume) and clears it on fresh', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     updateTicket(ctx, a.id, {
       status: 'failed',
@@ -525,7 +525,7 @@ describe('retryTicket', () => {
   })
 
   it('keeps a landing conflict on a plain retry (resolve) and drops it on fresh (re-implement)', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     updateTicket(ctx, a.id, {
       status: 'failed',
@@ -554,7 +554,7 @@ describe('retryTicket', () => {
   })
 
   it('emits a ticket.retry event naming the retried seqs', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     updateTicket(ctx, a.id, { status: 'failed', error: 'x' })
 
@@ -573,7 +573,7 @@ describe('retryTicket', () => {
     const { dir, g } = await initRepoWithFeature()
     await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-orph', 'work.txt', '2026-07-21T00:00:00Z')
     const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
-      phase: 'implementation',
+      phase: 'building',
       slug: 'demo',
     }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
@@ -590,7 +590,7 @@ describe('retryTicket', () => {
     await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-one1', 'one.txt', '2026-07-19T00:00:00Z')
     await seedAttemptBranch(dir, g, 'runcastle/ticket/demo/1-two1', 'two.txt', '2026-07-20T00:00:00Z')
     const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
-      phase: 'implementation',
+      phase: 'building',
       slug: 'demo',
     }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
@@ -607,14 +607,14 @@ describe('retryTicket', () => {
   })
 
   it('refuses a ticket that is not failed', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     await expect(retryTicket(ctx, a.id)).rejects.toThrow(GateError)
     await expect(retryTicket(ctx, a.id)).rejects.toThrow(/only failed tickets/)
   })
 
   it('refuses while a run is live for the feature', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     updateTicket(ctx, a.id, { status: 'failed', error: 'x' })
     ctx.db
