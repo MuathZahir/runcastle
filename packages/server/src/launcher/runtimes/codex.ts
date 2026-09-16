@@ -178,6 +178,9 @@ function renderCodexConfig(input: CodexConfigInput): string {
     `model = ${toml(model)}`,
     'sandbox_mode = "workspace-write"',
     `approval_policy = ${toml(approvalPolicyFor(permissionMode))}`,
+    // A synthetic home otherwise stops at Codex's blocking update dialog,
+    // whose highlighted default performs a global npm install.
+    'check_for_update_on_startup = false',
     '',
     '[features]',
     'hooks = true',

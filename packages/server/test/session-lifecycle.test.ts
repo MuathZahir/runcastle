@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
@@ -330,6 +330,31 @@ describe('failed resume — lastSessionId preservation + events', () => {
   })
 })
 
+describe('codex PTY exit owns session teardown', () => {
+  it('ends the row, releases its waypoint, and emits session.pty_exited', async () => {
+    const ctx = await makeTestCtx()
+    const project = seedProject(ctx)
+    const feature = seedFeature(ctx, project.id, { mapped: true })
+    const [waypoint] = storeWaypoints(ctx, feature.id, [wp('codex work')])
+    const session = createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'waypoint',
+      worktreePath: 'C:\\wt',
+      model: { id: 'gpt-5', runtime: 'codex' },
+    })
+    claim(ctx, waypoint.id, session.id)
+    markSessionLive(ctx, session.id, { ccSessionId: 'codex-thread' })
+
+    handlePtyExit(ctx, feature, session, { waypoint }, 0)
+
+    expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
+    expect(getWaypoint(ctx, waypoint.id).status).toBe('open')
+    const exited = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.pty_exited')
+    expect(exited).toHaveLength(1)
+    expect(exited[0]?.data).toEqual({ sessionId: session.id, exitCode: 0 })
+  })
+})
+
 /**
  * Reopening a terminal resumes ITS OWN conversation, at every phase. A session is
  * a real `claude` process in a server-owned PTY, so quitting runcastle kills it
@@ -341,9 +366,11 @@ describe('relaunching a terminal resumes its own conversation', () => {
   let ctx: AppCtx
   let projectId: string
   let repoPath: string
+  let originalCodexHome: string | undefined
   const cleanup: string[] = []
 
   beforeEach(async () => {
+    originalCodexHome = process.env.CODEX_HOME
     ctx = await makeTestCtx()
     repoPath = mkdtempSync(join(tmpdir(), 'runcastle-relaunch-'))
     cleanup.push(repoPath)
@@ -352,6 +379,8 @@ describe('relaunching a terminal resumes its own conversation', () => {
   })
 
   afterEach(() => {
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME
+    else process.env.CODEX_HOME = originalCodexHome
     vi.restoreAllMocks()
     vi.useRealTimers()
     for (const d of cleanup) rmSync(d, { recursive: true, force: true })
@@ -370,6 +399,18 @@ describe('relaunching a terminal resumes its own conversation', () => {
     const { sessionId } = await launchSession(ctx, { featureId, kind }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
     return sessionId
+  }
+
+  function useCodexRuntime(): void {
+    const home = mkdtempSync(join(tmpdir(), 'runcastle-relaunch-codex-'))
+    cleanup.push(home)
+    process.env.CODEX_HOME = home
+    writeFileSync(join(home, 'auth.json'), '{"tokens":{"id_token":"test"}}')
+    ctx.config = {
+      ...ctx.config,
+      model: 'gpt-5',
+      models: [{ id: 'gpt-5', runtime: 'codex' }],
+    }
   }
 
   /** The `claude` argv recorded on this session's `session.launched` event. */
@@ -403,6 +444,73 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, second)).toContain('--resume cc-grill')
     const resumed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resumed')
     expect((resumed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-grill')
+  })
+
+  it('announces a Codex relaunch that has no recorded conversation and still starts fresh', async () => {
+    useCodexRuntime()
+    const f = await feature('codex-unavailable')
+    const first = await launch(f.id, 'ideation')
+    reconcileStaleSessions(ctx)
+
+    const second = await launch(f.id, 'ideation')
+
+    expect(commandFor(f.id, second)).not.toContain('resume')
+    const notes = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.resume_unavailable')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toMatchObject({
+      message: 'no resumable conversation was recorded — starting a fresh session',
+      data: { sessionId: second },
+    })
+    expect(getSessionRow(ctx, first)?.ccSessionId).toBeFalsy()
+  })
+
+  it('resumes a recorded Codex conversation without an unavailable note', async () => {
+    useCodexRuntime()
+    const f = await feature('codex-resume')
+    const first = await launch(f.id, 'ideation')
+    markSessionLive(ctx, first, { ccSessionId: '01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf' })
+    reconcileStaleSessions(ctx)
+
+    const second = await launch(f.id, 'ideation')
+    const command = commandFor(f.id, second)
+    expect(command).toContain('resume 01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf')
+    expect(command).toContain('--dangerously-bypass-hook-trust')
+    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
+    expect(types).toContain('session.resumed')
+    expect(types).not.toContain('session.resume_unavailable')
+  })
+
+  it('keeps a Claude relaunch with no recorded conversation silent', async () => {
+    const f = await feature('claude-unavailable')
+    await launch(f.id, 'ideation')
+    reconcileStaleSessions(ctx)
+
+    const second = await launch(f.id, 'ideation')
+
+    expect(commandFor(f.id, second)).not.toContain('--resume')
+    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain(
+      'session.resume_unavailable',
+    )
+  })
+
+  it('does not announce unavailable when an explicit briefing deliberately starts Codex fresh', async () => {
+    useCodexRuntime()
+    const f = await feature('codex-explicit')
+    const first = await launch(f.id, 'ideation')
+    markSessionLive(ctx, first, { ccSessionId: 'codex-prior' })
+    reconcileStaleSessions(ctx)
+
+    const { sessionId } = await launchSession(
+      ctx,
+      { featureId: f.id, kind: 'ideation', kickoffLine: 'Start this explicit task.' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(sessionId))
+
+    expect(commandFor(f.id, sessionId)).not.toContain('resume')
+    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain(
+      'session.resume_unavailable',
+    )
   })
 
   it('resumes the newest conversation of ITS OWN kind, not whatever ran last', async () => {

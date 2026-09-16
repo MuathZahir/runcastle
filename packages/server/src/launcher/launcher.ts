@@ -30,6 +30,7 @@ import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates
 import * as git from '../services/git'
 import {
   getFeatureRow,
+  listSessionsByFeature,
   projectForFeature,
   requireProjectById,
   rowToRun,
@@ -46,6 +47,7 @@ import {
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { noteResolvedMerge } from '../services/resolved-merge'
 import { serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import {
   activeProjectSession,
@@ -53,6 +55,7 @@ import {
   armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
+  hasCompletedProjectSession,
   kickoffLineFor,
   landProjectSession,
   lapInFlight,
@@ -66,6 +69,9 @@ import {
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
+
+const CODEX_RESUME_UNAVAILABLE_MESSAGE =
+  'no resumable conversation was recorded — starting a fresh session'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -459,6 +465,14 @@ export async function launchSession(
   if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
+    if (
+      !resumeSessionId &&
+      listSessionsByFeature(ctx, feature.id).some(
+        (prior) => prior.id !== session.id && prior.kind === input.kind && prior.status === 'ended',
+      )
+    ) {
+      resumeUnavailableFrom = input.kind
+    }
   }
 
   if (plan.explicit && resumeSessionId) {
@@ -510,7 +524,13 @@ export async function launchSession(
     })
   }
 
-  if (input.kind === 'revisit' && resumeUnavailableFrom) {
+  if (runtime.id === 'codex' && resumeUnavailableFrom) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
+  } else if (input.kind === 'revisit' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: 'no resumable conversation for this feature — revisiting fresh from the docs',
@@ -518,7 +538,7 @@ export async function launchSession(
     })
   }
 
-  if (waypoint && resumeUnavailableFrom) {
+  if (runtime.id !== 'codex' && waypoint && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: `waypoint ${waypoint.seq} has no resumable conversation — starting fresh`,
@@ -650,6 +670,16 @@ export async function launchPrepareSession(
       type: 'session.resume_capped',
       message: `starting the preparation session fresh — ${capped.detail}; the recorded findings carry the state`,
       data: { sessionId: session.id, kind: 'prepare', ...capped },
+    })
+  } else if (
+    runtime.id === 'codex' &&
+    !input.fresh &&
+    hasCompletedProjectSession(ctx, project.id, 'prepare')
+  ) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
     })
   }
 
@@ -792,6 +822,17 @@ export async function launchDriveFixSession(
       type: 'session.resume_capped',
       message: `starting the drive-fix session fresh — ${capped.detail}; the failure is in the brief`,
       data: { sessionId: session.id, kind: 'drive-fix', ...capped },
+    })
+  } else if (
+    runtime.id === 'codex' &&
+    listSessionsByFeature(ctx, feature.id).some(
+      (prior) => prior.id !== session.id && prior.kind === 'drive-fix' && prior.status === 'ended',
+    )
+  ) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
     })
   }
 
@@ -936,8 +977,14 @@ export async function launchProjectSession(
   } else if (resumeRowId) {
     emitProject(ctx, project.id, {
       type: 'session.resume_unavailable',
-      message: 'that conversation was never picked up by Claude Code — starting a new chat instead',
-      data: { sessionId: session.id, resumedFrom: resumeRowId },
+      message:
+        runtime.id === 'codex'
+          ? CODEX_RESUME_UNAVAILABLE_MESSAGE
+          : 'that conversation was never picked up by Claude Code — starting a new chat instead',
+      data: {
+        sessionId: session.id,
+        ...(runtime.id === 'codex' ? {} : { resumedFrom: resumeRowId }),
+      },
     })
   }
 
@@ -1255,6 +1302,9 @@ export function handlePtyExit(
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)
+  if (session.runtime === 'codex' && feature) {
+    void noteResolvedMerge(ctx, session, feature).catch(() => {})
+  }
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
     emitForSession(ctx, session, {

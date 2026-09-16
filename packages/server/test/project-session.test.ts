@@ -14,10 +14,11 @@ import {
   renderProjectPrompt,
   renderSettings,
 } from '../src/launcher/artifacts'
-import { launchProjectSession } from '../src/launcher/launcher'
+import { handlePtyExit, launchProjectSession } from '../src/launcher/launcher'
 import { KICKOFF_LINES, buildClaudeArgs } from '../src/launcher/runtimes/claude'
 import {
   awaitProjectLandings,
+  createSessionRow,
   getSessionRow,
   reportProjectLanding,
 } from '../src/launcher/sessions'
@@ -420,6 +421,26 @@ describe('launching, resuming and landing a project session', () => {
       .at(-1)
     return String((launched?.data as { command?: string })?.command ?? '')
   }
+
+  it('lands codex project-session work when its PTY exits', async () => {
+    const { worktreePath } = await ensureProjectWorktree(project)
+    writeFileSync(join(worktreePath, 'CODEX.md'), 'landed at exit\n')
+    git(worktreePath, 'add', 'CODEX.md')
+    git(worktreePath, 'commit', '-m', 'codex project work')
+    const session = createSessionRow(ctx, {
+      projectId: project.id,
+      kind: 'project',
+      worktreePath,
+      model: { id: 'gpt-5', runtime: 'codex' },
+    })
+
+    handlePtyExit(ctx, undefined, session, {}, 0)
+    await awaitProjectLandings()
+
+    expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
+    expect(git(repoPath, 'show', 'main:CODEX.md')).toBe('landed at exit')
+    expect(listByProject(ctx, project.id).filter((e) => e.type === 'session.pty_exited')).toHaveLength(1)
+  })
 
   it('creates a project-keyed row in its own worktree on the project branch', async () => {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
