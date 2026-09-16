@@ -6,7 +6,6 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
-  GateDef,
   Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
@@ -33,11 +32,8 @@ import {
   WaypointInput,
   agentDigestDocOrder,
   isAgentDigestDoc,
-  isPastPhase,
   isProjectSessionKind,
   modelRoster,
-  nextGate,
-  nextPhase,
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
@@ -49,7 +45,6 @@ import { RUN_HEADER } from '../launcher/artifacts'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
-  advance,
   createFeature,
   escalateToMap,
   type FeatureListItem,
@@ -59,7 +54,6 @@ import {
 import { type CarriedDefect, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
-import { checkGate } from '../services/gates'
 import {
   carryFinding,
   closeAsAddressed,
@@ -768,42 +762,17 @@ export function toolRecordEvent(
 }
 
 /** The gate a phase transition has to satisfy, as an agent can act on it. */
-export interface GateRequirement {
-  id: string
-  /** What must be true, in prose (`PIPELINE`'s own wording). */
-  description: string
-  /** The server-side check that decides it — the name in the gate log. */
-  check: string
-}
-
-export type CompletePhaseResult =
-  | {
-      ok: true
-      nextPhase: PhaseT
-      waitingOn?: string
-      /**
-       * What the gate AFTER this one wants, so the session can do that work now
-       * instead of calling `complete_phase` again to find out. Absent at the
-       * final phase, which has no next gate.
-       */
-      nextGate?: GateRequirement
-      /**
-       * Why there was nothing left to do — set only when the phase named was
-       * already crossed while the session was closing out, so a healthy late
-       * call reads as the success it is instead of a refusal.
-       */
-      note?: string
-    }
-  | { ok: false; reason: string; gate?: GateRequirement }
-
-function requirement(gate: GateDef | null): GateRequirement | undefined {
-  return gate ? { id: gate.id, description: gate.description, check: gate.check } : undefined
+export interface CompletePhaseResult {
+  ok: true
+  nextPhase: PhaseT
+  waitingOn?: string
+  warnings?: string[]
 }
 
 export function toolCompletePhase(
   ctx: AppCtx,
   session: SessionRow,
-  input: { phase: PhaseT },
+  input: { phase: 'ideation' | 'spec' | 'tickets' },
 ): CompletePhaseResult {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseIfReadOnly(session, 'completing a phase')
@@ -813,73 +782,11 @@ export function toolCompletePhase(
     data: { phase: input.phase, currentPhase: feature.phase },
   })
 
-  // The human clicked Burn while this session was still closing out: the work
-  // being reported IS complete — the crossing happened without it. Falling
-  // through would run the gate AFTER the one asked about (G4) and answer "N
-  // tickets not yet terminal", which reads as a failure and sends a healthy
-  // close-out looking for something to fix.
-  if (input.phase === 'tickets' && isPastPhase(feature, 'tickets')) {
-    return {
-      ok: true,
-      nextPhase: feature.phase,
-      note: 'tickets phase already crossed — the burn has started; nothing left to complete',
-    }
-  }
-
-  // G3 (tickets → implementation) is THE human approval gate — the "Burn" click
-  // in CONTEXT.md's two-click covenant (#9). A session may mark the tickets
-  // phase's work complete, but it MUST NOT advance the feature past G3: only the
-  // `feature.burn` tRPC mutation (or an explicit `overrideGate`) may cross it.
-  // The feature parks at `tickets`, waiting on the human.
-  const gate = nextGate(feature)
-  if (gate?.id === 'G3') {
-    // Parking is not a bypass. G3 is not crossed here, but its preconditions are
-    // still checked here — SPEC §6 says `complete_phase` runs the gate check
-    // server-side, and the exception is only about the crossing. A lap that
-    // forgot its `kind: "review"` ticket has to hear the refusal at THIS moment,
-    // while the session that wrote the tickets is still alive to fix them;
-    // returning `ok: true` would send it away and leave the seatbelt to fire
-    // hours later at the human's Burn click.
-    const result = checkGate(ctx, gate.check, feature)
-    if (!result.satisfied) {
-      const failed = requirement(gate)
-      return {
-        ok: false,
-        reason: result.reason ?? `gate ${gate.id} not satisfied`,
-        ...(failed ? { gate: failed } : {}),
-      }
-    }
-
-    const next = nextPhase(feature) ?? 'implementation'
-    // The lap stops changing here: this session is done emitting and enriching,
-    // so the Burn click can no longer land mid-batch. The burn service reads
-    // the stamp; the button only reflects it.
-    markTicketsReady(ctx, feature.id, next)
-    // The gate past G3 is what the feature meets AFTER the burn — reported so
-    // the session knows the shape of the rest of the lap, not so it acts now.
-    const after = requirement(nextGate({ ...feature, phase: next }))
-    return {
-      ok: true,
-      nextPhase: next,
-      waitingOn: 'human burn',
-      ...(after ? { nextGate: after } : {}),
-    }
-  }
-
-  try {
-    // Non-G3 gates: same server-side check + advance as `feature.advance`.
-    const updated = advance(ctx, feature.id)
-    // What the NEXT gate wants, computed from the feature as it now stands. A
-    // session that has to guess this calls `complete_phase` speculatively to
-    // read the refusal; saying it here turns a probe into a fact.
-    const next = requirement(nextGate(updated))
-    return { ok: true, nextPhase: updated.phase, ...(next ? { nextGate: next } : {}) }
-  } catch (e) {
-    if (e instanceof GateError) {
-      const gate = requirement(nextGate(feature))
-      return { ok: false, reason: e.message, ...(gate ? { gate } : {}) }
-    }
-    throw e
+  if (input.phase === 'tickets') markTicketsReady(ctx, feature.id, 'building')
+  return {
+    ok: true,
+    nextPhase: feature.phase,
+    ...(input.phase === 'tickets' ? { waitingOn: 'human burn', warnings: [] } : {}),
   }
 }
 
@@ -1759,7 +1666,7 @@ export function toolsForAudience(audience: McpAudience | undefined): string[] {
  * ships when the human merges it, so offering it was offering a call that can
  * only be refused.
  */
-const CompletablePhase = Phase.exclude(['shipped'])
+const CompletablePhase = z.enum(['ideation', 'spec', 'tickets'])
 
 /**
  * The shape of a timeline event tag: `subject.verb`, lowercase, dotted.

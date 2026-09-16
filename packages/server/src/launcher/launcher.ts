@@ -13,7 +13,7 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { nextGate, nextPhase, resolveModelEntry } from '@runcastle/core'
+import { resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
@@ -26,14 +26,12 @@ import { ptyRegistry } from '../pty/registry'
 import { carriedWork } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
-import { checkGate, overrideGate, undoLastGateOverride } from '../services/gates'
 import * as git from '../services/git'
 import {
   getFeatureRow,
   projectForFeature,
   requireProjectById,
   rowToRun,
-  setPhase,
 } from '../services/repo'
 import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
@@ -1099,99 +1097,12 @@ export async function converge(
   if (!feature.mapped) {
     throw new GateError(`feature ${feature.slug} is not mapped — convergence is only for mapped features`)
   }
-  if (feature.phase !== 'ideation') {
-    return reconverge(ctx, feature, opts)
+  if (feature.phase !== 'planning') {
+    throw new GateError(`converge runs during planning — feature ${feature.slug} is already at ${feature.phase}`)
   }
-
-  const gate = nextGate(feature)
-  if (!gate) throw new GateError('feature is already at the final phase')
-  const result = checkGate(ctx, gate.check, feature)
-
-  let overrode = false
-  if (result.satisfied) {
-    // Cross G1 into spec. G1 is never G3, so this plain crossing is legitimate.
-    const next = nextPhase(feature)
-    if (!next) throw new GateError('feature is already at the final phase')
-    setPhase(ctx, feature.id, next, 'phase.advanced', `converging (${next})`)
-  } else if (input.overrideReason) {
-    // The seatbelt, not the cage: record a G1 override and advance anyway.
-    overrideGate(ctx, feature.id, gate.id, input.overrideReason)
-    overrode = true
-  } else {
-    throw new GateError(result.reason ?? 'the map is not ready to converge — resolve its waypoints or override with a reason')
-  }
-
-  // The crossing has to happen first — the session's artifacts are rendered from
-  // the phase, so a converge terminal opened at `ideation` would be briefed to
-  // keep charting. That made a failed launch strand the feature past G1 with no
-  // session (findings F5), which is the whole reason `reconverge` below exists.
-  // So the crossing is rolled back when the launch throws: the map is back where
-  // it was and Converge can simply be clicked again.
-  try {
-    return await launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
-  } catch (e) {
-    if (overrode) undoLastGateOverride(ctx, feature.id, gate.id)
-    setPhase(
-      ctx,
-      feature.id,
-      feature.phase,
-      'converge.aborted',
-      `converge aborted — its session could not be opened (${errMsg(e)}); back at ${feature.phase}`,
-    )
-    throw e
-  }
-}
-
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
-}
-
-/**
- * RE-convergence (E2E finding 3): a converge session that crashed or was closed
- * mid-way leaves the feature stranded — G1 was already crossed (phase `spec`)
- * but no tickets were emitted, and the
- * ideation-only refusal made that state unrecoverable. Allow a fresh
- * kind=converge session exactly in that window: mapped feature at its post-G1,
- * pre-tickets phase with ZERO tickets and no live session. The new session
- * continues from whatever exists on disk (an existing spec.md is read, not
- * rewritten — see the converge skill). Every other phase keeps a clear refusal.
- */
-async function reconverge(
-  ctx: AppCtx,
-  feature: Feature,
-  opts: LaunchSessionOptions,
-): Promise<LaunchSessionResult> {
-  if (feature.phase !== 'spec' && feature.phase !== 'tickets') {
-    throw new GateError(
-      `converge runs from ideation — feature ${feature.slug} is already at ${feature.phase}`,
-    )
-  }
-  const tickets = listTicketsByFeature(ctx, feature.id)
-  if (tickets.length > 0) {
-    throw new GateError(
-      `feature ${feature.slug} already has ${tickets.length} ticket(s) — convergence completed; work the tickets instead`,
-    )
-  }
-  const live = activeSessionsForFeature(ctx, feature.id)
-  if (live.length > 0) {
-    throw new GateError(
-      `a ${live[0].kind} session is already live for ${feature.slug} — resume or end it instead of re-converging`,
-    )
-  }
-  const running = activeRunFor(ctx, feature.id)
-  if (running && workflowClaimsFeatureBranch(running.workflow)) {
-    throw new GateError(
-      `a ${running.workflow} run is in progress on ${feature.slug} — converge when it finishes`,
-    )
-  }
-
-  emit(ctx, feature.id, {
-    type: 'converge.resumed',
-    message: `re-converging from ${feature.phase} — continuing to tickets from the existing docs`,
-    data: { phase: feature.phase },
-  })
   return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
 }
+
 
 /** Spawn-time context the PTY exit handler needs to report honestly. */
 export interface SpawnMeta {

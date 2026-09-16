@@ -1,12 +1,11 @@
 import type { RunStatus, WorkflowCtx } from '@runcastle/core'
-import { newId, nextGate, nextPhase } from '@runcastle/core'
+import { newId } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { NotFoundError } from '../errors'
 import { emit } from '../services/events'
-import { checkGate } from '../services/gates'
 import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
@@ -280,12 +279,9 @@ async function executeRun(
   }
 }
 
-/** After a succeeded run, advance to `review` if G4 (all-tickets-terminal). */
+/** A successful burn reaches review unless the feature was already shipped. */
 function maybeAutoAdvance(ctx: AppCtx, featureId: string): void {
   const feature = getFeatureRow(ctx, featureId)
-  const gate = nextGate(feature)
-  if (!gate || gate.check !== 'all-tickets-terminal') return
-  if (!checkGate(ctx, gate.check, feature).satisfied) return
-  const next = nextPhase(feature)
-  if (next) setPhase(ctx, featureId, next, 'phase.advanced', 'auto-advanced to review after successful run')
+  if (feature.phase !== 'building') return
+  setPhase(ctx, featureId, 'review', 'phase.advanced', 'auto-advanced to review after successful run')
 }

@@ -8,17 +8,12 @@ import {
   resendKickoff,
   workWaypoint,
 } from '../../launcher/launcher'
-import { lapKickoff } from '../../launcher/sessions'
-import { carriedWork } from '../../services/carried-work'
 import { emit, listAfter } from '../../services/events'
 import * as features from '../../services/features'
-import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
 import { promoteOutcomeDoc } from '../../services/outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
-
-const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
 
 export const featureRouter = router({
   create: publicProcedure
@@ -131,18 +126,6 @@ export const featureRouter = router({
   // `rethinkAndLaunch` makes that ordering safe: a launch that throws rolls the
   // flip back to review on the original lap (findings F3), so the click can just
   // be retried once whatever blocked the terminal is cleared.
-  rethink: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) =>
-      features.rethinkAndLaunch(ctx, input.featureId, (feature) =>
-        launchSession(ctx, {
-          featureId: input.featureId,
-          kind: 'revisit',
-          kickoffLine: lapKickoff(feature.lap, carriedWork(ctx, input.featureId)),
-        }),
-      ),
-    ),
-
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —
   // a startup dialog eating the keystrokes leaves a terminal that looks fine and
@@ -157,21 +140,6 @@ export const featureRouter = router({
   endSession: publicProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(({ ctx, input }) => endSession(ctx, input.sessionId)),
-
-  advance: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.advance(ctx, input.featureId)),
-
-  overrideGate: publicProcedure
-    .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
-    .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
-
-  // Take an override back (findings F24): the phase it advanced past is restored
-  // and the reversal is recorded. The UI only offers it while the override is
-  // still the feature's latest transition.
-  undoGateOverride: publicProcedure
-    .input(z.object({ featureId: z.string(), gate: gateId }))
-    .mutation(({ ctx, input }) => undoGateOverride(ctx, input.featureId, input.gate)),
 
   // Archive a feature from any phase (decision #8): ends any live session, hides
   // it behind the sidebar's show-archived filter, keeps all data. Reversible via
