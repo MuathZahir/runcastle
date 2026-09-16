@@ -1075,21 +1075,18 @@ export async function workWaypoint(
 /**
  * Converge a mapped feature (ADR-0001 / SPEC §13.2, backs `feature.converge`).
  *
- * G1 for a mapped feature is `all-waypoints-terminal` (SPEC §13.1): convergence
- * is refused while any waypoint is still open or claimed — UNLESS the caller
- * supplies an `overrideReason`, exactly like every other gate (the seatbelt, not
- * the cage). Remaining fog (`Not yet specified` prose) is never checked here — it
- * is a soft UI warning, shown but never enforced.
+ * Open waypoints no longer refuse it: with the gates gone, an unfinished map is
+ * something the human reads and converges anyway, the same as remaining fog
+ * (`Not yet specified` prose), which was never enforced either.
  *
- * Crossing G1 advances the feature into `spec`, so the fresh kind=`converge`
- * session it spawns rejoins the normal pipeline with NO downstream
- * special-casing: it reads
- * only the compressed knowledge (map + decisions) and runs the existing
- * spec → tickets skills unbroken.
+ * Convergence moves the feature nowhere — the map is a mode inside planning, so
+ * the fresh kind=`converge` session it spawns lands in the state it started in,
+ * with NO downstream special-casing: it reads only the compressed knowledge
+ * (map + decisions) and runs the existing spec → tickets skills unbroken.
  */
 export async function converge(
   ctx: AppCtx,
-  input: { featureId: string; overrideReason?: string },
+  input: { featureId: string },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const feature = getFeatureRow(ctx, input.featureId)
@@ -1102,7 +1099,6 @@ export async function converge(
   }
   return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
 }
-
 
 /** Spawn-time context the PTY exit handler needs to report honestly. */
 export interface SpawnMeta {

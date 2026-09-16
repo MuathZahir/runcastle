@@ -110,10 +110,8 @@ export const featureRouter = router({
   // session that runs the existing spec → tickets skills over the compressed
   // knowledge. The feature remains in Planning throughout.
   converge: publicProcedure
-    .input(z.object({ featureId: z.string(), overrideReason: z.string().min(1).optional() }))
-    .mutation(({ ctx, input }) =>
-      converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
-    ),
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => converge(ctx, { featureId: input.featureId })),
 
   // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
   // in the session strip). The escape hatch for a briefing the TUI swallowed —
