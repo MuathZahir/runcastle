@@ -182,7 +182,7 @@ describe('the triage step', () => {
  * What the ticked boxes decide — the ways out and the footer's account of them.
  * Both are pure, so every combination is reachable here rather than through a
  * DOM per case. `carry` is the road itself: true opens lap N+1's conversation
- * (`feature.rethink`), false burns the minted tickets (`feature.burn`).
+ * (a revisit session), false burns the minted tickets (`feature.burn`).
  */
 describe('the ways out of triage', () => {
   it('carries everything into the conversation when nothing is ticked', () => {

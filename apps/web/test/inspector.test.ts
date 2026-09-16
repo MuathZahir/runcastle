@@ -122,9 +122,9 @@ describe('activity row', () => {
 
   it('draws a lap boundary across the feed rather than listing it', () => {
     const html = renderToStaticMarkup(
-      createElement(LapDivider, { event: ev({ type: 'lap.started', message: 'rethink — lap 2' }) }),
+      createElement(LapDivider, { event: ev({ type: 'lap.started', message: 'burning tickets — lap 2' }) }),
     )
     expect(html).toContain('role="separator"')
-    expect(html).toContain('rethink — lap 2')
+    expect(html).toContain('burning tickets — lap 2')
   })
 })
