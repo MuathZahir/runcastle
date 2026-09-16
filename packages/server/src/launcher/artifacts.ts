@@ -474,10 +474,9 @@ export function renderRevisitPrompt(
           'one carries its `status`, the `commits` it landed, the `lap` it belongs to, and an',
           '`error` when it failed. Ask what the test drive surfaced (bugs, rough edges,',
           'tweaks), then emit fix tickets for that work and edit/cancel any stale pending',
-          'tickets. You cannot move the feature yourself and nothing here should: once the',
-          'cards are ready, tell the human to review them and click Burn — burning from',
-          'review takes the feature through building and returns it here when the run',
-          'finishes.',
+          'tickets. Moving the feature is not yours to do: once the cards are ready, tell',
+          'the human to review them and click Burn — burning from review takes the feature',
+          'through building and returns it here when the run finishes.',
           '',
         ]
       : []
