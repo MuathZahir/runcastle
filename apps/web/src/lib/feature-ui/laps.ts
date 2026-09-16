@@ -234,6 +234,20 @@ export function triageExits(input: {
   return [{ label: `Mint ${quickFix} · carry ${carried} → ${start}`, carry: true }]
 }
 
+/**
+ * The tickets a burn would still RUN — the client's copy of the server's
+ * `isPendingTicket` (services/tickets.ts), which is what `feature.burn` accepts
+ * and what the burn warnings are computed over. Anything terminal is behind the
+ * burn rather than in front of it; a fix ticket from an Iterate session lands
+ * here as `pending`, which is what makes Burn reachable from review.
+ */
+export function pendingTickets<T extends { status: string }>(tickets: readonly T[]): T[] {
+  return tickets.filter(
+    (ticket) =>
+      ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled',
+  )
+}
+
 export function burnLabel(
   pending: readonly { lap: number }[],
   lap: number,

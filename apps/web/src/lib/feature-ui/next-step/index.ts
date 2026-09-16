@@ -1,6 +1,7 @@
 import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { hasResumable } from '../internal'
+import { pendingTickets } from '../laps'
 import { latestRun } from '../sidebar'
 import { resolveBuilding } from './building'
 import { resolveDraft } from './draft'
@@ -21,14 +22,8 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   const ticketCount = tickets.length
   const done = tickets.filter((ticket) => ticket.status === 'done').length
   const failed = tickets.filter((ticket) => ticket.status === 'failed').length
-  // Non-terminal tickets the burner still has to run — matches the server's
-  // `burn` acceptance check (features.ts). Fix tickets from an Iterate session
-  // land here as `pending`, driving the review → burn loop-back.
-  const pendingTickets = tickets.filter(
-    (ticket) =>
-      ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled',
-  )
-  const pending = pendingTickets.length
+  const burnable = pendingTickets(tickets)
+  const pending = burnable.length
   const run = latestRun(runs)
   const running = run?.status === 'running'
   const input: ResolverInput = {
@@ -42,7 +37,7 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     done,
     failed,
     pending,
-    pendingTickets,
+    pendingTickets: burnable,
     run,
     running,
   }

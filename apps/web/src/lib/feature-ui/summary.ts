@@ -211,6 +211,8 @@ export function mergeSummary(input: {
   conflict?: MergeConflictState | null
   /** Scope the spec left for a later lap ({@link deferredScope}). */
   laterLaps?: string | null
+  /** A burn is running on this feature right now (decision 7). */
+  burning?: boolean
 }): MergeSummary {
   const tickets = input.tickets ?? []
   const drive: CheckRow = input.driveTaken
@@ -223,6 +225,14 @@ export function mergeSummary(input: {
   }
 
   const warnings: string[] = []
+  // Merging mid-burn is a warning, never the third hard rule (decision 7): git
+  // takes what has landed, and the operator may want exactly those commits.
+  // What they cannot see from here is that the agents are still committing.
+  if (input.burning) {
+    warnings.push(
+      'A burn is live — work landing after this merge stays unshipped on the branch.',
+    )
+  }
   // Informational, never blocking (decisions #7): shipping over findings the
   // human logged and never handled is the moment worth catching, but someone who
   // judged their open notes shippable must not be stopped.
@@ -256,6 +266,89 @@ export function mergeSummary(input: {
     rows: [landsRow(input.delta), landedRow(tickets), drive, review],
     warnings,
     next: `Merges ${input.branch} into ${input.base ?? 'its base branch'}, writes the outcome doc, and moves the feature to Shipped.`,
+  }
+}
+
+/** What the burn confirmation shows: the figures, and the server's warnings. */
+export interface BurnSummary {
+  /** The figures, in reading order — what burns, the lap it stamps, on what. */
+  rows: CheckRow[]
+  /**
+   * One sentence per thing the human is burning over, verbatim from
+   * `feature.burnWarnings`. Never re-derived here: the same three sentences
+   * reach the ticket-writing session through `complete_phase("tickets")`, and
+   * two implementations of one policy is how they would drift apart.
+   */
+  warnings: readonly string[]
+  /** What the button does, said once at the bottom. */
+  next: string
+}
+
+/** A ticket as the burn confirmation reads it: whose lap, and on which model. */
+interface BurnTicketFigure {
+  lap: number
+  model?: string | null
+}
+
+/** The lap a Burn click stamps — derived from the runs, never managed by hand. */
+export function burnLap(runs: readonly { workflow: string }[]): number {
+  return runs.filter((run) => run.workflow === 'ticket-burner').length + 1
+}
+
+/**
+ * What burns, on which model. Unassigned tickets burn on the project's own
+ * model, so the row names that rather than going quiet — "on what" is the one
+ * figure the ledger behind this dialog may have been edited ticket by ticket.
+ */
+function modelRow(
+  tickets: readonly BurnTicketFigure[],
+  defaultModel: string | undefined,
+): CheckRow {
+  const assigned = [...new Set(tickets.map((ticket) => ticket.model?.trim()).filter(Boolean))]
+  const unassigned = tickets.some((ticket) => !ticket.model?.trim())
+  const fallback = defaultModel || 'the project model'
+  const names = [...assigned, ...(unassigned || assigned.length === 0 ? [fallback] : [])]
+  return { key: 'model', value: names.join(' · '), tone: 'ok' }
+}
+
+/**
+ * The burn confirmation's summary (decision 5): what is about to burn, the lap
+ * it stamps, and every warning the server computed for it.
+ *
+ * Deliberately the same grammar as {@link mergeSummary} — figures, then a warn
+ * box, then one line saying what the button does — because the operator should
+ * learn ONE confirmation pattern. What it never does is disable anything: the
+ * friction at Burn is reading, and the only two things that refuse a burn are
+ * physics (a run already burning this feature, and git safety).
+ */
+export function burnSummary(input: {
+  branch: string
+  /** The non-terminal tickets the burn would run. */
+  pendingTickets: readonly BurnTicketFigure[]
+  /** The lap this click stamps ({@link burnLap}). */
+  lap: number
+  /** The project's own model, for tickets that carry no assignment of their own. */
+  defaultModel?: string
+  /** `feature.burnWarnings`, verbatim; empty while the query is still in flight. */
+  warnings?: readonly string[]
+}): BurnSummary {
+  const tickets = input.pendingTickets
+  const carried = tickets.filter((ticket) => ticket.lap !== input.lap).length
+  return {
+    rows: [
+      {
+        key: 'what burns',
+        value:
+          carried > 0
+            ? `${noun(tickets.length, 'ticket')} · ${carried} carried from earlier laps`
+            : noun(tickets.length, 'ticket'),
+        tone: tickets.length > 0 ? 'ok' : 'warn',
+      },
+      { key: 'lap', value: `lap ${input.lap} — stamped by this click`, tone: 'ok' },
+      modelRow(tickets, input.defaultModel),
+    ],
+    warnings: input.warnings ?? [],
+    next: `Burns ${noun(tickets.length, 'ticket')} in parallel sandboxes, each committing to ${input.branch}, and moves the feature to Building.`,
   }
 }
 

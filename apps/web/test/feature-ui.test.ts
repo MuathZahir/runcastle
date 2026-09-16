@@ -1261,10 +1261,96 @@ describe('groupByLap', () => {
 })
 
 /**
- * Ticket 2 / findings F4 — from lap 2 on, the ideation bar points at the lap's
+ * Planning is one state over what used to be three (decisions §2), and where it
+ * is up to is DERIVED from the artifacts rather than stored: decisions.md means
+ * ideation is done, spec.md means the spec is, a pending ticket means the
+ * tickets are emitted. Burn is offered only once there is something to burn —
+ * a burn over an empty ledger is a no-op, not a gate (decision 5).
+ */
+describe('nextStep at planning — the step derived from the artifacts', () => {
+  const planningFull = (opts: { docs?: string[]; tickets?: unknown[] } = {}): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase: 'planning', mapped: false, lap: 1, status: 'active' },
+      tickets: opts.tickets ?? [],
+      sessions: [],
+      runs: [],
+      docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
+    }) as unknown as FeatureFull
+
+  const pending = [{ id: 't1', seq: 1, status: 'pending', lap: 1 }]
+
+  it('asks for the conversation while nothing is written', () => {
+    const ns = nextStep(planningFull(), { driving: false })
+    expect(ns.title).toBe('Shape the idea with the agent')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+  })
+
+  it('asks for the spec once the decisions are on disk', () => {
+    const ns = nextStep(planningFull({ docs: ['decisions.md'] }), { driving: false })
+    expect(ns.title).toBe('Write the spec')
+  })
+
+  it('asks for tickets once the spec is written and nothing is pending', () => {
+    const ns = nextStep(planningFull({ docs: ['decisions.md', 'spec.md'] }), { driving: false })
+    expect(ns.title).toBe('Emit the tickets')
+  })
+
+  it('offers no Burn at any step before the tickets exist', () => {
+    for (const docs of [[], ['decisions.md'], ['decisions.md', 'spec.md']]) {
+      const ns = nextStep(planningFull({ docs }), { driving: false })
+      expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('burn')
+    }
+  })
+
+  it('offers Burn the moment a ticket is pending', () => {
+    const ns = nextStep(
+      planningFull({ docs: ['decisions.md', 'spec.md'], tickets: pending }),
+      { driving: false },
+    )
+    expect(ns.title).toBe('Review the tickets, then burn')
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  /**
+   * A quick change is born at planning with its tickets and no decisions.md it
+   * will ever have (features.ts) — the ladder must not send that human back to
+   * a conversation about an idea already broken down.
+   */
+  it('lets pending tickets outrank a missing decisions doc', () => {
+    const ns = nextStep(planningFull({ tickets: pending }), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
+  })
+
+  it('counts only the tickets a burn would still run', () => {
+    const ns = nextStep(
+      planningFull({
+        docs: ['decisions.md', 'spec.md'],
+        tickets: [{ id: 't1', status: 'done', lap: 1 }, { id: 't2', status: 'cancelled', lap: 1 }],
+      }),
+      { driving: false },
+    )
+    expect(ns.title).toBe('Emit the tickets')
+  })
+
+  it('carries Merge & ship as a secondary at every step, never as the primary', () => {
+    for (const docs of [[], ['decisions.md'], ['decisions.md', 'spec.md']]) {
+      const ns = nextStep(planningFull({ docs }), { driving: false })
+      expect(ns.secondary).toContainEqual(MERGE_ACTION)
+      expect(ns.primary?.kind).not.toBe('merge')
+    }
+    const withTickets = nextStep(
+      planningFull({ docs: ['decisions.md', 'spec.md'], tickets: pending }),
+      { driving: false },
+    )
+    expect(withTickets.secondary).toContainEqual(MERGE_ACTION)
+  })
+})
+
+/**
+ * Ticket 2 / findings F4 — from lap 2 on, the planning bar points at the lap's
  * own session and never at a bare promote: lap 1's decisions.md is still on disk,
- * so promoting there skips the whole lap and dead-ends at `tickets` with nothing
- * to burn. (The lap-scoped G1/G2 refuse it server-side; this is the copy.)
+ * so deriving the step from it would skip the whole lap and land on a Burn with
+ * nothing to burn.
  */
 describe('nextStep at planning on a later lap', () => {
   const lapFull = (opts: { lap: number; sessions?: unknown[] }): FeatureFull =>

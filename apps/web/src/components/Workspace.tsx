@@ -8,9 +8,12 @@ import { STOP_TIMEOUT } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
+import { effectiveStepModel } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
+  burnLap,
+  burnSummary,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
@@ -20,6 +23,7 @@ import {
   mapDocPath,
   mergeSummary,
   nextStep,
+  pendingTickets,
   PHASE_LABELS,
   phaseFacts,
   phaseSummary,
@@ -37,6 +41,7 @@ import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
+import { BurnFeatureDialog } from './BurnFeatureDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
@@ -142,6 +147,17 @@ export function Workspace({
     verificationState(q.data?.tickets ?? []),
   )
   const [confirmMerge, setConfirmMerge] = useState(false)
+  const [confirmBurn, setConfirmBurn] = useState(false)
+  // What the Burn confirmation prints in its warn box (decision 5) — computed
+  // server-side, in the same pattern as `mergeDelta`, so the dialog never
+  // re-derives policy. Read wherever a Burn can be clicked (planning and
+  // review, and building while a dead run waits to be resumed), so the box is
+  // already populated when the dialog opens rather than popping in after it.
+  const burnable = !!q.data && q.data.feature.phase !== 'shipped'
+  const burnWarningsQ = trpc.feature.burnWarnings.useQuery(
+    { featureId },
+    { refetchInterval: useLivePoll(), enabled: burnable },
+  )
   // The Iterate door is open, stamped with the moment it opened so a note
   // written while it stands is marked as having arrived (decision 26f).
   const [triaging, setTriaging] = useState<number | null>(null)
@@ -190,6 +206,14 @@ export function Workspace({
   const burnStatsQ = trpc.ticket.durationStats.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId },
+  )
+  // The model a ticket with no assignment of its own burns on, for the Burn
+  // confirmation's "model" row. Same query key the ticket ledger's model menus
+  // read, so the dialog and the ledger behind it share one fetch and cannot
+  // name different defaults.
+  const settingsQ = trpc.settings.get.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId && burnable },
   )
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
@@ -549,8 +573,11 @@ export function Workspace({
       case 'workNext':
         if (waypointId) workWaypoint.mutate({ featureId, waypointId })
         break
+      // The click opens the confirmation; `runBurn` below is what actually
+      // burns. Every ex-gate that used to refuse this click is a warning inside
+      // that dialog now (decision 5), so the reading has to happen somewhere.
       case 'burn':
-        burn.mutate({ featureId })
+        setConfirmBurn(true)
         break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
@@ -622,6 +649,13 @@ export function Workspace({
       default:
         kind satisfies never
     }
+  }
+
+  const runBurn = () => {
+    burn.mutate(
+      { featureId },
+      { onSettled: () => setConfirmBurn(false) },
+    )
   }
 
   const runMerge = () => {
@@ -706,6 +740,26 @@ export function Workspace({
         </div>
       )}
 
+      {confirmBurn && (
+        <BurnFeatureDialog
+          title={feature.title}
+          branch={feature.branch}
+          summary={burnSummary({
+            branch: feature.branch,
+            pendingTickets: pendingTickets(full.tickets),
+            lap: burnLap(full.runs),
+            ...(effectiveStepModel(settingsQ.data, 'implement')
+              ? { defaultModel: effectiveStepModel(settingsQ.data, 'implement') }
+              : {}),
+            warnings: burnWarningsQ.data,
+          })}
+          busy={burn.isPending}
+          warningsPending={!burnWarningsQ.data}
+          onConfirm={runBurn}
+          onCancel={() => setConfirmBurn(false)}
+        />
+      )}
+
       {confirmMerge && (
         <MergeFeatureDialog
           title={feature.title}
@@ -722,6 +776,7 @@ export function Workspace({
             freshness: reviewFreshness,
             conflict,
             laterLaps,
+            burning: run?.status === 'running',
           })}
           busy={merge.isPending}
           resolving={resolveConflict.pending}
