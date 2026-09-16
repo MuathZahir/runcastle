@@ -667,7 +667,7 @@ export async function burn(
   // a lap for work that never moved. The tickets the click is about to burn are
   // carried onto it, because the session wrote them before the click.
   const lap = iterating ? feature.lap + 1 : feature.lap
-  if (lap !== feature.lap) carryPendingTicketsIntoLap(ctx, featureId, feature.lap, lap)
+  if (iterating) carryPendingTicketsIntoLap(ctx, featureId, feature.lap, lap)
   ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
 
   if (restarting) {

@@ -957,7 +957,8 @@ describe('a run containing a review ticket still lands the feature in review', (
     const stored = listByFeature(ctx, featureId)
     expect(stored).toHaveLength(2)
     expect(stored[1]).toMatchObject({
-      kind: 'review', passKind: 'verification', status: 'done', lap: 1,
+      // The feature's own lap: a burn from planning runs the lap it is on.
+      kind: 'review', passKind: 'verification', status: 'done', lap: 2,
       title: 'Verify the fixes that landed',
     })
     expect(stored[1].context).toContain('#1 quick fix')
@@ -1057,7 +1058,8 @@ describe('the burner mints its verification pass into a lap that already has a r
     expect(stored[3]).toMatchObject({
       kind: 'review',
       passKind: 'verification',
-      lap: 1,
+      // The feature's own lap: a burn from planning runs the lap it is on.
+      lap: 2,
       status: 'done',
       title: 'Verify the fixes that landed',
     })
