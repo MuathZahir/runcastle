@@ -830,6 +830,9 @@ describe('codexRuntime.writeArtifacts', () => {
     // without prompting — a dialog blocks BEFORE SessionStart, stranding the session
     expect(toml).toContain('sandbox_mode = "workspace-write"')
     expect(toml).toContain('approval_policy = "never"')
+    expect(toml).toContain(
+      'approval_policy = "never"\ncheck_for_update_on_startup = false\n\n[features]',
+    )
     // the first-run "do you trust this folder?" gate, answered up front
     expect(toml).toContain(`[projects.${JSON.stringify(worktree)}]`)
     expect(toml).toContain('trust_level = "trusted"')
