@@ -2968,19 +2968,35 @@ export async function burnTickets(
   const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
 
   /**
+   * The implementation tickets one review ticket is answerable for: every
+   * non-review ticket in the run EXCEPT the fix tickets that review itself
+   * minted, which declare it as their blocker.
+   *
+   * Those are excluded because a review can never wait for its own children.
+   * They are blocked ON it, so they cannot settle until it is terminal — and
+   * once the review has failed and the operator retries it, treating them as
+   * implementations it must wait for is a circular wait the scheduler cannot
+   * break: the review defers behind its failed children, or (when they were
+   * retried alongside it) both sides wait and the defensive fallback fails
+   * everything with "unresolvable dependencies".
+   */
+  const gatedImplementations = (reviewSeq: number): Ticket[] =>
+    scheduled.filter((t) => !isReviewTicket(t) && !t.blockedBy.includes(reviewSeq))
+
+  /**
    * The review precondition, held defensively rather than trusted to the
    * emitting session's `blockedBy`: no implementation ticket is still waiting or
    * still burning. Read off the scheduler's own sets, not off statuses, so a row
    * left `burning` by a dead earlier run — which this schedule will never move —
    * does not strand the review behind it forever.
    */
-  const implementationsSettled = (): boolean =>
-    scheduled.every((t) => isReviewTicket(t) || (!pending.has(t.seq) && !inFlight.has(t.seq)))
+  const implementationsSettled = (reviewSeq: number): boolean =>
+    gatedImplementations(reviewSeq).every((t) => !pending.has(t.seq) && !inFlight.has(t.seq))
 
   /** The run's implementation tickets that failed — what defers the review. */
-  const failedImplementations = (): number[] =>
-    scheduled
-      .filter((t) => !isReviewTicket(t) && status.get(t.seq) === 'failed')
+  const failedImplementations = (reviewSeq: number): number[] =>
+    gatedImplementations(reviewSeq)
+      .filter((t) => status.get(t.seq) === 'failed')
       .map((t) => t.seq)
 
   /**
@@ -2993,10 +3009,10 @@ export async function burnTickets(
    * through the ADR-0006 per-ticket controls and the next burn finds the review
    * still `pending`, which is the whole recovery ceremony.
    */
-  const reviewGate = (): ReadyState => {
-    if (!implementationsSettled()) return 'wait'
-    if (failedImplementations().length > 0) return 'defer'
-    const implementations = scheduled.filter((t) => !isReviewTicket(t))
+  const reviewGate = (reviewSeq: number): ReadyState => {
+    if (!implementationsSettled(reviewSeq)) return 'wait'
+    if (failedImplementations(reviewSeq).length > 0) return 'defer'
+    const implementations = gatedImplementations(reviewSeq)
     const landed = implementations.some((t) => status.get(t.seq) === 'done')
     // No implementation tickets at all is a review of what earlier runs landed,
     // not a collapse — only a run that HAD work and landed none of it collapses.
@@ -3094,7 +3110,7 @@ export async function burnTickets(
       if (!present) return { blockedBy: b, present }
       if (bs === 'failed' && !isReviewTicket(t)) return { blockedBy: b, present }
     }
-    if (isReviewTicket(t)) return reviewGate()
+    if (isReviewTicket(t)) return reviewGate(t.seq)
     return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
@@ -3268,7 +3284,7 @@ export async function burnTickets(
       if (st === 'defer') {
         deferred.push(seq)
         if (t) {
-          const failed = failedImplementations()
+          const failed = failedImplementations(t.seq)
           ctx.emitEvent({
             type: 'ticket.deferred',
             message: `ticket ${t.seq} deferred to the next burn: implementation ticket(s) ${failed.join(', ')} failed — retry or cancel them, then burn again`,

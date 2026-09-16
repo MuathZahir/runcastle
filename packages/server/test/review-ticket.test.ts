@@ -298,6 +298,57 @@ describe('a review ticket waits for a whole feature', () => {
   })
 })
 
+describe('a failed review is retryable after it minted fix tickets', () => {
+  it('runs the review even though every fix ticket it minted failed', async () => {
+    // The operator's Retry on the review itself: it is `pending` again while
+    // the fix tickets its findings minted are still `failed` and blocked by
+    // it. They cannot settle before the ticket they wait on, so counting them
+    // as implementations the review owes would defer the retry forever.
+    const tickets = [
+      ticket(1, { status: 'done' }),
+      ticket(2, { status: 'done' }),
+      review(3, { blockedBy: [1, 2] }),
+      ticket(4, { status: 'failed', blockedBy: [3] }),
+      ticket(5, { status: 'failed', blockedBy: [3] }),
+    ]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    expect(started).toEqual([3])
+    await release(3)
+    expect(tickets[2]).toMatchObject({ status: 'done' })
+    expect((await run).summary).not.toContain('review deferred')
+  })
+
+  it('runs a retried fix ticket behind its retried review rather than calling the pair unresolvable', async () => {
+    // The other Retry click: retrying fix ticket 4 resets its failed review
+    // blocker too, so both are `pending` — 4 waiting on 3, and 3 waiting on
+    // nothing but the implementation tickets it already has.
+    const tickets = [
+      ticket(1, { status: 'done' }),
+      ticket(2, { status: 'done' }),
+      review(3, { blockedBy: [1, 2] }),
+      ticket(4, { blockedBy: [3] }),
+      ticket(5, { status: 'failed', blockedBy: [3] }),
+    ]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(makeCtx(tickets), deps(execute))
+    await Promise.resolve()
+
+    expect(started).toEqual([3])
+    await release(3)
+    expect(started).toEqual([3, 4])
+    await release(4)
+
+    await run
+    expect(tickets[2]).toMatchObject({ status: 'done' })
+    expect(tickets[3]).toMatchObject({ status: 'done' })
+  })
+})
+
 describe("a review ticket's account reaches the run digest", () => {
   it('carries its digest like any done ticket', async () => {
     const tickets = [ticket(1), review(2, { blockedBy: [1] })]
