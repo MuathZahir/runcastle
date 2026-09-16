@@ -1,6 +1,7 @@
 import * as z from 'zod'
 import { burn } from '../../services/features'
 import { dismiss, promoteOpenDefects, reopenFinding, viewByFeature } from '../../services/review-findings'
+import { listByIds } from '../../services/tickets'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -39,6 +40,9 @@ export const reviewFindingsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const promoted = promoteOpenDefects(ctx, input.featureId)
       const { runId } = await burn(ctx, input.featureId)
-      return { ...promoted, runId }
+      // The burn opens the lap these tickets burn in and carries them onto it,
+      // so the rows minted a moment ago are stale before this returns.
+      const tickets = listByIds(ctx, promoted.tickets.map((ticket) => ticket.id))
+      return { ...promoted, tickets, runId }
     }),
 })

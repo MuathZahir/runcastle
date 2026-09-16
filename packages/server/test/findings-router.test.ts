@@ -2,7 +2,12 @@ import type { Feature, Project, Ticket, WorkflowDef } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { getFeatureRow } from '../src/services/repo'
-import { carryFinding, markFailed, reportFinding } from '../src/services/review-findings'
+import {
+  carryFinding,
+  markFailed,
+  openDefectsAcrossLaps,
+  reportFinding,
+} from '../src/services/review-findings'
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -173,23 +178,29 @@ describe('findings router', () => {
       'defect 9',
       'the save drops the value',
     ])
-    // Built mechanically from the finding, on the CURRENT lap, blocking on nothing.
+    // Built mechanically from the finding, blocking on nothing, and stamped
+    // with the lap the burn this click starts runs them in — the one after the
+    // review that found them.
     expect(result.tickets.find((t) => t.originFindingId === failed.finding.id)).toMatchObject({
       title: 'the save drops the value',
       goal: 'Fix: the save drops the value',
       kind: 'implementation',
       status: 'pending',
-      lap: feature.lap,
+      lap: feature.lap + 1,
       blockedBy: [],
     })
     expect(result.findings.every((f) => f.status === 'fixing')).toBe(true)
-    // The Fix loop-back: review → implementation, same lap.
+    // One click, one burn, one lap: the fix burn opens the next one and the
+    // stub run hands the feature straight back to review.
     const after = getFeatureRow(ctx, feature.id)
     expect(after.phase).toBe('review')
-    expect(after.lap).toBe(feature.lap)
-    // Nothing is open any more, and nothing was minted twice.
+    expect(after.lap).toBe(feature.lap + 1)
+    // Nothing is open any more, and nothing was minted twice. The summary
+    // counts the lap the feature is ON, which this click just moved forward —
+    // the nine defects stay where the review that found them left them.
     const view = await caller.findings.listByFeature({ featureId: feature.id })
-    expect(view.summary).toMatchObject({ found: 9, open: 0 })
+    expect(view.findings).toHaveLength(9)
+    expect(openDefectsAcrossLaps(ctx, feature.id)).toEqual([])
   })
 
   it('refuses a fix with nothing open, minting no tickets', async () => {

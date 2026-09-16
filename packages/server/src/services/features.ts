@@ -33,6 +33,7 @@ import {
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
 import {
+  carryPendingTicketsIntoLap,
   getTicket,
   isPendingTicket,
   listByFeature,
@@ -659,8 +660,14 @@ export async function burn(
       tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
     )
   }
-  const lap =
-    listRunsByFeature(ctx, featureId).filter((run) => run.workflow === 'ticket-burner').length + 1
+  // The lap this burn runs in. Burning from review opens the next one — the
+  // review being answered closed the last; every other road runs the lap the
+  // feature is already on. A restart opens nothing at all: it resumes a run
+  // that died mid-lap, and counting runs (a retry is a run of its own) invented
+  // a lap for work that never moved. The tickets the click is about to burn are
+  // carried onto it, because the session wrote them before the click.
+  const lap = iterating ? feature.lap + 1 : feature.lap
+  if (iterating) carryPendingTicketsIntoLap(ctx, featureId, feature.lap, lap)
   ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
 
   if (restarting) {

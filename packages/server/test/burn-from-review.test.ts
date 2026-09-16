@@ -87,7 +87,8 @@ describe('feature.burn from review', () => {
     const ev = listAfter(ctx, featureId, 0).find(
       (e) => e.type === 'burn.started' && (e.data as { from?: string }).from === 'review',
     )
-    expect(ev?.message).toBe('burning tickets — lap 1')
+    // The review being answered closed lap 1, so this click opens lap 2.
+    expect(ev?.message).toBe('burning tickets — lap 2')
     expect(ev?.data).toMatchObject({ from: 'review', to: 'building' })
   })
 
@@ -171,11 +172,11 @@ describe('feature.burn — four-state lifecycle', () => {
   })
 
   /**
-   * The lap counter is derived, never managed (decision 4): it is the ordinal
-   * of the burn run the click is about to start, so nothing has to remember to
-   * bump it and nothing can leave it stale.
+   * The lap counter is derived, never managed (decision 4): a Burn from review
+   * opens the lap that answers it, so nothing has to remember to bump it and
+   * nothing can leave it stale.
    */
-  it('stamps the lap from the feature runs, so the second Burn click is lap 2', async () => {
+  it('opens the next lap on the Burn from review, so the second click is lap 2', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [ticketInput('one')])
 
@@ -188,6 +189,58 @@ describe('feature.burn — four-state lifecycle', () => {
     await caller.feature.burn({ featureId })
 
     expect(getFeatureRow(ctx, featureId).lap).toBe(2)
+  })
+
+  /**
+   * The Iterate session writes its fix tickets while the feature is still at
+   * review on lap N — `storeTickets` can only stamp the lap the feature is on —
+   * and the Burn click that runs them is what opens lap N+1. The click carries
+   * them across, so the lap the tickets report is the lap that burned them.
+   */
+  it('carries the fix tickets onto the lap the click opens', async () => {
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    storeTickets(ctx, featureId, [ticketInput('one')])
+    await caller.feature.burn({ featureId })
+    await waitFor(() => getFeatureRow(ctx, featureId).phase === 'review')
+
+    // Written during lap 1's review, and stamped lap 1 on the way in.
+    const [fix] = storeTickets(ctx, featureId, [ticketInput('fix-bug')])
+    expect(fix.lap).toBe(1)
+
+    await caller.feature.burn({ featureId })
+
+    const feature = getFeatureRow(ctx, featureId)
+    expect(feature.lap).toBe(2)
+    expect(listByFeature(ctx, featureId).find((t) => t.id === fix.id)?.lap).toBe(feature.lap)
+  })
+
+  /**
+   * Restarting a burn whose run died rescues the lap that was already running;
+   * it does not start one. Deriving the lap from the run count invented one
+   * here — a retry is a run of its own — leaving a feature that said lap 2 with
+   * every ticket, session, event and finding of the work still saying lap 1.
+   */
+  it('a restart resumes the lap the dead run was burning', async () => {
+    workflowRegistry.set('ticket-burner', {
+      id: 'ticket-burner',
+      async run() {
+        return { status: 'failed', summary: 'the run died' }
+      },
+    })
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    const [only] = storeTickets(ctx, featureId, [ticketInput('one')])
+
+    await caller.feature.burn({ featureId })
+    // A failed run never auto-advances, so the feature is parked at building
+    // with one ticket-burner run behind it — the crashed-lap-1 state.
+    await waitFor(() => listAfter(ctx, featureId, 0).some((e) => e.type === 'run.finished'))
+    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
+    expect(getFeatureRow(ctx, featureId).lap).toBe(1)
+
+    await caller.feature.burn({ featureId })
+
+    expect(getFeatureRow(ctx, featureId).lap).toBe(1)
+    expect(listByFeature(ctx, featureId).find((t) => t.id === only.id)?.lap).toBe(1)
   })
 
   /**
