@@ -136,13 +136,73 @@ describe('hooks route', () => {
     )
   })
 
-  it('session-end marks the session ended and returns {}', async () => {
+  it('claude session-end marks the session ended and emits session.ended', async () => {
     const { json } = await post(mount(), 'session-end', {
       sessionId,
       payload: { hook_event_name: 'SessionEnd' },
     })
     expect(json).toEqual({})
     expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
+    expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.ended')).toHaveLength(1)
+  })
+
+  it('codex session-end only records the ended conversation and preserves live state', async () => {
+    const mapped = seedFeature(ctx, seedProject(ctx).id, { slug: 'codex-map', mapped: true })
+    const session = createSessionRow(ctx, {
+      featureId: mapped.id,
+      kind: 'waypoint',
+      worktreePath: 'C:\\wt\\codex-map',
+      model: { id: 'gpt-5', runtime: 'codex' },
+    })
+    const [waypoint] = storeWaypoints(ctx, mapped.id, [
+      { title: 'check', type: 'grilling', question: 'q', blockedBy: [] },
+    ])
+    claim(ctx, waypoint.id, session.id)
+    await post(mount(), 'session-start', {
+      sessionId: session.id,
+      payload: { session_id: 'codex-thread', source: 'startup' },
+    })
+
+    const { json } = await post(mount(), 'session-end', {
+      sessionId: session.id,
+      payload: { hook_event_name: 'SessionEnd', reason: 'other' },
+    })
+
+    expect(json).toEqual({})
+    expect(getSessionRow(ctx, session.id)?.status).toBe('live')
+    expect(getWaypoint(ctx, waypoint.id).status).toBe('claimed')
+    const events = listAfter(ctx, mapped.id, 0)
+    expect(events.filter((e) => e.type === 'session.ended')).toHaveLength(0)
+    const notes = events.filter((e) => e.type === 'session.conversation_ended')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.message).toBe('conversation ended (reason: other)')
+    expect(notes[0]?.data).toEqual({ sessionId: session.id, reason: 'other' })
+  })
+
+  it('project-scoped codex session-end is also only a conversation note', async () => {
+    const project = seedProject(ctx)
+    const session = createSessionRow(ctx, {
+      projectId: project.id,
+      kind: 'project',
+      worktreePath: 'C:\\repo',
+      model: { id: 'gpt-5', runtime: 'codex' },
+    })
+    await post(mount(), 'session-start', {
+      sessionId: session.id,
+      payload: { session_id: 'codex-project-thread', source: 'startup' },
+    })
+
+    await post(mount(), 'session-end', {
+      sessionId: session.id,
+      payload: { hook_event_name: 'SessionEnd', reason: 'other' },
+    })
+
+    expect(getSessionRow(ctx, session.id)?.status).toBe('live')
+    const events = listByProject(ctx, project.id, 0)
+    expect(events.filter((e) => e.type === 'session.ended')).toHaveLength(0)
+    const notes = events.filter((e) => e.type === 'session.conversation_ended')
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.data).toEqual({ sessionId: session.id, reason: 'other' })
   })
 
   it('session-end auto-releases a waypoint the ending session had claimed', async () => {
@@ -278,14 +338,7 @@ describe('hooks route', () => {
     })
   })
 
-  /**
-   * Runtime parity at the route (feature `codex-runtime-support`, decision 9).
-   * Codex's hook protocol is Claude-shaped — the same stdin JSON, the same
-   * `hookSpecificOutput` verdicts — which is the whole reason this route and the
-   * edit guard are unchanged. What that buys has to be asserted HERE, where the
-   * traffic actually arrives, rather than inferred from the adapter writing a
-   * `hooks.json`.
-   */
+  /** Codex uses the shared hook protocol with runtime-specific end semantics. */
   describe('a Codex session drives the same lifecycle through the same route', () => {
     let codexSession: string
 
@@ -298,7 +351,7 @@ describe('hooks route', () => {
       }).id
     })
 
-    it('goes live on SessionStart, awaits input on Stop, and ends on SessionEnd', async () => {
+    it('goes live on SessionStart, awaits input on Stop, and stays live on SessionEnd', async () => {
       await post(mount(), 'session-start', {
         sessionId: codexSession,
         payload: { session_id: 'codex-rollout-7', hook_event_name: 'SessionStart', source: 'startup' },
@@ -314,9 +367,9 @@ describe('hooks route', () => {
 
       await post(mount(), 'session-end', {
         sessionId: codexSession,
-        payload: { hook_event_name: 'SessionEnd' },
+        payload: { hook_event_name: 'SessionEnd', reason: 'other' },
       })
-      expect(getSessionRow(ctx, codexSession)?.status).toBe('ended')
+      expect(getSessionRow(ctx, codexSession)?.status).toBe('live')
     })
 
     it('denies a Codex file edit outside the feature docs, and allows one inside', async () => {

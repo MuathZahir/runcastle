@@ -46,6 +46,7 @@ import {
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { noteResolvedMerge } from '../services/resolved-merge'
 import { serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import {
   activeProjectSession,
@@ -1228,6 +1229,9 @@ export function handlePtyExit(
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)
+  if (session.runtime === 'codex' && feature) {
+    void noteResolvedMerge(ctx, session, feature).catch(() => {})
+  }
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
     emitForSession(ctx, session, {

@@ -335,6 +335,31 @@ describe('failed resume — lastSessionId preservation + events', () => {
   })
 })
 
+describe('codex PTY exit owns session teardown', () => {
+  it('ends the row, releases its waypoint, and emits session.pty_exited', async () => {
+    const ctx = await makeTestCtx()
+    const project = seedProject(ctx)
+    const feature = seedFeature(ctx, project.id, { mapped: true })
+    const [waypoint] = storeWaypoints(ctx, feature.id, [wp('codex work')])
+    const session = createSessionRow(ctx, {
+      featureId: feature.id,
+      kind: 'waypoint',
+      worktreePath: 'C:\\wt',
+      model: { id: 'gpt-5', runtime: 'codex' },
+    })
+    claim(ctx, waypoint.id, session.id)
+    markSessionLive(ctx, session.id, { ccSessionId: 'codex-thread' })
+
+    handlePtyExit(ctx, feature, session, { waypoint }, 0)
+
+    expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
+    expect(getWaypoint(ctx, waypoint.id).status).toBe('open')
+    const exited = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.pty_exited')
+    expect(exited).toHaveLength(1)
+    expect(exited[0]?.data).toEqual({ sessionId: session.id, exitCode: 0 })
+  })
+})
+
 /**
  * Reopening a terminal resumes ITS OWN conversation, at every phase. A session is
  * a real `claude` process in a server-owned PTY, so quitting runcastle kills it
