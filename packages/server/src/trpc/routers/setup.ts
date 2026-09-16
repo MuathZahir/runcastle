@@ -22,6 +22,7 @@ import { adoptProjectImage, releaseProjectImage } from '../../services/project-i
 import { allProjects, requireProjectById } from '../../services/repo'
 import {
   hashDockerfile,
+  imageBuildTarget,
   imageBuildTerminal,
   inspectBuiltImage,
   planImageBuild,
@@ -98,6 +99,25 @@ export const setupRouter = router({
 
   /** OS-specific guided-manual runtime install line + follow-up note. */
   runtimeGuide: publicProcedure.query(() => runtimeInstallGuide(process.platform)),
+
+  /** The exact Dockerfile and tag the image action will build for this project. */
+  imageBuildTarget: publicProcedure
+    .input(z.object({ projectId: z.string().optional() }).optional())
+    .query(({ ctx, input }) => {
+      const project = input?.projectId ? requireProjectById(ctx, input.projectId) : null
+      return imageBuildTarget({
+        config: ctx.config,
+        project: project
+          ? {
+              id: project.id,
+              repoPath: project.repoPath,
+              sandboxImage: project.sandboxImage,
+              sandboxImageOverwritable: isOverwritable(ctx, project.id, 'sandboxImage'),
+            }
+          : null,
+        stockDockerfile: burnerDockerfilePath(),
+      })
+    }),
 
   /** The wizard's one hard step: write git identity globally, re-probe. */
   gitIdentity: publicProcedure
@@ -217,6 +237,7 @@ async function buildImageTerminal(
         }
       : null,
     stockContext,
+    stockDockerfile: burnerDockerfilePath(),
     stockFresh:
       stockHash !== null &&
       (await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)).hash === stockHash,

@@ -11,7 +11,6 @@ import {
   getSessionRow,
   kickoffLineFor,
   projectSessions,
-  promptMatchesKickoff,
   setSessionTitle,
 } from '../launcher/sessions'
 import { readTranscript, type SessionTranscript, type TranscriptTurn } from './transcripts'
@@ -59,14 +58,11 @@ export const TITLE_MAX = 60
 /**
  * A transcript with the launcher's kickoff lines taken out of it.
  *
- * Every runcastle terminal opens with a kickoff line typed in by the launcher,
- * and the runtime records it as a `user` turn — indistinguishable, on disk, from
- * something the human typed. It is not: nobody wrote "Proceed with your task:
- * invoke the /runcastle:project skill…", so neither the title nor the transcript
- * may attribute it to them. Recognised with the same comparison the kickoff's own
- * delivery confirmation uses, which is why a RESUMED conversation's re-sent
- * kickoff is caught too — the resume framing is a prefix around the same line,
- * and {@link promptMatchesKickoff} compares on the line's own opening.
+ * Every runcastle terminal opens with a kickoff line the launcher hands the CLI
+ * as its initial prompt, and the runtime records it as a `user` turn —
+ * indistinguishable, on disk, from something the human typed. It is not: nobody
+ * wrote "Proceed with your task: invoke the /runcastle:project skill…", so
+ * neither the title nor the transcript may attribute it to them.
  *
  * `runtime` is not optional, and that is the point: each adapter SPELLS the
  * kickoff its own way (`/runcastle:project` against `$project`), so a matcher
@@ -83,6 +79,27 @@ function withoutKickoff(
 ): TranscriptTurn[] {
   const kickoff = kickoffLineFor(kind, undefined, runtime)
   return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
+}
+
+/**
+ * Does a recorded prompt look like the launcher's kickoff line? Compared on
+ * collapsed whitespace over the first {@link MATCH_PREFIX} characters: a runtime
+ * re-flows, wraps or trims what it writes to disk, so an exact equality check
+ * would leave the odd kickoff in the transcript — named as the human's own
+ * opening line.
+ *
+ * The prefix is what does the work, and it is why the comparison survived the
+ * move off typed delivery: a transcript line can carry the kickoff with a TUI
+ * prefix or a trailing fragment around it and still be recognised as ours.
+ */
+const MATCH_PREFIX = 40
+export function promptMatchesKickoff(line: string, prompt?: string): boolean {
+  if (!prompt) return false
+  const norm = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase()
+  const want = norm(line)
+  const got = norm(prompt)
+  if (!want || !got) return false
+  return got.includes(want.slice(0, MATCH_PREFIX))
 }
 
 /** How the runtime records a turn the human abandoned half-way through. */

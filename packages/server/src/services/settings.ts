@@ -10,6 +10,7 @@ import type {
 import {
   MODEL_STEPS,
   ModelEntry,
+  DEFAULT_DOCS_COMMIT_PREFIX,
   RuncastleConfig as RuncastleConfigSchema,
   foldLegacyModelConfig,
   resolveDefaultBurnConcurrency,
@@ -59,6 +60,7 @@ type ProjectColumn =
   | 'driveSetupCommand'
   | 'driveStopCommand'
   | 'driveInstructions'
+  | 'docsCommitPrefix'
 
 interface FieldDescriptor {
   key: string
@@ -73,6 +75,8 @@ interface FieldDescriptor {
   valueSchema: z.ZodType
   /** Coerce an env-var string to the field's value type (default: identity). */
   parseEnv: (raw: string) => unknown
+  /** Product fallback for a project-only field. */
+  defaultValue?: unknown
 }
 
 const idEnv = (raw: string): unknown => raw
@@ -227,6 +231,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
+  {
+    key: 'docsCommitPrefix',
+    projectColumn: 'docsCommitPrefix',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+    defaultValue: DEFAULT_DOCS_COMMIT_PREFIX,
+  },
   // Project-only (no global twin): the command that rebuilds this repo's dev
   // database from its migrations. Test drive offers it after a drive whose
   // branch carried migrations the branch you return to does not have — git
@@ -349,6 +361,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       driveSetupCommand: projects.driveSetupCommand,
       driveStopCommand: projects.driveStopCommand,
       driveInstructions: projects.driveInstructions,
+      docsCommitPrefix: projects.docsCommitPrefix,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -366,6 +379,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     driveSetupCommand: row?.driveSetupCommand ?? null,
     driveStopCommand: row?.driveStopCommand ?? null,
     driveInstructions: row?.driveInstructions ?? null,
+    docsCommitPrefix: row?.docsCommitPrefix ?? null,
   }
 }
 
@@ -404,7 +418,7 @@ function resolveField(
   }
 
   // 4. schema default (or null for a project-only field with no default).
-  const value = desc.configKey ? (layers.defaults[desc.configKey] ?? null) : null
+  const value = desc.configKey ? (layers.defaults[desc.configKey] ?? null) : (desc.defaultValue ?? null)
   return { ...base, value, source: 'default', editable: true }
 }
 

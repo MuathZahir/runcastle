@@ -193,9 +193,6 @@ export function ticketDurations(events: readonly EventRow[]): Map<string, number
   return out
 }
 
-/** The "Open app" affordance, as the polled drive currently justifies it. */
-export type KickoffTrouble = 'undelivered' | 'not-ready'
-
 /**
  * How long a terminal may sit `launching` — spawned by the server, but with no
  * `SessionStart` check-in from Claude Code yet — before the panel says so.
@@ -232,29 +229,27 @@ export function awaitingCheckIn(
 }
 
 /**
- * Whether a session's opening briefing is currently in trouble, derived from the
- * event feed (so it survives a reload, like the conflict card).
+ * Whether a session's terminal spawned but the agent inside it never reported
+ * `SessionStart` (`session.not_ready`), derived from the event feed so it
+ * survives a reload, like the conflict card.
  *
- * The server types the briefing into the PTY and waits for Claude Code to
- * acknowledge it via the `UserPromptSubmit` hook. Two things can go wrong, and
- * both used to be invisible — the terminal looked healthy and the agent simply
- * never knew why it had been opened:
- * - `session.kickoff_undelivered` — typed, never acknowledged (a startup dialog
- *   ate the keystrokes), or the human typed first so injection stopped.
- * - `session.not_ready` — the terminal spawned but Claude Code never reported
- *   `SessionStart` at all, so nothing was ever typed.
- * A later `session.kickoff` (the automatic retry, or a manual Send) clears it.
- * `events` must be in id order.
+ * The briefing a session opens with rides the agent's own argv, so there is
+ * nothing to deliver or confirm afterwards — but a terminal held up by a trust
+ * prompt or a login has not started on it, and used to be invisible: the
+ * terminal looked healthy and simply did nothing.
+ *
+ * Only the session ending clears it; a later `session.kickoff` cannot, because
+ * that event is emitted at spawn, before this watchdog can fire. `events` must
+ * be in id order.
  */
-export function kickoffTrouble(events: EventRow[], sessionId: string): KickoffTrouble | null {
-  let trouble: KickoffTrouble | null = null
+export function sessionNotReady(events: EventRow[], sessionId: string): boolean {
+  let notReady = false
   for (const e of events) {
     if ((e.data as { sessionId?: unknown } | null)?.sessionId !== sessionId) continue
-    if (e.type === 'session.kickoff_undelivered') trouble = 'undelivered'
-    else if (e.type === 'session.not_ready') trouble = 'not-ready'
-    else if (e.type === 'session.kickoff' || e.type === 'session.ended') trouble = null
+    if (e.type === 'session.not_ready') notReady = true
+    else if (e.type === 'session.ended') notReady = false
   }
-  return trouble
+  return notReady
 }
 
 /**

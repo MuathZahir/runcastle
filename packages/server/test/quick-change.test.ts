@@ -383,6 +383,66 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect(quick?.data).toMatchObject({ ticketSeqs: [1, 2, 3, 4] })
   })
 
+  /**
+   * The door the degenerate 14-ticket import came through, which had no
+   * validation at all. It still has no refusal — these cases pin that the shape
+   * is SAID, on the timeline, at the moment the rows are written.
+   *
+   * And that it is said only when there is something to say. The door builds
+   * every ticket as `{ goal: prose, context: prose }`, so a per-ticket
+   * goal-repeats-context line fired on every quick change ever made: a warning
+   * that is on 100% of the time carries no information about the batch in front
+   * of it, and the fix it named ("write a context that…") is not a field this
+   * overlay has. A careful one-liner is now silent.
+   */
+  it('says nothing on the timeline about a well-formed one-sentence change', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Darker empty state',
+      tickets: [PROSE],
+    })
+
+    expect(
+      listAfter(ctx, feature.id, 0).filter((e) => e.type === 'tickets.shape_warning'),
+    ).toEqual([])
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('implementation')
+    expect(typedTickets(ctx, feature.id)).toHaveLength(1)
+  })
+
+  it('calls a batch too big for the door what it is, and still creates the feature', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Fourteen small things',
+      tickets: Array.from({ length: 6 }, (_, i) => `Change number ${i + 1} to something else.`),
+    })
+
+    const warning = listAfter(ctx, feature.id, 0).find((e) => e.type === 'tickets.shape_warning')
+    expect(warning?.message).toContain('the burn is not blocked')
+    expect(warning?.message).toContain('6 tickets (#1, #2, #3, #4, #5, #6) carry their goal as their context')
+    expect(warning?.message).toContain('cut the batch to 5 tickets or fewer')
+    // How many arrived at once is the whole signal — the door's construction is
+    // not repeated back as a line per ticket underneath it.
+    expect(warning?.data).toMatchObject({
+      warnings: [{ code: 'degenerate-batch' }],
+      seqs: [1, 2, 3, 4, 5, 6],
+    })
+    // …and the feature is created regardless: a warning is not a refusal.
+    expect(typedTickets(ctx, feature.id)).toHaveLength(6)
+  })
+
+  it('names a pasted document for what it is', async () => {
+    const pasted = `## Background\n\n${'the pasted wall of prose. '.repeat(70)}`
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Pasted in',
+      tickets: [pasted],
+    })
+
+    const warning = listAfter(ctx, feature.id, 0).find((e) => e.type === 'tickets.shape_warning')
+    expect(warning?.data).toMatchObject({ warnings: [{ code: 'pasted-document' }] })
+    expect(warning?.message).toContain('reads like a pasted document')
+  })
+
   it('leaves G1/G2 unevaluated and opens G3 on the single pending ticket', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,

@@ -15,6 +15,7 @@ import {
   researchBranchName,
 } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { claim, frontier, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { reconcileStaleRuns } from '../src/workflows/reconcile-runs'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -84,6 +85,25 @@ describe('reconcileStaleRuns — in-memory db', () => {
     expect((await reconcileStaleRuns(ctx)).map((r) => r.id)).toEqual([runId])
     expect(await reconcileStaleRuns(ctx)).toEqual([])
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'run.reconciled')).toHaveLength(1)
+  })
+
+  it('records landed and pending ticket counts when a live burn is interrupted', async () => {
+    const [landed, waiting, burning] = storeTickets(ctx, featureId, [
+      { title: 'landed', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+      { title: 'waiting', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+      { title: 'burning', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, landed.id, { status: 'done', commits: ['abc123'] })
+    updateTicket(ctx, burning.id, { status: 'burning' })
+    const runId = seedRunningRun(ctx, featureId, 'ticket-burner')
+
+    await reconcileStaleRuns(ctx)
+
+    const event = listAfter(ctx, featureId, 0).find((entry) => entry.type === 'run.reconciled')
+    expect(event?.runId).toBe(runId)
+    expect(event?.message).toBe('A burn was interrupted by a server restart: 1 ticket landed, 2 pending')
+    expect(event?.data).toMatchObject({ landedTickets: 1, pendingTickets: 2 })
+    expect(waiting.status).toBe('pending')
   })
 
   it('skips a run genuinely in flight in this process (hot-reload safety)', async () => {

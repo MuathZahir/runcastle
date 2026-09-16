@@ -222,10 +222,57 @@ export interface PlanImageBuildInput {
   project: BuildableProject | null
   /** The refreshed stock build context — the dir holding the stock Dockerfile. */
   stockContext: string
+  /** Packaged Dockerfile copied into {@link stockContext}; used in user-facing build descriptions. */
+  stockDockerfile?: string
   /** Whether the stock image already carries the stock Dockerfile's hash. */
   stockFresh: boolean
   /** `AGENT_UID`/`AGENT_GID` for the stock build; see {@link stockBuildArgs}. */
   buildArgs: Record<string, string>
+}
+
+export type ImageBuildTarget =
+  | { kind: 'stock' | 'project'; dockerfile: string; tag: string }
+  | { kind: 'refused'; imageName: string; reason: string }
+
+export interface ImageBuildTargetInput {
+  config: Pick<RuncastleConfig, 'sandboxImage'>
+  project: BuildableProject | null
+  /** The packaged stock template, before it is copied into the transient build context. */
+  stockDockerfile: string
+}
+
+/**
+ * The final image a click is for. Both the command planner and the settings UI
+ * call this resolver, so the Dockerfile/tag named before the click cannot
+ * diverge from the build that follows it.
+ */
+export function imageBuildTarget(input: ImageBuildTargetInput): ImageBuildTarget {
+  const { config, project, stockDockerfile } = input
+  const projectDockerfile = shippedDockerfile(project)
+  const handTyped = project
+    ? unmanagedImage({
+        id: project.id,
+        stored: project.sandboxImage ?? null,
+        overwritable: project.sandboxImageOverwritable,
+      })
+    : null
+  if (handTyped !== null) {
+    return {
+      kind: 'refused',
+      imageName: handTyped,
+      reason: unmanagedImageReason(handTyped, projectDockerfile !== null),
+    }
+  }
+  if (project && projectDockerfile) {
+    return { kind: 'project', dockerfile: projectDockerfile, tag: projectImageTag(project.id) }
+  }
+
+  const imageName = resolveSandboxImage(config, project)
+  const managed =
+    imageName === DEFAULT_SANDBOX_IMAGE ||
+    (project !== null && imageName === projectImageTag(project.id))
+  if (!managed) return { kind: 'refused', imageName, reason: unmanagedImageReason(imageName) }
+  return { kind: 'stock', dockerfile: stockDockerfile, tag: DEFAULT_SANDBOX_IMAGE }
 }
 
 /**
@@ -282,25 +329,15 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
     buildArgs,
   }
 
-  const projectDockerfile = shippedDockerfile(project)
+  const target = imageBuildTarget({
+    config,
+    project,
+    stockDockerfile: input.stockDockerfile ?? join(stockContext, 'Dockerfile'),
+  })
+  if (target.kind === 'refused') return target
 
-  const handTyped = project
-    ? unmanagedImage({
-        id: project.id,
-        stored: project.sandboxImage ?? null,
-        overwritable: project.sandboxImageOverwritable,
-      })
-    : null
-  if (handTyped !== null) {
-    return {
-      kind: 'refused',
-      imageName: handTyped,
-      reason: unmanagedImageReason(handTyped, projectDockerfile !== null),
-    }
-  }
-
-  if (project && projectDockerfile) {
-    const projectTag = projectImageTag(project.id)
+  if (target.kind === 'project' && project) {
+    const projectTag = target.tag
     return {
       kind: 'chain',
       projectTag,
@@ -309,7 +346,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
         {
           tag: projectTag,
           context: projectSandboxDir(project.repoPath),
-          dockerfileHash: hashDockerfile(projectDockerfile) ?? '',
+          dockerfileHash: hashDockerfile(target.dockerfile) ?? '',
           buildArgs: {},
         },
       ],
@@ -319,11 +356,6 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
   // A tag runcastle wrote itself stays buildable even with the Dockerfile now
   // gone: the build falls back to the stock image the project will resolve to
   // once the doctor clears the orphaned column.
-  const imageName = resolveSandboxImage(config, project)
-  const managed =
-    imageName === DEFAULT_SANDBOX_IMAGE ||
-    (project !== null && imageName === projectImageTag(project.id))
-  if (!managed) return { kind: 'refused', imageName, reason: unmanagedImageReason(imageName) }
   return { kind: 'stock', steps: [stockStep] }
 }
 

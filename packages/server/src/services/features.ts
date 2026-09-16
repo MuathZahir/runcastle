@@ -10,7 +10,16 @@ import type {
   TicketInput,
   Waypoint,
 } from '@runcastle/core'
-import { RETHINK_LOOP_BACK, REVIEW_LOOP_BACK, newId, nextGate, nextPhase } from '@runcastle/core'
+import {
+  RETHINK_LOOP_BACK,
+  REVIEW_LOOP_BACK,
+  newId,
+  nextGate,
+  nextPhase,
+  shapeCheckedTickets,
+  ticketShapeWarningLine,
+  ticketShapeWarnings,
+} from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -453,7 +462,34 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
   })
 
+  emitTicketShapeWarnings(ctx, feature.id, stored)
+
   return feature
+}
+
+/**
+ * What the quick door just let through, on the feature's timeline — the door
+ * the 14-ticket degenerate import came through, which had no validation at all.
+ *
+ * A warning, never a refusal (see `ticket-shape.ts`): the human typed these
+ * sentences and may burn them exactly as they are, so nothing here stops the
+ * feature being created or the Burn button working. The Burn card renders the
+ * same warnings from the same function, so the sentence the human reads here is
+ * the sentence they read again at the moment they decide.
+ *
+ * It is handed the WHOLE batch, review ticket and all, and `shapeCheckedTickets`
+ * drops what nobody typed — the card passes its whole batch too, so the one rule
+ * about which tickets get read lives in core with the rules about their shape.
+ */
+function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[]): void {
+  const checked = shapeCheckedTickets(stored)
+  const warnings = ticketShapeWarnings(checked)
+  if (warnings.length === 0) return
+  emit(ctx, featureId, {
+    type: 'tickets.shape_warning',
+    message: `${warnings.length} shape warning${warnings.length === 1 ? '' : 's'} — the burn is not blocked, but a coder reads what is here: ${ticketShapeWarningLine(warnings)}`,
+    data: { warnings, seqs: checked.map((t) => t.seq) },
+  })
 }
 
 /**
@@ -532,7 +568,10 @@ async function scaffoldDocsOnFeatureBranch(
 
   scaffoldDocs(ctx, feature, opts)
   try {
-    await git.commitDocs(worktreePath, `runcastle: scaffold ${feature.slug} docs`)
+    await git.commitDocs(
+      worktreePath,
+      git.docsCommitMessage(`scaffold ${feature.slug} docs`, project.docsCommitPrefix),
+    )
   } catch {
     // best-effort — the docs sit in the worktree; only the auto-commit is skipped
   }
@@ -972,7 +1011,7 @@ export async function retryTicket(
   // drive guard asks (pipeline docs landed first, so runcastle's own writes
   // never block a retry) and hand the human back what is still in the way.
   if (retryingDeniedReview) {
-    const stillDirty = await git.driveBlockingPaths(project.repoPath)
+    const stillDirty = await git.driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
     if (stillDirty.length > 0) {
       throw new GateError(
         `the working tree is still dirty — the review drive would be denied again. Commit or ` +

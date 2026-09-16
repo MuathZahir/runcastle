@@ -120,7 +120,10 @@ export async function promoteOutcomeDoc(
       const docsDir = join(project.repoPath, ...featureDocsRel(feature.slug).split('/'))
       mkdirSync(docsDir, { recursive: true })
       writeFileSync(join(docsDir, 'outcome.md'), doc, 'utf8')
-      await git.commitDocs(project.repoPath, `runcastle: outcome for ${feature.slug}`)
+      await git.commitDocs(
+        project.repoPath,
+        git.docsCommitMessage(`outcome for ${feature.slug}`, project.docsCommitPrefix),
+      )
     })
   } catch (error) {
     emit(ctx, feature.id, {

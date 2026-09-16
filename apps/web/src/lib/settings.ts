@@ -1,6 +1,7 @@
 import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
+  DEFAULT_DOCS_COMMIT_PREFIX,
   MODEL_STEPS,
   ModelEntry,
   modelEntryFor,
@@ -431,6 +432,15 @@ const FIELD_META: Record<string, FieldMeta> = {
     shortHelp: DRIVE_INSTRUCTIONS_SCOPE_NOTE,
     placeholder:
       'e.g. drive the sample project at ./examples/demo — change anything inside it freely',
+  },
+  docsCommitPrefix: {
+    label: 'Docs commit prefix',
+    tooltip:
+      'Prefix for checkpoint commits runcastle creates from feature docs. Use a form accepted by this repository’s commit message policy.',
+    control: 'text',
+    page: 'project',
+    group: 'chat',
+    placeholder: DEFAULT_DOCS_COMMIT_PREFIX,
   },
   sessionBranch: {
     label: 'Commits land on',

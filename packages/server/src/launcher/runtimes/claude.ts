@@ -3,7 +3,13 @@ import { resolveTool } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
-import type { AgentRuntimeAdapter, RuntimeLaunchInput, RuntimeLaunchSpec, RuntimeReadiness } from './types'
+import {
+  assertKickoffArgv,
+  type AgentRuntimeAdapter,
+  type RuntimeLaunchInput,
+  type RuntimeLaunchSpec,
+  type RuntimeReadiness,
+} from './types'
 
 /**
  * The Claude Code adapter (SPEC §5 / UI-SPEC §5) — today's launch behaviour,
@@ -50,6 +56,7 @@ export interface BuildLaunchInput {
    * satisfies. Omitted → a fresh session.
    */
   resumeSessionId?: string
+  kickoffLine?: string
   /**
    * Add `--strict-mcp-config` (config `sessionMcp: 'runcastleOnly'`). Default
    * false: a session inherits the human's own MCP servers alongside
@@ -60,6 +67,7 @@ export interface BuildLaunchInput {
 
 /** @see {@link BuildLaunchInput} */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
+  assertKickoffArgv(input.kickoffLine)
   const permissionMode = input.permissionMode ?? 'acceptEdits'
   const resume = input.resumeSessionId ? ['--resume', input.resumeSessionId] : []
   return [
@@ -77,6 +85,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
     permissionMode,
     '--model',
     input.model,
+    ...(!input.resumeSessionId && input.kickoffLine ? [input.kickoffLine] : []),
   ]
 }
 
@@ -160,6 +169,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
         model: input.model,
         ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
+        ...(input.kickoffLine ? { kickoffLine: input.kickoffLine } : {}),
         strictMcp: input.config.sessionMcp === 'runcastleOnly',
       }),
       env: {

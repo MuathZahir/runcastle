@@ -47,7 +47,6 @@ vi.mock('../src/trpc', () => ({
       get: { useQuery: () => ({ data: ticketsPayload(), isLoading: false, error: null }) },
       endSession: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
       workWaypoint: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
-      resendKickoff: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
     },
     ticket: {
       edit: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },

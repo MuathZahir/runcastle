@@ -1,7 +1,7 @@
 import type { DriveState } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
-import type { BurnDurationStats } from '../run'
+import type { BurnDurationStats, BurnInterruption } from '../run'
 import type { DraftBaseMissing } from './types'
 
 export interface NextStepContext {
@@ -16,6 +16,12 @@ export interface NextStepContext {
   driveState?: DriveState
   /** This project's own ticket history, for the pre-burn time expectation (#16b). */
   burnStats?: BurnDurationStats
+  /**
+   * Bytes of feature docs the next burn will hand EVERY ticket — the server's
+   * own `readDocsDigest`, so the card warns with the same number the run's
+   * timeline event reports rather than a second estimate of it.
+   */
+  docsDigestBytes?: number
   mapContent?: string
   conflict?: MergeConflictState | null
   unverifiedDriveKeys?: string[]
@@ -24,6 +30,7 @@ export interface NextStepContext {
   openNotes?: number
   openDefects?: number
   laterLaps?: string | null
+  interruptedBurn?: BurnInterruption
 }
 
 export interface ResolverInput {

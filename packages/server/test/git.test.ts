@@ -24,6 +24,7 @@ import {
   cleanupTempBranches,
   commitDocs,
   createFeatureBranch,
+  docsCommitMessage,
   listBranches,
   detachWorktree,
   ensureTalkWorktree,
@@ -551,6 +552,13 @@ describe('commitDocs', () => {
     seedProject(ctx, repo)
   })
 
+  it('builds every checkpoint subject from one configurable prefix', () => {
+    expect(docsCommitMessage('phase complete')).toBe('runcastle: phase complete')
+    expect(docsCommitMessage('phase complete', 'docs(runcastle):')).toBe(
+      'docs(runcastle): phase complete',
+    )
+  })
+
   it('commits only docs/features and never touches other staged paths', async () => {
     const docsDir = join(repo, 'docs', 'features', 'x')
     mkdirSync(docsDir, { recursive: true })
@@ -574,6 +582,18 @@ describe('commitDocs', () => {
     // The non-docs change is still staged (uncommitted), proving scoping.
     const status = await g.status()
     expect(status.staged).toContain('src/app.ts')
+  })
+
+  it('bypasses repository hooks for runcastle-owned checkpoints', async () => {
+    const docsDir = join(repo, 'docs', 'features', 'x')
+    mkdirSync(docsDir, { recursive: true })
+    writeFileSync(join(docsDir, 'decisions.md'), '# Decisions\n')
+    const hooksDir = join(repo, '.git', 'hooks')
+    writeFileSync(join(hooksDir, 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+
+    await commitDocs(repo, 'docs(x): checkpoint')
+
+    expect((await simpleGit(repo).log({ maxCount: 1 })).latest?.message).toBe('docs(x): checkpoint')
   })
 
   it('is a no-op when there are no docs changes', async () => {

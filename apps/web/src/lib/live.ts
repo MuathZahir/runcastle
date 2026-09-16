@@ -304,10 +304,11 @@ export function useLiveSync(): LiveStatus {
       // starts adds a row to it, and the counter is on screen while that happens.
       void u.run.listByFeature.invalidate()
       void u.project.list.invalidate()
-      // Spec/plan documents: these queries have no polling interval at all, so
-      // before push they only ever refreshed on remount — this is what made an
-      // agent-written spec invisible until a page reload.
-      void u.docs.read.invalidate()
+      // Spec/plan documents — their text, and the size of the digest a burn
+      // would hand every ticket off them. These queries have no polling interval
+      // at all, so before push they only ever refreshed on remount — this is
+      // what made an agent-written spec invisible until a page reload.
+      void u.docs.invalidate()
       // Settings, commit counts and the prep/project session rows: all of them
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
