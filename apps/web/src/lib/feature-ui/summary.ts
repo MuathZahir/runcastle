@@ -304,7 +304,14 @@ function modelRow(
   tickets: readonly BurnTicketFigure[],
   defaultModel: string | undefined,
 ): CheckRow {
-  const assigned = [...new Set(tickets.map((ticket) => ticket.model?.trim()).filter(Boolean))]
+  const assigned = [
+    ...new Set(
+      tickets.flatMap((ticket) => {
+        const id = ticket.model?.trim()
+        return id ? [id] : []
+      }),
+    ),
+  ]
   const unassigned = tickets.some((ticket) => !ticket.model?.trim())
   const fallback = defaultModel || 'the project model'
   const names = [...assigned, ...(unassigned || assigned.length === 0 ? [fallback] : [])]

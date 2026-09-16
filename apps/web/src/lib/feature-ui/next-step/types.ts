@@ -9,7 +9,7 @@
 export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start ideation
   'startGrill', // launchSession { kind: 'ideation' }
-  'converge', // feature.converge — crosses G1 on a mapped feature
+  'converge', // feature.converge — turn a finished map into a spec and tickets
   'workNext', // feature.workWaypoint — work the next ready mapped waypoint
   'resumeConverge', // feature.converge — resume a stranded converge session
   'burn', // feature.burn — crosses planning → building, and resumes a parked run

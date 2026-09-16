@@ -150,9 +150,9 @@ export function Workspace({
   const [confirmBurn, setConfirmBurn] = useState(false)
   // What the Burn confirmation prints in its warn box (decision 5) — computed
   // server-side, in the same pattern as `mergeDelta`, so the dialog never
-  // re-derives policy. Read wherever a Burn can be clicked (planning and
-  // review, and building while a dead run waits to be resumed), so the box is
-  // already populated when the dialog opens rather than popping in after it.
+  // re-derives policy. Read in every state a Burn can be clicked from, which
+  // is every one but shipped, so the box is already populated when the dialog
+  // opens rather than popping in after it.
   const burnable = !!q.data && q.data.feature.phase !== 'shipped'
   const burnWarningsQ = trpc.feature.burnWarnings.useQuery(
     { featureId },
@@ -215,6 +215,7 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId && burnable },
   )
+  const defaultBurnModel = effectiveStepModel(settingsQ.data, 'implement')
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -651,11 +652,12 @@ export function Workspace({
     }
   }
 
+  // The dialog closes on a burn that STARTED. A refusal — the one hard rule
+  // left at this door, a run already burning this feature — raises its toast
+  // with the dialog still up, because closing it would take the reading away
+  // and leave nothing on screen the human can act on.
   const runBurn = () => {
-    burn.mutate(
-      { featureId },
-      { onSettled: () => setConfirmBurn(false) },
-    )
+    burn.mutate({ featureId }, { onSuccess: () => setConfirmBurn(false) })
   }
 
   const runMerge = () => {
@@ -748,9 +750,7 @@ export function Workspace({
             branch: feature.branch,
             pendingTickets: pendingTickets(full.tickets),
             lap: burnLap(full.runs),
-            ...(effectiveStepModel(settingsQ.data, 'implement')
-              ? { defaultModel: effectiveStepModel(settingsQ.data, 'implement') }
-              : {}),
+            ...(defaultBurnModel ? { defaultModel: defaultBurnModel } : {}),
             warnings: burnWarningsQ.data,
           })}
           busy={burn.isPending}
