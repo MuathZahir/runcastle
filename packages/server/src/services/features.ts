@@ -1024,7 +1024,10 @@ export async function retryTicket(
   const bySeq = new Map(all.map((t) => [t.seq, t]))
 
   // Transitive failed-blocker closure: retrying a dependent without its failed
-  // blockers would just cascade it straight back to failed.
+  // blockers would just cascade it straight back to failed. A failed REVIEW
+  // blocker is reset like any other — the blocked dependent is a fix ticket the
+  // review minted, and the scheduler no longer counts those against the review's
+  // own gate, so the reset pair burns in order instead of deadlocking.
   const toReset = new Map<number, Ticket>([[ticket.seq, ticket]])
   const queue = [ticket.seq]
   while (queue.length > 0) {
