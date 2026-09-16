@@ -3,7 +3,6 @@ import {
   AFK_BURN_EXPLAINER,
   agentName,
   BURN_EXPLAINER,
-  GATE_EXPLAINER,
   lapExplainer,
   sessionAgentName,
   WAYPOINT_EXPLAINER,
@@ -26,11 +25,6 @@ describe('the explainers', () => {
   it('does not name a runtime it cannot know yet', () => {
     expect(WAYPOINT_EXPLAINER).not.toMatch(/Claude|Codex/)
     expect(BURN_EXPLAINER).not.toMatch(/Claude|Codex/)
-  })
-
-  it('says a gate is where runcastle waits for the human', () => {
-    expect(GATE_EXPLAINER).toMatch(/human/)
-    expect(GATE_EXPLAINER).toMatch(/waits/)
   })
 
   it('defines AFK as unattended', () => {

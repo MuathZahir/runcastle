@@ -13,8 +13,6 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>
 
 export type FeatureListItem = RouterOutputs['feature']['list'][number]
 export type FeatureFull = RouterOutputs['feature']['get']
-/** Legacy inspector shape retained only for the inert GateCard story/tests. */
-export type GateState = { next: { id: string; check: string; description: string } | null; satisfied: boolean; reason?: string }
 export type DocSummary = FeatureFull['docs'][number]
 export type Project = RouterOutputs['project']['list'][number]
 export type BranchList = RouterOutputs['project']['branches']
