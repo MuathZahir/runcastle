@@ -26,10 +26,15 @@ import {
 } from '../src/services/git'
 import { checkGate } from '../src/services/gates'
 import { openProject } from '../src/services/projects'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { overrideGate } from '../src/services/gates'
-import { listByFeature, storeTickets } from '../src/services/tickets'
-import { AUTO_FIX_CAP } from '../src/services/review-findings'
+import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import {
+  AUTO_FIX_CAP,
+  listByFeature as listFindings,
+  markFixProgress,
+  reportFinding,
+} from '../src/services/review-findings'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -417,6 +422,102 @@ describe("a landed review takes its dead attempt's fix tickets with it", () => {
     expect(started).toEqual([2])
     expect(tickets[2]).toMatchObject({ status: 'failed', error: 'the repro still reproduces' })
     await run
+  })
+})
+
+/**
+ * The retry end to end, over the real store: the review ticket the operator
+ * retried re-reports the defect its dead attempt already reported, and the run
+ * finishes with ONE fix ticket for it — the one that was already there, burned.
+ *
+ * The scheduler and `reportFinding` each answer half of that alone; this is the
+ * half neither can show, where the report revives a row the run is holding a
+ * stale copy of.
+ */
+describe('a retried review over the real store', () => {
+  const defect = {
+    kind: 'defect' as const,
+    severity: 'high' as const,
+    title: 'Save loses edits',
+    location: 'packages/server/src/save.ts:42',
+    citation: 'brief.md requires edits to persist',
+    detail: 'The edited value is gone after a reload.',
+    reproStep: 'Edit the title, save, reload.',
+  }
+
+  it('burns the fix ticket its dead attempt minted instead of minting a second one', async () => {
+    const ctx = await makeTestCtx()
+    const proj = seedProject(ctx)
+    const feat = seedFeature(ctx, proj.id, { phase: 'implementation' })
+    const input = (title: string, over = {}) => ({
+      title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [], ...over,
+    })
+    const [built, reviewTicket] = storeTickets(ctx, feat.id, [
+      input('build it'),
+      input('Review the integrated change', { kind: 'review' as const }),
+    ])
+    updateTicket(ctx, built.id, { status: 'done', commits: ['sha'] })
+
+    // The attempt that died: it reported the defect, minting the fix ticket
+    // blocked on it, and then the agent crashed — taking the child with it.
+    updateTicket(ctx, reviewTicket.id, { status: 'burning' })
+    const first = reportFinding(ctx, { featureId: feat.id, reviewTicket, input: defect })
+    updateTicket(ctx, reviewTicket.id, {
+      status: 'failed',
+      error: 'review agent died: claude-code exited with code 1',
+    })
+    updateTicket(ctx, first.fixTicket!.id, { status: 'failed', error: 'blocked by failed ticket 2' })
+    markFixProgress(ctx, first.finding.id, 'failed', 'blocked by failed ticket 2')
+
+    // The operator's Retry on the review alone (`retryTicket` leaves the rest).
+    updateTicket(ctx, reviewTicket.id, { status: 'pending', error: null })
+
+    const launched: { seq: number; context: string }[] = []
+    const wctx: WorkflowCtx = {
+      runId: 'run_retry',
+      project: proj,
+      feature: getFeatureRow(ctx, feat.id),
+      tickets: listByFeature(ctx, feat.id),
+      emitEvent: (e) => emit(ctx, feat.id, e),
+      updateTicket: (id, patch) => {
+        updateTicket(ctx, id, patch)
+      },
+      listTickets: () => listByFeature(ctx, feat.id),
+      storeTickets: (inputs) => storeTickets(ctx, feat.id, inputs),
+      listFindings: () => listFindings(ctx, feat.id),
+      updateFinding: (id, progress, reason) => {
+        markFixProgress(ctx, id, progress, reason)
+      },
+      resolveWaypoint: () => {},
+      signal: new AbortController().signal,
+    }
+    const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
+      launched.push({ seq: t.seq, context: t.context })
+      if (t.kind !== 'review') return { status: 'done', commits: ['fix'] }
+      // What `report_finding` does: the same defect, seen again. The
+      // verification pass the landed fix is owed reports nothing.
+      if (t.passKind === 'review') {
+        reportFinding(ctx, {
+          featureId: feat.id,
+          reviewTicket: listByFeature(ctx, feat.id).find((row) => row.id === t.id) as Ticket,
+          input: { ...defect, detail: 'The edited value is STILL gone after a reload.' },
+        })
+      }
+      return { status: 'done', commits: [] }
+    }
+
+    const res = await burnRun(wctx, deps(execute))
+
+    // One defect, one finding, one fix ticket — the one the dead attempt minted.
+    const fixes = listByFeature(ctx, feat.id).filter((t) => t.originFindingId)
+    expect(fixes.map((t) => t.id)).toEqual([first.fixTicket?.id])
+    expect(listFindings(ctx, feat.id)).toHaveLength(1)
+    expect(fixes[0]).toMatchObject({ status: 'done', error: undefined })
+    // It burned in this run, on the wording the retried review just reported —
+    // and the landed fix is owed the verification pass any other one would be.
+    expect(launched.map((l) => l.seq)).toEqual([2, 3, 4])
+    expect(launched[1].context).toContain('STILL gone')
+    expect(res).toMatchObject({ status: 'succeeded' })
   })
 })
 
