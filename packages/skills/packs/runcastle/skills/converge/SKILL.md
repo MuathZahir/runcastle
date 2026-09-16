@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Converge — close a mapped feature
 
-A mapped feature was too big for one window, so it was charted into a map and its waypoints were worked in their own sessions. Every waypoint is now terminal, the human clicked **Converge**, and the feature has already crossed G1 into the `spec` phase. Your job: turn the compressed knowledge into a spec and tickets — the exact output an unbroken ideation session produces.
+A mapped feature was too big for one window, so it was charted into a map and its waypoints were worked in their own sessions. Every waypoint is now terminal and the human clicked **Converge**; the feature stays in **Planning** throughout — converging is not a state change, it is the rest of Planning done in one window. Your job: turn the compressed knowledge into a spec and tickets — the exact output an unbroken ideation session produces.
 
 ## Context hygiene is the whole game
 
@@ -33,9 +33,9 @@ Invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); w
 
 Do not open a new session for these. They run here, on top of the compressed knowledge you just read.
 
-**Re-convergence.** You may be a fresh session continuing a converge that crashed or was closed mid-way — the feature is past G1 but has no tickets. Do not start over; pick up from whatever is already on disk:
+**Re-convergence.** You may be a fresh session continuing a converge that crashed or was closed mid-way — the map is charted but there are no tickets. Do not start over; pick up from whatever is already on disk, which is the only thing that says how far the last session got:
 
-- **`spec.md` already exists** (it is in `docs[]`): read it, do **not** rewrite it, and go straight to `/runcastle:tickets`. **If the current `phase` is still `spec`, call `mcp__runcastle__complete_phase({ phase: "spec" })` first** — the spec work is done, the phase just never got closed, and `/runcastle:tickets` cannot complete a phase it is not standing in.
+- **`spec.md` already exists** (it is in `docs[]`): read it, do **not** rewrite it, and go straight to `/runcastle:tickets`. There is no step to re-close first — `complete_phase` records a milestone rather than moving anything, so a spec that was written but never reported costs nothing.
 - **`spec.md` does not exist**: run `/runcastle:spec` then `/runcastle:tickets` as normal.
 - **Tickets already exist** for this lap: reconcile rather than duplicate — this is the one case where `update_ticket` / `cancel_ticket` beat a second `emit_tickets`.
 
@@ -49,4 +49,4 @@ If something surfaces that is plainly its own feature rather than part of this o
 
 > Converged. Tickets are in the runcastle UI — review the ticket cards and click **Burn** to start the AFK agents. I'll stop here.
 
-Do **not** start burning. The two human clicks (Burn, then Merge after test-drive) are the only gates left, and they belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)
+Do **not** start burning. Burn and Merge are the only two clicks in the whole pipeline, and both belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)

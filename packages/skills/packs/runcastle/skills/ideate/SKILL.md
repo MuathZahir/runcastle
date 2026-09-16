@@ -73,7 +73,7 @@ Some features are too big for one unbroken context. The tells: you are rabbit-ho
 
 When the human confirms shared understanding and the open questions are answered or explicitly deferred:
 
-`mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok, nextPhase }`. If `ok: false`, it names what the gate wants (e.g. `decisions.md` missing) — fix it and retry. It logs its own timeline event; do not add one.
+`mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok: true, nextPhase, nextStep }`. It does not refuse and it does not move the feature: ideation, spec and tickets are three steps inside **Planning**, and this records the milestone on the timeline. `nextStep` is the next step still missing its artifact, read off disk rather than stored — so if `decisions.md` is not written yet it comes back as `"ideation"` again, which is your cue to write it. It logs its own timeline event; do not add one.
 
 ## 5. Spec → tickets — stay in this window
 
@@ -87,4 +87,4 @@ Do not open a new session for these. They run here, on top of everything you jus
 
 > Tickets are in the runcastle UI. Review the ticket cards and click **Burn** to start the AFK agents. That is the next step — I will stop here.
 
-Do **not** start burning. The two human clicks (Burn, then Merge after test-drive) are the only gates left, and they belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)
+Do **not** start burning. Burn and Merge are the only two clicks in the whole pipeline, and both belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)
