@@ -6,7 +6,7 @@ import { reviewFindings } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { getFeatureRow } from './repo'
-import { listByFeature as listTickets, storeTickets } from './tickets'
+import { editTicket, listByFeature as listTickets, storeTickets, updateTicket } from './tickets'
 
 export const AUTO_FIX_CAP = 8
 type FindingRow = typeof reviewFindings.$inferSelect
@@ -53,12 +53,100 @@ export function buildFixTicket(
   }
 }
 
+/**
+ * How a defect is recognised as one this review already reported: the same
+ * problem named in the same place. Detail and repro step are deliberately out
+ * of the identity — the review agent writes them fresh on every attempt, so
+ * requiring them to match would make every re-report a new defect.
+ */
+function defectKey(finding: Pick<ReviewFinding, 'title' | 'location'>): string {
+  return [finding.title, finding.location].map((part) => part.trim().toLowerCase()).join(' @ ')
+}
+
+/**
+ * Re-report a defect onto the fix ticket it already minted, or `null` when
+ * there is no such ticket and the report mints one the ordinary way.
+ *
+ * The case this exists for is a review ticket that was retried: its earlier
+ * attempt reported these defects and minted fix tickets blocked on it, and
+ * those children failed with the attempt. A second ticket for the same defect
+ * would leave the first one stale — two rows answering for one problem, one of
+ * them dead — so the ticket is rebuilt from the fresh report and handed back to
+ * the burn instead. The scheduler readmits it when the review lands.
+ *
+ * Only open work is revived: a fix ticket that is `done` answered the defect,
+ * and a `cancelled` one (or a finding a human dismissed or carried) is a
+ * decision this report has no business overturning.
+ */
+function reviveEarlierReport(
+  ctx: AppCtx,
+  args: { featureId: string; lap: number; reviewTicket: Ticket; input: ReviewFindingInput },
+): { finding: ReviewFinding; fixTicket: Ticket } | null {
+  const { featureId, lap, reviewTicket, input } = args
+  const key = defectKey(input)
+  const prior = listByFeature(ctx, featureId).find(
+    (finding) =>
+      finding.reviewTicketId === reviewTicket.id &&
+      finding.lap === lap &&
+      finding.kind === 'defect' &&
+      finding.status !== 'dismissed' &&
+      finding.status !== 'carried' &&
+      defectKey(finding) === key,
+  )
+  if (!prior) return null
+  const fix = fixTicketOf(prior, listTickets(ctx, featureId))
+  if (!fix || (fix.status !== 'pending' && fix.status !== 'failed')) return null
+
+  ctx.db
+    .update(reviewFindings)
+    .set({ ...input, reproStep: input.reproStep ?? '' })
+    .where(eq(reviewFindings.id, prior.id))
+    .run()
+  // Through the transition, so the fresh report resets the whole of the
+  // finding's mutable state exactly as any other move does.
+  const finding = updateStatus(ctx, prior.id, {
+    status: 'open',
+    openReason: null,
+    failureReason: null,
+  })
+  const { title, goal, context, acceptanceCriteria } = buildFixTicket(finding)
+  const edited = editTicket(ctx, fix.id, { title, goal, context, acceptanceCriteria })
+  return {
+    finding,
+    fixTicket:
+      fix.status === 'failed'
+        ? updateTicket(ctx, fix.id, { status: 'pending', error: null })
+        : edited,
+  }
+}
+
 export function reportFinding(
   ctx: AppCtx,
   args: { featureId: string; reviewTicket: Ticket; input: ReviewFindingInput },
 ): { finding: ReviewFinding; fixTicket: Ticket | null; overCap: boolean } {
   const { featureId, reviewTicket, input } = args
   const feature = getFeatureRow(ctx, featureId)
+  const verification = reviewTicket.passKind === 'verification'
+
+  const revived =
+    input.kind === 'defect' && !verification
+      ? reviveEarlierReport(ctx, { featureId, lap: feature.lap, reviewTicket, input })
+      : null
+  if (revived) {
+    emit(ctx, featureId, {
+      type: 'finding.reported',
+      message: `defect re-reported: ${input.title} — fix ticket ${revived.fixTicket.seq} stands for it`,
+      ticketId: revived.fixTicket.id,
+      data: {
+        findingId: revived.finding.id,
+        fixTicketId: revived.fixTicket.id,
+        overCap: false,
+        revived: true,
+      },
+    })
+    return { ...revived, overCap: false }
+  }
+
   const id = newId('finding')
   const ticketCount = ctx.db
     .select({ id: reviewFindings.id })
@@ -70,7 +158,6 @@ export function reportFinding(
       ),
     )
     .all().length
-  const verification = reviewTicket.passKind === 'verification'
   const overCap = input.kind === 'defect' && !verification && ticketCount >= AUTO_FIX_CAP
 
   ctx.db

@@ -12,6 +12,7 @@ import { effectiveStepModel } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
+  burnInterruption,
   burnLap,
   burnSummary,
   defaultBaseBranch,
@@ -216,6 +217,14 @@ export function Workspace({
     { enabled: !!projectId && burnable },
   )
   const defaultBurnModel = effectiveStepModel(settingsQ.data, 'implement')
+  // What the next burn's docs digest will cost EVERY ticket in it, for the
+  // pre-burn bar's warning — the burner's own read of the same files, so the bar
+  // and the run timeline's event cannot report different sizes. Only on the two
+  // roads into a burn, where the bar has somewhere to put it, and it does not
+  // poll: a session writing the docs pushes, and the stream invalidates the
+  // whole `docs` router on the same signal that refreshes their text.
+  const preBurn = q.data?.feature.phase === 'planning' || q.data?.feature.phase === 'building'
+  const digestQ = trpc.docs.digestSize.useQuery({ featureId }, { enabled: preBurn })
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
   // has to be readable at that click, not buried in the body that shows the
@@ -431,6 +440,7 @@ export function Workspace({
   const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
   const steps = pipelineSteps(feature, effective, { planning: summaryOf('planning') })
   const run = latestRun(full.runs)
+  const interruptedBurn = burnInterruption(events, run?.id)
   // The beat is over the body only — the stepper and the bar tell the truth
   // about the phase throughout, and a human who is not on the run view (viewing
   // an earlier phase, or already past review) is never held.
@@ -448,10 +458,12 @@ export function Workspace({
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     dryRunActive: !!driveQ.data?.dryRun,
     ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
+    ...(digestQ.data ? { docsDigestBytes: digestQ.data.bytes } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,
     laterLaps,
+    interruptedBurn,
   })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be

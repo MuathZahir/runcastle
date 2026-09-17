@@ -290,7 +290,13 @@ export function Lane({
           {/* One gesture, two existing calls: the reassignment lands and the
               burn it starts resolves the fresh row (decision 4). */}
           {retryable && roster && onRetryWithModel && (
-            <ModelMenu value="" roster={roster} label="Retry on…" onChange={onRetryWithModel} />
+            <ModelMenu
+              value=""
+              roster={roster}
+              label="Retry on…"
+              ticketKind={ticket.kind}
+              onChange={onRetryWithModel}
+            />
           )}
           {conflict && onResolveInTerminal && (
             <Button
@@ -343,6 +349,7 @@ export function Lane({
             <ModelMenu
               value={ticket.model ?? ''}
               roster={reassign.roster}
+              ticketKind={ticket.kind}
               onChange={reassign.onChange}
             />
           )}

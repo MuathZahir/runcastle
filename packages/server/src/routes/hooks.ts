@@ -9,12 +9,12 @@ import {
   markAwaitingInput,
   markSessionEnded,
   markSessionLive,
-  noteKickoffPrompt,
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
-import { isAncestor, mergeInProgressAt } from '../services/git'
+import { mergeInProgressAt } from '../services/git'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
+import { noteResolvedMerge } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
 
@@ -71,18 +71,18 @@ hooks.post('/:event', async (c) => {
 
     // Project-scoped sessions (`prepare` and `project` — see
     // PROJECT_SESSION_KINDS) have no feature. They still need the full
-    // lifecycle — `markSessionLive` is what flips the row live and lets the
-    // kickoff be typed, so returning early here would leave the terminal open
-    // and permanently silent — but none of the feature briefing applies, and
-    // what they are told instead differs per kind.
+    // lifecycle — `markSessionLive` is what flips the row live and records the
+    // id a later resume needs, so returning early here would strand the
+    // conversation — but none of the feature briefing applies, and what they are
+    // told instead differs per kind.
     if (!session.featureId) {
       switch (event) {
         case 'session-start':
           return c.json(handleProjectScopedSessionStart(ctx, session, body.payload))
         case 'user-prompt':
-          return c.json(handleProjectScopedUserPrompt(ctx, session, body.payload))
+          return c.json(handleProjectScopedUserPrompt(session))
         case 'session-end':
-          return c.json(handleProjectScopedSessionEnd(ctx, session))
+          return c.json(handleProjectScopedSessionEnd(ctx, session, body.payload))
         case 'pre-tool':
           return c.json(await handlePreToolUse(session, undefined, body.payload))
         default:
@@ -97,9 +97,9 @@ hooks.post('/:event', async (c) => {
       case 'session-start':
         return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
       case 'user-prompt':
-        return c.json(handleUserPrompt(ctx, sessionId, feature, body.payload))
+        return c.json(handleUserPrompt(ctx, feature))
       case 'session-end':
-        return c.json(await handleSessionEnd(ctx, session, feature))
+        return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
       case 'pre-tool':
         return c.json(await handlePreToolUse(session, feature, body.payload))
       default:
@@ -186,13 +186,7 @@ function handleProjectScopedSessionStart(
   }
 }
 
-function handleProjectScopedUserPrompt(
-  ctx: AppCtx,
-  session: SessionRow,
-  payload: Record<string, unknown> | undefined,
-): unknown {
-  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  noteKickoffPrompt(ctx, session.id, prompt)
+function handleProjectScopedUserPrompt(session: SessionRow): unknown {
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
@@ -201,7 +195,15 @@ function handleProjectScopedUserPrompt(
   }
 }
 
-function handleProjectScopedSessionEnd(ctx: AppCtx, session: SessionRow): unknown {
+function handleProjectScopedSessionEnd(
+  ctx: AppCtx,
+  session: SessionRow,
+  payload: Record<string, unknown> | undefined,
+): unknown {
+  if (session.runtime === 'codex') {
+    emitConversationEnded(ctx, session, payload)
+    return {}
+  }
   markSessionEnded(ctx, session.id)
   emitForSession(ctx, session, {
     type: 'session.ended',
@@ -265,19 +267,11 @@ function projectScopedStartContext(ctx: AppCtx, session: SessionRow): string {
 }
 
 /**
- * `UserPromptSubmit` — the only proof a prompt actually reached Claude Code, so
- * it doubles as the kickoff delivery receipt (`noteKickoffPrompt`): our injected
- * briefing coming back here confirms it landed, and anything else means the
- * human typed first.
+ * `UserPromptSubmit` for a feature session: every turn is handed the feature's
+ * current shape as context. The turn-state bit is flipped by the caller, for
+ * every scope at once.
  */
-function handleUserPrompt(
-  ctx: AppCtx,
-  sessionId: string,
-  feature: Feature,
-  payload: Record<string, unknown> | undefined,
-): unknown {
-  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  noteKickoffPrompt(ctx, sessionId, prompt)
+function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
   const tickets = listByFeature(ctx, feature.id).length
   return {
     hookSpecificOutput: {
@@ -291,7 +285,12 @@ async function handleSessionEnd(
   ctx: AppCtx,
   session: SessionRow,
   feature: Feature,
+  payload: Record<string, unknown> | undefined,
 ): Promise<unknown> {
+  if (session.runtime === 'codex') {
+    emitConversationEnded(ctx, session, payload)
+    return {}
+  }
   markSessionEnded(ctx, session.id)
   // A waypoint session that ended without calling resolve_waypoint auto-releases
   // its waypoint back to the frontier (SPEC §13.2); no-op otherwise.
@@ -305,34 +304,17 @@ async function handleSessionEnd(
   return {}
 }
 
-/**
- * Did a `resolve-conflict` session land the merge it was opened for? The
- * standing conflict is derived from the event feed, so a resolution nothing
- * emits about leaves the card up forever (the deadlock this feature fixes) —
- * this is the event that clears it, decided from the worktree's real git state
- * rather than from the agent saying it was done.
- *
- * Best-effort on purpose: teardown outranks detection. A probe that cannot run
- * (worktree gone, branch renamed) just means no event, and the enabled "Retry
- * Merge & ship" is the human's way through — see decision 2.
- */
-async function noteResolvedMerge(
+function emitConversationEnded(
   ctx: AppCtx,
   session: SessionRow,
-  feature: Feature,
-): Promise<void> {
-  const pair = session.purpose === 'resolve-conflict' ? session.purposeData : undefined
-  if (!pair) return
-  try {
-    if (!(await isAncestor(session.worktreePath, pair.mergeFrom, pair.mergeInto))) return
-    emit(ctx, feature.id, {
-      type: 'merge.resolved',
-      message: `merge conflict resolved — ${pair.mergeFrom} is in ${pair.mergeInto}`,
-      data: { sessionId: session.id, ...pair },
-    })
-  } catch {
-    // never break session teardown over the timeline entry
-  }
+  payload: Record<string, unknown> | undefined,
+): void {
+  const reason = typeof payload?.reason === 'string' ? payload.reason : 'unknown'
+  emitForSession(ctx, session, {
+    type: 'session.conversation_ended',
+    message: `conversation ended (reason: ${reason})`,
+    data: { sessionId: session.id, reason },
+  })
 }
 
 /**

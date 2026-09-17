@@ -33,6 +33,8 @@ Invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); w
 
 Do not open a new session for these. They run here, on top of the compressed knowledge you just read.
 
+A converged batch is burned exactly like an ideated one, so the two batch-wide rules `/runcastle:tickets` carries bind here unchanged: the batch closes with **one review ticket**, and before you emit you state the **critical path and the width it leaves against `burnConcurrency`**, reslicing when the chain is longer than roughly total / concurrency. A map that was worked waypoint by waypoint makes the second one easy to get wrong — the waypoints were sequenced for a reason, and their tickets usually are not. Chain two only where the later one reads the earlier one's output.
+
 **Re-convergence.** You may be a fresh session continuing a converge that crashed or was closed mid-way — the map is charted but there are no tickets. Do not start over; pick up from whatever is already on disk, which is the only thing that says how far the last session got:
 
 - **`spec.md` already exists** (it is in `docs[]`): read it, do **not** rewrite it, and go straight to `/runcastle:tickets`. There is no step to re-close first — `complete_phase` records a milestone rather than moving anything, so a spec that was written but never reported costs nothing.

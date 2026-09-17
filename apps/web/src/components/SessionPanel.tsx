@@ -1,13 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
-import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
-import { awaitingCheckIn, kickoffTrouble, sessionActive } from '../lib/feature-ui'
-import { useToast } from '../lib/toast'
+import { awaitingCheckIn, sessionActive, sessionNotReady } from '../lib/feature-ui'
 import { sessionAgentName } from '../lib/vocabulary'
 import type { FeatureFull } from '../lib/api'
-import { type KickoffTrouble } from '../lib/feature-ui'
-import { Button } from '../ui'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -74,11 +70,7 @@ function SessionNotices({ featureId, session }: { featureId: string; session: Se
   return (
     <>
       <CheckInHint session={session} events={events} />
-      <BriefingBanner
-        featureId={featureId}
-        session={session}
-        trouble={kickoffTrouble(events, session.id)}
-      />
+      <NotReadyBanner session={session} notReady={sessionNotReady(events, session.id)} />
     </>
   )
 }
@@ -90,10 +82,9 @@ const CHECK_IN_TICK_MS = 5_000
  * The quiet "the terminal is up, the agent hasn't said hello" line.
  *
  * A session is active from the moment its PTY spawns ({@link sessionActive}),
- * so nothing here is withheld or retried — the panel's own controls (Send
- * briefing below, End session in the strip) are the affordances, and the
- * terminal is right there. This only names what an otherwise silent
- * "launching…" means once it has gone on longer than a launch should.
+ * so nothing here is withheld or retried — End session in the strip is the
+ * affordance, and the terminal is right there. This only names what an otherwise
+ * silent "launching…" means once it has gone on longer than a launch should.
  */
 function CheckInHint({ session, events }: { session: Session; events: EventRow[] }) {
   // The hint is derived from elapsed time, so nothing would re-render it into
@@ -118,57 +109,21 @@ function useNow(intervalMs: number): number {
 }
 
 /**
- * The "this terminal was never told what it is here for" banner.
+ * The "this terminal has not started on its briefing" banner.
  *
- * runcastle opens every terminal with a briefing typed into it — the merge-conflict
- * resolution, the review iteration, the plain per-kind opening move — and waits
- * for the CLI to acknowledge it. When that acknowledgement never arrives (a
- * startup dialog swallowed the keystrokes, the session never reported ready, or
- * the human typed first), the terminal is live but the agent is working blind.
- * This is the visible half of that state: it says so, and Send briefing re-types
- * the exact same text, so the fix is one click instead of the human reconstructing
- * the instruction by hand.
+ * Every terminal opens with its briefing already in the agent's argv, so there
+ * is nothing here to re-send: a session that never reported ready is one held up
+ * by something on its own screen — a trust prompt, a login, an update notice —
+ * and only the human can clear it. Until this said so, the terminal looked
+ * perfectly healthy while doing nothing at all.
  */
-function BriefingBanner({
-  featureId,
-  session,
-  trouble,
-}: {
-  featureId: string
-  session: Session
-  trouble: KickoffTrouble | null
-}) {
-  const utils = trpc.useUtils()
-  const toast = useToast()
-  const resend = trpc.feature.resendKickoff.useMutation({
-    onSuccess: () => {
-      // A resend clears the trouble the banner is rendered from, and that only
-      // reaches the panel through the queries that carry the session and its
-      // events — waiting on the push pipe for it would leave the banner up over
-      // a briefing that has already landed.
-      void utils.feature.get.invalidate({ id: featureId })
-      void utils.events.invalidate()
-      toast.push('briefing sent to the terminal')
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  if (!trouble) return null
+function NotReadyBanner({ session, notReady }: { session: Session; notReady: boolean }) {
+  if (!notReady) return null
 
   return (
-    <div className="flex items-center gap-3 border-b border-warn/35 bg-warn/8 px-3 py-2 text-sm text-warn">
-      <span className="flex-1">
-        {trouble === 'not-ready'
-          ? 'This terminal has not reported ready — answer anything waiting in it (a trust or resume prompt), then send the briefing.'
-          : `The opening briefing never reached ${sessionAgentName(session)} — this session has not been told what it is here for.`}
-      </span>
-      <Button
-        type="button"
-        className="h-7 text-xs"
-        disabled={resend.isPending}
-        onClick={() => resend.mutate({ sessionId: session.id })}
-      >
-        {resend.isPending ? 'Sending…' : 'Send briefing'}
-      </Button>
+    <div className="border-b border-warn/35 bg-warn/8 px-3 py-2 text-sm text-warn">
+      This terminal has not reported ready — {sessionAgentName(session)} has not started on its
+      briefing. Answer anything waiting in it (a trust or login prompt).
     </div>
   )
 }

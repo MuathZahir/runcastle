@@ -80,6 +80,9 @@ export const projects = sqliteTable('projects', {
   // so the only honest generic answer is to run the project's own string.
   driveSetupCommand: text('drive_setup_command'),
   driveStopCommand: text('drive_stop_command'),
+  // Subject prefix for commits authored by runcastle's docs machinery. Null
+  // uses the product default; burn-agent ticket subjects stay unchanged.
+  docsCommitPrefix: text('docs_commit_prefix'),
 })
 
 /**

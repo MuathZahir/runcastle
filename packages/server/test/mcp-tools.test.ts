@@ -226,6 +226,18 @@ describe('mcp tools', () => {
     ])
   })
 
+  /**
+   * The width the tickets skill budgets against. The session states the
+   * batch's critical path against this number, so serving it is what makes
+   * that rule computable rather than guessed.
+   */
+  it('get_feature_context serves the project’s burn width', () => {
+    expect(toolGetFeatureContext(ctx, session).burnConcurrency).toBe(ctx.config.burnConcurrency)
+
+    ctx.config = { ...ctx.config, burnConcurrency: 6 }
+    expect(toolGetFeatureContext(ctx, session).burnConcurrency).toBe(6)
+  })
+
   it('update_ticket/cancel_ticket refuse a ticket from another feature', () => {
     const otherFeature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'other' })
     const [foreign] = storeTickets(ctx, otherFeature.id, [ticket('foreign')])

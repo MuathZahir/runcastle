@@ -4,15 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
-import { launchSession } from '../src/launcher/launcher'
+import { handlePtyExit, launchSession } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch, isAncestor } from '../src/services/git'
+import { getFeatureRow } from '../src/services/repo'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -335,6 +336,26 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
       mergeFrom: 'main',
       mergeInto: 'feature/dark-mode',
     })
+  })
+
+  it('probes a codex resolve-conflict merge at PTY exit, not SessionEnd', async () => {
+    landTheMerge()
+    const id = createSessionRow(ctx, {
+      featureId,
+      kind: 'revisit',
+      purpose: 'resolve-conflict',
+      purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
+      worktreePath: worktree,
+      model: { id: 'gpt-5', runtime: 'codex' },
+    }).id
+
+    await endSession(id)
+    expect(resolved()).toHaveLength(0)
+    expect(getSessionRow(ctx, id)?.status).toBe('launching')
+
+    handlePtyExit(ctx, getFeatureRow(ctx, featureId), getSessionRow(ctx, id)!, {}, 0)
+    await vi.waitFor(() => expect(resolved()).toHaveLength(1))
+    expect(getSessionRow(ctx, id)?.status).toBe('ended')
   })
 
   it('emits nothing when the session ended with the merge unresolved', async () => {

@@ -1,5 +1,6 @@
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -23,6 +24,7 @@ import type {
   RuntimeLaunchSpec,
   RuntimeReadiness,
 } from './types'
+import { assertKickoffArgv } from './types'
 
 /**
  * The Codex adapter (decision 9) — the same session, driven by the other CLI.
@@ -53,6 +55,22 @@ const CODEX = RUNTIME_SPECS.codex
 /** The synthetic per-session `CODEX_HOME` (decision 9): config, hooks, prompt, auth. */
 export function codexHomeDir(sessionId: string): string {
   return join(sessionDir(sessionId), 'codex-home')
+}
+
+/**
+ * Seed a new synthetic home with the conversation store from the runcastle
+ * session being resumed. Codex discovers both `resume <id>` and the interactive
+ * `/resume` picker exclusively through `$CODEX_HOME/sessions`; previously every
+ * relaunch selected a new, empty home keyed by the new runcastle row, so the
+ * recorded id pointed at a rollout the process could not see and Codex started
+ * cold. Copying only `sessions/` preserves decision 9's per-launch config/hook
+ * isolation while making the rollout chain durable across relaunches.
+ */
+function carryResumeRollouts(resumeSourceSessionId: string | undefined, home: string): void {
+  if (!resumeSourceSessionId) return
+  const source = join(codexHomeDir(resumeSourceSessionId), 'sessions')
+  if (!existsSync(source)) return
+  cpSync(source, join(home, 'sessions'), { recursive: true })
 }
 
 /**
@@ -135,20 +153,16 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  *   ({@link buildCodexArgs}): without it no hook fires at all.
  *
  *   WHAT THIS DOES NOT FIX, verified end-to-end against codex-cli 0.150.1 in a
- *   real PTY. An interactive Codex session still never goes `live` and still
- *   never gets its kickoff, because Codex's TUI does not emit `SessionStart`
- *   when the terminal opens — it emits it with the FIRST TURN, alongside that
- *   turn's `UserPromptSubmit`. Sat idle at a settled Codex prompt for 30s with
- *   hook discovery on, trust granted and the update prompt pre-dismissed, no
- *   `SessionStart` fired; typing one prompt produced `SessionStart` and
- *   `UserPromptSubmit` together. That deadlocks runcastle: `markSessionLive`
- *   (SessionStart) is the only caller of `scheduleKickoff`, and the kickoff is
- *   the thing that would submit that first prompt — so the terminal sits at the
- *   prompt, `armSessionReadyWatchdog` fires `session.not_ready` at 25s, and the
- *   briefing is never typed. When the human eventually types something the
- *   session goes live and the kickoff is injected on top of a conversation
- *   already in flight, which is where the clear-and-retype churn comes from.
- *   Breaking that cycle is `native-first-message-delivery`, not this line.
+ *   real PTY. An interactive Codex session does not go `live` when its terminal
+ *   opens, because Codex's TUI does not emit `SessionStart` then — it emits it
+ *   with the FIRST TURN, alongside that turn's `UserPromptSubmit`. Sat idle at a
+ *   settled Codex prompt for 30s with hook discovery on, trust granted and the
+ *   update prompt pre-dismissed, no `SessionStart` fired; typing one prompt
+ *   produced `SessionStart` and `UserPromptSubmit` together. That used to
+ *   deadlock runcastle, back when going live was what delivered the kickoff that
+ *   would have submitted the first turn. The kickoff rides the argv at spawn
+ *   now ({@link buildCodexArgs}), so the first turn happens on its own and the
+ *   hooks follow it.
  * - `[projects."<worktree>"] trust_level = "trusted"` answers the first-run
  *   "do you trust this folder?" prompt before it can block the session — a
  *   dialog fires BEFORE the SessionStart hook, so it would strand the terminal
@@ -164,6 +178,9 @@ function renderCodexConfig(input: CodexConfigInput): string {
     `model = ${toml(model)}`,
     'sandbox_mode = "workspace-write"',
     `approval_policy = ${toml(approvalPolicyFor(permissionMode))}`,
+    // A synthetic home otherwise stops at Codex's blocking update dialog,
+    // whose highlighted default performs a global npm install.
+    'check_for_update_on_startup = false',
     '',
     '[features]',
     'hooks = true',
@@ -385,10 +402,12 @@ function gitInfoDir(worktreePath: string): string | null {
  * every lifecycle event is silently skipped — no `live` row, no kickoff, no
  * edit guard.
  */
-function buildCodexArgs(input: { resumeSessionId?: string }): string[] {
+export function buildCodexArgs(input: { resumeSessionId?: string; kickoffLine?: string }): string[] {
+  assertKickoffArgv(input.kickoffLine)
   return [
     ...(input.resumeSessionId ? ['resume', input.resumeSessionId] : []),
     '--dangerously-bypass-hook-trust',
+    ...(!input.resumeSessionId && input.kickoffLine ? [input.kickoffLine] : []),
   ]
 }
 
@@ -446,6 +465,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {
     const home = codexHomeDir(input.session.id)
     mkdirSync(home, { recursive: true })
+    carryResumeRollouts(input.resumeSourceSessionId, home)
 
     const configPath = join(home, 'config.toml')
     const hooksPath = join(home, 'hooks.json')
@@ -494,6 +514,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
       files,
       argv: buildCodexArgs({
         ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
+        ...(input.kickoffLine ? { kickoffLine: input.kickoffLine } : {}),
       }),
       env: {
         CODEX_HOME: home,

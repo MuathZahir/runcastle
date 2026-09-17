@@ -3,6 +3,7 @@ import { hasResumable } from '../internal'
 import { burnLabel } from '../laps'
 import { isTerminal, nextReadyWaypoint, parseMapSections } from '../map'
 import { sessionAgentName } from '../../vocabulary'
+import { burnWarningLine } from './burn-warnings'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -83,7 +84,12 @@ export function resolvePlanning(input: ResolverInput): NextStep {
 
   // Tickets ready to burn outrank everything below: the click the human came
   // for is right there, and no lap road or map mode is more urgent than it.
-  if (missing === null)
+  if (missing === null) {
+    // The other road into a burn reads the shape of what it would run — and
+    // what the docs digest will cost every ticket in it — in the same words the
+    // building bar uses (`burn-warnings.ts`). A warning only: the Burn below is
+    // unchanged, and "Ask for changes" is the road to fixing it.
+    const shape = burnWarningLine(input)
     return {
       kick: 'NEXT STEP',
       title: 'Review the tickets, then burn',
@@ -104,7 +110,9 @@ export function resolvePlanning(input: ResolverInput): NextStep {
         mergeAction,
       ],
       busy: false,
+      ...(shape ? { note: shape } : {}),
     }
+  }
 
   // A session open right now IS the lap being worked, whatever it is stamped
   // with — the stamp only answers for the laps nobody is sitting in.

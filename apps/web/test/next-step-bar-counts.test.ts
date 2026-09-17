@@ -38,6 +38,10 @@ const openWork: NextStep['counts'] = {
 }
 
 describe('the next-step bar’s count line', () => {
+  it('renders recovery states as persistent alerts', () => {
+    expect(bar({ alert: true, kick: 'INTERRUPTED' })).toContain('role="alert"')
+  })
+
   it('states the count with guidance off — the primary’s reason is never hidden', () => {
     const html = bar({ counts: openWork })
     expect(html).toContain('2 defects')

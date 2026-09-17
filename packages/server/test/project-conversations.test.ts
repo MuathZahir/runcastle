@@ -13,7 +13,6 @@ import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/c
 import {
   awaitProjectLandings,
   getSessionRow,
-  resumeKickoffLine,
 } from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
 import { deriveTitle, TITLE_MAX } from '../src/services/conversations'
@@ -493,13 +492,11 @@ describe('reading a conversation back', () => {
     ])
   })
 
-  /** Reopening a conversation re-sends the kickoff, wrapped in the resume framing. */
-  it('drops every kickoff, not just the first turn', async () => {
+  it('drops the native initial kickoff from the transcript', async () => {
     const id = seedSession([
       entry('user', KICKOFF_LINES.project),
       entry('assistant', 'What are we building?'),
       entry('user', 'offline mode'),
-      entry('user', resumeKickoffLine('project')),
       entry('assistant', 'We were slicing offline mode.'),
     ])
 

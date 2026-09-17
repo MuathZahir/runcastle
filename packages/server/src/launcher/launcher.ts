@@ -29,6 +29,7 @@ import { emit, emitForSession, emitProject } from '../services/events'
 import * as git from '../services/git'
 import {
   getFeatureRow,
+  listSessionsByFeature,
   projectForFeature,
   requireProjectById,
   rowToRun,
@@ -44,6 +45,7 @@ import {
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { noteResolvedMerge } from '../services/resolved-merge'
 import { serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import {
   activeProjectSession,
@@ -51,6 +53,8 @@ import {
   armSessionReadyWatchdog,
   createSessionRow,
   getSessionRow,
+  hasCompletedProjectSession,
+  kickoffLineFor,
   landProjectSession,
   lapInFlight,
   markSessionEnded,
@@ -60,15 +64,12 @@ import {
   reentryCount,
   reportProjectLanding,
   resumeCapExceeded,
-  resumeKickoffLine,
-  setKickoffOverride,
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
 
-// Re-exported for the `feature.resendKickoff` router: the launcher is the stable
-// import path for session-terminal behaviour (same arrangement as `endSession`).
-export { resendKickoff } from './sessions'
+const CODEX_RESUME_UNAVAILABLE_MESSAGE =
+  'no resumable conversation was recorded — starting a fresh session'
 
 // Re-exported so the `feature.endSession` router (W2) imports the real,
 // PTY-killing service from `../../launcher/launcher` per its coordination note —
@@ -401,13 +402,11 @@ export async function launchSession(
   let waypoint: Waypoint | undefined
   let resumeSessionId: string | undefined
   let resumeUnavailableFrom: string | undefined
-  // The row whose conversation is coming back. Kept because the resume framing
-  // must quote ITS original instruction, not the new session's — a revisit
-  // resumes whatever kind talked last (see `resumeKickoffLine`).
+  // The row whose conversation is coming back, used by the re-entry cap.
   let resumedFrom: SessionRow | undefined
   if (input.waypointId) {
     const before = getWaypoint(ctx, input.waypointId)
-    if (before.lastSessionId && !plan.explicit) {
+    if (before.lastSessionId) {
       resumedFrom = getSessionRow(ctx, before.lastSessionId) ?? undefined
       resumeSessionId = resumedFrom?.ccSessionId ?? undefined
       // No cc id recorded for the remembered session → nothing the CLI could
@@ -444,14 +443,12 @@ export async function launchSession(
       markSessionEnded(ctx, session.id)
       throw e
     }
-    if (!plan.explicit) {
-      const prior = mostRecentResumableSession(ctx, feature.id)
-      if (prior?.ccSessionId) {
-        resumedFrom = prior
-        resumeSessionId = prior.ccSessionId
-      } else {
-        resumeUnavailableFrom = 'revisit'
-      }
+    const prior = mostRecentResumableSession(ctx, feature.id)
+    if (prior?.ccSessionId) {
+      resumedFrom = prior
+      resumeSessionId = prior.ccSessionId
+    } else {
+      resumeUnavailableFrom = 'revisit'
     }
   }
 
@@ -463,9 +460,27 @@ export async function launchSession(
   // the conversation back up instead of starting cold from the docs. No prior
   // conversation is the ordinary first-launch case, so unlike waypoint/revisit
   // it gets no `resume_unavailable` note — there is nothing to be unavailable.
-  if (input.kind !== 'waypoint' && input.kind !== 'revisit' && !plan.explicit) {
+  if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
+    if (
+      !resumeSessionId &&
+      listSessionsByFeature(ctx, feature.id).some(
+        (prior) => prior.id !== session.id && prior.kind === input.kind && prior.status === 'ended',
+      )
+    ) {
+      resumeUnavailableFrom = input.kind
+    }
+  }
+
+  if (plan.explicit && resumeSessionId) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_skipped',
+      message: `starting the ${input.kind} session fresh — its explicit briefing replaces the prior conversation`,
+      data: { sessionId: session.id, kind: input.kind, resumeSessionId },
+    })
+    resumeSessionId = undefined
+    resumedFrom = undefined
   }
 
   // The re-entry cap: past a transcript size or a re-entry count, resuming costs
@@ -484,18 +499,9 @@ export async function launchSession(
     })
   }
 
-  // Stash the kickoff override BEFORE the session can go live — the kickoff is
-  // scheduled from `markSessionLive` (fired by the SessionStart hook), so it must
-  // be registered against the session id ahead of it. An explicit per-purpose
-  // briefing always wins; otherwise a resumed session gets the resume framing so
-  // the agent continues the conversation rather than restarting its opening move.
-  const kickoffLine =
-    plan.line ??
-    (resumeSessionId
-      ? resumeKickoffLine(input.kind, resumedFrom?.kind, resumedFrom?.runtime ?? runtime.id)
-      : undefined)
-  if (kickoffLine) setKickoffOverride(session.id, kickoffLine)
-
+  const kickoffLine = resumeSessionId
+    ? undefined
+    : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: `launching ${input.kind} session`,
@@ -516,7 +522,13 @@ export async function launchSession(
     })
   }
 
-  if (input.kind === 'revisit' && resumeUnavailableFrom) {
+  if (runtime.id === 'codex' && resumeUnavailableFrom) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
+  } else if (input.kind === 'revisit' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: 'no resumable conversation for this feature — revisiting fresh from the docs',
@@ -524,7 +536,7 @@ export async function launchSession(
     })
   }
 
-  if (waypoint && resumeUnavailableFrom) {
+  if (runtime.id !== 'codex' && waypoint && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
       message: `waypoint ${waypoint.seq} has no resumable conversation — starting fresh`,
@@ -545,6 +557,8 @@ export async function launchSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
+    kickoffLine,
   })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
@@ -557,10 +571,17 @@ export async function launchSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
+  const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
     waypoint,
     resumeSessionId,
   })
+  if (spawned && kickoffLine) {
+    emit(ctx, feature.id, {
+      type: 'session.kickoff',
+      message: `opening ${input.kind} session with its briefing`,
+      data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -648,22 +669,27 @@ export async function launchPrepareSession(
       message: `starting the preparation session fresh — ${capped.detail}; the recorded findings carry the state`,
       data: { sessionId: session.id, kind: 'prepare', ...capped },
     })
+  } else if (
+    runtime.id === 'codex' &&
+    !input.fresh &&
+    hasCompletedProjectSession(ctx, project.id, 'prepare')
+  ) {
+    emitProject(ctx, project.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
   }
 
   const prepare = await buildPrepareBrief(ctx, project)
 
-  // Two ways the default cold-start line is wrong here, both one line to fix.
-  // A resumed terminal used to get it typed into a conversation already
-  // mid-flight — `RESUME_KICKOFF_PREFIX` was wired only into `launchSession`,
-  // and this is the kind most likely to be resumed. And with nothing left open
-  // it said "Start by telling them which fields are still open" over a prompt
-  // that says to confirm and stop.
-  if (resumeSessionId) {
-    setKickoffOverride(session.id, resumeKickoffLine('prepare', 'prepare', runtime.id))
-  } else if (prepare.remainingKeys.length === 0) {
-    setKickoffOverride(session.id, prepareConfirmKickoffFor(runtime.id))
-  }
-
+  const kickoffLine = resumeSessionId
+    ? undefined
+    : kickoffLineFor(
+        'prepare',
+        prepare.remainingKeys.length === 0 ? prepareConfirmKickoffFor(runtime.id) : undefined,
+        runtime.id,
+      )
   const spec = await runtime.writeArtifacts({
     session,
     project,
@@ -673,6 +699,8 @@ export async function launchPrepareSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
+    kickoffLine,
   })
 
   if (opts.spawn === false) {
@@ -684,7 +712,16 @@ export async function launchPrepareSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emitProject(ctx, project.id, {
+      type: 'session.kickoff',
+      message: 'opening preparation session with its briefing',
+      data: { sessionId: session.id, kind: 'prepare', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -778,15 +815,28 @@ export async function launchDriveFixSession(
       message: 'resuming the previous drive-fix conversation — it already knows what it tried',
       data: { sessionId: session.id, kind: 'drive-fix', resumeSessionId },
     })
-    setKickoffOverride(session.id, resumeKickoffLine('drive-fix', 'drive-fix', runtime.id))
   } else if (capped) {
     emit(ctx, feature.id, {
       type: 'session.resume_capped',
       message: `starting the drive-fix session fresh — ${capped.detail}; the failure is in the brief`,
       data: { sessionId: session.id, kind: 'drive-fix', ...capped },
     })
+  } else if (
+    runtime.id === 'codex' &&
+    listSessionsByFeature(ctx, feature.id).some(
+      (prior) => prior.id !== session.id && prior.kind === 'drive-fix' && prior.status === 'ended',
+    )
+  ) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
+      data: { sessionId: session.id },
+    })
   }
 
+  const kickoffLine = resumeSessionId
+    ? undefined
+    : kickoffLineFor('drive-fix', undefined, runtime.id)
   const spec = await runtime.writeArtifacts({
     session,
     project,
@@ -802,6 +852,8 @@ export async function launchDriveFixSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
+    kickoffLine,
   })
 
   if (opts.spawn === false) {
@@ -815,7 +867,16 @@ export async function launchDriveFixSession(
 
   // No docs watch (the `feature` argument): this session repairs the
   // environment and never writes the feature's docs.
-  spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emit(ctx, feature.id, {
+      type: 'session.kickoff',
+      message: 'opening drive-fix session with its briefing',
+      data: { sessionId: session.id, kind: 'drive-fix', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -914,16 +975,18 @@ export async function launchProjectSession(
   } else if (resumeRowId) {
     emitProject(ctx, project.id, {
       type: 'session.resume_unavailable',
-      message: 'that conversation was never picked up by Claude Code — starting a new chat instead',
-      data: { sessionId: session.id, resumedFrom: resumeRowId },
+      message:
+        runtime.id === 'codex'
+          ? CODEX_RESUME_UNAVAILABLE_MESSAGE
+          : 'that conversation was never picked up by Claude Code — starting a new chat instead',
+      data: {
+        sessionId: session.id,
+        ...(runtime.id === 'codex' ? {} : { resumedFrom: resumeRowId }),
+      },
     })
   }
 
-  // Same gap as prepare: a resumed project chat got its cold-start line typed
-  // into a live conversation. Quotes the project line, which is also the
-  // resumed row's own — a project session only ever resumes another one.
-  if (resumeSessionId) setKickoffOverride(session.id, resumeKickoffLine('project', 'project', runtime.id))
-
+  const kickoffLine = resumeSessionId ? undefined : kickoffLineFor('project', undefined, runtime.id)
   const spec = await runtime.writeArtifacts({
     session,
     project,
@@ -933,6 +996,8 @@ export async function launchProjectSession(
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
+    kickoffLine,
     // Decision 18: whole-repo write access voids the acceptEdits justification.
     permissionMode: 'default',
   })
@@ -946,7 +1011,16 @@ export async function launchProjectSession(
     return { sessionId: session.id }
   }
 
-  spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, { resumeSessionId })
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emitProject(ctx, project.id, {
+      type: 'session.kickoff',
+      message: 'opening project session with its briefing',
+      data: { sessionId: session.id, kind: 'project', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
   return { sessionId: session.id }
 }
 
@@ -1135,6 +1209,9 @@ export function handlePtyExit(
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)
+  if (session.runtime === 'codex' && feature) {
+    void noteResolvedMerge(ctx, session, feature).catch(() => {})
+  }
   if (diedBeforeLive && meta.resumeSessionId) {
     const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
     emitForSession(ctx, session, {
@@ -1165,7 +1242,8 @@ export function handlePtyExit(
  *
  * The PTY is registered by session id and the WS endpoint streams it. On process
  * exit we mark the session ended and emit `session.pty_exited`. A spawn failure
- * is surfaced as an event, never thrown.
+ * is surfaced as an event, never thrown — it comes back as `false`, which is how
+ * callers know no CLI ever received the argv and so no kickoff was delivered.
  */
 function spawnEmbeddedPty(
   ctx: AppCtx,
@@ -1175,7 +1253,7 @@ function spawnEmbeddedPty(
   runtime: AgentRuntimeAdapter,
   spec: RuntimeLaunchSpec,
   meta: SpawnMeta = {},
-): void {
+): boolean {
   const { file, args } = spawnTargetFor(runtime.resolveBinary(), spec.argv)
   const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
   for (const key of spec.envScrub) delete env[key]
@@ -1201,6 +1279,7 @@ function spawnEmbeddedPty(
     // a terminal that never reports ready must say so instead of sitting there
     // looking healthy.
     armSessionReadyWatchdog(ctx, session)
+    return true
   } catch (err) {
     // A session that never got a process must not linger `launching` — the
     // one-live-session guard reads session rows, so a leaked row would block
@@ -1212,5 +1291,6 @@ function spawnEmbeddedPty(
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,
       data: { sessionId: session.id, mode: 'embedded' },
     })
+    return false
   }
 }

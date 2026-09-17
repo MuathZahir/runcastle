@@ -5,7 +5,6 @@ import {
   endSession,
   launchDriveFixSession,
   launchSession,
-  resendKickoff,
   workWaypoint,
 } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
@@ -113,14 +112,6 @@ export const featureRouter = router({
   converge: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => converge(ctx, { featureId: input.featureId })),
-
-  // Re-type a live session's kickoff/briefing into its terminal ("Send briefing"
-  // in the session strip). The escape hatch for a briefing the TUI swallowed —
-  // a startup dialog eating the keystrokes leaves a terminal that looks fine and
-  // was never told what it is there for.
-  resendKickoff: publicProcedure
-    .input(z.object({ sessionId: z.string() }))
-    .mutation(({ ctx, input }) => resendKickoff(ctx, input.sessionId)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

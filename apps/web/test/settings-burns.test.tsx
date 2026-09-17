@@ -66,6 +66,7 @@ vi.mock('../src/trpc', () => {
           }),
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
+        imageBuildTarget: { useQuery: () => ({ data: undefined }) },
         startTerminal: { useMutation: mutation },
         afkToken: { useMutation: mutation },
       },
