@@ -10,7 +10,7 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { GateError } from '../src/errors'
 import { emit, listAfter } from '../src/services/events'
-import { retryTicket } from '../src/services/features'
+import { agenticReview, retryTicket } from '../src/services/features'
 import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
@@ -657,13 +657,7 @@ describe('retryTicket', () => {
     await expect(retryTicket(ctx, a.id)).rejects.toThrow(/run is live/)
   })
 
-  // A review whose drive was refused over the human's uncommitted files still
-  // delivers its repo-only pass, so it lands `done` — the one non-failed ticket
-  // the retry accepts, and only once the human has cleaned up (decisions §6).
-  describe('a review whose drive was denied on a dirty tree', () => {
-    const ATTEMPT_BRANCH = 'runcastle/ticket/demo/1-rev1'
-
-    /** A feature at review, its finished run, and the denial that run recorded. */
+  describe('agenticReview', () => {
     function seedDeniedReview(dir: string, opts: { denied?: boolean } = {}) {
       const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
         phase: 'review',
@@ -695,75 +689,31 @@ describe('retryTicket', () => {
       return { featureId, review }
     }
 
-    it('resets it and burns from its preserved chain once the tree is clean', async () => {
-      const { dir, g } = await initRepoWithFeature()
-      await seedAttemptBranch(dir, g, ATTEMPT_BRANCH, 'review.txt', '2026-08-01T00:00:00Z')
-      const { review } = seedDeniedReview(dir)
-      updateTicket(ctx, review.id, { attemptBranch: ATTEMPT_BRANCH })
-
-      const res = await retryTicket(ctx, review.id)
+    it('mints a fresh review pass on the current lap and starts a burn', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { featureId, review } = seedDeniedReview(dir)
+      const res = await agenticReview(ctx, featureId)
       expect(res.runId).toMatch(/^run/)
-      expect(res.retried).toEqual([review.seq])
-      expect(res.resumedFrom).toBe(ATTEMPT_BRANCH)
-      expect(res.preservedCommits).toBe(1)
-
-      const after = getTicket(ctx, review.id)
-      expect(after.status).toBe('pending')
-      expect(after.attemptBranch).toBe(ATTEMPT_BRANCH)
-    })
-
-    it('still starts cold on fresh', async () => {
-      const { dir, g } = await initRepoWithFeature()
-      await seedAttemptBranch(dir, g, ATTEMPT_BRANCH, 'review.txt', '2026-08-01T00:00:00Z')
-      const { review } = seedDeniedReview(dir)
-      updateTicket(ctx, review.id, { attemptBranch: ATTEMPT_BRANCH })
-
-      const res = await retryTicket(ctx, review.id, { fresh: true })
-      expect(res.resumedFrom).toBeNull()
-      expect(getTicket(ctx, review.id).attemptBranch).toBeUndefined()
-      expect(await listTicketAttemptBranches(dir, 'demo', 1)).toEqual([])
+      const minted = listByFeature(ctx, featureId).find((ticket) => ticket.id !== review.id)
+      expect(minted).toMatchObject({ kind: 'review', passKind: 'review', lap: 1, status: 'pending' })
+      expect(minted?.goal).toMatch(/full, independent review/)
+      expect(listAfter(ctx, featureId, 0).some((event) => event.type === 'review.agentic-minted')).toBe(true)
     })
 
     it('refuses while the tree is still dirty, naming what is in the way', async () => {
       const { dir } = await initRepoWithFeature()
-      const { review } = seedDeniedReview(dir)
+      const { featureId } = seedDeniedReview(dir)
       writeFileSync(join(dir, 'notes.md'), 'wip\n')
       writeFileSync(join(dir, 'scratch.txt'), 'wip\n')
 
-      await expect(retryTicket(ctx, review.id)).rejects.toThrow(GateError)
-      await expect(retryTicket(ctx, review.id)).rejects.toThrow(
+      await expect(agenticReview(ctx, featureId)).rejects.toThrow(GateError)
+      await expect(agenticReview(ctx, featureId)).rejects.toThrow(
         /still dirty.*2 file\(s\) first: notes\.md, scratch\.txt/,
       )
-      // Refused before anything moved: no reset, no burn.
-      expect(getTicket(ctx, review.id).status).toBe('done')
+      expect(listByFeature(ctx, featureId)).toHaveLength(1)
     })
 
-    it('lands runcastle’s own docs first, so a stray brief never blocks it', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { review } = seedDeniedReview(dir)
-      mkdirSync(join(dir, 'docs', 'features', 'demo'), { recursive: true })
-      writeFileSync(join(dir, 'docs', 'features', 'demo', 'brief.md'), '# brief\n')
-
-      const res = await retryTicket(ctx, review.id)
-      expect(res.retried).toEqual([review.seq])
-      expect(getTicket(ctx, review.id).status).toBe('pending')
-    })
-
-    it('refuses a done review ticket with no denial on record', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { review } = seedDeniedReview(dir, { denied: false })
-      await expect(retryTicket(ctx, review.id)).rejects.toThrow(/only failed tickets/)
-    })
-
-    it('refuses a done implementation ticket of the same feature', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { featureId } = seedDeniedReview(dir)
-      const [impl] = storeTickets(ctx, featureId, [ticketInput('impl')])
-      updateTicket(ctx, impl.id, { status: 'done' })
-      await expect(retryTicket(ctx, impl.id)).rejects.toThrow(/only failed tickets/)
-    })
-
-    it('refuses once a later run has superseded the denial', async () => {
+    it('refuses while a run is live without minting or queueing', async () => {
       const { dir } = await initRepoWithFeature()
       const { featureId, review } = seedDeniedReview(dir)
       ctx.db
@@ -772,13 +722,19 @@ describe('retryTicket', () => {
           id: newId('run'),
           featureId,
           workflow: 'ticket-burner',
-          status: 'succeeded',
-          startedAt: Date.now() + 60_000,
-          endedAt: Date.now() + 60_000,
+          status: 'running',
+          startedAt: Date.now(),
+          endedAt: null,
           summary: null,
         })
         .run()
+      await expect(agenticReview(ctx, featureId)).rejects.toThrow(/run is live/)
+      expect(listByFeature(ctx, featureId)).toEqual([expect.objectContaining({ id: review.id })])
+    })
 
+    it('keeps ticket retry failed-only after a dirty denial', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { review } = seedDeniedReview(dir)
       await expect(retryTicket(ctx, review.id)).rejects.toThrow(/only failed tickets/)
     })
   })
