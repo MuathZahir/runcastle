@@ -996,6 +996,7 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
   it('awaits recorder confirmation before releasing the drive or returning', async () => {
     const order: string[] = []
     let finishReap: (() => void) | undefined
+    let reapCalls = 0
     const outcome = executeReviewTicket(makeCtx([review(3)]), review(3), reviewDeps({
       runAgent: async (options) => {
         expect(options.agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_3')
@@ -1003,6 +1004,11 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
         order.push('agent')
       },
       recorderReap: async () => {
+        reapCalls += 1
+        if (reapCalls === 1) {
+          order.push('pre-wipe-reap')
+          return { confirmed: true }
+        }
         order.push('reap-start')
         await new Promise<void>((resolve) => { finishReap = resolve })
         order.push('reap-end')
@@ -1012,7 +1018,7 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
     }))
 
     for (let i = 0; i < 20 && !finishReap; i++) await Promise.resolve()
-    expect(order).toEqual(['agent', 'reap-start'])
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start'])
     let returned = false
     void outcome.then(() => { returned = true })
     await Promise.resolve()
@@ -1020,7 +1026,7 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
 
     finishReap?.()
     expect(await outcome).toMatchObject({ status: 'done' })
-    expect(order).toEqual(['agent', 'reap-start', 'reap-end', 'drive-release'])
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start', 'reap-end', 'drive-release'])
   })
 
   it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {

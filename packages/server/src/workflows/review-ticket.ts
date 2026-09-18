@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
@@ -267,16 +267,88 @@ interface ReviewArtifacts {
   walkthroughPath: string
 }
 
-function writeReviewArtifacts(
+export interface ReviewDirectoryFs {
+  readonly mkdir: (path: string, options: { recursive: true }) => unknown
+  readonly readDir: (path: string) => string[]
+  readonly rename: (oldPath: string, newPath: string) => unknown
+  readonly remove: (path: string, options: { recursive: true; force: true }) => unknown
+}
+
+export interface PrepareReviewDirectoryOptions {
+  readonly now?: () => number
+  readonly fs?: Partial<ReviewDirectoryFs>
+}
+
+const REVIEW_DIRECTORY_FS: ReviewDirectoryFs = {
+  mkdir: mkdirSync,
+  readDir: readdirSync,
+  rename: renameSync,
+  remove: rmSync,
+}
+
+/** Wipe one attempt's artifacts, preserving progress when Windows locks a child file. */
+export function prepareReviewDirectory(
+  dir: string,
+  options: PrepareReviewDirectoryOptions = {},
+): void {
+  const fs = { ...REVIEW_DIRECTORY_FS, ...options.fs }
+  const parent = dirname(dir)
+  const stalePrefix = `${basename(dir)}.stale-`
+
+  try {
+    for (const sibling of fs.readDir(parent)) {
+      if (!sibling.startsWith(stalePrefix)) continue
+      try {
+        fs.remove(join(parent, sibling), { recursive: true, force: true })
+      } catch {
+        // A previous recorder may still hold this corpse; the next pass retries it.
+      }
+    }
+  } catch {
+    // The parent need not exist on the first review attempt.
+  }
+
+  try {
+    fs.remove(dir, { recursive: true, force: true })
+  } catch (removeError) {
+    const staleDir = `${dir}.stale-${(options.now ?? Date.now)()}`
+    try {
+      fs.rename(dir, staleDir)
+    } catch (renameError) {
+      throw new Error(
+        `Review directory ${dir} is held open by another process and could not be moved aside. ` +
+        'Kill the agent-browser daemon with taskkill /PID <pid> /T /F, then retry.',
+        { cause: renameError instanceof Error ? renameError : removeError },
+      )
+    }
+  }
+  fs.mkdir(dir, { recursive: true })
+}
+
+export interface PrepareReviewArtifactsDirectoryOptions extends PrepareReviewDirectoryOptions {
+  readonly recorderReap?: typeof reapRecorder
+}
+
+/** Reap the deterministic session before touching the directory it may hold open. */
+export async function prepareReviewArtifactsDirectory(
+  ticketId: string,
+  dir: string = reviewDir(ticketId),
+  options: PrepareReviewArtifactsDirectoryOptions = {},
+): Promise<void> {
+  await (options.recorderReap ?? reapRecorder)(ticketId)
+  prepareReviewDirectory(dir, options)
+}
+
+async function writeReviewArtifacts(
   ticket: Ticket,
   runId: string,
   config: RuncastleConfig,
-): ReviewArtifacts {
+  recorderReap: typeof reapRecorder = reapRecorder,
+): Promise<ReviewArtifacts> {
   const dir = reviewDir(ticket.id)
   // A re-burn of the same ticket must not inherit the last attempt's DIGEST.md
   // or BLOCKED.md — that is how a failed review reports success.
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
+  await prepareReviewArtifactsDirectory(ticket.id, dir, { recorderReap })
   const mcpConfigPath = join(dir, 'mcp.json')
   const mcpConfig = renderRunMcpConfig(runId, config)
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
@@ -406,7 +478,7 @@ async function reviewTicketOutcome(
     )
   }
 
-  const artifacts = writeReviewArtifacts(ticket, ctx.runId, deps.config)
+  const artifacts = await writeReviewArtifacts(ticket, ctx.runId, deps.config, deps.recorderReap)
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
