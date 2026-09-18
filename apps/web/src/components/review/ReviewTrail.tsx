@@ -2,7 +2,6 @@ import type { FindingStatus, TicketKind } from '@runcastle/core'
 import { Button, SectionTitle } from '../../ui'
 import {
   lapTrail,
-  type CheckTone,
   type ReviewPassFigure,
   type TrailEntry,
   type TrailOutcome,
@@ -27,24 +26,25 @@ import { fmtDateTime, relTimeAgo } from '../../lib/format'
  * observations render only in the Full account (review-arrival-is-legible d8).
  */
 
-const CHIP_TONE: Record<CheckTone, string> = {
-  ok: 'border-ok/45 text-ok',
-  warn: 'border-warn/45 text-warn',
-  danger: 'border-danger/45 text-danger',
-  idle: 'border-hairline text-text-3',
-}
+const CHIP = 'inline-flex items-center rounded-pill border bg-panel px-3 py-1 font-mono text-xs'
 
-/** The outcome chip's words and tone. Null where the pass recorded no verdict. */
-function outcomeChip(outcome: TrailOutcome): { label: string; tone: CheckTone } | null {
+/**
+ * The outcome chip's words and colour — a whole literal class per outcome, not
+ * an interpolated one, so Tailwind's scanner can see it (STYLE.md). Null where
+ * the pass recorded no verdict at all: a pre-feature pass and a lap nothing has
+ * finished in both get no chip rather than an invented one.
+ */
+function outcomeChip(outcome: TrailOutcome): { label: string; className: string } | null {
   switch (outcome.kind) {
     case 'verified':
-      return { label: outcome.mode ? `Verified · ${outcome.mode}` : 'Verified', tone: 'ok' }
+      return {
+        label: outcome.mode ? `Verified · ${outcome.mode}` : 'Verified',
+        className: 'border-ok/45 text-ok',
+      }
     case 'unverified':
-      return { label: 'Unverified', tone: 'warn' }
+      return { label: 'Unverified', className: 'border-warn/45 text-warn' }
     case 'could-not-run':
-      return { label: 'Could not run', tone: 'warn' }
-    // A pass from before the verdict columns, or none finished yet: no chip
-    // rather than an invented one.
+      return { label: 'Could not run', className: 'border-warn/45 text-warn' }
     case 'none':
       return null
   }
@@ -82,13 +82,7 @@ function LapEntry({
             reviewed {relTimeAgo(entry.completedAt)}
           </span>
         )}
-        {chip && (
-          <span
-            className={`inline-flex items-center rounded-pill border bg-panel px-3 py-1 font-mono text-xs ${CHIP_TONE[chip.tone]}`}
-          >
-            {chip.label}
-          </span>
-        )}
+        {chip && <span className={`${CHIP} ${chip.className}`}>{chip.label}</span>}
         <span className="flex-1" />
         {/* What burned, as a figure — the run view holds the lanes themselves. */}
         {onViewRun ? (
@@ -173,10 +167,10 @@ export function ReviewTrail({
   /** Go to the run view, where the lap's lanes are. Absent where it cannot. */
   onViewRun?: () => void
 }) {
-  const entries = lapTrail({ passes, tickets, findings, notes, currentLap })
   // Nothing has ever been reviewed: the trail would be a bordered box saying a
   // lap exists, which the page says already (decision 6's no-dead-cards rule).
   if (passes.length === 0) return null
+  const entries = lapTrail({ passes, tickets, findings, notes, currentLap })
 
   return (
     <section id="lap-trail" className="flex flex-col gap-4">
