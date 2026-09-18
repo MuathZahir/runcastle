@@ -127,17 +127,16 @@ export async function startRun(
     type: 'run.started',
     message: `run started (${workflowId})`,
     runId,
-    // Branch-claiming schedulers own this opening snapshot even before a lane
-    // starts. Keeping it on the run event extends the existing event-backed
-    // run/ticket join without inventing a second persistence model.
+    // The lanes this run opens with, stated before any of them starts: they are
+    // CLAIMED from here on (`runClaimedTicketIds`), and until this snapshot
+    // existed nothing outside the scheduler's own memory could name a ticket the
+    // run had not yet reached. On the event rather than on a column for the
+    // reason the run/ticket join already is: a ticket outlives the run.
     data: {
       workflow: workflowId,
-      ticketIds:
-        workflowId === 'ticket-burner'
-          ? tickets
-              .filter((ticket) => ticket.status === 'pending' || ticket.status === 'burning')
-              .map((ticket) => ticket.id)
-          : [],
+      ...(workflowClaimsFeatureBranch(workflowId)
+        ? { ticketIds: tickets.filter((t) => t.status === 'pending').map((t) => t.id) }
+        : {}),
     },
   })
 

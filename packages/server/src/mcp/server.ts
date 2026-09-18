@@ -55,7 +55,12 @@ import {
   quickChange,
 } from '../services/features'
 import { burnWarnings } from '../services/burn-warnings'
-import { type CarriedDefect, type ReviewEvidence, carriedWork } from '../services/carried-work'
+import {
+  type CarriedDefect,
+  type ReviewEvidence,
+  carriedWork,
+  currentLapReviewEvidence,
+} from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
@@ -78,7 +83,7 @@ import {
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
-import { activeBurnClaim, runTicketIds } from '../services/runs'
+import { activeBurnClaim, latestBurn, runClaimedTicketIds } from '../services/runs'
 import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
 import {
   cancelTicket,
@@ -333,22 +338,39 @@ export interface FeatureContext {
    * Empty outside a lap (lap 1, or a previous lap whose review never burned).
    */
   reviewEvidence: ReviewEvidence[]
-  /** The newest ticket-burner run, summarized from its event-backed ticket set. */
+  /**
+   * The feature's newest burn, however it ended — the one piece of the current
+   * state that lives on the `runs` table and reaches no session otherwise
+   * (decisions.md #7). Absent on a feature that has never burned, which is the
+   * only thing its absence means.
+   */
   latestRun?: {
     status: RunStatusT
+    /** Of the tickets that burn held, how many finished `done` / `failed`. */
     ticketsLanded: number
     ticketsFailed: number
+    /** The first line of each failed ticket's error — the headline, not the log. */
     errorHeadlines: string[]
   }
-  /** What the current lap's review ticket amounted to. */
-  reviewOutcome:
-    | { state: 'none' }
-    | { state: 'ran'; findings: number }
-    | { state: 'failed'; reason?: string }
-    | { state: 'waiting'; status: TicketStatusT }
-  /** Findings reported in the current lap, including resolved ones. */
+  /**
+   * What THIS lap's review passes did and where each one left its evidence —
+   * the same shape and the same paths-not-content contract as
+   * {@link reviewEvidence} above, which speaks for the previous lap. Empty until
+   * a review pass of this lap has burned.
+   */
+  currentLapReview: ReviewEvidence[]
+  /**
+   * Every finding this lap's review reported, resolved ones included — the
+   * record of the pass, where `openDefects` and `carriedDefects` are the work it
+   * left. Empty when this lap's review reported nothing.
+   */
   findings: ReviewFinding[]
-  /** Test-drive observations captured in the current lap. */
+  /**
+   * The test-drive notes that still stand: this lap's, plus anything an earlier
+   * lap carried rather than answered. Keyed on status rather than on the lap
+   * number alone for the reason `carriedWork` documents — a note carried forward
+   * keeps the lap that captured it, and asking only for this lap's would lose it.
+   */
   testNotes: TestNote[]
   tickets: FeatureContextTicket[]
   /**
@@ -386,6 +408,36 @@ const DOCS_NOTE =
   'it anyway if a ticket points at it.'
 
 /**
+ * The newest burn as a headline, or nothing at all when the feature has never
+ * burned — spread into the payload, so "never burned" is a missing key rather
+ * than a run-shaped object full of zeroes.
+ *
+ * Counted over the tickets that run HELD rather than over the feature's ledger:
+ * a lap's tickets outlive the burn that ran them, and the question the chat is
+ * answering ("how did the last burn go?") is about one run's lanes.
+ */
+function latestBurnSummary(
+  ctx: AppCtx,
+  featureId: string,
+  tickets: Ticket[],
+): Pick<FeatureContext, 'latestRun'> {
+  const burn = latestBurn(ctx, featureId)
+  if (!burn) return {}
+  const held = new Set(runClaimedTicketIds(ctx, burn.id))
+  const burned = tickets.filter((ticket) => held.has(ticket.id))
+  return {
+    latestRun: {
+      status: burn.status,
+      ticketsLanded: burned.filter((ticket) => ticket.status === 'done').length,
+      ticketsFailed: burned.filter((ticket) => ticket.status === 'failed').length,
+      errorHeadlines: burned.flatMap((ticket) =>
+        ticket.status === 'failed' && ticket.error ? [ticket.error.split(/\r?\n/, 1)[0]] : [],
+      ),
+    },
+  }
+}
+
+/**
  * Everything true of the feature right now, sized to be READ rather than
  * skimmed.
  *
@@ -401,22 +453,9 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
   const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
-  const testNotes = listTestNotes(ctx, feature.id).filter((note) => note.lap === feature.lap)
-  const latestBurn = listRunsByFeature(ctx, feature.id).find((run) => run.workflow === 'ticket-burner')
-  const latestRunTickets = latestBurn
-    ? allTickets.filter((ticket) => runTicketIds(ctx, latestBurn.id).includes(ticket.id))
-    : []
-  const review = [...allTickets]
-    .filter((ticket) => ticket.lap === feature.lap && ticket.kind === 'review')
-    .sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq)
-    .at(-1)
-  const reviewOutcome: FeatureContext['reviewOutcome'] = !review
-    ? { state: 'none' }
-    : review.status === 'failed'
-      ? { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
-      : review.status === 'done'
-        ? { state: 'ran', findings: findings.length }
-        : { state: 'waiting', status: review.status }
+  const testNotes = listTestNotes(ctx, feature.id).filter(
+    (note) => note.lap === feature.lap || note.status === 'carried',
+  )
 
   // The carry channel decides two things here: which defects the payload states
   // outright, and whether `test-notes.md` may still claim to be already-triaged
@@ -457,19 +496,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     openDefects: carried.openDefects,
     carriedDefects: carried.carriedDefects,
     reviewEvidence: carried.reviewEvidence,
-    ...(latestBurn
-      ? {
-          latestRun: {
-            status: latestBurn.status,
-            ticketsLanded: latestRunTickets.filter((ticket) => ticket.status === 'done').length,
-            ticketsFailed: latestRunTickets.filter((ticket) => ticket.status === 'failed').length,
-            errorHeadlines: latestRunTickets.flatMap((ticket) =>
-              ticket.status === 'failed' && ticket.error ? [ticket.error.split(/\r?\n/, 1)[0]] : [],
-            ),
-          },
-        }
-      : {}),
-    reviewOutcome,
+    ...latestBurnSummary(ctx, feature.id, allTickets),
+    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
     findings,
     testNotes,
     tickets: allTickets.map(stripDigest),
@@ -674,7 +702,17 @@ export function toolEmitTickets(
   }
 }
 
-/** Refuse cross-feature ticket surgery: the id must belong to THIS session's feature. */
+/**
+ * The two refusals every ticket edit passes: the id must belong to THIS
+ * session's feature, and no live burn may already hold that ticket.
+ *
+ * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
+ * across state changes — a burn starts and finishes under it — so the audience
+ * table, which is built once at spawn, cannot speak for what is running now. It
+ * is deliberately narrow: only the lanes the live burn holds are frozen, and
+ * every other ticket stays editable mid-burn, which is how the chat shapes the
+ * NEXT burn's work while this one runs.
+ */
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
   // Scope first, existence second: a session with no feature has no business
   // asking about any ticket, and telling it "that id doesn't exist" would send
@@ -2204,8 +2242,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Everything true of the current feature: the feature row, its phase and lap, its ' +
           'canonical docs (brief, map, decisions, spec) in full, an INDEX of every other doc in ' +
-          'docs/features/<slug>/ (read one with `read_feature_doc`), its tickets, latest burn ' +
-          'summary, and the current lap’s review outcome, findings and test notes. Mapped ' +
+          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. `latestRun` ' +
+          'is how the newest burn went — its status, how many tickets landed or failed, and each ' +
+          'failure’s headline — absent only on a feature that has never burned. `currentLapReview` ' +
+          'says what THIS lap’s review passes did and where each left its evidence, `findings` is ' +
+          'every defect they reported, and `testNotes` the drive notes that still stand. Mapped ' +
           'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
           'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
           'not the burner’s post-hoc digest — ask `get_work_record` for that. `reviewEvidence` ' +
