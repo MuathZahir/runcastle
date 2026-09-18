@@ -7,14 +7,19 @@ import type { ReviewArtifacts } from '../src/lib/reviews'
 import { full } from './fixtures'
 
 /**
- * Picking a recording off the lap trail (review-as-a-lap-trail decision 4).
+ * The review page's two clicks that cross a band: picking a recording off the
+ * lap trail, and asking for another review pass (review-as-a-lap-trail
+ * decisions 4 and 6).
  *
- * The seam is the review page, because the pick crosses two bands: the trail
- * below chooses and the stage above plays, and what connects them is state the
- * page holds. Tier 2 for the same reason the expand is — a click is not a
- * string, and which recording is playing afterwards is not in the first render.
+ * The seam is the page, because both cross it — the trail below picks and the
+ * stage above plays, and the mint is wired at the orchestrator and handed to
+ * the state line. Tier 2 for the same reason the expand is: a click is not a
+ * string, and what happens afterwards is not in the first render.
  */
-const state = vi.hoisted(() => ({ recordings: [] as ReviewArtifacts[] }))
+const state = vi.hoisted(() => ({
+  recordings: [] as ReviewArtifacts[],
+  agenticReview: vi.fn(),
+}))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
@@ -64,7 +69,9 @@ vi.mock('../src/trpc', () => {
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: undefined }) },
         testDrive: { useMutation: mutation },
-        agenticReview: { useMutation: mutation },
+        agenticReview: {
+          useMutation: () => ({ mutate: state.agenticReview, isPending: false }),
+        },
         fixDrive: { useMutation: mutation },
         endSession: { useMutation: mutation },
       },
@@ -106,6 +113,7 @@ const LAP_2 = pass({ ticketId: 'tkt_2', seq: 9, lap: 2, completedAt: 5000, video
 
 beforeEach(() => {
   state.recordings = [LAP_1, LAP_2]
+  state.agenticReview.mockClear()
   // The player HEADs its own recording for a size; the network is the one true
   // boundary here and no test plays real media.
   vi.stubGlobal(
@@ -159,5 +167,14 @@ describe('picking a recording off the lap trail', () => {
     page(3)
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
     expect(screen.getByText(/Lap 1 · Walkthrough/)).toBeTruthy()
+  })
+})
+
+/** Decision 6: the button beside Test drive mints a pass and burns it. */
+describe('the Agentic review button', () => {
+  it('asks the server to mint a fresh pass for this feature', () => {
+    page()
+    fireEvent.click(screen.getByRole('button', { name: 'Agentic review' }))
+    expect(state.agenticReview).toHaveBeenCalledWith({ featureId: 'feat_1' })
   })
 })
