@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { modelRoster } from '@runcastle/core'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
+  ACTION_KINDS,
   activeSession,
   awaitingCheckIn,
   burnInterruption,
@@ -171,13 +172,101 @@ describe('duplicateTitleWarning', () => {
 })
 
 /**
+ * One chat per feature, decision 8 — the whole point of this feature, read off
+ * the four state resolvers at once.
+ *
+ * The human used to meet three differently-named doors (Start session, Revisit,
+ * Ask a question) and two states with no door at all: during a burn every
+ * terminal was refused because the run held the branch, and review's only road
+ * to an agent was Rethink, which bumped the lap. Now every state carries the
+ * same one-word door in the same place, and `chat` is the only launch kind the
+ * bar's vocabulary knows.
+ */
+describe('nextStep — the one Chat door, in all four states', () => {
+  const stateFull = (phase: string, over: Record<string, unknown> = {}) =>
+    ({ ...full({ phase } as never), ...over }) as FeatureFull
+
+  /**
+   * One bar per state, each in the shape that state is ordinarily met in — a
+   * build with something to burn, a review with a finished run. The two states
+   * whose ladder has nothing but the conversation left (a fresh planning, an
+   * empty build ledger) promote the door instead, and are covered below.
+   */
+  const SECONDARY_DOOR_STATES = [
+    ['building', { tickets: [{ id: 't1', seq: 1, status: 'pending', lap: 1, goal: 'Burn it.', context: 'Somewhere in the repo.' }] }],
+    ['review', { runs: [{ id: 'r1', status: 'succeeded', startedAt: 1 }] }],
+    ['shipped', {}],
+  ] as const
+
+  it('carries Chat in every state, and never twice on one bar', () => {
+    const bars = [
+      // Planning with nothing written and nothing live promotes it, so the one
+      // door is the PRIMARY there.
+      nextStep(stateFull('planning'), { driving: false }),
+      ...SECONDARY_DOOR_STATES.map(([phase, over]) =>
+        nextStep(stateFull(phase, over), { driving: false }),
+      ),
+    ]
+    for (const ns of bars) {
+      expect([ns.primary, ...ns.secondary].filter((a) => a?.kind === 'chat')).toHaveLength(1)
+    }
+  })
+
+  it('puts Chat first among the secondaries wherever it is not the primary', () => {
+    for (const [phase, over] of SECONDARY_DOOR_STATES) {
+      const ns = nextStep(stateFull(phase, over), { driving: false })
+      expect(ns.primary?.kind).not.toBe('chat')
+      // Decision 8 — one word, the same place, never reworded per state.
+      expect(ns.secondary[0]).toEqual(CHAT_ACTION)
+    }
+  })
+
+  // The promoted door keeps the resume-aware wording its slot always had, and
+  // is the only place the label reads as anything but "Chat".
+  it('promotes the door to primary where talking is genuinely the next step', () => {
+    expect(nextStep(stateFull('planning'), { driving: false }).primary).toEqual({
+      label: 'Start session',
+      kind: 'chat',
+    })
+    expect(nextStep(stateFull('building'), { driving: false }).primary).toEqual({
+      label: 'Open a session',
+      kind: 'chat',
+    })
+  })
+
+  // The previously-impossible door (spec, "Coexistence with a burn"): the bar
+  // used to carry Cancel run alone, and every terminal was refused outright.
+  it('offers Chat, enabled, beside Cancel run while a burn is actually running', () => {
+    const burning = stateFull('building', {
+      tickets: [{ id: 't1', seq: 1, status: 'burning', lap: 1, goal: 'Burn it.', context: 'Somewhere in the repo.' }],
+      runs: [{ id: 'r1', status: 'running', startedAt: 1 }],
+    })
+    const ns = nextStep(burning, { driving: false })
+
+    expect(ns.primary).toEqual({ label: 'Cancel run', kind: 'cancelRun', danger: true })
+    expect(ns.busy).toBe(true)
+    expect(ns.secondary[0]).toEqual(CHAT_ACTION)
+    expect(ns.secondary[0]?.disabled).toBeUndefined()
+  })
+
+  // The vocabulary itself: a resolver can no longer name a door that the
+  // dispatcher has no case for, and the three collapsed kinds are gone from it.
+  it('knows chat and none of the three kinds it replaced', () => {
+    expect(ACTION_KINDS).toContain('chat')
+    for (const dead of ['startGrill', 'askQuestions', 'revisit']) {
+      expect(ACTION_KINDS as readonly string[]).not.toContain(dead)
+    }
+  })
+})
+
+/**
  * Reopening a terminal resumes its conversation, so the bar must say so. A
  * session row is `ended` the moment runcastle restarts (the PTY dies with the
  * server), but a row that reached `live` recorded a `ccSessionId` and the
  * launcher `--resume`s it on the next same-kind launch. The action is unchanged
  * either way — only the wording tells the human which one they'll get.
  */
-describe('nextStep — Resume vs Start wording for the grill', () => {
+describe('nextStep — Resume vs Start wording for the chat', () => {
   const grillFull = (opts: {
     phase?: string
     sessions?: unknown[]

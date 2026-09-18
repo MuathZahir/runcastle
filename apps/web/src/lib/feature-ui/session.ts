@@ -154,10 +154,10 @@ export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionL
   const name = sessionKindName(live)
   return {
     sessionId: live.id,
-    // A `revisit` past lap 1 is already named for its lap ("Lap 3"), so naming
-    // it again would read "Lap 3 session still live from lap 3".
-    text:
-      `${name} session still live from lap ${live.lap}`,
+    // The kind names itself and the lap is named once: the lap-numbered names
+    // ("Lap 3") went with the `revisit` kind, which read "Lap 3 session still
+    // live from lap 3".
+    text: `${name} session still live from lap ${live.lap}`,
     phase: sessionHome(live.kind),
   }
 }

@@ -103,7 +103,7 @@ export interface NextStep {
  * conflict (CONTEXT decision #9). Passed as the `launchSession` override, so the
  * chat agent — whose cwd IS the talk worktree checked out on the feature
  * branch — opens straight on the merge-into-feature resolution rather than
- * carrying on the conversation. Parameterized with the base branch, feature branch,
- * and conflicting files carried on the `merge.conflict` event.
+ * carrying on the conversation. Parameterized with the base branch, feature
+ * branch, and conflicting files carried on the `merge.conflict` event.
  */
 export type DraftBaseMissing = 'loading' | 'unpicked'
