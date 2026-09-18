@@ -15,8 +15,9 @@ import { fmtDateTime, relTimeAgo } from '../../lib/format'
  * burned (decision 7). The denied pass is not reset — it stays in the lap trail
  * as what it was.
  *
- * `onReview` is null where nothing on the page acts, and a button that could
- * only be refused is worse than no button (as `ConflictCard` says of its own).
+ * The mint needs no ticket of its own, so the action is unconditional now —
+ * where the old retry had to be handed the refused ticket and went missing
+ * when this lap had emitted none.
  *
  * Hook-free so its anatomy is testable without a tRPC provider, like its
  * neighbours in the slot; {@link ReviewDriveDeniedAlert} is the wired half.
@@ -36,8 +37,8 @@ export function ReviewDriveDeniedCard({
   busy: boolean
   /** Why the mint was turned down, in the server's words, or null. */
   refusal: string | null
-  /** Mint another review pass, or null where nothing on the page acts. */
-  onReview: (() => void) | null
+  /** Mint another review pass for this lap and burn it. */
+  onReview: () => void
   onDismiss: () => void
 }) {
   if (readonly) return null
@@ -79,11 +80,9 @@ export function ReviewDriveDeniedCard({
         </div>
       )}
       <div className="mt-4 flex items-center gap-2">
-        {onReview && (
-          <Button variant="solid" disabled={busy} onClick={onReview}>
-            {busy ? 'Starting…' : 'Agentic review'}
-          </Button>
-        )}
+        <Button variant="solid" disabled={busy} onClick={onReview}>
+          {busy ? 'Starting…' : 'Agentic review'}
+        </Button>
         <Button onClick={onDismiss}>Dismiss</Button>
       </div>
     </div>

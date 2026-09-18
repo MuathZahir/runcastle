@@ -181,10 +181,11 @@ describe('ReviewDriveDeniedCard', () => {
     expect(html).not.toContain('Retry review')
   })
 
-  /** Nothing on the page acts: no button rather than a dead one. */
-  it('drops the button when the page hands it no mint', () => {
-    const html = render({ onReview: null })
-    expect(html).not.toContain('Agentic review')
+  /** The mint needs no ticket, so the action is there whatever this lap ran —
+   *  the old retry went missing on a lap that had emitted no review ticket. */
+  it('offers the action whatever review tickets this lap emitted', () => {
+    const html = render()
+    expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
   })
 })

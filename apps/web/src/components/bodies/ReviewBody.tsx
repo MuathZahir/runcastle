@@ -271,7 +271,9 @@ export function ReviewBody({
   // This lap's review ran and verified nothing (decision 5) — the page's top
   // line, in runcastle's own words. A history view states nothing and offers
   // nothing (decision 33a), so the banner is the live page's alone.
-  const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
+  const unverified = readonly
+    ? null
+    : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
   // One burn at a time is a hard rule the server enforces, so the control says
   // so rather than dead-ending on the click (findings F3). Same shape as the
   // Test drive control's occupied-slot reason beside it.
