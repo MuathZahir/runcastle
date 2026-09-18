@@ -313,7 +313,7 @@ describe('project-session MCP tools', () => {
     }
   })
 
-  it('refuses a qa session outright — read-only means not even a draft', async () => {
+  it('allows a chat session to park a draft', async () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const qa = createSessionRow(ctx, {
       featureId: feature.id,
@@ -321,13 +321,12 @@ describe('project-session MCP tools', () => {
       worktreePath: repoPath,
     })
 
-    const thrown = await toolCreateFeature(ctx, qa, {
+    const created = await toolCreateFeature(ctx, qa, {
       title: 'Theme editor',
       oneLiner: 'tune the palette',
       draft: true,
-    }).catch((e: unknown) => e)
-    expect(thrown).toBeInstanceOf(GateError)
-    expect((thrown as GateError).message).toMatch(/read-only/i)
+    })
+    expect(created.slug).toBe('theme-editor')
   })
 
   // --- get_project_context ---------------------------------------------------

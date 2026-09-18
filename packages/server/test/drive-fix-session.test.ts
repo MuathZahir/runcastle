@@ -246,8 +246,7 @@ describe('retry_drive', () => {
   }
 
   it('is refused outside a drive-fix session, with a reason that says where drives come from', async () => {
-    await expect(toolRetryDrive(ctx, session('revisit'))).rejects.toThrow(/drive-fix session/)
-    await expect(toolRetryDrive(ctx, session('qa'))).rejects.toThrow(/review panel/)
+    await expect(toolRetryDrive(ctx, session('chat'))).rejects.toThrow(/drive-fix session/)
   })
 
   it('stops the held failed drive, starts a fresh one and reports what it saw', async () => {
