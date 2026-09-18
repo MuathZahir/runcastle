@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
 import type { TicketInput, WaypointInput } from '@runcastle/core'
 import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { runs } from '../src/db/schema'
+import { reviewFindings, runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -30,6 +30,7 @@ import mcpApp, {
   toolsForAudience,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
+import { emit } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
 import { cancelTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
@@ -260,6 +261,71 @@ describe('mcp tools', () => {
     const byPath = Object.fromEntries(out.docs.map((d) => [d.relPath, d.content]))
     expect(byPath['brief.md']).toContain('seed')
     expect(byPath['decisions.md']).toContain('D1')
+  })
+
+  it('get_feature_context returns the latest burn, current-lap review outcome, findings and notes', () => {
+    const [landed, failed, review] = storeTickets(ctx, featureId, [
+      ticket('landed'),
+      ticket('failed'),
+      { ...ticket('review'), kind: 'review' },
+    ])
+    updateTicket(ctx, landed.id, { status: 'done' })
+    updateTicket(ctx, failed.id, { status: 'failed', error: 'compiler failed\nfull diagnostic' })
+    updateTicket(ctx, review.id, { status: 'done' })
+    ctx.db.insert(runs).values({
+      id: 'run_latest', featureId, workflow: 'ticket-burner', status: 'failed',
+      startedAt: 20, endedAt: 30, summary: 'burn failed',
+    }).run()
+    emit(ctx, featureId, {
+      type: 'run.started', message: 'run started', runId: 'run_latest',
+      data: { workflow: 'ticket-burner', ticketIds: [landed.id, failed.id, review.id] },
+    })
+    ctx.db.insert(reviewFindings).values({
+      id: 'finding_1', featureId, lap: 1, reviewTicketId: review.id, kind: 'defect',
+      severity: 'medium', title: 'broken', location: 'src/a.ts', citation: 'a:1',
+      detail: 'detail', reproStep: 'run it', status: 'open', createdAt: 21,
+    }).run()
+    ctx.db.insert(testNotes).values({
+      id: 'note_1', featureId, lap: 1, text: 'check contrast', status: 'open',
+      author: 'human', createdAt: 22, updatedAt: 22,
+    }).run()
+
+    const out = toolGetFeatureContext(ctx, session)
+    expect(out.latestRun).toEqual({
+      status: 'failed', ticketsLanded: 2, ticketsFailed: 1,
+      errorHeadlines: ['compiler failed'],
+    })
+    expect(out.reviewOutcome).toEqual({ state: 'ran', findings: 1 })
+    expect(out.findings.map((finding) => finding.id)).toEqual(['finding_1'])
+    expect(out.testNotes.map((note) => note.id)).toEqual(['note_1'])
+  })
+
+  it('get_feature_context omits latestRun and exposes empty review state without a burn', () => {
+    const out = toolGetFeatureContext(ctx, session)
+    expect(out.latestRun).toBeUndefined()
+    expect(out.reviewOutcome).toEqual({ state: 'none' })
+    expect(out.findings).toEqual([])
+    expect(out.testNotes).toEqual([])
+  })
+
+  it('ticket surgery refuses a ticket claimed by the running burn but allows an unclaimed ticket', () => {
+    const [claimed, unclaimed] = storeTickets(ctx, featureId, [ticket('claimed'), ticket('next burn')])
+    ctx.db.insert(runs).values({
+      id: 'run_active', featureId, workflow: 'ticket-burner', status: 'running', startedAt: 20,
+    }).run()
+    emit(ctx, featureId, {
+      type: 'run.started', message: 'run started', runId: 'run_active',
+      data: { workflow: 'ticket-burner', ticketIds: [claimed.id] },
+    })
+
+    for (const mutate of [
+      () => toolUpdateTicket(ctx, session, { id: claimed.id, title: 'nope' }),
+      () => toolCancelTicket(ctx, session, { id: claimed.id }),
+    ]) {
+      expect(mutate).toThrow(/run_active.*claimed|claimed.*run_active/i)
+    }
+    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'editable' }).ticket.title).toBe('editable')
+    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).ticket.status).toBe('cancelled')
   })
 
   /**

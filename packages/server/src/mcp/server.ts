@@ -62,6 +62,7 @@ import {
   carryFinding,
   closeAsAddressed,
   linkFixTicket,
+  listByFeature as listReviewFindings,
   reportFinding,
   requireLinkableFindings,
 } from '../services/review-findings'
@@ -77,7 +78,8 @@ import {
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
-import { addNote } from '../services/test-notes'
+import { activeBurnClaim, runTicketIds } from '../services/runs'
+import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
 import {
   cancelTicket,
   editTicket,
@@ -331,6 +333,23 @@ export interface FeatureContext {
    * Empty outside a lap (lap 1, or a previous lap whose review never burned).
    */
   reviewEvidence: ReviewEvidence[]
+  /** The newest ticket-burner run, summarized from its event-backed ticket set. */
+  latestRun?: {
+    status: RunStatusT
+    ticketsLanded: number
+    ticketsFailed: number
+    errorHeadlines: string[]
+  }
+  /** What the current lap's review ticket amounted to. */
+  reviewOutcome:
+    | { state: 'none' }
+    | { state: 'ran'; findings: number }
+    | { state: 'failed'; reason?: string }
+    | { state: 'waiting'; status: TicketStatusT }
+  /** Findings reported in the current lap, including resolved ones. */
+  findings: ReviewFinding[]
+  /** Test-drive observations captured in the current lap. */
+  testNotes: TestNote[]
   tickets: FeatureContextTicket[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -380,6 +399,24 @@ const DOCS_NOTE =
  */
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
+  const allTickets = listByFeature(ctx, feature.id)
+  const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
+  const testNotes = listTestNotes(ctx, feature.id).filter((note) => note.lap === feature.lap)
+  const latestBurn = listRunsByFeature(ctx, feature.id).find((run) => run.workflow === 'ticket-burner')
+  const latestRunTickets = latestBurn
+    ? allTickets.filter((ticket) => runTicketIds(ctx, latestBurn.id).includes(ticket.id))
+    : []
+  const review = [...allTickets]
+    .filter((ticket) => ticket.lap === feature.lap && ticket.kind === 'review')
+    .sort((a, b) => (a.completedAt ?? -Infinity) - (b.completedAt ?? -Infinity) || a.seq - b.seq)
+    .at(-1)
+  const reviewOutcome: FeatureContext['reviewOutcome'] = !review
+    ? { state: 'none' }
+    : review.status === 'failed'
+      ? { state: 'failed', ...(review.error ? { reason: review.error } : {}) }
+      : review.status === 'done'
+        ? { state: 'ran', findings: findings.length }
+        : { state: 'waiting', status: review.status }
 
   // The carry channel decides two things here: which defects the payload states
   // outright, and whether `test-notes.md` may still claim to be already-triaged
@@ -420,7 +457,22 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     openDefects: carried.openDefects,
     carriedDefects: carried.carriedDefects,
     reviewEvidence: carried.reviewEvidence,
-    tickets: listByFeature(ctx, feature.id).map(stripDigest),
+    ...(latestBurn
+      ? {
+          latestRun: {
+            status: latestBurn.status,
+            ticketsLanded: latestRunTickets.filter((ticket) => ticket.status === 'done').length,
+            ticketsFailed: latestRunTickets.filter((ticket) => ticket.status === 'failed').length,
+            errorHeadlines: latestRunTickets.flatMap((ticket) =>
+              ticket.status === 'failed' && ticket.error ? [ticket.error.split(/\r?\n/, 1)[0]] : [],
+            ),
+          },
+        }
+      : {}),
+    reviewOutcome,
+    findings,
+    testNotes,
+    tickets: allTickets.map(stripDigest),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
   }
@@ -631,6 +683,12 @@ function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): T
   const ticket = getTicket(ctx, ticketId)
   if (ticket.featureId !== featureId) {
     throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
+  }
+  const run = activeBurnClaim(ctx, featureId, ticket.id)
+  if (run) {
+    throw new GateError(
+      `run ${run.id} has claimed ticket ${ticket.id} (#${ticket.seq} ${ticket.title}); wait for that run to finish before editing it`,
+    )
   }
   return ticket
 }
@@ -2146,7 +2204,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Everything true of the current feature: the feature row, its phase and lap, its ' +
           'canonical docs (brief, map, decisions, spec) in full, an INDEX of every other doc in ' +
-          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. Mapped ' +
+          'docs/features/<slug>/ (read one with `read_feature_doc`), its tickets, latest burn ' +
+          'summary, and the current lap’s review outcome, findings and test notes. Mapped ' +
           'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
           'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
           'not the burner’s post-hoc digest — ask `get_work_record` for that. `reviewEvidence` ' +

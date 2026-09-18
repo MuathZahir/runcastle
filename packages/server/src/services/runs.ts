@@ -1,9 +1,9 @@
 import type { Run, RunStatus, Ticket } from '@runcastle/core'
-import { and, asc, eq, isNotNull } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events } from '../db/schema'
 import { getRunRow, listRunsByFeature } from './repo'
-import { listByIds } from './tickets'
+import { listByFeature, listByIds } from './tickets'
 
 /**
  * Run history (decision #15b). A feature accumulates one run per burn, and only
@@ -38,16 +38,40 @@ export type RunWithTickets = Run & { tickets: Ticket[] }
  * column. Reading it back off the feed costs one indexed scan and cannot go
  * stale.
  */
-function runTicketIds(ctx: AppCtx, runId: string): string[] {
+export function runTicketIds(ctx: AppCtx, runId: string): string[] {
+  const run = getRunRow(ctx, runId)
+  const featureTickets = listByFeature(ctx, run.featureId)
+  const bySeq = new Map(featureTickets.map((ticket) => [ticket.seq, ticket.id]))
   const rows = ctx.db
-    .select({ ticketId: events.ticketId })
+    .select({ ticketId: events.ticketId, type: events.type, data: events.data })
     .from(events)
-    .where(and(eq(events.runId, runId), isNotNull(events.ticketId)))
+    .where(eq(events.runId, runId))
     .orderBy(asc(events.id))
     .all()
   const seen = new Set<string>()
-  for (const row of rows) if (row.ticketId) seen.add(row.ticketId)
+  for (const row of rows) {
+    if (row.ticketId) seen.add(row.ticketId)
+    if (!row.data || typeof row.data !== 'object') continue
+    const data = row.data as Record<string, unknown>
+    if (row.type === 'run.started' && Array.isArray(data.ticketIds)) {
+      for (const id of data.ticketIds) if (typeof id === 'string') seen.add(id)
+    }
+    if (row.type === 'burn.admitted' && Array.isArray(data.seqs)) {
+      for (const seq of data.seqs) {
+        if (typeof seq !== 'number') continue
+        const id = bySeq.get(seq)
+        if (id) seen.add(id)
+      }
+    }
+  }
   return [...seen]
+}
+
+/** The active branch-claiming burn that has scheduled this ticket, if any. */
+export function activeBurnClaim(ctx: AppCtx, featureId: string, ticketId: string): Run | undefined {
+  return listRunsByFeature(ctx, featureId).find(
+    (run) => run.workflow === 'ticket-burner' && run.status === 'running' && runTicketIds(ctx, run.id).includes(ticketId),
+  )
 }
 
 /** The lap a run belongs to — the lap its first event was stamped with. */

@@ -127,7 +127,18 @@ export async function startRun(
     type: 'run.started',
     message: `run started (${workflowId})`,
     runId,
-    data: { workflow: workflowId },
+    // Branch-claiming schedulers own this opening snapshot even before a lane
+    // starts. Keeping it on the run event extends the existing event-backed
+    // run/ticket join without inventing a second persistence model.
+    data: {
+      workflow: workflowId,
+      ticketIds:
+        workflowId === 'ticket-burner'
+          ? tickets
+              .filter((ticket) => ticket.status === 'pending' || ticket.status === 'burning')
+              .map((ticket) => ticket.id)
+          : [],
+    },
   })
 
   const controller = new AbortController()
