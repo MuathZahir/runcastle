@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   Feature,
   Project,
@@ -41,6 +41,7 @@ import {
   buildDriveAvailability,
   buildDriveInstructions,
   buildGateNotes,
+  executableIsHealthy,
   executeReviewTicket,
   findOnPath,
   inheritedReviewMode,
@@ -801,6 +802,24 @@ describe('what the review agent is handed', () => {
     expect(template).not.toContain('A code review — always')
     expect(template).not.toContain('Never skip the code review.')
   })
+
+  it('mandates the declaration and the complete Gates fallback after an attach failure', () => {
+    const reviewTemplate = readFileSync(reviewTemplatePath(), 'utf8')
+    const verificationTemplate = readFileSync(
+      join(dirname(reviewTemplatePath()), 'verify-fixes.md'),
+      'utf8',
+    )
+
+    for (const template of [reviewTemplate, verificationTemplate]) {
+      expect(template).toContain('REVIEW-MODE: drive|gates')
+      expect(template).toContain('REVIEW-VERDICT: verified|unverified')
+      expect(template).toContain('REVIEW-REASON: <one line; required when unverified>')
+      expect(template).toMatch(/dev URL answers but .*browser attach/i)
+      expect(template).toMatch(/Gates mode (?:\*\*)?in full/)
+    }
+    expect(verificationTemplate).toMatch(/defects mint fix tickets/)
+    expect(verificationTemplate).toMatch(/carry\/link\/close rules/)
+  })
 })
 
 describe('the mode the review is handed', () => {
@@ -846,6 +865,11 @@ describe('the mode the review is handed', () => {
     expect(fallback).not.toContain('Inherited mode: **Drive**')
   })
 
+  it('health-checks the browser executable rather than trusting its PATH entry', () => {
+    expect(executableIsHealthy(process.execPath)).toBe(true)
+    expect(executableIsHealthy(undefined)).toBe(false)
+  })
+
   it('hands Gates mode the project commands, or tells it to run none', () => {
     const configured = buildGateNotes({
       verifyCommands: 'bun run typecheck\nbun run test',
@@ -877,6 +901,19 @@ describe('review declaration resolution', () => {
   it('accepts Gates declarations and preserves unverified reasons', () => {
     expect(resolveReviewDeclaration(digest('gates', 'verified'), { webmExists: false, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'verified', reason: '' })
     expect(resolveReviewDeclaration(digest('gates', 'unverified', 'gates unavailable'), { webmExists: true, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'unverified', reason: 'gates unavailable' })
+  })
+
+  it('records a completed Gates fallback as verified with the Drive failure reason', () => {
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified', 'Drive failed: browser could not attach.'), {
+        webmExists: false,
+        offeredMode: 'gates',
+      }),
+    ).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: 'Drive failed: browser could not attach.',
+    })
   })
 
   it('defaults missing and malformed declarations to unverified', () => {
