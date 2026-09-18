@@ -257,6 +257,9 @@ export const Ticket = TicketInput.extend({
   commits: z.array(z.string()),
   /** Feature-branch head observed when a review pass completed. */
   reviewedCommit: z.string().nullable().default(null),
+  reviewMode: z.enum(['drive', 'gates']).nullable().optional(),
+  reviewVerdict: z.enum(['verified', 'unverified']).nullable().optional(),
+  reviewVerdictReason: z.string().nullable().optional(),
   /** Wall-clock time at which this ticket most recently became terminal. */
   completedAt: z.number().nullable().default(null),
   error: z.string().optional(),

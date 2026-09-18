@@ -31,6 +31,9 @@ function rowToTicket(row: TicketSelect): Ticket {
     kind: row.kind,
     passKind: row.passKind,
     reviewedCommit: row.reviewedCommit,
+    reviewMode: row.reviewMode,
+    reviewVerdict: row.reviewVerdict,
+    reviewVerdictReason: row.reviewVerdictReason,
     completedAt: row.completedAt,
     model: row.model ?? undefined,
     lap: row.lap,
@@ -156,6 +159,9 @@ export function storeTickets(
     kind: t.kind ?? ('implementation' as const),
     passKind: t.passKind ?? ('review' as const),
     reviewedCommit: null,
+    reviewMode: null,
+    reviewVerdict: null,
+    reviewVerdictReason: null,
     completedAt: null,
     // Validated before anything is written, so one bad id fails the whole batch
     // rather than storing a half-assigned one.

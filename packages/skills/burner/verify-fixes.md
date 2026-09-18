@@ -34,7 +34,7 @@ Run digests:
 
 ## Tour and verify
 
-In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, start the recorder at `{{WALKTHROUGH_PATH}}`, and walk every acceptance criterion's user-facing surface once at pace. Keep the recorder running for the whole tour. Scrutinise only the landed fixes: check whether each listed repro step still reproduces and inspect the surfaces those fixes touched. Report anything plainly broken during the tour, but do not hunt for unrelated defects. Stop the recorder and drive when finished.
+In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, start the recorder at `{{WALKTHROUGH_PATH}}`, and walk every acceptance criterion's user-facing surface once at pace. Keep the recorder running for the whole tour. Scrutinise only the landed fixes: check whether each listed repro step still reproduces and inspect the surfaces those fixes touched. Report anything plainly broken during the tour, but do not hunt for unrelated defects. Stop the recorder and drive when finished. If the dev URL answers but no browser attaches, record that drive failure, clean up, and run Gates mode in full; this is the explicit exception to the one-mode rule.
 
 {{DRIVE_INSTRUCTIONS}}
 
@@ -42,6 +42,14 @@ In **Gates mode**, read each fix diff against its finding and run the configured
 
 {{GATE_NOTES}}
 
-Report findings through `mcp__runcastle__report_finding` as usual. Verification findings remain open for the human and never mint fix tickets. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
+Report findings through `mcp__runcastle__report_finding` as usual. Confirmed defects mint fix tickets; unresolved findings are carried under the existing carry/link/close rules. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
 
 Write `{{DIGEST_PATH}}`. Its first line must name the inherited mode and say "verification pass" (for example, `Drive verification pass`). Summarise which fixes held, which did not, and anything plainly broken on the tour. No `<promise>` markers inside the digest — the completion signal is a line in your message, never a line in this file. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. Either way, the file you write is the last thing you do before signalling COMPLETE.
+
+End the digest with exactly this machine-readable block. Name the mode actually completed; after a Drive failure followed by full Gates use `gates` and keep the drive failure in the one-line reason:
+
+```
+REVIEW-MODE: drive|gates
+REVIEW-VERDICT: verified|unverified
+REVIEW-REASON: <one line; required when unverified>
+```

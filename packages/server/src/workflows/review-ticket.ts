@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { delimiter, join } from 'node:path'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
@@ -108,6 +109,13 @@ export function renderReviewPrompt(
 
 /** The CLI the review agent drives the app with. */
 export const AGENT_BROWSER_BIN = 'agent-browser'
+export const FFMPEG_BIN = 'ffmpeg'
+
+export function executableIsHealthy(path: string | undefined): boolean {
+  if (!path) return false
+  const result = spawnSync(path, ['--version'], { timeout: 3_000, stdio: 'ignore' })
+  return result.status === 0 && !result.error
+}
 
 /**
  * Whether `agent-browser` is on this machine's PATH. Probed BEFORE the agent is
@@ -159,20 +167,26 @@ export function buildDriveAvailability(
   browserPath: string | undefined,
   devCommand: string | undefined,
   inheritedMode?: 'drive' | 'gates',
+  browserHealthy = true,
+  ffmpegPath: string | null | undefined = browserPath,
 ): string {
-  if (inheritedMode) {
-    return inheritedMode === 'drive'
-      ? 'Inherited mode: **Drive**. The pass being verified left a recording, so run Drive mode and record the full tour; do not choose Gates mode.'
-      : 'Inherited mode: **Gates**. The pass being verified left no recording, so run Gates mode; do not choose Drive mode or call `review_drive`.'
+  if (inheritedMode === 'gates') {
+    return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose Drive mode or call `review_drive`.'
   }
   const missing: string[] = []
   if (!browserPath) {
     missing.push(
       `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
     )
+  } else if (!browserHealthy) {
+    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check`)
   }
+  if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
   if (!devCommand?.trim()) {
     missing.push('this project has no dev command configured, so a drive has no app to boot')
+  }
+  if (inheritedMode === 'drive' && missing.length === 0) {
+    return 'Inherited mode: **Drive**. The pass being verified recorded Drive mode, so run Drive mode and record the full tour; do not choose Gates mode.'
   }
   if (missing.length === 0) {
     return (
@@ -188,12 +202,50 @@ export function buildDriveAvailability(
   )
 }
 
-/** A verification inherits Drive exactly when the pass it follows recorded a walkthrough. */
-export function inheritedReviewMode(
-  verifiedTicketId: string | undefined,
-  fileExists: (path: string) => boolean = existsSync,
-): 'drive' | 'gates' {
-  return verifiedTicketId && fileExists(reviewWalkthroughPath(verifiedTicketId)) ? 'drive' : 'gates'
+/** A verification inherits the mode recorded by the pass it follows. */
+export function inheritedReviewMode(reviewMode: 'drive' | 'gates' | null | undefined): 'drive' | 'gates' {
+  return reviewMode ?? 'gates'
+}
+
+export interface ReviewResolution {
+  reviewMode?: 'drive' | 'gates'
+  reviewVerdict: 'verified' | 'unverified'
+  reason: string
+}
+
+const DECLARATION = /(?:^|\n)REVIEW-MODE:\s*(drive|gates)\s*\nREVIEW-VERDICT:\s*(verified|unverified)\s*\nREVIEW-REASON:\s*([^\r\n]*)/i
+
+export function resolveReviewDeclaration(
+  digestText: string | undefined,
+  facts: { webmExists: boolean; offeredMode: 'drive' | 'gates' },
+): ReviewResolution {
+  const match = digestText?.match(DECLARATION)
+  if (!match) return { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
+  const reviewMode = match[1]!.toLowerCase() as 'drive' | 'gates'
+  const declared = match[2]!.toLowerCase() as 'verified' | 'unverified'
+  const declaredReason = match[3]!.trim()
+  if (declared === 'unverified') {
+    return {
+      reviewMode,
+      reviewVerdict: 'unverified',
+      reason: declaredReason || 'Reviewer declared this pass unverified.',
+    }
+  }
+  if (reviewMode === 'drive' && facts.offeredMode !== 'drive') {
+    return {
+      reviewMode,
+      reviewVerdict: 'unverified',
+      reason: 'Drive was declared even though Drive mode was unavailable.',
+    }
+  }
+  if (reviewMode === 'drive' && !facts.webmExists) {
+    return {
+      reviewMode,
+      reviewVerdict: 'unverified',
+      reason: 'Drive was declared verified but no walkthrough recording was produced.',
+    }
+  }
+  return { reviewMode, reviewVerdict: 'verified', reason: declaredReason }
 }
 
 /**
@@ -443,7 +495,12 @@ async function reviewTicketOutcome(
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
     .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
     .at(-1)
-  const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.id) : undefined
+  const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.reviewMode) : undefined
+  const browserPath = findOnPath(AGENT_BROWSER_BIN)
+  const ffmpegPath = findOnPath(FFMPEG_BIN)
+  const browserHealthy = executableIsHealthy(browserPath)
+  const driveAvailable = Boolean(browserPath && browserHealthy && ffmpegPath && project.devCommand?.trim())
+  const offeredMode: 'drive' | 'gates' = inheritedMode === 'gates' || !driveAvailable ? 'gates' : 'drive'
   const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
@@ -460,7 +517,7 @@ async function reviewTicketOutcome(
     // a perfectly healthy lap, and its own failure criterion then made it report
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
-    DRIVE_AVAILABILITY: buildDriveAvailability(findOnPath(AGENT_BROWSER_BIN), project.devCommand, inheritedMode),
+    DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserHealthy, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
     GATE_NOTES: buildGateNotes(deps.config),
     DIGEST_PATH: artifacts.digestPath,
@@ -555,7 +612,18 @@ async function reviewTicketOutcome(
   // Ran to completion: done, with no commits, because a review never writes
   // code. Its findings are already stored, each defect's fix ticket already
   // minted — the scheduler admits them the moment this outcome lands.
-  return { status: 'done', commits: [], ...(digest ? { digest } : {}) }
+  const resolution = resolveReviewDeclaration(digest, {
+    webmExists: existsSync(reviewWalkthroughPath(ticket.id)),
+    offeredMode,
+  })
+  return {
+    status: 'done',
+    commits: [],
+    ...(digest ? { digest } : {}),
+    reviewMode: resolution.reviewMode,
+    reviewVerdict: resolution.reviewVerdict,
+    reviewVerdictReason: resolution.reason,
+  }
 }
 
 /**

@@ -44,6 +44,7 @@ import {
   executeReviewTicket,
   findOnPath,
   inheritedReviewMode,
+  resolveReviewDeclaration,
   renderReviewPrompt,
   reviewTemplatePath,
   shouldStopAfterDigest,
@@ -775,8 +776,8 @@ describe('what the review agent is handed', () => {
 
     // The whole point of the split: the reviews that did exactly one delivered,
     // and the ones that attempted both ran long or died with nothing.
-    expect(template).toContain('**One mode, never both.**')
-    expect(template).toContain('**Never run both modes.**')
+    expect(template).toContain('**One mode, never both — except the explicit drive-failure fallback below.**')
+    expect(template).toContain('**Never run both modes, except for the explicit drive-failure fallback above.**')
     // The choice is step 1, before any tool call — not something discovered
     // partway through a drive that has already switched the human's checkout.
     expect(template).toMatch(/### 1\. Choose your mode — before anything else/)
@@ -803,17 +804,17 @@ describe('what the review agent is handed', () => {
 })
 
 describe('the mode the review is handed', () => {
-  it('inherits Drive only when the verified pass left a recording on disk', () => {
-    expect(inheritedReviewMode('review_1', () => true)).toBe('drive')
-    expect(inheritedReviewMode('review_1', () => false)).toBe('gates')
-    expect(inheritedReviewMode(undefined, () => true)).toBe('gates')
+  it('inherits the verified pass recorded mode', () => {
+    expect(inheritedReviewMode('drive')).toBe('drive')
+    expect(inheritedReviewMode('gates')).toBe('gates')
+    expect(inheritedReviewMode(undefined)).toBe('gates')
   })
   it('states both inherited verification modes without offering a choice', () => {
-    expect(buildDriveAvailability(undefined, undefined, 'drive')).toContain('Inherited mode: **Drive**')
+    expect(buildDriveAvailability('/browser', 'bun dev', 'drive', true, '/ffmpeg')).toContain('Inherited mode: **Drive**')
     expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
   })
   it('opens Drive mode when the browser and a dev command are both there', () => {
-    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev')
+    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, true, '/usr/bin/ffmpeg')
 
     expect(block).toContain('A drive **is** available')
     expect(block).toContain('take it if, and only if')
@@ -837,6 +838,14 @@ describe('the mode the review is handed', () => {
     expect(neither).toContain('no dev command configured')
   })
 
+  it('requires a healthy browser and ffmpeg', () => {
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, false, '/ffmpeg')).toContain('failed its health check')
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain('ffmpeg')
+    const fallback = buildDriveAvailability('/browser', 'bun dev', 'drive', false, '/ffmpeg')
+    expect(fallback).toContain('run Gates mode')
+    expect(fallback).not.toContain('Inherited mode: **Drive**')
+  })
+
   it('hands Gates mode the project commands, or tells it to run none', () => {
     const configured = buildGateNotes({
       verifyCommands: 'bun run typecheck\nbun run test',
@@ -853,6 +862,27 @@ describe('the mode the review is handed', () => {
     expect(bare).toContain('no verify commands configured')
     expect(bare).toContain('Do not go hunting for them')
     expect(bare).toContain('may well predate this lap')
+  })
+})
+
+describe('review declaration resolution', () => {
+  const digest = (mode: string, verdict: string, reason = '') =>
+    `account\n\nREVIEW-MODE: ${mode}\nREVIEW-VERDICT: ${verdict}\nREVIEW-REASON: ${reason}`
+
+  it('accepts verified Drive only with its recording', () => {
+    expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: true, offeredMode: 'drive' })).toEqual({ reviewMode: 'drive', reviewVerdict: 'verified', reason: '' })
+    expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: false, offeredMode: 'drive' })).toEqual({ reviewMode: 'drive', reviewVerdict: 'unverified', reason: 'Drive was declared verified but no walkthrough recording was produced.' })
+  })
+
+  it('accepts Gates declarations and preserves unverified reasons', () => {
+    expect(resolveReviewDeclaration(digest('gates', 'verified'), { webmExists: false, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'verified', reason: '' })
+    expect(resolveReviewDeclaration(digest('gates', 'unverified', 'gates unavailable'), { webmExists: true, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'unverified', reason: 'gates unavailable' })
+  })
+
+  it('defaults missing and malformed declarations to unverified', () => {
+    const expected = { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
+    expect(resolveReviewDeclaration(undefined, { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
+    expect(resolveReviewDeclaration('REVIEW-MODE: maybe', { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
   })
 })
 

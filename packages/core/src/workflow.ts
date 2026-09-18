@@ -33,6 +33,9 @@ export interface WorkflowCtx {
       attemptBranch?: string | null
       conflictFiles?: string[] | null
       reviewedCommit?: string | null
+      reviewMode?: 'drive' | 'gates' | null
+      reviewVerdict?: 'verified' | 'unverified' | null
+      reviewVerdictReason?: string | null
     },
   ): void
   /**

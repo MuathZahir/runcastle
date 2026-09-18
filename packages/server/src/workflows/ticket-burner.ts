@@ -342,6 +342,9 @@ export type TicketOutcome =
        * harvest is best-effort, so the ticket is done either way.
        */
       readonly digest?: string
+      readonly reviewMode?: 'drive' | 'gates'
+      readonly reviewVerdict?: 'verified' | 'unverified'
+      readonly reviewVerdictReason?: string
     }
   | {
       readonly status: 'failed'
@@ -3259,6 +3262,9 @@ export async function burnTickets(
         status: 'done',
         commits: outcome.commits,
         digest: outcome.digest,
+        reviewMode: outcome.reviewMode,
+        reviewVerdict: outcome.reviewVerdict,
+        reviewVerdictReason: outcome.reviewVerdictReason,
         ...(reviewedCommit ? { reviewedCommit } : {}),
       })
       mirrorFinding(t, 'fixed')
