@@ -583,6 +583,10 @@ describe('what the review agent is handed', () => {
       { id: 'claude-opus-5', runtime: 'claude-code' },
       {
         onHost: true,
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
         mcp: {
           path: '/tmp/reviews/tkt_9/mcp.json',
           config: {
@@ -606,7 +610,33 @@ describe('what the review agent is handed', () => {
     // The host build's markers: the host env passes through, and permissions
     // are bypassed so the agent can actually call its tools.
     expect(agent.env.PATH).toBe(process.env.PATH)
+    expect(agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_9')
+    expect(agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
     expect(command).toContain('--permission-mode bypassPermissions')
+  })
+
+  it('does not put review browser settings in implementation or container agents', () => {
+    const hostImplementation = buildBurnAgent(
+      { ...config, sandbox: 'noSandbox' },
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+    )
+    const container = buildBurnAgent(
+      config,
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+      {
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
+      },
+    )
+
+    expect(hostImplementation.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(hostImplementation.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
   })
 
   it('gets a prompt with every placeholder filled', () => {

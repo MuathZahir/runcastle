@@ -500,6 +500,10 @@ async function reviewTicketOutcome(
     agent: buildBurnAgent(deps.config, deps.token, deps.model, {
       onHost: true,
       mcp: artifacts.mcp,
+      hostEnv: {
+        AGENT_BROWSER_SESSION: `review-${ticket.id}`,
+        AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+      },
     }),
     // What a stop actually kills. The abort above only interrupts sandcastle's
     // fiber; the `claude.cmd` shim it spawned — and the node grandchild doing
