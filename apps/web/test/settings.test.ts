@@ -729,7 +729,7 @@ describe('rosterRows', () => {
     expect(row('claude-opus-5')?.isDefault).toBe(true)
     // Everything that has no step model of its own falls to the default.
     expect(row('claude-opus-5')?.usedFor).not.toContain('implement')
-    expect(row('claude-opus-5')?.usedFor).toContain('ideation')
+    expect(row('claude-opus-5')?.usedFor).toContain('chat')
     expect(row('gpt-5.6-sol')?.usedFor).toEqual(['implement'])
     expect(row('gpt-5.6-sol')?.isDefault).toBe(false)
     expect(row('claude-sonnet-5')?.usedFor).toEqual([])
@@ -776,14 +776,12 @@ describe('stepRows', () => {
 
   // `revisit` and `project` used to render as raw config keys (bug found in the
   // walk); every step is listed now, so every one of them needs a name.
-  it('lists all eleven steps, grouped, each with a name and a description', () => {
+  it('lists all nine steps, grouped, each with a name and a description', () => {
     const rows = stepRows(stepView())
     expect(rows.map((r) => r.step)).toEqual([
-      'ideation',
-      'qa',
+      'chat',
       'waypoint',
       'converge',
-      'revisit',
       'project',
       'research',
       'implement',
@@ -792,11 +790,9 @@ describe('stepRows', () => {
       'smoke',
     ])
     expect(rows.map((r) => r.label)).toEqual([
-      'Ideation',
-      'Q&A',
+      'Chat',
       'Waypoint',
       'Converge',
-      'Revisit',
       'Project chat',
       'Research',
       'Implement',
@@ -805,7 +801,7 @@ describe('stepRows', () => {
       'Smoke',
     ])
     expect(rows.map((r) => r.group)).toEqual([
-      ...Array<string>(6).fill('sessions'),
+      ...Array<string>(4).fill('sessions'),
       ...Array<string>(5).fill('unattended'),
     ])
     for (const row of rows) expect(row.description).not.toBe('')
@@ -826,7 +822,7 @@ describe('stepRows', () => {
       effectiveModel: 'claude-opus-5',
       effectiveRuntime: 'claude-code',
     })
-    expect(row('revisit')?.value).toBeNull()
+    expect(row('chat')?.value).toBeNull()
   })
 })
 

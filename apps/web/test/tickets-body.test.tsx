@@ -76,7 +76,7 @@ describe('TicketsBody wire actions', () => {
   it('shows an ended session as one quiet line, with no terminal and no doors', () => {
     server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status: 'ended', createdAt: Date.now() }]
     render(<TicketsBody featureId="f1" />)
-    expect(screen.getByText(/Ideation session/)).toBeTruthy()
+    expect(screen.getByText(/Chat session/)).toBeTruthy()
     expect(screen.getByText(/ended/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Show terminal/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /End session/ })).toBeNull()
