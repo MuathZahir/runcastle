@@ -127,7 +127,17 @@ export async function startRun(
     type: 'run.started',
     message: `run started (${workflowId})`,
     runId,
-    data: { workflow: workflowId },
+    // The lanes this run opens with, stated before any of them starts: they are
+    // CLAIMED from here on (`runClaimedTicketIds`), and until this snapshot
+    // existed nothing outside the scheduler's own memory could name a ticket the
+    // run had not yet reached. On the event rather than on a column for the
+    // reason the run/ticket join already is: a ticket outlives the run.
+    data: {
+      workflow: workflowId,
+      ...(workflowClaimsFeatureBranch(workflowId)
+        ? { ticketIds: tickets.filter((t) => t.status === 'pending').map((t) => t.id) }
+        : {}),
+    },
   })
 
   const controller = new AbortController()
