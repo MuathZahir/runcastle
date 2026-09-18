@@ -90,6 +90,11 @@ describe('review artifacts over HTTP', () => {
     it('reports the review tickets, and which of them left a recording', async () => {
       const { reviewId, secondReviewId } = seedTickets()
       recordWalkthrough(reviewId)
+      updateTicket(ctx, reviewId, {
+        reviewMode: 'drive',
+        reviewVerdict: 'unverified',
+        reviewVerdictReason: 'The browser could not attach.',
+      })
 
       const res = await mount().request(`/api/reviews/${featureId}`)
       expect(res.status).toBe(200)
@@ -101,6 +106,9 @@ describe('review artifacts over HTTP', () => {
           seq: 2,
           lap: 1,
           passKind: 'review',
+          reviewMode: 'drive',
+          reviewVerdict: 'unverified',
+          reviewVerdictReason: 'The browser could not attach.',
           reviewedCommit: null,
           completedAt: null,
           landedSince: 0,
@@ -110,6 +118,7 @@ describe('review artifacts over HTTP', () => {
         // Nothing was recorded for this one — a normal state, not an error.
         {
           ticketId: secondReviewId, seq: 3, lap: 1, passKind: 'review',
+          reviewMode: null, reviewVerdict: null, reviewVerdictReason: null,
           reviewedCommit: null, completedAt: null, landedSince: 0,
           hasVideo: false, videoUrl: null,
         },

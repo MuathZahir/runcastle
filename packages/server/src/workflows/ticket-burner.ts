@@ -2878,6 +2878,7 @@ export interface HarvestedDigest {
   readonly seq: number
   readonly title: string
   readonly digest: string
+  readonly reviewVerdict?: 'verified' | 'unverified'
 }
 
 /**
@@ -3159,8 +3160,14 @@ export async function burnTickets(
   }
 
   /** Keep a ticket's own account of its work for the run aggregate. */
-  const harvestDigest = (t: Ticket, digest: string | undefined): void => {
-    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
+  const harvestDigest = (
+    t: Ticket,
+    digest: string | undefined,
+    reviewVerdict?: 'verified' | 'unverified',
+  ): void => {
+    if (digest) {
+      digests.push({ seq: t.seq, title: t.title, digest, ...(reviewVerdict ? { reviewVerdict } : {}) })
+    }
   }
 
   const failTicket = (
@@ -3283,7 +3290,7 @@ export async function burnTickets(
           ticketId: t.id,
         })
       }
-      harvestDigest(t, outcome.digest)
+      harvestDigest(t, outcome.digest, outcome.reviewVerdict)
     } else {
       failTicket(seq, outcome.error, outcome.event, outcome.digest)
       ctx.emitEvent({
@@ -3429,10 +3436,13 @@ export async function burnTickets(
  */
 export function composeRunDigest(entries: readonly HarvestedDigest[]): string | null {
   if (entries.length === 0) return null
-  return [...entries]
+  const body = [...entries]
     .sort((a, b) => a.seq - b.seq)
     .map((e) => `## ticket ${e.seq} — ${e.title}\n\n${e.digest.trim()}`)
     .join('\n\n')
+  return entries.some((entry) => entry.reviewVerdict === 'unverified')
+    ? `# succeeded-unverified\n\n${body}`
+    : body
 }
 
 /**

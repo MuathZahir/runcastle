@@ -33,6 +33,7 @@ export interface LaneTicketFigure {
   orphaned?: boolean
   kind?: string
   reviewFix?: boolean
+  reviewVerdict?: 'verified' | 'unverified' | null
 }
 
 export interface UnrunnableGateFigure {
@@ -108,6 +109,10 @@ export function runHeadline(
   retryOf?: number,
 ): string {
   if (retryOf !== undefined) return `Retrying #${retryOf}`
+  if (
+    run.status === 'succeeded' &&
+    tickets.some((ticket) => ticket.kind === 'review' && ticket.reviewVerdict === 'unverified')
+  ) return 'Succeeded-unverified · nothing verified'
   const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
   const fixes = tickets.filter((t) => t.reviewFix).length
   const counts = summaryCounts(tickets)

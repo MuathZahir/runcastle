@@ -236,7 +236,12 @@ describe('the carry channel into the next lap', () => {
    * being asked to plan past.
    */
   it('names the previous lap’s review evidence in the context payload, by path', () => {
-    updateTicket(ctx, reviewTicket.id, { status: 'done' })
+    updateTicket(ctx, reviewTicket.id, {
+      status: 'done',
+      reviewMode: 'drive',
+      reviewVerdict: 'unverified',
+      reviewVerdictReason: 'The browser could not attach.',
+    })
     ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
 
     expect(toolGetFeatureContext(ctx, session).reviewEvidence).toEqual([
@@ -244,11 +249,27 @@ describe('the carry channel into the next lap', () => {
         ticketId: reviewTicket.id,
         seq: reviewTicket.seq,
         status: 'done',
+        reviewMode: 'drive',
+        reviewVerdict: 'unverified',
+        reviewVerdictReason: 'The browser could not attach.',
         lap: 1,
         dir: reviewDir(reviewTicket.id),
         digestPath: join(reviewDir(reviewTicket.id), 'DIGEST.md'),
       },
     ])
+    expect(lapKickoff(2, carriedWork(ctx, feature.id))).toContain(
+      'nothing verified: The browser could not attach.',
+    )
+    const prompt = renderSystemPrompt(
+      { ...feature, phase: 'planning', lap: 2 },
+      'revisit',
+      undefined,
+      2,
+      undefined,
+      undefined,
+      carriedWork(ctx, feature.id),
+    )
+    expect(prompt).toContain('**Nothing verified:** The browser could not attach.')
   })
 
   it('names none while the feature is still on the lap that review belongs to', () => {

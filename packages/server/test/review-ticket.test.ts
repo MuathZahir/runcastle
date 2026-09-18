@@ -41,6 +41,7 @@ import {
   buildDriveAvailability,
   buildDriveInstructions,
   buildGateNotes,
+  composeReviewDigest,
   executableIsHealthy,
   executeReviewTicket,
   findOnPath,
@@ -920,6 +921,19 @@ describe('review declaration resolution', () => {
     const expected = { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
     expect(resolveReviewDeclaration(undefined, { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
     expect(resolveReviewDeclaration('REVIEW-MODE: maybe', { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
+  })
+
+  it('puts the server-owned unverified headline above the agent prose', () => {
+    expect(
+      composeReviewDigest(3, {
+        reviewMode: 'drive',
+        reviewVerdict: 'unverified',
+        reason: 'The browser could not attach.',
+      }, 'Agent prose that used to become the headline.'),
+    ).toBe(
+      'Lap 3 · drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
+      'Agent prose that used to become the headline.',
+    )
   })
 })
 

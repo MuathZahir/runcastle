@@ -248,6 +248,20 @@ export function resolveReviewDeclaration(
   return { reviewMode, reviewVerdict: 'verified', reason: declaredReason }
 }
 
+/** Put the orchestration verdict first; an agent's prose can never soften it. */
+export function composeReviewDigest(
+  lap: number,
+  resolution: ReviewResolution,
+  agentDigest: string | undefined,
+): string | undefined {
+  if (resolution.reviewVerdict !== 'unverified') return agentDigest
+  const mode = resolution.reviewMode ?? 'review'
+  const headline =
+    `Lap ${lap} · ${mode} mode · ${mode.toUpperCase()} FAILED · nothing verified` +
+    (resolution.reason ? ` — ${resolution.reason}` : '')
+  return agentDigest ? `${headline}\n\n${agentDigest}` : headline
+}
+
 /**
  * The `{{DRIVE_INSTRUCTIONS}}` block: how to exercise THIS app, in the project
  * owner's own words.
@@ -616,10 +630,11 @@ async function reviewTicketOutcome(
     webmExists: existsSync(reviewWalkthroughPath(ticket.id)),
     offeredMode,
   })
+  const storedDigest = composeReviewDigest(ticket.lap, resolution, digest)
   return {
     status: 'done',
     commits: [],
-    ...(digest ? { digest } : {}),
+    ...(storedDigest ? { digest: storedDigest } : {}),
     reviewMode: resolution.reviewMode,
     reviewVerdict: resolution.reviewVerdict,
     reviewVerdictReason: resolution.reason,

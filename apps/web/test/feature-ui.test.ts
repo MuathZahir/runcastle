@@ -54,6 +54,7 @@ import {
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+import { runHeadline } from '../src/lib/feature-ui/run'
 import { full, listItem, wp } from './fixtures'
 
 /**
@@ -62,6 +63,17 @@ import { full, listItem, wp } from './fixtures'
  * because enabled is not the same as recommended.
  */
 const MERGE_ACTION: NextAction = { label: 'Merge & ship', kind: 'merge' }
+
+describe('run headline review verdict', () => {
+  it('does not present an unverified successful review as clean success', () => {
+    expect(
+      runHeadline(
+        [{ seq: 3, status: 'done', kind: 'review', reviewVerdict: 'unverified' }],
+        { status: 'succeeded' },
+      ),
+    ).toBe('Succeeded-unverified · nothing verified')
+  })
+})
 
 /**
  * A ticket a coder could read before it writes: a goal, and a context that is

@@ -39,6 +39,9 @@ export interface ReviewTicketArtifacts {
   seq: number
   lap: number
   passKind: 'review' | 'verification'
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
   reviewedCommit: string | null
   completedAt: number | null
   landedSince: number
@@ -101,6 +104,9 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
         seq: t.seq,
         lap: t.lap,
         passKind: t.passKind,
+        reviewMode: t.reviewMode ?? null,
+        reviewVerdict: t.reviewVerdict ?? null,
+        reviewVerdictReason: t.reviewVerdictReason ?? null,
         reviewedCommit: t.reviewedCommit,
         completedAt: t.completedAt,
         landedSince: t.completedAt === null ? 0 : allTickets.filter((candidate) =>
