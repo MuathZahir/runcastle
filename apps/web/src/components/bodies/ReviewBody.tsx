@@ -220,6 +220,15 @@ export function ReviewBody({
     return () => clearTimeout(timer)
   }, [spotlight])
 
+  // A pass picked off the trail (decision 4). The stage is above the band that
+  // picked it, so the same nudge a note's timestamp makes is owed here: a
+  // recording swapped onto a stage the human has scrolled past looks like
+  // nothing happened.
+  const stageRecording = useCallback((ticketId: string): void => {
+    setPicked(ticketId)
+    document.getElementById('evidence-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
   const jumpTo = useCallback((seconds: number): void => {
     walkthroughHandle.current?.seek(seconds)
     // The playhead must never move off screen — the walked jump seeked a player
@@ -480,7 +489,7 @@ export function ReviewBody({
               notes={notes.data ?? []}
               currentLap={feature.lap}
               staged={staged?.ticketId ?? null}
-              onStage={setPicked}
+              onStage={stageRecording}
               {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
             />
 
