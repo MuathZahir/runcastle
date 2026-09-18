@@ -384,7 +384,7 @@ export function Workspace({
   const start = trpc.feature.start.useMutation({
     onSuccess: (_res, vars) => {
       invalidate()
-      launch.mutate({ featureId: vars.featureId, kind: 'ideation' })
+      launch.mutate({ featureId: vars.featureId, kind: 'chat' })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -498,7 +498,7 @@ export function Workspace({
     // and this road is reachable from the bar, the drive escape and the failed
     // lap's Retry, so the guard lives here rather than on each button.
     if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
-    else launch.mutate({ featureId, kind: 'revisit' })
+    else launch.mutate({ featureId, kind: 'chat' })
   }
 
   /**
@@ -543,7 +543,7 @@ export function Workspace({
       // is what the exit's own label promised (decision 4). The burn road takes
       // no session, so it takes nothing away.
       if (selection.carry) {
-        if (await endLiveSession()) launch.mutate({ featureId, kind: 'revisit' })
+        if (await endLiveSession()) launch.mutate({ featureId, kind: 'chat' })
       } else burn.mutate({ featureId })
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e))
@@ -560,13 +560,13 @@ export function Workspace({
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
       case 'startGrill':
-        launch.mutate({ featureId, kind: 'ideation' })
+        launch.mutate({ featureId, kind: 'chat' })
         break
       case 'askQuestions':
-        launch.mutate({ featureId, kind: 'qa' })
+        launch.mutate({ featureId, kind: 'chat' })
         break
       case 'revisit':
-        launch.mutate({ featureId, kind: 'revisit' })
+        launch.mutate({ featureId, kind: 'chat' })
         break
       case 'iterate':
         enterIterate()

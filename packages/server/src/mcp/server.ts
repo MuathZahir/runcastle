@@ -201,14 +201,6 @@ function requireFeatureId(session: SessionRow): string {
  * The refusal names what to do instead, because there is a human in the room:
  * a qa session's output is what it TELLS them, not what it stores.
  */
-function refuseIfReadOnly(session: SessionRow, action: string): void {
-  if (session.kind !== 'qa') return
-  throw new GateError(
-    `a qa session is read-only, and ${action} is a write. Answer the human's question and tell ` +
-      'them what should change — they open the session (revisit, ideation) that can make it.',
-  )
-}
-
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
 
 /** One annotated roster entry, as the tickets session is offered it. */
@@ -605,7 +597,6 @@ export function toolEmitTickets(
   input: { tickets: TicketInputT[] },
 ): { stored: number; tickets: StoredTicketRef[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
-  refuseIfReadOnly(session, 'emitting tickets')
   refuseMisKindedReview(input.tickets)
   // The LINK disposition: a lap ticket that names the defect it answers. Vetted
   // here rather than in `storeTickets`, which is also the internal mint used by
@@ -650,7 +641,6 @@ export function toolUpdateTicket(
   input: { id: string } & TicketContentPatch,
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
-  refuseIfReadOnly(session, 'rewriting a ticket')
   const { id, ...patch } = input
   return { ok: true, ticket: editTicket(ctx, id, patch) }
 }
@@ -661,7 +651,6 @@ export function toolCancelTicket(
   input: { id: string; reason?: string },
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
-  refuseIfReadOnly(session, 'cancelling a ticket')
   return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
 }
 
@@ -724,7 +713,6 @@ export function toolResolveFinding(
   input: ResolveFindingInputT,
 ): { ok: true; finding: ReviewFinding } {
   const featureId = requireFeatureId(session)
-  refuseIfReadOnly(session, 'resolving a finding')
   const { findingId, disposition, note } = ResolveFindingInput.parse(input)
   const finding =
     disposition === 'carry'
@@ -832,7 +820,6 @@ export function toolCompletePhase(
   input: { phase: PlanningStep },
 ): CompletePhaseResult {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
-  refuseIfReadOnly(session, 'completing a phase')
   // Read before the emit below, which would otherwise count as this call's own
   // earlier report.
   const repeated = planningStepReported(ctx, feature, input.phase)
@@ -1223,7 +1210,7 @@ export interface CreateFeatureResult {
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
-const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoint', 'converge']
+const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'waypoint', 'converge']
 
 /**
  * The project a `create_feature` call belongs to — and, on the way there, how
@@ -1659,16 +1646,13 @@ export type McpAudience = SessionKindT | 'run'
 
 /** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
 const FEATURE_KINDS: readonly SessionKindT[] = [
-  'ideation',
-  'qa',
+  'chat',
   'waypoint',
   'converge',
-  'revisit',
   'drive-fix',
 ]
 
-/** …and the same minus `qa`, whose contract is read-only (see {@link refuseIfReadOnly}). */
-const FEATURE_WRITE_KINDS = FEATURE_KINDS.filter((k) => k !== 'qa')
+const FEATURE_WRITE_KINDS = FEATURE_KINDS
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 

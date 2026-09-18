@@ -90,7 +90,7 @@ export function liveSessionBlocker(
  * instead of growing an empty box.
  */
 export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
-  const qa = sessions.filter((s) => s.kind === 'qa')
+  const qa = sessions.filter((s) => s.kind === 'chat')
   return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing) ? qa : []
 }
 
@@ -134,13 +134,11 @@ export interface LiveSessionLine {
  */
 function sessionHome(kind: SessionKind): Phase | null {
   switch (kind) {
-    case 'ideation':
+    case 'chat':
     case 'waypoint':
-    case 'revisit':
       return 'planning'
     case 'converge':
       return 'planning'
-    case 'qa':
     case 'drive-fix':
     case 'prepare':
     case 'project':
@@ -157,9 +155,7 @@ export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionL
     // A `revisit` past lap 1 is already named for its lap ("Lap 3"), so naming
     // it again would read "Lap 3 session still live from lap 3".
     text:
-      live.kind === 'revisit' && live.lap > 1
-        ? `${name} session still live`
-        : `${name} session still live from lap ${live.lap}`,
+      `${name} session still live from lap ${live.lap}`,
     phase: sessionHome(live.kind),
   }
 }
@@ -173,14 +169,10 @@ export function sessionKindName(
   session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>,
 ): string {
   switch (session.kind) {
-    case 'ideation':
-      return 'Ideation'
+    case 'chat':
+      return 'Chat'
     case 'converge':
       return 'Converge'
-    case 'revisit':
-      return session.lap > 1 ? `Lap ${session.lap}` : 'Revisit'
-    case 'qa':
-      return 'Question'
     case 'waypoint':
       return 'Waypoint'
     case 'drive-fix':

@@ -40,19 +40,15 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
 export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, string> {
   const skill = (name: string): string => skillRef(runtime, name)
   return {
-    ideation: `Proceed with your task: invoke the ${skill('ideate')} skill and drive the ideation session.`,
-    qa:
-      `Proceed with your task: invoke the ${skill('qa')} skill and answer questions from the ` +
-      'docs and code — do not advance phases or emit tickets.',
+    chat:
+      `Proceed with your task: invoke the ${skill('revisit')} skill and continue this feature's ` +
+      'conversation.',
     waypoint:
       `Proceed with your task: invoke the ${skill('waypoint')} skill and work your assigned ` +
       'waypoint to a resolution.',
     converge:
       `Proceed with your task: invoke ${skill('converge')} and drive spec then tickets ` +
       'from map.md + decisions.md, per your system prompt.',
-    revisit:
-      `Proceed with your task: invoke the ${skill('revisit')} skill and work through what the ` +
-      'human brings up.',
     // The method moved out of the prompt and into a skill, so this names it like
     // every other entry line does. The rest of the line is the opening MOVE — a
     // headless run already measured what it could, so the useful first thing is

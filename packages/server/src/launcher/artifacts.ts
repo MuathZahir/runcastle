@@ -175,8 +175,7 @@ export function renderSystemPrompt(
   if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint, runtime)
   if (kind === 'converge') return renderConvergePrompt(feature, runtime)
-  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
-  if (kind === 'qa') return renderQaPrompt(feature, runtime)
+  if (kind === 'chat') return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
 

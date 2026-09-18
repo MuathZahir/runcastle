@@ -29,6 +29,7 @@ import { emit, emitForSession, emitProject } from '../services/events'
 import * as git from '../services/git'
 import {
   getFeatureRow,
+  listRunsByFeature,
   listSessionsByFeature,
   projectForFeature,
   requireProjectById,
@@ -127,6 +128,23 @@ export interface LaunchSessionInput {
   purpose?: SessionPurpose
   /** The merge a `resolve-conflict` session is about (base → feature, or ticket branch → feature). */
   purposeData?: MergeBranchPair
+}
+
+/** Fresh orientation for the feature's persistent chat. */
+export function chatKickoffHeader(ctx: AppCtx, feature: Feature): string {
+  const counts = new Map<string, number>()
+  for (const ticket of listTicketsByFeature(ctx, feature.id)) {
+    counts.set(ticket.status, (counts.get(ticket.status) ?? 0) + 1)
+  }
+  const ticketSummary = [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([status, count]) => `${status} ${count}`)
+    .join(', ') || 'none'
+  const latestRun = listRunsByFeature(ctx, feature.id)[0]
+  const review = feature.phase === 'review'
+    ? ' Drive outcome: review; see the review evidence in get_feature_context.'
+    : ''
+  return `Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {
@@ -251,7 +269,7 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
  * the timeline it had "finished".
  */
 function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
-  if (session.kind === 'ideation' || session.kind === 'converge') return feature.mapped
+  if (session.kind === 'chat' || session.kind === 'converge') return feature.mapped
   if (session.kind !== 'waypoint') return false
   const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
   return !!own && (own.status === 'resolved' || own.status === 'dropped')
@@ -393,6 +411,7 @@ export async function launchSession(
     }),
     carried,
   })
+  if (input.kind === 'chat' && !plan.line) plan.line = chatKickoffHeader(ctx, feature)
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
@@ -431,28 +450,27 @@ export async function launchSession(
     }
   }
 
-  // A revisit resumes the feature's most recent resumable conversation (SPEC:
-  // "I remembered something"). One-live-session guard first — same failure mode
+  // Chat resumes the feature's one conversation. One-live-session guard first — same failure mode
   // as the waypoint path (end the just-created row, rethrow). No resumable
   // conversation is fine: the docs carry the state, so it starts fresh and the
   // timeline says so.
-  if (input.kind === 'revisit') {
+  if (input.kind === 'chat') {
     try {
       assertSpawnable(ctx, feature, session.id)
     } catch (e) {
       markSessionEnded(ctx, session.id)
       throw e
     }
-    const prior = mostRecentResumableSession(ctx, feature.id)
+    const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
     if (prior?.ccSessionId) {
       resumedFrom = prior
       resumeSessionId = prior.ccSessionId
     } else {
-      resumeUnavailableFrom = 'revisit'
+      resumeUnavailableFrom = 'chat'
     }
   }
 
-  // Every OTHER kind (ideation / qa / converge) resumes its own most recent
+  // Every other kind resumes its own most recent
   // conversation on this feature. A terminal is a real `claude` process in a
   // server-owned PTY, so quitting runcastle kills it and boot reconciliation
   // marks the row ended — but the Claude Code transcript survives on disk and
@@ -460,7 +478,7 @@ export async function launchSession(
   // the conversation back up instead of starting cold from the docs. No prior
   // conversation is the ordinary first-launch case, so unlike waypoint/revisit
   // it gets no `resume_unavailable` note — there is nothing to be unavailable.
-  if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
+  if (input.kind !== 'waypoint' && input.kind !== 'chat') {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
     if (
@@ -486,7 +504,7 @@ export async function launchSession(
   // The re-entry cap: past a transcript size or a re-entry count, resuming costs
   // more than it carries, so launch fresh from the docs instead (see
   // `resumeCapExceeded`).
-  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+  const capped = input.kind === 'chat' ? null : applyResumeCap(ctx, resumeSessionId, resumedFrom, {
     featureId: feature.id,
   })
   if (capped) {
@@ -528,10 +546,10 @@ export async function launchSession(
       message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
       data: { sessionId: session.id },
     })
-  } else if (input.kind === 'revisit' && resumeUnavailableFrom) {
+  } else if (input.kind === 'chat' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
-      message: 'no resumable conversation for this feature — revisiting fresh from the docs',
+      message: 'no resumable conversation for this feature — starting chat fresh from the docs',
       data: { sessionId: session.id },
     })
   }

@@ -267,6 +267,13 @@
       "when": 1789529513315,
       "tag": "0037_amusing_steve_rogers",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1789766400000,
+      "tag": "0039_chat_session_kind",
+      "breakpoints": true
     }
   ]
 }

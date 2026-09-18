@@ -291,7 +291,7 @@ export function RunBody({
             ? () =>
                 launch.mutate({
                   featureId,
-                  kind: 'revisit',
+                  kind: 'chat',
                   kickoffLine: ticketConflictKickoff({
                     seq: ticket.seq,
                     title: ticket.title,

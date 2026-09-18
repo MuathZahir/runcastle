@@ -581,11 +581,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   return {
     feature,
     tickets: listByFeature(ctx, id),
-    sessions: listSessionsByFeature(ctx, id).map((session) =>
-      session.kind === 'qa' && session.status === 'ended' && !session.ccSessionId
-        ? { ...session, title: null, transcriptMissing: true }
-        : session,
-    ),
+    sessions: listSessionsByFeature(ctx, id),
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
     waypoints,

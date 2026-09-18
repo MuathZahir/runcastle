@@ -7,7 +7,7 @@ import { SessionPanel } from '../src/components/SessionPanel'
 type Session = FeatureFull['sessions'][number]
 
 function session(over: Partial<Session> & Pick<Session, 'id'>): Session {
-  return { featureId: 'feat_1', kind: 'ideation', status: 'ended', awaitingInput: false, worktreePath: '/tmp/work', lap: 1, ...over }
+  return { featureId: 'feat_1', kind: 'chat', status: 'ended', awaitingInput: false, worktreePath: '/tmp/work', lap: 1, ...over }
 }
 
 const panel = (sessions: Session[]): string =>
