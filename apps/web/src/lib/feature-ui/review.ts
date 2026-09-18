@@ -450,4 +450,198 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
   return null
 }
 
+// --- the lap trail ----------------------------------------------------------
+
+/** One review pass as the trail reads it — the artifacts feed row, narrowed. */
+export interface ReviewPassFigure {
+  ticketId: string
+  seq: number
+  lap: number
+  passKind: 'review' | 'verification'
+  /** What the pass actually ran; null on a pass that recorded no declaration. */
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
+  completedAt: number | null
+  videoUrl: string | null
+}
+
+/** A ticket as the trail reads it — what the feed cannot say about a pass. */
+interface TrailTicketFigure {
+  id: string
+  lap: number
+  kind?: TicketKind
+  status: string
+  digest?: string
+}
+
+/** A finding as the trail counts it — its lap, its kind and where it ended. */
+interface TrailFindingFigure {
+  lap: number
+  kind: 'defect' | 'observation'
+  status: FindingStatus
+}
+
+/**
+ * What a lap's review amounted to, as its trail entry's chip states it.
+ *
+ * Read off the LATEST COMPLETED pass of the lap, for the same reason every
+ * other evidence surface is ({@link stampedReview}): a pass still burning
+ * vouches for nothing. `none` covers both a lap no pass has finished in and a
+ * pass that predates the verdict columns — neither has a verdict to show, and
+ * inventing one is the green lie this feature exists to stop.
+ */
+export type TrailOutcome =
+  | { kind: 'verified'; mode: 'drive' | 'gates' | null }
+  /** The templated line runcastle filled, and the reason it does not carry. */
+  | { kind: 'unverified'; line: string | null; reason: string | null }
+  | { kind: 'could-not-run' }
+  | { kind: 'none' }
+
+/** One review pass in a lap's entry, as the compact row renders it. */
+export interface TrailPass {
+  ticketId: string
+  seq: number
+  passKind: 'review' | 'verification'
+  mode: 'drive' | 'gates' | null
+  verdict: 'verified' | 'unverified' | null
+  /** The pass never ran at all — its ticket failed (`couldNotReview`). */
+  couldNotRun: boolean
+  /** Where to stream its recording, or null when it left none. */
+  videoUrl: string | null
+}
+
+/** One lap in the trail: what burned, how the review went, what it found. */
+export interface TrailEntry {
+  lap: number
+  /** When the lap's latest completed pass finished; null while none has. */
+  completedAt: number | null
+  outcome: TrailOutcome
+  /** Implementation tickets the lap burned — the run view holds the detail. */
+  burned: number
+  /** Every review pass of the lap, in the order they ran. */
+  passes: TrailPass[]
+  /** Defects only: observations render in the Full account and nowhere else. */
+  defects: { found: number; fixed: number; carried: number }
+  /** Test notes taken in the lap. */
+  notes: number
+}
+
+interface TrailInput {
+  passes?: readonly ReviewPassFigure[]
+  tickets?: readonly TrailTicketFigure[]
+  findings?: readonly TrailFindingFigure[]
+  notes?: readonly { lap: number }[]
+  currentLap: number
+}
+
+/** The first line of an agent-or-runcastle digest, or null when there is none. */
+function firstLine(text: string | undefined): string | null {
+  const [first] = (text ?? '').trim().split('\n')
+  return first?.trim() || null
+}
+
+/**
+ * What one pass amounted to. The verdict columns are the pass's own word; the
+ * ticket beside them says whether it ran at all, which is a different fact and
+ * the one the feed has no column for.
+ *
+ * An unverified pass states the line runcastle composed into its digest — never
+ * the agent's prose (decision 5) — and the declared reason under it, dropped
+ * when the template already carries it.
+ */
+function passOutcome(
+  pass: ReviewPassFigure | null,
+  tickets: readonly TrailTicketFigure[],
+): TrailOutcome {
+  if (!pass) return { kind: 'none' }
+  const ticket = tickets.find((t) => t.id === pass.ticketId)
+  if (ticket?.status === 'failed') return { kind: 'could-not-run' }
+  if (pass.reviewVerdict === 'verified') return { kind: 'verified', mode: pass.reviewMode }
+  if (pass.reviewVerdict === 'unverified') {
+    const line = firstLine(ticket?.digest)
+    const reason = pass.reviewVerdictReason?.trim() || null
+    return { kind: 'unverified', line, reason: line && reason && line.includes(reason) ? null : reason }
+  }
+  return { kind: 'none' }
+}
+
+/**
+ * The feature's laps as the trail band renders them — newest first, ALL of
+ * them, one entry per lap (decisions 4–5).
+ *
+ * Newest first and undisclosed, which is the whole point: the popover this
+ * replaces hid "lap 2 found six defects, lap 3 verified nothing" behind a
+ * click. The current lap is always an entry even before anything has landed in
+ * it, so a fresh lap reads as a lap that has not been reviewed yet rather than
+ * as a lap that does not exist.
+ *
+ * A lap can hold several passes — the review, its verification, and any agentic
+ * re-reviews — so the entry is the LAP and the passes are rows inside it.
+ */
+export function lapTrail(input: TrailInput): TrailEntry[] {
+  const passes = input.passes ?? []
+  const tickets = input.tickets ?? []
+  const findings = input.findings ?? []
+  const notes = input.notes ?? []
+  const laps = [
+    ...new Set([
+      input.currentLap,
+      ...passes.map((p) => p.lap),
+      ...tickets.map((t) => t.lap),
+      ...findings.map((f) => f.lap),
+      ...notes.map((n) => n.lap),
+    ]),
+  ].sort((a, b) => b - a)
+
+  return laps.map((lap) => {
+    const lapPasses = passes.filter((p) => p.lap === lap)
+    const stamp = stampedReview(lapPasses)
+    const defects = findings.filter((f) => f.lap === lap && f.kind === 'defect')
+    return {
+      lap,
+      completedAt: stamp?.completedAt ?? null,
+      outcome: passOutcome(stamp, tickets),
+      burned: tickets.filter((t) => t.lap === lap && t.kind !== 'review' && t.status !== 'cancelled')
+        .length,
+      passes: lapPasses.map((pass) => ({
+        ticketId: pass.ticketId,
+        seq: pass.seq,
+        passKind: pass.passKind,
+        mode: pass.reviewMode,
+        verdict: pass.reviewVerdict,
+        couldNotRun: tickets.find((t) => t.id === pass.ticketId)?.status === 'failed',
+        videoUrl: pass.videoUrl,
+      })),
+      defects: {
+        found: defects.length,
+        fixed: defects.filter((d) => d.status === 'fixed').length,
+        carried: defects.filter((d) => d.status === 'carried').length,
+      },
+      notes: notes.filter((n) => n.lap === lap).length,
+    }
+  })
+}
+
+/** The unverified half of {@link TrailOutcome}, as the arrival banner reads it. */
+export type UnverifiedLap = Extract<TrailOutcome, { kind: 'unverified' }>
+
+/**
+ * The CURRENT lap's review verified nothing (decisions 3, 5) — what makes the
+ * page arrive loudly and what keeps Merge from being the primary action.
+ *
+ * Null for every other outcome, including a pass that could not run at all:
+ * `couldNotReview` is a pass that never happened, which the page already says
+ * elsewhere, and this line is about one that ran and verified nothing.
+ */
+export function unverifiedLap(input: {
+  passes?: readonly ReviewPassFigure[]
+  tickets?: readonly TrailTicketFigure[]
+  currentLap: number
+}): UnverifiedLap | null {
+  const lapPasses = (input.passes ?? []).filter((p) => p.lap === input.currentLap)
+  const outcome = passOutcome(stampedReview(lapPasses), input.tickets ?? [])
+  return outcome.kind === 'unverified' ? outcome : null
+}
+
 /** How much of a note or finding its one-line headline may carry. */

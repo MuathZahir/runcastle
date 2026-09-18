@@ -8,6 +8,8 @@ export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
+  lapTrail,
+  unverifiedLap,
   reviewChecks,
   latestReview,
   stampedReview,
@@ -23,6 +25,11 @@ export type {
   FindingCounts,
   ReviewOutcome,
   ReviewArtifactFigure,
+  ReviewPassFigure,
+  TrailEntry,
+  TrailOutcome,
+  TrailPass,
+  UnverifiedLap,
   Freshness,
   StatusChip,
 } from './feature-ui/review'
