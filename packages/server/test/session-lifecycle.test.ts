@@ -552,7 +552,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
-    expect(command).not.toContain(KICKOFF_LINES.ideation)
+    expect(command).not.toContain(KICKOFF_LINES.chat)
   })
 })
 

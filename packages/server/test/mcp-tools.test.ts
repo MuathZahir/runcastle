@@ -530,12 +530,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
   })
 })
 
-/**
- * The `qa` kind's read-only contract, which until now lived only in prose. A qa
- * session HAS a feature, so `requireFeatureId` waved every write tool through —
- * three separate prompts forbade what nothing enforced.
- */
-describe('mcp qa read-only contract', () => {
+describe('mcp chat write contract', () => {
   let ctx: AppCtx
   let repoPath: string
   let featureId: string
@@ -552,28 +547,12 @@ describe('mcp qa read-only contract', () => {
 
   afterEach(() => clearRuntimeCtx())
 
-  it('refuses every write tool with a message that says what to do instead', () => {
+  it('allows ticket writes from chat', () => {
     const [existing] = storeTickets(ctx, featureId, [ticket('already here')])
-    const calls: [string, () => unknown][] = [
-      ['emit_tickets', () => toolEmitTickets(ctx, qa, { tickets: [ticket('new')] })],
-      ['update_ticket', () => toolUpdateTicket(ctx, qa, { id: existing.id, title: 'x' })],
-      ['cancel_ticket', () => toolCancelTicket(ctx, qa, { id: existing.id })],
-      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'tickets' })],
-    ]
-    for (const [name, call] of calls) {
-      let thrown: unknown
-      try {
-        call()
-      } catch (e) {
-        thrown = e
-      }
-      expect(thrown, name).toBeInstanceOf(GateError)
-      expect((thrown as GateError).message, name).toMatch(/read-only/i)
-      expect((thrown as GateError).message, name).toMatch(/tell them/i)
-    }
-    // Nothing landed: the deny is the enforcement, not a warning.
-    expect(listByFeature(ctx, featureId)).toHaveLength(1)
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
+    expect(toolEmitTickets(ctx, qa, { tickets: [ticket('new')] }).stored).toBe(1)
+    expect(toolUpdateTicket(ctx, qa, { id: existing.id, title: 'changed' }).ticket.title).toBe('changed')
+    expect(toolCancelTicket(ctx, qa, { id: existing.id }).ticket.status).toBe('cancelled')
+    expect(listByFeature(ctx, featureId)).toHaveLength(2)
   })
 
   it('still reads, and still branches the map — "any session may branch the map"', () => {
@@ -687,12 +666,12 @@ describe('mcp run-scoped feature reads', () => {
  */
 describe('mcp tool registration by audience', () => {
   it('offers each kind only the tools its own runtime gates can let through', () => {
-    const qa = toolsForAudience('qa')
-    expect(qa).toContain('get_feature_context')
-    expect(qa).toContain('list_tickets')
-    expect(qa).toContain('emit_waypoints') // any session may branch the map
+    const chat = toolsForAudience('chat')
+    expect(chat).toContain('get_feature_context')
+    expect(chat).toContain('list_tickets')
+    expect(chat).toContain('emit_waypoints')
     for (const write of ['emit_tickets', 'complete_phase', 'update_ticket', 'cancel_ticket']) {
-      expect(qa, write).not.toContain(write)
+      expect(chat, write).toContain(write)
     }
 
     // A project session has no feature, so none of the feature surface.
@@ -705,9 +684,9 @@ describe('mcp tool registration by audience', () => {
 
     // Single-kind tools stay single-kind.
     expect(toolsForAudience('prepare')).toContain('dry_run_drive')
-    expect(toolsForAudience('ideation')).not.toContain('dry_run_drive')
+    expect(toolsForAudience('chat')).not.toContain('dry_run_drive')
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')
-    expect(toolsForAudience('ideation')).not.toContain('retry_drive')
+    expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
@@ -728,11 +707,11 @@ describe('mcp tool registration by audience', () => {
     expect(all).toContain('get_feature_context')
     expect(all).toContain('get_project_context')
     expect(all).toContain('review_drive')
-    expect(all.length).toBeGreaterThan(toolsForAudience('qa').length)
+    expect(all.length).toBeGreaterThan(toolsForAudience('chat').length)
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['ideation', 'qa', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })
