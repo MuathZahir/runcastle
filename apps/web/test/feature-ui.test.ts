@@ -654,6 +654,34 @@ describe('nextStep at review', () => {
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'iterate' })
   })
 
+  /**
+   * review-as-a-lap-trail decision 5: a lap whose review verified nothing is
+   * the one state where "checks are in, merge to ship" is a lie. Merge stops
+   * being the primary — and nothing takes its place on the bar, because the
+   * action that answers this state is the Agentic review the page's own banner
+   * leads with. Nothing is blocked: Merge is still one click away.
+   */
+  it('takes Merge off the primary when this lap’s review verified nothing', () => {
+    const ns = nextStep(reviewFull({}), {
+      driving: false,
+      unverifiedReview: { reason: 'no browser could be attached' },
+    })
+    expect(ns.primary).toBeUndefined()
+    expect(ns.title).toBe('Nothing was verified this lap')
+    expect(ns.desc).toContain('no browser could be attached')
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+  })
+
+  /** Open work already leads with Iterate — the loud line is the page's job. */
+  it('leaves the ladder above it alone when work is open', () => {
+    const ns = nextStep(reviewFull({}), {
+      driving: false,
+      openDefects: 2,
+      unverifiedReview: { reason: null },
+    })
+    expect(ns.primary?.kind).toBe('iterate')
+  })
+
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
