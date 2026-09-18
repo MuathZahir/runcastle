@@ -384,6 +384,9 @@ export function updateTicket(
     attemptBranch?: string | null
     conflictFiles?: string[] | null
     reviewedCommit?: string | null
+    reviewMode?: 'drive' | 'gates' | null
+    reviewVerdict?: 'verified' | 'unverified' | null
+    reviewVerdictReason?: string | null
   },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
@@ -400,6 +403,9 @@ export function updateTicket(
   if (patch.conflictFiles !== undefined) set.conflictFiles = patch.conflictFiles
   if (patch.digest !== undefined) set.digest = patch.digest
   if (patch.reviewedCommit !== undefined) set.reviewedCommit = patch.reviewedCommit
+  if (patch.reviewMode !== undefined) set.reviewMode = patch.reviewMode
+  if (patch.reviewVerdict !== undefined) set.reviewVerdict = patch.reviewVerdict
+  if (patch.reviewVerdictReason !== undefined) set.reviewVerdictReason = patch.reviewVerdictReason
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 
