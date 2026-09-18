@@ -4,9 +4,9 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
-import type { TicketInput, WaypointInput } from '@runcastle/core'
+import type { RunStatus, Ticket, TicketInput, WaypointInput } from '@runcastle/core'
 import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { runs } from '../src/db/schema'
+import { runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -29,9 +29,17 @@ import mcpApp, {
   toolUpdateTicket,
   toolsForAudience,
 } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
-import { cancelTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { reportFinding } from '../src/services/review-findings'
+import { addNote } from '../src/services/test-notes'
+import {
+  cancelTicket,
+  getTicket,
+  listByFeature,
+  storeTickets,
+  updateTicket,
+} from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -64,6 +72,35 @@ describe('mcp tools', () => {
   })
 
   afterEach(() => clearRuntimeCtx())
+
+  /**
+   * A burn as the runner records one: the `runs` row plus the `run.started`
+   * event naming the lanes it opened with. That event is what makes a ticket
+   * claimed before the run has said anything else about it.
+   */
+  function startBurn(
+    runId: string,
+    lanes: Ticket[],
+    run: { status: RunStatus; endedAt?: number },
+  ): void {
+    ctx.db
+      .insert(runs)
+      .values({
+        id: runId,
+        featureId,
+        workflow: 'ticket-burner',
+        status: run.status,
+        startedAt: 20,
+        endedAt: run.endedAt ?? null,
+      })
+      .run()
+    emit(ctx, featureId, {
+      type: 'run.started',
+      message: 'run started (ticket-burner)',
+      runId,
+      data: { workflow: 'ticket-burner', ticketIds: lanes.map((lane) => lane.id) },
+    })
+  }
 
   it('emit_tickets validates + stores the batch and reports each ticket’s assigned seq', () => {
     const out = toolEmitTickets(ctx, session, {
@@ -260,6 +297,113 @@ describe('mcp tools', () => {
     const byPath = Object.fromEntries(out.docs.map((d) => [d.relPath, d.content]))
     expect(byPath['brief.md']).toContain('seed')
     expect(byPath['decisions.md']).toContain('D1')
+  })
+
+  /**
+   * The state a chat used to have no channel to (decisions.md #7): how the last
+   * burn went lives on the `runs` table, and what this lap's review found lives
+   * in `review_findings` and in host scratch space outside the repo. One call
+   * states all of it.
+   */
+  it('get_feature_context states the last burn, this lap’s review and the notes that still stand', () => {
+    const [landed, broke, review] = storeTickets(ctx, featureId, [
+      ticket('landed'),
+      ticket('broke'),
+      { ...ticket('review the lap'), kind: 'review' },
+    ])
+    startBurn('run_burn', [landed, broke, review], { status: 'failed', endedAt: 30 })
+    updateTicket(ctx, landed.id, { status: 'done' })
+    updateTicket(ctx, broke.id, { status: 'failed', error: 'container died\n  at burn.ts:1' })
+    updateTicket(ctx, review.id, { status: 'done' })
+    reportFinding(ctx, {
+      featureId,
+      reviewTicket: getTicket(ctx, review.id),
+      input: {
+        kind: 'defect',
+        severity: 'high',
+        title: 'Save loses edits',
+        location: 'screen: editor',
+        citation: 'spec.md: edits persist',
+        detail: 'The old value returns.',
+        reproStep: 'Edit the title, save, reload.',
+      },
+    })
+    addNote(ctx, featureId, 'the empty state flashes')
+
+    const out = toolGetFeatureContext(ctx, session)
+    // Counted over the lanes that burn HELD — the fix ticket the finding just
+    // minted is the next burn's work and counts for neither side. The review
+    // pass is a lane like any other, so landing it lands a ticket.
+    expect(out.latestRun).toEqual({
+      status: 'failed',
+      ticketsLanded: 2,
+      ticketsFailed: 1,
+      errorHeadlines: ['container died'],
+    })
+    expect(out.currentLapReview).toEqual([
+      expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done', lap: 1 }),
+    ])
+    expect(out.currentLapReview[0].digestPath).toContain('DIGEST.md')
+    expect(out.findings.map((finding) => finding.title)).toEqual(['Save loses edits'])
+    expect(out.testNotes.map((note) => note.text)).toEqual(['the empty state flashes'])
+  })
+
+  it('get_feature_context omits latestRun entirely on a feature that has never burned', () => {
+    const out = toolGetFeatureContext(ctx, session)
+    expect('latestRun' in out).toBe(false)
+    expect(out.currentLapReview).toEqual([])
+    expect(out.findings).toEqual([])
+    expect(out.testNotes).toEqual([])
+  })
+
+  /**
+   * Keyed on status, not on the lap number alone — the mistake `carriedWork`
+   * documents. A note carried into this lap keeps the lap that captured it, so
+   * asking only for this lap's would lose exactly the notes still owed.
+   */
+  it('get_feature_context keeps a note an earlier lap carried rather than answered', () => {
+    const feature = seedFeature(ctx, getFeatureRow(ctx, featureId).projectId, {
+      slug: 'second-lap',
+      lap: 2,
+    })
+    const carried = addNote(ctx, feature.id, 'the contrast is still wrong')
+    ctx.db
+      .update(testNotes)
+      .set({ lap: 1, status: 'carried' })
+      .where(eq(testNotes.id, carried.id))
+      .run()
+    addNote(ctx, feature.id, 'this lap’s own note')
+
+    const out = featureContext(ctx, { featureId: feature.id, sessionId: session.id })
+    expect(out.testNotes.map((note) => note.text)).toEqual([
+      'the contrast is still wrong',
+      'this lap’s own note',
+    ])
+  })
+
+  it('ticket surgery refuses a ticket the live burn holds and allows one it does not', () => {
+    const [claimed, unclaimed] = storeTickets(ctx, featureId, [
+      ticket('claimed'),
+      ticket('next burn'),
+    ])
+    startBurn('run_active', [claimed], { status: 'running' })
+
+    // The refusal names both the run and the ticket: a chat told only "refused"
+    // cannot tell the human which burn to wait for.
+    for (const edit of [
+      () => toolUpdateTicket(ctx, session, { id: claimed.id, title: 'nope' }),
+      () => toolCancelTicket(ctx, session, { id: claimed.id }),
+    ]) {
+      expect(edit).toThrow(GateError)
+      expect(edit).toThrow(/run_active/)
+      expect(edit).toThrow(new RegExp(`#${claimed.seq} claimed`))
+    }
+    // The point of the guard's narrowness: the chat still shapes the NEXT burn
+    // while this one runs.
+    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'edited' }).ticket.title).toBe(
+      'edited',
+    )
+    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).ticket.status).toBe('cancelled')
   })
 
   /**

@@ -112,21 +112,35 @@ export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
 /**
  * The review passes of the lap BEFORE this one, as paths a session can read.
  *
- * Scoped to that one lap on purpose. The current lap's review has not run yet —
- * a lap is in flight before implementation — and an older lap's evidence is two
- * builds stale, so naming it would point a session at screenshots of a UI that
- * has since changed. A pass still `pending` or `burning` wrote no digest, and a
- * `cancelled` one never ran; only {@link BURNED_REVIEW} left evidence behind.
+ * Scoped to that one lap on purpose: an older lap's evidence is two builds
+ * stale, so naming it would point a session at screenshots of a UI that has
+ * since changed. What the CURRENT lap's own review left behind is a different
+ * question, asked by a different reader — see {@link currentLapReviewEvidence}.
+ * A pass still `pending` or `burning` wrote no digest, and a `cancelled` one
+ * never ran; only {@link BURNED_REVIEW} left evidence behind.
  */
 function previousLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEvidence[] {
   const { lap } = getFeatureRow(ctx, featureId)
   if (lap <= 1) return []
+  return lapReviewEvidence(ctx, featureId, lap - 1)
+}
+
+/**
+ * The review passes of the lap the feature is ON, which is what a conversation
+ * held in the review state is looking at: the burn has run, the review agent has
+ * left its digest, and the chat is being asked about that pass (decisions.md
+ * #7). The carry channel above cannot answer it — carrying is what happens to a
+ * lap once the NEXT one starts.
+ */
+export function currentLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEvidence[] {
+  return lapReviewEvidence(ctx, featureId, getFeatureRow(ctx, featureId).lap)
+}
+
+function lapReviewEvidence(ctx: AppCtx, featureId: string, lap: number): ReviewEvidence[] {
   return listTickets(ctx, featureId)
     .filter(
       (ticket) =>
-        ticket.kind === 'review' &&
-        ticket.lap === lap - 1 &&
-        BURNED_REVIEW.includes(ticket.status),
+        ticket.kind === 'review' && ticket.lap === lap && BURNED_REVIEW.includes(ticket.status),
     )
     .map((ticket) => {
       const dir = reviewDir(ticket.id)

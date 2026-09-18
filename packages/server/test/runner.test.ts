@@ -297,6 +297,28 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
     }
   })
 
+  it('a branch-claiming run names the lanes it opened with, before any of them starts', async () => {
+    const [first, second] = storeTickets(ctx, feature.id, [
+      { title: 'A', goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] },
+      { title: 'B', goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] },
+    ])
+    const original = workflowRegistry.get('ticket-burner')
+    const { def, open } = gatedDef('ticket-burner')
+    workflowRegistry.set(def.id, def)
+    try {
+      const { done } = await startRun(ctx, feature.id, 'ticket-burner')
+      // Mid-run, with no lane started: both tickets are already claimed, which
+      // is what the chat's ticket surgery reads to refuse an edit.
+      const started = listAfter(ctx, feature.id, 0).find((e) => e.type === 'run.started')
+      expect(started?.data?.ticketIds).toEqual([first.id, second.id])
+      open()
+      await done
+    } finally {
+      if (original) workflowRegistry.set('ticket-burner', original)
+      else workflowRegistry.delete('ticket-burner')
+    }
+  })
+
   it('parks the talk worktree on a chat branch for the run, then hands the feature branch back', async () => {
     await withGatedBurner('succeeded', async (open, done) => {
       // mid-run: on a chat temp branch — the feature branch is free for the
