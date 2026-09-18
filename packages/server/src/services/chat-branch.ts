@@ -52,14 +52,12 @@ function talkWorktree(project: Project, feature: Feature): string {
  * on a fresh chat branch. Falls back to the old detach when the branch cannot be
  * cut (so a run is never blocked by it), and no-ops when the worktree is already
  * parked — a crashed run's leftover, which the next release still lands.
- *
- * Returns whether the feature branch is now free of the talk worktree.
  */
-export async function parkTalkWorktreeForRun(project: Project, feature: Feature): Promise<boolean> {
+export async function parkTalkWorktreeForRun(project: Project, feature: Feature): Promise<void> {
   const worktreePath = talkWorktree(project, feature)
-  if (await chatBranchInWorktree(worktreePath)) return true
-  if (await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))) return true
-  return await detachWorktree(worktreePath)
+  if (await chatBranchInWorktree(worktreePath)) return
+  if (await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))) return
+  await detachWorktree(worktreePath)
 }
 
 /**

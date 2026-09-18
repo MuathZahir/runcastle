@@ -4,7 +4,6 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
-  Feature,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,

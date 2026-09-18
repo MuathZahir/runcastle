@@ -523,9 +523,8 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
   // a broken one (`one-chat-per-feature` decision 2): checking the feature branch
   // back out here would steal it from the run that claimed it and move the
   // session's files under it. The run's own boundary puts it back.
-  if ((await registeredWorktrees(g)).has(canon(worktreePath)) && (await chatBranchInWorktree(worktreePath))) {
-    return worktreePath
-  }
+  const registered = (await registeredWorktrees(g)).has(canon(worktreePath))
+  if (registered && (await chatBranchInWorktree(worktreePath))) return worktreePath
 
   // A registered worktree that is merely DETACHED just needs the branch checked
   // out again — `worktree add` would refuse the path git still owns. This is the
@@ -533,7 +532,7 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
   // branch, and the reattach on stop is best-effort), which used to make the next
   // terminal on the feature unlaunchable — findings F3. Same move as
   // `ensureProjectWorktree`.
-  if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
+  if (existsSync(worktreePath) && registered) {
     if (await checkoutInWorktree(worktreePath, branch)) return worktreePath
   }
 
