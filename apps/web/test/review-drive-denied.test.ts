@@ -114,19 +114,19 @@ const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}
       readonly: false,
       busy: false,
       refusal: null,
-      onRetry: () => undefined,
+      onReview: () => undefined,
       onDismiss: () => undefined,
       ...props,
     }),
   )
 
 describe('ReviewDriveDeniedCard', () => {
-  it('says the drive was refused, names the files, and offers the retry', () => {
+  it('says the drive was refused, names the files, and offers another pass', () => {
     const html = render()
     expect(html).toContain('Review couldn’t drive')
     expect(html).toContain('a.ts')
     expect(html).toContain('b.ts')
-    expect(html).toContain('Retry review')
+    expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
   })
 
@@ -167,16 +167,24 @@ describe('ReviewDriveDeniedCard', () => {
     expect(render()).not.toContain('still dirty')
   })
 
-  it('holds the retry shut while one is starting', () => {
+  it('holds the mint shut while one is starting', () => {
     const html = render({ busy: true })
     expect(html).toContain('disabled')
-    expect(html).toContain('Retrying…')
+    expect(html).toContain('Starting…')
   })
 
-  /** No `done` review ticket to re-burn: say so rather than offer a dead button. */
-  it('drops the retry button when there is no review to re-burn', () => {
-    const html = render({ onRetry: null })
+  /** Decision 7: the denied pass stays in the trail, and the action mints a
+   *  fresh one — so the banner never claims to resume the reviewer it refused. */
+  it('offers a fresh pass rather than a retry of the refused one', () => {
+    const html = render()
+    expect(html).toContain('a fresh pass is minted for this lap')
     expect(html).not.toContain('Retry review')
+  })
+
+  /** Nothing on the page acts: no button rather than a dead one. */
+  it('drops the button when the page hands it no mint', () => {
+    const html = render({ onReview: null })
+    expect(html).not.toContain('Agentic review')
     expect(html).toContain('Dismiss')
   })
 })

@@ -18,6 +18,7 @@ import {
   reviewChecks,
   reviewDriveDenial,
   specDocPath,
+  unverifiedLap,
   verificationState,
   type MergeConflictState,
 } from '../../lib/feature-ui'
@@ -32,8 +33,10 @@ import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
+import { NothingVerifiedAlert } from '../review/NothingVerifiedAlert'
 import { NotesRail } from '../review/NotesRail'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
+import { ReviewTrail } from '../review/ReviewTrail'
 import { StatusStrip } from '../review/StatusStrip'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -107,13 +110,6 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
-  // The review the retry re-burns. A denial never ends a review — it downgrades
-  // it to the repo-only pass — so the ticket that was refused is a `done` one,
-  // and the latest of those is this lap's review (as `reviewOutcome` reads it).
-  const deniedReview = latestReview(
-    tickets.filter((t) => t.kind === 'review' && t.status === 'done'),
-  )
-
   // Commits come from git, not from ticket commit rows (findings F23). Polled
   // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
   // only moves when a burn lands, and a human reads a page, not a ticker.
@@ -176,11 +172,28 @@ export function ReviewBody({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Another review pass, on demand (decisions 6–7): a fresh review ticket is
+  // minted on this lap and burned. The server refuses it while a run is live or
+  // while the tree would deny the drive again, and those refusals are the
+  // server's own words — a toast here, and inside the banner where the banner
+  // is what asked.
+  const agenticReview = trpc.feature.agenticReview.useMutation({
+    onSuccess: () => {
+      void utils.feature.get.invalidate({ id: feature.id })
+      void utils.events.invalidate()
+    },
+    onError: (e) => toast.push(e.message),
+  })
   // Jump to this moment (decision 25b). The stage and the open-work rows are
   // siblings, so a timestamp click travels up to the one parent they share: the
   // player writes its seek in here while it is mounted, and the rows call
   // whatever is in it. Nothing fills it when no recording is on the stage.
   const walkthroughHandle = useRef<WalkthroughHandle | null>(null)
+  // Which recording the human picked off the trail, or null for "the latest"
+  // (decision 4). Held here because the two bands that share it are siblings:
+  // the trail below picks, the stage above plays, and a fresh pass landing
+  // while nothing is picked still puts its recording up.
+  const [picked, setPicked] = useState<string | null>(null)
   // Which recording the stage is actually playing, so a note's timestamp is a
   // live jump only into its own recording (decision 22). The stage reports it
   // rather than the ref answering, because a ref does not re-render its readers.
@@ -255,6 +268,23 @@ export function ReviewBody({
   // phase is a record, not something to act on.
   const denial =
     feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
+  // This lap's review ran and verified nothing (decision 5) — the page's top
+  // line, in runcastle's own words. A history view states nothing and offers
+  // nothing (decision 33a), so the banner is the live page's alone.
+  const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
+  // One burn at a time is a hard rule the server enforces, so the control says
+  // so rather than dead-ending on the click (findings F3). Same shape as the
+  // Test drive control's occupied-slot reason beside it.
+  const agenticReviewControl = readonly
+    ? null
+    : {
+        onStart: () => agenticReview.mutate({ featureId: feature.id }),
+        ...(agenticReview.isPending
+          ? { blocked: 'starting…' }
+          : run?.status === 'running'
+            ? { blocked: 'a burn is running' }
+            : {}),
+      }
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({
@@ -285,6 +315,7 @@ export function ReviewBody({
       featureId={feature.id}
       branch={feature.branch}
       recordings={recordings}
+      picked={picked}
       notes={notes.data ?? []}
       readonly={readonly}
       driveState={driveState}
@@ -350,10 +381,19 @@ export function ReviewBody({
                 // old one cannot linger under it.
                 key={denial.eventId}
                 featureId={feature.id}
-                reviewTicketId={deniedReview?.id ?? null}
                 denial={denial}
                 readonly={readonly}
                 onDismiss={() => setDismissedDenial(denial.eventId)}
+              />
+            )}
+
+            {/* The lap that verified nothing says so before anything else on
+                the page (decision 5) — loud, and blocking nothing. */}
+            {unverified && (
+              <NothingVerifiedAlert
+                lap={feature.lap}
+                outcome={unverified}
+                agenticReview={agenticReviewControl}
               />
             )}
 
@@ -393,6 +433,9 @@ export function ReviewBody({
               laterLaps={deferredScope(specQ.data?.content)}
               readonly={readonly}
               unverifiedKeys={unverifiedKeys}
+              // Always offered while the page can act (decision 6): asking for
+              // another review pass is never about what the last one did.
+              {...(agenticReviewControl ? { agenticReview: agenticReviewControl } : {})}
               // A drive already at the wheel is the stage's to stop, and a
               // history view starts nothing at all.
               {...(readonly || driveUp
@@ -423,6 +466,20 @@ export function ReviewBody({
               featureId={feature.id}
               findings={findings.data?.carriedFindings ?? []}
               readonly={readonly}
+            />
+
+            {/* The feature's laps, one entry each, newest first (decisions 4–5)
+                — history, below the state and the open work it is the record
+                behind. Clicking a pass's recording stages it above. */}
+            <ReviewTrail
+              passes={rows}
+              tickets={tickets}
+              findings={findings.data?.findings ?? []}
+              notes={notes.data ?? []}
+              currentLap={feature.lap}
+              staged={staged?.ticketId ?? null}
+              onStage={setPicked}
+              {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
             />
 
             <FullAccounts

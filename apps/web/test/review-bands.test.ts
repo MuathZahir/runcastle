@@ -82,6 +82,7 @@ vi.mock('../src/trpc', () => {
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },
+        agenticReview: { useMutation: mutation },
         fixDrive: { useMutation: mutation },
         endSession: { useMutation: mutation },
       },
@@ -389,11 +390,11 @@ describe('the review page’s arrival bands', () => {
       startedAt,
     })
 
-    it('raises a banner naming the files, with the way to re-burn the review', () => {
+    it('raises a banner naming the files, with the way to run another review', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('src/App.tsx')
-      expect(html).toContain('Retry review')
+      expect(html).toContain('Agentic review')
     })
 
     it('says nothing when no drive was ever refused', () => {

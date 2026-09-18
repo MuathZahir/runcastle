@@ -33,6 +33,7 @@ import {
   stampedReview,
   testDriveTaken,
   unresolvedMergeConflict,
+  unverifiedLap,
   verificationState,
   type ActionKind,
   type DraftBaseMissing,
@@ -147,6 +148,14 @@ export function Workspace({
     { landedSince: stamped?.landedSince ?? 0, lap: q.data?.feature.lap ?? 1 },
     verificationState(q.data?.tickets ?? []),
   )
+  // This lap's review verified nothing (review-as-a-lap-trail decision 5) — off
+  // the same artifacts listing the review page's own banner reads, so the bar
+  // and the banner can never disagree about whether anything was checked.
+  const unverifiedReview = unverifiedLap({
+    passes: artifacts.data ?? [],
+    tickets: q.data?.tickets ?? [],
+    currentLap: q.data?.feature.lap ?? 1,
+  })
   const [confirmMerge, setConfirmMerge] = useState(false)
   const [confirmBurn, setConfirmBurn] = useState(false)
   // What the Burn confirmation prints in its warn box (decision 5) — computed
@@ -462,6 +471,7 @@ export function Workspace({
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
     openNotes,
     openDefects,
+    ...(unverifiedReview ? { unverifiedReview: { reason: unverifiedReview.reason } } : {}),
     laterLaps,
     interruptedBurn,
   })

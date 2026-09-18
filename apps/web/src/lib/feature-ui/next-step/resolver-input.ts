@@ -29,6 +29,13 @@ export interface NextStepContext {
   draftBaseMissing?: DraftBaseMissing
   openNotes?: number
   openDefects?: number
+  /**
+   * This lap's review ran and verified nothing (review-as-a-lap-trail
+   * decision 5), with the reason it declared. Merge stops being the primary
+   * action while it stands — the page's own banner carries the one action that
+   * answers it, another review pass.
+   */
+  unverifiedReview?: { reason: string | null }
   laterLaps?: string | null
   interruptedBurn?: BurnInterruption
 }

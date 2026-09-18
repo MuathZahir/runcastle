@@ -95,11 +95,14 @@ function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
  * own brief, which is why the header carries it with a title saying so.
  */
 function stageIdentity(
-  recording: Pick<ReviewArtifacts, 'passKind' | 'reviewedCommit' | 'landedSince'>,
+  recording: Pick<ReviewArtifacts, 'lap' | 'passKind' | 'reviewedCommit' | 'landedSince'>,
   duration: number | null,
   fixes: number | null,
 ): string {
-  const parts = [recording.passKind === 'verification' ? 'Verification walkthrough' : 'Walkthrough']
+  const parts = [
+    `Lap ${recording.lap}`,
+    recording.passKind === 'verification' ? 'Verification walkthrough' : 'Walkthrough',
+  ]
   if (duration !== null && duration > 0) parts.push(fmtClock(duration))
   if (recording.passKind === 'verification' && fixes !== null && fixes > 0) {
     parts.push(`confirms ${fixes} fix${fixes === 1 ? '' : 'es'}`)
@@ -112,15 +115,11 @@ function stageIdentity(
   return parts.join(' · ')
 }
 
-/** How an older recording names itself in the "earlier recordings" list. */
-function recordingLabel(recording: ReviewArtifacts): string {
-  return `Lap ${recording.lap} · ${recording.passKind === 'verification' ? 'verification pass' : 'review pass'} · #${recording.seq}`
-}
-
 export function EvidenceStage({
   featureId,
   branch,
   recordings,
+  picked = null,
   notes,
   readonly,
   driveState,
@@ -137,6 +136,15 @@ export function EvidenceStage({
   branch: string
   /** Every review pass that left a recording, newest last. */
   recordings: readonly ReviewArtifacts[]
+  /**
+   * The pass whose recording the page has staged, or null for "the latest" —
+   * so a verification pass landing while the page is open puts the fresh
+   * recording up rather than pinning whatever was latest at mount.
+   *
+   * Held by the page rather than here (decision 4): the lap trail is what picks
+   * a recording now, and the two cannot be the stage's private state.
+   */
+  picked?: string | null
   notes: readonly TestNote[]
   /** Looking back at review on a shipped feature — the record plays, nothing acts. */
   readonly: boolean
@@ -167,16 +175,14 @@ export function EvidenceStage({
   /** A note was just captured, so the list below can scroll to it. */
   onAnnotationSaved?: (noteId: string) => void
 }) {
-  // Which recording is on the stage. Null means "the latest", so a verification
-  // pass landing while the page is open puts the fresh recording up rather than
-  // pinning whatever was latest at mount.
-  const [picked, setPicked] = useState<string | null>(null)
   const [duration, setDuration] = useState<number | null>(null)
 
   const latest = latestReview(recordings)
   const onStage = recordings.find((r) => r.ticketId === picked) ?? latest
-  const earlier = recordings.filter((r) => r.ticketId !== onStage?.ticketId)
   const showing = stageShows(driveState, !!onStage?.videoUrl)
+  // A recording swapped for another is a fresh measurement: the length on the
+  // identity line must never be the one the previous recording reported.
+  useEffect(() => setDuration(null), [onStage?.ticketId])
 
   // The fixes a verification pass confirms: what landed between the pass before
   // it and it. Both counts are "implementation tickets done since", so their
@@ -222,29 +228,6 @@ export function EvidenceStage({
           >
             {stageIdentity(onStage, duration, fixes)}
           </span>
-        )}
-
-        {earlier.length > 0 && (
-          <details className="relative">
-            <summary className="cursor-pointer list-none font-mono text-xs text-text-3 underline decoration-dotted">
-              Earlier recordings ({earlier.length})
-            </summary>
-            <ul className="absolute top-[calc(100%+6px)] left-0 z-20 flex w-80 list-none flex-col gap-0.5 rounded-md border border-hairline-strong bg-panel-3 p-1.5">
-              {earlier.map((recording) => (
-                <li key={recording.ticketId}>
-                  <Button
-                    className="w-full justify-start border-0 font-mono text-xs"
-                    onClick={() => {
-                      setPicked(recording.ticketId)
-                      setDuration(null)
-                    }}
-                  >
-                    {recordingLabel(recording)}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </details>
         )}
 
         {/* The stage takes the window (decision 3), and gives it back. One

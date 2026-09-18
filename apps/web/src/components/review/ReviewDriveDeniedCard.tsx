@@ -11,12 +11,12 @@ import { fmtDateTime, relTimeAgo } from '../../lib/format'
  * digest the human reads long afterwards — which is the whole complaint this
  * feature answers. The refusal is the moment they can still act, so it is a
  * banner naming the files that were in the way, with the one thing that fixes
- * it once they are gone: re-burn the review, which resumes the same reviewer
- * and does only the drive pass it was blocked from.
+ * it once they are gone: another review pass, minted fresh on this lap and
+ * burned (decision 7). The denied pass is not reset — it stays in the lap trail
+ * as what it was.
  *
- * `onRetry` is null when there is no `done` review ticket to re-burn — the
- * retry path takes a ticket, and a button that could only be refused is worse
- * than no button (as `ConflictCard` says of its own).
+ * `onReview` is null where nothing on the page acts, and a button that could
+ * only be refused is worse than no button (as `ConflictCard` says of its own).
  *
  * Hook-free so its anatomy is testable without a tRPC provider, like its
  * neighbours in the slot; {@link ReviewDriveDeniedAlert} is the wired half.
@@ -27,17 +27,17 @@ export function ReviewDriveDeniedCard({
   readonly,
   busy,
   refusal,
-  onRetry,
+  onReview,
   onDismiss,
 }: {
   denial: ReviewDriveDenial
   /** Looking back at review on a shipped feature — history, never an action. */
   readonly: boolean
   busy: boolean
-  /** Why the retry was turned down, in the server's words, or null. */
+  /** Why the mint was turned down, in the server's words, or null. */
   refusal: string | null
-  /** Re-burn the review, or null when there is no review ticket to re-burn. */
-  onRetry: (() => void) | null
+  /** Mint another review pass, or null where nothing on the page acts. */
+  onReview: (() => void) | null
   onDismiss: () => void
 }) {
   if (readonly) return null
@@ -52,8 +52,9 @@ export function ReviewDriveDeniedCard({
       </div>
       <p className="mt-2 mb-0 text-sm leading-relaxed text-text-2">
         The drive was refused because the working tree had uncommitted changes, so the review ran
-        repo-only — the gates and the diff, with no app to walk. Commit or discard the files below
-        and retry: the same reviewer picks its findings back up and does the drive pass it missed.
+        repo-only — the gates and the diff, with no app to walk. Commit or discard the files below,
+        then run another review: a fresh pass is minted for this lap and burns with the drive
+        available to it.
       </p>
       {denial.dirtyFiles.length > 0 ? (
         <ul className="mt-3 flex list-none flex-col gap-1 p-0">
@@ -78,9 +79,9 @@ export function ReviewDriveDeniedCard({
         </div>
       )}
       <div className="mt-4 flex items-center gap-2">
-        {onRetry && (
-          <Button variant="solid" disabled={busy} onClick={onRetry}>
-            {busy ? 'Retrying…' : 'Retry review'}
+        {onReview && (
+          <Button variant="solid" disabled={busy} onClick={onReview}>
+            {busy ? 'Starting…' : 'Agentic review'}
           </Button>
         )}
         <Button onClick={onDismiss}>Dismiss</Button>
@@ -90,34 +91,31 @@ export function ReviewDriveDeniedCard({
 }
 
 /**
- * {@link ReviewDriveDeniedCard} with the re-burn wired to it.
+ * {@link ReviewDriveDeniedCard} with the mint wired to it.
  *
- * The retry is the ordinary per-ticket one (`ticket.retry`), which the service
- * loosened to accept a `done` review ticket whose drive was refused this way —
- * so there is no second retry flow here, only the one door with the review's
- * own ticket handed to it. The endpoint refuses while the tree is still dirty,
- * naming what is still in the way; that refusal is held here rather than
- * pushed to a toast, because it is a list of files the human has to go and deal
- * with before the button can work, and a toast that has faded is a list they no
+ * The action is the Agentic review mutation every other Agentic review button
+ * calls (decision 7) — the narrow `retryingDeniedReview` special case that used
+ * to reset the refused `done` ticket is gone, and `ticket.retry` is failed
+ * tickets only again. The endpoint refuses while the tree is still dirty,
+ * naming what is still in the way; that refusal is held here rather than pushed
+ * to a toast, because it is a list of files the human has to go and deal with
+ * before the button can work, and a toast that has faded is a list they no
  * longer have.
  */
 export function ReviewDriveDeniedAlert({
   featureId,
-  reviewTicketId,
   denial,
   readonly,
   onDismiss,
 }: {
   featureId: string
-  /** The review ticket to re-burn, or null when this lap emitted none. */
-  reviewTicketId: string | null
   denial: ReviewDriveDenial
   readonly: boolean
   onDismiss: () => void
 }) {
   const utils = trpc.useUtils()
   const [refusal, setRefusal] = useState<string | null>(null)
-  const retry = trpc.ticket.retry.useMutation({
+  const review = trpc.feature.agenticReview.useMutation({
     onSuccess: () => {
       // The banner reads the feed and the run list to know it is over, so the
       // burn this just minted has to land before it can clear itself.
@@ -131,16 +129,12 @@ export function ReviewDriveDeniedAlert({
     <ReviewDriveDeniedCard
       denial={denial}
       readonly={readonly}
-      busy={retry.isPending}
+      busy={review.isPending}
       refusal={refusal}
-      onRetry={
-        reviewTicketId
-          ? () => {
-              setRefusal(null)
-              retry.mutate({ ticketId: reviewTicketId })
-            }
-          : null
-      }
+      onReview={() => {
+        setRefusal(null)
+        review.mutate({ featureId })
+      }}
       onDismiss={onDismiss}
     />
   )

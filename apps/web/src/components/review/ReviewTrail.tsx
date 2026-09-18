@@ -158,7 +158,12 @@ export function ReviewTrail({
   passes: readonly ReviewPassFigure[]
   /** The feature's tickets — what burned, and what the feed cannot say. */
   tickets: readonly { id: string; lap: number; kind?: TicketKind; status: string; digest?: string }[]
-  findings: readonly { lap: number; kind: 'defect' | 'observation'; status: FindingStatus }[]
+  findings: readonly {
+    lap: number
+    kind: 'defect' | 'observation'
+    status: FindingStatus
+    fixTicketId?: string | null
+  }[]
   notes: readonly { lap: number }[]
   currentLap: number
   /** The recording the stage is playing, so its row reads as the picked one. */

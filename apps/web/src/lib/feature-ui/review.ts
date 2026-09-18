@@ -480,6 +480,8 @@ interface TrailFindingFigure {
   lap: number
   kind: 'defect' | 'observation'
   status: FindingStatus
+  /** The fix ticket it minted, which is the other half of "fixed" (see below). */
+  fixTicketId?: string | null
 }
 
 /**
@@ -615,7 +617,16 @@ export function lapTrail(input: TrailInput): TrailEntry[] {
       })),
       defects: {
         found: defects.length,
-        fixed: defects.filter((d) => d.status === 'fixed').length,
+        // The fix-ticket join is the server's own rule for "fixed"
+        // (`defectState` in services/review-findings.ts): a burner that landed
+        // the fix without stamping the row leaves a fixed defect reading as
+        // open, and a trail that counted the row alone would disagree with the
+        // strip above it about the same lap.
+        fixed: defects.filter(
+          (d) =>
+            d.status === 'fixed' ||
+            (d.fixTicketId && tickets.find((t) => t.id === d.fixTicketId)?.status === 'done'),
+        ).length,
         carried: defects.filter((d) => d.status === 'carried').length,
       },
       notes: notes.filter((n) => n.lap === lap).length,
