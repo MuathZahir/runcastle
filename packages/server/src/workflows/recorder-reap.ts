@@ -1,7 +1,29 @@
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
 import { reviewWalkthroughPath } from '@runcastle/core/paths'
-import { AGENT_BROWSER_BIN, findOnPath } from './review-ticket'
+
+/** The CLI used by review agents to drive and record the app. */
+export const AGENT_BROWSER_BIN = 'agent-browser'
+
+/** Resolve an executable directly from PATH without a platform-specific shell command. */
+export function findOnPath(
+  bin: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+  const suffixes = platform === 'win32'
+    ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    : ['']
+  for (const dir of dirs) {
+    for (const suffix of suffixes) {
+      const candidate = join(dir, `${bin}${suffix}`)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return undefined
+}
 
 export interface RecorderReapOutcome {
   readonly confirmed: boolean
@@ -60,6 +82,7 @@ function runCommand(bin: string, args: readonly string[]): Promise<boolean> {
 }
 
 function handleReleased(path: string): boolean {
+  if (!existsSync(path)) return true
   try {
     const fd = openSync(path, 'r+')
     closeSync(fd)

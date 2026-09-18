@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
@@ -10,7 +10,8 @@ import { appendTranscript, beginTranscript, endTranscript } from '../services/ag
 import { releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
 import { killRegistry, registerHostChildren } from './kill-registry'
-import { reapRecorder } from './recorder-reap'
+import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
+export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -105,43 +106,6 @@ export function renderReviewPrompt(
     ? templateOrTicket
     : readFileSync(reviewTemplatePath(templateOrTicket), 'utf8')
   return renderTemplate(template, values)
-}
-
-/** The CLI the review agent drives the app with. */
-export const AGENT_BROWSER_BIN = 'agent-browser'
-
-/**
- * Whether `agent-browser` is on this machine's PATH. Probed BEFORE the agent is
- * spawned: a review that discovers halfway through that it cannot open a browser
- * has already switched the human's checkout and burned an agent to say so, and
- * "the CLI is not installed" is a fact the burner can establish for free.
- *
- * It selects the mode rather than failing the ticket. A machine with no browser
- * can still run Gates mode, which needs nothing but the repository — refusing
- * the whole review there withheld the mode that was still perfectly available.
- *
- * PATH is walked directly rather than shelling out to `which`/`where`, which
- * differ per platform and cost a process either way.
- */
-export function findOnPath(
-  bin: string,
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
-  // On Windows a bare name is only executable via one of PATHEXT's suffixes;
-  // elsewhere the name IS the file.
-  const suffixes =
-    platform === 'win32'
-      ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : ['']
-  for (const dir of dirs) {
-    for (const suffix of suffixes) {
-      const candidate = join(dir, `${bin}${suffix}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return undefined
 }
 
 /**
