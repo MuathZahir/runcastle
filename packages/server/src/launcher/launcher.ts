@@ -44,6 +44,7 @@ import {
   releaseForSession,
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
+import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
 import { noteResolvedMerge } from '../services/resolved-merge'
@@ -209,12 +210,13 @@ function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): s
 }
 
 /**
- * The feature's currently-running AFK run, if any. Spawning an HITL terminal
- * is refused only while a BRANCH-CLAIMING run (e.g. ticket-burner) is in
- * flight: the runner detaches the talk worktree for those, so a session
- * spawned mid-run would land on a detached HEAD and orphan its docs commits.
- * Research runs work on temp branches (ADR-0001 §7 "parallel AFK") and never
- * block terminals; run-claims themselves never block anything.
+ * The feature's currently-running AFK run, if any. A run no longer refuses a
+ * terminal — that clause was the post-mortem's worst hour, a dead burn with
+ * nothing to talk to — but a BRANCH-CLAIMING run (e.g. ticket-burner) does
+ * decide where the talk worktree stands: it holds `feature/<slug>`, so the
+ * session works on a chat temp branch beside it (`one-chat-per-feature`
+ * decision 2). Research runs work on temp branches (ADR-0001 §7 "parallel AFK")
+ * and change nothing.
  */
 function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
   const row = ctx.db
@@ -227,25 +229,23 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 }
 
 /**
- * Throw when an HITL session must not spawn on this feature right now:
- * - another session row is `launching`/`live` (one live HITL session per feature
- *   — one talk worktree, git forbids two checkouts of one branch). Guarding on
- *   session ROWS, not waypoint claims, means resolving a waypoint while its
- *   terminal is still open can no longer sneak a second live session in.
- * - an AFK run is in progress (see `activeRunFor` — worktree detached).
+ * Throw when an HITL session must not spawn on this feature right now: another
+ * session row is `launching`/`live` (one live HITL session per feature — one
+ * talk worktree, git forbids two checkouts of one branch). Guarding on session
+ * ROWS, not waypoint claims, means resolving a waypoint while its terminal is
+ * still open can no longer sneak a second live session in.
  * `excludeSessionId` skips the caller's own just-created row.
+ *
+ * A live AFK run used to refuse here too. It no longer does: a branch-claiming
+ * run parks the talk worktree on a chat temp branch instead of detaching it, so
+ * a session spawned mid-run has a branch of its own to commit to and its docs
+ * land through the feature's queue (`one-chat-per-feature` decision 2).
  */
 function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: string): void {
   const live = activeSessionsForFeature(ctx, feature.id).filter((s) => s.id !== excludeSessionId)
   if (live.length > 0) {
     throw new GateError(
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
-    )
-  }
-  const running = activeRunFor(ctx, feature.id)
-  if (running && workflowClaimsFeatureBranch(running.workflow)) {
-    throw new GateError(
-      `a ${running.workflow} run is in progress on ${feature.slug} — it holds the feature branch; terminals are available when it finishes`,
     )
   }
 }
@@ -305,14 +305,24 @@ function sweepActiveSessions(ctx: AppCtx, feature: Feature, endLive: boolean): v
   }
 }
 
-/** Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature). */
+/**
+ * Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature).
+ *
+ * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
+ * temp branch instead, so a session that spawns mid-run has somewhere of its own
+ * to commit and never lands docs on a detached HEAD.
+ */
 async function ensureWorktree(
   ctx: AppCtx,
   project: Project,
   feature: Feature,
 ): Promise<string> {
+  const running = activeRunFor(ctx, feature.id)
+  const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
   try {
-    return await git.ensureTalkWorktree(project, feature)
+    return besideRun
+      ? await ensureTalkWorktreeDuringRun(project, feature)
+      : await git.ensureTalkWorktree(project, feature)
   } catch (e) {
     if (isNotImplemented(e)) {
       const fallback = worktreeDir(project.id, feature.slug)

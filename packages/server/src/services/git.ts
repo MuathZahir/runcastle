@@ -519,6 +519,14 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
 
   if (await worktreeIsValid(g, worktreePath, branch)) return worktreePath
 
+  // A worktree parked on its chat temp branch is the burn-coexistence state, not
+  // a broken one (`one-chat-per-feature` decision 2): checking the feature branch
+  // back out here would steal it from the run that claimed it and move the
+  // session's files under it. The run's own boundary puts it back.
+  if ((await registeredWorktrees(g)).has(canon(worktreePath)) && (await chatBranchInWorktree(worktreePath))) {
+    return worktreePath
+  }
+
   // A registered worktree that is merely DETACHED just needs the branch checked
   // out again — `worktree add` would refuse the path git still owns. This is the
   // post-test-drive state (the drive detaches the talk worktree to take the
@@ -907,6 +915,48 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
   }
 }
 
+/**
+ * Start `branch` at the worktree's CURRENT commit and check it out there
+ * (`git checkout -b`), freeing whatever branch the worktree held — the chat's
+ * alternative to {@link detachWorktree} while a burn claims the feature branch
+ * (`one-chat-per-feature` decision 9).
+ *
+ * No start point is passed on purpose: the worktree stays exactly where it is,
+ * so working files do not move and a live session inside it sees nothing change
+ * beyond the name of the branch its next commit lands on. Works from a detached
+ * HEAD too (the crashed-drive state), which is the other way a worktree arrives
+ * here.
+ *
+ * Returns whether the worktree is now on `branch`; `false` for a missing path or
+ * a checkout git refused, so the caller can fall back to detaching.
+ */
+export async function startBranchInWorktree(path: string, branch: string): Promise<boolean> {
+  if (!existsSync(path)) return false
+  try {
+    await git(path).raw(['checkout', '-b', branch])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The chat temp branch the worktree at `path` is on, or `undefined` when it is
+ * on anything else (the feature branch, a detached HEAD, or no worktree at all).
+ * The worktree's own HEAD — not a recorded name — is what the boundary handoff
+ * reads, because each mid-run landing replaces the branch with a fresh one.
+ */
+export async function chatBranchInWorktree(path: string): Promise<string | undefined> {
+  if (!existsSync(path)) return undefined
+  let head: string
+  try {
+    head = (await git(path).revparse(['--abbrev-ref', 'HEAD'])).trim()
+  } catch {
+    return undefined
+  }
+  return head.startsWith(CHAT_BRANCH_PREFIX) ? head : undefined
+}
+
 // --- runcastle temp branches (ADR-0001 §7: serial HITL, PARALLEL AFK) -------
 
 /**
@@ -919,6 +969,13 @@ export async function reattachWorktree(path: string, branch: string): Promise<vo
 export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
 /**
+ * The branch the feature chat commits its docs to while a branch-claiming run
+ * holds `feature/<slug>` (`one-chat-per-feature` decision 2). Same namespace and
+ * same lifecycle as the other two: cut from the feature tip, landed through the
+ * feature's serial landing queue, swept at boot when it is fully merged.
+ */
+export const CHAT_BRANCH_PREFIX = 'runcastle/chat/'
+/**
  * The branch the project session works on (decision 18 of feature-grouping).
  * One per project — the session is a singleton — cut fresh from the base tip at
  * each launch and landed back onto the base branch by {@link mergeTempBranch}
@@ -927,7 +984,11 @@ export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
  * checkout directly.
  */
 export const PROJECT_BRANCH = 'runcastle/project'
-const TEMP_BRANCH_PREFIXES = [RESEARCH_BRANCH_PREFIX, TICKET_BRANCH_PREFIX] as const
+const TEMP_BRANCH_PREFIXES = [
+  RESEARCH_BRANCH_PREFIX,
+  TICKET_BRANCH_PREFIX,
+  CHAT_BRANCH_PREFIX,
+] as const
 
 const TEMP_BRANCH_SLUG_MAX = 16
 
@@ -965,6 +1026,16 @@ export function researchBranchName(slug: string, waypointSeq: number, unique: st
  */
 export function ticketBranchName(slug: string, ticketSeq: number, unique: string): string {
   return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-${unique}`
+}
+
+/**
+ * Branch the feature chat commits to while a burn holds the feature branch:
+ * `runcastle/chat/<slug-segment>/<unique>`. There is no seq — the chat is one
+ * conversation, not one of N lanes; the unique suffix is what keeps a new place
+ * to commit available after each landing consumes the previous branch.
+ */
+export function chatBranchName(slug: string, unique: string): string {
+  return `${CHAT_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${unique}`
 }
 
 // --- sandcastle burn worktrees ----------------------------------------------

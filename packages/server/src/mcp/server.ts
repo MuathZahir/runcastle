@@ -4,6 +4,7 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  Feature,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
@@ -55,6 +56,7 @@ import {
   quickChange,
 } from '../services/features'
 import { burnWarnings } from '../services/burn-warnings'
+import { landChatCommits } from '../services/chat-branch'
 import { type CarriedDefect, type ReviewEvidence, carriedWork } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
@@ -875,25 +877,61 @@ export function toolCompletePhase(
  * Checkpoint the feature's knowledge docs into the talk worktree (SPEC §6):
  * best-effort, tolerating B2's `commitDocs` stub. Any failure is a warning
  * event, never a tool error.
+ *
+ * While a burn holds the feature branch the commit goes onto the chat's temp
+ * branch, so it is landed straight away through the feature's serial landing
+ * queue (`one-chat-per-feature` decision 2) — a note or a ticket edit is durable
+ * on `feature/<slug>` even if the run then crashes.
  */
 async function commitDocsCheckpoint(
   ctx: AppCtx,
   session: SessionRow,
   summary: string,
 ): Promise<void> {
-  const project = projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
+  const project = projectForFeature(ctx, feature)
   const message = git.docsCommitMessage(summary, project.docsCommitPrefix)
   try {
     await git.commitDocs(session.worktreePath, message)
   } catch (e) {
-    emit(ctx, requireFeatureId(session), {
+    emit(ctx, feature.id, {
       type: 'git.commit_pending',
       message: isNotImplemented(e)
         ? 'docs checkpoint skipped (git service pending)'
         : `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
       data: { message },
     })
+    return
   }
+  await landChatDocs(ctx, project, feature)
+}
+
+/**
+ * Land the chat's docs commits on the feature branch, if it is committing to a
+ * chat branch at all (outside a burn it commits to the feature branch directly
+ * and there is nothing to land). Best-effort like the commit itself: a landing
+ * that conflicts keeps its branch and says so, and the run-end boundary tries
+ * again.
+ */
+async function landChatDocs(ctx: AppCtx, project: Project, feature: Feature): Promise<void> {
+  let landing: Awaited<ReturnType<typeof landChatCommits>>
+  try {
+    landing = await landChatCommits(project, feature)
+  } catch (e) {
+    emit(ctx, feature.id, {
+      type: 'chat.land_failed',
+      message: `could not land the chat's docs commits: ${e instanceof Error ? e.message : String(e)}`,
+    })
+    return
+  }
+  if (!landing) return
+  emit(ctx, feature.id, {
+    type: landing.result.ok ? 'chat.landed' : 'chat.land_failed',
+    message: landing.result.ok
+      ? `landed ${landing.commits} chat commit(s) on ${feature.branch}`
+      : `could not land ${landing.commits} chat commit(s) — kept on ${landing.branch}: ${landing.result.error ?? 'merge failed'}`,
+    data: { branch: landing.branch, commits: landing.commits },
+  })
 }
 
 // --- project-scoped tools (`prepare` + `project` sessions) ------------------

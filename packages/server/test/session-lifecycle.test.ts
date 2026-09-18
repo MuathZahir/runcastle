@@ -40,7 +40,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  *    one `session.reconciled` event each;
  *  - the one-live-session guard reads session ROWS: a run-claim never blocks, a
  *    live HITL session always does (including after `resolve_waypoint`), and an
- *    active run refuses with an honest message;
+ *    active run parks the talk worktree rather than refusing the terminal;
  *  - a resume attempt that dies before going live preserves `lastSessionId` and
  *    emits `session.resume_failed`.
  */
@@ -161,26 +161,22 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
     if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
   })
 
-  it('an ACTIVE branch-claiming run refuses HITL spawn with an honest message', async () => {
+  it('an ACTIVE branch-claiming run no longer refuses a terminal — it parks the worktree instead', async () => {
+    // The post-mortem's worst hour was a live burn with nothing to talk to
+    // (one-chat-per-feature decision 2). The run holds `feature/<slug>`, so the
+    // session works on a chat temp branch beside it.
     const feature = await mappedFeature('busy')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
     seedRunningRun(ctx, feature.id, 'ticket-burner')
 
-    const err: unknown = await workWaypoint(
-      ctx,
-      { featureId: feature.id, waypointId: a.id },
-      { spawn: false },
-    ).then(
-      () => {
-        throw new Error('expected workWaypoint to be refused')
-      },
-      (e: unknown) => e,
-    )
-    const message = err instanceof Error ? err.message : String(err)
-    expect(message).toMatch(/ticket-burner run is in progress/)
-    expect(message).toMatch(/terminals are available when it finishes/)
-    // and it never lies about a "waypoint session" being live
-    expect(message).not.toMatch(/already live/)
+    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
+    expect('sessionId' in res && res.sessionId).toBeTruthy()
+    if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
+
+    const head = (
+      await simpleGit(worktreeDir(projectId, feature.slug)).revparse(['--abbrev-ref', 'HEAD'])
+    ).trim()
+    expect(head.startsWith('runcastle/chat/')).toBe(true)
   })
 
   it('an ACTIVE research run does NOT block HITL spawn (parallel AFK, ADR-0001 §7)', async () => {

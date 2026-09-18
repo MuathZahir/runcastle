@@ -1,12 +1,11 @@
-import type { RunStatus, WorkflowCtx } from '@runcastle/core'
+import type { Feature, Project, RunStatus, WorkflowCtx } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { NotFoundError } from '../errors'
+import { parkTalkWorktreeForRun, releaseTalkWorktreeAfterRun } from '../services/chat-branch'
 import { emit } from '../services/events'
-import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
@@ -136,15 +135,14 @@ export async function startRun(
   // Free the feature branch for the workflow's own worktree (SPEC §8) — ONLY
   // for branch-claiming workflows: a live talk worktree holds `feature/<slug>`
   // checked out, which git refuses to let the sandcastle burner check out again
-  // ('already used by worktree'). Detach it for the duration of the run;
-  // reattach best-effort when the run finalizes. Non-claiming workflows
-  // (research: per-run temp branch) skip the dance entirely, so the talk
-  // worktree — and any live HITL session inside it — is never yanked onto a
-  // detached HEAD by a run (ADR-0001 §7).
-  const talkWorktree = worktreeDir(project.id, feature.slug)
-  const talkDetached = workflowClaimsFeatureBranch(workflowId)
-    ? await detachWorktree(talkWorktree)
-    : false
+  // ('already used by worktree'). It is parked on a chat temp branch for the
+  // duration of the run — not detached, so the chat can keep committing docs
+  // and landing them beside the burn (`one-chat-per-feature` decision 9) — and
+  // handed back at finalize. Non-claiming workflows (research: per-run temp
+  // branch) skip the dance entirely, so the talk worktree — and any live HITL
+  // session inside it — is never touched by a run (ADR-0001 §7).
+  const claimsBranch = workflowClaimsFeatureBranch(workflowId)
+  if (claimsBranch) await parkTalkWorktreeForRun(project, feature)
 
   const wctx: WorkflowCtx = {
     runId,
@@ -178,9 +176,28 @@ export async function startRun(
   }
 
   const done = executeRun(ctx, runId, featureId, workflowId, def.run(wctx), controller, async () => {
-    if (talkDetached) await reattachWorktree(talkWorktree, feature.branch)
+    if (claimsBranch) await handBackTalkWorktree(ctx, project, feature)
   })
   return { runId, done }
+}
+
+/**
+ * The run's last landing, then the feature branch back where the chat expects
+ * it. Runs on every ending the finalizer has — succeeded, failed and cancelled —
+ * because commits the chat made mid-run are the human's notes, and which way the
+ * burn went says nothing about whether they should survive.
+ */
+async function handBackTalkWorktree(ctx: AppCtx, project: Project, feature: Feature): Promise<void> {
+  const { landed, deleted } = await releaseTalkWorktreeAfterRun(project, feature)
+  if (landed) {
+    emit(ctx, feature.id, {
+      type: landed.result.ok ? 'chat.landed' : 'chat.land_failed',
+      message: landed.result.ok
+        ? `landed ${landed.commits} chat commit(s) on ${feature.branch}`
+        : `could not land ${landed.commits} chat commit(s) — kept on ${landed.branch}: ${landed.result.error ?? 'merge failed'}`,
+      data: { branch: landed.branch, commits: landed.commits, ...(deleted ? { deleted } : {}) },
+    })
+  }
 }
 
 /**

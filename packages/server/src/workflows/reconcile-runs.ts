@@ -1,10 +1,10 @@
 import type { Run } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
+import { releaseTalkWorktreeAfterRun } from '../services/chat-branch'
 import { emit } from '../services/events'
-import { cleanupTempBranches, reattachWorktree } from '../services/git'
+import { cleanupTempBranches } from '../services/git'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
 import { listByFeature, sweepOrphanedBurning } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
@@ -21,8 +21,8 @@ import { isRunActive, workflowClaimsFeatureBranch } from './runner'
  * For each stale run this mirrors the finalizer minus the workflow itself:
  * mark the row `failed` (summary "orphaned by server restart"), auto-release
  * any waypoint it still claims, fail the ticket lanes it left `burning` (their
- * agents died with it — see `sweepOrphanedBurning`), best-effort reattach the
- * talk worktree that a branch-claiming run detached, and emit ONE
+ * agents died with it — see `sweepOrphanedBurning`), best-effort hand back the
+ * talk worktree a branch-claiming run parked on a chat branch, and emit ONE
  * `run.reconciled` event per run.
  * Afterwards it sweeps leftover research temp branches — deleting only those
  * fully merged into their feature branch; unmerged ones hold unlanded commits
@@ -57,17 +57,18 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       ? sweepOrphanedBurning(ctx, run.featureId, 'orphaned by server restart — retry to resume its commits')
       : []
 
-    // A branch-claiming run detached the talk worktree at start and its
-    // finalizer (which would have reattached it) never ran — restore it so the
-    // next HITL session lands on the feature branch, not a detached HEAD.
+    // A branch-claiming run parked the talk worktree on a chat branch at start
+    // and its finalizer (which would have handed the feature branch back) never
+    // ran — run the same boundary here, so the chat's unlanded commits land and
+    // the next HITL session opens on the feature branch.
     if (workflowClaimsFeatureBranch(run.workflow)) {
       const feature = tryGetFeature(ctx, run.featureId)
       const project = feature ? getProjectById(ctx, feature.projectId) : null
       if (feature && project) {
         try {
-          await reattachWorktree(worktreeDir(project.id, feature.slug), feature.branch)
+          await releaseTalkWorktreeAfterRun(project, feature)
         } catch {
-          // best-effort — a detached worktree is still readable; never fail boot
+          // best-effort — a parked worktree is still readable; never fail boot
         }
       }
     }
