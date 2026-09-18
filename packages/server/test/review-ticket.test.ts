@@ -935,6 +935,31 @@ describe('review declaration resolution', () => {
       'Agent prose that used to become the headline.',
     )
   })
+
+  // The case that produced the post-mortem: nothing declared, so there is no
+  // mode to name. The line must not invent one to keep its shape.
+  it('names no mode in the headline when the pass declared none', () => {
+    expect(
+      composeReviewDigest(
+        2,
+        { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' },
+        undefined,
+      ),
+    ).toBe(
+      'Lap 2 · mode unrecorded · NO DECLARATION · nothing verified — ' +
+      'Review declaration missing or unparseable.',
+    )
+  })
+
+  it('leaves a verified pass’s digest exactly as the agent wrote it', () => {
+    expect(
+      composeReviewDigest(
+        1,
+        { reviewMode: 'gates', reviewVerdict: 'verified', reason: '' },
+        'Every gate ran green.',
+      ),
+    ).toBe('Every gate ran green.')
+  })
 })
 
 /**

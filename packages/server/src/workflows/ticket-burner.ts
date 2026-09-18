@@ -3433,6 +3433,11 @@ export async function burnTickets(
  * header naming the ticket it came from. Strictly mechanical — the server makes
  * no model calls (decision 5) — and null when the run harvested nothing, so a
  * run without digests leaves the column alone rather than storing an empty doc.
+ *
+ * A run whose review pass verified nothing is titled `succeeded-unverified`, so
+ * the aggregate says what the run was the moment it is opened. The run row's
+ * status stays `succeeded`: nothing about scheduling changes, only what the run
+ * is allowed to claim for itself.
  */
 export function composeRunDigest(entries: readonly HarvestedDigest[]): string | null {
   if (entries.length === 0) return null

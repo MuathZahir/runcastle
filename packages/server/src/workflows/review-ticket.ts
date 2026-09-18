@@ -248,16 +248,30 @@ export function resolveReviewDeclaration(
   return { reviewMode, reviewVerdict: 'verified', reason: declaredReason }
 }
 
-/** Put the orchestration verdict first; an agent's prose can never soften it. */
+/**
+ * The digest a pass is stored under, headed by runcastle's own line when it
+ * verified nothing (decision 5).
+ *
+ * The headline of an unverified pass is a template the server fills, never the
+ * agent's prose — the prose keeps every word it wrote, one line down, where it
+ * can no longer read as a clean bill of health to anything that lifts a first
+ * line out (the run aggregate, the review page's account, the outcome doc). A
+ * verified pass is left exactly as the agent wrote it.
+ *
+ * A pass whose declaration block was missing or unparseable has no mode to
+ * name, so the template says that instead of inventing one: the point of the
+ * line is that nothing here is being claimed on the agent's behalf.
+ */
 export function composeReviewDigest(
   lap: number,
   resolution: ReviewResolution,
   agentDigest: string | undefined,
 ): string | undefined {
   if (resolution.reviewVerdict !== 'unverified') return agentDigest
-  const mode = resolution.reviewMode ?? 'review'
+  const mode = resolution.reviewMode
   const headline =
-    `Lap ${lap} · ${mode} mode · ${mode.toUpperCase()} FAILED · nothing verified` +
+    `Lap ${lap} · ${mode ? `${mode} mode` : 'mode unrecorded'} · ` +
+    `${mode ? `${mode.toUpperCase()} FAILED` : 'NO DECLARATION'} · nothing verified` +
     (resolution.reason ? ` — ${resolution.reason}` : '')
   return agentDigest ? `${headline}\n\n${agentDigest}` : headline
 }

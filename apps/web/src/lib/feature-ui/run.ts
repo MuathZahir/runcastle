@@ -33,6 +33,7 @@ export interface LaneTicketFigure {
   orphaned?: boolean
   kind?: string
   reviewFix?: boolean
+  /** A review pass's verdict; null on the passes that predate it being recorded. */
   reviewVerdict?: 'verified' | 'unverified' | null
 }
 
@@ -109,10 +110,14 @@ export function runHeadline(
   retryOf?: number,
 ): string {
   if (retryOf !== undefined) return `Retrying #${retryOf}`
-  if (
-    run.status === 'succeeded' &&
-    tickets.some((ticket) => ticket.kind === 'review' && ticket.reviewVerdict === 'unverified')
-  ) return 'Succeeded-unverified · nothing verified'
+  // Ahead of the all-green line below, because it is the case that line used to
+  // get wrong: a review pass that verified nothing still lands `done`, so every
+  // lane reads green and the run announced a clean sweep over it. The verdict
+  // outranks the counts — the run succeeded, but nothing was verified.
+  const unverified = tickets.some(
+    (t) => t.kind === 'review' && t.reviewVerdict === 'unverified',
+  )
+  if (run.status === 'succeeded' && unverified) return 'Succeeded-unverified · nothing verified'
   const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
   const fixes = tickets.filter((t) => t.reviewFix).length
   const counts = summaryCounts(tickets)

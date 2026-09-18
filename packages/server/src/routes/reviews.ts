@@ -39,6 +39,10 @@ export interface ReviewTicketArtifacts {
   seq: number
   lap: number
   passKind: 'review' | 'verification'
+  // What the pass actually ran and what it verified, as the pass itself
+  // recorded them. All three are null on passes that ran before a verdict was
+  // recorded at all — a reader shows those without a verdict rather than
+  // inventing one, exactly as it does for a pass still in flight.
   reviewMode: 'drive' | 'gates' | null
   reviewVerdict: 'verified' | 'unverified' | null
   reviewVerdictReason: string | null
