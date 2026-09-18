@@ -965,6 +965,83 @@ describe('the base the review diffs against', () => {
   })
 })
 
+describe('review recorder teardown stays inside the terminal-outcome gate', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rc-recorder-teardown-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+  })
+
+  afterEach(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  function reviewDeps(overrides: Partial<Parameters<typeof executeReviewTicket>[2]> = {}) {
+    return {
+      config: { serverPort: 4512, sandbox: 'docker', burnMaxIterations: 1 } as RuncastleConfig,
+      token: undefined,
+      model: { id: 'claude-opus-5', runtime: 'claude-code' } as const,
+      docsDigest: '',
+      lapDigests: [],
+      releaseDrive: async () => {},
+      ...overrides,
+    }
+  }
+
+  it('awaits recorder confirmation before releasing the drive or returning', async () => {
+    const order: string[] = []
+    let finishReap: (() => void) | undefined
+    const outcome = executeReviewTicket(makeCtx([review(3)]), review(3), reviewDeps({
+      runAgent: async (options) => {
+        expect(options.agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_3')
+        expect(options.agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
+        order.push('agent')
+      },
+      recorderReap: async () => {
+        order.push('reap-start')
+        await new Promise<void>((resolve) => { finishReap = resolve })
+        order.push('reap-end')
+        return { confirmed: true }
+      },
+      releaseDrive: async () => { order.push('drive-release') },
+    }))
+
+    for (let i = 0; i < 20 && !finishReap; i++) await Promise.resolve()
+    expect(order).toEqual(['agent', 'reap-start'])
+    let returned = false
+    void outcome.then(() => { returned = true })
+    await Promise.resolve()
+    expect(returned).toBe(false)
+
+    finishReap?.()
+    expect(await outcome).toMatchObject({ status: 'done' })
+    expect(order).toEqual(['agent', 'reap-start', 'reap-end', 'drive-release'])
+  })
+
+  it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {
+    const failed = await executeReviewTicket(makeCtx([review(4)]), review(4), reviewDeps({
+      runAgent: async () => { throw new Error('agent crashed') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))
+    expect(failed).toMatchObject({ status: 'failed' })
+    expect(failed.error).toContain('recorder may still be running')
+    expect(failed.digest).toContain('recorder may still be running')
+
+    const controller = new AbortController()
+    controller.abort(new Error('run cancelled'))
+    const cancelledCtx = { ...makeCtx([review(5)]), signal: controller.signal }
+    await expect(executeReviewTicket(cancelledCtx, review(5), reviewDeps({
+      runAgent: async () => { throw new Error('run cancelled') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))).rejects.toThrow('recorder may still be running')
+  })
+})
+
 describe('the agent-browser probe', () => {
   let dir: string
 

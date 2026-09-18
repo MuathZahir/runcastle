@@ -10,6 +10,7 @@ import { appendTranscript, beginTranscript, endTranscript } from '../services/ag
 import { releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
 import { killRegistry, registerHostChildren } from './kill-registry'
+import { reapRecorder } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -391,6 +392,10 @@ export interface ReviewDeps {
    * surprised each implementer, and what each left undone — live only here.
    */
   lapDigests: readonly HarvestedDigest[]
+  /** System boundaries overridden only by seam-level workflow tests. */
+  runAgent?: (options: RunOptions) => Promise<unknown>
+  recorderReap?: typeof reapRecorder
+  releaseDrive?: () => Promise<void>
 }
 
 /**
@@ -527,19 +532,39 @@ async function reviewTicketOutcome(
   }
 
   let runError: unknown
+  let cancellationError: unknown
+  let recorderConfirmed = true
   try {
-    await run(options)
+    await (deps.runAgent ?? run)(options)
   } catch (err) {
-    if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
-    runError = err
+    if (ctx.signal.aborted) cancellationError = err // run cancelled — the runner finalizes it
+    else runError = err
   } finally {
     releaseTicketAbort(ticket.id)
     killRegistry().release(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
+    try {
+      recorderConfirmed = (await (deps.recorderReap ?? reapRecorder)(ticket.id)).confirmed
+    } catch {
+      // The real reap never rejects; preserve that contract for injected/system failures too.
+      recorderConfirmed = false
+    }
     // Before the harvest below, so the review is never read off a machine the
     // drive still holds.
-    await releaseDriveQuietly()
+    if (deps.releaseDrive) await deps.releaseDrive()
+    else await releaseDriveQuietly()
+  }
+
+  const recorderNote = recorderConfirmed ? '' : '; recorder may still be running'
+  if (cancellationError !== undefined) {
+    if (!recorderConfirmed) {
+      throw new Error(
+        `${errorHeadline(cancellationError instanceof Error ? cancellationError.message : String(cancellationError))}${recorderNote}`,
+        { cause: cancellationError },
+      )
+    }
+    throw cancellationError
   }
 
   // The outcome is read off what the agent LEFT, not off how its process ended
@@ -547,19 +572,24 @@ async function reviewTicketOutcome(
   // wrote its digest reviewed the feature, whatever `run()` did on the way out.
   const blocked = readAgentFile([artifacts.dir], 'BLOCKED.md')?.trim()
   const digest = harvestDigest([artifacts.dir])
-  if (blocked) return couldNotReview(ticket, blocked, digest)
+  if (blocked) return couldNotReview(ticket, `${blocked}${recorderNote}`, digest)
   if (runError !== undefined && digest === undefined) {
     return couldNotReview(
       ticket,
       ticketAbort.signal.aborted
-        ? 'stopped by user'
-        : `the review agent died: ${errorHeadline(runError instanceof Error ? runError.message : String(runError))}`,
+        ? `stopped by user${recorderNote}`
+        : `the review agent died: ${errorHeadline(runError instanceof Error ? runError.message : String(runError))}${recorderNote}`,
     )
   }
   // Ran to completion: done, with no commits, because a review never writes
   // code. Its findings are already stored, each defect's fix ticket already
   // minted — the scheduler admits them the moment this outcome lands.
-  return { status: 'done', commits: [], ...(digest ? { digest } : {}) }
+  const finalDigest = recorderConfirmed
+    ? digest
+    : digest
+      ? `${digest}\n\n**Recorder may still be running.**`
+      : '**Recorder may still be running.**'
+  return { status: 'done', commits: [], ...(finalDigest ? { digest: finalDigest } : {}) }
 }
 
 /**
