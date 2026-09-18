@@ -20,6 +20,8 @@ import {
   activeTestDriveFeatureId,
   branchCommitsAhead,
   burnWorktreePath,
+  chatBranchInWorktree,
+  chatBranchName,
   cleanupBurnWorktree,
   cleanupTempBranches,
   commitDocs,
@@ -36,6 +38,7 @@ import {
   researchBranchName,
   resolveBaseBranch,
   reviewCommitCount,
+  startBranchInWorktree,
   testDrive,
   ticketBranchName,
 } from '../src/services/git'
@@ -493,6 +496,46 @@ describe('detachWorktree / reattachWorktree', () => {
     const wt = await ensureTalkWorktree(project, feature)
     expect(await detachWorktree(wt)).toBe(true)
     expect(await detachWorktree(wt)).toBe(false) // already detached
+  })
+
+  it('starts a chat branch where the worktree stands, freeing the feature branch', async () => {
+    const wt = await ensureTalkWorktree(project, feature)
+    writeFileSync(join(wt, 'draft.md'), 'mid-thought\n') // an uncommitted edit
+    const tip = (await simpleGit(wt).revparse(['HEAD'])).trim()
+
+    const branch = chatBranchName(feature.slug, 'aaa111')
+    expect(await startBranchInWorktree(wt, branch)).toBe(true)
+
+    expect(await currentBranch(simpleGit(wt))).toBe(branch)
+    // same commit, same files — a live session sees nothing move
+    expect((await simpleGit(wt).revparse(['HEAD'])).trim()).toBe(tip)
+    expect(readFileSync(join(wt, 'draft.md'), 'utf8')).toBe('mid-thought\n')
+    // the feature branch is free for the burner's own worktree
+    const g = simpleGit(project.repoPath)
+    await g.checkout(feature.branch)
+    expect(await currentBranch(g)).toBe(feature.branch)
+    await g.checkout('main')
+  })
+
+  it('reports the chat branch a worktree is on, and nothing for any other head', async () => {
+    const wt = await ensureTalkWorktree(project, feature)
+    expect(await chatBranchInWorktree(wt)).toBeUndefined() // on the feature branch
+    expect(await chatBranchInWorktree(join(project.repoPath, 'nope'))).toBeUndefined()
+
+    const branch = chatBranchName(feature.slug, 'bbb222')
+    await startBranchInWorktree(wt, branch)
+    expect(await chatBranchInWorktree(wt)).toBe(branch)
+  })
+
+  it('leaves a worktree parked on its chat branch alone — the run still holds the feature branch', async () => {
+    const wt = await ensureTalkWorktree(project, feature)
+    const branch = chatBranchName(feature.slug, 'ccc333')
+    await startBranchInWorktree(wt, branch)
+
+    // A second session launching mid-burn must not check the feature branch back
+    // out from under the run that claimed it.
+    expect(await ensureTalkWorktree(project, feature)).toBe(wt)
+    expect(await currentBranch(simpleGit(wt))).toBe(branch)
   })
 })
 
@@ -1170,11 +1213,14 @@ describe('temp branch names', () => {
     expect(researchBranchName(longSlug, 2, 'abc123')).toBe(
       'runcastle/research/add-the-rest-of/2-abc123',
     )
+    expect(chatBranchName(longSlug, 'def456')).toBe('runcastle/chat/add-the-rest-of/def456')
   })
 
   it('passes short slugs through unchanged', () => {
     expect(ticketBranchName('swp', 3, 'ccc333')).toBe('runcastle/ticket/swp/3-ccc333')
     expect(researchBranchName('swp', 1, 'aaa111')).toBe('runcastle/research/swp/1-aaa111')
+    // no seq — the chat is one conversation, not one of N lanes
+    expect(chatBranchName('swp', 'bbb222')).toBe('runcastle/chat/swp/bbb222')
   })
 })
 
@@ -1226,6 +1272,35 @@ describe('cleanupTempBranches', () => {
     expect(all).toContain(unmergedTicket)
     expect(all).toContain('research/user-branch')
     expect(all).toContain('ticket/user-branch')
+  })
+
+  it('sweeps merged chat branches and preserves unlanded chat commits', async () => {
+    const g = simpleGit(project.repoPath)
+    // a chat branch whose docs commit landed — nothing left on it
+    const merged = chatBranchName('swp', 'ccc111')
+    await g.raw(['branch', merged, 'feature/swp'])
+    // a chat branch whose landing never happened (the server died mid-burn):
+    // it holds the human's notes and must survive the sweep
+    const unmerged = chatBranchName('swp', 'ddd222')
+    await g.raw(['branch', unmerged, 'feature/swp'])
+    const wt = join(mkTmp('rc-chatwt-'), 'wt')
+    await g.raw(['worktree', 'add', wt, unmerged])
+    writeFileSync(join(wt, 'note.md'), 'unlanded note\n')
+    const gw = simpleGit(wt)
+    await gw.add(['note.md'])
+    await gw.commit('runcastle: a note')
+    await g.raw(['worktree', 'remove', wt, '--force'])
+    // and a user branch under a similar prefix stays put
+    await g.raw(['branch', 'chat/user-branch', 'main'])
+
+    const result = await cleanupTempBranches(project.repoPath)
+    expect(result.deleted).toContain(merged)
+    expect(result.kept).toContain(unmerged)
+
+    const all = (await g.branchLocal()).all
+    expect(all).not.toContain(merged)
+    expect(all).toContain(unmerged)
+    expect(all).toContain('chat/user-branch')
   })
 
   it('maps truncated slug segments to their feature branch and still sweeps old full-slug leftovers', async () => {
