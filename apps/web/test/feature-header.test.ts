@@ -124,7 +124,7 @@ describe('the next-step bar under it', () => {
     title: 'Start this feature',
     desc: 'Parked as a draft — Start cuts its branch, writes the brief.',
     primary: { label: 'Start', kind: 'startDraft' },
-    secondary: [{ label: 'Ask questions', kind: 'askQuestions' }],
+    secondary: [{ label: 'Chat', kind: 'chat' }],
     busy: false,
   }
 

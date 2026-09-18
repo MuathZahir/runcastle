@@ -559,13 +559,10 @@ export function Workspace({
         // disabled while this is empty, so it never sends nothing.
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
-      case 'startGrill':
-        launch.mutate({ featureId, kind: 'chat' })
-        break
-      case 'askQuestions':
-        launch.mutate({ featureId, kind: 'chat' })
-        break
-      case 'revisit':
+      // The feature's one conversation, from whichever state the bar was in
+      // (decision 8). The launch resumes the newest chat transcript, or starts
+      // the first one — the door never has to know which.
+      case 'chat':
         launch.mutate({ featureId, kind: 'chat' })
         break
       case 'iterate':

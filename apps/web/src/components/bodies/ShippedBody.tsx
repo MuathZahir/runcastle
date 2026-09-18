@@ -11,7 +11,7 @@ import {
   reviewChecks,
   sessionActive,
   shippedAt,
-  shippedQaSessions,
+  shippedChatSessions,
   specDocPath,
   stampedReview,
 } from '../../lib/feature-ui'
@@ -60,7 +60,7 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
     { enabled: !!specRelPath },
   )
 
-  const qa = shippedQaSessions(full.sessions)
+  const chats = shippedChatSessions(full.sessions)
   const run = latestRun(runs)
 
   return (
@@ -129,15 +129,15 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
         driveLap={lastTestDriveLap(events)}
       />
 
-      {/* A live Q&A terminal is the one thing on this page that is not history,
+      {/* A live chat terminal is the one thing on this page that is not history,
           so it keeps the panel; every ended conversation is a row below. */}
       <SessionPanel
         featureId={feature.id}
-        sessions={qa.filter(sessionActive)}
+        sessions={chats.filter(sessionActive)}
         className="shipped-session"
       />
 
-      <QaHistory sessions={qa} />
+      <QaHistory sessions={chats} />
 
       {peekingOutcome && outcomeRelPath && (
         <DocPeek

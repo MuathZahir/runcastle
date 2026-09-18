@@ -2,6 +2,7 @@ import type { DriveState } from '@runcastle/core'
 import { driveView } from '../drive'
 import { ONE_TERMINAL_WARNING } from '../gates'
 import { burnLabel, noun } from '../laps'
+import { CHAT_ACTION } from './chat'
 import type { CountLine, NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -22,6 +23,14 @@ const DRIVE_OWNS_BAR: readonly DriveState[] = [
   'review-agent-driving',
 ]
 
+/**
+ * Chat rides every bar this resolver returns, first in `secondary` and never
+ * reordering the trail's own verbs (decision 8). Review is the page that had no
+ * session door at all — asking the agent a question from here meant clicking
+ * Rethink, which bumped the lap and threw the feature back to planning — so the
+ * door is added BESIDE Merge & ship, Burn, Test drive and Iterate rather than
+ * anywhere among them.
+ */
 export function resolveReview(input: ResolverInput): NextStep {
   const { full, ctx, live, failed, pending, pendingTickets, run } = input
   const { feature } = full
@@ -138,7 +147,7 @@ export function resolveReview(input: ResolverInput): NextStep {
         label: live ? 'End session & resolve' : 'Resolve the merge conflict',
         kind: 'resolveConflict',
       },
-      secondary: [retryMerge, ...burnAction, testDriveAction, ...iterate],
+      secondary: [CHAT_ACTION, retryMerge, ...burnAction, testDriveAction, ...iterate],
       busy: false,
       counts,
       // What the compound costs, said above the button that performs it.
@@ -162,6 +171,7 @@ export function resolveReview(input: ResolverInput): NextStep {
       desc: view.barDesc,
       primary,
       secondary: [
+        CHAT_ACTION,
         { label: 'Merge & ship', kind: 'merge' },
         ...burnAction,
         ...(primary.kind === 'testDriveStop' ? [] : [testDriveAction]),
@@ -187,6 +197,7 @@ export function resolveReview(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       primary: iterateAction,
       secondary: [
+        CHAT_ACTION,
         { label: 'Merge & ship', kind: 'merge' },
         ...burnAction,
         testDriveAction,
@@ -207,7 +218,12 @@ export function resolveReview(input: ResolverInput): NextStep {
         ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
         : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
       primary: { label: burnLabel(pendingTickets, feature.lap), kind: 'burn' },
-      secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction, ...iterate],
+      secondary: [
+        CHAT_ACTION,
+        { label: 'Merge & ship', kind: 'merge' },
+        testDriveAction,
+        ...iterate,
+      ],
       busy: false,
       counts,
     }
@@ -233,7 +249,7 @@ export function resolveReview(input: ResolverInput): NextStep {
           ? `End session & start lap ${feature.lap + 1}`
           : `Start lap ${feature.lap + 1}`,
       },
-      secondary: [{ label: 'Merge & ship', kind: 'merge' }, testDriveAction],
+      secondary: [CHAT_ACTION, { label: 'Merge & ship', kind: 'merge' }, testDriveAction],
       busy: false,
       counts,
     }
@@ -256,7 +272,7 @@ export function resolveReview(input: ResolverInput): NextStep {
     title: driving ? 'Merge when it looks right' : 'Test drive, then ship',
     desc,
     primary: { label: 'Merge & ship', kind: 'merge' },
-    secondary: [testDriveAction, ...iterate],
+    secondary: [CHAT_ACTION, testDriveAction, ...iterate],
     busy: false,
     counts,
   }

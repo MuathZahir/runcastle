@@ -74,24 +74,26 @@ export function liveSessionBlocker(
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
 
-// --- the shipped body's Q&A terminal ----------------------------------------
+// --- the shipped body's chat terminal ---------------------------------------
 
 /**
- * The sessions the shipped body's terminal panel should consider — the Q&A ones,
- * and only when one of them is worth a panel at all.
+ * The sessions the shipped body's terminal panel should consider — the feature's
+ * chat, and only when it is worth a panel at all.
  *
- * "Ask a question" is the shipped bar's action, so the conversation it starts
- * belongs in the shipped body. Everything *else* on a shipped feature is a spent
- * pipeline session, and a resumable one of those is the grill's (or review's)
- * Resume, not shipped's — hence qa only. It reports nothing unless some qa session
- * is live/launching or ended with its conversation still on disk (a `ccSessionId`,
- * which only a session that reached live recorded — the launcher's own resume
- * test), so a shipped feature nobody has asked anything stays the plain hero
- * instead of growing an empty box.
+ * Chat is the shipped bar's action, so the conversation it resumes belongs in
+ * the shipped body. Everything *else* on a shipped feature is a spent pipeline
+ * session (a converge, a waypoint, a drive fix), which has no door here — hence
+ * chat only. It reports nothing unless some chat session is live/launching or
+ * ended with its conversation still on disk (a `ccSessionId`, which only a
+ * session that reached live recorded — the launcher's own resume test), so a
+ * shipped feature nobody has talked to stays the plain hero instead of growing
+ * an empty box.
  */
-export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
-  const qa = sessions.filter((s) => s.kind === 'chat')
-  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing) ? qa : []
+export function shippedChatSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
+  const chats = sessions.filter((s) => s.kind === 'chat')
+  return chats.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing)
+    ? chats
+    : []
 }
 
 /**

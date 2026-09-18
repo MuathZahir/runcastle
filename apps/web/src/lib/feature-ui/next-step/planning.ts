@@ -4,6 +4,7 @@ import { burnLabel } from '../laps'
 import { isTerminal, nextReadyWaypoint, parseMapSections } from '../map'
 import { sessionAgentName } from '../../vocabulary'
 import { burnWarningLine } from './burn-warnings'
+import { CHAT_ACTION } from './chat'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -88,7 +89,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     // The other road into a burn reads the shape of what it would run — and
     // what the docs digest will cost every ticket in it — in the same words the
     // building bar uses (`burn-warnings.ts`). A warning only: the Burn below is
-    // unchanged, and "Ask for changes" is the road to fixing it.
+    // unchanged, and Chat is the road to fixing it.
     const shape = burnWarningLine(input)
     return {
       kick: 'NEXT STEP',
@@ -97,16 +98,11 @@ export function resolvePlanning(input: ResolverInput): NextStep {
       // Whose tickets these are, when laps mix (decision 28a) — the burn takes
       // every pending ticket on the branch, and the count alone never said so.
       primary: { label: burnLabel(pendingTickets, feature.lap), kind: 'burn' },
+      // "Ask for changes" was this bar's own wording for the one door every bar
+      // carries now (decision 8) — the hint is what it had to say that the
+      // constant label cannot.
       secondary: [
-        ...(live
-          ? []
-          : [
-              {
-                label: 'Ask for changes',
-                kind: 'revisit' as const,
-                hint: 'Open a session to change the tickets before burning',
-              },
-            ]),
+        { ...CHAT_ACTION, hint: 'Open the chat to change the tickets before burning' },
         mergeAction,
       ],
       busy: false,
@@ -119,16 +115,15 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   const lapWorked =
     !!live ||
     sessions.some(
-      (session) =>
-        session.lap === feature.lap && ['ideation', 'revisit', 'converge'].includes(session.kind),
+      (session) => session.lap === feature.lap && ['chat', 'converge'].includes(session.kind),
     )
   if (feature.lap > 1 && !lapWorked) {
-    const resumable = hasResumable(sessions, 'revisit')
+    const resumable = hasResumable(sessions, 'chat')
     return step(
       'NEXT STEP',
       `Work lap ${feature.lap}`,
       'Your test-drive notes are waiting. The lap session reads them, amends the spec, and emits this lap’s tickets — then hands back to Burn.',
-      { label: `${resumable ? 'Resume' : 'Start'} lap ${feature.lap} session`, kind: 'revisit' },
+      { label: `${resumable ? 'Resume' : 'Start'} lap ${feature.lap} session`, kind: 'chat' },
       [mergeAction],
     )
   }
@@ -180,19 +175,19 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   switch (missing) {
     // Nothing written yet: the conversation is the whole of the next step.
     case 'ideation':
-      return hasResumable(sessions, 'ideation')
+      return hasResumable(sessions, 'chat')
         ? step(
             'NEXT STEP',
             'Pick the conversation back up',
-            'The ideation session ended. Resume it to carry on where you left off — the conversation is still on disk.',
-            { label: 'Resume session', kind: 'startGrill' },
+            'The chat ended. Resume it to carry on where you left off — the conversation is still on disk.',
+            { label: 'Resume session', kind: 'chat' },
             [mergeAction],
           )
         : step(
             'NEXT STEP',
             'Shape the idea with the agent',
             'Start a session: the agent asks about the idea until it is concrete enough to write up, and every decision lands in the pane on the left.',
-            { label: 'Start session', kind: 'startGrill' },
+            { label: 'Start session', kind: 'chat' },
             [mergeAction],
           )
     case 'spec':
@@ -211,7 +206,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
         'NEXT STEP',
         'Write the spec',
         'The decisions are settled. The session turns them into a spec — the approach, the seams and what is out of scope — and then breaks it into tickets.',
-        { label: resumeLabel(sessions), kind: 'startGrill' },
+        { label: resumeLabel(sessions), kind: 'chat' },
         [mergeAction],
       )
     case 'tickets':
@@ -219,7 +214,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
         'NEXT STEP',
         'Emit the tickets',
         'The spec is written and nothing is pending. A session breaks it into tickets — each one burns as its own sandboxed agent.',
-        { label: resumeLabel(sessions), kind: 'startGrill' },
+        { label: resumeLabel(sessions), kind: 'chat' },
         [mergeAction],
       )
   }
@@ -245,11 +240,18 @@ function planningFacts(input: ResolverInput): PlanningArtifactFacts {
 
 /** Resume the conversation that is on disk, or open a fresh one. */
 function resumeLabel(sessions: ResolverInput['full']['sessions']): string {
-  return hasResumable(sessions, 'ideation') || hasResumable(sessions, 'converge')
+  return hasResumable(sessions, 'chat') || hasResumable(sessions, 'converge')
     ? 'Resume session'
     : 'Start session'
 }
 
+/**
+ * Every planning bar, with the Chat door in front of whatever else it offers
+ * (decision 8). The prepend lives here rather than at the ten call sites so the
+ * door cannot drift out of one of them — and it stands down where the caller
+ * already made the chat its primary, because one door rendered twice is not a
+ * constant position, it is a duplicate.
+ */
 function step(
   kick: string,
   title: string,
@@ -257,5 +259,12 @@ function step(
   primary?: NextStep['primary'],
   secondary: NextAction[] = [],
 ): NextStep {
-  return { kick, title, desc, primary, secondary, busy: false }
+  return {
+    kick,
+    title,
+    desc,
+    primary,
+    secondary: primary?.kind === 'chat' ? secondary : [CHAT_ACTION, ...secondary],
+    busy: false,
+  }
 }
