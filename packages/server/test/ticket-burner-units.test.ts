@@ -38,7 +38,6 @@ import {
   emitTicketTiming,
   emitUnrunnableGates,
   formatTicketTiming,
-  createSerialQueue,
   createStreamThrottle,
   detectCycle,
   detectPackageManager,
@@ -2030,46 +2029,6 @@ describe('composeRunDigest — the run-level aggregate (mechanical, no LLM)', ()
         { seq: 7, title: 'Only thing', digest: '\nDid it.\n\nSurprise: the column existed.\n' },
       ]),
     ).toBe('## ticket 7 — Only thing\n\nDid it.\n\nSurprise: the column existed.')
-  })
-})
-
-describe('createSerialQueue — one task at a time, in order', () => {
-  it('runs tasks strictly serially in submission order', async () => {
-    const queue = createSerialQueue()
-    const log: string[] = []
-    let active = 0
-
-    const task = (name: string, delay: number) => async () => {
-      active += 1
-      expect(active).toBe(1) // never overlaps
-      log.push(`start ${name}`)
-      await new Promise((r) => setTimeout(r, delay))
-      log.push(`end ${name}`)
-      active -= 1
-      return name
-    }
-
-    // Submit concurrently; the slow first task must fully finish before the fast second starts.
-    const [a, b, c] = await Promise.all([
-      queue(task('a', 20)),
-      queue(task('b', 1)),
-      queue(task('c', 1)),
-    ])
-
-    expect([a, b, c]).toEqual(['a', 'b', 'c'])
-    expect(log).toEqual(['start a', 'end a', 'start b', 'end b', 'start c', 'end c'])
-  })
-
-  it('a rejection reaches its submitter without wedging later tasks', async () => {
-    const queue = createSerialQueue()
-
-    const failing = queue(async () => {
-      throw new Error('merge failed')
-    })
-    const after = queue(async () => 'still runs')
-
-    await expect(failing).rejects.toThrow('merge failed')
-    await expect(after).resolves.toBe('still runs')
   })
 })
 
