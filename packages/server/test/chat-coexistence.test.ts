@@ -15,6 +15,7 @@ import {
   markSessionLive,
 } from '../src/launcher/sessions'
 import { landChatCommits } from '../src/services/chat-branch'
+import { listAfter } from '../src/services/events'
 import {
   chatBranchInWorktree,
   commitDocs,
@@ -156,7 +157,7 @@ describe('the chat beside a burn', () => {
       () => new Promise<void>((r) => (releaseTicket = r)),
     )
 
-    const chatLanding = landChatCommits(project, feature)
+    const chatLanding = landChatCommits(ctx, project, feature)
     await delay(100)
     expect(await landedOnFeature(note)).toBe(false) // waiting its turn, not racing
 
@@ -170,12 +171,16 @@ describe('the chat beside a burn', () => {
     // the chat kept a place to commit: a fresh branch, not a detached HEAD
     expect(await chatBranchInWorktree(talkWt)).toBeDefined()
     expect(await chatBranchInWorktree(talkWt)).not.toBe(landed?.branch)
+    // and the timeline says the feature branch moved
+    const landedEvents = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'chat.landed')
+    expect(landedEvents).toHaveLength(1)
+    expect(landedEvents[0]?.data).toMatchObject({ branch: landed?.branch, commits: 1 })
   })
 
   it('has nothing to land outside a burn — the chat commits to the feature branch directly', async () => {
     const note = await chatCommits('planning-note.md')
 
-    expect(await landChatCommits(project, feature)).toBeNull()
+    expect(await landChatCommits(ctx, project, feature)).toBeNull()
     expect(await landedOnFeature(note)).toBe(true) // it was already there
   })
 

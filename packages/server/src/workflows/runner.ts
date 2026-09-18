@@ -1,4 +1,4 @@
-import type { Feature, Project, RunStatus, WorkflowCtx } from '@runcastle/core'
+import type { RunStatus, WorkflowCtx } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -176,28 +176,10 @@ export async function startRun(
   }
 
   const done = executeRun(ctx, runId, featureId, workflowId, def.run(wctx), controller, async () => {
-    if (claimsBranch) await handBackTalkWorktree(ctx, project, feature)
+    // The chat's last landing, then the feature branch back where it expects it.
+    if (claimsBranch) await releaseTalkWorktreeAfterRun(ctx, project, feature)
   })
   return { runId, done }
-}
-
-/**
- * The run's last landing, then the feature branch back where the chat expects
- * it. Runs on every ending the finalizer has — succeeded, failed and cancelled —
- * because commits the chat made mid-run are the human's notes, and which way the
- * burn went says nothing about whether they should survive.
- */
-async function handBackTalkWorktree(ctx: AppCtx, project: Project, feature: Feature): Promise<void> {
-  const { landed, deleted } = await releaseTalkWorktreeAfterRun(project, feature)
-  if (landed) {
-    emit(ctx, feature.id, {
-      type: landed.result.ok ? 'chat.landed' : 'chat.land_failed',
-      message: landed.result.ok
-        ? `landed ${landed.commits} chat commit(s) on ${feature.branch}`
-        : `could not land ${landed.commits} chat commit(s) — kept on ${landed.branch}: ${landed.result.error ?? 'merge failed'}`,
-      data: { branch: landed.branch, commits: landed.commits, ...(deleted ? { deleted } : {}) },
-    })
-  }
 }
 
 /**

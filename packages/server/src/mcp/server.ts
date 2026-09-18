@@ -903,35 +903,10 @@ async function commitDocsCheckpoint(
     })
     return
   }
-  await landChatDocs(ctx, project, feature)
-}
-
-/**
- * Land the chat's docs commits on the feature branch, if it is committing to a
- * chat branch at all (outside a burn it commits to the feature branch directly
- * and there is nothing to land). Best-effort like the commit itself: a landing
- * that conflicts keeps its branch and says so, and the run-end boundary tries
- * again.
- */
-async function landChatDocs(ctx: AppCtx, project: Project, feature: Feature): Promise<void> {
-  let landing: Awaited<ReturnType<typeof landChatCommits>>
-  try {
-    landing = await landChatCommits(project, feature)
-  } catch (e) {
-    emit(ctx, feature.id, {
-      type: 'chat.land_failed',
-      message: `could not land the chat's docs commits: ${e instanceof Error ? e.message : String(e)}`,
-    })
-    return
-  }
-  if (!landing) return
-  emit(ctx, feature.id, {
-    type: landing.result.ok ? 'chat.landed' : 'chat.land_failed',
-    message: landing.result.ok
-      ? `landed ${landing.commits} chat commit(s) on ${feature.branch}`
-      : `could not land ${landing.commits} chat commit(s) — kept on ${landing.branch}: ${landing.result.error ?? 'merge failed'}`,
-    data: { branch: landing.branch, commits: landing.commits },
-  })
+  // Outside a burn this is a no-op (the commit is already on the feature
+  // branch); a landing that conflicts keeps its branch and says so, and the
+  // run-end boundary tries again.
+  await landChatCommits(ctx, project, feature)
 }
 
 // --- project-scoped tools (`prepare` + `project` sessions) ------------------

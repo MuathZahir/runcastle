@@ -66,7 +66,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       const project = feature ? getProjectById(ctx, feature.projectId) : null
       if (feature && project) {
         try {
-          await releaseTalkWorktreeAfterRun(project, feature)
+          await releaseTalkWorktreeAfterRun(ctx, project, feature)
         } catch {
           // best-effort — a parked worktree is still readable; never fail boot
         }

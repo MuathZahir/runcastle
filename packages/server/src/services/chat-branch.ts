@@ -1,6 +1,8 @@
 import type { Feature, Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
+import type { AppCtx } from '../db/types'
+import { emit } from './events'
 import type { TempBranchMergeResult } from './git'
 import {
   branchCommitsAhead,
@@ -76,7 +78,7 @@ export async function ensureTalkWorktreeDuringRun(
   return worktreePath
 }
 
-/** What one chat landing did, for the timeline. `null` when there was nothing. */
+/** What one chat landing did. `null` from a call that had nothing to land. */
 export interface ChatLanding {
   /** The branch that was landed (or tried). */
   branch: string
@@ -86,8 +88,41 @@ export interface ChatLanding {
 }
 
 /**
- * Land the chat's commits on the feature branch through the feature's serial
- * queue — between two ticket landings, never across one.
+ * Put `branch` on the feature branch through the feature's serial queue —
+ * between two ticket landings, never across one — and say so on the timeline.
+ * A landing that throws is reported as a failed one: the chat's docs are a
+ * best-effort checkpoint and must never break the tool call or the run finalizer
+ * that asked for it.
+ */
+async function land(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  branch: string,
+  commits: number,
+): Promise<ChatLanding> {
+  let result: TempBranchMergeResult
+  try {
+    result = await featureLandingQueue(feature.id)(() =>
+      mergeTempBranch(project.repoPath, feature.branch, branch),
+    )
+  } catch (e) {
+    result = { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+  emit(ctx, feature.id, {
+    type: result.ok ? 'chat.landed' : 'chat.land_failed',
+    message: result.ok
+      ? `landed ${commits} chat commit(s) on ${feature.branch}`
+      : `could not land ${commits} chat commit(s) — kept on ${branch}: ${result.error ?? 'merge failed'}`,
+    data: { branch, commits },
+  })
+  return { branch, commits, result }
+}
+
+/**
+ * Land the chat's docs commits, if it is committing to a chat branch at all —
+ * outside a burn it commits to the feature branch directly and there is nothing
+ * to do.
  *
  * The chat's NEXT branch is cut before the landing starts, because the merge
  * deletes the branch it lands and would detach the worktree still holding it.
@@ -95,6 +130,7 @@ export interface ChatLanding {
  * on the same commit, so it carries the same work into the next attempt.
  */
 export async function landChatCommits(
+  ctx: AppCtx,
   project: Project,
   feature: Feature,
 ): Promise<ChatLanding | null> {
@@ -105,54 +141,39 @@ export async function landChatCommits(
   if (commits.length === 0) return null
 
   await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))
-  const result = await featureLandingQueue(feature.id)(() =>
-    mergeTempBranch(project.repoPath, feature.branch, branch),
-  )
-  return { branch, commits: commits.length, result }
-}
-
-/** What the boundary at run end did, for the timeline. */
-export interface ChatHandoff {
-  /** The landing it ran last, if the chat had anything unlanded. */
-  landed?: ChatLanding
-  /** The empty chat branch it deleted, if there was one. */
-  deleted?: string
+  return await land(ctx, project, feature, branch, commits.length)
 }
 
 /**
- * Hand the feature branch back at run end — success, failure or cancel alike.
+ * Hand the feature branch back at run end — success, failure or cancel alike,
+ * because commits the chat made mid-run are the human's notes and which way the
+ * burn went says nothing about whether they should survive.
+ *
  * Anything the chat has not landed lands last, the worktree checks back out to
  * `feature/<slug>` at the new tip, and a chat branch that never carried a commit
  * is deleted. A branch whose landing did not succeed is KEPT, like every other
  * unmerged temp branch: the boot sweep's rule covers it from there.
  */
 export async function releaseTalkWorktreeAfterRun(
+  ctx: AppCtx,
   project: Project,
   feature: Feature,
-): Promise<ChatHandoff> {
+): Promise<ChatLanding | null> {
   const worktreePath = talkWorktree(project, feature)
   const branch = await chatBranchInWorktree(worktreePath)
   if (!branch) {
     // Detached (the fallback park, or a pre-chat leftover) — restore it as before.
     await reattachWorktree(worktreePath, feature.branch)
-    return {}
+    return null
   }
 
   const commits = await branchCommitsAhead(project.repoPath, feature.branch, branch)
   const landed =
-    commits.length > 0
-      ? {
-          branch,
-          commits: commits.length,
-          result: await featureLandingQueue(feature.id)(() =>
-            mergeTempBranch(project.repoPath, feature.branch, branch),
-          ),
-        }
-      : undefined
+    commits.length > 0 ? await land(ctx, project, feature, branch, commits.length) : null
 
   await reattachWorktree(worktreePath, feature.branch)
   // Only the empty branch is ours to delete: a successful landing already
   // deleted the branch it consumed, and an unlanded one holds real commits.
-  const deleted = commits.length === 0 && (await deleteTempBranch(project.repoPath, branch))
-  return { ...(landed ? { landed } : {}), ...(deleted ? { deleted: branch } : {}) }
+  if (commits.length === 0) await deleteTempBranch(project.repoPath, branch)
+  return landed
 }
