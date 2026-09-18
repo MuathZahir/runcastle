@@ -60,7 +60,7 @@ describe('launch model resolution (#48)', () => {
     cleanup.push(worktreeDir(project.id, slug))
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))

@@ -39,7 +39,7 @@ describe('complete_phase records planning steps without moving the feature', () 
     feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     session = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, session.id)

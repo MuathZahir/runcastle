@@ -132,7 +132,7 @@ describe('the review agent wires', () => {
   function talkSession(): SessionRow {
     return createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'revisit',
+      kind: 'chat',
       worktreePath: repo,
     })
   }

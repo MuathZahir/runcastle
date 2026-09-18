@@ -297,7 +297,7 @@ describe('workWaypoint — implicit handoff', () => {
   it('ends the live grill session once the feature is mapped (the first handoff)', async () => {
     const feature = await mappedFeature('grill')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    const grill = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' }, { spawn: false })
+    const grill = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(grill.sessionId))
     markSessionLive(ctx, grill.sessionId, { ccSessionId: 'cc-grill' })
 
@@ -316,7 +316,7 @@ describe('workWaypoint — implicit handoff', () => {
   it('refuses to sweep a live qa conversation, which nothing can prove is over', async () => {
     const feature = await mappedFeature('qa-live')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'qa' }, { spawn: false })
+    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(qa.sessionId))
     markSessionLive(ctx, qa.sessionId, { ccSessionId: 'cc-qa' })
 
@@ -331,7 +331,7 @@ describe('workWaypoint — implicit handoff', () => {
   it('abandons the qa conversation once the human confirms with endLive', async () => {
     const feature = await mappedFeature('qa-abandon')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'qa' }, { spawn: false })
+    const qa = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(qa.sessionId))
     markSessionLive(ctx, qa.sessionId, { ccSessionId: 'cc-qa' })
 

@@ -62,7 +62,7 @@ function session(overrides: Partial<SessionRow> = {}): SessionRow {
   return {
     id: 'sess_xyz',
     featureId: 'feat_abc',
-    kind: 'ideation',
+    kind: 'chat',
     status: 'launching',
     awaitingInput: false,
     worktreePath: 'C:\\wt\\dark-mode',
@@ -452,7 +452,7 @@ describe('renderSystemPrompt', () => {
 
   /**
    * The lap owns the entry skill, then the kind. A lap-N grill is created as
-   * `kind: 'ideation'` and used to render the generic feature brief ("invoke
+   * `kind: 'chat'` and used to render the generic feature brief ("invoke
    * `/runcastle:ideate`") while the lap kickoff typed into the same terminal
    * said "invoke `/runcastle:revisit` for LAP N" — two entry skills, no defined
    * precedence, and the `lap` parameter never read on that path.

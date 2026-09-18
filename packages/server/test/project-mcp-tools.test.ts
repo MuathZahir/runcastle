@@ -122,7 +122,7 @@ describe('project-session MCP tools', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const featureSession = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 
@@ -142,7 +142,7 @@ describe('project-session MCP tools', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const featureSession = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 
@@ -270,7 +270,7 @@ describe('project-session MCP tools', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const grill = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 
@@ -293,7 +293,7 @@ describe('project-session MCP tools', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const grill = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 
@@ -317,7 +317,7 @@ describe('project-session MCP tools', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const qa = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'qa',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 

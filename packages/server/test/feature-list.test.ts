@@ -82,7 +82,7 @@ describe('feature.list liveSession', () => {
     list(ctx, projectId)[0].liveSession
 
   function openSession(): string {
-    return createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: '/wt' }).id
+    return createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' }).id
   }
 
   beforeEach(async () => {
@@ -123,7 +123,7 @@ describe('feature.list liveSession', () => {
 
   it('scopes the session to its own feature', () => {
     const other = seedFeature(ctx, projectId, { slug: 'other' })
-    createSessionRow(ctx, { featureId: other.id, kind: 'ideation', worktreePath: '/wt' })
+    createSessionRow(ctx, { featureId: other.id, kind: 'chat', worktreePath: '/wt' })
 
     const byId = new Map(list(ctx, projectId).map((f) => [f.id, f.liveSession]))
     expect(byId.get(other.id)).not.toBeNull()

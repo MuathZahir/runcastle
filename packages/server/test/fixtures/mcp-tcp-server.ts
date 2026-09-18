@@ -48,7 +48,7 @@ const project = seedProject(ctx, repoPath)
 const feature = seedFeature(ctx, project.id, { slug: 'large-batch', phase: 'planning' })
 const session = createSessionRow(ctx, {
   featureId: feature.id,
-  kind: 'ideation',
+  kind: 'chat',
   worktreePath: repoPath,
 })
 markSessionLive(ctx, session.id)

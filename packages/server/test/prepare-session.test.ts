@@ -73,7 +73,7 @@ function prepareSession(): SessionRow {
 function featureSession(): SessionRow {
   return createSessionRow(ctx, {
     featureId: FEATURE_ID,
-    kind: 'ideation',
+    kind: 'chat',
     worktreePath: '/wt',
   })
 }

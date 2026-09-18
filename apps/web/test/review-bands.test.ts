@@ -169,7 +169,7 @@ const LIVE_IDEATION = {
   id: 'ses_1',
   featureId: 'feat_1',
   lap: 1,
-  kind: 'ideation',
+  kind: 'chat',
   status: 'live',
   createdAt: 1,
 } as unknown as FeatureFull['sessions'][number]

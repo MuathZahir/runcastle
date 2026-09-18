@@ -108,7 +108,7 @@ describe('boot reconciliation — stale sessions', () => {
   })
 
   it('leaves already-ended sessions alone (no event, no double work)', () => {
-    const ended = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'C:\\wt' })
+    const ended = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'C:\\wt' })
     markSessionEnded(ctx, ended.id)
 
     expect(reconcileStaleSessions(ctx)).toEqual([])
@@ -116,7 +116,7 @@ describe('boot reconciliation — stale sessions', () => {
   })
 
   it('is idempotent — a second boot reconciles nothing', () => {
-    createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'C:\\wt' })
+    createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'C:\\wt' })
     expect(reconcileStaleSessions(ctx)).toHaveLength(1)
     expect(reconcileStaleSessions(ctx)).toEqual([])
   })
@@ -423,7 +423,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
 
   it('the FIRST grill launch starts fresh — no --resume, no session.resumed', async () => {
     const f = await feature('first')
-    const id = await launch(f.id, 'ideation')
+    const id = await launch(f.id, 'chat')
 
     expect(commandFor(f.id, id)).not.toContain('--resume')
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resumed')).toBe(false)
@@ -433,14 +433,14 @@ describe('relaunching a terminal resumes its own conversation', () => {
 
   it('reopening the grill after the server killed it resumes the same conversation', async () => {
     const f = await feature('reopen')
-    const first = await launch(f.id, 'ideation')
+    const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
 
     // runcastle quits: the PTY dies with it and boot reconciliation ends the row
     reconcileStaleSessions(ctx)
     expect(getSessionRow(ctx, first)?.status).toBe('ended')
 
-    const second = await launch(f.id, 'ideation')
+    const second = await launch(f.id, 'chat')
     expect(commandFor(f.id, second)).toContain('--resume cc-grill')
     const resumed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resumed')
     expect((resumed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-grill')
@@ -449,10 +449,10 @@ describe('relaunching a terminal resumes its own conversation', () => {
   it('announces a Codex relaunch that has no recorded conversation and still starts fresh', async () => {
     useCodexRuntime()
     const f = await feature('codex-unavailable')
-    const first = await launch(f.id, 'ideation')
+    const first = await launch(f.id, 'chat')
     reconcileStaleSessions(ctx)
 
-    const second = await launch(f.id, 'ideation')
+    const second = await launch(f.id, 'chat')
 
     expect(commandFor(f.id, second)).not.toContain('resume')
     const notes = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.resume_unavailable')
@@ -467,11 +467,11 @@ describe('relaunching a terminal resumes its own conversation', () => {
   it('resumes a recorded Codex conversation without an unavailable note', async () => {
     useCodexRuntime()
     const f = await feature('codex-resume')
-    const first = await launch(f.id, 'ideation')
+    const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: '01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf' })
     reconcileStaleSessions(ctx)
 
-    const second = await launch(f.id, 'ideation')
+    const second = await launch(f.id, 'chat')
     const command = commandFor(f.id, second)
     expect(command).toContain('resume 01a0a850-bd9c-73e1-a5da-f5c5dab6c6bf')
     expect(command).toContain('--dangerously-bypass-hook-trust')
@@ -480,15 +480,15 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(types).not.toContain('session.resume_unavailable')
   })
 
-  it('keeps a Claude relaunch with no recorded conversation silent', async () => {
+  it('announces a Claude chat relaunch with no recorded conversation', async () => {
     const f = await feature('claude-unavailable')
-    await launch(f.id, 'ideation')
+    await launch(f.id, 'chat')
     reconcileStaleSessions(ctx)
 
-    const second = await launch(f.id, 'ideation')
+    const second = await launch(f.id, 'chat')
 
     expect(commandFor(f.id, second)).not.toContain('--resume')
-    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain(
+    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).toContain(
       'session.resume_unavailable',
     )
   })
@@ -496,13 +496,13 @@ describe('relaunching a terminal resumes its own conversation', () => {
   it('does not announce unavailable when an explicit briefing deliberately starts Codex fresh', async () => {
     useCodexRuntime()
     const f = await feature('codex-explicit')
-    const first = await launch(f.id, 'ideation')
+    const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: 'codex-prior' })
     reconcileStaleSessions(ctx)
 
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: f.id, kind: 'ideation', kickoffLine: 'Start this explicit task.' },
+      { featureId: f.id, kind: 'chat', kickoffLine: 'Start this explicit task.' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -513,48 +513,43 @@ describe('relaunching a terminal resumes its own conversation', () => {
     )
   })
 
-  it('resumes the newest conversation of ITS OWN kind, not whatever ran last', async () => {
+  it('resumes the newest chat conversation', async () => {
     const f = await feature('bykind')
-    const grill = await launch(f.id, 'ideation')
+    const grill = await launch(f.id, 'chat')
     markSessionLive(ctx, grill, { ccSessionId: 'cc-grill' })
     reconcileStaleSessions(ctx)
 
-    // a qa terminal runs afterwards, so it is the newest conversation overall
-    const qa = await launch(f.id, 'qa')
+    // A later chat replaces the earlier row as the one transcript's resume seed.
+    const qa = await launch(f.id, 'chat')
     markSessionLive(ctx, qa, { ccSessionId: 'cc-qa' })
     reconcileStaleSessions(ctx)
 
-    // reopening the grill still lands in the GRILL conversation
-    const backToGrill = await launch(f.id, 'ideation')
-    expect(commandFor(f.id, backToGrill)).toContain('--resume cc-grill')
-    reconcileStaleSessions(ctx)
-
-    // and reopening qa lands in the qa one
-    const backToQa = await launch(f.id, 'qa')
-    expect(commandFor(f.id, backToQa)).toContain('--resume cc-qa')
+    // Reopening chat lands in the newest chat conversation.
+    const backToGrill = await launch(f.id, 'chat')
+    expect(commandFor(f.id, backToGrill)).toContain('--resume cc-qa')
   })
 
   it('a session that died before going live is never a resume target', async () => {
     const f = await feature('stillborn')
-    const dead = await launch(f.id, 'ideation') // never reaches `live` → no cc id
+    const dead = await launch(f.id, 'chat') // never reaches `live` → no cc id
     reconcileStaleSessions(ctx)
     expect(getSessionRow(ctx, dead)?.ccSessionId).toBeFalsy()
 
-    const next = await launch(f.id, 'ideation')
+    const next = await launch(f.id, 'chat')
     expect(commandFor(f.id, next)).not.toContain('--resume')
   })
 
   it('sends a resumed terminal no kickoff — its conversation already carries one', async () => {
     const f = await feature('kickoff')
-    const first = await launch(f.id, 'ideation')
+    const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
     reconcileStaleSessions(ctx)
 
-    const second = await launch(f.id, 'ideation')
+    const second = await launch(f.id, 'chat')
 
     // the FIRST launch was fresh and carried its briefing in the argv; the
     // resumed one carries only the conversation id
-    expect(commandFor(f.id, first)).toContain(KICKOFF_LINES.ideation)
+    expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
     expect(command).not.toContain(KICKOFF_LINES.ideation)
@@ -569,7 +564,7 @@ describe('markSessionEnded — when the conversation stopped', () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-04T10:00:00Z'))
-    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, session.id, { ccSessionId: 'cc-1' })
 
     vi.setSystemTime(new Date('2026-09-04T12:00:00Z'))
@@ -580,7 +575,7 @@ describe('markSessionEnded — when the conversation stopped', () => {
   it('leaves a running session with no end time at all', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
-    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     expect(getSessionRow(ctx, session.id)?.endedAt).toBeUndefined()
     markSessionLive(ctx, session.id, { ccSessionId: 'cc-1' })
     expect(getSessionRow(ctx, session.id)?.endedAt).toBeUndefined()
@@ -591,7 +586,7 @@ describe('markSessionEnded — when the conversation stopped', () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-04T12:00:00Z'))
-    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionEnded(ctx, session.id)
 
     // the Stop hook arriving after the PTY exit, or a boot reconciliation later
@@ -601,22 +596,22 @@ describe('markSessionEnded — when the conversation stopped', () => {
 })
 
 describe('mostRecentResumableSession — the revisit resume target', () => {
-  it('narrows to one kind when asked, ignoring newer conversations of other kinds', async () => {
+  it('narrows to chat when asked, ignoring newer conversations of other kinds', async () => {
     const ctx = await makeTestCtx()
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
-    const grill = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const grill = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, grill.id, { ccSessionId: 'cc-grill' })
     markSessionEnded(ctx, grill.id)
-    const qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    const qa = createSessionRow(ctx, { featureId, kind: 'converge', worktreePath: 'w' })
     markSessionLive(ctx, qa.id, { ccSessionId: 'cc-qa' })
     markSessionEnded(ctx, qa.id)
 
     // unfiltered (the revisit target) = newest of any kind
     expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-qa')
     // filtered = newest of that kind, however long ago it ran
-    expect(mostRecentResumableSession(ctx, featureId, 'ideation')?.ccSessionId).toBe('cc-grill')
-    expect(mostRecentResumableSession(ctx, featureId, 'converge')).toBeNull()
+    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.ccSessionId).toBe('cc-grill')
+    expect(mostRecentResumableSession(ctx, featureId, 'waypoint')).toBeNull()
   })
 
   it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {
@@ -624,24 +619,24 @@ describe('mostRecentResumableSession — the revisit resume target', () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id).id
 
     // oldest: ended with a cc id — the fallback candidate
-    const s1 = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: 'w' })
+    const s1 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s1.id, { ccSessionId: 'cc-oldest' })
     markSessionEnded(ctx, s1.id)
 
     // newer: ended but never went live (no cc id) — not resumable
-    const s2 = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    const s2 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionEnded(ctx, s2.id)
 
     expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-oldest')
 
     // newest: ended with a cc id — wins
-    const s3 = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: 'w' })
+    const s3 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s3.id, { ccSessionId: 'cc-newest' })
     markSessionEnded(ctx, s3.id)
     expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
 
     // a LIVE session is never the resume target
-    const s4 = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: 'w' })
+    const s4 = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s4.id, { ccSessionId: 'cc-live' })
     expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-newest')
   })
@@ -652,7 +647,7 @@ describe('mostRecentResumableSession — the revisit resume target', () => {
     expect(mostRecentResumableSession(ctx, featureId)).toBeNull()
 
     const other = seedFeature(ctx, seedProject(ctx).id, { slug: 'other' }).id
-    const s = createSessionRow(ctx, { featureId: other, kind: 'ideation', worktreePath: 'w' })
+    const s = createSessionRow(ctx, { featureId: other, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, s.id, { ccSessionId: 'cc-other' })
     markSessionEnded(ctx, s.id)
     // another feature's conversation is never offered

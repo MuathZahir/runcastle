@@ -228,7 +228,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
     const feature = await featureWithWorktree('pty-exit')
     stubSpawn()
 
-    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
     expect(docsWatchCount()).toBe(1)
 
@@ -240,7 +240,7 @@ describe('docs watcher lifecycle — bound to the session', () => {
     const feature = await featureWithWorktree('marked-ended')
     stubSpawn()
 
-    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
     expect(docsWatchCount()).toBe(1)
 

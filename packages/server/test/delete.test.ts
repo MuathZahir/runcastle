@@ -66,7 +66,7 @@ function seedAllRows(ctx: AppCtx, featureId: string): { sessionId: string } {
     .values({
       id: sessionId,
       featureId,
-      kind: 'ideation',
+      kind: 'chat',
       ccSessionId: null,
       transcriptPath: null,
       status: 'ended',
@@ -275,7 +275,7 @@ describe('feature delete', () => {
       .values({
         id: newId('sess'),
         featureId: feature.id,
-        kind: 'ideation',
+        kind: 'chat',
         ccSessionId: null,
         transcriptPath: null,
         status: 'live',

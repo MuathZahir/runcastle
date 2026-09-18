@@ -91,13 +91,13 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     const feature = await featureWithWorktree('spawned')
     stubSpawn('spawns')
 
-    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
 
     expect(kickoffs(feature.id)).toHaveLength(1)
     expect(kickoffs(feature.id)[0]?.data).toMatchObject({
       sessionId,
-      kind: 'ideation',
+      kind: 'chat',
       line: KICKOFF_LINES.ideation,
       mechanism: 'argv',
     })
@@ -108,7 +108,7 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
 
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -122,7 +122,7 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     const feature = await featureWithWorktree('stillborn')
     stubSpawn('fails')
 
-    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'ideation' })
+    const { sessionId } = await launchSession(ctx, { featureId: feature.id, kind: 'chat' })
     cleanup.push(sessionDir(sessionId))
 
     const types = listAfter(ctx, feature.id, 0).map((e) => e.type)

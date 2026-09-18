@@ -259,7 +259,7 @@ describe('draft features', () => {
     })
 
     it('refuses every session door', async () => {
-      await expect(launchSession(ctx, { featureId: draft.id, kind: 'ideation' })).rejects.toThrow(
+      await expect(launchSession(ctx, { featureId: draft.id, kind: 'chat' })).rejects.toThrow(
         DRAFT_REFUSAL,
       )
       await expect(

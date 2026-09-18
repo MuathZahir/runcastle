@@ -42,7 +42,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     reviewTicket = storeTickets(ctx, feature.id, [
       { ...ticketInput('Review'), kind: 'review' },
     ])[0]
-    session = createSessionRow(ctx, { featureId: feature.id, kind: 'revisit', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
@@ -142,7 +142,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
       const other = seedFeature(ctx, project.id, { slug: 'other' })
       const stranger = createSessionRow(ctx, {
         featureId: other.id,
-        kind: 'revisit',
+        kind: 'chat',
         worktreePath: repoPath,
       })
       expect(() =>
@@ -155,7 +155,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
       const findingId = openDefect()
       const qa = createSessionRow(ctx, {
         featureId: feature.id,
-        kind: 'qa',
+        kind: 'chat',
         worktreePath: repoPath,
       })
       expect(() => toolResolveFinding(ctx, qa, { findingId, disposition: 'carry' })).toThrow(GateError)

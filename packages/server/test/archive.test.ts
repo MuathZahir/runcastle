@@ -16,7 +16,7 @@ function seedLiveSession(ctx: AppCtx, featureId: string): string {
     .values({
       id,
       featureId,
-      kind: 'ideation',
+      kind: 'chat',
       ccSessionId: null,
       transcriptPath: null,
       status: 'live',

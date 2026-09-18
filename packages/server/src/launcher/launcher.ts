@@ -465,7 +465,9 @@ export async function launchSession(
     if (prior?.ccSessionId) {
       resumedFrom = prior
       resumeSessionId = prior.ccSessionId
-    } else {
+    } else if (listSessionsByFeature(ctx, feature.id).some(
+      (candidate) => candidate.id !== session.id && candidate.kind === 'chat' && candidate.status === 'ended',
+    )) {
       resumeUnavailableFrom = 'chat'
     }
   }

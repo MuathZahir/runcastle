@@ -35,7 +35,7 @@ const { TicketsBody } = await import('../src/components/bodies/tickets/TicketsBo
 beforeEach(() => { server.edits = []; server.directEdits = []; server.cancels = []; server.toasts = []; server.sessions = []; server.tickets = rows })
 afterEach(() => { cleanup(); sessionStorage.clear() })
 
-const liveSession = { id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, status: 'live', createdAt: Date.now() }
+const liveSession = { id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status: 'live', createdAt: Date.now() }
 
 /** The body's own scroll column — the element the layout below is measured on. */
 function bodyColumn(container: HTMLElement): HTMLElement {
@@ -74,7 +74,7 @@ describe('TicketsBody wire actions', () => {
   })
 
   it('shows an ended session as one quiet line, with no terminal and no doors', () => {
-    server.sessions = [{ id: 's1', featureId: 'f1', kind: 'ideation', lap: 2, status: 'ended', createdAt: Date.now() }]
+    server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status: 'ended', createdAt: Date.now() }]
     render(<TicketsBody featureId="f1" />)
     expect(screen.getByText(/Ideation session/)).toBeTruthy()
     expect(screen.getByText(/ended/)).toBeTruthy()

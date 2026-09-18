@@ -95,7 +95,7 @@ describe('runtime dispatch at launch', () => {
 
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -121,7 +121,7 @@ describe('runtime dispatch at launch', () => {
 
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -149,7 +149,7 @@ describe('runtime dispatch at launch', () => {
 
     const first = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(first.sessionId))
@@ -159,7 +159,7 @@ describe('runtime dispatch at launch', () => {
 
     const second = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(second.sessionId))
@@ -183,7 +183,7 @@ describe('runtime dispatch at launch', () => {
 
     const first = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(first.sessionId))
@@ -192,7 +192,7 @@ describe('runtime dispatch at launch', () => {
 
     const second = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(second.sessionId))
@@ -220,7 +220,7 @@ describe('runtime dispatch at launch', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'not-ready' })
 
     await expect(
-      launchSession(ctx, { featureId: feature.id, kind: 'ideation' }),
+      launchSession(ctx, { featureId: feature.id, kind: 'chat' }),
     ).rejects.toThrow(/codex CLI is not on this server.*runcastle doctor/s)
 
     // Refused EARLY: no session row was created, so nothing lingers `launching`
@@ -237,7 +237,7 @@ describe('runtime dispatch at launch', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'unwired' })
 
     await expect(
-      launchSession(ctx, { featureId: feature.id, kind: 'ideation' }, { spawn: false }),
+      launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),
     ).rejects.toThrow(/no agent runtime is wired up for gemini/)
   })
 
@@ -249,7 +249,7 @@ describe('runtime dispatch at launch', () => {
 
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -278,7 +278,7 @@ describe('runtime dispatch at launch', () => {
 
     const row = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
 

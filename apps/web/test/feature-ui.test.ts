@@ -185,7 +185,7 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
       docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
     }) as unknown as FeatureFull
 
-  const endedGrill = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+  const endedGrill = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }]
 
   it('says Start when the feature has never had a grill conversation', () => {
     const ns = nextStep(grillFull({}), { driving: false })
@@ -199,13 +199,13 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
   })
 
   it('keeps saying Start when the ended session never reached live (no cc id)', () => {
-    const stillborn = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: null }]
+    const stillborn = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: null }]
     const ns = nextStep(grillFull({ sessions: stillborn }), { driving: false })
     expect(ns.primary?.label).toBe('Start session')
   })
 
   it('ignores a resumable session of a DIFFERENT kind (the launcher would not pick it)', () => {
-    const qaOnly = [{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }]
+    const qaOnly = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-qa' }]
     const ns = nextStep(grillFull({ sessions: qaOnly }), { driving: false })
     expect(ns.primary?.label).toBe('Start session')
   })
@@ -249,7 +249,7 @@ describe('nextStep at building with no tickets', () => {
   })
 
   it('offers to resume the conversation that exists rather than start another', () => {
-    const ended = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+    const ended = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }]
     expect(nextStep(buildFull({ sessions: ended }), { driving: false }).primary).toEqual({
       label: 'Resume the session',
       kind: 'startGrill',
@@ -257,7 +257,7 @@ describe('nextStep at building with no tickets', () => {
   })
 
   it('goes status-only while a session is live instead of launching a second one', () => {
-    const live = [{ id: 's1', status: 'live', kind: 'revisit', ccSessionId: 'cc-1' }]
+    const live = [{ id: 's1', status: 'live', kind: 'chat', ccSessionId: 'cc-1' }]
     const ns = nextStep(buildFull({ sessions: live }), { driving: false })
     expect(ns.title).toBe('No tickets to burn')
     expect(ns.primary).toBeUndefined()
@@ -369,11 +369,11 @@ describe('sessionActive', () => {
   })
 
   it('finds the active session among ended ones, and none when there is none', () => {
-    const launching = { id: 's2', status: 'launching', kind: 'ideation' }
+    const launching = { id: 's2', status: 'launching', kind: 'chat' }
     expect(
-      activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }, launching])),
+      activeSession(rows([{ id: 's1', status: 'ended', kind: 'chat' }, launching])),
     ).toEqual(launching)
-    expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }]))).toBeUndefined()
+    expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'chat' }]))).toBeUndefined()
     expect(activeSession(rows([]))).toBeUndefined()
   })
 })
@@ -451,7 +451,7 @@ describe('nextStep — live sessions go status-only', () => {
         ...BURNABLE,
       })),
       sessions: opts.live
-        ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
+        ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'chat' }]
         : [],
       runs: [],
       docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
@@ -487,7 +487,7 @@ describe('nextStep — live sessions go status-only', () => {
     const full = auditFull({})
     const resumable = {
       ...full,
-      sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
+      sessions: [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }],
     } as unknown as FeatureFull
     const ns = nextStep(resumable, { driving: false })
     expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
@@ -512,7 +512,7 @@ describe('nextStep — live sessions go status-only', () => {
     expect(idle.secondary).toEqual([
       {
         label: 'Ask for changes',
-        kind: 'revisit',
+        kind: 'chat',
         hint: 'Open a session to change the tickets before burning',
       },
       MERGE_ACTION,
@@ -624,7 +624,7 @@ describe('nextStep at review', () => {
       lap: opts.ticketLaps?.[i] ?? opts.lap ?? 1,
       commits: [],
     }))
-    const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : []
+    const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : []
     return {
       feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
       tickets,
@@ -1457,7 +1457,7 @@ describe('nextStep at planning on a later lap', () => {
 
   it('points at the lap session rather than the artifacts lap 1 left behind', () => {
     const ns = nextStep(lapFull({ lap: 2 }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
+    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'chat' })
     expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(ns.title).toBe('Work lap 2')
     expect(ns.desc).toContain('test-drive notes')
@@ -1468,21 +1468,21 @@ describe('nextStep at planning on a later lap', () => {
     full.feature.mapped = true
     expect(nextStep(full, { driving: false }).primary).toEqual({
       label: 'Start lap 2 session',
-      kind: 'revisit',
+      kind: 'chat',
     })
   })
 
   it('says Resume once the lap has a conversation on disk', () => {
     const ns = nextStep(
-      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'revisit', ccSessionId: 'cc-1' }] }),
+      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }] }),
       { driving: false },
     )
-    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'revisit' })
+    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'chat' })
   })
 
   it('shows the live lap session status-only, as the lap`s work', () => {
     const ns = nextStep(
-      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'revisit' }] }),
+      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'chat' }] }),
       { driving: false },
     )
     expect(ns.title).toBe('Lap 2 in progress')
@@ -2397,7 +2397,7 @@ describe('nextStep at building', () => {
         lap: 1,
         commits: [],
       })),
-      sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : [],
+      sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : [],
       runs: opts.runs ?? [],
       gate: { next: null, satisfied: false, reason: null },
     }) as unknown as FeatureFull
@@ -2443,7 +2443,7 @@ describe('nextStep at building', () => {
     const ns = nextStep(buildFull({ sessionLive: true }), { driving: false })
     expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(nextStep(buildFull({}), { driving: false }).secondary).toEqual([
-      { label: 'Revisit', kind: 'revisit' },
+      { label: 'Revisit', kind: 'chat' },
       MERGE_ACTION,
     ])
   })
@@ -2462,7 +2462,7 @@ describe('nextStep at building', () => {
       { driving: false },
     )
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
-    expect(ns.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }, MERGE_ACTION])
+    expect(ns.secondary).toEqual([{ label: 'Revisit', kind: 'chat' }, MERGE_ACTION])
   })
 
   /**
@@ -2831,7 +2831,7 @@ describe('nextStep at planning — which door the artifacts open', () => {
     const feature = full({ phase: 'planning' })
     feature.feature = { ...feature.feature, lap: 2 }
     feature.sessions = [
-      { id: 's1', status: 'ended', kind: 'revisit', lap: 2, ccSessionId: 'cc-1' },
+      { id: 's1', status: 'ended', kind: 'chat', lap: 2, ccSessionId: 'cc-1' },
     ] as unknown as FeatureFull['sessions']
     feature.docs = docs('decisions.md', 'spec.md')
     feature.tickets = Array.from({ length: 11 }, (_, i) => ({
@@ -3112,8 +3112,8 @@ describe('liveSessionBlocker', () => {
   it('reports no waypoint for a live session holding none (the ideation grill)', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'charted by the grill' })]
     expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'ideation' }]), ws),
-    ).toEqual({ sessionId: 'sess_1', kind: 'ideation', waypointTitle: undefined })
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'chat' }]), ws),
+    ).toEqual({ sessionId: 'sess_1', kind: 'chat', waypointTitle: undefined })
   })
 
   it('ignores a resolved waypoint that merely remembers the session', () => {
@@ -3148,17 +3148,17 @@ describe('shippedQaSessions', () => {
   const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
 
   it('shows a live qa session', () => {
-    const rows = sessions([{ id: 's1', status: 'live', kind: 'qa', ccSessionId: null }])
+    const rows = sessions([{ id: 's1', status: 'live', kind: 'chat', ccSessionId: null }])
     expect(shippedQaSessions(rows)).toEqual(rows)
   })
 
   it('shows an ended qa session whose conversation is still on disk', () => {
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }])
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-qa' }])
     expect(shippedQaSessions(rows)).toEqual(rows)
   })
 
   it('shows nothing for an ended qa session that never reached live (no cc id)', () => {
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: null }])
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: null }])
     expect(shippedQaSessions(rows)).toEqual([])
   })
 
@@ -3166,16 +3166,16 @@ describe('shippedQaSessions', () => {
     // Every pipeline session is ended and resumable by the time a feature ships —
     // those belong to the phase bodies that own them, not to the shipped hero.
     const rows = sessions([
-      { id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' },
-      { id: 's2', status: 'ended', kind: 'revisit', ccSessionId: 'cc-2' },
+      { id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' },
+      { id: 's2', status: 'ended', kind: 'chat', ccSessionId: 'cc-2' },
     ])
     expect(shippedQaSessions(rows)).toEqual([])
     expect(shippedQaSessions(sessions([]))).toEqual([])
   })
 
   it('keeps only the qa rows when the feature also has other sessions', () => {
-    const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
+    const qa = { id: 's2', status: 'live', kind: 'chat', ccSessionId: null }
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }, qa])
     expect(shippedQaSessions(rows)).toEqual([qa])
   })
 })
@@ -3499,7 +3499,7 @@ describe('nextStep — naming the runtime in the copy', () => {
     }) as unknown as FeatureFull
 
   const liveGrill = (runtime: string | null) => [
-    { id: 's1', status: 'live', kind: 'ideation', runtime },
+    { id: 's1', status: 'live', kind: 'chat', runtime },
   ]
 
   it('names the runtime the live grill session is running on', () => {

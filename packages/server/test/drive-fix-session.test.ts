@@ -203,7 +203,7 @@ describe('launching a drive-fix session', () => {
 
   it('counts as the feature’s one terminal', async () => {
     await failedDrive()
-    createSessionRow(ctx, { featureId: feature.id, kind: 'qa', worktreePath: '/wt' })
+    createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' })
 
     await expect(launched()).rejects.toThrow(/only one terminal per feature/)
   })

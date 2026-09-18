@@ -58,7 +58,7 @@ describe('mcp tools', () => {
     slug = 'dark-mode'
     const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
-    session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
@@ -387,7 +387,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     slug = 'big-feature'
     const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
-    session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
@@ -453,7 +453,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
 
   it('emit_waypoints works from any session kind once mapped (qa can branch the map)', () => {
     toolEscalateToMap(ctx, session, { destination: 'dest' })
-    const qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
+    const qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     const out = toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] })
     expect(out.stored).toBe(1)
     expect(listWaypoints(ctx, featureId).map((w) => w.title)).toContain('from-qa')
@@ -506,7 +506,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     const out = toolGetFeatureContext(ctx, session)
     expect(out.assignedWaypointId).toBe(a.id)
     // a session with no claim (e.g. the ideation session) has none
-    const other = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    const other = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     expect(toolGetFeatureContext(ctx, other).assignedWaypointId).toBeUndefined()
   })
 
@@ -546,7 +546,7 @@ describe('mcp qa read-only contract', () => {
     repoPath = tmpRepo()
     const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'planning' })
     featureId = feature.id
-    qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
+    qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     setRuntimeCtx(ctx)
   })
 
@@ -595,8 +595,8 @@ describe('mcp session resolution', () => {
   it('prefers the header session id, falling back to the most recent live session', () => {
     const project = seedProject(ctx)
     const feature = seedFeature(ctx, project.id, { slug: 'f2' })
-    const s1 = createSessionRow(ctx, { featureId: feature.id, kind: 'ideation', worktreePath: 'x' })
-    const s2 = createSessionRow(ctx, { featureId: feature.id, kind: 'qa', worktreePath: 'y' })
+    const s1 = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: 'x' })
+    const s2 = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: 'y' })
     markSessionLive(ctx, s1.id)
     markSessionLive(ctx, s2.id)
 
@@ -616,7 +616,7 @@ describe('mcp session resolution', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'f2' })
     const live = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: 'x',
     })
     markSessionLive(ctx, live.id)
@@ -647,7 +647,7 @@ describe('mcp run-scoped feature reads', () => {
     // The live human conversation the fallback used to hand review agents.
     const talk = createSessionRow(ctx, {
       featureId: theirs,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, talk.id)

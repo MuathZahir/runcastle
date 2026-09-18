@@ -43,7 +43,7 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
         expect(
           evaluateEditGuard({
             ...GUARD_BASE,
-            kind: 'revisit',
+            kind: 'chat',
             purpose: 'resolve-conflict',
             mergeInProgress: true,
             toolName,
@@ -62,7 +62,7 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
   it('denies with the standard message once no merge is in progress', () => {
     const denial = evaluateEditGuard({
       ...GUARD_BASE,
-      kind: 'revisit',
+      kind: 'chat',
       purpose: 'resolve-conflict',
       mergeInProgress: false,
       filePath: SOURCE_FILE,
@@ -75,7 +75,7 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
     expect(
       evaluateEditGuard({
         ...GUARD_BASE,
-        kind: 'revisit',
+        kind: 'chat',
         purpose: 'resolve-conflict',
         mergeInProgress: false,
         filePath: 'docs/features/dark-mode/decisions.md',
@@ -99,12 +99,12 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
   describe('every other session behaves exactly as before', () => {
     it('denies source and allows the feature docs for an ordinary talk session', () => {
       expect(
-        evaluateEditGuard({ ...GUARD_BASE, kind: 'ideation', filePath: SOURCE_FILE })?.reason,
+        evaluateEditGuard({ ...GUARD_BASE, kind: 'chat', filePath: SOURCE_FILE })?.reason,
       ).toMatch(/Talk sessions do not write code/)
       expect(
         evaluateEditGuard({
           ...GUARD_BASE,
-          kind: 'ideation',
+          kind: 'chat',
           filePath: 'docs/features/dark-mode/spec.md',
         }),
       ).toBeNull()
@@ -115,9 +115,9 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
         evaluateEditGuard({ ...GUARD_BASE, kind: 'project', filePath: '/wt/project/src/index.ts' }),
       ).toBeNull()
       expect(
-        evaluateEditGuard({ ...GUARD_BASE, kind: 'ideation', toolName: 'Bash', filePath: 'x.ts' }),
+        evaluateEditGuard({ ...GUARD_BASE, kind: 'chat', toolName: 'Bash', filePath: 'x.ts' }),
       ).toBeNull()
-      expect(evaluateEditGuard({ ...GUARD_BASE, kind: 'ideation' })).toBeNull()
+      expect(evaluateEditGuard({ ...GUARD_BASE, kind: 'chat' })).toBeNull()
     })
 
     it('sends a session with no feature to `record_finding`, purpose or not', () => {
@@ -189,7 +189,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'revisit',
+      kind: 'chat',
       purpose: 'resolve-conflict',
       purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
       worktreePath: worktree,
@@ -247,7 +247,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     const feature = seedFeature(ctx, seedProject(ctx).id, { slug: 'gone' })
     const orphan = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'revisit',
+      kind: 'chat',
       purpose: 'resolve-conflict',
       purposeData: { mergeFrom: 'main', mergeInto: 'feature/gone' },
       worktreePath: join(tmpdir(), 'runcastle-does-not-exist', 'gone'),
@@ -300,7 +300,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
   function resolveSession(worktreePath = worktree): string {
     return createSessionRow(ctx, {
       featureId,
-      kind: 'revisit',
+      kind: 'chat',
       purpose: 'resolve-conflict',
       purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
       worktreePath,
@@ -342,7 +342,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     landTheMerge()
     const id = createSessionRow(ctx, {
       featureId,
-      kind: 'revisit',
+      kind: 'chat',
       purpose: 'resolve-conflict',
       purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
       worktreePath: worktree,
@@ -367,7 +367,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
   it('leaves an ordinary session alone even with the merge landed', async () => {
     landTheMerge()
     await endSession(
-      createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: worktree }).id,
+      createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: worktree }).id,
     )
     expect(resolved()).toHaveLength(0)
   })
@@ -461,7 +461,7 @@ describe('launchSession — the purpose reaches the session row', () => {
       ctx,
       {
         featureId,
-        kind: 'revisit',
+        kind: 'chat',
         kickoffLine: 'Resolve the merge conflict.',
         purpose: 'resolve-conflict',
         purposeData: { mergeFrom: 'main', mergeInto: 'feature/dark-mode' },
@@ -476,7 +476,7 @@ describe('launchSession — the purpose reaches the session row', () => {
   })
 
   it('leaves an ordinary launch with no purpose at all', async () => {
-    const { sessionId } = await launchSession(ctx, { featureId, kind: 'revisit' }, { spawn: false })
+    const { sessionId } = await launchSession(ctx, { featureId, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
 
     const session = getSessionRow(ctx, sessionId)

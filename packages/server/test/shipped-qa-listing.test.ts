@@ -10,7 +10,7 @@ describe('shipped Q&A listing', () => {
     const project = seedProject(ctx)
     const feature = seedFeature(ctx, project.id, { phase: 'shipped', status: 'shipped' })
     ctx.db.insert(sessions).values({
-      id: 'session_qa', featureId: feature.id, kind: 'qa', status: 'ended', awaitingInput: false,
+      id: 'session_qa', featureId: feature.id, kind: 'chat', status: 'ended', awaitingInput: false,
       worktreePath: '/tmp/worktree', createdAt: 100,
     }).run()
 

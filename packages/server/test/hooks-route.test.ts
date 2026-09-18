@@ -38,7 +38,7 @@ describe('hooks route', () => {
     featureId = feature.id
     const session = createSessionRow(ctx, {
       featureId,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: 'C:\\wt\\dark-mode',
     })
     sessionId = session.id
@@ -230,7 +230,7 @@ describe('hooks route', () => {
     const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
     const s = createSessionRow(ctx, {
       featureId: lapFeature.id,
-      kind: 'revisit',
+      kind: 'chat',
       worktreePath: '/wt/lapper',
     })
 
@@ -253,7 +253,7 @@ describe('hooks route', () => {
     beforeEach(() => {
       talkSession = createSessionRow(ctx, {
         featureId,
-        kind: 'ideation',
+        kind: 'chat',
         worktreePath: '/wt/dark-mode',
       }).id
     })
@@ -345,7 +345,7 @@ describe('hooks route', () => {
     beforeEach(() => {
       codexSession = createSessionRow(ctx, {
         featureId,
-        kind: 'ideation',
+        kind: 'chat',
         worktreePath: '/wt/dark-mode',
         model: { id: 'gpt-5.6-sol', runtime: 'codex' },
       }).id
