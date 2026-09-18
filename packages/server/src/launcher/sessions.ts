@@ -301,7 +301,7 @@ export interface KickoffPlan {
  *
  * Deriving it from state keeps {@link WriteArtifactsInput.lap}'s reasoning true
  * — an ordinary revisit on a lap-3 feature is NOT running a lap, because such a
- * feature is at `review` or `implementation`, not at `ideation` — while closing
+ * feature is at `review` or `building`, not back at `planning` — while closing
  * the re-entry hole, because the state that says "mid-lap" survives the terminal
  * that was running it.
  *
@@ -313,7 +313,7 @@ export function lapInFlight(input: {
   phase: string
   ticketLaps: readonly number[]
 }): boolean {
-  return input.lap > 1 && input.phase === 'ideation' && !input.ticketLaps.includes(input.lap)
+  return input.lap > 1 && input.phase === 'planning' && !input.ticketLaps.includes(input.lap)
 }
 
 /**

@@ -7,7 +7,6 @@ import type { AppCtx } from '../db/types'
 import {
   events,
   features,
-  gateOverrides,
   projectFindings,
   projects,
   runs,
@@ -123,7 +122,6 @@ export async function removeFeature(
   ctx.db.delete(sessions).where(eq(sessions.featureId, feature.id)).run()
   ctx.db.delete(runs).where(eq(runs.featureId, feature.id)).run()
   ctx.db.delete(events).where(eq(events.featureId, feature.id)).run()
-  ctx.db.delete(gateOverrides).where(eq(gateOverrides.featureId, feature.id)).run()
   ctx.db.delete(waypoints).where(eq(waypoints.featureId, feature.id)).run()
   ctx.db.delete(features).where(eq(features.id, feature.id)).run()
 

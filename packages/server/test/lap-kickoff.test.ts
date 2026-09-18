@@ -62,12 +62,12 @@ describe('planKickoff', () => {
   /**
    * THE STRANDING BUG. `lap` used to be derived by `line === lapKickoff(lap)` —
    * JS string equality, three call frames from the renderer that depends on it.
-   * That works exactly once, on the Rethink launch that passes the line. A
-   * terminal that died mid-lap left the feature at `ideation`/lap N with no lap
-   * tickets, Rethink refused (it needs the `review` phase, which had already
-   * moved), and Revisit — the only door left — passes no `kickoffLine`, so the
-   * comparison failed and `lap` came back undefined. Deriving it from state
-   * makes the SAME re-entry produce the lap plan.
+   * That works exactly once, on the launch that passes the line. A terminal
+   * that died mid-lap left the feature at `planning`/lap N with no lap tickets
+   * and no way back to the door that had briefed it, and Revisit — the only
+   * door left — passes no `kickoffLine`, so the comparison failed and `lap`
+   * came back undefined. Deriving it from state makes the SAME re-entry produce
+   * the lap plan.
    */
   it('recovers a lap that died mid-flight, with no kickoffLine to compare against', () => {
     const plan = planKickoff({ kind: 'revisit', lap: 4, lapInFlight: true })
@@ -92,20 +92,20 @@ describe('planKickoff', () => {
  * exact shape Rethink creates and a lap session is the only thing that clears.
  */
 describe('lapInFlight', () => {
-  it('is true at ideation on lap N with no lap-N tickets', () => {
-    expect(lapInFlight({ lap: 2, phase: 'ideation', ticketLaps: [1, 1] })).toBe(true)
+  it('is true at planning on lap N with no lap-N tickets', () => {
+    expect(lapInFlight({ lap: 2, phase: 'planning', ticketLaps: [1, 1] })).toBe(true)
   })
 
   it('is false once the lap has emitted its tickets', () => {
-    expect(lapInFlight({ lap: 2, phase: 'ideation', ticketLaps: [1, 2] })).toBe(false)
+    expect(lapInFlight({ lap: 2, phase: 'planning', ticketLaps: [1, 2] })).toBe(false)
   })
 
   it('is false on lap 1 — there is no lap to be running', () => {
-    expect(lapInFlight({ lap: 1, phase: 'ideation', ticketLaps: [] })).toBe(false)
+    expect(lapInFlight({ lap: 1, phase: 'planning', ticketLaps: [] })).toBe(false)
   })
 
-  it('is false anywhere but ideation — a lap-3 feature at review is not mid-lap', () => {
-    for (const phase of ['spec', 'tickets', 'implementation', 'review', 'shipped']) {
+  it('is false anywhere but planning — a lap-3 feature at review is not mid-lap', () => {
+    for (const phase of ['building', 'review', 'shipped']) {
       expect(lapInFlight({ lap: 3, phase, ticketLaps: [1, 2] })).toBe(false)
     }
   })
@@ -166,7 +166,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   }
 
   it('omits --resume when the launch carries a kickoff override', async () => {
-    const { featureId } = await seedResumable('with-briefing', { phase: 'ideation', lap: 2 })
+    const { featureId } = await seedResumable('with-briefing', { phase: 'planning', lap: 2 })
     const { command } = await launchAndRead(featureId, {
       kind: 'revisit',
       kickoffLine: lapKickoff(2),
@@ -181,7 +181,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
-    const { featureId } = await seedResumable('no-briefing', { phase: 'implementation' })
+    const { featureId } = await seedResumable('no-briefing', { phase: 'building' })
     const { command } = await launchAndRead(featureId, { kind: 'revisit' })
 
     expect(command).toContain('--resume cc-prior')
@@ -191,7 +191,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   })
 
   it('renders the lap framing into the prompt of a lap launch, not the revisit ban', async () => {
-    const { featureId } = await seedResumable('lap-prompt', { phase: 'ideation', lap: 3 })
+    const { featureId } = await seedResumable('lap-prompt', { phase: 'planning', lap: 3 })
     const { prompt } = await launchAndRead(featureId, {
       kind: 'revisit',
       kickoffLine: lapKickoff(3),
@@ -204,7 +204,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   })
 
   it('a lap-N grill opens on the lap briefing, not the generic ideate line', async () => {
-    const { featureId } = await seedResumable('lap-grill', { phase: 'ideation', lap: 2 })
+    const { featureId } = await seedResumable('lap-grill', { phase: 'planning', lap: 2 })
     const { sessionId, command } = await launchAndRead(featureId, { kind: 'ideation' })
 
     expect(command).not.toContain('--resume')
@@ -224,7 +224,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
    * transcript whose own earlier turn said to complete_phase through to tickets.
    */
   it('re-enters a stranded lap through plain Revisit and rebuilds the lap briefing', async () => {
-    const { featureId } = await seedResumable('stranded-lap', { phase: 'ideation', lap: 2 })
+    const { featureId } = await seedResumable('stranded-lap', { phase: 'planning', lap: 2 })
     const { sessionId, command, prompt } = await launchAndRead(featureId, { kind: 'revisit' })
 
     expect(prompt).toContain('This is lap 2')

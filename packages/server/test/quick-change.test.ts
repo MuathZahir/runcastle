@@ -7,7 +7,6 @@ import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { featureDocsDir } from '../src/services/feature-docs'
 import * as features from '../src/services/features'
-import { checkGate } from '../src/services/gates'
 import { scaffoldDocs } from '../src/services/knowledge'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
@@ -20,12 +19,13 @@ import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
  * The quick-change door (decision 21): work too small to deserve a grill enters
- * as an ORDINARY feature born directly at `implementation` on lap 1, carrying
- * one ticket per sentence the human typed (decisions.md #4) — each ticket's
- * goal, and its sole acceptance criterion, being that sentence.
+ * as an ORDINARY feature born at `planning` on lap 1 with its tickets already
+ * written — one per sentence the human typed (decisions.md #4), each ticket's
+ * goal and sole acceptance criterion being that sentence — so the only thing
+ * left is the Burn click.
  *
  * Driven through the SERVICE and the tRPC proc (both are real seams here —
- * unlike `feature.rethink`, nothing in this path launches a terminal).
+ * nothing in this path launches a terminal).
  */
 
 /** A real git repo with a seed commit on `main` — branch creation needs one. */
@@ -80,7 +80,7 @@ afterEach(() => {
   rmSync(dataHome, { recursive: true, force: true })
 })
 
-describe('quickChange service — a one-ticket feature born at implementation', () => {
+describe('quickChange service — a one-ticket feature born ready to burn', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -91,14 +91,14 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     projectId = (await openProject(ctx, repoPath)).id
   })
 
-  it('creates an active lap-1 feature at implementation on a real feature branch', async () => {
+  it('creates an active lap-1 feature at planning on a real feature branch', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
       tickets: [PROSE],
     })
 
-    expect(feature.phase).toBe('implementation')
+    expect(feature.phase).toBe('planning')
     expect(feature.lap).toBe(1)
     expect(feature.status).toBe('active')
     expect(feature.mapped).toBe(false)
@@ -108,7 +108,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
 
     // The row is what was stored, not just what was returned.
     const row = getFeatureRow(ctx, feature.id)
-    expect(row.phase).toBe('implementation')
+    expect(row.phase).toBe('planning')
     expect(row.lap).toBe(1)
 
     // A real branch, forked off the resolved base.
@@ -347,7 +347,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect((await g.status()).isClean()).toBe(true)
   })
 
-  it('emits a timeline that spells out the born-at-implementation path', async () => {
+  it('emits a timeline that spells out the born-ready-to-burn path', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
@@ -362,13 +362,13 @@ describe('quickChange service — a one-ticket feature born at implementation', 
       'feature.quick_change',
     ])
     const quick = events.find((e) => e.type === 'feature.quick_change')
-    expect(quick?.message).toContain('born at implementation on lap 1')
+    expect(quick?.message).toContain('born at planning on lap 1')
     expect(quick?.message).toContain('one ticket (#1)')
-    // Named apart from the tally: the review ticket is the pipeline's doing,
+    // Named apart from the tally: the review ticket is the machinery's doing,
     // not one of the sentences the human typed.
     expect(quick?.message).toContain('plus a review ticket (#2)')
     expect(quick?.message).toContain('no grill session, no spec.md')
-    expect(quick?.data).toMatchObject({ ticketSeqs: [1, 2], phase: 'implementation' })
+    expect(quick?.data).toMatchObject({ ticketSeqs: [1, 2], phase: 'planning' })
   })
 
   it('names every ticket it was born with in that timeline entry', async () => {
@@ -405,7 +405,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect(
       listAfter(ctx, feature.id, 0).filter((e) => e.type === 'tickets.shape_warning'),
     ).toEqual([])
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('implementation')
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('planning')
     expect(typedTickets(ctx, feature.id)).toHaveLength(1)
   })
 
@@ -443,7 +443,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     expect(warning?.message).toContain('reads like a pasted document')
   })
 
-  it('leaves G1/G2 unevaluated and opens G3 on the single pending ticket', async () => {
+  it('stays in planning with its tickets ready for Burn', async () => {
     const feature = await features.quickChange(ctx, {
       projectId,
       title: 'Darker empty state',
@@ -451,15 +451,7 @@ describe('quickChange service — a one-ticket feature born at implementation', 
     })
     const row = getFeatureRow(ctx, feature.id)
 
-    // The feature starts past G1/G2, so the only gate ahead of it is G4 — the
-    // G1/G2 checks are never reached. They would both fail if they were: there
-    // is no decisions.md and no spec.md on disk.
-    expect(checkGate(ctx, 'decisions-file-exists', row).satisfied).toBe(false)
-    expect(checkGate(ctx, 'spec-file-exists', row).satisfied).toBe(false)
-
-    // G3's precondition — what the Burn click needs — is satisfied by the one
-    // pending lap-1 ticket.
-    expect(checkGate(ctx, 'tickets-approved', row).satisfied).toBe(true)
+    expect(row.phase).toBe('planning')
   })
 
   it('deduplicates slugs against existing features, like create does', async () => {
@@ -497,7 +489,7 @@ describe('feature.quickChange proc', () => {
       tickets: [PROSE],
     })
 
-    expect(feature.phase).toBe('implementation')
+    expect(feature.phase).toBe('planning')
     const full = await caller.feature.get({ id: feature.id })
     // The typed sentence, plus the review ticket the batch always closes with —
     // what the ledger lists and what the next-step bar counts ("Burn 2 tickets").
@@ -518,7 +510,7 @@ describe('feature.quickChange proc', () => {
     })
 
     const full = await caller.feature.get({ id: feature.id })
-    expect(full.feature.phase).toBe('implementation')
+    expect(full.feature.phase).toBe('planning')
     expect(full.tickets.filter((t) => t.kind === 'implementation').map((t) => t.goal)).toEqual([
       'Darken the empty state.',
       'Fix the run chip.',

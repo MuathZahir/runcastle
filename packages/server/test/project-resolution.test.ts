@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import type { AppCtx } from '../src/db/types'
 import type { Project } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { checkGate } from '../src/services/gates'
 import { escalateToMap } from '../src/services/features'
 import { listDocs, scaffoldDocs } from '../src/services/knowledge'
 import { makeTestCtx } from './helpers/db'
@@ -40,13 +39,6 @@ describe('project resolution (issue #36)', () => {
     scaffoldDocs(ctx, feature)
 
     expect(listDocs(ctx, feature).map((d) => d.relPath)).toContain('brief.md')
-  })
-
-  it('checkGate resolves docs under the feature project repo', () => {
-    const feature = seedFeature(ctx, owner.id, { slug: 'gated' })
-    scaffoldDocs(ctx, feature) // seeds brief.md; decisions.md still absent
-    expect(checkGate(ctx, 'decisions-file-exists', feature).satisfied).toBe(false)
-    expect(checkGate(ctx, 'spec-file-exists', feature).satisfied).toBe(false)
   })
 
   it('escalateToMap writes map.md into the feature project repo', () => {

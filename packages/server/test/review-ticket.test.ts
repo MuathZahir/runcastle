@@ -24,10 +24,8 @@ import {
   releaseReviewDrive,
   reviewDrive,
 } from '../src/services/git'
-import { checkGate } from '../src/services/gates'
 import { openProject } from '../src/services/projects'
 import { emit, listAfter } from '../src/services/events'
-import { overrideGate } from '../src/services/gates'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
   AUTO_FIX_CAP,
@@ -77,7 +75,7 @@ const feature: Feature = {
   title: 'Demo',
   oneLiner: 'x',
   mapped: false,
-  phase: 'implementation',
+  phase: 'building',
   branch: 'feature/demo',
   baseBranch: 'main',
   status: 'active',
@@ -448,7 +446,7 @@ describe('a retried review over the real store', () => {
   it('burns the fix ticket its dead attempt minted instead of minting a second one', async () => {
     const ctx = await makeTestCtx()
     const proj = seedProject(ctx)
-    const feat = seedFeature(ctx, proj.id, { phase: 'implementation' })
+    const feat = seedFeature(ctx, proj.id, { phase: 'building' })
     const input = (title: string, over = {}) => ({
       title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [], ...over,
     })
@@ -1056,7 +1054,7 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     await g.add(['README.md'])
     await g.commit('initial commit')
     proj = await openProject(ctx, repo)
-    feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'implementation' })
+    feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'building' })
     await createFeatureBranch(proj, feat.slug, 'main')
     ctx.db
       .insert(runs)
@@ -1138,7 +1136,7 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('auto-advances on G4 and keeps the review digest in the run digest', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {
@@ -1166,14 +1164,13 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('appends, admits, and completes one verification when landed work had no review', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
     storeTickets(ctx, featureId, [{
       title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
     // A review-less lap only reaches the burner through the G3 override — which
     // is exactly the state the verification mint exists to catch, so the human
     // who waived the gate still gets the landed work looked at.
-    overrideGate(ctx, featureId, 'G3', 'shipping this fix without a review ticket')
 
     await caller.feature.burn({ featureId })
     for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
@@ -1183,6 +1180,7 @@ describe('a run containing a review ticket still lands the feature in review', (
     const stored = listByFeature(ctx, featureId)
     expect(stored).toHaveLength(2)
     expect(stored[1]).toMatchObject({
+      // The feature's own lap: a burn from planning runs the lap it is on.
       kind: 'review', passKind: 'verification', status: 'done', lap: 2,
       title: 'Verify the fixes that landed',
     })
@@ -1252,7 +1250,7 @@ describe('the burner mints its verification pass into a lap that already has a r
   })
 
   it('stores the second review ticket untouched, and G3 still reads satisfied', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'tickets', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {
@@ -1283,16 +1281,13 @@ describe('the burner mints its verification pass into a lap that already has a r
     expect(stored[3]).toMatchObject({
       kind: 'review',
       passKind: 'verification',
+      // The feature's own lap: a burn from planning runs the lap it is on.
       lap: 2,
       status: 'done',
       title: 'Verify the fixes that landed',
     })
     expect(stored[3].context).toContain('#3 fix the defect')
     expect(stored.filter((t) => t.kind === 'review')).toHaveLength(2)
-    // Two review tickets on one lap is a state G3 must keep accepting.
-    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, featureId))).toEqual({
-      satisfied: true,
-    })
   })
 })
 

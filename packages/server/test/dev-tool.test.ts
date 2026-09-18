@@ -61,10 +61,10 @@ describe('parseArgs', () => {
   })
 
   it('validates the phase against core, not a local list', () => {
-    expect(parseArgs(['feature', 'phase', 'feat_1', 'tickets'])).toEqual({
+    expect(parseArgs(['feature', 'phase', 'feat_1', 'planning'])).toEqual({
       kind: 'feature-phase',
       feature: 'feat_1',
-      phase: 'tickets',
+      phase: 'planning',
     })
     expect(() => parseArgs(['feature', 'phase', 'feat_1', 'nonsense'])).toThrow(UsageError)
     expect(() => parseArgs(['feature', 'phase', 'feat_1'])).toThrow(UsageError)
@@ -117,7 +117,7 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(parseArgs(['feature', 'rm', 'all']))).toBe(true)
     // A named target says what it deletes — no second prompt on the hot path.
     expect(needsConfirmation(parseArgs(['project', 'rm', 'myapp']))).toBe(false)
-    expect(needsConfirmation(parseArgs(['feature', 'phase', 'feat_1', 'spec']))).toBe(false)
+    expect(needsConfirmation(parseArgs(['feature', 'phase', 'feat_1', 'planning']))).toBe(false)
   })
 })
 
@@ -161,7 +161,7 @@ async function seed(): Promise<{ ctx: AppCtx; projectId: string; featureId: stri
       title: 'My feature',
       oneLiner: 'does a thing',
       mapped: false,
-      phase: 'tickets',
+      phase: 'planning',
       branch: 'feature/my-feature',
       baseBranch: 'main',
       status: 'active',

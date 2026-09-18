@@ -203,8 +203,7 @@ export function hasActiveRun(ctx: AppCtx, featureId: string): boolean {
 
 // --- phase / status mutations (each emits an event) -------------------------
 
-/** Low-level phase setter used by `features.advance`, `gates.overrideGate`, the
- *  burn procedure and the runner's auto-advance. Emits one timeline event. */
+/** Low-level phase setter used by Burn and the runner's auto-advance. */
 export function setPhase(
   ctx: AppCtx,
   featureId: string,
@@ -228,9 +227,9 @@ export function setPhase(
  * lap, so lap N+1 starts unready with nothing to clear, and emits the
  * `tickets.awaiting_burn` milestone the readiness flip now coincides with.
  *
- * `nextPhase` is the phase the burn will cross into, carried on the event for
+ * `nextPhase` is the state the burn will cross into, carried on the event for
  * the session that is being told what it is waiting for; nothing here moves the
- * feature — G3 is still the human's to cross.
+ * feature — Burn is the human's click to make.
  */
 export function markTicketsReady(ctx: AppCtx, featureId: string, nextPhase: Phase): Feature {
   const current = getFeatureRow(ctx, featureId)
@@ -241,7 +240,7 @@ export function markTicketsReady(ctx: AppCtx, featureId: string, nextPhase: Phas
     .run()
   emit(ctx, featureId, {
     type: 'tickets.awaiting_burn',
-    message: 'tickets complete — waiting on the human Burn click (gate G3)',
+    message: 'tickets complete — waiting on the human Burn click',
     data: { phase: current.phase, nextPhase, waitingOn: 'human burn' },
   })
   return { ...current, ticketsReadyLap: current.lap }

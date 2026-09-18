@@ -151,33 +151,6 @@ export function ticketModelChip(
   return { id, runtime, runtimeLabel: RUNTIME_LABEL[runtime] }
 }
 
-/** An Iterate whose lap session could not be opened, rolled back (decision 26g). */
-export interface LapAbort {
-  /** When the rollback was recorded. */
-  at: number
-  /** The server's own account of it, git error and all. */
-  message: string
-}
-
-/**
- * The Iterate that failed, or null when the last thing the feed says about laps
- * is that one started.
- *
- * A lap whose terminal cannot be opened is rolled back whole — lap and phase
- * both — and the rollback is recorded as `lap.aborted` (`features.ts`
- * `rethinkAndLaunch`). The walked failure looked like nothing had happened: the
- * page came back exactly as it was, with the only trace of it buried in the
- * Activity feed. So the alert slot reads this, and a later `lap.started`
- * (the retry landing) is what takes it back down.
- */
-export function lapAbort(events: readonly EventRow[]): LapAbort | null {
-  const last = [...events]
-    .reverse()
-    .find((e) => e.type === 'lap.started' || e.type === 'lap.aborted')
-  if (last?.type !== 'lap.aborted') return null
-  return { at: last.ts, message: last.message }
-}
-
 export interface LapChipFigure {
   label: string
   story: string
@@ -221,7 +194,7 @@ export function triageFooter(input: {
 export interface TriageExit {
   label: string
   /**
-   * Carry what is left into lap N+1's conversation (`feature.rethink`) rather
+   * Carry what is left into lap N+1's conversation (a revisit session) rather
    * than burning the minted tickets on this lap (`feature.burn`).
    */
   carry: boolean
@@ -259,6 +232,20 @@ export function triageExits(input: {
     ]
   if (quickFix === 0) return [{ label: start, carry: true }]
   return [{ label: `Mint ${quickFix} · carry ${carried} → ${start}`, carry: true }]
+}
+
+/**
+ * The tickets a burn would still RUN — the client's copy of the server's
+ * `isPendingTicket` (services/tickets.ts), which is what `feature.burn` accepts
+ * and what the burn warnings are computed over. Anything terminal is behind the
+ * burn rather than in front of it; a fix ticket from an Iterate session lands
+ * here as `pending`, which is what makes Burn reachable from review.
+ */
+export function pendingTickets<T extends { status: string }>(tickets: readonly T[]): T[] {
+  return tickets.filter(
+    (ticket) =>
+      ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled',
+  )
 }
 
 export function burnLabel(

@@ -398,16 +398,24 @@ export function carriedDefectsAcrossLaps(ctx: AppCtx, featureId: string): Review
 }
 
 /**
- * The defects an EARLIER lap's review left open and this lap has not answered
- * for — what the `complete_phase(tickets)` gate refuses on.
+ * The defects an earlier lap's review left open that nothing has answered for —
+ * the middle of the three Burn warnings (decisions §5).
  *
- * The current lap is deliberately absent: its findings belong to the burner and
- * the review loop, which are still working them. A lap-1 feature has no earlier
- * lap, so this is always empty there and the gate passes trivially.
+ * `lapBeingBurned` is the lap the click is ABOUT to start, which the caller
+ * knows and this cannot read: the old model bumped the lap on the way OUT of
+ * review (`rethink`), so the stored lap was already the new one by the time
+ * anything asked; `burn` stamps it after the warnings have been computed, and
+ * reading `feature.lap` here compared the review's defects against their own lap
+ * and never returned one. "Answered for" is `defectState`'s business — a defect
+ * with a live fix ticket, carried, dismissed or fixed is not open and never
+ * reaches this filter.
  */
-export function undispositionedDefects(ctx: AppCtx, featureId: string): ReviewFinding[] {
-  const { lap } = getFeatureRow(ctx, featureId)
-  return openDefectsAcrossLaps(ctx, featureId).filter((finding) => finding.lap < lap)
+export function undispositionedDefects(
+  ctx: AppCtx,
+  featureId: string,
+  lapBeingBurned: number,
+): ReviewFinding[] {
+  return openDefectsAcrossLaps(ctx, featureId).filter((finding) => finding.lap < lapBeingBurned)
 }
 
 function fixTicketOf(finding: ReviewFinding, tickets: Ticket[]): Ticket | undefined {

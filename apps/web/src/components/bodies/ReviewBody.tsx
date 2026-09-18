@@ -19,7 +19,6 @@ import {
   reviewDriveDenial,
   specDocPath,
   verificationState,
-  type LapAbort,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useEventLog } from '../../lib/events'
@@ -32,7 +31,6 @@ import { ConflictAlert } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
-import { LapAbortAlert } from '../review/LapAbortAlert'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { NotesRail } from '../review/NotesRail'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
@@ -84,16 +82,12 @@ export function ReviewBody({
   full,
   driving,
   conflict,
-  lapAbort = null,
   readonly = false,
   onViewPhase,
-  onIterate,
 }: {
   full: FeatureFull
   driving: BrowserDrive | null
   conflict: MergeConflictState | null
-  /** An Iterate that rolled back, or null when the last one started (26g). */
-  lapAbort?: LapAbort | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
   /**
@@ -101,8 +95,6 @@ export function ReviewBody({
    * where the alert line's Open sends a session that is still up.
    */
   onViewPhase?: (phase: Phase) => void
-  /** Take the Iterate door again — what the failed lap's Retry re-runs. */
-  onIterate: () => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
@@ -229,7 +221,7 @@ export function ReviewBody({
   // resolved once here.
   const onViewLane = onViewPhase
     ? (ticketId: string): void => {
-        onViewPhase('implementation')
+        onViewPhase('building')
         // Best effort: the run body has to mount before its lanes exist, so the
         // scroll waits a frame. Landing on the run view is the part that
         // matters; the scroll is the courtesy on top.
@@ -349,15 +341,6 @@ export function ReviewBody({
 
             {/* A lap that could not start rolls back in silence otherwise — the
                 walked page came back exactly as it was (decision 26g). */}
-            {lapAbort && (
-              <LapAbortAlert
-                abort={lapAbort}
-                lap={feature.lap}
-                readonly={readonly}
-                onRetry={onIterate}
-              />
-            )}
-
             {/* The refusal the human can still act on, at the moment they can
                 act on it — the digest that used to carry it is read long
                 afterwards. */}

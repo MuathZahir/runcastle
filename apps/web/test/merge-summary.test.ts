@@ -181,6 +181,20 @@ describe('mergeSummary', () => {
       expect(mergeSummary(clean).warnings).toEqual([])
     })
 
+    /**
+     * Decision 7: merging mid-burn is a warning, never the third hard rule. Git
+     * takes what has landed and the operator may want exactly those commits —
+     * what they cannot see from the dialog is that agents are still committing.
+     */
+    it('warns first of all that a live burn will land work after the merge', () => {
+      const s = mergeSummary({ ...clean, burning: true, openNotes: 1 })
+      expect(s.warnings[0]).toBe(
+        'A burn is live — work landing after this merge stays unshipped on the branch.',
+      )
+      expect(s.warnings).toHaveLength(2)
+      expect(mergeSummary({ ...clean, burning: false }).warnings).toEqual([])
+    })
+
     /** Decision 11: the merge dialog is the last catch for waived work. */
     it('names waived tickets as set-aside work', () => {
       const s = mergeSummary({ ...clean, tickets: [ticket('done'), ticket('cancelled')] })

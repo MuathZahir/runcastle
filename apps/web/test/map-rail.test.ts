@@ -33,7 +33,7 @@ function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): W
 
 function full(): FeatureFull {
   return {
-    feature: { id: 'feature-1', phase: 'ideation', mapped: true, status: 'active' },
+    feature: { id: 'feature-1', phase: 'planning', mapped: true, status: 'active' },
     tickets: [],
     sessions: [],
     runs: [],

@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
-import { checkGate } from '../src/services/gates'
-import { getFeatureRow, getRunRow } from '../src/services/repo'
+import { getRunRow } from '../src/services/repo'
 import { cancelTicket, getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -23,8 +22,8 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * that raced the lane's own handler) the row survives with no agent behind it,
  * and every exit is closed: the scheduler only queues `pending`, so a re-burn
  * returns instantly with `N-1/N tickets done`; `retry`/`cancel`/`edit` refuse a
- * non-`pending`/`failed` ticket; "Stop ticket" finds no live agent; and G4 never
- * passes because `burning` is not terminal.
+ * non-`pending`/`failed` ticket; "Stop ticket" finds no live agent; and the lap
+ * never reads as finished, because `burning` is not terminal.
  *
  * The three places that know no agent is live — the run finalizer, boot
  * reconciliation, and a burn restart — now fail those lanes (keeping their
@@ -67,19 +66,28 @@ describe('orphaned burning tickets', () => {
     else workflowRegistry.delete('ticket-burner')
   })
 
-  /** A feature parked at implementation with `done` + `burning` lanes and no live run. */
+  /** Has every lane reached a terminal state — what "the lap is done" reads. */
+  function allTerminal(featureId: string): boolean {
+    return listByFeature(ctx, featureId).every(
+      (t) => t.status === 'done' || t.status === 'failed' || t.status === 'cancelled',
+    )
+  }
+
+  /** A feature parked at building with `done` + `burning` lanes and no live run. */
   function seedWedged(): { featureId: string; stuckId: string } {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [shipped, stuck] = storeTickets(ctx, featureId, [ticketInput('landed'), ticketInput('wedged')])
     updateTicket(ctx, shipped.id, { status: 'done', commits: ['abc1234'] })
     updateTicket(ctx, stuck.id, { status: 'burning' })
     return { featureId, stuckId: stuck.id }
   }
 
-  it('a burning lane blocks G4, so the wedge is real', () => {
-    const { featureId } = seedWedged()
-    const gate = checkGate(ctx, 'all-tickets-terminal', getFeatureRow(ctx, featureId))
-    expect(gate.satisfied).toBe(false)
+  it('a burning lane is neither schedulable nor terminal, so the wedge is real', () => {
+    const { featureId, stuckId } = seedWedged()
+    // The dead end in one line: the scheduler only queues `pending`, and every
+    // "the lap is finished" reading wants terminal. `burning` is neither.
+    expect(getTicket(ctx, stuckId).status).toBe('burning')
+    expect(allTerminal(featureId)).toBe(false)
   })
 
   it('feature.burn heals the stuck lane instead of failing instantly', async () => {
@@ -90,7 +98,6 @@ describe('orphaned burning tickets', () => {
     // Swept to failed, reset to pending, then burned by the run — not skipped.
     expect(getTicket(ctx, stuckId).status).toBe('done')
     expect(listByFeature(ctx, featureId).every((t) => t.status === 'done')).toBe(true)
-    expect(checkGate(ctx, 'all-tickets-terminal', getFeatureRow(ctx, featureId)).satisfied).toBe(true)
 
     const failed = listAfter(ctx, featureId, 0).filter((e) => e.type === 'ticket.failed')
     expect(failed).toHaveLength(1)
@@ -98,7 +105,7 @@ describe('orphaned burning tickets', () => {
   })
 
   it('the run finalizer fails a lane the workflow left burning', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [t] = storeTickets(ctx, featureId, [ticketInput('abandoned')])
 
     const abandoning: WorkflowDef = {
@@ -132,7 +139,7 @@ describe('orphaned burning tickets', () => {
     expect(swept.error).toContain('the run that was burning it is gone')
     // Back on the paths that refuse a `burning` ticket.
     expect(cancelTicket(ctx, stuckId, 'not needed').status).toBe('cancelled')
-    expect(checkGate(ctx, 'all-tickets-terminal', getFeatureRow(ctx, featureId)).satisfied).toBe(true)
+    expect(allTerminal(featureId)).toBe(true)
   })
 
   it('ticket.stop does not sweep while a run is live (the agent may just be starting)', async () => {

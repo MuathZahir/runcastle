@@ -74,6 +74,18 @@ describe('MergeFeatureDialog', () => {
     it('offers no resolve control when nothing is conflicted', () => {
       expect(render()).not.toContain('Resolve the merge conflict')
     })
+
+    /**
+     * Decision 7 — merging mid-burn is the fourth thing this dialog warns
+     * about, not the third thing that refuses it.
+     */
+    it('warns about a live burn and still lets the merge through', () => {
+      const html = render({ summary: summary({ burning: true }) })
+      expect(html).toContain('A burn is live')
+      expect(html).toContain('stays unshipped on the branch')
+      expect(html).toContain('Merge &amp; ship')
+      expect(html).not.toContain('disabled=""')
+    })
   })
 
   /**

@@ -58,12 +58,12 @@ export interface WriteArtifactsInput {
    */
   purpose?: SessionPurpose
   /**
-   * The lap this session was opened to run (a Rethink lap, or a lap-N grill).
+   * The lap this session was opened to run (a lap briefing, or a lap-N grill).
    * Passed EXPLICITLY rather than read off `feature.lap`, because a lap is not
    * something the feature row can be asked about: an ordinary revisit on a
-   * lap-3 feature is not running a lap, and the rethink route bumps `lap` and
-   * flips the phase back to `ideation` BEFORE launching — which is how the lap
-   * framing used to be lost entirely (F2, `renderRevisitPrompt` keyed on
+   * lap-3 feature is not running a lap, and `lap` is stamped by Burn from the
+   * runs behind it rather than by anything the session does — which is how the
+   * lap framing used to be lost entirely (F2, `renderRevisitPrompt` keyed on
    * `phase === 'review'` and by then the phase had moved).
    */
   lap?: number
@@ -190,17 +190,18 @@ export function renderSystemPrompt(
     `- Branch: \`${feature.branch}\``,
     `- Current phase: **${feature.phase}**`,
     '',
-    '## Pipeline',
-    'Features move ideation → spec → tickets → implementation → review → shipped.',
-    'Each transition is guarded by a gate; you cross a gate by calling the',
-    '`complete_phase` MCP tool, which runs the gate check server-side and advances',
-    'the feature.',
+    '## Lifecycle',
+    'A feature is in one of four states: planning → building → review → shipped,',
+    'and it only ever moves forward. Ideation, spec and tickets are steps INSIDE',
+    'planning: you report each one with the `complete_phase` MCP tool, which',
+    'records the milestone on the timeline and never moves the feature. Two human',
+    'clicks move it — Burn (planning → building) and Merge (→ shipped).',
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
     `- \`${docs}/brief.md\` — the seed brief (title + one-liner).`,
-    `- \`${docs}/decisions.md\` — decisions you capture while grilling (satisfies gate G1).`,
-    `- \`${docs}/spec.md\` — the spec (satisfies gate G2).`,
+    `- \`${docs}/decisions.md\` — decisions you capture while grilling (its existence is what marks ideation done).`,
+    `- \`${docs}/spec.md\` — the spec (its existence is what marks the spec step done).`,
     'Write these files in THIS working directory (the feature\'s talk worktree);',
     'they are committed to the feature branch automatically at phase boundaries.',
     '',
@@ -309,7 +310,7 @@ export function renderWaypointPrompt(
     '  resolve flips machinery; it does not record anything.',
     '- Your tools here are the map\'s: read the context, branch the map, resolve your',
     '  waypoint, note a milestone. The pipeline tools are not yours — a waypoint session',
-    '  does not spec, emit tickets or cross a gate, and the server refuses it.',
+    '  does not spec, emit tickets or report a planning step, and the server refuses it.',
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'waypoint')}\` skill and work your assigned waypoint to a resolution.`,
@@ -321,8 +322,9 @@ export function renderWaypointPrompt(
  * The kind=converge system prompt (ADR-0001 / SPEC §13.5). The converge session
  * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
  * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
- * `/runcastle:tickets` in one unbroken window. The feature has already crossed G1
- * into spec, so this rejoins the normal pipeline with no special-casing.
+ * `/runcastle:tickets` in one unbroken window. Convergence lands the feature in
+ * the same planning state every other feature is in, so this rejoins the normal
+ * lifecycle with no special-casing.
  */
 export function renderConvergePrompt(
   feature: Feature,
@@ -352,8 +354,8 @@ export function renderConvergePrompt(
     '',
     '## Rules',
     noCodeRule(docs),
-    '- DO call `complete_phase` — this session crosses the remaining gates itself (spec,',
-    '  then tickets). Nothing else will.',
+    '- DO call `complete_phase` — this session reports the remaining planning steps itself',
+    '  (spec, then tickets). Nothing else will.',
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'converge')}\` skill. Working from the map + decisions only,`,
@@ -487,9 +489,10 @@ export function renderRevisitPrompt(
               '- `get_feature_context` → `openDefects` — each open defect with its `id`, title,',
               '  location, detail and repro step; and `carriedDefects`, the ones an earlier lap',
               '  parked (agenda, never an obligation to re-carry). Every open defect from an',
-              '  EARLIER lap needs one of three answers before `complete_phase("tickets")` will',
-              '  pass: **link** it (emit this lap\'s ticket for it with `originFindingId` set),',
-              '  **carry** it, or **close it as addressed** — the last two are `resolve_finding`.',
+              '  EARLIER lap wants one of three answers: **link** it (emit this lap\'s ticket for',
+              '  it with `originFindingId` set), **carry** it, or **close it as addressed** — the',
+              '  last two are `resolve_finding`. Nothing refuses over the ones you leave;',
+              '  `complete_phase("tickets")` warns you, and the human hears it again at Burn.',
               `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps,`,
               '  OPTIONAL; a missing one is normal, not an error.',
             ]
@@ -503,9 +506,10 @@ export function renderRevisitPrompt(
         ...reviewEvidenceSection(lap, docs, carried),
         `New decisions go under a \`## Lap ${lap}\` heading in \`${docs}/decisions.md\`.`,
         '',
-        'Unlike an ordinary revisit a lap MOVES the pipeline, and only this session will:',
-        'you `complete_phase` through **ideation → spec → tickets** in THIS window. Stop',
-        'early and the feature sits at ideation with no lap tickets and no way forward.',
+        'Unlike an ordinary revisit a lap reports the planning steps, and only this session',
+        'will: you `complete_phase` through **ideation → spec → tickets** in THIS window.',
+        'None of the three moves the feature — it waits in Planning for the human\'s Burn',
+        'click either way — but stop early and the lap has no tickets and nothing to burn.',
         'The `/runcastle:revisit` skill carries the rest of the procedure — follow it.',
         '',
       ]
@@ -525,9 +529,9 @@ export function renderRevisitPrompt(
           'one carries its `status`, the `commits` it landed, the `lap` it belongs to, and an',
           '`error` when it failed. Ask what the test drive surfaced (bugs, rough edges,',
           'tweaks), then emit fix tickets for that work and edit/cancel any stale pending',
-          'tickets. Do NOT advance the phase: once the cards are ready, tell the human to',
-          'review them and click Burn — burning from review loops the feature back through',
-          'implementation and returns it here when the run finishes.',
+          'tickets. Moving the feature is not yours to do: once the cards are ready, tell',
+          'the human to review them and click Burn — burning from review takes the feature',
+          'through building and returns it here when the run finishes.',
           '',
         ]
       : []
@@ -932,7 +936,7 @@ export function renderProjectPrompt(
     `# runcastle — ${project.name} (project session)`,
     '',
     'This is the **project session**: a conversation that belongs to the project, not to',
-    'any one feature. There is no phase to advance and no gate to cross here.',
+    'any one feature. There is no feature state to move and no planning step to report here.',
     '',
     '## What this session is for',
     '- **Intake and decomposition** — the job no other surface can do. Take whatever the',
@@ -942,8 +946,8 @@ export function renderProjectPrompt(
     '- **Portfolio Q&A** — "have we already decided X?", "did we ever build Y?" — the same',
     '  lookup intake needs anyway to avoid creating a duplicate feature.',
     '- **Routing** — an incoming thing is one of exactly five destinations: a new feature,',
-    '  a quick change, an existing feature\'s revisit, a Rethink lap on something in',
-    '  review, or nothing. Say which, and why.',
+    '  a quick change, an existing feature\'s revisit, another lap on something in review',
+    '  (Iterate, then Burn from Review), or nothing. Say which, and why.',
     '- **Curation, advisory only** — you may report that two in-flight features are on a',
     '  collision course or that an ADR looks stale. You do NOT fix either. Every fix routes',
     '  back through a feature, through promotion at merge, or through the charter.',
@@ -962,7 +966,7 @@ export function renderProjectPrompt(
     '',
     '## Your tools',
     'You have the project-level tools and NONE of the feature pipeline\'s — a session with',
-    'no feature has no business advancing one through a gate. `create_feature` is the point',
+    'no feature has no business moving one through it. `create_feature` is the point',
     'of this session, and it does NOT open a terminal on what it creates: the new card',
     'appearing in the rail is the feedback, and the human decides what to work on next.',
     '',

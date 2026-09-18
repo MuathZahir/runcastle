@@ -27,7 +27,7 @@
  *   credentials.
  * - The target repo gitignores `.sandcastle/` (sandcastle's scratch) and `docs/`
  *   (feature knowledge docs) so the main checkout stays clean for test-drive and
- *   merge; gate checks read those files off disk via existsSync regardless.
+ *   merge; the derived planning progress reads those files off disk regardless.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -167,7 +167,8 @@ async function main(): Promise<void> {
   git(TARGET, 'config', 'user.name', 'Runcastle Smoke')
   git(TARGET, 'config', 'core.autocrlf', 'false')
   // gitignore the tool's scratch (.sandcastle) + feature docs so the main
-  // checkout stays clean for test-drive/merge; gates read docs off disk anyway.
+  // checkout stays clean for test-drive/merge; planning progress reads docs off
+  // disk anyway.
   writeFileSync(join(TARGET, '.gitignore'), '.sandcastle/\ndocs/\nnode_modules/\n', 'utf8')
   writeFileSync(
     join(TARGET, 'package.json'),
@@ -200,7 +201,7 @@ async function main(): Promise<void> {
     oneLiner: 'add a HEALTH.md file to prove the pipeline works end to end',
   })
   assert(feature.slug === 'health-check-file', `slug is health-check-file (got ${feature.slug})`)
-  assert(feature.phase === 'ideation', 'phase ideation')
+  assert(feature.phase === 'planning', 'phase planning')
   assert(feature.branch === 'feature/health-check-file', 'branch feature/health-check-file')
   const branches = git(TARGET, 'branch', '--list', 'feature/health-check-file')
   assert(branches.includes('feature/health-check-file'), 'real feature branch created')
@@ -219,7 +220,7 @@ async function main(): Promise<void> {
     'talk worktree checked out to feature branch',
   )
   // A real grill writes decisions incrementally into the talk worktree; write a
-  // 2-line decisions.md so the ideation→tickets gate (G1) is satisfiable.
+  // 2-line decisions.md so the ideation step has the artifact that marks it done.
   const docsDir = join(worktree, ...paths.featureDocsRel(slug).split('/'))
   mkdirSync(docsDir, { recursive: true })
   writeFileSync(
@@ -305,10 +306,10 @@ async function main(): Promise<void> {
   const complete = await mcpToolCall(sessionId, 'complete_phase', { phase: 'ideation' })
   assert(!complete.isError, 'complete_phase not an error')
   assert(complete.data.ok === true, `complete_phase ok (got ${JSON.stringify(complete.data)})`)
-  assert(complete.data.nextPhase === 'tickets', `advanced to tickets (got ${complete.data.nextPhase})`)
+  assert(complete.data.nextPhase === 'planning', `still planning (got ${complete.data.nextPhase})`)
   const afterComplete = await trpc.feature.get({ id: featureId })
-  assert(afterComplete.feature.phase === 'tickets', 'feature phase is tickets')
-  record('MCP complete_phase', 'ideation→tickets via G1 (decisions.md)')
+  assert(afterComplete.feature.phase === 'planning', 'feature remains in planning')
+  record('MCP complete_phase', 'ideation step recorded; the feature stays in planning')
 
   // (7) feature.burn — REAL noSandbox claude runs on the host ------------------
   banner('STEP 7 — tRPC feature.burn (RUNCASTLE_SANDBOX=noSandbox, model via runOverride)')
@@ -401,9 +402,10 @@ async function main(): Promise<void> {
 /**
  * The mapped-ideation smoke (issue #9): escalate a fresh feature into a map, emit
  * two waypoints with a blocking edge, resolve both (watching the second cascade
- * onto the frontier), then confirm G1 (`all-waypoints-terminal`) is satisfiable
- * and that Converge crosses it. Runs against the SAME project/target repo as the
- * unmapped flow — no burn, just the real /mcp + tRPC + converge surfaces.
+ * onto the frontier), then converge the map — no gate stands between those two
+ * any more, and convergence leaves the feature in planning. Runs against the
+ * SAME project/target repo as the unmapped flow — no burn, just the real
+ * /mcp + tRPC + converge surfaces.
  */
 async function mappedFlow(projectId: string): Promise<void> {
   // (10) mapped feature + a live ideation session so /mcp resolves it by header --
@@ -457,12 +459,10 @@ async function mappedFlow(projectId: string): Promise<void> {
   const [wp1Id, wp2Id] = emit.data.ids as [string, string]
   let mapped = await trpc.feature.get({ id: featureId })
   assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([wp1Id]), `only wp1 on the frontier (got ${JSON.stringify(mapped.frontierIds)})`)
-  assert(mapped.gate.next?.id === 'G1', 'the next gate is G1')
-  assert(mapped.gate.satisfied === false, 'G1 not satisfiable while waypoints are open')
   record('MCP emit_waypoints', 'stored 2; wp2 blocked by wp1 → only wp1 on frontier')
 
-  // (13) resolve wp1 → cascade unblocks wp2; resolve wp2 → G1 satisfiable ----------
-  banner('STEP 13 — resolve wp1 (watch wp2 unblock) → resolve wp2 → G1 satisfiable')
+  // (13) resolve wp1 → cascade unblocks wp2; resolve wp2 → frontier empties ------
+  banner('STEP 13 — resolve wp1 (watch wp2 unblock) → resolve wp2 → frontier empty')
   const r1 = await mcpToolCall(sessionId, 'resolve_waypoint', { id: wp1Id, disposition: 'resolved', summary: 'shape settled' })
   assert(!r1.isError && r1.data.ok === true, 'resolve_waypoint(wp1) ok')
   const unblocked = (await trpc.events.list({ featureId, afterId: 0 })).find(
@@ -471,24 +471,22 @@ async function mappedFlow(projectId: string): Promise<void> {
   assert(!!unblocked, 'a waypoint.unblocked event fired for wp2 as wp1 resolved')
   mapped = await trpc.feature.get({ id: featureId })
   assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([wp2Id]), `wp2 cascaded onto the frontier (got ${JSON.stringify(mapped.frontierIds)})`)
-  assert(mapped.gate.satisfied === false, 'G1 still not satisfiable while wp2 is open')
 
   const r2 = await mcpToolCall(sessionId, 'resolve_waypoint', { id: wp2Id, disposition: 'resolved', summary: 'plan set' })
   assert(!r2.isError && r2.data.ok === true, 'resolve_waypoint(wp2) ok')
   mapped = await trpc.feature.get({ id: featureId })
   assert(JSON.stringify(mapped.frontierIds) === JSON.stringify([]), 'frontier empty once every waypoint is terminal')
-  assert(mapped.gate.satisfied === true, 'G1 (all-waypoints-terminal) is now satisfiable')
-  record('resolution cascade', 'wp1 resolved → wp2 unblocked → wp2 resolved → G1 satisfiable')
+  record('resolution cascade', 'wp1 resolved → wp2 unblocked → wp2 resolved → frontier empty')
 
-  // (14) converge crosses the satisfied G1 into tickets (collapsed skips spec) ------
-  banner('STEP 14 — converge crosses G1 → phase advances + kind=converge session')
+  // (14) converge the closed map — no transition, just the session ----------------
+  banner('STEP 14 — converge → kind=converge session, feature stays in planning')
   const conv = await converge(ctx as never, { featureId }, { spawn: false })
   assert(!!conv.sessionId, 'converge returned a session id')
   const converged = await trpc.feature.get({ id: featureId })
-  assert(converged.feature.phase === 'tickets', `converged into tickets (got ${converged.feature.phase})`)
+  assert(converged.feature.phase === 'planning', `converged during planning (got ${converged.feature.phase})`)
   const convSession = converged.sessions.find((s: any) => s.id === conv.sessionId)
   assert(convSession?.kind === 'converge', `spawned a kind=converge session (got ${convSession?.kind})`)
-  record('feature.converge', 'G1 crossed → phase tickets; kind=converge session spawned')
+  record('feature.converge', 'kind=converge session spawned; feature still in planning')
 }
 
 // --- summary table ------------------------------------------------------------

@@ -8,20 +8,23 @@ import { STOP_TIMEOUT } from '../lib/vocabulary'
 import { Button, DimLine } from '../ui'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
+import { effectiveStepModel } from '../lib/settings'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
   burnInterruption,
+  burnLap,
+  burnSummary,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
   freshness,
   isReadonlyView,
-  lapAbort,
   latestRun,
   mapDocPath,
   mergeSummary,
   nextStep,
+  pendingTickets,
   PHASE_LABELS,
   phaseFacts,
   phaseSummary,
@@ -33,13 +36,13 @@ import {
   verificationState,
   type ActionKind,
   type DraftBaseMissing,
-  type LapAbort,
   type MergeConflictState,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
+import { BurnFeatureDialog } from './BurnFeatureDialog'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
@@ -145,6 +148,17 @@ export function Workspace({
     verificationState(q.data?.tickets ?? []),
   )
   const [confirmMerge, setConfirmMerge] = useState(false)
+  const [confirmBurn, setConfirmBurn] = useState(false)
+  // What the Burn confirmation prints in its warn box (decision 5) — computed
+  // server-side, in the same pattern as `mergeDelta`, so the dialog never
+  // re-derives policy. Read in every state a Burn can be clicked from, which
+  // is every one but shipped, so the box is already populated when the dialog
+  // opens rather than popping in after it.
+  const burnable = !!q.data && q.data.feature.phase !== 'shipped'
+  const burnWarningsQ = trpc.feature.burnWarnings.useQuery(
+    { featureId },
+    { refetchInterval: useLivePoll(), enabled: burnable },
+  )
   // The Iterate door is open, stamped with the moment it opened so a note
   // written while it stands is marked as having arrived (decision 26f).
   const [triaging, setTriaging] = useState<number | null>(null)
@@ -194,13 +208,22 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId },
   )
+  // The model a ticket with no assignment of its own burns on, for the Burn
+  // confirmation's "model" row. Same query key the ticket ledger's model menus
+  // read, so the dialog and the ledger behind it share one fetch and cannot
+  // name different defaults.
+  const settingsQ = trpc.settings.get.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId && burnable },
+  )
+  const defaultBurnModel = effectiveStepModel(settingsQ.data, 'implement')
   // What the next burn's docs digest will cost EVERY ticket in it, for the
   // pre-burn bar's warning — the burner's own read of the same files, so the bar
   // and the run timeline's event cannot report different sizes. Only on the two
   // roads into a burn, where the bar has somewhere to put it, and it does not
   // poll: a session writing the docs pushes, and the stream invalidates the
   // whole `docs` router on the same signal that refreshes their text.
-  const preBurn = q.data?.feature.phase === 'tickets' || q.data?.feature.phase === 'implementation'
+  const preBurn = q.data?.feature.phase === 'planning' || q.data?.feature.phase === 'building'
   const digestQ = trpc.docs.digestSize.useQuery({ featureId }, { enabled: preBurn })
   // A parked draft picks its base at Start, not at creation (decision 3), so the
   // branch list is read HERE — Start fires from the next-step bar, and the base
@@ -265,29 +288,6 @@ export function Workspace({
   })
   const workWaypoint = trpc.feature.workWaypoint.useMutation({
     onSuccess: invalidate,
-    onError: (e) => toast.push(e.message),
-  })
-  // "Continue to review" (decision 11b): the honest exit from a burn whose lanes
-  // are all terminal and partly landed. It crosses the gate the phase is sitting
-  // behind, so — like every other phase-crossing mutation here — the view snaps
-  // back to live, or the human is left pinned on the phase they just left.
-  const advance = trpc.feature.advance.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Iterate is the review verb that starts the next lap (ADR-0010 §3; the
-  // procedure keeps its `rethink` name so the timeline stays continuous): the
-  // server bumps the lap, drops the feature back to ideation and opens the lap
-  // session in one call — or rolls all of it back — so the bar just snaps the
-  // view back to live.
-  const rethink = trpc.feature.rethink.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
     onError: (e) => toast.push(e.message),
   })
   // The end half of every end-and-proceed compound (decision 4). No surface
@@ -433,28 +433,19 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  const twoPane =
-    !isDraft &&
-    (effective === 'ideation' ||
-      effective === 'spec' ||
-      effective === 'tickets' ||
-      effective === 'review')
+  const twoPane = !isDraft && (effective === 'planning' || effective === 'review')
   // What each finished phase produced (decision 10) — one derivation, read by
   // the stepper's done-step tooltips and by the read-only banner, so the two can
   // never tell a different story about the same phase.
   const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
-  const steps = pipelineSteps(feature, effective, {
-    ideation: summaryOf('ideation'),
-    spec: summaryOf('spec'),
-    tickets: summaryOf('tickets'),
-  })
+  const steps = pipelineSteps(feature, effective, { planning: summaryOf('planning') })
   const run = latestRun(full.runs)
   const interruptedBurn = burnInterruption(events, run?.id)
   // The beat is over the body only — the stepper and the bar tell the truth
   // about the phase throughout, and a human who is not on the run view (viewing
   // an earlier phase, or already past review) is never held.
   const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
-  const bodyPhase = settling ? 'implementation' : effective
+  const bodyPhase = settling ? 'building' : effective
   const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
@@ -481,15 +472,12 @@ export function Workspace({
   // An Iterate whose lap session could not be opened (decision 26g), from the
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
-  const abortedLap = lapAbort(events)
   const busy =
     start.isPending ||
     launch.isPending ||
     burn.isPending ||
     converge.isPending ||
     workWaypoint.isPending ||
-    advance.isPending ||
-    rethink.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
@@ -509,9 +497,8 @@ export function Workspace({
     // A second click while the first lap bump is in flight would bump two laps —
     // and this road is reachable from the bar, the drive escape and the failed
     // lap's Retry, so the guard lives here rather than on each button.
-    if (rethink.isPending) return
     if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
-    else rethink.mutate({ featureId })
+    else launch.mutate({ featureId, kind: 'revisit' })
   }
 
   /**
@@ -556,7 +543,7 @@ export function Workspace({
       // is what the exit's own label promised (decision 4). The burn road takes
       // no session, so it takes nothing away.
       if (selection.carry) {
-        if (await endLiveSession()) rethink.mutate({ featureId })
+        if (await endLiveSession()) launch.mutate({ featureId, kind: 'revisit' })
       } else burn.mutate({ featureId })
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e))
@@ -581,7 +568,6 @@ export function Workspace({
       case 'revisit':
         launch.mutate({ featureId, kind: 'revisit' })
         break
-      case 'rethink':
       case 'iterate':
         enterIterate()
         break
@@ -600,11 +586,11 @@ export function Workspace({
       case 'workNext':
         if (waypointId) workWaypoint.mutate({ featureId, waypointId })
         break
+      // The click opens the confirmation; `runBurn` below is what actually
+      // burns. Every ex-gate that used to refuse this click is a warning inside
+      // that dialog now (decision 5), so the reading has to happen somewhere.
       case 'burn':
-        burn.mutate({ featureId })
-        break
-      case 'advance':
-        advance.mutate({ featureId })
+        setConfirmBurn(true)
         break
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
@@ -676,6 +662,14 @@ export function Workspace({
       default:
         kind satisfies never
     }
+  }
+
+  // The dialog closes on a burn that STARTED. A refusal — the one hard rule
+  // left at this door, a run already burning this feature — raises its toast
+  // with the dialog still up, because closing it would take the reading away
+  // and leave nothing on screen the human can act on.
+  const runBurn = () => {
+    burn.mutate({ featureId }, { onSuccess: () => setConfirmBurn(false) })
   }
 
   const runMerge = () => {
@@ -760,6 +754,24 @@ export function Workspace({
         </div>
       )}
 
+      {confirmBurn && (
+        <BurnFeatureDialog
+          title={feature.title}
+          branch={feature.branch}
+          summary={burnSummary({
+            branch: feature.branch,
+            pendingTickets: pendingTickets(full.tickets),
+            lap: burnLap(full.runs),
+            ...(defaultBurnModel ? { defaultModel: defaultBurnModel } : {}),
+            warnings: burnWarningsQ.data,
+          })}
+          busy={burn.isPending}
+          warningsPending={!burnWarningsQ.data}
+          onConfirm={runBurn}
+          onCancel={() => setConfirmBurn(false)}
+        />
+      )}
+
       {confirmMerge && (
         <MergeFeatureDialog
           title={feature.title}
@@ -776,6 +788,7 @@ export function Workspace({
             freshness: reviewFreshness,
             conflict,
             laterLaps,
+            burning: run?.status === 'running',
           })}
           busy={merge.isPending}
           resolving={resolveConflict.pending}
@@ -830,13 +843,11 @@ export function Workspace({
               events={events}
               driving={driving}
               conflict={conflict}
-              abortedLap={abortedLap}
               runId={run?.id ?? null}
               readonly={readonly}
               mapRailCollapsed={mapRailCollapsed}
               onToggleMapRail={onToggleMapRail}
               onViewPhase={onViewPhase}
-              onIterate={enterIterate}
               artifactPaneCollapsed={artifactPaneCollapsed}
               onToggleArtifactPane={onToggleArtifactPane}
             />
@@ -853,13 +864,11 @@ function PhaseBody({
   events,
   driving,
   conflict,
-  abortedLap,
   runId,
   readonly,
   mapRailCollapsed,
   onToggleMapRail,
   onViewPhase,
-  onIterate,
   artifactPaneCollapsed,
   onToggleArtifactPane,
 }: {
@@ -868,19 +877,17 @@ function PhaseBody({
   events: readonly EventRow[]
   driving: DriveState | null
   conflict: MergeConflictState | null
-  abortedLap: LapAbort | null
   runId: string | null
   readonly: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
-  onIterate: () => void
   artifactPaneCollapsed: boolean
   onToggleArtifactPane: () => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether.
-  if (readonly && (effective === 'ideation' || effective === 'spec' || effective === 'tickets')) {
+  if (readonly && effective === 'planning') {
     return (
       <PinnedBody
         full={full}
@@ -892,8 +899,7 @@ function PhaseBody({
     )
   }
   switch (effective) {
-    case 'ideation':
-    case 'spec':
+    case 'planning':
       return (
         <GrillBody
           full={full}
@@ -904,9 +910,7 @@ function PhaseBody({
           onToggleArtifactPane={onToggleArtifactPane}
         />
       )
-    case 'tickets':
-      return <TicketsBody featureId={full.feature.id} />
-    case 'implementation':
+    case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane
       // is the wrong thing to show — the tickets about to burn are. This is the
       // resting state of a feature created with its tickets already written
@@ -923,13 +927,10 @@ function PhaseBody({
           full={full}
           driving={driving}
           conflict={conflict}
-          lapAbort={abortedLap}
           readonly={readonly}
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).
           onViewPhase={onViewPhase}
-          // The failed lap's Retry takes the same door the bar's Iterate takes.
-          onIterate={onIterate}
         />
       )
     case 'shipped':

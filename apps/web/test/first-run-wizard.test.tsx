@@ -52,6 +52,7 @@ vi.mock('../src/trpc', () => {
       setup: {
         doctor: query(() => ({ results: stub.probes })),
         runtimeGuide: query(() => undefined),
+        imageBuildTarget: query(() => undefined),
         gitIdentity: mutation(),
         startTerminal: mutation(),
         afkToken: mutation(),

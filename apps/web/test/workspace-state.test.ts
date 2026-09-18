@@ -26,13 +26,13 @@ describe('useWorkspace — pane preferences', () => {
   })
 
   it('defaults Details closed only during ideation through tickets', () => {
-    expect(inspectorCollapsedForPhase(null, 'ideation')).toBe(true)
-    expect(inspectorCollapsedForPhase(null, 'spec')).toBe(true)
-    expect(inspectorCollapsedForPhase(null, 'tickets')).toBe(true)
-    expect(inspectorCollapsedForPhase(null, 'implementation')).toBe(false)
+    expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'building')).toBe(false)
     expect(inspectorCollapsedForPhase(null, 'review')).toBe(false)
     expect(inspectorCollapsedForPhase(true, 'review')).toBe(true)
-    expect(inspectorCollapsedForPhase(false, 'ideation')).toBe(false)
+    expect(inspectorCollapsedForPhase(false, 'planning')).toBe(false)
   })
 
   it('opens a phase-defaulted collapsed inspector on the first toggle', () => {

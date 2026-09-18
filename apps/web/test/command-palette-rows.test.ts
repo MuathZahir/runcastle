@@ -38,7 +38,7 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     title: 'Flow redesign: project shell and navigation',
     oneLiner: '',
     mapped: false,
-    phase: 'implementation',
+    phase: 'building',
     branch: 'feature/flow-redesign-project-shell',
     baseBranch: 'main',
     status: 'active',

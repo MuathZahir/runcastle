@@ -1,7 +1,6 @@
 import {
   events,
   features,
-  gateOverrides,
   projectFindings,
   projects,
   reviewFindings,
@@ -28,7 +27,6 @@ export const schema = {
   waypoints,
   runs,
   events,
-  gateOverrides,
   projectFindings,
 }
 
@@ -37,7 +35,6 @@ export type Schema = typeof schema
 export {
   events,
   features,
-  gateOverrides,
   projectFindings,
   projects,
   reviewFindings,

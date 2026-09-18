@@ -101,8 +101,7 @@ export interface ReviewDriveDenial {
  * which is also how the feature leaves review, and the feature shipping — or a
  * run that started after the denial, which is the server's own
  * retry-eligibility rule read from this side, and covers a burn whose events
- * have not landed on this feed yet. A later denial raises it again, exactly as
- * {@link lapAbort}'s `lap.started` works in the other direction.
+ * have not landed on this feed yet. A later denial raises it again.
  *
  * The phase and the readonly history view are the caller's to answer; this
  * function only reads the record.

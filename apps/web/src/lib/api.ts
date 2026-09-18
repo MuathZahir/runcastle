@@ -13,7 +13,6 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>
 
 export type FeatureListItem = RouterOutputs['feature']['list'][number]
 export type FeatureFull = RouterOutputs['feature']['get']
-export type GateState = FeatureFull['gate']
 export type DocSummary = FeatureFull['docs'][number]
 export type Project = RouterOutputs['project']['list'][number]
 export type BranchList = RouterOutputs['project']['branches']

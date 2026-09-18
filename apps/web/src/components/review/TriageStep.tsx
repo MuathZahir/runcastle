@@ -24,7 +24,7 @@ import { NoteRow, itemId, itemLap, type NoteItem } from './NoteRow'
  *
  * Hook-free apart from its own selection: the rows, the standing debt and the
  * commit all arrive as props, so the step is testable as markup and the mutation
- * chain (`notes.triage`, then `feature.burn` or `feature.rethink`) stays in the
+ * chain (`notes.triage`, then Burn or a revisit session) stays in the
  * one place that already owns every other feature mutation.
  */
 

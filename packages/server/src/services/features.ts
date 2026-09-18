@@ -1,7 +1,6 @@
 import type {
   Feature,
   FeatureStatus,
-  GateDef,
   Project,
   Run,
   SessionRow,
@@ -11,11 +10,7 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import {
-  RETHINK_LOOP_BACK,
-  REVIEW_LOOP_BACK,
   newId,
-  nextGate,
-  nextPhase,
   shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
@@ -24,10 +19,9 @@ import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
-import { events, features, gateOverrides, runs, sessions, tickets, waypoints } from '../db/schema'
+import { events, features, runs, sessions, tickets, waypoints } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
 import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
-import { checkGate } from './gates'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
 import type { DocSummary, ScaffoldOptions } from './knowledge'
@@ -43,7 +37,15 @@ import {
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
-import { getTicket, listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from './tickets'
+import {
+  carryPendingTicketsIntoLap,
+  getTicket,
+  isPendingTicket,
+  listByFeature,
+  storeTickets,
+  sweepOrphanedBurning,
+  updateTicket,
+} from './tickets'
 import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
@@ -94,19 +96,12 @@ export interface FeatureListItem extends Feature {
   lastActivityAt: number
 }
 
-export interface FeatureGateState {
-  next: GateDef | null
-  satisfied: boolean
-  reason?: string
-}
-
 export interface FeatureFull {
   feature: Feature
   tickets: Ticket[]
   sessions: SessionRow[]
   runs: Run[]
   docs: DocSummary[]
-  gate: FeatureGateState
   /** Mapped features only (empty otherwise): the map's waypoints (ADR-0001). */
   waypoints: Waypoint[]
   /** Ids of the waypoints currently on the frontier (derived; empty otherwise). */
@@ -169,9 +164,9 @@ export async function createFeature(
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
-    // Every feature starts on lap 1; only Rethink moves it (ADR-0010 §7).
+    // Burn derives and stamps the lap from prior burn runs.
     lap: 1,
-    phase: 'ideation' as const,
+    phase: 'planning' as const,
     // The branch NAME is recorded even for a draft (decision 2); `status:
     // 'draft'` alone means the branch does not exist in the repo yet.
     branch,
@@ -363,18 +358,17 @@ function quickReviewTicket(proses: string[]): TicketInput {
 /**
  * The quick-change door (decision 21) — work too small to deserve a grill.
  *
- * An ORDINARY feature, born directly at `implementation` on lap 1, carrying one
- * ticket per sentence the human typed — each ticket's goal, and its sole
- * acceptance criterion, is that sentence — plus the review ticket every batch
- * closes with (see {@link quickReviewTicket}), blocked by all of them. From
- * here it is the pipeline's far side: review the cards, click Burn, test-drive,
- * click Merge — zero terminals.
+ * An ORDINARY feature, born at `planning` with its tickets already emitted,
+ * carrying one ticket per sentence the human typed — each ticket's goal, and
+ * its sole acceptance criterion, is that sentence — plus the review ticket
+ * every batch closes with (see {@link quickReviewTicket}), blocked by all of
+ * them. From here it is the lifecycle's far side: review the cards, click Burn,
+ * test-drive, click Merge — zero terminals.
  *
  * Nothing on the row marks it (ADR-0010 §7 forbids pipeline-shape settings), so
- * a quick change is indistinguishable from a feature whose G1/G2 were
- * overridden — a state the machine can already reach. G1/G2 are never evaluated
- * because gates guard forward transitions only and this feature starts past
- * both; G3 sees the pending lap-1 tickets and the Burn click crosses it.
+ * a quick change is indistinguishable from any other planning feature whose
+ * tickets are ready to burn — the planning sub-steps it skipped are derived
+ * from artifacts, never stored, so skipping them costs it nothing.
  *
  * No `spec.md` and no `decisions.md` are written — there was no conversation to
  * record. `brief.md` carries the prose verbatim, which is what the burner reads
@@ -411,7 +405,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       oneLiner: proses[0].split('\n')[0].trim(),
       mapped: false,
       lap: 1,
-      phase: 'implementation' as const,
+      phase: 'planning' as const,
       branch,
       baseBranch,
       status: 'active' as const,
@@ -450,16 +444,17 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   // The one event that makes the fast path legible in the timeline — the row
   // itself carries no marker, so without this the feature simply appears at
-  // `implementation` with no account of how it got past G1 and G2. Feature-
-  // scoped on purpose: it is the birth of the whole card, not of any one of the
-  // tickets it arrived with — `tickets.stored` above already speaks for those.
-  // The tally counts what the human typed; the review ticket is named apart
-  // from it, because it is the pipeline's doing and not theirs.
+  // `planning` with its tickets already written and no account of where they
+  // came from. Feature-scoped on purpose: it is the birth of the whole card,
+  // not of any one of the tickets it arrived with — `tickets.stored` above
+  // already speaks for those. The tally counts what the human typed; the review
+  // ticket is named apart from it, because it is the machinery's doing and not
+  // theirs.
   const tally = typed.length === 1 ? 'one ticket' : `${typed.length} tickets`
   emit(ctx, feature.id, {
     type: 'feature.quick_change',
-    message: `quick change — born at implementation on lap 1 with ${tally} (${typed.map((t) => `#${t.seq}`).join(', ')}) plus a review ticket (#${review.seq}); no grill session, no spec.md`,
-    data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'implementation' },
+    message: `quick change — born at planning on lap 1 with ${tally} (${typed.map((t) => `#${t.seq}`).join(', ')}) plus a review ticket (#${review.seq}); no grill session, no spec.md`,
+    data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'planning' },
   })
 
   emitTicketShapeWarnings(ctx, feature.id, stored)
@@ -593,7 +588,6 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     ),
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
-    gate: gateState(ctx, feature),
     waypoints,
     frontierIds,
   }
@@ -645,76 +639,32 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
   return { status: session.status, awaitingInput: session.awaitingInput }
 }
 
-/** Attempt the gate guarding the next phase; advance or throw with the reason. */
-export function advance(ctx: AppCtx, featureId: string): Feature {
-  const feature = getFeatureRow(ctx, featureId)
-  requireNotDraft(feature)
-  const gate = nextGate(feature)
-  if (!gate) throw new GateError('feature is already at the final phase')
-
-  // G3 (tickets → implementation) is the human "Burn" gate — the first click of
-  // CONTEXT.md's two-click covenant (#9). Even when its `tickets-approved`
-  // preconditions are met, a plain `advance` must NOT cross it;
-  // only `burn` (the human Burn click) or an explicit `overrideGate` may. This
-  // keeps `feature.burn` the single legitimate G3 crossing.
-  if (gate.id === 'G3') {
-    throw new GateError('G3 is the human Burn gate — click Burn to approve and burn the tickets')
-  }
-
-  const result = checkGate(ctx, gate.check, feature)
-  if (!result.satisfied) {
-    throw new GateError(result.reason ?? `gate ${gate.id} not satisfied`)
-  }
-
-  const next = nextPhase(feature)
-  if (!next) throw new GateError('feature is already at the final phase')
-  return setPhase(ctx, featureId, next, 'phase.advanced')
-}
-
 /**
- * The other half of G3, and the only one a gate check cannot see: has the talk
- * session finished the tickets phase? A batch satisfies `tickets-approved` the
- * instant it is stored, but sessions emit placeholder contexts and enrich them
- * afterwards, so a Burn click landing in that window burns agents on
- * placeholders and fails the session's remaining `update_ticket` calls.
- * `complete_phase({phase:"tickets"})` stamps the lap; this waits for the stamp.
+ * Burn — the first of the two human clicks, and the only mutation that moves a
+ * feature into `building`.
  *
- * Unless nothing is alive to race: a session that died after emitting but
- * before completing would otherwise leave the feature with no way forward, so
- * a feature with no active session burns exactly as it did before.
- */
-function assertTicketsReady(ctx: AppCtx, feature: Feature): void {
-  if (feature.ticketsReadyLap === feature.lap) return
-  if (activeSessionsForFeature(ctx, feature.id).length === 0) return
-  throw new GateError(
-    'the session is still finishing the tickets — it completes the tickets phase when the lap ' +
-      'is done, and the burn arms then',
-  )
-}
-
-/**
- * G3 burn — the human "Burn" click, the ONLY legitimate G3 crossing.
- *
- * From phase `tickets` (the normal case) this crosses G3: sets phase
- * `implementation` and starts the ticket-burner run. It also accepts a feature
- * already at `implementation` with NO active run — a run that was cancelled,
- * crashed, or finished with failures left the feature parked there — and
- * (re)starts the burn without re-crossing any gate, so that state never
- * dead-ends. On restart every ticket a dead run left `burning` is failed first
- * (no run is live, so nothing is behind it), then every `failed` ticket is
- * reset to `pending` (error cleared) so the re-burn actually retries it — this
- * is the retry path the burner's "resolve manually, then re-burn" messages
- * promise. Requires ≥1 non-cancelled ticket; a fresh burn from `tickets`
- * additionally has to satisfy `checkGate(ctx, 'tickets-approved', …)`, which is
- * how the Burn click refuses a lap that forgot its `kind: "review"` ticket.
+ * From `planning` (the normal case) it stamps the lap, sets phase `building`
+ * and starts the ticket-burner run. It also accepts a feature already at
+ * `building` with NO active run — a run that was cancelled, crashed, or
+ * finished with failures left the feature parked there — and (re)starts the
+ * burn, so that state never dead-ends. On restart every ticket a dead run left
+ * `burning` is failed first (no run is live, so nothing is behind it), then
+ * every `failed` ticket is reset to `pending` (error cleared) so the re-burn
+ * actually retries it — this is the retry path the burner's "resolve manually,
+ * then re-burn" messages promise.
  *
  * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
  * and no active run — the Iterate loop (CONTEXT.md, "Laps: iteration without a
  * mode"; cited by name because the locked-decision numbers get renumbered):
- * fresh fix tickets emitted during review loop the phase back to
- * `implementation` so the run executes them, and the G4 auto-advance returns
- * the feature to `review` when they finish. Repeatable until the human clicks
- * Merge & ship.
+ * fresh fix tickets emitted during review are burned from where the feature
+ * stands, and the runner's auto-advance returns it to `review` when they
+ * finish. Repeatable until the human clicks Merge & ship.
+ *
+ * Exactly two things refuse: a burn already running on this feature, and git
+ * safety (which surfaces as a launch failure). Everything the old gates refused
+ * is a warning the operator reads and clicks through. Requires ≥1 non-cancelled
+ * ticket — a burn with nothing to burn is a no-op, not a gate, and the UI does
+ * not offer it.
  */
 export async function burn(
   ctx: AppCtx,
@@ -723,48 +673,37 @@ export async function burn(
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  const running = hasActiveRun(ctx, featureId)
+  // One of the two hard rules: one burn at a time on a feature branch
+  // (ADR-0002). Refusing first is what lets everything below assume no run.
+  if (hasActiveRun(ctx, featureId)) throw new GateError('a run is already burning this feature')
   let tickets = listByFeature(ctx, featureId)
-  // G3 scopes to the CURRENT lap (SPEC §15.1) — an earlier lap's tickets are
-  // terminal by construction, so counting them would let a fresh lap burn
-  // nothing. `lapTickets` is that scope; the restarting path below deliberately
-  // ignores it.
-  const lapTickets = tickets.filter((t) => t.lap === feature.lap)
-  // A ticket the burner still has to run: not done/failed/cancelled (the
-  // terminal states). Fresh fix tickets from an Iterate session land as `pending`.
-  const pending = lapTickets.filter(
-    (t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled',
-  )
-  const restarting = feature.phase === 'implementation' && !running
-  const iterating = feature.phase === 'review' && !running && pending.length >= 1
+  // A ticket the burner still has to run. Fresh fix tickets from an Iterate
+  // session land as `pending`.
+  const pending = tickets.filter(isPendingTicket)
+  const restarting = feature.phase === 'building'
+  const iterating = feature.phase === 'review' && pending.length >= 1
 
-  if (feature.phase !== 'tickets' && !restarting && !iterating) {
-    let why: string
-    if (running) why = 'a run is already burning this feature'
-    else if (feature.phase === 'review')
-      why = 'no pending tickets to burn — emit fix tickets before burning from review'
-    else why = `feature must be in the tickets phase to burn (currently ${feature.phase})`
-    throw new GateError(why)
-  }
-  if (lapTickets.filter((t) => t.status !== 'cancelled').length < 1) {
+  if (feature.phase !== 'planning' && !restarting && !iterating) {
     throw new GateError(
-      lapTickets.length > 0
-        ? 'no burnable tickets — every ticket is cancelled'
-        : 'no tickets to burn',
+      feature.phase === 'review'
+        ? 'no pending tickets to burn — emit fix tickets before burning from review'
+        : `feature must be planning or in review with pending tickets to burn (currently ${feature.phase})`,
     )
   }
-  // The G3 crossing consults the gate service itself, so the Burn click refuses
-  // exactly what `complete_phase` and the launcher refuse — a lap missing its
-  // `kind: "review"` ticket most of all, which a count of burnable tickets
-  // cannot see. `restarting` and `iterating` skip it deliberately: both re-enter
-  // a burn on a feature that already crossed G3 (an override parks the feature
-  // at `implementation` without ever having satisfied the check), and re-testing
-  // it there would turn the escape hatch into a dead end.
-  if (feature.phase === 'tickets') {
-    const gate = checkGate(ctx, 'tickets-approved', feature)
-    if (!gate.satisfied) throw new GateError(gate.reason ?? 'gate G3 not satisfied')
-    assertTicketsReady(ctx, feature)
+  if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
+    throw new GateError(
+      tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
+    )
   }
+  // The lap this burn runs in. Burning from review opens the next one — the
+  // review being answered closed the last; every other road runs the lap the
+  // feature is already on. A restart opens nothing at all: it resumes a run
+  // that died mid-lap, and counting runs (a retry is a run of its own) invented
+  // a lap for work that never moved. The tickets the click is about to burn are
+  // carried onto it, because the session wrote them before the click.
+  const lap = iterating ? feature.lap + 1 : feature.lap
+  if (iterating) carryPendingTicketsIntoLap(ctx, featureId, feature.lap, lap)
+  ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
 
   if (restarting) {
     // No run is live (that is what `restarting` means), so a ticket still
@@ -777,10 +716,9 @@ export async function burn(
     // `resetFailed: false` is the selective-retry path (retryTicket already
     // reset exactly the tickets it wants burned — the rest stay failed).
     //
-    // Deliberately UNSCOPED by lap, unlike the G3 checks above: resuming a dead
-    // burn is about rescuing whatever the run left broken, so an earlier lap's
-    // failed ticket is retried here too. Only the decision to START a burn is a
-    // lap question.
+    // Deliberately UNSCOPED by lap: resuming a dead burn is about rescuing
+    // whatever the run left broken, so an earlier lap's failed ticket is
+    // retried here too.
     const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')
     for (const t of failed) {
       // Keep `attemptBranch` (the re-burn resumes from the preserved commits)
@@ -796,127 +734,13 @@ export async function burn(
           : 'restarting burn (previous run cancelled or crashed)',
       data: { retried: failed.map((t) => t.seq) },
     })
-  } else if (iterating) {
-    // Loop back review → implementation (the pipeline's one backward transition)
-    // so the run picks up the fresh pending tickets. G4 auto-advance closes the
-    // loop back to review when they finish.
-    setPhase(ctx, featureId, REVIEW_LOOP_BACK.to, 'burn.started', 'burn from review — iterating')
-  } else {
-    setPhase(ctx, featureId, 'implementation', 'burn.started', 'burning tickets')
-  }
-  try {
-    const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
-      modelOverride: opts.modelOverride,
-    })
-    return { runId }
-  } catch (e) {
-    // The loop-back is the one flip with no way back: `implementation` with no
-    // run is the restart path for a feature that BELONGS there, but a review
-    // feature dropped into it by a run that never started has lost its review
-    // (findings F5). The forward flips are left alone — they land where the
-    // feature was heading, and `burn` itself restarts them.
-    if (iterating) {
-      setPhase(
-        ctx,
-        featureId,
-        REVIEW_LOOP_BACK.from,
-        'burn.aborted',
-        `the burn never started (${errMsg(e)}) — back at review`,
-      )
-    }
-    throw e
-  }
-}
-
-/**
- * Rethink — the review → ideation loop back that starts lap N+1 (ADR-0010 §1,
- * SPEC §15.2). Where Fix (`burn` from review) says the spec was right and the
- * code wasn't, Rethink says the opposite: the drive taught us something the
- * spec does not know yet, so the feature goes back to ideation to digest it.
- *
- * Increments `lap` and sets the phase to `ideation`, emitting `lap.started`.
- * Nothing else moves: earlier laps' tickets, sessions and events keep their lap
- * tag and the trail is derived by grouping on it (there is no laps table).
- *
- * Every guard runs BEFORE the mutation. The session guard especially: the
- * caller launches the lap's terminal right after this returns, and a launch the
- * one-terminal-per-feature guard would refuse must not leave the feature already
- * bumped onto a lap with no session to work it.
- */
-export function assertIterable(ctx: AppCtx, feature: Feature): void {
-  if (hasActiveRun(ctx, feature.id)) {
-    throw new GateError('a run is burning this feature — cancel or wait for it before iterating')
-  }
-  if (git.activeTestDriveFeatureId() === feature.id) {
-    throw new GateError(
-      `${feature.slug} is being test-driven — stop the test drive first, it holds the feature branch`,
-    )
-  }
-}
-
-export function rethink(ctx: AppCtx, featureId: string): Feature {
-  const feature = getFeatureRow(ctx, featureId)
-  requireNotDraft(feature)
-  if (feature.phase !== RETHINK_LOOP_BACK.from) {
-    throw new GateError(
-      `feature must be in the review phase to rethink (currently ${feature.phase})`,
-    )
-  }
-  assertIterable(ctx, feature)
-  const live = activeSessionsForFeature(ctx, featureId)
-  if (live.length > 0) {
-    throw new GateError(
-      `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
-    )
-  }
-  // A test drive of THIS feature holds the feature branch in the main checkout,
-  // and the lap's terminal needs it for the talk worktree — git refuses two
-  // checkouts of one branch, so the launch would fail with the lap already
-  // bumped (findings F3). Same guard shape as merge and delete.
-  const lap = feature.lap + 1
-  ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
-  return setPhase(ctx, featureId, RETHINK_LOOP_BACK.to, 'lap.started', `rethink — lap ${lap}`)
-}
-
-/**
- * Rethink, then open the lap's terminal — TRANSACTIONALLY (findings F3/F5).
- *
- * The phase/lap flip has to happen first: the session row is stamped with the
- * feature's current lap and the launcher's artifacts are rendered from its phase,
- * so a terminal opened before the flip would be briefed for the lap it is
- * leaving. That ordering used to mean a failed launch stranded the feature at
- * `ideation` on lap N+1 with no terminal — and `rethink` refuses non-review
- * phases, so there was no way back in the UI.
- *
- * So the flip is rolled back when `launch` throws: phase `review`, the original
- * lap, and a `lap.aborted` event saying why, which leaves a subsequent Iterate
- * click free to succeed. The caller's error still propagates — the human sees
- * what failed, not a silent no-op.
- */
-export async function rethinkAndLaunch<T>(
-  ctx: AppCtx,
-  featureId: string,
-  launch: (feature: Feature) => Promise<T>,
-): Promise<T> {
-  const before = getFeatureRow(ctx, featureId)
-  const feature = rethink(ctx, featureId)
-  try {
-    return await launch(feature)
-  } catch (e) {
-    ctx.db.update(features).set({ lap: before.lap }).where(eq(features.id, featureId)).run()
-    setPhase(
-      ctx,
-      featureId,
-      before.phase,
-      'lap.aborted',
-      `lap ${feature.lap} aborted — its terminal could not be opened (${errMsg(e)}); back at ${before.phase} on lap ${before.lap}`,
-    )
-    throw e
-  }
-}
-
-function errMsg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e)
+  } else setPhase(ctx, featureId, 'building', 'burn.started', `burning tickets — lap ${lap}`)
+  // Only the id crosses the seam — `startRun` also hands back a `done` promise
+  // the caller must not await (the run finishes long after the click returns).
+  const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
+    modelOverride: opts.modelOverride,
+  })
+  return { runId }
 }
 
 /**
@@ -1272,7 +1096,7 @@ export async function deleteFeature(
 
 /**
  * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events,
- * gate overrides, waypoints — then the feature row itself. Feature-scoped events
+ * waypoints — then the feature row itself. Feature-scoped events
  * die here; the project-scoped `feature.deleted` (featureId null) survives.
  */
 function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
@@ -1280,16 +1104,8 @@ function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
   ctx.db.delete(sessions).where(eq(sessions.featureId, featureId)).run()
   ctx.db.delete(runs).where(eq(runs.featureId, featureId)).run()
   ctx.db.delete(events).where(eq(events.featureId, featureId)).run()
-  ctx.db.delete(gateOverrides).where(eq(gateOverrides.featureId, featureId)).run()
   ctx.db.delete(waypoints).where(eq(waypoints.featureId, featureId)).run()
   ctx.db.delete(features).where(eq(features.id, featureId)).run()
-}
-
-function gateState(ctx: AppCtx, feature: Feature): FeatureGateState {
-  const gate = nextGate(feature)
-  if (!gate) return { next: null, satisfied: false }
-  const result = checkGate(ctx, gate.check, feature)
-  return { next: gate, satisfied: result.satisfied, reason: result.reason }
 }
 
 function uniqueSlug(ctx: AppCtx, projectId: string, title: string): string {

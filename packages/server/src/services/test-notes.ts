@@ -22,7 +22,6 @@ import { emit } from './events'
 import { featureDocPath } from './feature-docs'
 import { getFeatureRow, projectForFeature } from './repo'
 import { getTicket, storeTickets } from './tickets'
-import { assertIterable } from './features'
 import { promoteOpenDefects, viewByFeature } from './review-findings'
 
 /**
@@ -443,10 +442,9 @@ export function reopenNote(ctx: AppCtx, noteId: string): TestNote {
 
 export interface TriageInput { quickFixIds: string[]; quickFixFindingIds: string[]; dismissIds: string[]; carry: boolean }
 
-/** Commit triage only; the caller subsequently invokes feature.burn or feature.rethink. */
+/** Commit triage only; the caller subsequently invokes Burn or opens a revisit session. */
 export function triageNotes(ctx: AppCtx, featureId: string, input: TriageInput): { minted: number; carried: number; dismissed: number } {
   const feature = getFeatureRow(ctx, featureId)
-  assertIterable(ctx, feature)
   for (const id of input.dismissIds) deleteNote(ctx, id)
   const noteTickets = input.quickFixIds.length ? freezeAsTickets(ctx, input.quickFixIds).tickets.length : 0
   const findingTickets = input.quickFixFindingIds.length ? promoteOpenDefects(ctx, featureId, input.quickFixFindingIds).tickets.length : 0

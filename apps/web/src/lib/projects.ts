@@ -119,8 +119,7 @@ function featureNeedsYou(f: FeatureListItem): boolean {
   if (f.status === 'shipped') return false
   if (f.activeRun) return false
   if (f.ticketCounts.failed > 0) return true
-  if (f.phase === 'ideation') return true
-  if (f.phase === 'tickets' && f.ticketCounts.total > 0) return true
+  if (f.phase === 'planning') return true
   if (f.phase === 'review') return true
   return false
 }

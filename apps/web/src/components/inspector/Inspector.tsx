@@ -4,7 +4,6 @@ import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import { DimLine } from '../../ui'
 import { Activity } from './Activity'
-import { CurrentGate } from './GateCard'
 import { Knowledge } from './Knowledge'
 
 type Tab = 'details' | 'activity'
@@ -59,7 +58,6 @@ export function Inspector({ featureId }: { featureId: string }) {
       >
         {tab === 'details' ? (
           <>
-            <CurrentGate gate={full.data.gate} phase={full.data.feature.phase} />
             <Knowledge featureId={featureId} docs={full.data.docs} />
           </>
         ) : (

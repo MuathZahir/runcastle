@@ -448,11 +448,3 @@ export const events = sqliteTable(
     index('events_feature_id_id_idx').on(t.featureId, t.id),
   ],
 )
-
-export const gateOverrides = sqliteTable('gate_overrides', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  featureId: text('feature_id').notNull(),
-  gate: text('gate').notNull(),
-  reason: text('reason').notNull(),
-  ts: integer('ts').notNull(),
-})

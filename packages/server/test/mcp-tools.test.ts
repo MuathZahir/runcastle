@@ -30,7 +30,6 @@ import mcpApp, {
   toolsForAudience,
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
-import { checkGate } from '../src/services/gates'
 import { getFeatureRow } from '../src/services/repo'
 import { cancelTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
@@ -57,7 +56,7 @@ describe('mcp tools', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'dark-mode'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -256,7 +255,7 @@ describe('mcp tools', () => {
 
     const out = toolGetFeatureContext(ctx, session)
     expect(out.feature.id).toBe(featureId)
-    expect(out.phase).toBe('ideation')
+    expect(out.phase).toBe('planning')
     expect(out.tickets).toHaveLength(1)
     const byPath = Object.fromEntries(out.docs.map((d) => [d.relPath, d.content]))
     expect(byPath['brief.md']).toContain('seed')
@@ -350,111 +349,23 @@ describe('mcp tools', () => {
     expect(ev?.message).toBe('chose sqlite')
   })
 
-  it('complete_phase advances past a satisfied gate', () => {
-    // G1 (ideation -> spec) needs decisions.md on disk
-    const docsDir = join(repoPath, 'docs', 'features', slug)
-    mkdirSync(docsDir, { recursive: true })
-    writeFileSync(join(docsDir, 'decisions.md'), '# Decisions', 'utf8')
-
-    const out = toolCompletePhase(ctx, session, { phase: 'ideation' })
-    // …and says what the NEXT gate wants, so the next step is not a guess.
-    expect(out).toEqual({
+  it.each(['ideation', 'spec'] as const)('complete_phase(%s) records progress without moving state', (phase) => {
+    // Nothing on disk in this fixture, so the derived hint points at the first
+    // artifact still missing.
+    expect(toolCompletePhase(ctx, session, { phase })).toEqual({
       ok: true,
-      nextPhase: 'spec',
-      nextGate: { id: 'G2', description: expect.any(String), check: 'spec-file-exists' },
+      nextPhase: 'planning',
+      nextStep: 'ideation',
     })
+    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
   })
 
-  it('complete_phase reports { ok: false, reason } and names the gate it failed', () => {
-    const out = toolCompletePhase(ctx, session, { phase: 'ideation' })
-    expect(out.ok).toBe(false)
-    if (!out.ok) {
-      expect(out.reason).toMatch(/decisions/i)
-      expect(out.gate).toEqual({
-        id: 'G1',
-        description: expect.any(String),
-        check: 'decisions-file-exists',
-      })
-    }
-  })
-
-  it('complete_phase(tickets) records completion but does NOT cross G3 — parks at tickets for the human Burn', () => {
-    // G3 (tickets → implementation) is the human Burn gate: only feature.burn
-    // may cross it (CONTEXT.md two-click covenant). complete_phase must park.
-    const project = seedProject(ctx, repoPath)
-    const feat = seedFeature(ctx, project.id, { slug: 'burn-me', phase: 'tickets' })
-    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-    storeTickets(ctx, feat.id, [ticket('only'), { ...ticket('Review the lap'), kind: 'review' }])
-
-    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
-    expect(out).toEqual({
-      ok: true,
-      nextPhase: 'implementation',
-      waitingOn: 'human burn',
-      nextGate: { id: 'G4', description: expect.any(String), check: expect.any(String) },
-    })
-
-    // the feature stays at `tickets` — the run has NOT started
-    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
-
-    // an "awaiting burn" note lands on the timeline
-    const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
-    expect(types).toContain('tickets.awaiting_burn')
-  })
-
-  it('complete_phase(tickets) REFUSES a lap with no review ticket, naming G3 and the fix', () => {
-    // The other half of decision 6(a): the refusal has to reach the session
-    // through `complete_phase`, not only through a direct `checkGate` call.
-    // Parking at G3 must not swallow the check — a session told `ok: true` here
-    // walks away, and the lap only fails hours later at the human's Burn click,
-    // with the session that could still have emitted the ticket long gone.
-    const project = seedProject(ctx, repoPath)
-    const feat = seedFeature(ctx, project.id, { slug: 'no-review', phase: 'tickets' })
-    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-    storeTickets(ctx, feat.id, [ticket('build it'), ticket('build more', [1])])
-
-    const out = toolCompletePhase(ctx, s, { phase: 'tickets' })
-    expect(out.ok).toBe(false)
-    if (!out.ok) {
-      expect(out.reason).toMatch(/no review ticket on this lap/)
-      expect(out.reason).toMatch(/kind: "review"/)
-      expect(out.gate).toEqual({
-        id: 'G3',
-        description: expect.any(String),
-        check: 'tickets-approved',
-      })
-    }
-
-    // refused, so the lap is NOT recorded as ready: no awaiting-burn note
-    const types = listAfter(ctx, feat.id, 0).map((e) => e.type)
-    expect(types).not.toContain('tickets.awaiting_burn')
-    expect(getFeatureRow(ctx, feat.id).phase).toBe('tickets')
-  })
-
-  it('a review ticket emitted in a LATER call still satisfies G3 at complete_phase(tickets)', () => {
-    // Sessions split a big batch across several emit_tickets calls to dodge the
-    // payload timeout, so the review ticket routinely arrives last and alone.
-    // G3 judges the lap's accumulated tickets, never a single call.
-    const project = seedProject(ctx, repoPath)
-    const feat = seedFeature(ctx, project.id, { slug: 'split-batch', phase: 'tickets' })
-    const s = createSessionRow(ctx, { featureId: feat.id, kind: 'ideation', worktreePath: repoPath })
-
-    toolEmitTickets(ctx, s, { tickets: [ticket('one'), ticket('two')] })
-    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, feat.id)).reason).toMatch(
-      /no review ticket on this lap/,
-    )
-    // mid-split the session hears the same refusal from the tool it actually
-    // calls, so it fixes the batch instead of ending the phase half-emitted
-    expect(toolCompletePhase(ctx, s, { phase: 'tickets' })).toMatchObject({ ok: false })
-
-    toolEmitTickets(ctx, s, {
-      tickets: [{ ...ticket('Review the integrated change'), kind: 'review' }],
-    })
-    expect(checkGate(ctx, 'tickets-approved', getFeatureRow(ctx, feat.id)).satisfied).toBe(true)
-    expect(toolCompletePhase(ctx, s, { phase: 'tickets' })).toMatchObject({
-      ok: true,
-      waitingOn: 'human burn',
-    })
+  it('complete_phase(tickets) remains wire-compatible and waits for Burn', () => {
+    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
+    expect(out.ok).toBe(true)
+    expect(out.nextPhase).toBe('planning')
+    expect(out.waitingOn).toBe('human burn')
+    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
   })
 })
 
@@ -474,7 +385,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'big-feature'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -633,7 +544,7 @@ describe('mcp qa read-only contract', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     repoPath = tmpRepo()
-    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'ideation' })
+    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'planning' })
     featureId = feature.id
     qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
     setRuntimeCtx(ctx)
@@ -647,7 +558,7 @@ describe('mcp qa read-only contract', () => {
       ['emit_tickets', () => toolEmitTickets(ctx, qa, { tickets: [ticket('new')] })],
       ['update_ticket', () => toolUpdateTicket(ctx, qa, { id: existing.id, title: 'x' })],
       ['cancel_ticket', () => toolCancelTicket(ctx, qa, { id: existing.id })],
-      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'ideation' })],
+      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'tickets' })],
     ]
     for (const [name, call] of calls) {
       let thrown: unknown
@@ -662,7 +573,7 @@ describe('mcp qa read-only contract', () => {
     }
     // Nothing landed: the deny is the enforcement, not a warning.
     expect(listByFeature(ctx, featureId)).toHaveLength(1)
-    expect(getFeatureRow(ctx, featureId).phase).toBe('ideation')
+    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
   })
 
   it('still reads, and still branches the map — "any session may branch the map"', () => {

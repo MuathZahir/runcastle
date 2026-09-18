@@ -101,7 +101,7 @@ describe('Ticket — stored shape', () => {
 
 describe('enums', () => {
   it('Phase accepts pipeline phases and rejects others', () => {
-    expect(Phase.safeParse('ideation').success).toBe(true)
+    expect(Phase.safeParse('planning').success).toBe(true)
     expect(Phase.safeParse('shipped').success).toBe(true)
     expect(Phase.safeParse('bogus').success).toBe(false)
   })
@@ -109,8 +109,8 @@ describe('enums', () => {
 
 describe('parsePhase — tolerant read of an unrecognized phase (findings F19)', () => {
   it('returns the phase for every value the pipeline knows', () => {
-    expect(parsePhase('ideation')).toBe('ideation')
-    expect(parsePhase('implementation')).toBe('implementation')
+    expect(parsePhase('planning')).toBe('planning')
+    expect(parsePhase('building')).toBe('building')
     expect(parsePhase('shipped')).toBe('shipped')
   })
 
@@ -123,6 +123,6 @@ describe('parsePhase — tolerant read of an unrecognized phase (findings F19)',
     expect(parsePhase(undefined)).toBeNull()
     expect(parsePhase(null)).toBeNull()
     expect(parsePhase(7)).toBeNull()
-    expect(parsePhase({ phase: 'ideation' })).toBeNull()
+    expect(parsePhase({ phase: 'planning' })).toBeNull()
   })
 })

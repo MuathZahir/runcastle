@@ -15,8 +15,11 @@ import type { Db } from '../src/db/types'
 /**
  * The `size`/`collapsed` concept was removed (ticket 1). Migration 0008 drops
  * the `size` column; a feature row written under the legacy schema with
- * `size = 'collapsed'` must survive the drop, load cleanly, and advance
- * ideation → spec like every other feature (no collapsed skip remains).
+ * `size = 'collapsed'` must survive the drop and load cleanly.
+ *
+ * The row is inserted at `ideation`, so running the migrations to HEAD also
+ * carries it through the four-state collapse — the oldest row shape this repo
+ * has ever written, arriving at `planning` with a working `nextPhase`.
  */
 
 const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
@@ -36,7 +39,7 @@ async function freshDb(): Promise<Db> {
 }
 
 describe('feature size column drop (0008)', () => {
-  it('a legacy size=collapsed row loads and advances ideation → spec', async () => {
+  it('a legacy size=collapsed row loads, and lands at planning after the collapse', async () => {
     const db = await freshDb()
 
     // Bring the schema up to just before 0008 — the `size` column still exists.
@@ -60,8 +63,8 @@ describe('feature size column drop (0008)', () => {
     const row = db.select().from(features).where(eq(features.id, 'feat_1')).get()
     expect(row).toBeTruthy()
     const feature = rowToFeature(row!)
-    expect(feature.phase).toBe('ideation')
-    // No collapsed skip: ideation advances to spec for every feature.
-    expect(nextPhase(feature)).toBe('spec')
+    expect(feature.phase).toBe('planning')
+    // No collapsed skip: planning leads to building for every feature.
+    expect(nextPhase(feature)).toBe('building')
   })
 })

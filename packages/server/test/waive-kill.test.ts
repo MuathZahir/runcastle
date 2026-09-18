@@ -42,7 +42,7 @@ describe('waive kills a live agent before it flips the row', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'implementation' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
     const [ticket] = storeTickets(ctx, featureId, [ticketInput('half-burnt')])
     ticketId = ticket.id
     // The state the bug lives in: the row already reads terminal.

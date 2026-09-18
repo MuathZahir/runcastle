@@ -11,6 +11,7 @@ import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import {
   __resetTestDriveState,
+  activeTestDriveFeatureId,
   createFeatureBranch,
   detachWorktree,
   ensureTalkWorktree,
@@ -191,6 +192,59 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     // no conflict event on the happy path
     expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'merge.conflict')).toBe(false)
   })
+
+  /**
+   * Decision 3 — Merge is reachable from every state after creation. It dropped
+   * its phase precondition entirely, so the only things that can stop it are
+   * the git refusals: nothing about WHERE the feature sits denies the click.
+   */
+  it.each(['planning', 'building', 'review'] as const)(
+    'ships from %s — Merge has no phase precondition',
+    async (phase) => {
+      const slug = `ship-from-${phase}`
+      await createFeatureBranch(project, slug, 'main')
+      await g.checkout(`feature/${slug}`)
+      writeFileSync(join(project.repoPath, `${slug}.txt`), 'work\n')
+      await g.add([`${slug}.txt`])
+      await g.commit('feat: work')
+      await g.checkout('main')
+      const feature = seedFeature(ctx, project.id, { slug, phase })
+
+      const res = await caller.feature.merge({ featureId: feature.id })
+
+      expect(res.ok).toBe(true)
+      const row = getFeatureRow(ctx, feature.id)
+      expect(row.phase).toBe('shipped')
+      expect(row.status).toBe('shipped')
+    },
+    15_000,
+  )
+
+  /**
+   * The natural shipping path at Review: drive the feature, like what you see,
+   * click Merge. The git service's active-drive refusal is absolute — it tests
+   * that ANY drive is live, not whose — so the handler has to stop a drive of
+   * THIS feature itself, or the most ordinary route to Shipped dead-ends on
+   * "stop it first".
+   */
+  it('ships while THIS feature is being test-driven — the handler stops the drive first', async () => {
+    await createFeatureBranch(project, 'driven', 'main')
+    await g.checkout('feature/driven')
+    writeFileSync(join(project.repoPath, 'driven.txt'), 'work\n')
+    await g.add(['driven.txt'])
+    await g.commit('feat: work')
+    await g.checkout('main')
+    const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
+    const start = await testDrive(ctx, project, feature, 'start')
+    expect(start.ok).toBe(true)
+    expect(activeTestDriveFeatureId()).toBe(feature.id)
+
+    const res = await caller.feature.merge({ featureId: feature.id })
+
+    expect(res.ok).toBe(true)
+    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
+    expect(activeTestDriveFeatureId()).toBeUndefined()
+  }, 15_000)
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')

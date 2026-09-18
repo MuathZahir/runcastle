@@ -68,9 +68,9 @@ describe('the live-session line', () => {
     expect(liveSessionLine(sessions({ kind: 'ideation', lap: 1 }))).toEqual({
       sessionId: 'sess_abcdefghijk',
       text: 'Ideation session still live from lap 1',
-      phase: 'ideation',
+      phase: 'planning',
     })
-    expect(liveSessionLine(sessions({ kind: 'converge' }))?.phase).toBe('spec')
+    expect(liveSessionLine(sessions({ kind: 'converge' }))?.phase).toBe('planning')
     // A launching terminal is as live as a live one — it is holding the seat.
     expect(liveSessionLine(sessions({ status: 'launching' }))?.text).toContain('still live')
   })

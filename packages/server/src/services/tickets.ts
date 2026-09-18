@@ -90,6 +90,24 @@ export function listByFeature(ctx: AppCtx, featureId: string): Ticket[] {
 }
 
 /**
+ * Is this a ticket the burner still has to run?
+ *
+ * `done`, `failed` and `cancelled` are the terminal statuses; everything else —
+ * `pending`, `burning`, and any lane a run leaves mid-flight — is work a burn
+ * would still pick up. One definition, because three callers ask the same
+ * question for three reasons: the burn itself, the planning-progress model
+ * ("are there tickets to burn yet"), and the burn warnings.
+ */
+export function isPendingTicket(ticket: Ticket): boolean {
+  return ticket.status !== 'done' && ticket.status !== 'failed' && ticket.status !== 'cancelled'
+}
+
+/** The tickets a burn of this feature would still run — see {@link isPendingTicket}. */
+export function pendingTickets(ctx: AppCtx, featureId: string): Ticket[] {
+  return listByFeature(ctx, featureId).filter(isPendingTicket)
+}
+
+/**
  * Store a batch of tickets for a feature.
  *
  * seq is assigned globally per feature, continuing after any existing tickets
@@ -160,6 +178,47 @@ export function storeTickets(
   })
 
   return rows.map(rowToTicket)
+}
+
+/**
+ * Move the tickets an Iterate session wrote onto the lap that is about to burn
+ * them — every `pending` row still stamped `from`, re-stamped `to`.
+ *
+ * `storeTickets` stamps the feature's CURRENT lap, which is right for the
+ * planning batch: it is written and burned inside the same lap. The Iterate
+ * road is the exception. The session emits its fix tickets while the feature
+ * is still at review on lap N, and the Burn click that opens lap N+1 comes
+ * after them — so without this every ticket burned in lap N+1 reports lap N,
+ * and everything the `lap` column groups (the trail, per-lap burn reporting,
+ * the review page's account) files the new lap's work under the lap that only
+ * found the bugs.
+ *
+ * Scoped twice, deliberately. Terminal rows never move: they carry the lap
+ * that ran them. And a pending row from an EARLIER lap is standing debt, which
+ * the burn summaries name by the lap that wrote it — only the lap now closing
+ * hands its unburned work forward.
+ *
+ * No event of its own: this is a step inside `burn`, whose `burn.started` says
+ * which lap it opened, and one event is all the UI's resync needs.
+ */
+export function carryPendingTicketsIntoLap(
+  ctx: AppCtx,
+  featureId: string,
+  from: number,
+  to: number,
+): void {
+  const moving = pendingTickets(ctx, featureId).filter((ticket) => ticket.lap === from)
+  if (moving.length === 0) return
+  ctx.db
+    .update(tickets)
+    .set({ lap: to })
+    .where(
+      inArray(
+        tickets.id,
+        moving.map((ticket) => ticket.id),
+      ),
+    )
+    .run()
 }
 
 export function getTicket(ctx: AppCtx, id: string): Ticket {
@@ -275,8 +334,9 @@ export function cancelTicket(
  * will ever move them again.
  *
  * A stranded `burning` row is a dead end in every direction: it is non-terminal
- * so G4 never passes, the scheduler only picks up `pending` tickets so a
- * re-burn finishes instantly with the ticket still stuck (`8/9 tickets done`),
+ * so the run never finishes clean, the scheduler only picks up `pending`
+ * tickets so a re-burn finishes instantly with the ticket still stuck
+ * (`8/9 tickets done`),
  * `retry`/`cancel`/`edit` all refuse a non-`pending`/`failed` ticket, and "Stop
  * ticket" finds no live agent to abort. Marking them `failed` — keeping
  * `attemptBranch`/`conflictFiles`, so a retry resumes the committed work rather

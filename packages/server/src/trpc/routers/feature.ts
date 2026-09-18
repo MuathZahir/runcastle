@@ -7,17 +7,13 @@ import {
   launchSession,
   workWaypoint,
 } from '../../launcher/launcher'
-import { lapKickoff } from '../../launcher/sessions'
-import { carriedWork } from '../../services/carried-work'
+import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
 import * as features from '../../services/features'
-import { overrideGate, undoGateOverride } from '../../services/gates'
 import * as git from '../../services/git'
 import { promoteOutcomeDoc } from '../../services/outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
 import { publicProcedure, router } from '../context'
-
-const gateId = z.enum(['G1', 'G2', 'G3', 'G4', 'G5'])
 
 export const featureRouter = router({
   create: publicProcedure
@@ -110,37 +106,12 @@ export const featureRouter = router({
     )
     .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
 
-  // Converge a mapped feature (ADR-0001 §13.2): crosses G1 (all-waypoints-
-  // terminal) into spec and spawns a fresh kind=converge session that runs the
-  // existing spec → tickets skills over the compressed knowledge. `overrideReason`
-  // forces convergence past open/claimed waypoints (records a G1 override).
+  // Converge a mapped feature (ADR-0001 §13.2): spawns a fresh kind=converge
+  // session that runs the existing spec → tickets skills over the compressed
+  // knowledge. The feature remains in Planning throughout.
   converge: publicProcedure
-    .input(z.object({ featureId: z.string(), overrideReason: z.string().min(1).optional() }))
-    .mutation(({ ctx, input }) =>
-      converge(ctx, { featureId: input.featureId, overrideReason: input.overrideReason }),
-    ),
-
-  // Iterate — internally Rethink (ADR-0010 §1 / SPEC §15.2), the review verb that
-  // starts lap N+1. The service runs FIRST so the phase is back at ideation and
-  // the lap already bumped when the session row is created (it is stamped with the
-  // feature's current lap); the terminal then opens on the lap briefing instead of
-  // the generic revisit line: digest the drive, amend the docs, emit this lap's
-  // tickets, hand back to the Burn click. One click, one terminal.
-  //
-  // `rethinkAndLaunch` makes that ordering safe: a launch that throws rolls the
-  // flip back to review on the original lap (findings F3), so the click can just
-  // be retried once whatever blocked the terminal is cleared.
-  rethink: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) =>
-      features.rethinkAndLaunch(ctx, input.featureId, (feature) =>
-        launchSession(ctx, {
-          featureId: input.featureId,
-          kind: 'revisit',
-          kickoffLine: lapKickoff(feature.lap, carriedWork(ctx, input.featureId)),
-        }),
-      ),
-    ),
+    .mutation(({ ctx, input }) => converge(ctx, { featureId: input.featureId })),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`
@@ -148,21 +119,6 @@ export const featureRouter = router({
   endSession: publicProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(({ ctx, input }) => endSession(ctx, input.sessionId)),
-
-  advance: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.advance(ctx, input.featureId)),
-
-  overrideGate: publicProcedure
-    .input(z.object({ featureId: z.string(), gate: gateId, reason: z.string().min(1) }))
-    .mutation(({ ctx, input }) => overrideGate(ctx, input.featureId, input.gate, input.reason)),
-
-  // Take an override back (findings F24): the phase it advanced past is restored
-  // and the reversal is recorded. The UI only offers it while the override is
-  // still the feature's latest transition.
-  undoGateOverride: publicProcedure
-    .input(z.object({ featureId: z.string(), gate: gateId }))
-    .mutation(({ ctx, input }) => undoGateOverride(ctx, input.featureId, input.gate)),
 
   // Archive a feature from any phase (decision #8): ends any live session, hides
   // it behind the sidebar's show-archived filter, keeps all data. Reversible via
@@ -189,6 +145,14 @@ export const featureRouter = router({
     // cheap model here instead of the retired RUNCASTLE_MODEL env hack.
     .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
     .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
+
+  // What the Burn confirm dialog prints in its warn box (decisions §5), in the
+  // `mergeDelta` pattern: computed server-side so the UI never re-derives
+  // policy, and never a refusal — the primary button stays enabled. Empty is
+  // the common answer and means the dialog shows no box at all.
+  burnWarnings: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => burnWarnings(ctx, input.featureId)),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure

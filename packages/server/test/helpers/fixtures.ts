@@ -62,7 +62,7 @@ export function seedFeature(
       mapped: overrides.mapped ?? false,
       lap: overrides.lap ?? 1,
       ticketsReadyLap: overrides.ticketsReadyLap ?? null,
-      phase: overrides.phase ?? 'ideation',
+      phase: overrides.phase ?? 'planning',
       branch: overrides.branch ?? `feature/${slug}`,
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,
       status: overrides.status ?? 'active',

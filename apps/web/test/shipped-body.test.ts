@@ -116,7 +116,7 @@ const full = (over: Partial<FeatureFull> = {}): FeatureFull =>
     sessions: [session()],
     runs: [],
     docs: [
-      { relPath: 'docs/features/greetings-pages/spec.md', title: 'spec' },
+      { relPath: 'docs/features/greetings-pages/spec.md', title: 'planning' },
       { relPath: 'docs/features/greetings-pages/outcome.md', title: 'outcome' },
     ],
     gate: { id: 'G5', ok: true, reasons: [] },
@@ -155,7 +155,7 @@ describe('ShippedBody', () => {
 
     it('offers no link before the merge has written the doc', () => {
       const html = render({
-        docs: [{ relPath: 'docs/features/greetings-pages/spec.md', title: 'spec' }],
+        docs: [{ relPath: 'docs/features/greetings-pages/spec.md', title: 'planning' }],
       } as unknown as Partial<FeatureFull>)
       expect(html).not.toContain('Read the outcome doc')
     })

@@ -137,9 +137,9 @@ function sessionHome(kind: SessionKind): Phase | null {
     case 'ideation':
     case 'waypoint':
     case 'revisit':
-      return 'ideation'
+      return 'planning'
     case 'converge':
-      return 'spec'
+      return 'planning'
     case 'qa':
     case 'drive-fix':
     case 'prepare':

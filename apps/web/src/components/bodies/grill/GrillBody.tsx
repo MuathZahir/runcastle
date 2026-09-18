@@ -21,12 +21,17 @@ import { MapRail } from './MapRail'
 export function GrillBody({ full, effective, mapRailCollapsed, onToggleMapRail, artifactPaneCollapsed, onToggleArtifactPane }: {
   full: FeatureFull; effective: Phase; mapRailCollapsed: boolean; onToggleMapRail: () => void; artifactPaneCollapsed: boolean; onToggleArtifactPane: () => void
 }) {
+  // Planning is one state but two documents, so the pane follows the same
+  // derived rule the rest of the collapse uses: spec.md on disk means the spec
+  // step is done and the spec is what there is to read; before that, the
+  // decisions are.
+  const kind = full.docs.some((doc) => doc.relPath.endsWith('spec.md')) ? 'spec' : 'decisions'
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
-      {full.feature.mapped && effective === 'ideation' ? (
+      {full.feature.mapped && effective === 'planning' ? (
         <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} />
       ) : (
-        <ArtifactPane featureId={full.feature.id} kind={effective === 'spec' ? 'spec' : 'decisions'} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
+        <ArtifactPane featureId={full.feature.id} kind={kind} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {full.sessions.length > 0 ? (

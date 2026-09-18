@@ -9,21 +9,19 @@
 export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start ideation
   'startGrill', // launchSession { kind: 'ideation' }
-  'converge', // feature.converge — crosses G1 on a mapped feature
+  'converge', // feature.converge — turn a finished map into a spec and tickets
   'workNext', // feature.workWaypoint — work the next ready mapped waypoint
   'resumeConverge', // feature.converge — resume a stranded converge session
-  'advance', // feature.advance (crosses non-human gates — "Continue to review", decision 11b)
-  'burn', // feature.burn (G3, and resume a parked run)
+  'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
-  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then feature.rethink
+  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then revisit
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
-  'merge', // feature.merge (G5)
+  'merge', // feature.merge — crosses to shipped, reachable from every state
   'askQuestions', // launchSession { kind: 'qa' }
   'revisit', // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
   'resolveConflict', // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
-  'rethink', // feature.rethink — start the next lap with nothing to triage first
   'iterate', // opens the triage step over the open notes and defects (decision 21)
   'endSessionAndIterate', // feature.endSession, then the Iterate road above (decision 4)
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)

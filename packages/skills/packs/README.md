@@ -15,7 +15,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:waypoint` | entry for `kind=waypoint` | *original* — works ONE waypoint on a mapped feature, writes its decision prose, resolves the waypoint |
 | `/runcastle:converge` | entry for `kind=converge` | closes a mapped feature: reads the compressed knowledge — `map.md`, `decisions.md`, and the `research/*.md` deliverables the research waypoints produced — then drives spec + tickets from it |
-| `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on a Rethink, runs the whole front half of a lap |
+| `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on an Iterate from review, runs the whole front half of a lap |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):

@@ -84,7 +84,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     reviewStatus: TicketStatus = 'done',
   ): Promise<{ ctx: AppCtx; feature: Feature; review: Ticket }> {
     const ctx = await makeTestCtx()
-    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' })
+    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' })
     // Stored at the feature's CURRENT lap (1), then the feature moves to lap 2 —
     // the shape a Rethink leaves behind.
     const [review] = storeTickets(ctx, feature.id, [
@@ -165,7 +165,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
 
   it('offers a lap-1 feature no previous lap to read', async () => {
     const ctx = await makeTestCtx()
-    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'ideation' })
+    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' })
 
     expect(carriedWork(ctx, feature.id).reviewEvidence).toEqual([])
   })

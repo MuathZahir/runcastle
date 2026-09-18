@@ -34,7 +34,7 @@ describe('hooks route', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'ideation' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     featureId = feature.id
     const session = createSessionRow(ctx, {
       featureId,
@@ -62,7 +62,7 @@ describe('hooks route', () => {
     // exact verified SessionStart shape (additionalContext nested in hookSpecificOutput)
     expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
     expect(json.hookSpecificOutput.additionalContext).toContain('[runcastle] Demo feature')
-    expect(json.hookSpecificOutput.additionalContext).toContain('phase: ideation')
+    expect(json.hookSpecificOutput.additionalContext).toContain('phase: planning')
     expect(json.hookSpecificOutput.additionalContext).toContain('get_feature_context')
 
     const session = getSessionRow(ctx, sessionId)
@@ -132,7 +132,7 @@ describe('hooks route', () => {
 
     expect(json.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
     expect(json.hookSpecificOutput.additionalContext).toBe(
-      '[runcastle] feature=dark-mode phase=ideation tickets=2',
+      '[runcastle] feature=dark-mode phase=planning tickets=2',
     )
   })
 

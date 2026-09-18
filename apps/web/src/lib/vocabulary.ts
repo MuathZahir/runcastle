@@ -73,10 +73,6 @@ export const NOTIFY_OFFER = 'Notify me when agents finish a run'
  */
 export const STOP_TIMEOUT = 'stop timed out — the process may still be running'
 
-/** Inspector gate rail: why the pipeline is sitting still. */
-export const GATE_EXPLAINER =
-  'Gates are the human approval points — runcastle stops at one and waits for you.'
-
 /** First-run wizard, on the step that configures them. */
 export const AFK_BURN_EXPLAINER =
   'An AFK burn is a burn you walk away from: runcastle runs the tickets in containers, unattended, and you read the result when you are back.'

@@ -11,14 +11,7 @@ import { AgentRuntime, ModelEntry } from './config'
 
 // --- enums -----------------------------------------------------------------
 
-export const Phase = z.enum([
-  'ideation',
-  'spec',
-  'tickets',
-  'implementation',
-  'review',
-  'shipped',
-])
+export const Phase = z.enum(['planning', 'building', 'review', 'shipped'])
 export type Phase = z.infer<typeof Phase>
 
 /**
@@ -254,9 +247,11 @@ export const Ticket = TicketInput.extend({
   seq: z.number(),
   status: TicketStatus,
   /**
-   * The lap this ticket was emitted in (ADR-0010 / SPEC §15.1). Stamped from
+   * The lap this ticket burns in (ADR-0010 / SPEC §15.1). Stamped from
    * `feature.lap` at store time — `TicketInput` deliberately has no `lap`,
-   * because sessions never choose it.
+   * because sessions never choose it — and carried forward by the Burn click
+   * that opens the next lap, since an Iterate session writes its fix tickets
+   * before the click that runs them.
    */
   lap: z.number(),
   commits: z.array(z.string()),
@@ -570,9 +565,10 @@ export const Feature = z.object({
   mapped: z.boolean(),
   /**
    * Which trip round the pipeline the feature is on (ADR-0010 / SPEC §15.1).
-   * Starts at 1; Rethink increments it, Fix never does. Tickets, sessions and
-   * events are stamped with it, and the lap trail is derived by grouping on
-   * those stamps — there is no laps table.
+   * Starts at 1; a Burn from review opens the next one, and nothing else moves
+   * it — a restarted burn resumes the lap its dead run was running. Tickets,
+   * sessions and events are stamped with it, and the lap trail is derived by
+   * grouping on those stamps — there is no laps table.
    */
   lap: z.number(),
   /**
