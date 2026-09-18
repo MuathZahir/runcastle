@@ -139,7 +139,8 @@ export function currentLapReviewEvidence(ctx: AppCtx, featureId: string): Review
 function lapReviewEvidence(ctx: AppCtx, featureId: string, lap: number): ReviewEvidence[] {
   return listTickets(ctx, featureId)
     .filter(
-      (ticket) => ticket.kind === 'review' && ticket.lap === lap && BURNED_REVIEW.includes(ticket.status),
+      (ticket) =>
+        ticket.kind === 'review' && ticket.lap === lap && BURNED_REVIEW.includes(ticket.status),
     )
     .map((ticket) => {
       const dir = reviewDir(ticket.id)
