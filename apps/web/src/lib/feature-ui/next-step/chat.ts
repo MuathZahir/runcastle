@@ -1,3 +1,4 @@
+import type { Phase } from '@runcastle/core'
 import type { NextAction } from './types'
 
 /**
@@ -21,3 +22,21 @@ import type { NextAction } from './types'
  * omits it here rather than rendering the same door twice.
  */
 export const CHAT_ACTION: NextAction = { label: 'Chat', kind: 'chat' }
+
+/**
+ * The phase view the Chat door has to pin for the conversation to be on screen,
+ * or null when the body already up renders it (decision 12).
+ *
+ * Planning, building and shipped each render the session panel in their own
+ * body, so the door lands in the terminal without moving the human anywhere.
+ * Review renders no terminal at all (review-arrival decision 5) — it is the one
+ * page whose door has nowhere to land, so it travels to planning, the same
+ * destination the review page's live-session line already offers as Open.
+ *
+ * This is what makes the door's second click legible: the server answers a
+ * click on a live chat with that session rather than a refusal, and without a
+ * pin the review page would show nothing at all for it.
+ */
+export function chatTerminalPhase(viewing: Phase): Phase | null {
+  return viewing === 'review' ? 'planning' : null
+}
