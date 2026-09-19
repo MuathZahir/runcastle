@@ -1,16 +1,18 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Feature } from '@runcastle/core'
+import { newId, type Feature, type TicketInput } from '@runcastle/core'
 import { featureDocsRel, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { toolsForAudience } from '../src/mcp/server'
 import type { AppCtx } from '../src/db/types'
 import { chatKickoffHeader, launchSession } from '../src/launcher/launcher'
+import { runs } from '../src/db/schema'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
@@ -34,16 +36,46 @@ describe('chat contract', () => {
     ])
   })
 
-  it('briefs state, lap, tickets, run, and the full-context handoff', async () => {
+  it.each([
+    { reviewStatus: 'done' as const, outcome: 'passed' },
+    { reviewStatus: 'failed' as const, outcome: 'failed' },
+    { reviewStatus: undefined, outcome: 'unverified' },
+  ])('names a Review feature’s real $outcome drive outcome', async ({ reviewStatus, outcome }) => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'review', lap: 3 })
+    ctx.db.insert(runs).values({
+      id: newId('run'),
+      featureId: feature.id,
+      workflow: 'ticket-burner',
+      status: 'succeeded',
+      startedAt: 1,
+      endedAt: 2,
+    }).run()
+    if (reviewStatus) {
+      const input: TicketInput = {
+        title: 'Review the lap',
+        goal: 'Review it',
+        context: 'Review context',
+        acceptanceCriteria: ['Review completed'],
+        seams: ['review'],
+        blockedBy: [],
+        kind: 'review',
+      }
+      const [review] = storeTickets(ctx, feature.id, [input])
+      updateTicket(ctx, review.id, { status: reviewStatus })
+    }
     const line = chatKickoffHeader(ctx, feature)
     expect(line).toContain('Feature state: review')
     expect(line).toContain('lap 3')
-    expect(line).toContain('tickets: none')
-    expect(line).toContain('latest run: none')
-    expect(line).toContain('Drive outcome: review; see the review evidence')
+    expect(line).toContain(`Drive outcome: ${outcome}; see the review evidence`)
     expect(line.endsWith('Call get_feature_context for the full picture.')).toBe(true)
+  })
+
+  it('names a Review feature with no run as never driven', async () => {
+    const ctx = await makeTestCtx()
+    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'review' })
+
+    expect(chatKickoffHeader(ctx, feature)).toContain('Drive outcome: never driven;')
   })
 })
 
