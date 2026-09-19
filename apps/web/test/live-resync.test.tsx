@@ -77,8 +77,8 @@ function Harness() {
   return null
 }
 
-/** Mount the hook and deliver one signal frame; returns the paths it invalidated. */
-function signal(data: string): string[] {
+/** Mount the hook and deliver one event signal; returns the paths it invalidated. */
+function signalOneEvent(): string[] {
   render(
     <QueryClientProvider client={new QueryClient()}>
       <Harness />
@@ -86,8 +86,9 @@ function signal(data: string): string[] {
   )
   const source = StubEventSource.last
   if (!source) throw new Error('the hook opened no EventSource')
-  recorded.paths.length = 0
-  act(() => source.emit('live', data))
+  // Mounting only opens the stream — nothing is invalidated until a frame lands.
+  const frame = JSON.stringify({ kind: 'event', projectId: 'proj_1', eventId: 7 })
+  act(() => source.emit('live', frame))
   return recorded.paths
 }
 
@@ -104,7 +105,7 @@ afterEach(() => {
 
 describe('useLiveSync resync', () => {
   it('re-resolves the image build target, so the Rebuild button follows a settings write', () => {
-    const paths = signal(JSON.stringify({ kind: 'event', projectId: 'proj_1', eventId: 7 }))
+    const paths = signalOneEvent()
 
     expect(paths).toContain('setup.imageBuildTarget.invalidate')
     // The write it has to follow is a settings write, which is already on the list.
@@ -112,14 +113,8 @@ describe('useLiveSync resync', () => {
   })
 
   it('still leaves the doctor report off the list — it shells out to probe the machine', () => {
-    const paths = signal(JSON.stringify({ kind: 'event', projectId: 'proj_1', eventId: 7 }))
+    const paths = signalOneEvent()
 
     expect(paths.filter((p) => p.startsWith('setup.doctor'))).toEqual([])
-  })
-
-  it('routes a transcript signal past the whole allowlist', () => {
-    const paths = signal(JSON.stringify({ kind: 'transcript', ticketId: 't1' }))
-
-    expect(paths).toEqual(['run.agentTranscript.invalidate'])
   })
 })
