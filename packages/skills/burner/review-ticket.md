@@ -128,6 +128,15 @@ git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}             # the diff both axes r
 
 Confirm both refs resolve and the diff is non-empty **before** spawning anything. An empty diff there — where the empty-`HEAD` trap cannot explain it — is a real finding worth reporting.
 
+**Read the branch; never check it out, and never leave a worktree holding it.** Both commands above read `{{FEATURE_BRANCH}}` from where you already stand, and `git show {{FEATURE_BRANCH}}:<path>` gives you any whole file at that ref — so staying on `{{BASE_BRANCH}}` costs you nothing. Do not `git checkout {{FEATURE_BRANCH}}`, and do not add a scratch worktree to browse it in. If you truly cannot answer a question without the files on disk, there is exactly one acceptable shape:
+
+```
+git worktree add --detach <path> <sha>   # DETACHED — never `git worktree add <path> <branch>`
+git worktree remove <path>               # before you finish, on every path out
+```
+
+`git worktree add <path> <branch>` **checks that branch out**, which makes your scratch directory the branch's one holder — and this is the human's real machine, where runcastle's talk worktree has to hold `{{FEATURE_BRANCH}}` to open the next session on it. A review that left `<repo>/.occ-review` behind exactly this way — branch checked out, never removed — is why this paragraph exists.
+
 **Gather the standards.** `CLAUDE.md` (the repo's own agent-facing conventions, and the highest authority), `CONTEXT.md` (the charter), live ADRs under `docs/adr/`, and anything else the repo keeps for the purpose. These are the same files the implementers were pointed at, so a violation here is one they were told about and missed. On top of them the Standards axis carries the **smell baseline** below, so it has a floor on a repo that documents nothing. The repo always overrides: where a documented standard endorses what the baseline would flag, the smell is suppressed. Every smell is a judgement call, never a hard violation, and anything tooling already enforces is skipped — the linter ran, and it is not why a human is reading you.
 
 Mysterious Name · Duplicated Code · Feature Envy · Data Clumps · Primitive Obsession · Repeated Switches · Shotgun Surgery · Divergent Change · Speculative Generality · Message Chains · Middle Man · Refused Bequest.
@@ -225,6 +234,7 @@ When that happens: run the step 4 cleanup for whatever you got as far as startin
 - **Never merge or re-rank the two review axes**, and never report a finding without its citation.
 - **Never let a sub-agent spawn more agents.** The guard line goes in both briefs, every time.
 - **Never leave the drive — or the recorder — running.** Stop both on every path, including the one where you gave up on the drive.
+- **Never leave a worktree holding `{{FEATURE_BRANCH}}`.** Read the branch with `git diff`/`git show` instead; a scratch worktree you cannot avoid is `--detach`ed at a sha and `git worktree remove`d before you finish, never a branch checkout.
 - **Never build your own environment.** No worktrees, no dependency installs, no builds, no generated artifacts. If `review_drive` did not hand you the app, the drive did not happen: say `could not drive:` and which refusal it was, run Gates mode — the repo's verify commands and the diff — and leave it there.
 - **Never wait out a refusal that will not clear.** The ten polls are for `retriable: true` — a held slot — and nothing else. Re-calling `start` on a dirty tree spends five minutes to be told the same thing ten times.
 - **Never report a finding you did not observe.** Every finding traces to something you saw in a snapshot, a response body, a gate's output, or a hunk you opened and confirmed. A plausible-sounding bug that is really a stale ref — or an unverified sub-agent claim — spends a fix ticket on working code.

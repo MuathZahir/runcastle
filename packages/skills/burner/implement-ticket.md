@@ -53,7 +53,7 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
 - **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
 - **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once before your final commit, plus once more only if that run found something you then fixed.
-- **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, `git worktree add` a scratch checkout, or read the file at `HEAD` with `git show`.
+- **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, read the file at `HEAD` with `git show`, or — only if you genuinely need the old tree on disk — `git worktree add --detach <path> <sha>` a **detached** scratch checkout and `git worktree remove` it when done. Never `git worktree add <path> <branch>`: that checks the branch out, and a worktree left holding a branch is one nobody else can check it out in.
 
 ## How to work
 
