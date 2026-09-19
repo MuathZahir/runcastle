@@ -405,6 +405,16 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       oneLiner: proses[0].split('\n')[0].trim(),
       mapped: false,
       lap: 1,
+      // Ready at birth: the tickets below are complete and no session is
+      // enriching them. Nothing else would ever say so — only
+      // `complete_phase("tickets")` stamps this column, and this path has no
+      // session to run it — so it would stay null forever and the planning bar
+      // would read every later chat as still finishing these tickets, hiding
+      // Burn for as long as its terminal is open. Stamped in the insert rather
+      // than via `markTicketsReady`, whose `tickets.awaiting_burn` milestone
+      // nothing consumes and whose news `feature.quick_change` already carries.
+      // Still a readiness fact and not a marker of the door (ADR-0010 §7).
+      ticketsReadyLap: 1,
       phase: 'planning' as const,
       branch,
       baseBranch,
