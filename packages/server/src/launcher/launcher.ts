@@ -23,7 +23,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { carriedWork } from '../services/carried-work'
+import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import * as git from '../services/git'
@@ -154,9 +154,18 @@ export function chatKickoffHeader(
     .map(([status, count]) => `${status} ${count}`)
     .join(', ') || 'none'
   const latestRun = listRunsByFeature(ctx, feature.id)[0]
-  const review = feature.phase === 'review'
-    ? ' Drive outcome: review; see the review evidence in get_feature_context.'
-    : ''
+  let review = ''
+  if (feature.phase === 'review') {
+    const latestReview = currentLapReviewEvidence(ctx, feature.id).at(-1)
+    const outcome = !latestRun
+      ? 'never driven'
+      : latestReview?.status === 'done'
+        ? 'passed'
+        : latestReview?.status === 'failed'
+          ? 'failed'
+          : 'unverified'
+    review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
+  }
   const opening = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature)))
   return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
