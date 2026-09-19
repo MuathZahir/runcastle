@@ -565,10 +565,7 @@ export function Workspace({
    */
   const openChat = () => {
     const pin = chatTerminalPhase(effective)
-    launch.mutate(
-      { featureId, kind: 'chat' },
-      { onSuccess: () => { if (pin) onViewPhase(pin) } },
-    )
+    launch.mutate({ featureId, kind: 'chat' }, pin ? { onSuccess: () => onViewPhase(pin) } : {})
   }
 
   const runAction = (kind: ActionKind, waypointId?: string) => {
