@@ -294,17 +294,25 @@ describe('workWaypoint — implicit handoff', () => {
     expect(getWaypoint(ctx, b.id).claimedBy).toBe(second)
   })
 
-  it('ends the live grill session once the feature is mapped (the first handoff)', async () => {
+  /**
+   * One-chat-per-feature folded grilling into the feature's single `chat`, the
+   * same kind that carries a qa question or a revisit — so the map landing no
+   * longer proves the chat is over. The first handoff asks for `endLive` like
+   * every later one.
+   */
+  it('refuses to sweep the live chat even on the first handoff — the map does not prove it is over', async () => {
     const feature = await mappedFeature('grill')
     const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
     const grill = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(grill.sessionId))
     markSessionLive(ctx, grill.sessionId, { ccSessionId: 'cc-grill' })
 
-    const worked = await work(feature.id, a.id)
+    await expect(
+      workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false }),
+    ).rejects.toThrow(GateError)
 
-    expect(getSessionRow(ctx, grill.sessionId)?.status).toBe('ended')
-    expect(getWaypoint(ctx, a.id).claimedBy).toBe(worked)
+    expect(getSessionRow(ctx, grill.sessionId)?.status).toBe('live')
+    expect(getWaypoint(ctx, a.id).claimedBy).toBeFalsy()
   })
 
   /**
