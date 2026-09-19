@@ -112,10 +112,10 @@ export async function startRun(
   const tickets = scope ? opened.filter((t) => scope.has(t.id)) : opened
   /** Rows the scope left behind — hidden from the run's re-reads, forever. */
   const excluded = new Set(scope ? opened.filter((t) => !scope.has(t.id)).map((t) => t.id) : [])
-  const listRunTickets = (): Ticket[] =>
-    excluded.size === 0
-      ? listByFeature(ctx, featureId)
-      : listByFeature(ctx, featureId).filter((t) => !excluded.has(t.id))
+  const listRunTickets = (): Ticket[] => {
+    const rows = listByFeature(ctx, featureId)
+    return excluded.size === 0 ? rows : rows.filter((t) => !excluded.has(t.id))
+  }
 
   const runId = newId('run')
   ctx.db
