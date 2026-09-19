@@ -144,6 +144,10 @@ describe('the chat beside a burn', () => {
     expect((await simpleGit(talkWt).revparse(['HEAD'])).trim()).toBe(tip)
     // and the session works in the same talk worktree as ever
     expect(getSessionRow(ctx, sessionId)?.worktreePath).toBe(worktreeDir(project.id, feature.slug))
+    const parked = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'chat.worktree_parked')
+    expect(parked).toHaveLength(1)
+    expect(parked[0]?.featureId).toBe(feature.id)
+    expect(parked[0]?.data).toMatchObject({ branch, worktreePath: talkWt })
   })
 
   it('lands a mid-burn docs commit on the feature branch, behind the landing in front of it', async () => {
@@ -206,7 +210,8 @@ describe('the chat beside a burn', () => {
     try {
       const { done } = await startRun(ctx, feature.id, 'ticket-burner')
 
-      expect(await chatBranchInWorktree(talkWt)).toBeDefined()
+      const parkedBranch = await chatBranchInWorktree(talkWt)
+      expect(parkedBranch).toBeDefined()
       // the session is untouched: same worktree, still live, edits still there
       const row = getSessionRow(ctx, session.id)
       expect(row?.status).toBe('live')
@@ -215,6 +220,15 @@ describe('the chat beside a burn', () => {
 
       open()
       await done
+
+      const handoffEvents = listAfter(ctx, feature.id, 0).filter((e) => e.type.startsWith('chat.'))
+      expect(handoffEvents.map((e) => e.type)).toEqual([
+        'chat.worktree_parked',
+        'chat.worktree_released',
+        'chat.branch_deleted',
+      ])
+      expect(handoffEvents.every((e) => e.featureId === feature.id)).toBe(true)
+      expect(handoffEvents[2]?.data).toMatchObject({ branch: parkedBranch })
     } finally {
       if (original) workflowRegistry.set('ticket-burner', original)
       else workflowRegistry.delete('ticket-burner')

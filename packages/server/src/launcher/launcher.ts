@@ -343,7 +343,7 @@ async function ensureWorktree(
   const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
   try {
     return besideRun
-      ? await ensureTalkWorktreeDuringRun(project, feature)
+      ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
       : await git.ensureTalkWorktree(project, feature)
   } catch (e) {
     if (isNotImplemented(e)) {
