@@ -460,7 +460,7 @@ function ImageRow({
       {!sessionId && (
         <ImageBuildAction
           probe={probe}
-          target={target.data?.kind === 'refused' ? undefined : target.data}
+          target={imageTargetState(target)}
           runtimeOk={runtimeOk}
           pending={start.isPending}
           onStart={() => start.mutate({ kind: 'build-image', ...(projectId ? { projectId } : {}) })}
@@ -468,6 +468,33 @@ function ImageRow({
       )}
     </ChecklistRow>
   )
+}
+
+/**
+ * What `setup.imageBuildTarget` has said about this row so far. The three
+ * settled answers are kept apart from the wait on purpose: a refusal and a
+ * failed query are both final, and a button that reads "resolving Dockerfile →
+ * resolving tag" over either of them is a spinner that never stops.
+ */
+export type ImageTargetState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'refused'; reason: string }
+  | { kind: 'ready'; dockerfile: string; tag: string }
+
+/** The target query's state, as {@link ImageBuildAction} reads it. */
+function imageTargetState(query: {
+  data: RouterOutputs['setup']['imageBuildTarget'] | undefined
+  error: { message: string } | null
+}): ImageTargetState {
+  const { data } = query
+  if (data) {
+    return data.kind === 'refused'
+      ? { kind: 'refused', reason: data.reason }
+      : { kind: 'ready', dockerfile: data.dockerfile, tag: data.tag }
+  }
+  if (query.error) return { kind: 'error', message: query.error.message }
+  return { kind: 'loading' }
 }
 
 /** Status-specific image action, split from the tRPC wrapper for component testing. */
@@ -479,7 +506,7 @@ export function ImageBuildAction({
   onStart,
 }: {
   probe: Probe
-  target?: { dockerfile: string; tag: string }
+  target: ImageTargetState
   runtimeOk: boolean
   pending: boolean
   onStart: () => void
@@ -492,27 +519,46 @@ export function ImageBuildAction({
   if (probe.status === 'custom') {
     return <span className="basis-full text-right text-xs text-text-3">{probe.fix}</span>
   }
+  // The resolver refused for its own reason — a tag runcastle does not manage,
+  // which the probe did not necessarily call `custom` (a legacy global image
+  // reads as one). Say the reason it gave, the way the custom row says its fix,
+  // rather than leaving a disabled button with nothing on it.
+  if (target.kind === 'refused') {
+    return <span className="basis-full text-right text-xs text-text-3">{target.reason}</span>
+  }
   // "Build" while there is nothing to rebuild — an image runcastle has never
   // built, whether that is the stock one or the project's own Dockerfile.
-  const first = probe.status === 'missing' || probe.status === 'not-built-yet'
+  const verb = probe.status === 'missing' || probe.status === 'not-built-yet' ? 'Build' : 'Rebuild'
   return (
-    <Button
-      variant="ghost"
-      aria-label={`${first ? 'Build' : 'Rebuild'} image`}
-      disabled={!runtimeOk || pending || !target}
-      title={
-        runtimeOk
-          ? target
-            ? `Dockerfile: ${target.dockerfile}\nImage: ${target.tag}`
-            : undefined
-          : 'Install a container runtime first'
-      }
-      onClick={onStart}
-    >
-      {pending
-        ? 'Starting…'
-        : `${first ? 'Build' : 'Rebuild'} image · ${target?.dockerfile ?? 'resolving Dockerfile'} → ${target?.tag ?? 'resolving tag'}`}
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        aria-label={`${verb} image`}
+        disabled={!runtimeOk || pending || target.kind !== 'ready'}
+        title={
+          runtimeOk
+            ? target.kind === 'ready'
+              ? `Dockerfile: ${target.dockerfile}\nImage: ${target.tag}`
+              : undefined
+            : 'Install a container runtime first'
+        }
+        onClick={onStart}
+      >
+        {/* The tag alone: it is what names the image, and the Dockerfile path
+            it is built from is long, identical between projects at its
+            basename, and already in the tooltip. */}
+        {pending
+          ? 'Starting…'
+          : target.kind === 'ready'
+            ? `${verb} image · ${target.tag}`
+            : target.kind === 'loading'
+              ? `${verb} image · resolving…`
+              : `${verb} image`}
+      </Button>
+      {target.kind === 'error' && (
+        <span className="basis-full text-right text-xs text-warn">{target.message}</span>
+      )}
+    </>
   )
 }
 

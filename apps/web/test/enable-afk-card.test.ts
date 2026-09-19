@@ -23,6 +23,13 @@ const server = vi.hoisted(() => ({
   terminal: null as { sessionId: string; onEnded?: () => void } | null,
   /** What the card asked `setup.doctor` about — the image row is per-project. */
   doctorInput: undefined as unknown,
+  /** What `setup.imageBuildTarget` answers, and how it failed when it did. */
+  imageTarget: {
+    kind: 'stock',
+    dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
+    tag: 'sandcastle:runcastle',
+  } as Record<string, unknown> | undefined,
+  imageTargetError: null as { message: string } | null,
 }))
 
 vi.mock('../src/trpc', () => {
@@ -57,13 +64,7 @@ vi.mock('../src/trpc', () => {
         },
         runtimeGuide: { useQuery: () => ({ data: undefined }) },
         imageBuildTarget: {
-          useQuery: () => ({
-            data: {
-              kind: 'stock',
-              dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
-              tag: 'sandcastle:runcastle',
-            },
-          }),
+          useQuery: () => ({ data: server.imageTarget, error: server.imageTargetError }),
         },
         startTerminal: {
           useMutation: (opts?: { onSuccess?: (r: { sessionId: string }) => void }) => ({
@@ -95,11 +96,18 @@ vi.mock('../src/components/TerminalView', () => ({
   },
 }))
 
-import type { Probe } from '../src/components/EnableAfkCard'
+import type { ImageTargetState, Probe } from '../src/components/EnableAfkCard'
 
 const { BurnCacheRow, EnableAfkCard, ImageBuildAction } = await import(
   '../src/components/EnableAfkCard'
 )
+
+/** The stock image the target resolver names when no project Dockerfile wins. */
+const STOCK_TARGET = {
+  kind: 'stock',
+  dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
+  tag: 'sandcastle:runcastle',
+}
 
 /** Every state the image row can be in, as the doctor reports them. */
 type ImageStatus = 'missing' | 'stale' | 'ok' | 'not-built-yet' | 'custom'
@@ -119,7 +127,8 @@ describe('EnableAfkCard image action', () => {
   const renderAction = (
     status: ImageStatus,
     fix?: string,
-    target = {
+    target: ImageTargetState = {
+      kind: 'ready',
       dockerfile: '/opt/runcastle/assets/sandbox/Dockerfile',
       tag: 'sandcastle:runcastle',
     },
@@ -142,24 +151,67 @@ describe('EnableAfkCard image action', () => {
     expect(html).toContain('Build image')
   })
 
+  /** The label the operator reads, with every tag and attribute taken out. */
+  const text = (html: string) => html.replace(/<[^>]*>/g, '')
+
   it('offers Rebuild image once an image is there', () => {
     expect(renderAction('stale')).toContain('Rebuild image')
-    expect(renderAction('stale')).toContain('/opt/runcastle/assets/sandbox/Dockerfile')
     expect(renderAction('stale')).toContain('sandcastle:runcastle')
     expect(renderAction('ok')).toContain('Rebuild image')
+  })
+
+  // The tag is what names the image; the Dockerfile path it is built from is
+  // long enough to push everything else off the row, and the tooltip — which
+  // has room for both — is where it belongs.
+  it('names the tag in the label and keeps the Dockerfile path in the tooltip', () => {
+    const html = renderAction('stale')
+
+    expect(text(html)).toContain('Rebuild image · sandcastle:runcastle')
+    expect(text(html)).not.toContain('/opt/runcastle/assets/sandbox/Dockerfile')
+    expect(html).toContain('title="Dockerfile: /opt/runcastle/assets/sandbox/Dockerfile')
   })
 
   // The project ships `.runcastle/sandbox/Dockerfile` and nothing has built it
   // yet: there is no image to *re*build, so the row reads like a first build.
   it('offers Build image for a project Dockerfile that has never been built', () => {
     const html = renderAction('not-built-yet', undefined, {
+      kind: 'ready',
       dockerfile: '/work/acme/.runcastle/sandbox/Dockerfile',
       tag: 'sandcastle:runcastle-proj_acme',
     })
     expect(html).toContain('Build image')
     expect(html).not.toContain('Rebuild image')
-    expect(html).toContain('/work/acme/.runcastle/sandbox/Dockerfile')
+    expect(html).toContain('title="Dockerfile: /work/acme/.runcastle/sandbox/Dockerfile')
     expect(html).toContain('sandcastle:runcastle-proj_acme')
+  })
+
+  // A refusal is an answer, and the reason carries the way out of it — so the
+  // row says it, the way the custom-probe row says its fix.
+  it('says why a refused target is nobody to rebuild, in place of the button', () => {
+    const reason = 'acme/sandbox:v3 is a custom image managed outside runcastle — clear it.'
+    const html = renderAction('stale', undefined, { kind: 'refused', reason })
+
+    expect(html).not.toContain('<button')
+    expect(html).toContain(reason)
+  })
+
+  it('waits on the tag only while the target query is still out', () => {
+    const html = renderAction('stale', undefined, { kind: 'loading' })
+
+    expect(text(html)).toContain('Rebuild image · resolving…')
+    expect(html).toContain('disabled')
+  })
+
+  // A failed query is settled, so the wait ends: the button says what it can
+  // and the row says what went wrong instead of resolving forever.
+  it('stops waiting and shows the error when the target query fails', () => {
+    const message = 'imageBuildTarget: project not found'
+    const html = renderAction('stale', undefined, { kind: 'error', message })
+
+    expect(text(html)).not.toContain('resolving')
+    expect(text(html)).toContain('Rebuild image')
+    expect(html).toContain(message)
+    expect(html).toContain('disabled')
   })
 
   // Decision 5 — the whole point: a Rebuild here would build the stock template
@@ -267,6 +319,8 @@ describe('EnableAfkCard prerequisites checklist', () => {
     server.error = null
     server.refetches = 0
     server.cancels = 0
+    server.imageTarget = { ...STOCK_TARGET }
+    server.imageTargetError = null
   })
   afterEach(cleanup)
 
@@ -373,6 +427,32 @@ describe('EnableAfkCard prerequisites checklist', () => {
     expect(screen.getByText(/3 of 4/)).toBeTruthy()
   })
 
+  // The bug this row was rewritten for: a refused target used to be mapped to
+  // undefined on its way into the button, which left it disabled and reading
+  // "resolving Dockerfile → resolving tag" over an answer the server had given.
+  // The probe need not agree — that divergence is what produced the report.
+  it('renders a refused build target instead of waiting on it', () => {
+    const reason = 'acme/sandbox:v3 is a custom image — clear the sandbox image setting.'
+    server.imageTarget = { kind: 'refused', imageName: 'acme/sandbox:v3', reason }
+    open()
+
+    expect(screen.getByText(reason)).toBeTruthy()
+    expect(screen.queryByText(/resolving/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Rebuild image' })).toBeNull()
+  })
+
+  it('names the failure rather than resolving forever when the target query errors', () => {
+    server.imageTarget = undefined
+    server.imageTargetError = { message: 'imageBuildTarget: project not found' }
+    open()
+
+    expect(screen.getByText('imageBuildTarget: project not found')).toBeTruthy()
+    expect(screen.queryByText(/resolving/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Rebuild image' }).hasAttribute('disabled')).toBe(
+      true,
+    )
+  })
+
   it('keeps "Set up later" for the first-run wizard, and drops it everywhere else', () => {
     open()
     expect(screen.queryByRole('button', { name: 'Set up later' })).toBeNull()
@@ -399,6 +479,8 @@ describe('EnableAfkCard image build terminal', () => {
     server.refetches = 0
     server.cancels = 0
     server.terminal = null
+    server.imageTarget = { ...STOCK_TARGET }
+    server.imageTargetError = null
   })
   afterEach(cleanup)
 
