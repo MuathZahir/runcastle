@@ -53,11 +53,28 @@ function talkWorktree(project: Project, feature: Feature): string {
  * cut (so a run is never blocked by it), and no-ops when the worktree is already
  * parked — a crashed run's leftover, which the next release still lands.
  */
-export async function parkTalkWorktreeForRun(project: Project, feature: Feature): Promise<void> {
+export async function parkTalkWorktreeForRun(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+): Promise<void> {
   const worktreePath = talkWorktree(project, feature)
   if (await chatBranchInWorktree(worktreePath)) return
-  if (await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))) return
+  const branch = nextChatBranch(feature.slug)
+  if (await startBranchInWorktree(worktreePath, branch)) {
+    emit(ctx, feature.id, {
+      type: 'chat.worktree_parked',
+      message: `parked the chat worktree on ${branch}`,
+      data: { branch, worktreePath },
+    })
+    return
+  }
   await detachWorktree(worktreePath)
+  emit(ctx, feature.id, {
+    type: 'chat.worktree_detached',
+    message: 'detached the chat worktree while the run holds the feature branch',
+    data: { worktreePath },
+  })
 }
 
 /**
@@ -66,12 +83,19 @@ export async function parkTalkWorktreeForRun(project: Project, feature: Feature)
  * where the run started before the feature had a worktree at all.
  */
 export async function ensureTalkWorktreeDuringRun(
+  ctx: AppCtx,
   project: Project,
   feature: Feature,
 ): Promise<string> {
   const worktreePath = await ensureTalkWorktree(project, feature)
   if (!(await chatBranchInWorktree(worktreePath))) {
-    await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))
+    const branch = nextChatBranch(feature.slug)
+    await startBranchInWorktree(worktreePath, branch)
+    emit(ctx, feature.id, {
+      type: 'chat.worktree_parked',
+      message: `parked the chat worktree on ${branch}`,
+      data: { branch, worktreePath },
+    })
   }
   return worktreePath
 }
@@ -162,6 +186,11 @@ export async function releaseTalkWorktreeAfterRun(
   if (!branch) {
     // Detached (the fallback park, or a pre-chat leftover) — restore it as before.
     await reattachWorktree(worktreePath, feature.branch)
+    emit(ctx, feature.id, {
+      type: 'chat.worktree_released',
+      message: `returned the chat worktree to ${feature.branch}`,
+      data: { branch: feature.branch, worktreePath },
+    })
     return null
   }
 
@@ -170,8 +199,20 @@ export async function releaseTalkWorktreeAfterRun(
     commits.length > 0 ? await land(ctx, project, feature, branch, commits.length) : null
 
   await reattachWorktree(worktreePath, feature.branch)
+  emit(ctx, feature.id, {
+    type: 'chat.worktree_released',
+    message: `returned the chat worktree to ${feature.branch}`,
+    data: { branch: feature.branch, worktreePath },
+  })
   // Only the empty branch is ours to delete: a successful landing already
   // deleted the branch it consumed, and an unlanded one holds real commits.
-  if (commits.length === 0) await deleteTempBranch(project.repoPath, branch)
+  if (commits.length === 0) {
+    await deleteTempBranch(project.repoPath, branch)
+    emit(ctx, feature.id, {
+      type: 'chat.branch_deleted',
+      message: `deleted empty chat branch ${branch}`,
+      data: { branch },
+    })
+  }
   return landed
 }

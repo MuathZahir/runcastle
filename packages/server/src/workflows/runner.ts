@@ -152,7 +152,7 @@ export async function startRun(
   // branch) skip the dance entirely, so the talk worktree — and any live HITL
   // session inside it — is never touched by a run (ADR-0001 §7).
   const claimsBranch = workflowClaimsFeatureBranch(workflowId)
-  if (claimsBranch) await parkTalkWorktreeForRun(project, feature)
+  if (claimsBranch) await parkTalkWorktreeForRun(ctx, project, feature)
 
   const wctx: WorkflowCtx = {
     runId,
