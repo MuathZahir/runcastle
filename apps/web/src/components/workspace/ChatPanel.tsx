@@ -85,7 +85,7 @@ export function ChatPanel({
           <span className="size-2 rounded-pill bg-text-4" aria-hidden="true" />
         )}
         <span className="text-base font-semibold text-text">Chat</span>
-        <span className="truncate text-xs text-text-3">one transcript · resumed</span>
+        <span className="truncate text-sm text-text-3">one transcript · resumed</span>
         <span className="flex-1" />
         {live && chat && <EndSessionButton featureId={featureId} sessionId={chat.id} />}
         <Button
@@ -125,7 +125,7 @@ export function ChatPanel({
             <Button disabled={busy} onClick={onOpenChat}>
               {chat ? 'Resume the conversation' : 'Start the conversation'}
             </Button>
-            <span className="truncate text-xs text-text-3">every door resumes it</span>
+            <span className="truncate text-sm text-text-3">every door resumes it</span>
           </div>
         </>
       )}

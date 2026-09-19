@@ -27,7 +27,10 @@ export function GrillBody({ full, effective, chatDocked = false, mapRailCollapse
   // decisions are.
   const kind = full.docs.some((doc) => doc.relPath.endsWith('spec.md')) ? 'spec' : 'decisions'
   // With the chat docked beside this body it owns the chat's terminal, so what
-  // is left here is the map's own sessions (decision 16).
+  // is left here is the map's own sessions (decision 16). Losing the last one
+  // that way is a different empty state from never having opened one — a
+  // feature nobody has talked to still gets the door, not a pointer at a panel
+  // holding nothing.
   const sessions = bodySessions(full.sessions, chatDocked)
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
@@ -41,7 +44,7 @@ export function GrillBody({ full, effective, chatDocked = false, mapRailCollapse
           <SessionPanel featureId={full.feature.id} sessions={sessions} full={full} />
         ) : (
           <div className="flex min-h-0 flex-1 rounded-lg border border-hairline bg-panel-2">
-            {chatDocked ? (
+            {sessions.length < full.sessions.length ? (
               <EmptyState icon={<IconTerminal size={16} />} title="The chat is docked" hint="The conversation is in the panel on the right — collapse it to bring the terminal back here." />
             ) : (
               <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint="Start a session from the bar above — you and the agent shape the idea here before any code is written." />
