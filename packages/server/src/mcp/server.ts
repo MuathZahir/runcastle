@@ -197,18 +197,6 @@ function requireFeatureId(session: SessionRow): string {
   return session.featureId
 }
 
-/**
- * The `qa` kind's read-only contract, enforced instead of merely stated.
- *
- * `qa` is "come back and ask questions": three separate prompts forbid it the
- * write tools, and until now that was the whole enforcement — a qa session HAS a
- * feature, so every feature-shaped write tool let it through. The codebase's own
- * principle for exactly this (`launcher/edit-guard.ts:11`): a prompt rule is
- * advisory, a deny is not.
- *
- * The refusal names what to do instead, because there is a human in the room:
- * a qa session's output is what it TELLS them, not what it stores.
- */
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
 
 /** One annotated roster entry, as the tickets session is offered it. */
@@ -1329,8 +1317,8 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'waypoint', 'converge']
  * somewhere to go instead of swallowing the feature being grilled — its project
  * is the one its own feature belongs to. Anything beyond parking is refused,
  * because a grill that can spawn live features is an orchestrator, and that is
- * the project session's job. `qa` is refused outright: its contract is
- * read-only, and a draft is still a write.
+ * the project session's job. Other session kinds cannot create features,
+ * because even a parked draft is still a write.
  */
 function createFeatureProject(
   ctx: AppCtx,
@@ -1340,7 +1328,7 @@ function createFeatureProject(
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
     throw new GateError(
-      `a ${session.kind} session is read-only and may not create features, drafts included. ` +
+      `a ${session.kind} session may not create features, drafts included. ` +
         'Tell the human what is worth capturing; the project session is where features are made.',
     )
   }
@@ -1760,8 +1748,6 @@ const FEATURE_KINDS: readonly SessionKindT[] = [
   'drive-fix',
 ]
 
-const FEATURE_WRITE_KINDS = FEATURE_KINDS
-
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 
 const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'run']
@@ -1770,7 +1756,7 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
  * `requireProject`, `requireRunIdentity`, the `kind !== 'prepare'` and
- * `kind !== 'drive-fix'` checks, `createFeatureProject`, and the qa refusals.
+ * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
  *
@@ -1790,15 +1776,14 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_feature_context: [...FEATURE_KINDS, 'run'],
   read_feature_doc: [...FEATURE_KINDS, 'run'],
   list_tickets: [...FEATURE_KINDS, 'run'],
-  // Feature writes: `requireFeatureId` plus the qa read-only contract.
-  emit_tickets: FEATURE_WRITE_KINDS,
-  update_ticket: FEATURE_WRITE_KINDS,
-  cancel_ticket: FEATURE_WRITE_KINDS,
-  complete_phase: FEATURE_WRITE_KINDS,
+  emit_tickets: FEATURE_KINDS,
+  update_ticket: FEATURE_KINDS,
+  cancel_ticket: FEATURE_KINDS,
+  complete_phase: FEATURE_KINDS,
   // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
-  resolve_finding: FEATURE_WRITE_KINDS,
+  resolve_finding: FEATURE_KINDS,
   // Map moves stay open to `qa` on purpose: "any session may branch the map" is
   // the recursion (SPEC §13.3), and it is pinned by test as well as by prose.
   escalate_to_map: FEATURE_KINDS,
