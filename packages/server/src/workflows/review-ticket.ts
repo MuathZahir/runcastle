@@ -151,6 +151,55 @@ export function findOnPath(
   return undefined
 }
 
+/** Every piece a drive needs that this host does not have, in prompt prose. */
+function missingDrivePieces(
+  browserPath: string | undefined,
+  devCommand: string | undefined,
+  browserHealthy: boolean,
+  ffmpegPath: string | null | undefined,
+): string[] {
+  const missing: string[] = []
+  if (!browserPath) {
+    missing.push(
+      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
+    )
+  } else if (!browserHealthy) {
+    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check`)
+  }
+  if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
+  if (!devCommand?.trim()) {
+    missing.push('this project has no dev command configured, so a drive has no app to boot')
+  }
+  return missing
+}
+
+/**
+ * Why this host could not offer a drive, as one sentence — or undefined when it
+ * could.
+ *
+ * Decision 8 makes the withheld-drive reason a recorded fact, not only prompt
+ * prose: the same missing pieces {@link buildDriveAvailability} states to the
+ * agent are the reason a lap ran Gates, and the trail has to be able to say so.
+ * Without it a capability downgrade is invisible again — a pass reading
+ * "Verified · gates" with nothing to distinguish "chose Gates" from "never had
+ * the choice", which is the class of silence this feature exists to end.
+ *
+ * Pure — the caller does the probing and passes the results. Every probe is an
+ * explicit argument, with no defaulting of one binary's path to another's: a
+ * silently-defaulted `ffmpegPath` would report a drive as available on a host
+ * that cannot record one, which is the exact lie this is here to prevent.
+ */
+export function driveWithheldReason(
+  browserPath: string | undefined,
+  devCommand: string | undefined,
+  browserHealthy: boolean,
+  ffmpegPath: string | null | undefined,
+): string | undefined {
+  const missing = missingDrivePieces(browserPath, devCommand, browserHealthy, ffmpegPath)
+  if (missing.length === 0) return undefined
+  return `Drive was unavailable: ${missing.join(', and ')}.`
+}
+
 /**
  * The `{{DRIVE_AVAILABILITY}}` block: whether Drive mode is open at all.
  *
@@ -173,18 +222,7 @@ export function buildDriveAvailability(
   if (inheritedMode === 'gates') {
     return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose Drive mode or call `review_drive`.'
   }
-  const missing: string[] = []
-  if (!browserPath) {
-    missing.push(
-      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
-    )
-  } else if (!browserHealthy) {
-    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check`)
-  }
-  if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
-  if (!devCommand?.trim()) {
-    missing.push('this project has no dev command configured, so a drive has no app to boot')
-  }
+  const missing = missingDrivePieces(browserPath, devCommand, browserHealthy, ffmpegPath)
   if (inheritedMode === 'drive' && missing.length === 0) {
     return 'Inherited mode: **Drive**. The pass being verified recorded Drive mode, so run Drive mode and record the full tour; do not choose Gates mode.'
   }
@@ -215,9 +253,19 @@ export interface ReviewResolution {
 
 const DECLARATION = /(?:^|\n)REVIEW-MODE:\s*(drive|gates)\s*\nREVIEW-VERDICT:\s*(verified|unverified)\s*\nREVIEW-REASON:\s*([^\r\n]*)/i
 
+/**
+ * The pass's recorded outcome, from what the agent declared and what the host
+ * knows.
+ *
+ * `driveWithheldReason` is the host's half (decision 8). The template only
+ * mandates a `REVIEW-REASON` when a pass is unverified, so the ordinary
+ * capability downgrade — Gates ran because ffmpeg is missing, and then honestly
+ * verified — declares an empty one. The reason the server composed before the
+ * spawn fills that gap; it never overwrites a reason the reviewer wrote.
+ */
 export function resolveReviewDeclaration(
   digestText: string | undefined,
-  facts: { webmExists: boolean; offeredMode: 'drive' | 'gates' },
+  facts: { webmExists: boolean; offeredMode: 'drive' | 'gates'; driveWithheldReason?: string },
 ): ReviewResolution {
   const match = digestText?.match(DECLARATION)
   if (!match) return { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
@@ -245,7 +293,7 @@ export function resolveReviewDeclaration(
       reason: 'Drive was declared verified but no walkthrough recording was produced.',
     }
   }
-  return { reviewMode, reviewVerdict: 'verified', reason: declaredReason }
+  return { reviewMode, reviewVerdict: 'verified', reason: declaredReason || facts.driveWithheldReason || '' }
 }
 
 /**
@@ -527,8 +575,11 @@ async function reviewTicketOutcome(
   const browserPath = findOnPath(AGENT_BROWSER_BIN)
   const ffmpegPath = findOnPath(FFMPEG_BIN)
   const browserHealthy = executableIsHealthy(browserPath)
-  const driveAvailable = Boolean(browserPath && browserHealthy && ffmpegPath && project.devCommand?.trim())
-  const offeredMode: 'drive' | 'gates' = inheritedMode === 'gates' || !driveAvailable ? 'gates' : 'drive'
+  // The one sentence that serves both the prompt and the pass's record: the
+  // agent is told why Drive is closed, and the ticket row keeps the same reason
+  // so the trail can say why the lap ran Gates (decision 8).
+  const withheldReason = driveWithheldReason(browserPath, project.devCommand, browserHealthy, ffmpegPath)
+  const offeredMode: 'drive' | 'gates' = inheritedMode === 'gates' || withheldReason ? 'gates' : 'drive'
   const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),
@@ -643,6 +694,7 @@ async function reviewTicketOutcome(
   const resolution = resolveReviewDeclaration(digest, {
     webmExists: existsSync(reviewWalkthroughPath(ticket.id)),
     offeredMode,
+    ...(withheldReason ? { driveWithheldReason: withheldReason } : {}),
   })
   const storedDigest = composeReviewDigest(ticket.lap, resolution, digest)
   return {

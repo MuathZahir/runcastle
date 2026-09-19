@@ -42,8 +42,10 @@ import {
   buildDriveInstructions,
   buildGateNotes,
   composeReviewDigest,
+  driveWithheldReason,
   executableIsHealthy,
   executeReviewTicket,
+  FFMPEG_BIN,
   findOnPath,
   inheritedReviewMode,
   resolveReviewDeclaration,
@@ -869,6 +871,29 @@ describe('the mode the review is handed', () => {
     expect(fallback).not.toContain('Inherited mode: **Drive**')
   })
 
+  it('names why the drive was withheld, as a fact the pass can record', () => {
+    // Decision 8: the missing piece is not only prompt prose — the same
+    // sentence lands in the pass's outcome, so a lap that ran Gates because
+    // ffmpeg was missing says so on the trail instead of reading as a plain
+    // Gates review.
+    expect(driveWithheldReason('/browser', 'bun dev', true, '/ffmpeg')).toBeUndefined()
+
+    const noFfmpeg = driveWithheldReason('/browser', 'bun dev', true, null)
+    expect(noFfmpeg).toContain(FFMPEG_BIN)
+    expect(noFfmpeg).toContain('Drive was unavailable')
+
+    // Probed absence, as `findOnPath` reports it — undefined, not null.
+    expect(driveWithheldReason('/browser', 'bun dev', true, undefined)).toContain(FFMPEG_BIN)
+
+    expect(driveWithheldReason('/browser', 'bun dev', false, '/ffmpeg')).toContain('failed its health check')
+    expect(driveWithheldReason(undefined, undefined, true, undefined)).toContain('no dev command configured')
+
+    // One list, one wording: the availability block quotes the same pieces.
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain(
+      `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`,
+    )
+  })
+
   it('health-checks the browser executable rather than trusting its PATH entry', () => {
     expect(executableIsHealthy(process.execPath)).toBe(true)
     expect(executableIsHealthy(undefined)).toBe(false)
@@ -918,6 +943,32 @@ describe('review declaration resolution', () => {
       reviewVerdict: 'verified',
       reason: 'Drive failed: browser could not attach.',
     })
+  })
+
+  it('falls back to the server-known reason the drive was withheld', () => {
+    // The template only asks for a REVIEW-REASON when the pass is unverified,
+    // so the ordinary ffmpeg-less lap declares gates/verified with an empty
+    // one — and the reason the host already knew used to be dropped here.
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified'), {
+        webmExists: false,
+        offeredMode: 'gates',
+        driveWithheldReason: 'Drive was unavailable: `ffmpeg` is not on this machine\'s PATH.',
+      }),
+    ).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: 'Drive was unavailable: `ffmpeg` is not on this machine\'s PATH.',
+    })
+
+    // The reviewer's own words outrank it — it fills a gap, it never overwrites.
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified', 'Drive failed: browser could not attach.'), {
+        webmExists: false,
+        offeredMode: 'gates',
+        driveWithheldReason: 'Drive was unavailable: `ffmpeg` is missing.',
+      }).reason,
+    ).toBe('Drive failed: browser could not attach.')
   })
 
   it('defaults missing and malformed declarations to unverified', () => {
@@ -1058,6 +1109,32 @@ describe('the agent-browser probe', () => {
     expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBe(join(dir, 'agent-browser'))
     expect(findOnPath('nope-not-here', { PATH: dir }, 'linux')).toBeUndefined()
     expect(findOnPath('agent-browser', { PATH: '' }, 'linux')).toBeUndefined()
+  })
+
+  /**
+   * The repro this ticket was minted from: a host with `agent-browser` but no
+   * `ffmpeg`, and a pass that honestly declares gates/verified with no reason
+   * of its own. The reason the host knew used to stop at the prompt.
+   */
+  it('carries the ffmpeg-less host reason all the way into the pass outcome', () => {
+    writeFileSync(join(dir, 'agent-browser'), '#!/bin/sh\n')
+    const env = { PATH: dir }
+
+    const withheld = driveWithheldReason(
+      findOnPath(AGENT_BROWSER_BIN, env, 'linux'),
+      'bun dev',
+      true,
+      findOnPath(FFMPEG_BIN, env, 'linux'),
+    )
+
+    const resolution = resolveReviewDeclaration(
+      'account\n\nREVIEW-MODE: gates\nREVIEW-VERDICT: verified\nREVIEW-REASON: ',
+      { webmExists: false, offeredMode: 'gates', ...(withheld ? { driveWithheldReason: withheld } : {}) },
+    )
+
+    expect(resolution.reviewVerdict).toBe('verified')
+    expect(resolution.reason).not.toBe('')
+    expect(resolution.reason).toContain(FFMPEG_BIN)
   })
 
   it('needs a PATHEXT suffix on Windows', () => {
