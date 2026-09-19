@@ -669,7 +669,13 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
 export async function burn(
   ctx: AppCtx,
   featureId: string,
-  opts: { modelOverride?: string; resetFailed?: boolean; advanceLap?: boolean } = {},
+  opts: {
+    modelOverride?: string
+    resetFailed?: boolean
+    advanceLap?: boolean
+    /** Burn only these tickets, leaving every other pending row for a later burn. */
+    onlyTicketIds?: string[]
+  } = {},
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
@@ -740,6 +746,7 @@ export async function burn(
   // the caller must not await (the run finishes long after the click returns).
   const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
     modelOverride: opts.modelOverride,
+    ...(opts.onlyTicketIds ? { ticketIds: opts.onlyTicketIds } : {}),
   })
   return { runId }
 }
@@ -802,7 +809,17 @@ export async function agenticReview(ctx: AppCtx, featureId: string): Promise<{ r
     ticketId: ticket.id,
     data: { ticketSeq: ticket.seq, lap: feature.lap },
   })
-  return burn(ctx, feature.id, { resetFailed: false, advanceLap: false })
+  // Scoped to the ticket just minted: the button asks for another review pass,
+  // not for the pending fix queue beside it. An unscoped burn would launch
+  // every fix the last review found — code changes nobody clicked Burn for —
+  // and then hold the new pass behind them at the review gate. It also lands
+  // those fixes on the lap that already burned them, because a review pass
+  // opens no lap (decision 7: the mint is FOR the current lap).
+  return burn(ctx, feature.id, {
+    resetFailed: false,
+    advanceLap: false,
+    onlyTicketIds: [ticket.id],
+  })
 }
 
 /**
