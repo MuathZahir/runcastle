@@ -139,3 +139,55 @@ describe('loadConfig — host-aware burnConcurrency default', () => {
     expect([1, 3]).toContain(loadConfig({}).burnConcurrency)
   })
 })
+
+describe('loadConfig — collapsed chat step read-compat', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeAll(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'runcastle-chat-step-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+  })
+
+  afterAll(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  it('moves a persisted ideation model to chat without changing current steps', () => {
+    writeFileSync(
+      join(dataDir, 'config.json'),
+      JSON.stringify({
+        stepModels: {
+          ideation: 'claude-opus-5',
+          smoke: 'claude-haiku-4-5-20251001',
+        },
+      }),
+    )
+
+    expect(loadConfig({}, 16).stepModels).toEqual({
+      chat: 'claude-opus-5',
+      smoke: 'claude-haiku-4-5-20251001',
+    })
+  })
+
+  it('silently drops persisted qa and revisit models', () => {
+    writeFileSync(
+      join(dataDir, 'config.json'),
+      JSON.stringify({ stepModels: { qa: 'qa-model', revisit: 'revisit-model' } }),
+    )
+
+    expect(loadConfig({}, 16).stepModels).toEqual({})
+  })
+
+  it('keeps an explicit chat model instead of the persisted ideation model', () => {
+    writeFileSync(
+      join(dataDir, 'config.json'),
+      JSON.stringify({ stepModels: { chat: 'chat-model', ideation: 'ideation-model' } }),
+    )
+
+    expect(loadConfig({}, 16).stepModels).toEqual({ chat: 'chat-model' })
+  })
+})
