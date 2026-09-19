@@ -158,6 +158,21 @@ describe('the lap trail', () => {
     expect(html).toContain('<button')
   })
 
+  /** The state the page is most often read in: a review reported a defect and
+   *  its fix ticket is sitting pending for the human. Nothing burned it yet. */
+  it('counts only the tickets that landed, never pending, burning or failed ones', () => {
+    const html = render({
+      tickets: [
+        ticket(),
+        ticket({ id: 'imp_1', seq: 1, kind: 'implementation' }),
+        ticket({ id: 'fix_1', seq: 2, kind: 'implementation', status: 'pending' }),
+        ticket({ id: 'imp_2', seq: 3, kind: 'implementation', status: 'burning' }),
+        ticket({ id: 'imp_3', seq: 5, kind: 'implementation', status: 'failed' }),
+      ],
+    })
+    expect(html).toContain('1 ticket burned')
+  })
+
   /** A lap can hold several passes — the entry is the lap, the passes are rows. */
   it('lists every pass of a lap, with the recording link that stages it', () => {
     const html = render({

@@ -519,7 +519,7 @@ export interface TrailEntry {
   /** When the lap's latest completed pass finished; null while none has. */
   completedAt: number | null
   outcome: TrailOutcome
-  /** Implementation tickets the lap burned — the run view holds the detail. */
+  /** Implementation tickets the lap burned and landed — the run view holds the detail. */
   burned: number
   /** Every review pass of the lap, in the order they ran. */
   passes: TrailPass[]
@@ -604,7 +604,11 @@ export function lapTrail(input: TrailInput): TrailEntry[] {
       lap,
       completedAt: stamp?.completedAt ?? null,
       outcome: passOutcome(stamp, tickets),
-      burned: tickets.filter((t) => t.lap === lap && t.kind !== 'review' && t.status !== 'cancelled')
+      // Only rows that landed: the lap the page is most often read in has fix
+      // tickets minted and sitting pending, and a lap whose tickets all failed
+      // burned nothing that stands. Counting either would overclaim the same
+      // way the run headline did before the verdict columns.
+      burned: tickets.filter((t) => t.lap === lap && t.kind !== 'review' && t.status === 'done')
         .length,
       passes: lapPasses.map((pass) => ({
         ticketId: pass.ticketId,
