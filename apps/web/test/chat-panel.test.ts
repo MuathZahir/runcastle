@@ -139,7 +139,7 @@ describe('ChatDock', () => {
 
   it('renders the body and nothing else while the chat is away', () => {
     const html = renderToStaticMarkup(
-      createElement(ChatDock, { open: false, panel: createElement('aside', null, 'chat') }, body),
+      createElement(ChatDock, { open: false, panel: createElement('aside', null, 'chat'), children: body }),
     )
 
     expect(html).toBe('<div id="phase-body">the phase body</div>')
@@ -147,7 +147,7 @@ describe('ChatDock', () => {
 
   it('puts the panel beside the body, with the body still in it', () => {
     const html = renderToStaticMarkup(
-      createElement(ChatDock, { open: true, panel: createElement('aside', null, 'chat') }, body),
+      createElement(ChatDock, { open: true, panel: createElement('aside', null, 'chat'), children: body }),
     )
 
     expect(html).toContain('<div id="phase-body">the phase body</div>')
