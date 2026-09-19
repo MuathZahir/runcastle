@@ -475,6 +475,9 @@ export function Workspace({
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
   const liveSession = activeSession(full.sessions)
+  // The conversation is the session that is up — what the Chat door consults
+  // before launching, so it never re-briefs a chat the human is already in.
+  const liveChat = liveSession?.kind === 'chat' ? liveSession : undefined
   // An Iterate whose lap session could not be opened (decision 26g), from the
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
@@ -574,9 +577,15 @@ export function Workspace({
    * The bar's constant Chat door, which is now a toggle (decision 16): away, it
    * docks the panel and resumes the conversation; docked, it sends the panel
    * back without touching the session — collapsing the chat is not ending it.
+   *
+   * A chat that is already up is not re-launched on the way in. The server would
+   * answer with that same session (decision 12), but it would also write a fresh
+   * state header into its terminal on every click (decision 13) — and a header
+   * is for a human arriving at a conversation they had lost sight of, not for
+   * one that is on screen already and one toggle away.
    */
   const toggleChat = () => {
-    if (!chatPanelOpen) openChat()
+    if (!chatPanelOpen && !liveChat) openChat()
     onToggleChatPanel()
   }
 
