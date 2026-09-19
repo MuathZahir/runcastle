@@ -11,6 +11,7 @@ import { resolveShipped } from './shipped'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
 
+export * from './chat'
 export * from './types'
 
 export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {

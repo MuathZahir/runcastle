@@ -15,6 +15,7 @@ import {
   burnInterruption,
   burnLap,
   burnSummary,
+  chatTerminalPhase,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
@@ -550,6 +551,23 @@ export function Workspace({
     }
   }
 
+  /**
+   * The feature's one conversation, from whichever state the bar was in
+   * (decisions 8 and 12). The launch resumes the newest chat transcript, starts
+   * the first one, or — with the chat already live — answers with the session
+   * that is up rather than refusing; the door never has to know which.
+   *
+   * What it does have to do is LAND the human in the terminal, and review
+   * renders none of its own, so the door pins the view that holds it on the way
+   * through. `chatTerminalPhase` is read before the mutation fires so the pin is
+   * the page the human clicked from, not wherever the feature has drifted to by
+   * the time the server answers.
+   */
+  const openChat = () => {
+    const pin = chatTerminalPhase(effective)
+    launch.mutate({ featureId, kind: 'chat' }, pin ? { onSuccess: () => onViewPhase(pin) } : {})
+  }
+
   const runAction = (kind: ActionKind, waypointId?: string) => {
     switch (kind) {
       case 'startDraft':
@@ -559,11 +577,8 @@ export function Workspace({
         // disabled while this is empty, so it never sends nothing.
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
-      // The feature's one conversation, from whichever state the bar was in
-      // (decision 8). The launch resumes the newest chat transcript, or starts
-      // the first one — the door never has to know which.
       case 'chat':
-        launch.mutate({ featureId, kind: 'chat' })
+        openChat()
         break
       case 'iterate':
         enterIterate()
