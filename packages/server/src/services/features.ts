@@ -669,7 +669,13 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
 export async function burn(
   ctx: AppCtx,
   featureId: string,
-  opts: { modelOverride?: string; resetFailed?: boolean } = {},
+  opts: {
+    modelOverride?: string
+    resetFailed?: boolean
+    advanceLap?: boolean
+    /** Burn only these tickets, leaving every other pending row for a later burn. */
+    onlyTicketIds?: string[]
+  } = {},
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
@@ -681,9 +687,10 @@ export async function burn(
   // session land as `pending`.
   const pending = tickets.filter(isPendingTicket)
   const restarting = feature.phase === 'building'
-  const iterating = feature.phase === 'review' && pending.length >= 1
+  const reviewing = feature.phase === 'review' && pending.length >= 1
+  const iterating = reviewing && opts.advanceLap !== false
 
-  if (feature.phase !== 'planning' && !restarting && !iterating) {
+  if (feature.phase !== 'planning' && !restarting && !reviewing) {
     throw new GateError(
       feature.phase === 'review'
         ? 'no pending tickets to burn — emit fix tickets before burning from review'
@@ -739,6 +746,7 @@ export async function burn(
   // the caller must not await (the run finishes long after the click returns).
   const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
     modelOverride: opts.modelOverride,
+    ...(opts.onlyTicketIds ? { ticketIds: opts.onlyTicketIds } : {}),
   })
   return { runId }
 }
@@ -758,11 +766,60 @@ export async function burn(
  * by a burn that ran after it — including the retry this very check admits, so
  * one denial buys one retry.
  */
-function latestRunDeniedDirty(ctx: AppCtx, featureId: string): boolean {
+export function latestRunDeniedDirty(ctx: AppCtx, featureId: string): boolean {
   const latestRun = listRunsByFeature(ctx, featureId)[0]
   if (!latestRun) return false
   const deniedAt = latestEventTs(ctx, featureId, 'reviewdrive.denied')
   return deniedAt !== undefined && deniedAt >= latestRun.startedAt
+}
+
+/** Mint a standalone review pass for the current lap and burn it immediately. */
+export async function agenticReview(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
+  const feature = getFeatureRow(ctx, featureId)
+  if (hasActiveRun(ctx, feature.id)) {
+    throw new GateError('a run is live for this feature — start an agentic review after it finishes')
+  }
+
+  const project = projectForFeature(ctx, feature)
+  if (latestRunDeniedDirty(ctx, feature.id)) {
+    const stillDirty = await git.driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
+    if (stillDirty.length > 0) {
+      throw new GateError(
+        `the working tree is still dirty — the review drive would be denied again. Commit or ` +
+          `discard ${stillDirty.length} file(s) first: ${git.truncatedFileList(stillDirty)}`,
+      )
+    }
+  }
+
+  const [ticket] = storeTickets(ctx, feature.id, [
+    {
+      title: `Agentic review — lap ${feature.lap}`,
+      goal: "Perform a full, independent review of this lap's landed work.",
+      context: 'Review the complete landed diff and report defects with evidence. Choose the review mode from current availability.',
+      acceptanceCriteria: ['The current lap is reviewed in full and every finding is reported.'],
+      seams: ['The landed work and its observable acceptance criteria'],
+      blockedBy: [],
+      kind: 'review',
+      passKind: 'review',
+    },
+  ])
+  emit(ctx, feature.id, {
+    type: 'review.agentic-minted',
+    message: `agentic review minted as ticket ${ticket.seq} for lap ${feature.lap}`,
+    ticketId: ticket.id,
+    data: { ticketSeq: ticket.seq, lap: feature.lap },
+  })
+  // Scoped to the ticket just minted: the button asks for another review pass,
+  // not for the pending fix queue beside it. An unscoped burn would launch
+  // every fix the last review found — code changes nobody clicked Burn for —
+  // and then hold the new pass behind them at the review gate. It also lands
+  // those fixes on the lap that already burned them, because a review pass
+  // opens no lap (decision 7: the mint is FOR the current lap).
+  return burn(ctx, feature.id, {
+    resetFailed: false,
+    advanceLap: false,
+    onlyTicketIds: [ticket.id],
+  })
 }
 
 /**
@@ -794,12 +851,6 @@ function latestRunDeniedDirty(ctx: AppCtx, featureId: string): boolean {
  * set at start and would never pick the reset ticket up, which would strand it
  * `pending` with no agent coming.
  *
- * ONE non-failed ticket is accepted (decisions §6): a `kind: "review"` ticket
- * that is `done` because its drive was refused over a dirty working tree, which
- * the latest run recorded as a `reviewdrive.denied` event. That retry is
- * pre-checked against the tree it would drive and refused, naming the files,
- * while they are still uncommitted. Everything else about it is the ordinary
- * path — the reset, the preserved chain, `fresh`, the burn.
  */
 export async function retryTicket(
   ctx: AppCtx,
@@ -817,32 +868,13 @@ export async function retryTicket(
 }> {
   const ticket = getTicket(ctx, ticketId)
   const feature = getFeatureRow(ctx, ticket.featureId)
-  // The one non-failed ticket worth retrying: a review that could not drive
-  // because the human's own files were uncommitted. It succeeded — in the
-  // weaker Gates mode — so it is `done`, and "only failed tickets" would lock
-  // the human out of the retry the denial exists to offer.
-  const retryingDeniedReview =
-    ticket.kind === 'review' && ticket.status === 'done' && latestRunDeniedDirty(ctx, feature.id)
-  if (ticket.status !== 'failed' && !retryingDeniedReview) {
+  if (ticket.status !== 'failed') {
     throw new GateError(`only failed tickets can be retried — ticket ${ticket.seq} is ${ticket.status}`)
   }
   if (hasActiveRun(ctx, feature.id)) {
     throw new GateError('a run is live for this feature — retry after it finishes, or cancel it first')
   }
   const project = projectForFeature(ctx, feature)
-  // Still dirty means the drive would be refused again on arrival, an agent and
-  // its sandbox spent to reach the same denial — so ask git the question the
-  // drive guard asks (pipeline docs landed first, so runcastle's own writes
-  // never block a retry) and hand the human back what is still in the way.
-  if (retryingDeniedReview) {
-    const stillDirty = await git.driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
-    if (stillDirty.length > 0) {
-      throw new GateError(
-        `the working tree is still dirty — the review drive would be denied again. Commit or ` +
-          `discard ${stillDirty.length} file(s) first: ${git.truncatedFileList(stillDirty)}`,
-      )
-    }
-  }
 
   const all = listByFeature(ctx, feature.id)
   const bySeq = new Map(all.map((t) => [t.seq, t]))

@@ -17,6 +17,9 @@ export interface ReviewArtifacts {
   seq: number
   lap: number
   passKind: 'review' | 'verification'
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
   reviewedCommit: string | null
   completedAt: number | null
   landedSince: number

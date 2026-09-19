@@ -34,6 +34,9 @@ const recording = (over: Partial<ReviewArtifacts> = {}): ReviewArtifacts => ({
   seq: 4,
   lap: 1,
   passKind: 'review',
+  reviewMode: null,
+  reviewVerdict: null,
+  reviewVerdictReason: null,
   reviewedCommit: 'abc1234def',
   completedAt: 1000,
   landedSince: 0,
@@ -101,22 +104,33 @@ describe('EvidenceStage', () => {
     expect(html).toContain('this build')
   })
 
-  /** Decision 41c: superseded passes are demoted, never hidden. */
-  it('lists every older recording, each selectable onto the stage', () => {
+  /**
+   * The trail picks now (review-as-a-lap-trail decision 4): the stage is the
+   * viewer and the page owns which recording is on it, so the popover that used
+   * to list the earlier passes here is gone.
+   */
+  it('plays the recording the page picked, and lists no picker of its own', () => {
     const html = render({
       recordings: [
-        recording({ ticketId: 'tkt_1', seq: 4, lap: 1, completedAt: 1000 }),
-        recording({ ticketId: 'tkt_0', seq: 2, lap: 1, completedAt: 500, passKind: 'verification' }),
-        recording({ ticketId: 'tkt_2', seq: 9, lap: 2, completedAt: 5000 }),
+        recording({ ticketId: 'tkt_1', seq: 4, lap: 1, completedAt: 1000, videoUrl: '/first.webm' }),
+        recording({ ticketId: 'tkt_2', seq: 9, lap: 2, completedAt: 5000, videoUrl: '/later.webm' }),
       ],
+      picked: 'tkt_1',
     })
-    expect(html).toContain('Earlier recordings (2)')
-    expect(html).toContain('Lap 1 · verification pass · #2')
-    expect(html).toContain('Lap 1 · review pass · #4')
+    expect(html).toContain('src="/first.webm"')
+    expect(html).toContain('Lap 1 · Walkthrough')
+    expect(html).not.toContain('Earlier recordings')
   })
 
-  it('renders no earlier-recordings disclosure when there is only one pass', () => {
-    expect(render()).not.toContain('Earlier recordings')
+  /**
+   * Decision 4: the stage is never lap-scoped, so a lap that has recorded
+   * nothing keeps the previous lap's recording up — identified by ITS lap — and
+   * the stage never blanks on a lap flip.
+   */
+  it('keeps an earlier lap’s recording on the stage, named by the lap it is from', () => {
+    const html = render({ recordings: [recording({ lap: 2, landedSince: 0 })] })
+    expect(html).toContain('<video')
+    expect(html).toContain('Lap 2 · Walkthrough')
   })
 
   /**

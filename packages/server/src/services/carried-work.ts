@@ -62,6 +62,9 @@ export interface ReviewEvidence {
   seq: number
   /** How the pass itself ended — the review OUTCOME, `done` or `failed`. */
   status: TicketStatus
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
   /** The lap the pass ran on: the lap before the one reading this. */
   lap: number
   /** `~/.runcastle/reviews/<ticketId>/` — screenshots and `walkthrough.webm`. */
@@ -134,6 +137,9 @@ function previousLapReviewEvidence(ctx: AppCtx, featureId: string): ReviewEviden
         ticketId: ticket.id,
         seq: ticket.seq,
         status: ticket.status,
+        reviewMode: ticket.reviewMode ?? null,
+        reviewVerdict: ticket.reviewVerdict ?? null,
+        reviewVerdictReason: ticket.reviewVerdictReason ?? null,
         lap: ticket.lap,
         dir,
         digestPath: join(dir, 'DIGEST.md'),
@@ -192,7 +198,10 @@ export function reviewEvidenceSentence(carried: CarriedWork | undefined): string
     .map(
       (one) =>
         `ticket ${one.seq} (pass ${one.status}) wrote ${one.digestPath}, and its screenshots ` +
-        `and walkthrough.webm sit beside it in ${one.dir}`,
+        `and walkthrough.webm sit beside it in ${one.dir}` +
+        (one.reviewVerdict === 'unverified'
+          ? `; nothing verified: ${one.reviewVerdictReason ?? 'no reason recorded'}`
+          : ''),
     )
     .join('; ')
   return (
