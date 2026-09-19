@@ -153,7 +153,7 @@ describe('launchSession — lap briefings', () => {
   /** The `claude` argv a `spawn:false` launch rendered, and its prompt artifact. */
   async function launchAndRead(
     featureId: string,
-    input: { kind: 'chat' | 'ideation'; kickoffLine?: string },
+    input: { kind: 'chat'; kickoffLine?: string },
   ): Promise<{ sessionId: string; command: string; prompt: string }> {
     const { sessionId } = await launchSession(ctx, { featureId, ...input }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
@@ -185,7 +185,9 @@ describe('launchSession — lap briefings', () => {
     const { command } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(command).toContain('--resume cc-prior')
-    expect(command).not.toContain(KICKOFF_LINES.revisit)
+    // it carries the fresh state header (decision 13) and no lap briefing
+    expect(command).toContain('Feature state: building')
+    expect(command).not.toContain('REVIEW ITERATION')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
   })
@@ -212,9 +214,9 @@ describe('launchSession — lap briefings', () => {
     expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 
-  it('a lap-1 grill keeps the generic ideate line', () => {
+  it('a lap-1 grill keeps the chat’s own opening line', () => {
     expect(planKickoff({ kind: 'chat', lap: 1 }).line).toBeUndefined()
-    expect(KICKOFF_LINES.ideation).toContain('/runcastle:ideate')
+    expect(KICKOFF_LINES.chat).not.toContain('REVIEW ITERATION')
   })
 
   /**

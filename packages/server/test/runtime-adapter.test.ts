@@ -285,6 +285,6 @@ describe('runtime dispatch at launch', () => {
     expect(row.model).toBeUndefined()
     expect(row.runtime).toBeUndefined()
     // ...and a runtime nobody recorded reads as the one every session used to run
-    expect(kickoffLineFor(row.kind, undefined, row.runtime)).toBe(KICKOFF_LINES.ideation)
+    expect(kickoffLineFor(row.kind, undefined, row.runtime)).toBe(KICKOFF_LINES.chat)
   })
 })
