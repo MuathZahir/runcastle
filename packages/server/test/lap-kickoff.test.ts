@@ -165,19 +165,19 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     }
   }
 
-  it('omits --resume when the launch carries a kickoff override', async () => {
+  it('delivers a chat kickoff override into the resumed conversation', async () => {
     const { featureId } = await seedResumable('with-briefing', { phase: 'planning', lap: 2 })
     const { command } = await launchAndRead(featureId, {
       kind: 'chat',
       kickoffLine: lapKickoff(2),
     })
 
-    expect(command).not.toContain('--resume')
-    expect(command).not.toContain('cc-prior')
+    expect(command).toContain('--resume cc-prior')
     expect(command).toContain(lapKickoff(2))
+    expect(command).toContain('Feature state:')
     const events = listAfter(ctx, featureId, 0)
-    expect(events.map((e) => e.type)).not.toContain('session.resumed')
-    expect(events.map((e) => e.type)).toContain('session.resume_skipped')
+    expect(events.map((e) => e.type)).toContain('session.resumed')
+    expect(events.map((e) => e.type)).not.toContain('session.resume_skipped')
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
@@ -207,7 +207,8 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     const { featureId } = await seedResumable('lap-grill', { phase: 'planning', lap: 2 })
     const { sessionId, command } = await launchAndRead(featureId, { kind: 'chat' })
 
-    expect(command).not.toContain('--resume')
+    expect(command).toContain('--resume cc-prior')
+    expect(command).toContain('Feature state:')
     expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 
@@ -230,8 +231,8 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     expect(prompt).toContain('This is lap 2')
     expect(prompt).toMatch(/DO call `complete_phase`/)
     expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
-    // fresh, so the dead lap's transcript cannot argue with the new briefing
-    expect(command).not.toContain('--resume')
+    expect(command).toContain('--resume cc-prior')
+    expect(command).toContain('Feature state:')
     expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 })

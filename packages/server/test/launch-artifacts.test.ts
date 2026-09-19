@@ -662,7 +662,7 @@ describe('buildClaudeArgs', () => {
     expect(args[at + 1]).toBe('claude-sonnet-5')
   })
 
-  it('puts a fresh kickoff last verbatim and never adds one to a resume', () => {
+  it('puts a kickoff last verbatim for fresh and resumed launches', () => {
     const base = {
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
@@ -673,9 +673,7 @@ describe('buildClaudeArgs', () => {
     const kickoffLine = `Invoke "the skill" and preserve the user's words.`
     const args = buildClaudeArgs({ ...base, kickoffLine })
     expect(args.at(-1)).toBe(kickoffLine)
-    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine })).not.toContain(
-      kickoffLine,
-    )
+    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine }).at(-1)).toBe(kickoffLine)
     // Verbatim in the array is only half the claim: the quotes and the
     // apostrophe have to survive the Windows command line too, spawned
     // directly...
@@ -711,10 +709,10 @@ describe('buildCodexArgs', () => {
     expect(windowsSpawnRoundTrip('C:\\npm\\codex.cmd', args).at(-1)).toBe(kickoffLine)
   })
 
-  it('resumes without a positional prompt', () => {
-    const kickoffLine = 'must not be sent'
+  it('can deliver a positional prompt into a resumed conversation', () => {
+    const kickoffLine = 'fresh state briefing'
     expect(buildCodexArgs({ resumeSessionId: 'thread-42', kickoffLine })).toEqual([
-      'resume', 'thread-42', '--dangerously-bypass-hook-trust',
+      'resume', 'thread-42', '--dangerously-bypass-hook-trust', kickoffLine,
     ])
   })
 })

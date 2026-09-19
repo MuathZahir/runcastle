@@ -434,7 +434,10 @@ export async function launchSession(
     }),
     carried,
   })
-  if (input.kind === 'chat' && !plan.line) plan.line = chatKickoffHeader(ctx, feature, runtime.id)
+  if (input.kind === 'chat') {
+    const header = chatKickoffHeader(ctx, feature, runtime.id)
+    plan.line = plan.line ? `${plan.line} ${header}` : header
+  }
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
@@ -516,7 +519,7 @@ export async function launchSession(
     }
   }
 
-  if (plan.explicit && resumeSessionId) {
+  if (input.kind !== 'chat' && plan.explicit && resumeSessionId) {
     emit(ctx, feature.id, {
       type: 'session.resume_skipped',
       message: `starting the ${input.kind} session fresh — its explicit briefing replaces the prior conversation`,
@@ -542,7 +545,7 @@ export async function launchSession(
     })
   }
 
-  const kickoffLine = resumeSessionId
+  const kickoffLine = resumeSessionId && input.kind !== 'chat'
     ? undefined
     : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
