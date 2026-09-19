@@ -56,6 +56,7 @@ import {
   type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+import { runHeadline } from '../src/lib/feature-ui/run'
 import { full, listItem, wp } from './fixtures'
 
 /**
@@ -64,6 +65,17 @@ import { full, listItem, wp } from './fixtures'
  * because enabled is not the same as recommended.
  */
 const MERGE_ACTION: NextAction = { label: 'Merge & ship', kind: 'merge' }
+
+describe('run headline review verdict', () => {
+  it('does not present an unverified successful review as clean success', () => {
+    expect(
+      runHeadline(
+        [{ seq: 3, status: 'done', kind: 'review', reviewVerdict: 'unverified' }],
+        { status: 'succeeded' },
+      ),
+    ).toBe('Succeeded-unverified · nothing verified')
+  })
+})
 
 /**
  * The one Chat door, on every bar in all four states (one-chat-per-feature
@@ -748,6 +760,34 @@ describe('nextStep at review', () => {
     expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
     expect(labels(ns.secondary)).toEqual(['Chat', 'Start test drive', 'Iterate'])
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'iterate' })
+  })
+
+  /**
+   * review-as-a-lap-trail decision 5: a lap whose review verified nothing is
+   * the one state where "checks are in, merge to ship" is a lie. Merge stops
+   * being the primary — and nothing takes its place on the bar, because the
+   * action that answers this state is the Agentic review the page's own banner
+   * leads with. Nothing is blocked: Merge is still one click away.
+   */
+  it('takes Merge off the primary when this lap’s review verified nothing', () => {
+    const ns = nextStep(reviewFull({}), {
+      driving: false,
+      unverifiedReview: { reason: 'no browser could be attached' },
+    })
+    expect(ns.primary).toBeUndefined()
+    expect(ns.title).toBe('Nothing was verified this lap')
+    expect(ns.desc).toContain('no browser could be attached')
+    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+  })
+
+  /** Open work already leads with Iterate — the loud line is the page's job. */
+  it('leaves the ladder above it alone when work is open', () => {
+    const ns = nextStep(reviewFull({}), {
+      driving: false,
+      openDefects: 2,
+      unverifiedReview: { reason: null },
+    })
+    expect(ns.primary?.kind).toBe('iterate')
   })
 
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {

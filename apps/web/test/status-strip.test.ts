@@ -118,6 +118,44 @@ describe('StatusStrip', () => {
   })
 
   /**
+   * The Agentic review control (review-as-a-lap-trail decision 6), beside the
+   * drive the human would take themselves.
+   */
+  describe('the Agentic review control', () => {
+    it('sits at the end of the line, beside Test drive', () => {
+      const html = render({
+        testDrive: { onStart: () => undefined },
+        agenticReview: { onStart: () => undefined },
+      })
+      expect(html).toContain('>Test drive<')
+      expect(html).toContain('>Agentic review<')
+      expect(html.indexOf('>Test drive<')).toBeLessThan(html.indexOf('>Agentic review<'))
+    })
+
+    /** A drive at the wheel takes Test drive away; asking for a review is
+     *  never about what the drive is doing. */
+    it('is offered with no Test drive control beside it', () => {
+      const html = render({ agenticReview: { onStart: () => undefined } })
+      expect(html).toContain('>Agentic review<')
+      expect(html).not.toContain('>Test drive<')
+    })
+
+    /** One burn at a time is the server's rule, so the button says so rather
+     *  than dead-ending on the click. */
+    it('is disabled with its reason while a burn is running', () => {
+      const html = render({
+        agenticReview: { onStart: () => undefined, blocked: 'a burn is running' },
+      })
+      expect(html).toContain('title="a burn is running"')
+      expect(html).toContain('disabled')
+    })
+
+    it('is absent where the page acts on nothing at all', () => {
+      expect(render({ shipped: true, readonly: true })).not.toContain('Agentic review')
+    })
+  })
+
+  /**
    * The shipped record's own strip (decision 33a). Same chips, one page later:
    * the lap is history rather than a position, the drive is a statement rather
    * than an instruction, and there is no open-work band below to anchor into.

@@ -435,6 +435,55 @@ describe('ensureTalkWorktree', () => {
     expect((await g.revparse(['feature/on-dev'])).trim()).toBe(developTip)
   })
 
+  /**
+   * Seen in the wild: a review session made itself a scratch worktree with the
+   * feature branch checked out and never removed it, so the next launch found
+   * the talk worktree detached AND the branch held elsewhere. The old fall-through
+   * to `worktree add` could only report `fatal: '<path>' already exists` about the
+   * talk worktree — the one thing that was not the problem.
+   */
+  it('detaches a stray worktree holding the branch and takes it back', async () => {
+    const talk = await ensureTalkWorktree(project, feature)
+    expect(await detachWorktree(talk)).toBe(true)
+    const stray = join(mkTmp('rc-stray-'), 'scratch')
+    await simpleGit(project.repoPath).raw(['worktree', 'add', stray, 'feature/wt'])
+
+    expect(await ensureTalkWorktree(project, feature)).toBe(talk)
+
+    expect(await currentBranch(simpleGit(talk))).toBe('feature/wt')
+    // the stray keeps its files, parked on the same commit it already had
+    expect(await currentBranch(simpleGit(stray))).toBe('HEAD')
+    expect(existsSync(join(stray, 'README.md'))).toBe(true)
+  })
+
+  it('names the main checkout when a test drive holds the branch, and detaches nothing', async () => {
+    const talk = await ensureTalkWorktree(project, feature)
+    expect(await detachWorktree(talk)).toBe(true)
+    const g = simpleGit(project.repoPath)
+    await g.checkout('feature/wt')
+
+    await expect(ensureTalkWorktree(project, feature)).rejects.toThrow(
+      `feature/wt is checked out at ${project.repoPath}; end the test drive or remove that worktree`,
+    )
+
+    // the drive is untouched; the talk worktree is left as it was found
+    expect(await currentBranch(g)).toBe('feature/wt')
+    expect(await currentBranch(simpleGit(talk))).toBe('HEAD')
+  })
+
+  it('still re-adds a path git no longer tracks as a worktree', async () => {
+    const talk = await ensureTalkWorktree(project, feature)
+    // the checkout survives while its `.git/worktrees/<id>` entry goes missing:
+    // unregistered, so the reclaim inside `addWorktree` owns it, not the
+    // branch-holder repair above
+    rmTemp(join(project.repoPath, '.git', 'worktrees', feature.slug))
+
+    expect(await ensureTalkWorktree(project, feature)).toBe(talk)
+
+    expect(await currentBranch(simpleGit(talk))).toBe('feature/wt')
+    expect(existsSync(join(project.repoPath, '.git', 'worktrees', feature.slug))).toBe(true)
+  })
+
   it('recovers from a stale worktree (dir removed) via prune + retry', async () => {
     const first = await ensureTalkWorktree(project, feature)
     // Delete the worktree dir out from under git: registry now disagrees.

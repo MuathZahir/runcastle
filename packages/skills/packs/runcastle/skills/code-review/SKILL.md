@@ -44,6 +44,15 @@ git diff <base>...HEAD                     # the diff both axes read
 
 Three-dot excludes uncommitted work. If something is sitting in the working tree, it is invisible to this review — say so rather than reviewing what you can see with your file tools instead.
 
+**Read the branch; never check it out, and never leave a worktree holding it.** The commands above reach any commit from wherever you already are — three-dot diff for the change, `git show <ref>:<path>` for a whole file at that ref — so there is nothing to switch to and nothing to clone. Do not `git checkout` the branch under review, and do not conjure a scratch worktree to browse it in. If you truly cannot answer a question without the files on disk, there is exactly one acceptable shape:
+
+```
+git worktree add --detach <path> <sha>   # DETACHED — never `git worktree add <path> <branch>`
+git worktree remove <path>               # before the session finishes, on every path out
+```
+
+`git worktree add <path> <branch>` **checks that branch out**, which makes your scratch directory the branch's one holder. runcastle's own talk worktree has to hold `feature/<slug>` to open the next session on it, so a scratch directory left sitting on that branch is something the next launch has to fight its way past. A review session that left `<repo>/.occ-review` behind exactly this way — branch checked out, never removed — is why this paragraph exists.
+
 ## 2. Find the spec
 
 runcastle features always have one, so there is no "no spec available" path to reach for first:
@@ -125,6 +134,7 @@ Either way: **finding problems is a successful review.** The report is the deliv
 ## Do NOT
 
 - **Never edit the diff you are reviewing.** No fixes, no commits, no "while I was in there".
+- **Never leave a scratch worktree holding the branch.** Detached at a sha, removed before you finish, or never created at all — see §1.
 - **Never merge or re-rank the two axes**, and never pick an overall winner.
 - **Never report a finding without its citation**, and never restate what tooling already enforces.
 - **Never let a sub-agent spawn more agents.** The guard line goes in both briefs, every time.

@@ -112,21 +112,22 @@ const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}
     createElement(ReviewDriveDeniedCard, {
       denial: DENIAL,
       readonly: false,
+      primary: true,
       busy: false,
       refusal: null,
-      onRetry: () => undefined,
+      onReview: () => undefined,
       onDismiss: () => undefined,
       ...props,
     }),
   )
 
 describe('ReviewDriveDeniedCard', () => {
-  it('says the drive was refused, names the files, and offers the retry', () => {
+  it('says the drive was refused, names the files, and offers another pass', () => {
     const html = render()
     expect(html).toContain('Review couldn’t drive')
     expect(html).toContain('a.ts')
     expect(html).toContain('b.ts')
-    expect(html).toContain('Retry review')
+    expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
   })
 
@@ -167,16 +168,34 @@ describe('ReviewDriveDeniedCard', () => {
     expect(render()).not.toContain('still dirty')
   })
 
-  it('holds the retry shut while one is starting', () => {
+  it('holds the mint shut while one is starting', () => {
     const html = render({ busy: true })
     expect(html).toContain('disabled')
-    expect(html).toContain('Retrying…')
+    expect(html).toContain('Starting…')
   })
 
-  /** No `done` review ticket to re-burn: say so rather than offer a dead button. */
-  it('drops the retry button when there is no review to re-burn', () => {
-    const html = render({ onRetry: null })
+  /** Decision 7: the denied pass stays in the trail, and the action mints a
+   *  fresh one — so the banner never claims to resume the reviewer it refused. */
+  it('offers a fresh pass rather than a retry of the refused one', () => {
+    const html = render()
+    expect(html).toContain('a fresh pass is minted for this lap')
     expect(html).not.toContain('Retry review')
+  })
+
+  /** The mint needs no ticket, so the action is there whatever this lap ran —
+   *  the old retry went missing on a lap that had emitted no review ticket. */
+  it('offers the action whatever review tickets this lap emitted', () => {
+    const html = render()
+    expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
+  })
+
+  /** STYLE.md's one-solid-button rule: the mint keeps its action and loses only
+   *  its weight when another banner on the page is carrying the same one. */
+  it('steps its mint down to ghost when it is not the page’s primary', () => {
+    const ghost = render({ primary: false })
+    expect(ghost).toContain('Agentic review')
+    expect(ghost).not.toContain('bg-accent')
+    expect(render()).toContain('bg-accent')
   })
 })

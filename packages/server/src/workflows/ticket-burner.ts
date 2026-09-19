@@ -343,6 +343,9 @@ export type TicketOutcome =
        * harvest is best-effort, so the ticket is done either way.
        */
       readonly digest?: string
+      readonly reviewMode?: 'drive' | 'gates'
+      readonly reviewVerdict?: 'verified' | 'unverified'
+      readonly reviewVerdictReason?: string
     }
   | {
       readonly status: 'failed'
@@ -2855,6 +2858,7 @@ export interface HarvestedDigest {
   readonly seq: number
   readonly title: string
   readonly digest: string
+  readonly reviewVerdict?: 'verified' | 'unverified'
 }
 
 /**
@@ -3136,8 +3140,14 @@ export async function burnTickets(
   }
 
   /** Keep a ticket's own account of its work for the run aggregate. */
-  const harvestDigest = (t: Ticket, digest: string | undefined): void => {
-    if (digest) digests.push({ seq: t.seq, title: t.title, digest })
+  const harvestDigest = (
+    t: Ticket,
+    digest: string | undefined,
+    reviewVerdict?: 'verified' | 'unverified',
+  ): void => {
+    if (digest) {
+      digests.push({ seq: t.seq, title: t.title, digest, ...(reviewVerdict ? { reviewVerdict } : {}) })
+    }
   }
 
   const failTicket = (
@@ -3239,6 +3249,9 @@ export async function burnTickets(
         status: 'done',
         commits: outcome.commits,
         digest: outcome.digest,
+        reviewMode: outcome.reviewMode,
+        reviewVerdict: outcome.reviewVerdict,
+        reviewVerdictReason: outcome.reviewVerdictReason,
         ...(reviewedCommit ? { reviewedCommit } : {}),
       })
       mirrorFinding(t, 'fixed')
@@ -3257,7 +3270,7 @@ export async function burnTickets(
           ticketId: t.id,
         })
       }
-      harvestDigest(t, outcome.digest)
+      harvestDigest(t, outcome.digest, outcome.reviewVerdict)
     } else {
       failTicket(seq, outcome.error, outcome.event, outcome.digest)
       ctx.emitEvent({
@@ -3400,13 +3413,21 @@ export async function burnTickets(
  * header naming the ticket it came from. Strictly mechanical — the server makes
  * no model calls (decision 5) — and null when the run harvested nothing, so a
  * run without digests leaves the column alone rather than storing an empty doc.
+ *
+ * A run whose review pass verified nothing is titled `succeeded-unverified`, so
+ * the aggregate says what the run was the moment it is opened. The run row's
+ * status stays `succeeded`: nothing about scheduling changes, only what the run
+ * is allowed to claim for itself.
  */
 export function composeRunDigest(entries: readonly HarvestedDigest[]): string | null {
   if (entries.length === 0) return null
-  return [...entries]
+  const body = [...entries]
     .sort((a, b) => a.seq - b.seq)
     .map((e) => `## ticket ${e.seq} — ${e.title}\n\n${e.digest.trim()}`)
     .join('\n\n')
+  return entries.some((entry) => entry.reviewVerdict === 'unverified')
+    ? `# succeeded-unverified\n\n${body}`
+    : body
 }
 
 /**
@@ -3748,6 +3769,7 @@ function buildAgentEnv(
   onHost: boolean,
   token: string | undefined,
   runtime: AgentRuntime,
+  extraEnv?: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const env: Record<string, string> = {}
   if (onHost) {
@@ -3756,6 +3778,7 @@ function buildAgentEnv(
     }
   }
   if (token) env[RUNTIME_AUTH_KEY[runtime]] = token
+  if (onHost && extraEnv) Object.assign(env, extraEnv)
   return env
 }
 
@@ -3781,6 +3804,8 @@ export interface BurnAgentOptions {
    * the host env and the host permission mode from a docker-configured burn too.
    */
   onHost?: boolean
+  /** Environment owned by a host-only lane, such as a review browser session. */
+  hostEnv?: Readonly<Record<string, string>>
   /**
    * Give the agent the runcastle MCP server. sandcastle 0.12.0 has no MCP field
    * on either agent's options, so it rides the print command — the same seam the
@@ -3837,7 +3862,7 @@ export function buildBurnAgent(
   options: BurnAgentOptions = {},
 ): AgentProvider {
   const onHost = options.onHost ?? config.sandbox === 'noSandbox'
-  const env = buildAgentEnv(onHost, token, model.runtime)
+  const env = buildAgentEnv(onHost, token, model.runtime, options.hostEnv)
   const agent =
     model.runtime === 'codex'
       ? codex(model.id, { env } satisfies CodexOptions)

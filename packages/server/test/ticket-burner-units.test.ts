@@ -2030,6 +2030,22 @@ describe('composeRunDigest — the run-level aggregate (mechanical, no LLM)', ()
       ]),
     ).toBe('## ticket 7 — Only thing\n\nDid it.\n\nSurprise: the column existed.')
   })
+
+  it('marks an aggregate whose review verified nothing as succeeded-unverified', () => {
+    expect(
+      composeRunDigest([
+        {
+          seq: 3,
+          title: 'Review it',
+          digest: 'Lap 3 · drive mode · DRIVE FAILED · nothing verified',
+          reviewVerdict: 'unverified',
+        },
+      ]),
+    ).toBe(
+      '# succeeded-unverified\n\n' +
+      '## ticket 3 — Review it\n\nLap 3 · drive mode · DRIVE FAILED · nothing verified',
+    )
+  })
 })
 
 describe('landWithResolve — conflicts are resolved in-loop, not handed to the human', () => {

@@ -255,6 +255,26 @@ export function resolveReview(input: ResolverInput): NextStep {
     }
   }
 
+  // A lap whose review verified nothing is the one state where the all-clear
+  // below would be a lie (review-as-a-lap-trail decision 5): the run succeeded,
+  // no defect is open, and nothing was checked. Nothing is blocked and Merge is
+  // still one click away — what changes is that it is no longer THE click, and
+  // the bar carries no primary at all here, because the one action that answers
+  // this state is the Agentic review the page's own banner leads with.
+  if (ctx.unverifiedReview) {
+    const reason = ctx.unverifiedReview.reason?.trim()
+    return {
+      kick: 'NEXT STEP',
+      title: 'Nothing was verified this lap',
+      desc:
+        `The review pass produced no evidence${reason ? ` — ${reason}` : ''}. ` +
+        'Run another agentic review from the review page, or drive the branch yourself, before you ship.',
+      secondary: [{ label: 'Merge & ship', kind: 'merge' }, ...burnAction, testDriveAction, ...iterate],
+      busy: false,
+      counts,
+    }
+  }
+
   // "Checks are in" is an all-clear, so it needs checks to have run: the audit
   // found it over a feature with no run recorded at all (findings F23), which
   // is the state a feature born with its tickets, or an overridden gate, lands in.

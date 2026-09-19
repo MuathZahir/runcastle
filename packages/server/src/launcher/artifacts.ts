@@ -431,6 +431,9 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
           ...evidence.flatMap((one) => [
             `- Ticket ${one.seq}'s review pass ended \`${one.status}\` — that is the review`,
             '  outcome. It left:',
+            ...(one.reviewVerdict === 'unverified'
+              ? [`  - **Nothing verified:** ${one.reviewVerdictReason ?? 'no reason recorded'}`]
+              : []),
             `  - \`${one.digestPath}\` — the review agent's own account of what it found.`,
             `  - \`${one.dir}\` — the screenshots and \`walkthrough.webm\`, beside it.`,
           ]),

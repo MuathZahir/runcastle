@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   Feature,
   Project,
@@ -41,9 +41,14 @@ import {
   buildDriveAvailability,
   buildDriveInstructions,
   buildGateNotes,
+  composeReviewDigest,
+  driveWithheldReason,
+  executableIsHealthy,
   executeReviewTicket,
+  FFMPEG_BIN,
   findOnPath,
   inheritedReviewMode,
+  resolveReviewDeclaration,
   renderReviewPrompt,
   reviewTemplatePath,
   shouldStopAfterDigest,
@@ -581,6 +586,10 @@ describe('what the review agent is handed', () => {
       { id: 'claude-opus-5', runtime: 'claude-code' },
       {
         onHost: true,
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
         mcp: {
           path: '/tmp/reviews/tkt_9/mcp.json',
           config: {
@@ -604,7 +613,33 @@ describe('what the review agent is handed', () => {
     // The host build's markers: the host env passes through, and permissions
     // are bypassed so the agent can actually call its tools.
     expect(agent.env.PATH).toBe(process.env.PATH)
+    expect(agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_9')
+    expect(agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
     expect(command).toContain('--permission-mode bypassPermissions')
+  })
+
+  it('does not put review browser settings in implementation or container agents', () => {
+    const hostImplementation = buildBurnAgent(
+      { ...config, sandbox: 'noSandbox' },
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+    )
+    const container = buildBurnAgent(
+      config,
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+      {
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
+      },
+    )
+
+    expect(hostImplementation.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(hostImplementation.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
   })
 
   it('gets a prompt with every placeholder filled', () => {
@@ -775,8 +810,8 @@ describe('what the review agent is handed', () => {
 
     // The whole point of the split: the reviews that did exactly one delivered,
     // and the ones that attempted both ran long or died with nothing.
-    expect(template).toContain('**One mode, never both.**')
-    expect(template).toContain('**Never run both modes.**')
+    expect(template).toContain('**One mode, never both — except the explicit drive-failure fallback below.**')
+    expect(template).toContain('**Never run both modes, except for the explicit drive-failure fallback above.**')
     // The choice is step 1, before any tool call — not something discovered
     // partway through a drive that has already switched the human's checkout.
     expect(template).toMatch(/### 1\. Choose your mode — before anything else/)
@@ -800,20 +835,41 @@ describe('what the review agent is handed', () => {
     expect(template).not.toContain('A code review — always')
     expect(template).not.toContain('Never skip the code review.')
   })
+
+  it('mandates the declaration and the complete Gates fallback after an attach failure', () => {
+    const reviewTemplate = readFileSync(reviewTemplatePath(), 'utf8')
+    const verificationTemplate = readFileSync(
+      join(dirname(reviewTemplatePath()), 'verify-fixes.md'),
+      'utf8',
+    )
+
+    for (const template of [reviewTemplate, verificationTemplate]) {
+      expect(template).toContain('REVIEW-MODE: drive|gates')
+      expect(template).toContain('REVIEW-VERDICT: verified|unverified')
+      expect(template).toContain('REVIEW-REASON: <one line; required when unverified>')
+      expect(template).toMatch(/dev URL answers but .*browser attach/i)
+      expect(template).toMatch(/Gates mode (?:\*\*)?in full/)
+    }
+    // review-findings.ts guards minting with `!verification`, so a verification
+    // defect lands open with `openReason: 'verification'` and no fix ticket.
+    expect(verificationTemplate).toMatch(/never mint fix tickets/)
+    expect(verificationTemplate).not.toMatch(/Confirmed defects mint fix tickets/)
+    expect(verificationTemplate).toMatch(/carry\/link\/close rules/)
+  })
 })
 
 describe('the mode the review is handed', () => {
-  it('inherits Drive only when the verified pass left a recording on disk', () => {
-    expect(inheritedReviewMode('review_1', () => true)).toBe('drive')
-    expect(inheritedReviewMode('review_1', () => false)).toBe('gates')
-    expect(inheritedReviewMode(undefined, () => true)).toBe('gates')
+  it('inherits the verified pass recorded mode', () => {
+    expect(inheritedReviewMode('drive')).toBe('drive')
+    expect(inheritedReviewMode('gates')).toBe('gates')
+    expect(inheritedReviewMode(undefined)).toBe('gates')
   })
   it('states both inherited verification modes without offering a choice', () => {
-    expect(buildDriveAvailability(undefined, undefined, 'drive')).toContain('Inherited mode: **Drive**')
+    expect(buildDriveAvailability('/browser', 'bun dev', 'drive', true, '/ffmpeg')).toContain('Inherited mode: **Drive**')
     expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
   })
   it('opens Drive mode when the browser and a dev command are both there', () => {
-    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev')
+    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, true, '/usr/bin/ffmpeg')
 
     expect(block).toContain('A drive **is** available')
     expect(block).toContain('take it if, and only if')
@@ -837,6 +893,42 @@ describe('the mode the review is handed', () => {
     expect(neither).toContain('no dev command configured')
   })
 
+  it('requires a healthy browser and ffmpeg', () => {
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, false, '/ffmpeg')).toContain('failed its health check')
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain('ffmpeg')
+    const fallback = buildDriveAvailability('/browser', 'bun dev', 'drive', false, '/ffmpeg')
+    expect(fallback).toContain('run Gates mode')
+    expect(fallback).not.toContain('Inherited mode: **Drive**')
+  })
+
+  it('names why the drive was withheld, as a fact the pass can record', () => {
+    // Decision 8: the missing piece is not only prompt prose — the same
+    // sentence lands in the pass's outcome, so a lap that ran Gates because
+    // ffmpeg was missing says so on the trail instead of reading as a plain
+    // Gates review.
+    expect(driveWithheldReason('/browser', 'bun dev', true, '/ffmpeg')).toBeUndefined()
+
+    const noFfmpeg = driveWithheldReason('/browser', 'bun dev', true, null)
+    expect(noFfmpeg).toContain(FFMPEG_BIN)
+    expect(noFfmpeg).toContain('Drive was unavailable')
+
+    // Probed absence, as `findOnPath` reports it — undefined, not null.
+    expect(driveWithheldReason('/browser', 'bun dev', true, undefined)).toContain(FFMPEG_BIN)
+
+    expect(driveWithheldReason('/browser', 'bun dev', false, '/ffmpeg')).toContain('failed its health check')
+    expect(driveWithheldReason(undefined, undefined, true, undefined)).toContain('no dev command configured')
+
+    // One list, one wording: the availability block quotes the same pieces.
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain(
+      `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`,
+    )
+  })
+
+  it('health-checks the browser executable rather than trusting its PATH entry', () => {
+    expect(executableIsHealthy(process.execPath)).toBe(true)
+    expect(executableIsHealthy(undefined)).toBe(false)
+  })
+
   it('hands Gates mode the project commands, or tells it to run none', () => {
     const configured = buildGateNotes({
       verifyCommands: 'bun run typecheck\nbun run test',
@@ -853,6 +945,104 @@ describe('the mode the review is handed', () => {
     expect(bare).toContain('no verify commands configured')
     expect(bare).toContain('Do not go hunting for them')
     expect(bare).toContain('may well predate this lap')
+  })
+})
+
+describe('review declaration resolution', () => {
+  const digest = (mode: string, verdict: string, reason = '') =>
+    `account\n\nREVIEW-MODE: ${mode}\nREVIEW-VERDICT: ${verdict}\nREVIEW-REASON: ${reason}`
+
+  it('accepts verified Drive only with its recording', () => {
+    expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: true, offeredMode: 'drive' })).toEqual({ reviewMode: 'drive', reviewVerdict: 'verified', reason: '' })
+    expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: false, offeredMode: 'drive' })).toEqual({ reviewMode: 'drive', reviewVerdict: 'unverified', reason: 'Drive was declared verified but no walkthrough recording was produced.' })
+  })
+
+  it('accepts Gates declarations and preserves unverified reasons', () => {
+    expect(resolveReviewDeclaration(digest('gates', 'verified'), { webmExists: false, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'verified', reason: '' })
+    expect(resolveReviewDeclaration(digest('gates', 'unverified', 'gates unavailable'), { webmExists: true, offeredMode: 'gates' })).toEqual({ reviewMode: 'gates', reviewVerdict: 'unverified', reason: 'gates unavailable' })
+  })
+
+  it('records a completed Gates fallback as verified with the Drive failure reason', () => {
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified', 'Drive failed: browser could not attach.'), {
+        webmExists: false,
+        offeredMode: 'gates',
+      }),
+    ).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: 'Drive failed: browser could not attach.',
+    })
+  })
+
+  it('falls back to the server-known reason the drive was withheld', () => {
+    // The template only asks for a REVIEW-REASON when the pass is unverified,
+    // so the ordinary ffmpeg-less lap declares gates/verified with an empty
+    // one — and the reason the host already knew used to be dropped here.
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified'), {
+        webmExists: false,
+        offeredMode: 'gates',
+        driveWithheldReason: 'Drive was unavailable: `ffmpeg` is not on this machine\'s PATH.',
+      }),
+    ).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: 'Drive was unavailable: `ffmpeg` is not on this machine\'s PATH.',
+    })
+
+    // The reviewer's own words outrank it — it fills a gap, it never overwrites.
+    expect(
+      resolveReviewDeclaration(digest('gates', 'verified', 'Drive failed: browser could not attach.'), {
+        webmExists: false,
+        offeredMode: 'gates',
+        driveWithheldReason: 'Drive was unavailable: `ffmpeg` is missing.',
+      }).reason,
+    ).toBe('Drive failed: browser could not attach.')
+  })
+
+  it('defaults missing and malformed declarations to unverified', () => {
+    const expected = { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
+    expect(resolveReviewDeclaration(undefined, { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
+    expect(resolveReviewDeclaration('REVIEW-MODE: maybe', { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
+  })
+
+  it('puts the server-owned unverified headline above the agent prose', () => {
+    expect(
+      composeReviewDigest(3, {
+        reviewMode: 'drive',
+        reviewVerdict: 'unverified',
+        reason: 'The browser could not attach.',
+      }, 'Agent prose that used to become the headline.'),
+    ).toBe(
+      'Lap 3 · drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
+      'Agent prose that used to become the headline.',
+    )
+  })
+
+  // The case that produced the post-mortem: nothing declared, so there is no
+  // mode to name. The line must not invent one to keep its shape.
+  it('names no mode in the headline when the pass declared none', () => {
+    expect(
+      composeReviewDigest(
+        2,
+        { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' },
+        undefined,
+      ),
+    ).toBe(
+      'Lap 2 · mode unrecorded · NO DECLARATION · nothing verified — ' +
+      'Review declaration missing or unparseable.',
+    )
+  })
+
+  it('leaves a verified pass’s digest exactly as the agent wrote it', () => {
+    expect(
+      composeReviewDigest(
+        1,
+        { reviewMode: 'gates', reviewVerdict: 'verified', reason: '' },
+        'Every gate ran green.',
+      ),
+    ).toBe('Every gate ran green.')
   })
 })
 
@@ -933,6 +1123,89 @@ describe('the base the review diffs against', () => {
   })
 })
 
+describe('review recorder teardown stays inside the terminal-outcome gate', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rc-recorder-teardown-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+  })
+
+  afterEach(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  function reviewDeps(overrides: Partial<Parameters<typeof executeReviewTicket>[2]> = {}) {
+    return {
+      config: { serverPort: 4512, sandbox: 'docker', burnMaxIterations: 1 } as RuncastleConfig,
+      token: undefined,
+      model: { id: 'claude-opus-5', runtime: 'claude-code' } as const,
+      docsDigest: '',
+      lapDigests: [],
+      releaseDrive: async () => {},
+      ...overrides,
+    }
+  }
+
+  it('awaits recorder confirmation before releasing the drive or returning', async () => {
+    const order: string[] = []
+    let finishReap: (() => void) | undefined
+    let reapCalls = 0
+    const outcome = executeReviewTicket(makeCtx([review(3)]), review(3), reviewDeps({
+      runAgent: async (options) => {
+        expect(options.agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_3')
+        expect(options.agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
+        order.push('agent')
+      },
+      recorderReap: async () => {
+        reapCalls += 1
+        if (reapCalls === 1) {
+          order.push('pre-wipe-reap')
+          return { confirmed: true }
+        }
+        order.push('reap-start')
+        await new Promise<void>((resolve) => { finishReap = resolve })
+        order.push('reap-end')
+        return { confirmed: true }
+      },
+      releaseDrive: async () => { order.push('drive-release') },
+    }))
+
+    for (let i = 0; i < 20 && !finishReap; i++) await Promise.resolve()
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start'])
+    let returned = false
+    void outcome.then(() => { returned = true })
+    await Promise.resolve()
+    expect(returned).toBe(false)
+
+    finishReap?.()
+    expect(await outcome).toMatchObject({ status: 'done' })
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start', 'reap-end', 'drive-release'])
+  })
+
+  it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {
+    const failed = await executeReviewTicket(makeCtx([review(4)]), review(4), reviewDeps({
+      runAgent: async () => { throw new Error('agent crashed') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))
+    expect(failed).toMatchObject({ status: 'failed' })
+    expect(failed.error).toContain('recorder may still be running')
+    expect(failed.digest).toContain('recorder may still be running')
+
+    const controller = new AbortController()
+    controller.abort(new Error('run cancelled'))
+    const cancelledCtx = { ...makeCtx([review(5)]), signal: controller.signal }
+    await expect(executeReviewTicket(cancelledCtx, review(5), reviewDeps({
+      runAgent: async () => { throw new Error('run cancelled') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))).rejects.toThrow('recorder may still be running')
+  })
+})
+
 describe('the agent-browser probe', () => {
   let dir: string
 
@@ -949,6 +1222,32 @@ describe('the agent-browser probe', () => {
     expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBe(join(dir, 'agent-browser'))
     expect(findOnPath('nope-not-here', { PATH: dir }, 'linux')).toBeUndefined()
     expect(findOnPath('agent-browser', { PATH: '' }, 'linux')).toBeUndefined()
+  })
+
+  /**
+   * The repro this ticket was minted from: a host with `agent-browser` but no
+   * `ffmpeg`, and a pass that honestly declares gates/verified with no reason
+   * of its own. The reason the host knew used to stop at the prompt.
+   */
+  it('carries the ffmpeg-less host reason all the way into the pass outcome', () => {
+    writeFileSync(join(dir, 'agent-browser'), '#!/bin/sh\n')
+    const env = { PATH: dir }
+
+    const withheld = driveWithheldReason(
+      findOnPath(AGENT_BROWSER_BIN, env, 'linux'),
+      'bun dev',
+      true,
+      findOnPath(FFMPEG_BIN, env, 'linux'),
+    )
+
+    const resolution = resolveReviewDeclaration(
+      'account\n\nREVIEW-MODE: gates\nREVIEW-VERDICT: verified\nREVIEW-REASON: ',
+      { webmExists: false, offeredMode: 'gates', ...(withheld ? { driveWithheldReason: withheld } : {}) },
+    )
+
+    expect(resolution.reviewVerdict).toBe('verified')
+    expect(resolution.reason).not.toBe('')
+    expect(resolution.reason).toContain(FFMPEG_BIN)
   })
 
   it('needs a PATHEXT suffix on Windows', () => {

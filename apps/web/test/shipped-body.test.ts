@@ -40,6 +40,9 @@ const RECORDINGS: ReviewArtifacts[] = [
     seq: 3,
     lap: 1,
     passKind: 'review',
+    reviewMode: null,
+    reviewVerdict: null,
+    reviewVerdictReason: null,
     reviewedCommit: 'aaa1111bbb',
     completedAt: 100,
     landedSince: 2,
@@ -51,6 +54,9 @@ const RECORDINGS: ReviewArtifacts[] = [
     seq: 9,
     lap: 2,
     passKind: 'verification',
+    reviewMode: null,
+    reviewVerdict: null,
+    reviewVerdictReason: null,
     reviewedCommit: 'ccc2222ddd',
     completedAt: 200,
     landedSince: 0,
@@ -168,8 +174,16 @@ describe('ShippedBody', () => {
       expect(html).toContain('Verification walkthrough')
     })
 
-    it('keeps the earlier recordings reachable', () => {
-      expect(render()).toContain('Earlier recordings (1)')
+    /**
+     * The earlier-recordings popover is gone with the lap trail that replaced
+     * it (review-as-a-lap-trail decision 4), and the trail is the review page's
+     * band — so what a shipped record shows is the latest pass, named by the
+     * lap it belongs to rather than by a list it is picked from.
+     */
+    it('names the lap the record on the stage belongs to', () => {
+      const html = render()
+      expect(html).toContain('Lap 2 · Verification walkthrough')
+      expect(html).not.toContain('Earlier recordings')
     })
 
     /** Decision 33a: a history view never offers a live control. */

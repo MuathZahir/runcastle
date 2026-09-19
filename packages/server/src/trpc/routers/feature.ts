@@ -146,6 +146,10 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
     .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
 
+  agenticReview: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.agenticReview(ctx, input.featureId)),
+
   // What the Burn confirm dialog prints in its warn box (decisions §5), in the
   // `mergeDelta` pattern: computed server-side so the UI never re-derives
   // policy, and never a refusal — the primary button stays enabled. Empty is

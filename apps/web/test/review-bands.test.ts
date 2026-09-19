@@ -82,6 +82,7 @@ vi.mock('../src/trpc', () => {
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },
+        agenticReview: { useMutation: mutation },
         fixDrive: { useMutation: mutation },
         endSession: { useMutation: mutation },
       },
@@ -96,6 +97,9 @@ const RECORDING: ReviewArtifacts = {
   seq: 4,
   lap: 1,
   passKind: 'review',
+  reviewMode: null,
+  reviewVerdict: null,
+  reviewVerdictReason: null,
   reviewedCommit: 'abc1234def',
   completedAt: 1000,
   landedSince: 0,
@@ -173,6 +177,25 @@ const LIVE_CHAT = {
   status: 'live',
   createdAt: 1,
 } as unknown as FeatureFull['sessions'][number]
+
+/** A review drive the human's own uncommitted files refused. */
+const DENIED: EventRow = {
+  id: 7,
+  projectId: 'proj_1',
+  featureId: 'feat_1',
+  ts: 1_760_000_000_000,
+  type: 'reviewdrive.denied',
+  message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+  data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+}
+
+/** The `solid` variant's own class run (`ui.tsx`), which no other variant has. */
+const SOLID = 'border-accent bg-accent font-semibold'
+/** Every `solid` button on the page, by its label. */
+const solidButtons = (html: string): string[] =>
+  [...html.matchAll(/<button[^>]*>[^<]*/g)]
+    .filter((m) => m[0].includes(SOLID))
+    .map((m) => m[0].slice(m[0].indexOf('>') + 1).trim())
 
 /** The feature as each prototype state has it, plus what the queries answer. */
 function render(
@@ -369,15 +392,6 @@ describe('the review page’s arrival bands', () => {
    * used to be the only account of it is read long afterwards.
    */
   describe('a review drive refused over a dirty tree', () => {
-    const DENIED: EventRow = {
-      id: 7,
-      projectId: 'proj_1',
-      featureId: 'feat_1',
-      ts: 1_760_000_000_000,
-      type: 'reviewdrive.denied',
-      message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
-      data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
-    }
     const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
       id: `run_${startedAt}`,
       featureId: 'feat_1',
@@ -386,11 +400,11 @@ describe('the review page’s arrival bands', () => {
       startedAt,
     })
 
-    it('raises a banner naming the files, with the way to re-burn the review', () => {
+    it('raises a banner naming the files, with the way to run another review', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('src/App.tsx')
-      expect(html).toContain('Retry review')
+      expect(html).toContain('Agentic review')
     })
 
     it('says nothing when no drive was ever refused', () => {
@@ -433,6 +447,147 @@ describe('the review page’s arrival bands', () => {
     const html = render({ sessions: [LIVE_CHAT], readonly: true })
     expect(html).not.toContain('session still live')
     expect(html).not.toContain('>Test drive<')
+  })
+
+  /**
+   * The lap that verified nothing (review-as-a-lap-trail decision 5). The post
+   * mortem's own case: the run says succeeded, no defect is open, and the pass
+   * that produced that silence could not attach a browser. It has to arrive as
+   * the page's top line, and it may not block anything.
+   */
+  describe('a current lap whose review verified nothing', () => {
+    const UNVERIFIED: ReviewArtifacts = {
+      ...RECORDING,
+      hasVideo: false,
+      videoUrl: null,
+      reviewMode: 'drive',
+      reviewVerdict: 'unverified',
+      reviewVerdictReason: 'no browser could be attached',
+    }
+    const UNVERIFIED_TICKET = {
+      ...REVIEW_TICKET,
+      digest:
+        'Lap 1 · drive mode · DRIVE FAILED · nothing verified — no browser could be attached\n\n' +
+        'All acceptance criteria remain honestly unverified.',
+    } as FeatureFull['tickets'][number]
+
+    const arrival = (over: Parameters<typeof render>[0] = {}) =>
+      render({ recordings: [UNVERIFIED], tickets: [UNVERIFIED_TICKET], ...over })
+
+    it('leads the page with "nothing verified this lap", above the stage', () => {
+      const html = arrival()
+      expect(html).toContain('Nothing verified this lap')
+      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('checks passed'))
+    })
+
+    /** Runcastle's own words — the agent's prose stays in the Full account. */
+    it('states the templated line and the declared reason, never the agent’s prose', () => {
+      const html = arrival()
+      const banner = html.slice(0, html.indexOf('checks passed'))
+      expect(banner).toContain('Lap 1 · drive mode · DRIVE FAILED · nothing verified')
+      expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
+    })
+
+    /** Decision 5: the banner's action slot favours another review pass. */
+    it('offers the Agentic review mint as the banner’s action', () => {
+      const banner = arrival().slice(0, arrival().indexOf('checks passed'))
+      expect(banner).toContain('Agentic review')
+    })
+
+    /**
+     * STYLE.md: exactly one `solid` button is visible per view. Both alerts can
+     * be up at once — a pass denied its drive over a dirty tree that then leaves
+     * no parseable declaration block lands unverified while the denial is still
+     * showing — and both mints are the same verb, so only the loud banner's is
+     * the page's primary and the denial's steps down to ghost.
+     */
+    it('keeps one solid mint when the denied-drive banner is up beside it', () => {
+      const html = arrival({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(html).toContain('Nothing verified this lap')
+      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      // And it is this banner's: the denial above it carries no solid at all.
+      expect(solidButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
+    })
+
+    /** With no unverified lap the denial's mint is the alert band's primary. */
+    it('leaves the denied-drive banner its solid mint when nothing is unverified', () => {
+      const html = render({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
+    })
+
+    it('says nothing when the lap’s pass verified something', () => {
+      const html = render({
+        recordings: [{ ...UNVERIFIED, reviewVerdict: 'verified', reviewVerdictReason: null }],
+      })
+      expect(html).not.toContain('Nothing verified this lap')
+    })
+
+    /** An earlier lap's silence is history — the trail carries it, not the top
+     *  line, which is about the lap the human is standing in. */
+    it('says nothing when the unverified pass belongs to an earlier lap', () => {
+      expect(arrival({ recordings: [{ ...UNVERIFIED, lap: 0 }] })).not.toContain(
+        'Nothing verified this lap',
+      )
+    })
+
+    it('renders no banner at all on a readonly view', () => {
+      expect(arrival({ readonly: true })).not.toContain('Nothing verified this lap')
+    })
+  })
+
+  /**
+   * The lap trail (decisions 4–5) — the history band the page grew, rendered
+   * from the same per-pass feed the stage plays from.
+   */
+  describe('the lap trail band', () => {
+    it('mounts below the account, above the full-account disclosure', () => {
+      const html = render({ recordings: [RECORDING] })
+      expect(html).toContain('id="lap-trail"')
+      expect(html.indexOf('id="lap-trail"')).toBeGreaterThan(html.indexOf('Lap 1: DLQ spill'))
+      expect(html.indexOf('id="lap-trail"')).toBeLessThan(html.indexOf('Full account'))
+    })
+
+    it('is not there at all before any review pass has run', () => {
+      expect(render({})).not.toContain('id="lap-trail"')
+    })
+  })
+
+  /**
+   * The Agentic review control (decision 6): present in every state of the
+   * page, disabled with its reason while a burn holds the feature.
+   */
+  describe('the Agentic review control', () => {
+    const RUNNING = [
+      {
+        id: 'run_1',
+        featureId: 'feat_1',
+        workflow: 'ticket-burner',
+        status: 'running',
+        startedAt: 10,
+      },
+    ] as unknown as FeatureFull['runs']
+
+    it('is on the page in every state, drive up or not', () => {
+      for (const html of [
+        render({}),
+        openWork(),
+        render({ recordings: [RECORDING] }),
+        render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false } }),
+      ]) {
+        expect.soft(html).toContain('>Agentic review<')
+      }
+    })
+
+    it('is disabled with its reason while a burn is running', () => {
+      const html = render({ runs: RUNNING })
+      expect(html).toContain('title="a burn is running"')
+    })
+
+    it('is absent from a history view, which acts on nothing', () => {
+      expect(render({ readonly: true })).not.toContain('Agentic review')
+    })
   })
 })
 
@@ -517,6 +672,7 @@ describe('the review page’s two panes', () => {
       'How to drive this app',
       'Lap 1: DLQ spill retention landed',
       'Carried, still open',
+      'id="lap-trail"',
       'Full account',
     ]
     const at = bands.map((band) => panes(html).column.indexOf(band))

@@ -107,6 +107,24 @@ describe('tickets service', () => {
     expect(stored.digest).toBe('Did the thing.\n\nNo surprises.')
   })
 
+  it('persists the recorded review mode and verdict when a review completes', () => {
+    const [review] = storeTickets(ctx, featureId, [{ ...ticket('review'), kind: 'review' }])
+
+    const completed = updateTicket(ctx, review.id, {
+      status: 'done',
+      reviewMode: 'gates',
+      reviewVerdict: 'unverified',
+      reviewVerdictReason: 'The browser could not attach.',
+    })
+
+    expect(completed).toMatchObject({
+      status: 'done',
+      reviewMode: 'gates',
+      reviewVerdict: 'unverified',
+      reviewVerdictReason: 'The browser could not attach.',
+    })
+  })
+
   it('updateTicket clears a stored error with error: null (burn-retry path)', () => {
     const [t] = storeTickets(ctx, featureId, [ticket('a')])
     updateTicket(ctx, t.id, { status: 'failed', error: 'agent made no commits' })

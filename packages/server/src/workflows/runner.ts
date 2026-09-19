@@ -1,4 +1,4 @@
-import type { RunStatus, WorkflowCtx } from '@runcastle/core'
+import type { RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -80,6 +80,19 @@ export interface StartRunOptions {
    * `ctx.modelOverride`; wins the `resolveModel` chain for the run's AFK agent.
    */
   modelOverride?: string
+  /**
+   * Restrict this run to these tickets. Unset (the normal burn) means the
+   * feature's whole ticket set, which is what "Burn" has always meant.
+   *
+   * Set by the agentic-review mint, which is a request for ONE review pass, not
+   * for the pending fix queue sitting beside it: scoping only `tickets` would
+   * not be enough, because the scheduler re-reads the store when a review
+   * settles (`admitNewTickets`) and would fold that queue in a moment later. So
+   * the scope also narrows `listTickets`, by hiding exactly the rows that
+   * existed at run start and were left out — tickets minted DURING the run (a
+   * review's own fix tickets) are never hidden and still join it.
+   */
+  ticketIds?: string[]
 }
 
 export async function startRun(
@@ -93,7 +106,15 @@ export async function startRun(
   const def = getWorkflow(workflowId)
   if (!def) throw new NotFoundError(`workflow ${workflowId} not registered`)
 
-  const tickets = listByFeature(ctx, featureId)
+  const opened = listByFeature(ctx, featureId)
+  const scope = opts.ticketIds ? new Set(opts.ticketIds) : undefined
+  const tickets = scope ? opened.filter((t) => scope.has(t.id)) : opened
+  /** Rows the scope left behind — hidden from the run's re-reads, forever. */
+  const excluded = new Set(scope ? opened.filter((t) => !scope.has(t.id)).map((t) => t.id) : [])
+  const listRunTickets = (): Ticket[] => {
+    const rows = listByFeature(ctx, featureId)
+    return excluded.size === 0 ? rows : rows.filter((t) => !excluded.has(t.id))
+  }
 
   const runId = newId('run')
   ctx.db
@@ -171,7 +192,7 @@ export async function startRun(
     updateTicket: (id, patch) => {
       updateTicket(ctx, id, patch)
     },
-    listTickets: () => listByFeature(ctx, featureId),
+    listTickets: listRunTickets,
     storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
     listFindings: () => listFindingsByFeature(ctx, featureId),
     updateFinding: (findingId, progress, reason) => {

@@ -298,6 +298,9 @@ export const tickets = sqliteTable('tickets', {
   kind: text('kind').notNull().$type<TicketKind>().default('implementation'),
   passKind: text('pass_kind').notNull().$type<'review' | 'verification'>().default('review'),
   reviewedCommit: text('reviewed_commit'),
+  reviewMode: text('review_mode').$type<'drive' | 'gates'>(),
+  reviewVerdict: text('review_verdict').$type<'verified' | 'unverified'>(),
+  reviewVerdictReason: text('review_verdict_reason'),
   completedAt: integer('completed_at'),
   /**
    * The model this ticket burns on, or null for "resolve it the ordinary way"
