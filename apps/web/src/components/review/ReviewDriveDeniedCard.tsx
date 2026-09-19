@@ -26,6 +26,7 @@ import { fmtDateTime, relTimeAgo } from '../../lib/format'
 export function ReviewDriveDeniedCard({
   denial,
   readonly,
+  primary,
   busy,
   refusal,
   onReview,
@@ -34,6 +35,14 @@ export function ReviewDriveDeniedCard({
   denial: ReviewDriveDenial
   /** Looking back at review on a shipped feature — history, never an action. */
   readonly: boolean
+  /**
+   * Whether this mint is the page's primary — exactly one `solid` button is
+   * visible per view (STYLE.md). False when the nothing-verified banner is up
+   * beside this one: both mints are the same verb, so the loud banner keeps the
+   * solid and this one steps down to ghost rather than asking which primary is
+   * the primary.
+   */
+  primary: boolean
   busy: boolean
   /** Why the mint was turned down, in the server's words, or null. */
   refusal: string | null
@@ -80,7 +89,7 @@ export function ReviewDriveDeniedCard({
         </div>
       )}
       <div className="mt-4 flex items-center gap-2">
-        <Button variant="solid" disabled={busy} onClick={onReview}>
+        <Button variant={primary ? 'solid' : 'ghost'} disabled={busy} onClick={onReview}>
           {busy ? 'Starting…' : 'Agentic review'}
         </Button>
         <Button onClick={onDismiss}>Dismiss</Button>
@@ -105,11 +114,14 @@ export function ReviewDriveDeniedAlert({
   featureId,
   denial,
   readonly,
+  primary,
   onDismiss,
 }: {
   featureId: string
   denial: ReviewDriveDenial
   readonly: boolean
+  /** Whether this banner holds the page's one solid button — see the card. */
+  primary: boolean
   onDismiss: () => void
 }) {
   const utils = trpc.useUtils()
@@ -128,6 +140,7 @@ export function ReviewDriveDeniedAlert({
     <ReviewDriveDeniedCard
       denial={denial}
       readonly={readonly}
+      primary={primary}
       busy={review.isPending}
       refusal={refusal}
       onReview={() => {

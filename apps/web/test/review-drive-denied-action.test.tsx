@@ -59,6 +59,7 @@ const mount = () =>
       featureId="ftr_1"
       denial={denial}
       readonly={false}
+      primary={true}
       onDismiss={onDismiss}
     />,
   )
