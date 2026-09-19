@@ -81,14 +81,14 @@ describe('reentryCount', () => {
     expect(reentryCount(ctx, { featureId: a.id })).toBe(0)
 
     for (const cc of ['cc-1', 'cc-2', 'cc-3']) {
-      const s = createSessionRow(ctx, { featureId: a.id, kind: 'revisit', worktreePath: 'w' })
+      const s = createSessionRow(ctx, { featureId: a.id, kind: 'chat', worktreePath: 'w' })
       markSessionLive(ctx, s.id, { ccSessionId: cc })
       markSessionEnded(ctx, s.id)
     }
     // a row that never went live has no cc id and is not a re-entry
     const stillborn = createSessionRow(ctx, {
       featureId: a.id,
-      kind: 'revisit',
+      kind: 'chat',
       worktreePath: 'w',
     })
     markSessionEnded(ctx, stillborn.id)

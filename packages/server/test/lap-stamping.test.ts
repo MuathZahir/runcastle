@@ -155,7 +155,7 @@ describe('lap stamping', () => {
     setLap(ctx, featureId, 3)
     const featureSession = createSessionRow(ctx, {
       featureId,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: '/wt',
     })
     // A project-scoped prepare session has no feature to take a lap from.
@@ -185,7 +185,7 @@ describe('lap stamping', () => {
 
   it('keeps emit / emitProject / emitForSession signatures — the lookup is internal', () => {
     setLap(ctx, featureId, 4)
-    const session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: '/wt' })
+    const session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' })
     const viaSession = emitForSession(ctx, session, { type: 'session.live', message: 'live' })
 
     const lap = ctx.db
@@ -220,7 +220,7 @@ describe('lap stamping', () => {
     mkdirSync(join(repoPath, 'docs', 'features', slug), { recursive: true })
     writeFileSync(join(repoPath, 'docs', 'features', slug, 'brief.md'), '# Brief\n', 'utf8')
     setLap(ctx, featureId, 2)
-    const session = createSessionRow(ctx, { featureId, kind: 'revisit', worktreePath: repoPath })
+    const session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
 
     const out = toolGetFeatureContext(ctx, session)

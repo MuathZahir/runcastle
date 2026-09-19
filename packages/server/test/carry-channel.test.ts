@@ -48,7 +48,7 @@ describe('the carry channel into the next lap', () => {
     ])[0]
     session = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'revisit',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, session.id)

@@ -74,24 +74,57 @@ export function liveSessionBlocker(
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
 
-// --- the shipped body's Q&A terminal ----------------------------------------
+// --- the docked chat panel ---------------------------------------------------
 
 /**
- * The sessions the shipped body's terminal panel should consider — the Q&A ones,
- * and only when one of them is worth a panel at all.
+ * The feature's one conversation, as the docked panel has to show it
+ * (decision 16): the chat that is up, or — with none up — the newest chat row,
+ * whose transcript is what "one transcript, resumed" means when nothing is live.
  *
- * "Ask a question" is the shipped bar's action, so the conversation it starts
- * belongs in the shipped body. Everything *else* on a shipped feature is a spent
- * pipeline session, and a resumable one of those is the grill's (or review's)
- * Resume, not shipped's — hence qa only. It reports nothing unless some qa session
- * is live/launching or ended with its conversation still on disk (a `ccSessionId`,
- * which only a session that reached live recorded — the launcher's own resume
- * test), so a shipped feature nobody has asked anything stays the plain hero
- * instead of growing an empty box.
+ * `undefined` is a feature nobody has talked to yet, which the panel answers
+ * with its own door rather than an empty transcript.
  */
-export function shippedQaSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
-  const qa = sessions.filter((s) => s.kind === 'qa')
-  return qa.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing) ? qa : []
+export function dockedChat(sessions: FeatureFull['sessions']): FeatureFull['sessions'][number] | undefined {
+  const chats = sessions.filter((s) => s.kind === 'chat')
+  const ordered = [...chats].reverse()
+  return ordered.find((s) => s.status !== 'ended') ?? ordered[0]
+}
+
+/**
+ * The sessions a phase body may still raise a terminal for (decision 16).
+ *
+ * With the chat docked beside the body, the chat's terminal lives THERE — a body
+ * that mounted it too would put one PTY on screen twice, and the two xterms
+ * would then fight over the single grid size the pty is resized to. Collapsed,
+ * this is the identity function and every body behaves exactly as it did.
+ */
+export function bodySessions<T extends { kind: SessionKind }>(
+  sessions: readonly T[],
+  chatDocked: boolean,
+): T[] {
+  return chatDocked ? sessions.filter((s) => s.kind !== 'chat') : [...sessions]
+}
+
+// --- the shipped body's chat terminal ---------------------------------------
+
+/**
+ * The sessions the shipped body's terminal panel should consider — the feature's
+ * chat, and only when it is worth a panel at all.
+ *
+ * Chat is the shipped bar's action, so the conversation it resumes belongs in
+ * the shipped body. Everything *else* on a shipped feature is a spent pipeline
+ * session (a converge, a waypoint, a drive fix), which has no door here — hence
+ * chat only. It reports nothing unless some chat session is live/launching or
+ * ended with its conversation still on disk (a `ccSessionId`, which only a
+ * session that reached live recorded — the launcher's own resume test), so a
+ * shipped feature nobody has talked to stays the plain hero instead of growing
+ * an empty box.
+ */
+export function shippedChatSessions(sessions: FeatureFull['sessions']): FeatureFull['sessions'] {
+  const chats = sessions.filter((s) => s.kind === 'chat')
+  return chats.some((s) => s.status !== 'ended' || !!s.ccSessionId || s.transcriptMissing)
+    ? chats
+    : []
 }
 
 /**
@@ -134,13 +167,11 @@ export interface LiveSessionLine {
  */
 function sessionHome(kind: SessionKind): Phase | null {
   switch (kind) {
-    case 'ideation':
+    case 'chat':
     case 'waypoint':
-    case 'revisit':
       return 'planning'
     case 'converge':
       return 'planning'
-    case 'qa':
     case 'drive-fix':
     case 'prepare':
     case 'project':
@@ -154,12 +185,10 @@ export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionL
   const name = sessionKindName(live)
   return {
     sessionId: live.id,
-    // A `revisit` past lap 1 is already named for its lap ("Lap 3"), so naming
-    // it again would read "Lap 3 session still live from lap 3".
-    text:
-      live.kind === 'revisit' && live.lap > 1
-        ? `${name} session still live`
-        : `${name} session still live from lap ${live.lap}`,
+    // The kind names itself and the lap is named once: the lap-numbered names
+    // ("Lap 3") went with the `revisit` kind, which read "Lap 3 session still
+    // live from lap 3".
+    text: `${name} session still live from lap ${live.lap}`,
     phase: sessionHome(live.kind),
   }
 }
@@ -173,14 +202,10 @@ export function sessionKindName(
   session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>,
 ): string {
   switch (session.kind) {
-    case 'ideation':
-      return 'Ideation'
+    case 'chat':
+      return 'Chat'
     case 'converge':
       return 'Converge'
-    case 'revisit':
-      return session.lap > 1 ? `Lap ${session.lap}` : 'Revisit'
-    case 'qa':
-      return 'Question'
     case 'waypoint':
       return 'Waypoint'
     case 'drive-fix':

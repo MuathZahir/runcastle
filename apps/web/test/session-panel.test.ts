@@ -7,7 +7,7 @@ import { SessionPanel } from '../src/components/SessionPanel'
 type Session = FeatureFull['sessions'][number]
 
 function session(over: Partial<Session> & Pick<Session, 'id'>): Session {
-  return { featureId: 'feat_1', kind: 'ideation', status: 'ended', awaitingInput: false, worktreePath: '/tmp/work', lap: 1, ...over }
+  return { featureId: 'feat_1', kind: 'chat', status: 'ended', awaitingInput: false, worktreePath: '/tmp/work', lap: 1, ...over }
 }
 
 const panel = (sessions: Session[]): string =>
@@ -30,7 +30,7 @@ describe('SessionPanel — the session the ended strip speaks for', () => {
       session({ id: 'sess_old', kind: 'converge', ccSessionId: 'cc-old', createdAt: now - 1_080_000, endedAt: now - 1_020_000 }),
       session({ id: 'sess_new', createdAt: now - 60_000, endedAt: now - 2_000 }),
     ])
-    expect(html).toContain('Ideation session')
+    expect(html).toContain('Chat session')
     expect(html).toContain('ended just now')
     expect(html).not.toContain('Converge session')
     expect(html).not.toContain('17m')

@@ -54,11 +54,9 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * there to repair is the developer's own machine.
  */
 export const SessionKind = z.enum([
-  'ideation',
-  'qa',
+  'chat',
   'waypoint',
   'converge',
-  'revisit',
   'prepare',
   'project',
   'drive-fix',

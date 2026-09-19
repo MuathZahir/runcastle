@@ -62,7 +62,7 @@ function session(overrides: Partial<SessionRow> = {}): SessionRow {
   return {
     id: 'sess_xyz',
     featureId: 'feat_abc',
-    kind: 'ideation',
+    kind: 'chat',
     status: 'launching',
     awaitingInput: false,
     worktreePath: 'C:\\wt\\dark-mode',
@@ -158,7 +158,7 @@ describe('renderSettings', () => {
       expect(allow).toEqual(expect.arrayContaining([...SESSION_BASH_READ_RULES]))
     }
     // the docs-only talk kinds keep the blanket grant the reasoning covers
-    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit'] as const) {
+    for (const kind of ['chat', 'waypoint', 'converge'] as const) {
       expect(sessionBashAllowRules(kind)).toEqual(
         expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]),
       )
@@ -227,7 +227,7 @@ describe('renderSettings', () => {
   })
 
   it('registers Stop for every session kind — turn state is not kind-specific', () => {
-    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare', 'project'] as const) {
+    for (const kind of SessionKind.options) {
       const s = renderSettings('C:\\hooks\\hook-client.ts', kind)
       expect(s.hooks.Stop[0].hooks[0].command).toBe('bun run "C:\\hooks\\hook-client.ts" stop')
     }
@@ -239,7 +239,7 @@ describe('renderSettings', () => {
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
    */
   it('registers the PreToolUse edit guard for every kind but `project`', () => {
-    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit', 'prepare'] as const) {
+    for (const kind of ['chat', 'waypoint', 'converge', 'prepare', 'drive-fix'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
       expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
@@ -278,8 +278,17 @@ describe('renderMcpConfig', () => {
 })
 
 describe('renderSystemPrompt', () => {
-  it('directs an ideation session to /runcastle:ideate with the docs paths', () => {
-    const p = renderSystemPrompt(feature(), 'ideation')
+  it('directs a new planning chat to /runcastle:ideate with the docs paths', () => {
+    const p = renderSystemPrompt(
+      feature(),
+      'chat',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { hasDecisions: false, hasSpec: false, hasTickets: false },
+    )
     expect(p).toContain('/runcastle:ideate')
     expect(p).toContain('docs/features/dark-mode/')
     expect(p).toContain('complete_phase')
@@ -294,34 +303,12 @@ describe('renderSystemPrompt', () => {
    */
   it('carries no MCP tool cheat-sheet in any renderer', () => {
     const prompts = [
-      renderSystemPrompt(feature(), 'ideation'),
-      renderSystemPrompt(feature(), 'qa'),
+      renderSystemPrompt(feature(), 'chat'),
       renderSystemPrompt(feature({ mapped: true }), 'waypoint'),
       renderSystemPrompt(feature({ mapped: true, phase: 'planning' }), 'converge'),
-      renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
+      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
     ]
     for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
-  })
-
-  /**
-   * A qa session is READ-ONLY, and used to fall through the generic feature
-   * brief: the whole `## Pipeline` section on how to cross gates, a cheat-sheet
-   * for `emit_tickets`/`complete_phase`, and a `## Knowledge` section naming the
-   * docs as files to WRITE — roughly a fifth of the prompt was operating
-   * instructions for the two tools the same document forbade 30 lines later.
-   */
-  it('gives a qa session its own read-only prompt with no pipeline instructions', () => {
-    const p = renderSystemPrompt(feature(), 'qa')
-    expect(p).toContain('/runcastle:qa')
-    expect(p).toMatch(/does not advance the pipeline/i)
-    expect(p).toContain('docs/features/dark-mode/')
-    // none of the writer's brief survives
-    expect(p).not.toContain('## Pipeline')
-    expect(p).not.toContain('## Knowledge')
-    expect(p).not.toContain('emit_tickets')
-    expect(p).not.toContain('complete_phase')
-    // and it is materially shorter than the brief it used to share
-    expect(p.length).toBeLessThan(renderSystemPrompt(feature(), 'ideation').length)
   })
 
   it('injects the assigned waypoint + map state into a waypoint session', () => {
@@ -348,7 +335,7 @@ describe('renderSystemPrompt', () => {
   })
 
   it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
-    const p = renderSystemPrompt(feature({ phase: 'building' }), 'revisit')
+    const p = renderSystemPrompt(feature({ phase: 'building' }), 'chat')
     expect(p).toContain('/runcastle:revisit')
     expect(p).toContain('decisions.md')
     // a revisit never moves the pipeline
@@ -356,7 +343,7 @@ describe('renderSystemPrompt', () => {
   })
 
   it('flags the review-iteration purpose for a revisit at the review phase (ticket 6)', () => {
-    const review = renderSystemPrompt(feature({ phase: 'review' }), 'revisit')
+    const review = renderSystemPrompt(feature({ phase: 'review' }), 'chat')
     expect(review).toContain('Review iteration')
     expect(review).toMatch(/fix ticket/i)
     // it points at the PER-TICKET facts that are actually in the payload —
@@ -371,7 +358,7 @@ describe('renderSystemPrompt', () => {
     // advances from within the session
     expect(review).toMatch(/click Burn/i)
     // the section is review-only — an implementation revisit never carries it
-    expect(renderSystemPrompt(feature({ phase: 'building' }), 'revisit')).not.toContain(
+    expect(renderSystemPrompt(feature({ phase: 'building' }), 'chat')).not.toContain(
       'Review iteration',
     )
   })
@@ -384,7 +371,7 @@ describe('renderSystemPrompt', () => {
    * lap briefing the same session was about to be typed (F2).
    */
   it('renders the lap framing when a lap is passed, and drops the complete_phase ban', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'revisit', undefined, 2)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2)
     expect(p).toContain('This is lap 2')
     expect(p).toContain('ideation → spec → tickets')
     // its two optional inputs, and that missing ones are normal
@@ -399,16 +386,16 @@ describe('renderSystemPrompt', () => {
   })
 
   it('leaves a plain revisit exactly as it was — no lap framing, ban intact', () => {
-    const p = renderSystemPrompt(feature({ phase: 'building', lap: 3 }), 'revisit')
+    const p = renderSystemPrompt(feature({ phase: 'building', lap: 3 }), 'chat')
     expect(p).not.toContain('This is lap')
     expect(p).toMatch(/Do NOT call `complete_phase`/i)
   })
 
   it('states the no-code rule in the revisit and ideation prompts', () => {
     for (const p of [
-      renderSystemPrompt(feature(), 'ideation'),
-      renderSystemPrompt(feature({ phase: 'review' }), 'revisit'),
-      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'revisit', undefined, 2),
+      renderSystemPrompt(feature(), 'chat'),
+      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2),
     ]) {
       expect(p).toMatch(/Talk sessions do not write code/)
       // and it says where the line is, and where the change goes instead
@@ -423,7 +410,7 @@ describe('renderSystemPrompt', () => {
    * emitted a ticket to carry it instead, so the feature never worked.
    */
   it('tells the conflict-resolution revisit that it does write code here', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review' }), 'revisit', undefined, undefined, 'resolve-conflict')
+    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', undefined, undefined, 'resolve-conflict')
     expect(p).not.toMatch(/Talk sessions do not write code/)
     expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
     // the exception is bounded: other work still rides a ticket
@@ -452,20 +439,20 @@ describe('renderSystemPrompt', () => {
 
   /**
    * The lap owns the entry skill, then the kind. A lap-N grill is created as
-   * `kind: 'ideation'` and used to render the generic feature brief ("invoke
+   * `kind: 'chat'` and used to render the generic feature brief ("invoke
    * `/runcastle:ideate`") while the lap kickoff typed into the same terminal
    * said "invoke `/runcastle:revisit` for LAP N" — two entry skills, no defined
    * precedence, and the `lap` parameter never read on that path.
    */
   it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'ideation', undefined, 3)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3)
     expect(p).toContain('This is lap 3')
     expect(p).toContain('/runcastle:revisit')
     expect(p).not.toContain('/runcastle:ideate')
     expect(p).toMatch(/DO call `complete_phase`/)
     // and it is byte-identical to the revisit rendering of the same lap
     expect(p).toBe(
-      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'revisit', undefined, 3),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3),
     )
   })
 
@@ -478,7 +465,7 @@ describe('renderSystemPrompt', () => {
   it('does not brief the conflict-resolution revisit as a review iteration', () => {
     const p = renderSystemPrompt(
       feature({ phase: 'review' }),
-      'revisit',
+      'chat',
       undefined,
       undefined,
       'resolve-conflict',
@@ -488,7 +475,7 @@ describe('renderSystemPrompt', () => {
     expect(p).toMatch(/resolves a merge conflict/i)
     // strictly shorter than the review-iteration revisit it used to also be
     expect(p.length).toBeLessThan(
-      renderSystemPrompt(feature({ phase: 'review' }), 'revisit').length,
+      renderSystemPrompt(feature({ phase: 'review' }), 'chat').length,
     )
   })
 
@@ -502,7 +489,7 @@ describe('renderSystemPrompt', () => {
     expect(() =>
       renderSystemPrompt(
         feature({ phase: 'planning', lap: 2 }),
-        'revisit',
+        'chat',
         undefined,
         2,
         'resolve-conflict',
@@ -662,7 +649,7 @@ describe('buildClaudeArgs', () => {
     expect(args[at + 1]).toBe('claude-sonnet-5')
   })
 
-  it('puts a fresh kickoff last verbatim and never adds one to a resume', () => {
+  it('puts a kickoff last verbatim for fresh and resumed launches', () => {
     const base = {
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
@@ -673,9 +660,7 @@ describe('buildClaudeArgs', () => {
     const kickoffLine = `Invoke "the skill" and preserve the user's words.`
     const args = buildClaudeArgs({ ...base, kickoffLine })
     expect(args.at(-1)).toBe(kickoffLine)
-    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine })).not.toContain(
-      kickoffLine,
-    )
+    expect(buildClaudeArgs({ ...base, resumeSessionId: 'cc-42', kickoffLine }).at(-1)).toBe(kickoffLine)
     // Verbatim in the array is only half the claim: the quotes and the
     // apostrophe have to survive the Windows command line too, spawned
     // directly...
@@ -711,10 +696,10 @@ describe('buildCodexArgs', () => {
     expect(windowsSpawnRoundTrip('C:\\npm\\codex.cmd', args).at(-1)).toBe(kickoffLine)
   })
 
-  it('resumes without a positional prompt', () => {
-    const kickoffLine = 'must not be sent'
+  it('can deliver a positional prompt into a resumed conversation', () => {
+    const kickoffLine = 'fresh state briefing'
     expect(buildCodexArgs({ resumeSessionId: 'thread-42', kickoffLine })).toEqual([
-      'resume', 'thread-42', '--dangerously-bypass-hook-trust',
+      'resume', 'thread-42', '--dangerously-bypass-hook-trust', kickoffLine,
     ])
   })
 })
@@ -733,6 +718,7 @@ describe('writeSessionArtifacts', () => {
     const out = await writeSessionArtifacts({
       session: sess,
       feature: feature(),
+      planning: { hasDecisions: false, hasSpec: false, hasTickets: false },
       project: {
         id: 'proj_1',
         name: 'p',
@@ -802,7 +788,12 @@ describe('claudeRuntime.writeArtifacts', () => {
         },
       }
     }
-    return { feature: feature() }
+    return {
+      feature: feature(),
+      ...(kind === 'chat'
+        ? { planning: { hasDecisions: false, hasSpec: false, hasTickets: false } }
+        : {}),
+    }
   }
 
   async function launchSpec(
@@ -847,9 +838,9 @@ describe('claudeRuntime.writeArtifacts', () => {
   })
 
   it('carries the two runcastle env vars and the CC nesting scrub list', async () => {
-    const spec = await launchSpec('ideation')
+    const spec = await launchSpec('chat')
     expect(spec.env).toEqual({
-      RUNCASTLE_SESSION_ID: 'sess_rt_ideation',
+      RUNCASTLE_SESSION_ID: 'sess_rt_chat',
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
     })
     // the marker that makes a nested CC skip writing its transcript, breaking --resume
@@ -858,7 +849,7 @@ describe('claudeRuntime.writeArtifacts', () => {
   })
 
   it('passes the launch options through to the flags they used to set inline', async () => {
-    const resumed = await launchSpec('revisit', { resumeSessionId: 'cc-42' })
+    const resumed = await launchSpec('chat', { resumeSessionId: 'cc-42' })
     expect(resumed.argv.slice(0, 2)).toEqual(['--resume', 'cc-42'])
 
     // the project session's `default` posture (decision 18), chosen by its site
@@ -866,7 +857,7 @@ describe('claudeRuntime.writeArtifacts', () => {
     expect(projected.argv[projected.argv.indexOf('--permission-mode') + 1]).toBe('default')
 
     // strictMcp is the adapter's own reading of config.sessionMcp
-    const strict = await launchSpec('qa', {
+    const strict = await launchSpec('chat', {
       config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }),
     })
     expect(strict.argv).toContain('--strict-mcp-config')
@@ -915,7 +906,7 @@ describe('codexRuntime.writeArtifacts', () => {
   })
 
   async function launchSpec(
-    kind: SessionKind = 'ideation',
+    kind: SessionKind = 'chat',
     extra: Partial<RuntimeLaunchInput> = {},
   ): Promise<RuntimeLaunchSpec> {
     const sess = session({ id: `sess_codex_${kind}`, kind })
@@ -923,6 +914,7 @@ describe('codexRuntime.writeArtifacts', () => {
     return codexRuntime.writeArtifacts({
       session: sess,
       feature: feature(),
+      planning: { hasDecisions: false, hasSpec: false, hasTickets: false },
       project,
       config,
       worktreePath: worktree,
@@ -938,8 +930,8 @@ describe('codexRuntime.writeArtifacts', () => {
   }
 
   it('writes a synthetic CODEX_HOME: config, hooks, per-kind prompt, borrowed auth', async () => {
-    const spec = await launchSpec('ideation')
-    const home = codexHomeDir('sess_codex_ideation')
+    const spec = await launchSpec('chat')
+    const home = codexHomeDir('sess_codex_chat')
 
     expect(spec.files).toEqual(
       expect.arrayContaining([
@@ -958,8 +950,8 @@ describe('codexRuntime.writeArtifacts', () => {
   })
 
   it('pins the model, the acceptEdits analogue, project trust and the MCP identity header', async () => {
-    await launchSpec('ideation')
-    const toml = configToml('sess_codex_ideation')
+    await launchSpec('chat')
+    const toml = configToml('sess_codex_chat')
 
     expect(toml).toContain('model = "gpt-5.6-sol"')
     // the `--permission-mode acceptEdits` analogue: writes inside the worktree
@@ -975,18 +967,18 @@ describe('codexRuntime.writeArtifacts', () => {
     // the same server, behind the same identity header the MCP route already gates on
     expect(toml).toContain('[mcp_servers.runcastle]')
     expect(toml).toContain('url = "http://localhost:4512/mcp"')
-    expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_ideation" }')
+    expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }')
   })
 
   it('turns hook discovery on, so the generated hooks.json is discoverable at all', async () => {
-    await launchSpec('ideation')
+    await launchSpec('chat')
     // Without it `list_hooks` returns nothing and the hooks.json written beside
     // this config is read by nobody. `hooks` is the canonical feature key,
     // spelled as a boolean in `[features]` — the config struct is
     // `deny_unknown_fields`, so the spelling is the whole parse. Discovery is
     // necessary, not sufficient: see the `[features]` note on `renderCodexConfig`
     // for the verified reason an interactive session still never goes `live`.
-    expect(configToml('sess_codex_ideation')).toContain('[features]\nhooks = true')
+    expect(configToml('sess_codex_chat')).toContain('[features]\nhooks = true')
 
     // every kind's hooks are discovered the same way, including the one whose
     // approval posture differs
@@ -1013,14 +1005,14 @@ describe('codexRuntime.writeArtifacts', () => {
 
     // a worktree-scoped kind keeps the acceptEdits analogue: it writes inside its
     // own checkout unattended
-    await launchSpec('qa')
-    expect(configToml('sess_codex_qa')).toContain('approval_policy = "never"')
+    await launchSpec('chat')
+    expect(configToml('sess_codex_chat')).toContain('approval_policy = "never"')
   })
 
   it('registers the five lifecycle events against the same runtime-neutral hook client', async () => {
-    await launchSpec('ideation')
+    await launchSpec('chat')
     const hooks = JSON.parse(
-      readFileSync(join(codexHomeDir('sess_codex_ideation'), 'hooks.json'), 'utf8'),
+      readFileSync(join(codexHomeDir('sess_codex_chat'), 'hooks.json'), 'utf8'),
     )
 
     const client = hookClientPath()
@@ -1048,7 +1040,7 @@ describe('codexRuntime.writeArtifacts', () => {
    */
   it('adds the win32 spelling of every hook command, and only there', () => {
     for (const platform of ['linux', 'darwin'] as const) {
-      const posix = renderCodexHooks('/tmp/hook-client.ts', 'ideation', platform)
+      const posix = renderCodexHooks('/tmp/hook-client.ts', 'chat', platform)
       expect(posix.hooks.SessionStart[0].hooks[0]).toEqual({
         type: 'command',
         command: 'bun run "/tmp/hook-client.ts" session-start',
@@ -1060,7 +1052,7 @@ describe('codexRuntime.writeArtifacts', () => {
       }
     }
 
-    const win = renderCodexHooks('C:\\hooks\\hook-client.ts', 'ideation', 'win32')
+    const win = renderCodexHooks('C:\\hooks\\hook-client.ts', 'chat', 'win32')
     expect(win.hooks.SessionStart[0].hooks[0]).toEqual({
       type: 'command',
       command: 'bun run "C:\\hooks\\hook-client.ts" session-start',
@@ -1075,33 +1067,30 @@ describe('codexRuntime.writeArtifacts', () => {
 
   it('exempts the one kind that may write code from the edit guard, as Claude does', () => {
     expect(renderCodexHooks('/tmp/hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
-    expect(renderCodexHooks('/tmp/hook-client.ts', 'qa').hooks.PreToolUse).toHaveLength(1)
+    expect(renderCodexHooks('/tmp/hook-client.ts', 'chat').hooks.PreToolUse).toHaveLength(1)
   })
 
   it('writes the per-kind prompt as AGENTS.md, spelled the way Codex invokes a skill', async () => {
-    await launchSpec('ideation')
-    const ideation = readFileSync(join(codexHomeDir('sess_codex_ideation'), 'AGENTS.md'), 'utf8')
-    expect(ideation).toContain('$ideate')
-    expect(ideation).not.toContain('/runcastle:')
-
-    await launchSpec('qa')
-    expect(readFileSync(join(codexHomeDir('sess_codex_qa'), 'AGENTS.md'), 'utf8')).toContain('$qa')
+    await launchSpec('chat')
+    const chat = readFileSync(join(codexHomeDir('sess_codex_chat'), 'AGENTS.md'), 'utf8')
+    expect(chat).toContain('$ideate')
+    expect(chat).not.toContain('/runcastle:')
   })
 
   it('builds the argv and env — the home IS the configuration', async () => {
-    const spec = await launchSpec('ideation')
+    const spec = await launchSpec('chat')
 
     expect(spec.argv).toEqual(['--dangerously-bypass-hook-trust'])
     expect(spec.env).toEqual({
-      CODEX_HOME: codexHomeDir('sess_codex_ideation'),
-      RUNCASTLE_SESSION_ID: 'sess_codex_ideation',
+      CODEX_HOME: codexHomeDir('sess_codex_chat'),
+      RUNCASTLE_SESSION_ID: 'sess_codex_chat',
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
     })
     expect(spec.envScrub).toEqual([])
   })
 
   it('resumes the conversation the SessionStart hook recorded', async () => {
-    const spec = await launchSpec('revisit', { resumeSessionId: 'codex-sess-42' })
+    const spec = await launchSpec('chat', { resumeSessionId: 'codex-sess-42' })
     expect(spec.argv).toEqual(['resume', 'codex-sess-42', '--dangerously-bypass-hook-trust'])
   })
 
@@ -1112,12 +1101,12 @@ describe('codexRuntime.writeArtifacts', () => {
     mkdirSync(dirname(rollout), { recursive: true })
     writeFileSync(rollout, '{"type":"session_meta","id":"codex-sess-42"}\n', 'utf8')
 
-    const spec = await launchSpec('revisit', {
+    const spec = await launchSpec('chat', {
       resumeSessionId: 'codex-sess-42',
       resumeSourceSessionId: originalId,
     })
 
-    expect(spec.env.CODEX_HOME).toBe(codexHomeDir('sess_codex_revisit'))
+    expect(spec.env.CODEX_HOME).toBe(codexHomeDir('sess_codex_chat'))
     expect(readFileSync(join(spec.env.CODEX_HOME, 'sessions', '2026', '09', 'rollout.jsonl'), 'utf8')).toBe(
       '{"type":"session_meta","id":"codex-sess-42"}\n',
     )
@@ -1138,8 +1127,8 @@ describe('codexRuntime.writeArtifacts', () => {
       'utf8',
     )
 
-    await launchSpec('ideation')
-    const inherited = configToml('sess_codex_ideation')
+    await launchSpec('chat')
+    const inherited = configToml('sess_codex_chat')
     expect(inherited).toContain('[mcp_servers.linear]')
     expect(inherited).toContain('command = "linear-mcp"')
     // only the server tables come across — not the rest of their configuration
@@ -1147,8 +1136,8 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(inherited).not.toContain('gpt-5.6-terra')
     expect(inherited).toContain('[mcp_servers.runcastle]')
 
-    await launchSpec('qa', { config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }) })
-    const isolated = configToml('sess_codex_qa')
+    await launchSpec('chat', { config: ConfigSchema.parse({ sessionMcp: 'runcastleOnly' }) })
+    const isolated = configToml('sess_codex_chat')
     expect(isolated).not.toContain('linear')
     expect(isolated).toContain('[mcp_servers.runcastle]')
   })
@@ -1170,14 +1159,12 @@ describe('codexRuntime.writeArtifacts', () => {
   it('renders the skill pack into the worktree without adding a tracked file', async () => {
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: worktree })
 
-    const spec = await launchSpec('ideation')
+    const spec = await launchSpec('chat')
     const skill = join(worktree, '.agents', 'skills', 'ideate', 'SKILL.md')
 
     expect(spec.files).toContain(skill)
-    // Codex resolves `$ideate` from the frontmatter name, so the kickoff line and
-    // the rendered pack have to agree about what the skill is called
+    // Codex resolves `$ideate` from the frontmatter name used by the rendered prompt.
     expect(readFileSync(skill, 'utf8')).toContain('name: ideate')
-    expect(codexRuntime.kickoffLine('ideation')).toContain('$ideate')
 
     // the invariant: skills load and the human's diff is untouched — via
     // .git/info/exclude, never their .gitignore, which is their file and their PR
@@ -1190,7 +1177,7 @@ describe('codexRuntime.writeArtifacts', () => {
 
   it('renders nothing into a worktree that is not on disk (the smoke path computes one)', async () => {
     const absent = join(tmpdir(), 'runcastle-codex-absent-wt')
-    const spec = await launchSpec('ideation', { worktreePath: absent })
+    const spec = await launchSpec('chat', { worktreePath: absent })
     expect(spec.files.some((f) => f.includes('.agents'))).toBe(false)
     expect(existsSync(absent)).toBe(false)
   })

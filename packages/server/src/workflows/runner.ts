@@ -1,12 +1,11 @@
 import type { RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { runs } from '../db/schema'
 import { NotFoundError } from '../errors'
+import { parkTalkWorktreeForRun, releaseTalkWorktreeAfterRun } from '../services/chat-branch'
 import { emit } from '../services/events'
-import { detachWorktree, reattachWorktree } from '../services/git'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
@@ -148,7 +147,17 @@ export async function startRun(
     type: 'run.started',
     message: `run started (${workflowId})`,
     runId,
-    data: { workflow: workflowId },
+    // The lanes this run opens with, stated before any of them starts: they are
+    // CLAIMED from here on (`runClaimedTicketIds`), and until this snapshot
+    // existed nothing outside the scheduler's own memory could name a ticket the
+    // run had not yet reached. On the event rather than on a column for the
+    // reason the run/ticket join already is: a ticket outlives the run.
+    data: {
+      workflow: workflowId,
+      ...(workflowClaimsFeatureBranch(workflowId)
+        ? { ticketIds: tickets.filter((t) => t.status === 'pending').map((t) => t.id) }
+        : {}),
+    },
   })
 
   const controller = new AbortController()
@@ -157,15 +166,14 @@ export async function startRun(
   // Free the feature branch for the workflow's own worktree (SPEC §8) — ONLY
   // for branch-claiming workflows: a live talk worktree holds `feature/<slug>`
   // checked out, which git refuses to let the sandcastle burner check out again
-  // ('already used by worktree'). Detach it for the duration of the run;
-  // reattach best-effort when the run finalizes. Non-claiming workflows
-  // (research: per-run temp branch) skip the dance entirely, so the talk
-  // worktree — and any live HITL session inside it — is never yanked onto a
-  // detached HEAD by a run (ADR-0001 §7).
-  const talkWorktree = worktreeDir(project.id, feature.slug)
-  const talkDetached = workflowClaimsFeatureBranch(workflowId)
-    ? await detachWorktree(talkWorktree)
-    : false
+  // ('already used by worktree'). It is parked on a chat temp branch for the
+  // duration of the run — not detached, so the chat can keep committing docs
+  // and landing them beside the burn (`one-chat-per-feature` decision 9) — and
+  // handed back at finalize. Non-claiming workflows (research: per-run temp
+  // branch) skip the dance entirely, so the talk worktree — and any live HITL
+  // session inside it — is never touched by a run (ADR-0001 §7).
+  const claimsBranch = workflowClaimsFeatureBranch(workflowId)
+  if (claimsBranch) await parkTalkWorktreeForRun(ctx, project, feature)
 
   const wctx: WorkflowCtx = {
     runId,
@@ -199,7 +207,8 @@ export async function startRun(
   }
 
   const done = executeRun(ctx, runId, featureId, workflowId, def.run(wctx), controller, async () => {
-    if (talkDetached) await reattachWorktree(talkWorktree, feature.branch)
+    // The chat's last landing, then the feature branch back where it expects it.
+    if (claimsBranch) await releaseTalkWorktreeAfterRun(ctx, project, feature)
   })
   return { runId, done }
 }

@@ -10,7 +10,7 @@ import * as z from 'zod'
 
 /**
  * The pipeline steps a model can be chosen for (issue #48). Each interactive
- * session kind (`ideation`/`qa`/`waypoint`/`converge`) and each AFK agent
+ * session kind (`chat`/`waypoint`/`converge`) and each AFK agent
  * (`research`, `implement`, `review`) plus the scripted `smoke` maps to one
  * step.
  *
@@ -22,11 +22,9 @@ import * as z from 'zod'
  * price on every ticket or the implementer's on the review.
  */
 export const MODEL_STEPS = [
-  'ideation',
-  'qa',
+  'chat',
   'waypoint',
   'converge',
-  'revisit',
   'research',
   'implement',
   'review',

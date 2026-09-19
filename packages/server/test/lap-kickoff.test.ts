@@ -37,13 +37,13 @@ function git(cwd: string, ...args: string[]): string {
 
 describe('planKickoff', () => {
   it('treats a caller-supplied briefing as the opening move (fresh, no resume)', () => {
-    const plan = planKickoff({ kind: 'revisit', lap: 1, kickoffLine: 'Resolve the merge conflict.' })
+    const plan = planKickoff({ kind: 'chat', lap: 1, kickoffLine: 'Resolve the merge conflict.' })
     expect(plan).toEqual({ line: 'Resolve the merge conflict.', explicit: true })
   })
 
   it('reports which lap it is running from feature state, not the briefing string', () => {
     const plan = planKickoff({
-      kind: 'revisit',
+      kind: 'chat',
       lap: 4,
       kickoffLine: lapKickoff(4),
       lapInFlight: true,
@@ -53,7 +53,7 @@ describe('planKickoff', () => {
   })
 
   it('gives a lap-N grill the lap briefing instead of the generic ideate line', () => {
-    const plan = planKickoff({ kind: 'ideation', lap: 2, lapInFlight: true })
+    const plan = planKickoff({ kind: 'chat', lap: 2, lapInFlight: true })
     expect(plan.line).toBe(lapKickoff(2))
     expect(plan.lap).toBe(2)
     expect(plan.explicit).toBe(true)
@@ -70,7 +70,7 @@ describe('planKickoff', () => {
    * the lap plan.
    */
   it('recovers a lap that died mid-flight, with no kickoffLine to compare against', () => {
-    const plan = planKickoff({ kind: 'revisit', lap: 4, lapInFlight: true })
+    const plan = planKickoff({ kind: 'chat', lap: 4, lapInFlight: true })
     expect(plan.lap).toBe(4)
     expect(plan.line).toBe(lapKickoff(4))
     // and it launches FRESH — the dead lap's transcript argues with the briefing
@@ -78,9 +78,9 @@ describe('planKickoff', () => {
   })
 
   it('leaves an ordinary launch alone — no line, no lap, resume as before', () => {
-    expect(planKickoff({ kind: 'ideation', lap: 1 })).toEqual({ explicit: false })
+    expect(planKickoff({ kind: 'chat', lap: 1 })).toEqual({ explicit: false })
     // an ordinary revisit on a lap-3 feature is NOT running a lap
-    expect(planKickoff({ kind: 'revisit', lap: 3, lapInFlight: false })).toEqual({
+    expect(planKickoff({ kind: 'chat', lap: 3, lapInFlight: false })).toEqual({
       explicit: false,
     })
   })
@@ -111,7 +111,7 @@ describe('lapInFlight', () => {
   })
 })
 
-describe('launchSession — an explicit briefing launches fresh', () => {
+describe('launchSession — lap briefings', () => {
   let ctx: AppCtx
   let repoPath: string
   const cleanup: string[] = []
@@ -142,7 +142,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     cleanup.push(worktreeDir(project.id, slug))
     const prior = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'revisit',
+      kind: 'chat',
       worktreePath: 'w',
     })
     markSessionLive(ctx, prior.id, { ccSessionId: 'cc-prior' })
@@ -153,7 +153,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   /** The `claude` argv a `spawn:false` launch rendered, and its prompt artifact. */
   async function launchAndRead(
     featureId: string,
-    input: { kind: 'revisit' | 'ideation'; kickoffLine?: string },
+    input: { kind: 'chat'; kickoffLine?: string },
   ): Promise<{ sessionId: string; command: string; prompt: string }> {
     const { sessionId } = await launchSession(ctx, { featureId, ...input }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
@@ -165,27 +165,29 @@ describe('launchSession — an explicit briefing launches fresh', () => {
     }
   }
 
-  it('omits --resume when the launch carries a kickoff override', async () => {
+  it('delivers a chat kickoff override into the resumed conversation', async () => {
     const { featureId } = await seedResumable('with-briefing', { phase: 'planning', lap: 2 })
     const { command } = await launchAndRead(featureId, {
-      kind: 'revisit',
+      kind: 'chat',
       kickoffLine: lapKickoff(2),
     })
 
-    expect(command).not.toContain('--resume')
-    expect(command).not.toContain('cc-prior')
+    expect(command).toContain('--resume cc-prior')
     expect(command).toContain(lapKickoff(2))
+    expect(command).toContain('Feature state:')
     const events = listAfter(ctx, featureId, 0)
-    expect(events.map((e) => e.type)).not.toContain('session.resumed')
-    expect(events.map((e) => e.type)).toContain('session.resume_skipped')
+    expect(events.map((e) => e.type)).toContain('session.resumed')
+    expect(events.map((e) => e.type)).not.toContain('session.resume_skipped')
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
     const { featureId } = await seedResumable('no-briefing', { phase: 'building' })
-    const { command } = await launchAndRead(featureId, { kind: 'revisit' })
+    const { command } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(command).toContain('--resume cc-prior')
-    expect(command).not.toContain(KICKOFF_LINES.revisit)
+    // it carries the fresh state header (decision 13) and no lap briefing
+    expect(command).toContain('Feature state: building')
+    expect(command).not.toContain('REVIEW ITERATION')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
   })
@@ -193,7 +195,7 @@ describe('launchSession — an explicit briefing launches fresh', () => {
   it('renders the lap framing into the prompt of a lap launch, not the revisit ban', async () => {
     const { featureId } = await seedResumable('lap-prompt', { phase: 'planning', lap: 3 })
     const { prompt } = await launchAndRead(featureId, {
-      kind: 'revisit',
+      kind: 'chat',
       kickoffLine: lapKickoff(3),
     })
 
@@ -205,15 +207,19 @@ describe('launchSession — an explicit briefing launches fresh', () => {
 
   it('a lap-N grill opens on the lap briefing, not the generic ideate line', async () => {
     const { featureId } = await seedResumable('lap-grill', { phase: 'planning', lap: 2 })
-    const { sessionId, command } = await launchAndRead(featureId, { kind: 'ideation' })
+    const { sessionId, command } = await launchAndRead(featureId, { kind: 'chat' })
 
-    expect(command).not.toContain('--resume')
+    expect(command).toContain('--resume cc-prior')
+    expect(command).toContain('Feature state:')
     expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 
-  it('a lap-1 grill keeps the generic ideate line', () => {
-    expect(planKickoff({ kind: 'ideation', lap: 1 }).line).toBeUndefined()
-    expect(KICKOFF_LINES.ideation).toContain('/runcastle:ideate')
+  it('a lap-1 grill keeps the chat’s own opening line', () => {
+    expect(planKickoff({ kind: 'chat', lap: 1 }).line).toBeUndefined()
+    // no lap briefing, so the table's state-unknown default stands: the chat's
+    // own opening skill, not a lap framing
+    expect(KICKOFF_LINES.chat).toContain('/runcastle:revisit')
+    expect(KICKOFF_LINES.chat).not.toContain('REVIEW ITERATION')
   })
 
   /**
@@ -225,13 +231,13 @@ describe('launchSession — an explicit briefing launches fresh', () => {
    */
   it('re-enters a stranded lap through plain Revisit and rebuilds the lap briefing', async () => {
     const { featureId } = await seedResumable('stranded-lap', { phase: 'planning', lap: 2 })
-    const { sessionId, command, prompt } = await launchAndRead(featureId, { kind: 'revisit' })
+    const { sessionId, command, prompt } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(prompt).toContain('This is lap 2')
     expect(prompt).toMatch(/DO call `complete_phase`/)
     expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
-    // fresh, so the dead lap's transcript cannot argue with the new briefing
-    expect(command).not.toContain('--resume')
+    expect(command).toContain('--resume cc-prior')
+    expect(command).toContain('Feature state:')
     expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 })

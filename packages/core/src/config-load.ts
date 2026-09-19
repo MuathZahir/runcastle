@@ -4,6 +4,34 @@ import { RuncastleConfig, resolveDefaultBurnConcurrency } from './config'
 import { configPath } from './paths'
 
 /**
+ * Read-compat for session kinds collapsed into `chat`. This applies only to
+ * persisted config: once the settings UI writes the parsed shape back, the
+ * removed keys disappear permanently.
+ */
+const migrateCollapsedModelSteps = (raw: unknown): unknown => {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
+
+  const config = { ...(raw as Record<string, unknown>) }
+  if (
+    typeof config.stepModels !== 'object' ||
+    config.stepModels === null ||
+    Array.isArray(config.stepModels)
+  ) {
+    return config
+  }
+
+  const stepModels = { ...(config.stepModels as Record<string, unknown>) }
+  if (stepModels.chat === undefined && stepModels.ideation !== undefined) {
+    stepModels.chat = stepModels.ideation
+  }
+  delete stepModels.ideation
+  delete stepModels.qa
+  delete stepModels.revisit
+  config.stepModels = stepModels
+  return config
+}
+
+/**
  * Node-only config loader. Pulls in `node:fs` + `./paths` (which imports
  * `node:os`/`node:path`), so it is deliberately kept OUT of the core barrel and
  * imported directly via `@runcastle/core/config-load`. The schema it validates
@@ -25,7 +53,7 @@ export function loadConfig(
   const path = configPath()
   if (existsSync(path)) {
     try {
-      fileConfig = JSON.parse(readFileSync(path, 'utf8'))
+      fileConfig = migrateCollapsedModelSteps(JSON.parse(readFileSync(path, 'utf8')))
     } catch {
       fileConfig = {}
     }

@@ -11,12 +11,13 @@ import { resolveShipped } from './shipped'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
 
+export * from './chat'
 export * from './types'
 
 export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   const { feature, tickets, sessions, runs } = full
   const live = activeSession(sessions)
-  const resumableGrill = hasResumable(sessions, 'ideation')
+  const resumableChat = hasResumable(sessions, 'chat')
   const lapTickets = tickets.filter((ticket) => ticket.lap === feature.lap)
   const lapTicketCount = lapTickets.filter((ticket) => ticket.status !== 'cancelled').length
   const ticketCount = tickets.length
@@ -30,7 +31,7 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     full,
     ctx,
     live,
-    resumableGrill,
+    resumableChat,
     lapTickets,
     lapTicketCount,
     ticketCount,

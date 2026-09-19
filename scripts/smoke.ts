@@ -211,7 +211,7 @@ async function main(): Promise<void> {
 
   // (4) fabricate ideation session (spawn:false) + decisions.md ----------------
   banner('STEP 4 — fabricate ideation session (launchSession spawn:false) + decisions.md')
-  const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'ideation' }, { spawn: false })
+  const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'chat' }, { spawn: false })
   assert(!!sessionId, 'sessionId returned')
   const worktree = paths.worktreeDir(project.id, slug)
   assert(existsSync(worktree), `talk worktree exists at ${worktree}`)
@@ -418,7 +418,7 @@ async function mappedFlow(projectId: string): Promise<void> {
   const featureId = feature.id
   const slug = feature.slug
   assert(feature.mapped === false, 'feature starts unmapped (it must escalate)')
-  const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'ideation' }, { spawn: false })
+  const { sessionId } = await launchSession(ctx as never, { featureId, kind: 'chat' }, { spawn: false })
   const mapHook = await postHook('session-start', {
     sessionId,
     payload: {

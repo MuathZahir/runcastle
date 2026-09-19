@@ -56,11 +56,9 @@ describe('RuncastleConfig — model shape', () => {
 
   it('exposes the model steps, review among them', () => {
     expect(MODEL_STEPS).toEqual([
-      'ideation',
-      'qa',
+      'chat',
       'waypoint',
       'converge',
-      'revisit',
       'research',
       'implement',
       'review',
@@ -350,11 +348,11 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   }
 
   it('falls back to the global default when nothing else is set', () => {
-    expect(resolveModel('ideation', config)).toBe('global-default')
+    expect(resolveModel('chat', config)).toBe('global-default')
   })
 
   it('uses a project override above the global default', () => {
-    expect(resolveModel('ideation', config, { model: 'project-model' })).toBe('project-model')
+    expect(resolveModel('chat', config, { model: 'project-model' })).toBe('project-model')
   })
 
   it('a project override wins over a global step override', () => {
@@ -373,8 +371,8 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   })
 
   it('ignores a null/undefined project model and run override', () => {
-    expect(resolveModel('qa', config, { model: null }, null)).toBe('global-default')
-    expect(resolveModel('qa', config, null, undefined)).toBe('global-default')
+    expect(resolveModel('chat', config, { model: null }, null)).toBe('global-default')
+    expect(resolveModel('chat', config, null, undefined)).toBe('global-default')
   })
 
   it('resolves review independently of implement, and inherits when unset', () => {
@@ -403,7 +401,7 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
   })
 
   it('carries the runtime of whichever link of the chain wins', () => {
-    expect(resolveModelEntry('ideation', config)).toMatchObject({
+    expect(resolveModelEntry('chat', config)).toMatchObject({
       id: 'claude-opus-5',
       runtime: 'claude-code',
     })
@@ -434,7 +432,7 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
   })
 
   it('falls back to claude-code for an id no roster knows', () => {
-    expect(resolveModelEntry('ideation', { ...config, model: 'mystery-model' })).toEqual({
+    expect(resolveModelEntry('chat', { ...config, model: 'mystery-model' })).toEqual({
       id: 'mystery-model',
       runtime: 'claude-code',
     })

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option B — Chat as a full body view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:#090b10}
+a{color:#a49bff}a:hover{color:#c4bdff}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #090b10; color: #dde3ed; display: flex; flex-direction: column; font-size: 13px;">
+
+  <div style="height: 36px; flex-shrink: 0; background: #0e1117; border-bottom: 1px solid #1c2230; display: flex; align-items: center; padding: 0 16px; gap: 10px;">
+    <span style="color: #5f6a7a; font-size: 12px; font-weight: 600;">runcastle</span>
+    <span style="color: #3a4354; font-size: 12px;">/</span>
+    <span style="color: #96a0b0; font-size: 12px;">runcastle</span>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <div style="width: 208px; flex-shrink: 0; background: #0b0e14; border-right: 1px solid #1c2230; box-sizing: border-box; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px;">
+      <div style="color: #5f6a7a; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 0 8px 6px;">Features</div>
+      <div style="padding: 7px 8px; border-radius: 6px; background: #161329; color: #a49bff; font-size: 12px; font-weight: 600;">one-chat-per-feature</div>
+      <div style="padding: 7px 8px; border-radius: 6px; color: #96a0b0; font-size: 12px;">native-first-message…</div>
+      <div style="padding: 7px 8px; border-radius: 6px; color: #96a0b0; font-size: 12px;">codex-resume-lifecycle</div>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+      <div style="box-sizing: border-box; padding: 16px 20px 10px; display: flex; align-items: baseline; gap: 12px;">
+        <span style="font-family: ui-monospace,Consolas,monospace; font-size: 13px; font-weight: 600; color: #a49bff;">review</span>
+        <span style="font-size: 17px; font-weight: 600;">One chat per feature</span>
+        <span style="color: #5f6a7a; font-size: 12px;">lap 3</span>
+      </div>
+
+      <div style="box-sizing: border-box; padding: 0 20px 12px; display: flex; align-items: center; gap: 8px; color: #5f6a7a; font-size: 12px;">
+        <span style="color: #3a4354;">ideation</span><span style="color: #3a4354;">·</span>
+        <span style="color: #3a4354;">spec</span><span style="color: #3a4354;">·</span>
+        <span style="color: #3a4354;">tickets</span><span style="color: #3a4354;">·</span>
+        <span style="color: #3a4354;">implementation</span><span style="color: #3a4354;">·</span>
+        <span style="color: #dde3ed; font-weight: 600;">review</span>
+      </div>
+
+      <div style="height: 44px; flex-shrink: 0; background: #0e1117; border-top: 1px solid #1c2230; border-bottom: 1px solid #1c2230; display: flex; align-items: center; box-sizing: border-box; padding: 0 20px; gap: 10px;">
+        <button style="height: 28px; padding: 0 14px; border-radius: 6px; background: #7c6cf6; color: #0d0722; border: none; font-size: 12px; font-weight: 600;">Approve &amp; merge</button>
+        <button style="height: 28px; padding: 0 14px; border-radius: 6px; background: transparent; color: #96a0b0; border: 1px solid #1c2230; font-size: 12px;">Rethink</button>
+        <div style="flex-grow: 1;"></div>
+        <div style="display: flex; border: 1px solid #1c2230; border-radius: 6px; overflow: hidden;">
+          <button style="height: 26px; padding: 0 12px; background: transparent; color: #96a0b0; border: none; font-size: 12px;">Review</button>
+          <button aria-label="Switch body to chat" style="height: 26px; padding: 0 12px; background: #161329; color: #a49bff; border: none; font-size: 12px; font-weight: 600;">Chat</button>
+        </div>
+      </div>
+
+      <div style="flex-grow: 1; display: flex; flex-direction: column; min-height: 0; box-sizing: border-box; padding: 0 140px;">
+
+        <div style="flex-shrink: 0; display: flex; align-items: center; gap: 8px; box-sizing: border-box; padding: 14px 4px 10px; border-bottom: 1px solid #151a26;">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: #7c6cf6;"></span>
+          <span style="font-size: 12px; font-weight: 600;">Chat</span>
+          <span style="color: #5f6a7a; font-size: 11px;">one transcript · resumed · knows: phase review, 1 open defect, 27 tickets</span>
+        </div>
+
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 18px 4px; display: flex; flex-direction: column; gap: 14px; overflow: hidden;">
+          <div style="display: flex; flex-direction: column; gap: 4px; max-width: 720px;">
+            <span style="color: #5f6a7a; font-size: 11px; font-weight: 600;">you</span>
+            <div style="background: #12151d; border: 1px solid #151a26; border-radius: 8px; padding: 10px 13px; font-size: 13px; color: #dde3ed;">Why did ticket 25 drop the override path?</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; max-width: 720px;">
+            <span style="color: #a49bff; font-size: 11px; font-weight: 600;">claude</span>
+            <div style="background: #07080b; border: 1px solid #151a26; border-radius: 8px; padding: 10px 13px; font-size: 13px; color: #96a0b0;">It kept the resume but the PTY write isn't observable — that's the open defect from lap 2's review. The fix would return delivery success or failure and only emit the kickoff after a successful write.</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; max-width: 720px;">
+            <span style="color: #5f6a7a; font-size: 11px; font-weight: 600;">you</span>
+            <div style="background: #12151d; border: 1px solid #151a26; border-radius: 8px; padding: 10px 13px; font-size: 13px; color: #dde3ed;">Card it for lap 3.</div>
+          </div>
+          <div style="color: #3a4354; font-size: 12px; margin-top: auto; text-align: center;">Chat takes over the whole body — the review content is behind the Review toggle above.</div>
+        </div>
+
+        <div style="flex-shrink: 0; box-sizing: border-box; padding: 12px 4px 18px; border-top: 1px solid #151a26;">
+          <div style="display: flex; gap: 8px;">
+            <input aria-label="Message the feature chat" placeholder="Message the feature chat…" style="flex-grow: 1; height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 6px; background: #07080b; border: 1px solid #1c2230; color: #dde3ed; font-size: 13px;">
+            <button style="height: 36px; padding: 0 16px; border-radius: 6px; background: #7c6cf6; color: #0d0722; border: none; font-size: 12px; font-weight: 600;">Send</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -93,7 +93,7 @@ const session = (over: Partial<FeatureFull['sessions'][number]> = {}) =>
   ({
     id: 'ses_1',
     featureId: 'ftr_1',
-    kind: 'qa',
+    kind: 'chat',
     status: 'ended',
     awaitingInput: false,
     worktreePath: '/tmp/wt',

@@ -44,7 +44,8 @@ export interface ResolverInput {
   full: FeatureFull
   ctx: NextStepContext
   live: FeatureFull['sessions'][number] | undefined
-  resumableGrill: boolean
+  /** The feature's chat has a conversation on disk — Resume vs Start wording. */
+  resumableChat: boolean
   lapTickets: FeatureFull['tickets']
   lapTicketCount: number
   ticketCount: number

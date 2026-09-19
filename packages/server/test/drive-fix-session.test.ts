@@ -203,7 +203,7 @@ describe('launching a drive-fix session', () => {
 
   it('counts as the feature’s one terminal', async () => {
     await failedDrive()
-    createSessionRow(ctx, { featureId: feature.id, kind: 'qa', worktreePath: '/wt' })
+    createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: '/wt' })
 
     await expect(launched()).rejects.toThrow(/only one terminal per feature/)
   })
@@ -246,8 +246,7 @@ describe('retry_drive', () => {
   }
 
   it('is refused outside a drive-fix session, with a reason that says where drives come from', async () => {
-    await expect(toolRetryDrive(ctx, session('revisit'))).rejects.toThrow(/drive-fix session/)
-    await expect(toolRetryDrive(ctx, session('qa'))).rejects.toThrow(/review panel/)
+    await expect(toolRetryDrive(ctx, session('chat'))).rejects.toThrow(/drive-fix session/)
   })
 
   it('stops the held failed drive, starts a fresh one and reports what it saw', async () => {

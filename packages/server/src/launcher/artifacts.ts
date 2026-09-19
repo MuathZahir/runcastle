@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type {
   AgentRuntime,
   Feature,
+  PlanningArtifactFacts,
   Project,
   RuncastleConfig,
   SessionKind,
@@ -11,14 +12,14 @@ import type {
   SessionRow,
   Waypoint,
 } from '@runcastle/core'
-import { DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
+import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
-import { skillRef } from './runtimes/skills'
+import { type ChatOpening, skillRef } from './runtimes/skills'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -67,6 +68,13 @@ export interface WriteArtifactsInput {
    * `phase === 'review'` and by then the phase had moved).
    */
   lap?: number
+  /**
+   * What this feature has produced inside Planning, read off disk by the
+   * launcher. It decides which of its chat's two openings the briefing renders
+   * (see {@link chatOpening}); absent means "no artifact facts to go on", which
+   * reads as a feature with a record to revisit.
+   */
+  planning?: PlanningArtifactFacts
   /**
    * What the previous lap carried into this one — stated in a lap briefing so
    * the session opens knowing its agenda rather than being pointed at it. Read
@@ -142,6 +150,27 @@ export function conflictResolutionRule(): string {
 }
 
 /**
+ * Which opening move the feature's one chat is briefed with (decision 3: one
+ * kind, per-state rules at call time).
+ *
+ * The chat covers the whole feature, so its first move cannot be the same in
+ * every state. A feature still in Planning that has produced NOTHING — no
+ * decisions, no spec, no tickets — has its first conversation ahead of it, and
+ * the ideation brief is the one that produces those three; anything else has a
+ * record on disk, which is what a revisit amends. Sending the front of the
+ * pipeline to `revisit` left it with no instructed path to its own first spec and
+ * tickets, and a briefing that flatly bans `complete_phase`.
+ *
+ * Read off the ARTIFACTS rather than off the phase alone, the same way Planning's
+ * own progress is (`completedPlanningSteps`): a planning feature that has already
+ * been grilled is a revisit, not a second ideation.
+ */
+export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts): ChatOpening {
+  if (feature.phase !== 'planning' || !planning) return 'revisit'
+  return completedPlanningSteps(planning).length === 0 ? 'ideate' : 'revisit'
+}
+
+/**
  * The injected system prompt (feature brief). Directs the session to the pack's
  * entry skill and lists the on-disk knowledge paths.
  *
@@ -157,6 +186,12 @@ export function conflictResolutionRule(): string {
  * Two entry skills, no defined precedence. There is exactly one now, and it is
  * the same one `lapKickoff` names.
  *
+ * Below the lap, `chat` splits on {@link chatOpening}: a feature whose planning
+ * artifacts do not exist yet gets the ideation brief (the generic feature brief
+ * at the end of this function), and every other state gets the revisit brief.
+ * `chatKickoffHeader` picks its opening line from the same predicate, so the two
+ * cannot disagree.
+ *
  * Deliberately NO MCP tool cheat-sheet in any renderer. Every tool a session can
  * call is already in its tool list with a longer, schema-backed description, and
  * registration is filtered by audience — so a hand-written list here can name a
@@ -171,12 +206,14 @@ export function renderSystemPrompt(
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
+  planning?: PlanningArtifactFacts,
 ): string {
   if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint, runtime)
   if (kind === 'converge') return renderConvergePrompt(feature, runtime)
-  if (kind === 'revisit') return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
-  if (kind === 'qa') return renderQaPrompt(feature, runtime)
+  if (kind === 'chat' && chatOpening(feature, planning) === 'revisit') {
+    return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
+  }
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
 
@@ -1243,11 +1280,31 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
  * its home dir. Same prose, two destinations.
  */
 export function renderSessionPrompt(input: WriteArtifactsInput): string {
-  const { session, feature, waypoint, prepare, projectBrief, driveFix, lap, purpose, runtime, carried } =
-    input
+  const {
+    session,
+    feature,
+    waypoint,
+    prepare,
+    projectBrief,
+    driveFix,
+    lap,
+    purpose,
+    runtime,
+    carried,
+    planning,
+  } = input
   if (driveFix) return renderDriveFixPrompt(driveFix)
   if (feature) {
-    return renderSystemPrompt(feature, session.kind, waypoint, lap, purpose, runtime, carried)
+    return renderSystemPrompt(
+      feature,
+      session.kind,
+      waypoint,
+      lap,
+      purpose,
+      runtime,
+      carried,
+      planning,
+    )
   }
   if (prepare) return renderPreparePrompt(prepare)
   if (projectBrief) return renderProjectPrompt(projectBrief, runtime)

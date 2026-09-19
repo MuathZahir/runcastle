@@ -75,14 +75,14 @@ describe('draft creation surfaces', () => {
       desc: 'Three tickets for this lap.',
       note: 'Still unspecified: keyboard behavior',
       primary: { label: 'Burn 3 tickets', kind: 'burn' },
-      secondary: [{ label: 'Ask for changes', kind: 'revisit', hint: 'Open a session to change the tickets before burning' }],
+      secondary: [{ label: 'Chat', kind: 'chat', hint: 'Open the chat to change the tickets before burning' }],
       busy: false,
     }
     const html = renderToStaticMarkup(createElement(NextStepBar, { ns, guidance: true, busy: false, onAction: () => undefined }))
 
     expect(html).toContain('role="note"')
     expect(html).toContain('Still unspecified: keyboard behavior')
-    expect(html).toContain('title="Open a session to change the tickets before burning"')
+    expect(html).toContain('title="Open the chat to change the tickets before burning"')
     expect(html).not.toMatch(/class="[^"]*nextstep/)
   })
 })

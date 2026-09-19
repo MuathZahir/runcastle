@@ -18,15 +18,16 @@ import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('kickoff registry + override', () => {
-  const KINDS: SessionKind[] = ['ideation', 'qa', 'waypoint', 'converge', 'revisit']
+  const KINDS: SessionKind[] = ['chat', 'waypoint', 'converge', 'prepare', 'project', 'drive-fix']
 
   it('maps every session kind to a non-empty kickoff line naming its opening skill', () => {
     const skillByKind: Record<SessionKind, string> = {
-      ideation: '/runcastle:ideate',
-      qa: '/runcastle:qa',
+      chat: '/runcastle:revisit',
       waypoint: '/runcastle:waypoint',
       converge: '/runcastle:converge',
-      revisit: '/runcastle:revisit',
+      prepare: '/runcastle:prepare',
+      project: '/runcastle:project',
+      'drive-fix': 'retry_drive',
     }
     for (const kind of KINDS) {
       expect(KICKOFF_LINES[kind]).toContain(skillByKind[kind])
@@ -56,14 +57,14 @@ describe('kickoff registry + override', () => {
       expect(kickoffLineFor(kind, undefined, 'codex')).toBe(CODEX_KICKOFF_LINES[kind])
       expect(kickoffLineFor(kind, undefined, 'claude-code')).toBe(KICKOFF_LINES[kind])
     }
-    expect(kickoffLineFor('ideation', undefined, 'codex')).toContain('$ideate')
+    expect(kickoffLineFor('chat', undefined, 'codex')).toContain('$revisit')
   })
 
   it('kickoffLineFor lets an explicit override replace the default', () => {
     const override = 'Proceed with your task: resolve the merge conflict, then hand back.'
-    expect(kickoffLineFor('revisit', override)).toBe(override)
+    expect(kickoffLineFor('chat', override)).toBe(override)
     // an empty override is not a real override — the default still wins
-    expect(kickoffLineFor('revisit', undefined)).toBe(KICKOFF_LINES.revisit)
+    expect(kickoffLineFor('chat', undefined)).toBe(KICKOFF_LINES.chat)
   })
 })
 
@@ -121,7 +122,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
 
     const prompt = renderSystemPrompt(
       feature,
-      'revisit',
+      'chat',
       undefined,
       2,
       undefined,
@@ -146,7 +147,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     const line = lapKickoff(2, carriedWork(ctx, feature.id))
     const prompt = renderSystemPrompt(
       feature,
-      'revisit',
+      'chat',
       undefined,
       2,
       undefined,

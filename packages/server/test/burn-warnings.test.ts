@@ -42,7 +42,7 @@ describe('burn warnings', () => {
     caller = createCallerFactory(appRouter)(ctx)
     session = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, session.id)

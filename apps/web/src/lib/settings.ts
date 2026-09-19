@@ -192,11 +192,9 @@ const STEP_META: readonly {
   group: StepGroup
 }[] = [
   // Sessions — you are in the terminal.
-  { step: 'ideation', label: 'Ideation', group: 'sessions', description: 'Grills you and writes the spec' },
-  { step: 'qa', label: 'Q&A', group: 'sessions', description: 'Answers questions about a feature' },
+  { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature conversation' },
   { step: 'waypoint', label: 'Waypoint', group: 'sessions', description: 'Works one waypoint of a mapped feature' },
   { step: 'converge', label: 'Converge', group: 'sessions', description: 'Folds a map back into one spec' },
-  { step: 'revisit', label: 'Revisit', group: 'sessions', description: 'Reopens a feature after test-drive notes' },
   { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
   // Unattended — burns and scripted runs.
   { step: 'research', label: 'Research', group: 'unattended', description: 'Reads the repo before a burn' },

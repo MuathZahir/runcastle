@@ -85,7 +85,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
     permissionMode,
     '--model',
     input.model,
-    ...(!input.resumeSessionId && input.kickoffLine ? [input.kickoffLine] : []),
+    ...(input.kickoffLine ? [input.kickoffLine] : []),
   ]
 }
 

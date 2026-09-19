@@ -1,6 +1,7 @@
 import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
 import { burnWarningLine } from './burn-warnings'
+import { CHAT_ACTION } from './chat'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -18,7 +19,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     full,
     ctx,
     live,
-    resumableGrill,
+    resumableChat,
     ticketCount: t,
     done,
     failed,
@@ -45,7 +46,12 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       title: 'Burning tickets',
       desc: `Burning ${t} ticket${t === 1 ? '' : 's'} — ${done} done${failed ? `, ${failed} failed` : ''}.`,
       primary: { label: 'Cancel run', kind: 'cancelRun', danger: true },
-      secondary: [mergeAction],
+      // The door this feature exists for: a burn used to refuse every terminal
+      // because the run held the branch, so the bar had one button and the human
+      // waiting on a dead run had nobody to ask. Chat is enabled here like
+      // anywhere else — the chat commits on its own branch now and lands through
+      // the queue (decision 2) — and Cancel run stays the primary.
+      secondary: [CHAT_ACTION, mergeAction],
       busy: true,
     }
   }
@@ -59,7 +65,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
         title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, ${interruption.pendingTickets} pending`,
         desc: 'Resume the burn to sweep orphaned work and continue the remaining tickets.',
         primary: { label: 'Resume burn', kind: 'burn' },
-        secondary: [],
+        secondary: [CHAT_ACTION],
         busy: false,
       }
     }
@@ -71,7 +77,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, 0 pending`,
       desc: 'All ticket work landed before the restart. Resume the burn to finalize it — it hands off to review on its own.',
       primary: { label: 'Resume burn', kind: 'burn' },
-      secondary: [],
+      secondary: [CHAT_ACTION],
       busy: false,
     }
   }
@@ -86,7 +92,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
         title: 'No tickets to burn',
         desc: 'This feature reached the build state with an empty ledger. The live session breaks the work into tickets — they appear here as they land.',
         primary: undefined,
-        secondary: [mergeAction],
+        secondary: [CHAT_ACTION, mergeAction],
         busy: false,
       }
     }
@@ -94,9 +100,12 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       kick: 'WAITING',
       title: 'No tickets to burn',
       desc: 'This feature reached the build state with an empty ledger. A session breaks the work into tickets — open one, and the burn has something to run.',
+      // An empty ledger with nothing live IS the state talking is the next step
+      // in, so the chat is promoted out of its secondary slot and keeps the
+      // resume-aware wording this primary has always had.
       primary: {
-        label: resumableGrill ? 'Resume the session' : 'Open a session',
-        kind: 'startGrill',
+        label: resumableChat ? 'Resume the session' : 'Open a session',
+        kind: 'chat',
       },
       secondary: [mergeAction],
       busy: false,
@@ -113,7 +122,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       // Whose tickets these are, when laps mix (decision 28a) — the burn takes
       // every pending ticket on the branch, and the count alone never said so.
       primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
-      secondary: live ? [mergeAction] : [{ label: 'Revisit', kind: 'revisit' }, mergeAction],
+      secondary: [CHAT_ACTION, mergeAction],
       busy: false,
       ...(shape ? { note: shape } : {}),
     }
@@ -129,12 +138,9 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     title: 'Resume the burn',
     desc: `${why} ${expectation}`,
     primary: { label: 'Resume burn', kind: 'burn' },
-    // Failed tickets are reset to pending on resume; Revisit instead opens
-    // a session to amend docs and edit/cancel tickets before re-burning.
-    secondary: [
-      ...(live ? [] : [{ label: 'Revisit', kind: 'revisit' as const }]),
-      mergeAction,
-    ],
+    // Failed tickets are reset to pending on resume; Chat instead amends the
+    // docs and edits or cancels tickets before re-burning.
+    secondary: [CHAT_ACTION, mergeAction],
     busy: false,
     ...(shape ? { note: shape } : {}),
   }

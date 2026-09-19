@@ -7,8 +7,8 @@
  * switch has no case for.
  */
 export const ACTION_KINDS = [
-  'startDraft', // feature.start — cut the branch on a parked draft, then start ideation
-  'startGrill', // launchSession { kind: 'ideation' }
+  'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
+  'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'converge', // feature.converge — turn a finished map into a spec and tickets
   'workNext', // feature.workWaypoint — work the next ready mapped waypoint
   'resumeConverge', // feature.converge — resume a stranded converge session
@@ -16,12 +16,10 @@ export const ACTION_KINDS = [
   'cancelRun', // run.cancel
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
-  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then revisit
+  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then the Iterate road
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
   'merge', // feature.merge — crosses to shipped, reachable from every state
-  'askQuestions', // launchSession { kind: 'qa' }
-  'revisit', // launchSession { kind: 'revisit' } — resume the old conversation, amend docs + tickets
-  'resolveConflict', // launchSession { kind: 'revisit', kickoffLine: mergeConflictKickoff(…) }
+  'resolveConflict', // launchSession { kind: 'chat', kickoffLine: mergeConflictKickoff(…) }
   'iterate', // opens the triage step over the open notes and defects (decision 21)
   'endSessionAndIterate', // feature.endSession, then the Iterate road above (decision 4)
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
@@ -101,11 +99,11 @@ export interface NextStep {
 }
 
 /**
- * Kickoff line for a review-phase revisit session opened to RESOLVE a merge
+ * Kickoff line for a review-phase chat session opened to RESOLVE a merge
  * conflict (CONTEXT decision #9). Passed as the `launchSession` override, so the
- * revisit agent — whose cwd IS the talk worktree checked out on the feature
- * branch — opens straight on the merge-into-feature resolution rather than the
- * generic revisit prompt. Parameterized with the base branch, feature branch,
- * and conflicting files carried on the `merge.conflict` event.
+ * chat agent — whose cwd IS the talk worktree checked out on the feature
+ * branch — opens straight on the merge-into-feature resolution rather than
+ * carrying on the conversation. Parameterized with the base branch, feature
+ * branch, and conflicting files carried on the `merge.conflict` event.
  */
 export type DraftBaseMissing = 'loading' | 'unpicked'

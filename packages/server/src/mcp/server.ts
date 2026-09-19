@@ -55,13 +55,20 @@ import {
   quickChange,
 } from '../services/features'
 import { burnWarnings } from '../services/burn-warnings'
-import { type CarriedDefect, type ReviewEvidence, carriedWork } from '../services/carried-work'
+import { landChatCommits } from '../services/chat-branch'
+import {
+  type CarriedDefect,
+  type ReviewEvidence,
+  carriedWork,
+  currentLapReviewEvidence,
+} from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   carryFinding,
   closeAsAddressed,
   linkFixTicket,
+  listByFeature as listReviewFindings,
   reportFinding,
   requireLinkableFindings,
 } from '../services/review-findings'
@@ -77,7 +84,8 @@ import {
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
-import { addNote } from '../services/test-notes'
+import { activeBurnClaim, latestBurn, runClaimedTicketIds } from '../services/runs'
+import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
 import {
   cancelTicket,
   editTicket,
@@ -187,26 +195,6 @@ function requireFeatureId(session: SessionRow): string {
     )
   }
   return session.featureId
-}
-
-/**
- * The `qa` kind's read-only contract, enforced instead of merely stated.
- *
- * `qa` is "come back and ask questions": three separate prompts forbid it the
- * write tools, and until now that was the whole enforcement — a qa session HAS a
- * feature, so every feature-shaped write tool let it through. The codebase's own
- * principle for exactly this (`launcher/edit-guard.ts:11`): a prompt rule is
- * advisory, a deny is not.
- *
- * The refusal names what to do instead, because there is a human in the room:
- * a qa session's output is what it TELLS them, not what it stores.
- */
-function refuseIfReadOnly(session: SessionRow, action: string): void {
-  if (session.kind !== 'qa') return
-  throw new GateError(
-    `a qa session is read-only, and ${action} is a write. Answer the human's question and tell ` +
-      'them what should change — they open the session (revisit, ideation) that can make it.',
-  )
 }
 
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
@@ -339,6 +327,40 @@ export interface FeatureContext {
    * Empty outside a lap (lap 1, or a previous lap whose review never burned).
    */
   reviewEvidence: ReviewEvidence[]
+  /**
+   * The feature's newest burn, however it ended — the one piece of the current
+   * state that lives on the `runs` table and reaches no session otherwise
+   * (decisions.md #7). Absent on a feature that has never burned, which is the
+   * only thing its absence means.
+   */
+  latestRun?: {
+    status: RunStatusT
+    /** Of the tickets that burn held, how many finished `done` / `failed`. */
+    ticketsLanded: number
+    ticketsFailed: number
+    /** The first line of each failed ticket's error — the headline, not the log. */
+    errorHeadlines: string[]
+  }
+  /**
+   * What THIS lap's review passes did and where each one left its evidence —
+   * the same shape and the same paths-not-content contract as
+   * {@link reviewEvidence} above, which speaks for the previous lap. Empty until
+   * a review pass of this lap has burned.
+   */
+  currentLapReview: ReviewEvidence[]
+  /**
+   * Every finding this lap's review reported, resolved ones included — the
+   * record of the pass, where `openDefects` and `carriedDefects` are the work it
+   * left. Empty when this lap's review reported nothing.
+   */
+  findings: ReviewFinding[]
+  /**
+   * The test-drive notes that still stand: this lap's, plus anything an earlier
+   * lap carried rather than answered. Keyed on status rather than on the lap
+   * number alone for the reason `carriedWork` documents — a note carried forward
+   * keeps the lap that captured it, and asking only for this lap's would lose it.
+   */
+  testNotes: TestNote[]
   tickets: FeatureContextTicket[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -375,6 +397,36 @@ const DOCS_NOTE =
   'it anyway if a ticket points at it.'
 
 /**
+ * The newest burn as a headline, or nothing at all when the feature has never
+ * burned — spread into the payload, so "never burned" is a missing key rather
+ * than a run-shaped object full of zeroes.
+ *
+ * Counted over the tickets that run HELD rather than over the feature's ledger:
+ * a lap's tickets outlive the burn that ran them, and the question the chat is
+ * answering ("how did the last burn go?") is about one run's lanes.
+ */
+function latestBurnSummary(
+  ctx: AppCtx,
+  featureId: string,
+  tickets: Ticket[],
+): Pick<FeatureContext, 'latestRun'> {
+  const burn = latestBurn(ctx, featureId)
+  if (!burn) return {}
+  const held = new Set(runClaimedTicketIds(ctx, burn.id))
+  const burned = tickets.filter((ticket) => held.has(ticket.id))
+  return {
+    latestRun: {
+      status: burn.status,
+      ticketsLanded: burned.filter((ticket) => ticket.status === 'done').length,
+      ticketsFailed: burned.filter((ticket) => ticket.status === 'failed').length,
+      errorHeadlines: burned.flatMap((ticket) =>
+        ticket.status === 'failed' && ticket.error ? [ticket.error.split(/\r?\n/, 1)[0]] : [],
+      ),
+    },
+  }
+}
+
+/**
  * Everything true of the feature right now, sized to be READ rather than
  * skimmed.
  *
@@ -388,6 +440,11 @@ const DOCS_NOTE =
  */
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
+  const allTickets = listByFeature(ctx, feature.id)
+  const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
+  const testNotes = listTestNotes(ctx, feature.id).filter(
+    (note) => note.lap === feature.lap || note.status === 'carried',
+  )
 
   // The carry channel decides two things here: which defects the payload states
   // outright, and whether `test-notes.md` may still claim to be already-triaged
@@ -428,7 +485,11 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     openDefects: carried.openDefects,
     carriedDefects: carried.carriedDefects,
     reviewEvidence: carried.reviewEvidence,
-    tickets: listByFeature(ctx, feature.id).map(stripDigest),
+    ...latestBurnSummary(ctx, feature.id, allTickets),
+    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
+    findings,
+    testNotes,
+    tickets: allTickets.map(stripDigest),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
   }
@@ -605,7 +666,6 @@ export function toolEmitTickets(
   input: { tickets: TicketInputT[] },
 ): { stored: number; tickets: StoredTicketRef[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
-  refuseIfReadOnly(session, 'emitting tickets')
   refuseMisKindedReview(input.tickets)
   // The LINK disposition: a lap ticket that names the defect it answers. Vetted
   // here rather than in `storeTickets`, which is also the internal mint used by
@@ -631,7 +691,17 @@ export function toolEmitTickets(
   }
 }
 
-/** Refuse cross-feature ticket surgery: the id must belong to THIS session's feature. */
+/**
+ * The two refusals every ticket edit passes: the id must belong to THIS
+ * session's feature, and no live burn may already hold that ticket.
+ *
+ * The second is a CALL-time check on purpose (decisions.md #3). A chat lives
+ * across state changes — a burn starts and finishes under it — so the audience
+ * table, which is built once at spawn, cannot speak for what is running now. It
+ * is deliberately narrow: only the lanes the live burn holds are frozen, and
+ * every other ticket stays editable mid-burn, which is how the chat shapes the
+ * NEXT burn's work while this one runs.
+ */
 function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): Ticket {
   // Scope first, existence second: a session with no feature has no business
   // asking about any ticket, and telling it "that id doesn't exist" would send
@@ -640,6 +710,12 @@ function requireOwnTicket(ctx: AppCtx, session: SessionRow, ticketId: string): T
   const ticket = getTicket(ctx, ticketId)
   if (ticket.featureId !== featureId) {
     throw new GateError(`ticket ${ticketId} does not belong to this session's feature`)
+  }
+  const run = activeBurnClaim(ctx, featureId, ticket.id)
+  if (run) {
+    throw new GateError(
+      `run ${run.id} has claimed ticket ${ticket.id} (#${ticket.seq} ${ticket.title}); wait for that run to finish before editing it`,
+    )
   }
   return ticket
 }
@@ -650,7 +726,6 @@ export function toolUpdateTicket(
   input: { id: string } & TicketContentPatch,
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
-  refuseIfReadOnly(session, 'rewriting a ticket')
   const { id, ...patch } = input
   return { ok: true, ticket: editTicket(ctx, id, patch) }
 }
@@ -661,7 +736,6 @@ export function toolCancelTicket(
   input: { id: string; reason?: string },
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
-  refuseIfReadOnly(session, 'cancelling a ticket')
   return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
 }
 
@@ -724,7 +798,6 @@ export function toolResolveFinding(
   input: ResolveFindingInputT,
 ): { ok: true; finding: ReviewFinding } {
   const featureId = requireFeatureId(session)
-  refuseIfReadOnly(session, 'resolving a finding')
   const { findingId, disposition, note } = ResolveFindingInput.parse(input)
   const finding =
     disposition === 'carry'
@@ -832,7 +905,6 @@ export function toolCompletePhase(
   input: { phase: PlanningStep },
 ): CompletePhaseResult {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
-  refuseIfReadOnly(session, 'completing a phase')
   // Read before the emit below, which would otherwise count as this call's own
   // earlier report.
   const repeated = planningStepReported(ctx, feature, input.phase)
@@ -888,25 +960,36 @@ export function toolCompletePhase(
  * Checkpoint the feature's knowledge docs into the talk worktree (SPEC §6):
  * best-effort, tolerating B2's `commitDocs` stub. Any failure is a warning
  * event, never a tool error.
+ *
+ * While a burn holds the feature branch the commit goes onto the chat's temp
+ * branch, so it is landed straight away through the feature's serial landing
+ * queue (`one-chat-per-feature` decision 2) — a note or a ticket edit is durable
+ * on `feature/<slug>` even if the run then crashes.
  */
 async function commitDocsCheckpoint(
   ctx: AppCtx,
   session: SessionRow,
   summary: string,
 ): Promise<void> {
-  const project = projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
+  const feature = getFeatureRow(ctx, requireFeatureId(session))
+  const project = projectForFeature(ctx, feature)
   const message = git.docsCommitMessage(summary, project.docsCommitPrefix)
   try {
     await git.commitDocs(session.worktreePath, message)
   } catch (e) {
-    emit(ctx, requireFeatureId(session), {
+    emit(ctx, feature.id, {
       type: 'git.commit_pending',
       message: isNotImplemented(e)
         ? 'docs checkpoint skipped (git service pending)'
         : `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
       data: { message },
     })
+    return
   }
+  // Outside a burn this is a no-op (the commit is already on the feature
+  // branch); a landing that conflicts keeps its branch and says so, and the
+  // run-end boundary tries again.
+  await landChatCommits(ctx, project, feature)
 }
 
 // --- project-scoped tools (`prepare` + `project` sessions) ------------------
@@ -1223,7 +1306,7 @@ export interface CreateFeatureResult {
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
-const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoint', 'converge']
+const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'waypoint', 'converge']
 
 /**
  * The project a `create_feature` call belongs to — and, on the way there, how
@@ -1234,8 +1317,8 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['ideation', 'revisit', 'waypoin
  * somewhere to go instead of swallowing the feature being grilled — its project
  * is the one its own feature belongs to. Anything beyond parking is refused,
  * because a grill that can spawn live features is an orchestrator, and that is
- * the project session's job. `qa` is refused outright: its contract is
- * read-only, and a draft is still a write.
+ * the project session's job. Other session kinds cannot create features,
+ * because even a parked draft is still a write.
  */
 function createFeatureProject(
   ctx: AppCtx,
@@ -1245,7 +1328,7 @@ function createFeatureProject(
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
     throw new GateError(
-      `a ${session.kind} session is read-only and may not create features, drafts included. ` +
+      `a ${session.kind} session may not create features, drafts included. ` +
         'Tell the human what is worth capturing; the project session is where features are made.',
     )
   }
@@ -1659,16 +1742,11 @@ export type McpAudience = SessionKindT | 'run'
 
 /** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
 const FEATURE_KINDS: readonly SessionKindT[] = [
-  'ideation',
-  'qa',
+  'chat',
   'waypoint',
   'converge',
-  'revisit',
   'drive-fix',
 ]
-
-/** …and the same minus `qa`, whose contract is read-only (see {@link refuseIfReadOnly}). */
-const FEATURE_WRITE_KINDS = FEATURE_KINDS.filter((k) => k !== 'qa')
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 
@@ -1678,7 +1756,7 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
  * Which audiences each tool is registered for — derived from the RUNTIME gates
  * each tool already enforces, not from fresh policy: `requireFeatureId`,
  * `requireProject`, `requireRunIdentity`, the `kind !== 'prepare'` and
- * `kind !== 'drive-fix'` checks, `createFeatureProject`, and the qa refusals.
+ * `kind !== 'drive-fix'` checks, and `createFeatureProject`.
  * Every one of those call-time guards stays exactly where it is; this table only
  * decides what a session is TOLD about.
  *
@@ -1698,15 +1776,14 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_feature_context: [...FEATURE_KINDS, 'run'],
   read_feature_doc: [...FEATURE_KINDS, 'run'],
   list_tickets: [...FEATURE_KINDS, 'run'],
-  // Feature writes: `requireFeatureId` plus the qa read-only contract.
-  emit_tickets: FEATURE_WRITE_KINDS,
-  update_ticket: FEATURE_WRITE_KINDS,
-  cancel_ticket: FEATURE_WRITE_KINDS,
-  complete_phase: FEATURE_WRITE_KINDS,
+  emit_tickets: FEATURE_KINDS,
+  update_ticket: FEATURE_KINDS,
+  cancel_ticket: FEATURE_KINDS,
+  complete_phase: FEATURE_KINDS,
   // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
-  resolve_finding: FEATURE_WRITE_KINDS,
+  resolve_finding: FEATURE_KINDS,
   // Map moves stay open to `qa` on purpose: "any session may branch the map" is
   // the recursion (SPEC §13.3), and it is pinned by test as well as by prose.
   escalate_to_map: FEATURE_KINDS,
@@ -2162,7 +2239,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Everything true of the current feature: the feature row, its phase and lap, its ' +
           'canonical docs (brief, map, decisions, spec) in full, an INDEX of every other doc in ' +
-          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. Mapped ' +
+          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. `latestRun` ' +
+          'is how the newest burn went — its status, how many tickets landed or failed, and each ' +
+          'failure’s headline — absent only on a feature that has never burned. `currentLapReview` ' +
+          'says what THIS lap’s review passes did and where each left its evidence, `findings` is ' +
+          'every defect they reported, and `testNotes` the drive notes that still stand. Mapped ' +
           'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
           'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
           'not the burner’s post-hoc digest — ask `get_work_record` for that. `reviewEvidence` ' +

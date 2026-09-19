@@ -157,7 +157,7 @@ describe('Models page', () => {
 
     const used = rowOf('claude-opus-5').textContent ?? ''
     expect(used).toContain('Default')
-    expect(used).toContain('Ideation')
+    expect(used).toContain('Chat')
     // The steps that have their own model are not on the default's list.
     expect(used).not.toContain('Implement')
     expect(rowOf('gpt-5.6-sol').textContent).toContain('Implement')
@@ -240,15 +240,13 @@ describe('Models page', () => {
     expect(screen.getByLabelText('Note for claude-sonnet-5')).toBeTruthy()
   })
 
-  it('names every one of the eleven step selects', () => {
+  it('names every one of the nine step selects', () => {
     open()
 
     const steps = [
-      'Ideation',
-      'Q&A',
+      'Chat',
       'Waypoint',
       'Converge',
-      'Revisit',
       'Project chat',
       'Research',
       'Implement',

@@ -169,11 +169,11 @@ const REVIEW_TICKET = {
   digest: DIGEST,
 } as unknown as FeatureFull['tickets'][number]
 
-const LIVE_IDEATION = {
+const LIVE_CHAT = {
   id: 'ses_1',
   featureId: 'feat_1',
   lap: 1,
-  kind: 'ideation',
+  kind: 'chat',
   status: 'live',
   createdAt: 1,
 } as unknown as FeatureFull['sessions'][number]
@@ -282,15 +282,15 @@ describe('the review page’s arrival bands', () => {
     expect(html).not.toContain('defects found ·')
   })
 
-  /** State 2: a lap-1 ideation session is still live. */
+  /** State 2: the feature's lap-1 chat is still live. */
   it('states a live session as one alert line instead of mounting its terminal', () => {
     const html = render({
-      sessions: [LIVE_IDEATION],
+      sessions: [LIVE_CHAT],
       notes: [NOTE],
       findings: [DEFECT],
       openDefects: [DEFECT],
     })
-    expect(html).toContain('Ideation session still live from lap 1')
+    expect(html).toContain('Chat session still live from lap 1')
     expect(html).toContain('>Open<')
     expect(html).toContain('End session')
     // The line replaces the panel — no terminal renders on this page at all.
@@ -298,7 +298,7 @@ describe('the review page’s arrival bands', () => {
   })
 
   it('says nothing at all about a session that has already ended', () => {
-    const html = render({ sessions: [{ ...LIVE_IDEATION, status: 'ended' }] })
+    const html = render({ sessions: [{ ...LIVE_CHAT, status: 'ended' }] })
     expect(html).not.toContain('session still live')
   })
 
@@ -444,7 +444,7 @@ describe('the review page’s arrival bands', () => {
 
   /** Decision 33a: history has no live verbs anywhere, the alert line included. */
   it('offers no live control on a readonly view', () => {
-    const html = render({ sessions: [LIVE_IDEATION], readonly: true })
+    const html = render({ sessions: [LIVE_CHAT], readonly: true })
     expect(html).not.toContain('session still live')
     expect(html).not.toContain('>Test drive<')
   })
@@ -658,7 +658,7 @@ describe('the review page’s two panes', () => {
   /** Everything decision 18 put in the column is still in it, in its order. */
   it('preserves the main column’s band order', () => {
     const html = render({
-      sessions: [LIVE_IDEATION],
+      sessions: [LIVE_CHAT],
       recordings: [RECORDING],
       findings: [DEFECT, CARRIED],
       openDefects: [DEFECT],
@@ -666,7 +666,7 @@ describe('the review page’s two panes', () => {
       driveInstructions: 'Drive the sample project at ./examples/demo.',
     })
     const bands = [
-      'Ideation session still live from lap 1',
+      'Chat session still live from lap 1',
       'id="evidence-stage"',
       'checks passed',
       'How to drive this app',

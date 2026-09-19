@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project, WorkflowDef } from '@runcastle/core'
@@ -6,12 +6,12 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
-import { createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
+import { commitDocs, createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
 import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
-import { startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
+import { cancelRun, startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -183,7 +183,7 @@ describe('workflowClaimsFeatureBranch', () => {
   })
 })
 
-describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 §7)', () => {
+describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)', () => {
   let ctx: AppCtx
   let project: Project
   let feature: Feature
@@ -192,7 +192,10 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
   const tmpDirs: string[] = []
 
   /** A workflow stub whose run blocks until the test opens its gate. */
-  function gatedDef(id: string): { def: WorkflowDef; open: () => void } {
+  function gatedDef(id: string, outcome: 'succeeded' | 'throw' = 'succeeded'): {
+    def: WorkflowDef
+    open: () => void
+  } {
     let open!: () => void
     const gate = new Promise<void>((r) => {
       open = r
@@ -201,14 +204,45 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
       id,
       async run() {
         await gate
+        if (outcome === 'throw') throw new Error('burn failed')
         return { status: 'succeeded', summary: 'ok' }
       },
     }
     return { def, open }
   }
 
+  /** Run `body` with the burner registry entry replaced by a gated stub. */
+  async function withGatedBurner(
+    outcome: 'succeeded' | 'throw',
+    body: (open: () => void, done: () => Promise<void>) => Promise<void>,
+  ): Promise<void> {
+    const original = workflowRegistry.get('ticket-burner')
+    const { def, open } = gatedDef('ticket-burner', outcome)
+    workflowRegistry.set(def.id, def)
+    try {
+      const run = await startRun(ctx, feature.id, 'ticket-burner')
+      await body(open, () => run.done)
+    } finally {
+      if (original) workflowRegistry.set('ticket-burner', original)
+      else workflowRegistry.delete('ticket-burner')
+    }
+  }
+
   async function headOf(path: string): Promise<string> {
     return (await simpleGit(path).revparse(['--abbrev-ref', 'HEAD'])).trim()
+  }
+
+  /** Commit a docs file in the talk worktree, as a chat session's tools do. */
+  async function chatCommits(name: string): Promise<void> {
+    const docs = join(talkWt, 'docs', 'features', feature.slug)
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(join(docs, name), 'a note\n')
+    await commitDocs(talkWt, `runcastle: ${name}`)
+  }
+
+  /** The local branches of the parent repo. */
+  async function branches(): Promise<string[]> {
+    return (await simpleGit(project.repoPath).branchLocal()).all
   }
 
   beforeEach(async () => {
@@ -263,18 +297,102 @@ describe('talk worktree detach — only for branch-claiming workflows (ADR-0001 
     }
   })
 
-  it('the ticket-burner detaches the talk worktree for the run and reattaches at finalize', async () => {
+  it('a branch-claiming run names the lanes it opened with, before any of them starts', async () => {
+    const [first, second] = storeTickets(ctx, feature.id, [
+      { title: 'A', goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] },
+      { title: 'B', goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] },
+    ])
     const original = workflowRegistry.get('ticket-burner')
     const { def, open } = gatedDef('ticket-burner')
     workflowRegistry.set(def.id, def)
     try {
       const { done } = await startRun(ctx, feature.id, 'ticket-burner')
-      // mid-run: detached — the feature branch is free for the burner worktree
-      expect(await headOf(talkWt)).toBe('HEAD')
+      // Mid-run, with no lane started: both tickets are already claimed, which
+      // is what the chat's ticket surgery reads to refuse an edit.
+      const started = listAfter(ctx, feature.id, 0).find((e) => e.type === 'run.started')
+      expect(started?.data?.ticketIds).toEqual([first.id, second.id])
       open()
       await done
-      // finalize reattached the branch
+    } finally {
+      if (original) workflowRegistry.set('ticket-burner', original)
+      else workflowRegistry.delete('ticket-burner')
+    }
+  })
+
+  it('parks the talk worktree on a chat branch for the run, then hands the feature branch back', async () => {
+    await withGatedBurner('succeeded', async (open, done) => {
+      // mid-run: on a chat temp branch — the feature branch is free for the
+      // burner worktree, and the chat has somewhere of its own to commit
+      const parked = await headOf(talkWt)
+      expect(parked.startsWith('runcastle/chat/runwt/')).toBe(true)
+      // working files did not move with it
+      expect(existsSync(join(talkWt, 'README.md'))).toBe(true)
+
+      open()
+      await done()
+
       expect(await headOf(talkWt)).toBe('feature/runwt')
+      // nothing was committed on it, so the branch is gone
+      expect(await branches()).not.toContain(parked)
+    })
+  })
+
+  it('lands the chat commits made mid-run as the last landing', async () => {
+    await withGatedBurner('succeeded', async (open, done) => {
+      const parked = await headOf(talkWt)
+      await chatCommits('notes.md')
+
+      open()
+      await done()
+
+      expect(await headOf(talkWt)).toBe('feature/runwt')
+      // the note is on the feature branch, and the branch that carried it is gone
+      const g = simpleGit(project.repoPath)
+      const files = await g.raw(['ls-tree', '-r', '--name-only', 'feature/runwt'])
+      expect(files).toContain(`docs/features/${feature.slug}/notes.md`)
+      expect(await branches()).not.toContain(parked)
+    })
+  })
+
+  it('lands them on a FAILED run too — which way the burn went says nothing about the notes', async () => {
+    await withGatedBurner('throw', async (open, done) => {
+      await chatCommits('failed-run-note.md')
+
+      open()
+      await done()
+
+      expect(await headOf(talkWt)).toBe('feature/runwt')
+      const files = await simpleGit(project.repoPath).raw([
+        'ls-tree',
+        '-r',
+        '--name-only',
+        'feature/runwt',
+      ])
+      expect(files).toContain(`docs/features/${feature.slug}/failed-run-note.md`)
+    })
+  })
+
+  it('lands them on a CANCELLED run too', async () => {
+    const original = workflowRegistry.get('ticket-burner')
+    const { def, open } = gatedDef('ticket-burner', 'throw')
+    workflowRegistry.set(def.id, def)
+    try {
+      const { runId, done } = await startRun(ctx, feature.id, 'ticket-burner')
+      await chatCommits('cancelled-run-note.md')
+      const cancelling = cancelRun(runId)
+      open() // the abort alone only interrupts the fiber; the stub still unblocks
+      await cancelling
+      await done
+
+      expect(getRunRow(ctx, runId)?.status).toBe('cancelled')
+      expect(await headOf(talkWt)).toBe('feature/runwt')
+      const files = await simpleGit(project.repoPath).raw([
+        'ls-tree',
+        '-r',
+        '--name-only',
+        'feature/runwt',
+      ])
+      expect(files).toContain(`docs/features/${feature.slug}/cancelled-run-note.md`)
     } finally {
       if (original) workflowRegistry.set('ticket-burner', original)
       else workflowRegistry.delete('ticket-burner')

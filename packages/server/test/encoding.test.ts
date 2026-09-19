@@ -44,7 +44,7 @@ describe('utf-8 integrity across the agent-facing surfaces', () => {
     })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: project.repoPath,
     }).id
     setRuntimeCtx(ctx)

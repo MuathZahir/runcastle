@@ -582,7 +582,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     feature,
     tickets: listByFeature(ctx, id),
     sessions: listSessionsByFeature(ctx, id).map((session) =>
-      session.kind === 'qa' && session.status === 'ended' && !session.ccSessionId
+      session.kind === 'chat' && session.status === 'ended' && !session.ccSessionId
         ? { ...session, title: null, transcriptMissing: true }
         : session,
     ),

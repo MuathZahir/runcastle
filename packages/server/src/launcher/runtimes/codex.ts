@@ -407,7 +407,7 @@ export function buildCodexArgs(input: { resumeSessionId?: string; kickoffLine?: 
   return [
     ...(input.resumeSessionId ? ['resume', input.resumeSessionId] : []),
     '--dangerously-bypass-hook-trust',
-    ...(!input.resumeSessionId && input.kickoffLine ? [input.kickoffLine] : []),
+    ...(input.kickoffLine ? [input.kickoffLine] : []),
   ]
 }
 

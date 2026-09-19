@@ -60,7 +60,7 @@ describe('config visibility (roster notes reach the agent)', () => {
     })
     const session = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, session.id)

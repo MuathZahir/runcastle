@@ -13,22 +13,23 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { resolveModelEntry } from '@runcastle/core'
+import { DEFAULT_RUNTIME, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } from './runtimes'
-import { prepareConfirmKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, prepareConfirmKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { carriedWork } from '../services/carried-work'
+import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import * as git from '../services/git'
 import {
   getFeatureRow,
+  listRunsByFeature,
   listSessionsByFeature,
   projectForFeature,
   requireProjectById,
@@ -43,10 +44,12 @@ import {
   releaseForSession,
 } from '../services/waypoints'
 import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
+import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
+import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -129,6 +132,44 @@ export interface LaunchSessionInput {
   purposeData?: MergeBranchPair
 }
 
+/**
+ * Fresh orientation for the feature's persistent chat, opening with the move its
+ * state calls for.
+ *
+ * The opening comes from {@link chatOpening} — the same predicate the injected
+ * system prompt splits on — so a brand-new Planning feature is told to ideate by
+ * both, and a feature with a record on disk is told to revisit by both.
+ */
+export function chatKickoffHeader(
+  ctx: AppCtx,
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
+  const counts = new Map<string, number>()
+  for (const ticket of listTicketsByFeature(ctx, feature.id)) {
+    counts.set(ticket.status, (counts.get(ticket.status) ?? 0) + 1)
+  }
+  const ticketSummary = [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([status, count]) => `${status} ${count}`)
+    .join(', ') || 'none'
+  const latestRun = listRunsByFeature(ctx, feature.id)[0]
+  let review = ''
+  if (feature.phase === 'review') {
+    const latestReview = currentLapReviewEvidence(ctx, feature.id).at(-1)
+    const outcome = !latestRun
+      ? 'never driven'
+      : latestReview?.status === 'done'
+        ? 'passed'
+        : latestReview?.status === 'failed'
+          ? 'failed'
+          : 'unverified'
+    review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
+  }
+  const opening = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature)))
+  return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
+}
+
 export interface LaunchSessionOptions {
   /**
    * Spawn the embedded PTY (default true). Set false to fabricate a session
@@ -191,12 +232,13 @@ function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): s
 }
 
 /**
- * The feature's currently-running AFK run, if any. Spawning an HITL terminal
- * is refused only while a BRANCH-CLAIMING run (e.g. ticket-burner) is in
- * flight: the runner detaches the talk worktree for those, so a session
- * spawned mid-run would land on a detached HEAD and orphan its docs commits.
- * Research runs work on temp branches (ADR-0001 §7 "parallel AFK") and never
- * block terminals; run-claims themselves never block anything.
+ * The feature's currently-running AFK run, if any. A run no longer refuses a
+ * terminal — that clause was the post-mortem's worst hour, a dead burn with
+ * nothing to talk to — but a BRANCH-CLAIMING run (e.g. ticket-burner) does
+ * decide where the talk worktree stands: it holds `feature/<slug>`, so the
+ * session works on a chat temp branch beside it (`one-chat-per-feature`
+ * decision 2). Research runs work on temp branches (ADR-0001 §7 "parallel AFK")
+ * and change nothing.
  */
 function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
   const row = ctx.db
@@ -209,25 +251,23 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 }
 
 /**
- * Throw when an HITL session must not spawn on this feature right now:
- * - another session row is `launching`/`live` (one live HITL session per feature
- *   — one talk worktree, git forbids two checkouts of one branch). Guarding on
- *   session ROWS, not waypoint claims, means resolving a waypoint while its
- *   terminal is still open can no longer sneak a second live session in.
- * - an AFK run is in progress (see `activeRunFor` — worktree detached).
+ * Throw when an HITL session must not spawn on this feature right now: another
+ * session row is `launching`/`live` (one live HITL session per feature — one
+ * talk worktree, git forbids two checkouts of one branch). Guarding on session
+ * ROWS, not waypoint claims, means resolving a waypoint while its terminal is
+ * still open can no longer sneak a second live session in.
  * `excludeSessionId` skips the caller's own just-created row.
+ *
+ * A live AFK run used to refuse here too. It no longer does: a branch-claiming
+ * run parks the talk worktree on a chat temp branch instead of detaching it, so
+ * a session spawned mid-run has a branch of its own to commit to and its docs
+ * land through the feature's queue (`one-chat-per-feature` decision 2).
  */
 function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: string): void {
   const live = activeSessionsForFeature(ctx, feature.id).filter((s) => s.id !== excludeSessionId)
   if (live.length > 0) {
     throw new GateError(
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
-    )
-  }
-  const running = activeRunFor(ctx, feature.id)
-  if (running && workflowClaimsFeatureBranch(running.workflow)) {
-    throw new GateError(
-      `a ${running.workflow} run is in progress on ${feature.slug} — it holds the feature branch; terminals are available when it finishes`,
     )
   }
 }
@@ -251,7 +291,7 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
  * the timeline it had "finished".
  */
 function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
-  if (session.kind === 'ideation' || session.kind === 'converge') return feature.mapped
+  if (session.kind === 'chat' || session.kind === 'converge') return feature.mapped
   if (session.kind !== 'waypoint') return false
   const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
   return !!own && (own.status === 'resolved' || own.status === 'dropped')
@@ -287,14 +327,24 @@ function sweepActiveSessions(ctx: AppCtx, feature: Feature, endLive: boolean): v
   }
 }
 
-/** Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature). */
+/**
+ * Ensure the talk worktree, tolerating B2's stub (mirrors features.createFeature).
+ *
+ * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
+ * temp branch instead, so a session that spawns mid-run has somewhere of its own
+ * to commit and never lands docs on a detached HEAD.
+ */
 async function ensureWorktree(
   ctx: AppCtx,
   project: Project,
   feature: Feature,
 ): Promise<string> {
+  const running = activeRunFor(ctx, feature.id)
+  const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
   try {
-    return await git.ensureTalkWorktree(project, feature)
+    return besideRun
+      ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
+      : await git.ensureTalkWorktree(project, feature)
   } catch (e) {
     if (isNotImplemented(e)) {
       const fallback = worktreeDir(project.id, feature.slug)
@@ -329,6 +379,86 @@ function applyResumeCap(
   })
 }
 
+/**
+ * How long after the briefing text the submitting `\r` follows. A TUI reads one
+ * burst of bytes as a paste, in which a carriage return is a newline and not a
+ * submit, so the two go out as separate keystrokes.
+ */
+const LIVE_BRIEFING_SUBMIT_MS = 350
+
+/**
+ * The Chat door answered with the conversation that is already up (decision 12)
+ * — and, when the door carried something new to say, that briefing delivered
+ * into it (decision 13).
+ *
+ * A plain Chat click brings nothing of its own: it is a door back into the
+ * conversation, and re-briefing one mid-thought would be noise. The purpose-
+ * specific roads DO — resolveConflict and stopDriveAndIterate pass their
+ * `kickoffLine`, and a lap in flight briefs itself ({@link planKickoff}) — and
+ * losing it is the whole defect this closes: the door foregrounded the terminal
+ * and silently dropped the reason the human opened it.
+ *
+ * ADR-0009 put a launch's briefing in the CLI's argv precisely so nothing had to
+ * be typed at a terminal, and that is still how every LAUNCH briefs. A session
+ * already live has no argv left to carry one, so the door that must never refuse
+ * and must never lose its context has exactly one channel: the terminal itself.
+ * The startup race the ADR retired is not this write's — the session reported
+ * live and its conversation is underway — and per the same decision nothing here
+ * confirms delivery, retries it, or re-sends it.
+ */
+function briefLiveChat(
+  ctx: AppCtx,
+  feature: Feature,
+  liveChat: SessionRow,
+  kickoffLine: string | undefined,
+): LaunchSessionResult {
+  const plan = planKickoff({
+    kind: 'chat',
+    lap: feature.lap,
+    kickoffLine,
+    lapInFlight: lapInFlight({
+      lap: feature.lap,
+      phase: feature.phase,
+      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
+    }),
+    carried: carriedWork(ctx, feature.id),
+  })
+  if (!plan.line) return { sessionId: liveChat.id }
+
+  if (!writeToLiveTerminal(liveChat.id, plan.line)) {
+    throw new GateError(
+      'the live chat terminal is not available, so its briefing was not delivered',
+    )
+  }
+  emit(ctx, feature.id, {
+    type: 'session.kickoff',
+    message: 'handing the live chat its briefing',
+    data: { sessionId: liveChat.id, kind: liveChat.kind, line: plan.line, mechanism: 'pty' },
+  })
+  return { sessionId: liveChat.id }
+}
+
+/**
+ * Type `line` into a live session's terminal and submit it. Each write checks
+ * the registry afresh, so a terminal that exits between the text and the `\r`
+ * never gets a stray carriage return. The result makes the initial write
+ * observable to the launcher: a database row is not proof that its terminal
+ * still exists.
+ */
+function writeToLiveTerminal(sessionId: string, line: string): boolean {
+  const write = (data: string): boolean => {
+    const entry = ptyRegistry().get(sessionId)
+    if (!entry || entry.exited) return false
+    entry.pty.write(data)
+    return true
+  }
+  if (!write(line)) return false
+  const submit = setTimeout(() => write('\r'), LIVE_BRIEFING_SUBMIT_MS)
+  // Never hold the process open for a keystroke (tests, shutdown).
+  submit.unref?.()
+  return true
+}
+
 export async function launchSession(
   ctx: AppCtx,
   input: LaunchSessionInput,
@@ -347,6 +477,22 @@ export async function launchSession(
 
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
+
+  // The Chat door clicked on a chat that is already up is not a refusal
+  // (decision 12): the feature has ONE conversation and this door's whole
+  // promise is to take you to it, so the live row is the answer — carrying
+  // whatever briefing the door came with into it ({@link briefLiveChat}).
+  // Answering before the worktree, the model chain and the session row means
+  // nothing is created to leave behind and no spawn is paid for — the
+  // one-live-session guard still holds, it just stops presenting as an error to
+  // the one door that is constant in every state and never disabled. A live
+  // session of any OTHER kind is still `assertSpawnable`'s
+  // one-terminal-per-feature refusal below.
+  if (input.kind === 'chat') {
+    const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
+    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
+  }
+
   const project = projectForFeature(ctx, feature)
 
   // The session kind IS a model step (issue #48): resolve per-step model,
@@ -367,10 +513,10 @@ export async function launchSession(
     model,
   })
 
-  // What this terminal opens with, decided before anything else: an explicit
-  // briefing makes the session FRESH (no `--resume`, so no summary chooser to
-  // swallow it — see `KickoffPlan.explicit`), and a lap in flight additionally
-  // tells the artifacts which lap they are rendering for.
+  // What this terminal opens with, decided before anything else. An explicit
+  // briefing makes non-chat sessions fresh; chat briefings ride the persistent
+  // conversation's resume. A lap in flight additionally tells the artifacts
+  // which lap they are rendering for.
   //
   // The lap is read off FEATURE STATE — phase, lap number, and whether tickets
   // exist at that lap — not off what the caller typed. `listTicketsByFeature` is
@@ -393,6 +539,13 @@ export async function launchSession(
     }),
     carried,
   })
+  if (input.kind === 'chat') {
+    // Every opening re-orients the persistent conversation. Purpose-specific
+    // text comes first so it remains the immediate task, followed by current
+    // feature state rather than the state captured on the previous turn.
+    const header = chatKickoffHeader(ctx, feature, runtime.id)
+    plan.line = plan.line ? `${plan.line} ${header}` : header
+  }
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
@@ -431,28 +584,31 @@ export async function launchSession(
     }
   }
 
-  // A revisit resumes the feature's most recent resumable conversation (SPEC:
-  // "I remembered something"). One-live-session guard first — same failure mode
-  // as the waypoint path (end the just-created row, rethrow). No resumable
-  // conversation is fine: the docs carry the state, so it starts fresh and the
-  // timeline says so.
-  if (input.kind === 'revisit') {
+  // Chat resumes the feature's one conversation. One-live-session guard first — same failure mode
+  // as the waypoint path (end the just-created row, rethrow). A live CHAT was
+  // already answered with above, so what this catches is a terminal of another
+  // kind, or a second chat that raced this one past the `ensureWorktree` await.
+  // No resumable conversation is fine: the docs carry the state, so it starts
+  // fresh and the timeline says so.
+  if (input.kind === 'chat') {
     try {
       assertSpawnable(ctx, feature, session.id)
     } catch (e) {
       markSessionEnded(ctx, session.id)
       throw e
     }
-    const prior = mostRecentResumableSession(ctx, feature.id)
+    const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
     if (prior?.ccSessionId) {
       resumedFrom = prior
       resumeSessionId = prior.ccSessionId
-    } else {
-      resumeUnavailableFrom = 'revisit'
+    } else if (listSessionsByFeature(ctx, feature.id).some(
+      (candidate) => candidate.id !== session.id && candidate.kind === 'chat' && candidate.status === 'ended',
+    )) {
+      resumeUnavailableFrom = 'chat'
     }
   }
 
-  // Every OTHER kind (ideation / qa / converge) resumes its own most recent
+  // Every other kind resumes its own most recent
   // conversation on this feature. A terminal is a real `claude` process in a
   // server-owned PTY, so quitting runcastle kills it and boot reconciliation
   // marks the row ended — but the Claude Code transcript survives on disk and
@@ -460,7 +616,7 @@ export async function launchSession(
   // the conversation back up instead of starting cold from the docs. No prior
   // conversation is the ordinary first-launch case, so unlike waypoint/revisit
   // it gets no `resume_unavailable` note — there is nothing to be unavailable.
-  if (input.kind !== 'waypoint' && input.kind !== 'revisit') {
+  if (input.kind !== 'waypoint' && input.kind !== 'chat') {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
     if (
@@ -473,7 +629,7 @@ export async function launchSession(
     }
   }
 
-  if (plan.explicit && resumeSessionId) {
+  if (input.kind !== 'chat' && plan.explicit && resumeSessionId) {
     emit(ctx, feature.id, {
       type: 'session.resume_skipped',
       message: `starting the ${input.kind} session fresh — its explicit briefing replaces the prior conversation`,
@@ -486,7 +642,7 @@ export async function launchSession(
   // The re-entry cap: past a transcript size or a re-entry count, resuming costs
   // more than it carries, so launch fresh from the docs instead (see
   // `resumeCapExceeded`).
-  const capped = applyResumeCap(ctx, resumeSessionId, resumedFrom, {
+  const capped = input.kind === 'chat' ? null : applyResumeCap(ctx, resumeSessionId, resumedFrom, {
     featureId: feature.id,
   })
   if (capped) {
@@ -499,7 +655,7 @@ export async function launchSession(
     })
   }
 
-  const kickoffLine = resumeSessionId
+  const kickoffLine = resumeSessionId && input.kind !== 'chat'
     ? undefined
     : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
@@ -528,10 +684,10 @@ export async function launchSession(
       message: CODEX_RESUME_UNAVAILABLE_MESSAGE,
       data: { sessionId: session.id },
     })
-  } else if (input.kind === 'revisit' && resumeUnavailableFrom) {
+  } else if (input.kind === 'chat' && resumeUnavailableFrom) {
     emit(ctx, feature.id, {
       type: 'session.resume_unavailable',
-      message: 'no resumable conversation for this feature — revisiting fresh from the docs',
+      message: 'no resumable conversation for this feature — starting chat fresh from the docs',
       data: { sessionId: session.id },
     })
   }
@@ -552,6 +708,8 @@ export async function launchSession(
     waypoint,
     lap: plan.lap,
     carried: plan.lap === undefined ? undefined : carried,
+    // Which of the chat's two openings its brief renders (see `chatOpening`).
+    planning: planningFacts(ctx, feature),
     purpose: input.purpose,
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),

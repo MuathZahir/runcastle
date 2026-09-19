@@ -61,6 +61,7 @@ import {
   unexcludePath,
 } from '../services/git'
 import type { TempBranchMergeResult } from '../services/git'
+import { featureLandingQueue } from '../services/landing-queue'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -2726,27 +2727,6 @@ export function releaseTicketAbort(ticketId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Pure unit — serial queue (one merge lands at a time)
-// ---------------------------------------------------------------------------
-
-/**
- * A promise-chain serializer: tasks run strictly one at a time in submission
- * order. A rejection propagates to ITS submitter only — the chain itself never
- * breaks, so later tasks still run. The burner creates one per run and lands
- * every ticket's temp-branch merge through it, because concurrent merges into
- * the same feature branch would race on the ref/checkout.
- */
-export function createSerialQueue(): <T>(task: () => Promise<T>) => Promise<T> {
-  let tail: Promise<unknown> = Promise.resolve()
-  return <T>(task: () => Promise<T>): Promise<T> => {
-    const next = tail.then(task)
-    // Keep the chain alive past a rejection; the submitter still sees it via `next`.
-    tail = next.catch(() => undefined)
-    return next
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Pure unit — the landing loop (merge → resolve conflict with an agent → merge)
 // ---------------------------------------------------------------------------
 
@@ -4994,8 +4974,9 @@ export function resolveTicketModel(
  * run. The burner is the `implement` step (issue #48): its model resolves
  * through `resolveModel` — a per-ticket assignment or a per-run override (smoke)
  * wins over the per-project override, the global step override, then the global
- * default. One serial merge queue is created per run and shared by every
- * ticket's execute closure, so landings on the feature branch never overlap.
+ * default. Every ticket's execute closure lands through the FEATURE's serial
+ * merge queue, so landings on the feature branch never overlap — not the run's
+ * own tickets, and not the chat committing docs beside them.
  *
  * The run-level `model`/`token` are the run's default pair — what the auth
  * precheck reports on and what every unassigned implementation ticket burns
@@ -5022,7 +5003,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     }
     return result
   }
-  const land = createSerialQueue()
+  const land = featureLandingQueue(ctx.feature.id)
   // Memoized so the whole run performs the parent-repo config write exactly
   // once, no matter how many tickets burn in parallel (see git.ts).
   let pushTargetReady: Promise<void> | undefined

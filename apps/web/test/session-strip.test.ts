@@ -6,13 +6,13 @@ import { SessionStrip } from '../src/components/session/SessionStrip'
 import { liveSessionLine } from '../src/lib/feature-ui/session'
 
 function session(overrides: Partial<FeatureFull['sessions'][number]> = {}): FeatureFull['sessions'][number] {
-  return { id: 'sess_abcdefghijk', featureId: 'feat_1', kind: 'ideation', status: 'live', awaitingInput: false, worktreePath: '/tmp/work', createdAt: Date.now() - 60_000, lap: 1, ...overrides }
+  return { id: 'sess_abcdefghijk', featureId: 'feat_1', kind: 'chat', status: 'live', awaitingInput: false, worktreePath: '/tmp/work', createdAt: Date.now() - 60_000, lap: 1, ...overrides }
 }
 
 describe('SessionStrip', () => {
   it('names a live ideation session and hides its short id in visible text', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session() }))
-    expect(html).toContain('Ideation session')
+    expect(html).toContain('Chat session')
     expect(html).toContain('live')
     expect(html).toContain('title="sess_abcdefghijk"')
     expect(html).not.toContain('abcdefgh</span>')
@@ -22,13 +22,8 @@ describe('SessionStrip', () => {
     expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'launching' }) }))).toContain('starting…')
   })
 
-  it('names a later revisit after its lap', () => {
-    expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ kind: 'revisit', lap: 3 }) }))).toContain('Lap 3 session')
-  })
-
   it.each([
     ['converge', 'Converge session'],
-    ['qa', 'Question session'],
     ['waypoint', 'Waypoint session'],
   ] as const)('gives %s a plain kind name', (kind, label) => {
     expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ kind }) }))).toContain(label)
@@ -65,9 +60,9 @@ describe('the live-session line', () => {
     [session(over)] as FeatureFull['sessions']
 
   it('names a live session and where its terminal lives', () => {
-    expect(liveSessionLine(sessions({ kind: 'ideation', lap: 1 }))).toEqual({
+    expect(liveSessionLine(sessions({ kind: 'chat', lap: 1 }))).toEqual({
       sessionId: 'sess_abcdefghijk',
-      text: 'Ideation session still live from lap 1',
+      text: 'Chat session still live from lap 1',
       phase: 'planning',
     })
     expect(liveSessionLine(sessions({ kind: 'converge' }))?.phase).toBe('planning')
@@ -75,15 +70,9 @@ describe('the live-session line', () => {
     expect(liveSessionLine(sessions({ status: 'launching' }))?.text).toContain('still live')
   })
 
-  // A lap session is already named for its lap, so it does not say it twice.
-  it('does not repeat the lap for a session named after it', () => {
-    expect(liveSessionLine(sessions({ kind: 'revisit', lap: 3 }))?.text).toBe('Lap 3 session still live')
-    expect(liveSessionLine(sessions({ kind: 'revisit', lap: 1 }))?.text).toBe('Revisit session still live from lap 1')
-  })
-
   // Nowhere to send the human: the line offers End and no trip to nowhere.
   it('points a Q&A or drive-fix session at no phase at all', () => {
-    expect(liveSessionLine(sessions({ kind: 'qa' }))?.phase).toBeNull()
+    expect(liveSessionLine(sessions({ kind: 'chat' }))?.phase).toBe('planning')
     expect(liveSessionLine(sessions({ kind: 'drive-fix' }))?.phase).toBeNull()
   })
 

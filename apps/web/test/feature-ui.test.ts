@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { modelRoster } from '@runcastle/core'
 import type { EventRow, TicketStatus } from '@runcastle/core'
 import {
+  ACTION_KINDS,
   activeSession,
   awaitingCheckIn,
   burnInterruption,
@@ -26,6 +27,7 @@ import {
   openApp,
   openAppWaitingLabel,
   parseMapSections,
+  PHASE_ORDER,
   phaseGlyph,
   reviewChecks,
   reviewOutcome,
@@ -36,7 +38,7 @@ import {
   sessionNotReady,
   sessionStatusLabel,
   shippedAt,
-  shippedQaSessions,
+  shippedChatSessions,
   sortForSidebar,
   testDriveTaken,
   ticketConflictKickoff,
@@ -74,6 +76,13 @@ describe('run headline review verdict', () => {
     ).toBe('Succeeded-unverified · nothing verified')
   })
 })
+
+/**
+ * The one Chat door, on every bar in all four states (one-chat-per-feature
+ * decision 8) — first in `secondary`, except where the resolver promoted it to
+ * the primary and rendering it twice would be the bug.
+ */
+const CHAT_ACTION: NextAction = { label: 'Chat', kind: 'chat' }
 
 /**
  * A ticket a coder could read before it writes: a goal, and a context that is
@@ -176,13 +185,102 @@ describe('duplicateTitleWarning', () => {
 })
 
 /**
+ * One chat per feature, decision 8 — the whole point of this feature, read off
+ * the four state resolvers at once.
+ *
+ * The human used to meet three differently-named doors (Start session, Revisit,
+ * Ask a question) and two states with no door at all: during a burn every
+ * terminal was refused because the run held the branch, and review's only road
+ * to an agent was Rethink, which bumped the lap. Now every state carries the
+ * same one-word door in the same place, and `chat` is the only launch kind the
+ * bar's vocabulary knows.
+ */
+describe('nextStep — the one Chat door, in all four states', () => {
+  const stateFull = (phase: string, over: Record<string, unknown> = {}) =>
+    ({ ...full({ phase } as never), ...over }) as FeatureFull
+
+  /**
+   * One bar per state, each in the shape that state is ordinarily met in — a
+   * build with something to burn, a review with a finished run. The two states
+   * whose ladder has nothing but the conversation left (a fresh planning, an
+   * empty build ledger) promote the door instead, and are covered below.
+   */
+  const SECONDARY_DOOR_STATES = [
+    ['building', { tickets: [{ id: 't1', seq: 1, status: 'pending', lap: 1, goal: 'Burn it.', context: 'Somewhere in the repo.' }] }],
+    ['review', { runs: [{ id: 'r1', status: 'succeeded', startedAt: 1 }] }],
+    ['shipped', {}],
+  ] as const
+
+  it('carries Chat in every state, and never twice on one bar', () => {
+    const bars = [
+      // Planning with nothing written and nothing live promotes it, so the one
+      // door is the PRIMARY there.
+      nextStep(stateFull('planning'), { driving: false }),
+      ...SECONDARY_DOOR_STATES.map(([phase, over]) =>
+        nextStep(stateFull(phase, over), { driving: false }),
+      ),
+    ]
+    for (const ns of bars) {
+      expect([ns.primary, ...ns.secondary].filter((a) => a?.kind === 'chat')).toHaveLength(1)
+    }
+  })
+
+  it('puts Chat first among the secondaries wherever it is not the primary', () => {
+    for (const [phase, over] of SECONDARY_DOOR_STATES) {
+      const ns = nextStep(stateFull(phase, over), { driving: false })
+      expect(ns.primary?.kind).not.toBe('chat')
+      // Decision 8 — one word, the same place, never reworded per state.
+      expect(ns.secondary[0]).toEqual(CHAT_ACTION)
+    }
+  })
+
+  // The promoted door keeps the resume-aware wording its slot always had, and
+  // is the only place the label reads as anything but "Chat".
+  it('promotes the door to primary where talking is genuinely the next step', () => {
+    expect(nextStep(stateFull('planning'), { driving: false }).primary).toEqual({
+      label: 'Start session',
+      kind: 'chat',
+    })
+    expect(nextStep(stateFull('building'), { driving: false }).primary).toEqual({
+      label: 'Open a session',
+      kind: 'chat',
+    })
+  })
+
+  // The previously-impossible door (spec, "Coexistence with a burn"): the bar
+  // used to carry Cancel run alone, and every terminal was refused outright.
+  it('offers Chat, enabled, beside Cancel run while a burn is actually running', () => {
+    const burning = stateFull('building', {
+      tickets: [{ id: 't1', seq: 1, status: 'burning', lap: 1, goal: 'Burn it.', context: 'Somewhere in the repo.' }],
+      runs: [{ id: 'r1', status: 'running', startedAt: 1 }],
+    })
+    const ns = nextStep(burning, { driving: false })
+
+    expect(ns.primary).toEqual({ label: 'Cancel run', kind: 'cancelRun', danger: true })
+    expect(ns.busy).toBe(true)
+    expect(ns.secondary[0]).toEqual(CHAT_ACTION)
+    expect(ns.secondary[0]?.disabled).toBeUndefined()
+  })
+
+  // The vocabulary itself: a resolver can no longer name a door that the
+  // dispatcher has no case for, and the three collapsed kinds are gone from it.
+  it('knows chat and none of the three kinds it replaced', () => {
+    expect(ACTION_KINDS).toContain('chat')
+    for (const dead of ['startGrill', 'askQuestions', 'revisit']) {
+      expect(ACTION_KINDS as readonly string[]).not.toContain(dead)
+    }
+  })
+
+})
+
+/**
  * Reopening a terminal resumes its conversation, so the bar must say so. A
  * session row is `ended` the moment runcastle restarts (the PTY dies with the
  * server), but a row that reached `live` recorded a `ccSessionId` and the
  * launcher `--resume`s it on the next same-kind launch. The action is unchanged
  * either way — only the wording tells the human which one they'll get.
  */
-describe('nextStep — Resume vs Start wording for the grill', () => {
+describe('nextStep — Resume vs Start wording for the chat', () => {
   const grillFull = (opts: {
     phase?: string
     sessions?: unknown[]
@@ -197,29 +295,35 @@ describe('nextStep — Resume vs Start wording for the grill', () => {
       docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
     }) as unknown as FeatureFull
 
-  const endedGrill = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+  const endedGrill = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }]
 
   it('says Start when the feature has never had a grill conversation', () => {
     const ns = nextStep(grillFull({}), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
 
   it('says Resume once an ended grill session left a resumable conversation', () => {
     const ns = nextStep(grillFull({ sessions: endedGrill }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'chat' })
     expect(ns.desc).toContain('still on disk')
   })
 
   it('keeps saying Start when the ended session never reached live (no cc id)', () => {
-    const stillborn = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: null }]
+    const stillborn = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: null }]
     const ns = nextStep(grillFull({ sessions: stillborn }), { driving: false })
     expect(ns.primary?.label).toBe('Start session')
   })
 
-  it('ignores a resumable session of a DIFFERENT kind (the launcher would not pick it)', () => {
-    const qaOnly = [{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }]
-    const ns = nextStep(grillFull({ sessions: qaOnly }), { driving: false })
-    expect(ns.primary?.label).toBe('Start session')
+  // The three door-specific kinds collapsed into one `chat` (one-chat-per-feature
+  // decision 3), so "a resumable session of a DIFFERENT kind" no longer names
+  // anything a feature's own conversation could be: a converge is the only other
+  // session planning can leave behind, and `resumeLabel` counts it deliberately.
+  it('says Resume off a converge conversation too — it is the same transcript', () => {
+    const converged = [{ id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' }]
+    const ns = nextStep(grillFull({ docs: ['decisions.md'], sessions: converged }), {
+      driving: false,
+    })
+    expect(ns.primary?.label).toBe('Resume session')
   })
 
   it('carries the same wording across every step inside planning', () => {
@@ -256,26 +360,27 @@ describe('nextStep at building with no tickets', () => {
 
   it('points at the thing that produces tickets', () => {
     const ns = nextStep(buildFull(), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Open a session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Open a session', kind: 'chat' })
     expect(ns.desc).toContain('A session breaks the work into tickets')
   })
 
   it('offers to resume the conversation that exists rather than start another', () => {
-    const ended = [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }]
+    const ended = [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }]
     expect(nextStep(buildFull({ sessions: ended }), { driving: false }).primary).toEqual({
       label: 'Resume the session',
-      kind: 'startGrill',
+      kind: 'chat',
     })
   })
 
   it('goes status-only while a session is live instead of launching a second one', () => {
-    const live = [{ id: 's1', status: 'live', kind: 'revisit', ccSessionId: 'cc-1' }]
+    const live = [{ id: 's1', status: 'live', kind: 'chat', ccSessionId: 'cc-1' }]
     const ns = nextStep(buildFull({ sessions: live }), { driving: false })
     expect(ns.title).toBe('No tickets to burn')
     expect(ns.primary).toBeUndefined()
     // Merge survives even here: nothing about an empty ledger is a reason to
-    // hide the one click that ships what is on the branch (decisions §3).
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    // hide the one click that ships what is on the branch (decisions §3). Chat
+    // is the door to the session already live, not a second launch.
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   it('still offers the burn once there is a ticket to burn', () => {
@@ -315,7 +420,7 @@ describe('nextStep after a server restart interrupted a burn', () => {
     expect(ns.title).toBe('A burn was interrupted by a server restart: 1 ticket landed, 1 pending')
     expect(ns.alert).toBe(true)
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
-    expect(ns.secondary).toEqual([])
+    expect(ns.secondary).toEqual([CHAT_ACTION])
   })
 
   // `advance` died with the six-phase pipeline (decisions §3): with every
@@ -381,11 +486,11 @@ describe('sessionActive', () => {
   })
 
   it('finds the active session among ended ones, and none when there is none', () => {
-    const launching = { id: 's2', status: 'launching', kind: 'ideation' }
+    const launching = { id: 's2', status: 'launching', kind: 'chat' }
     expect(
-      activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }, launching])),
+      activeSession(rows([{ id: 's1', status: 'ended', kind: 'chat' }, launching])),
     ).toEqual(launching)
-    expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'ideation' }]))).toBeUndefined()
+    expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'chat' }]))).toBeUndefined()
     expect(activeSession(rows([]))).toBeUndefined()
   })
 })
@@ -463,7 +568,7 @@ describe('nextStep — live sessions go status-only', () => {
         ...BURNABLE,
       })),
       sessions: opts.live
-        ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'ideation' }]
+        ? [{ id: 's1', status: opts.sessionStatus ?? 'live', kind: 'chat' }]
         : [],
       runs: [],
       docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
@@ -472,26 +577,28 @@ describe('nextStep — live sessions go status-only', () => {
   const kinds = (ns: ReturnType<typeof nextStep>) =>
     [ns.primary, ...ns.secondary].map((a) => a?.kind)
 
-  it('stays status-only while a grill is live, even once decisions.md exists', () => {
+  it('stays status-only while a chat is live, even once decisions.md exists', () => {
     const ns = nextStep(auditFull({ live: true, docs: ['decisions.md'] }), { driving: false })
     expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   // ui-state-management ticket 3 — the reported lie. The bar used to demand
   // `live`, which only records the agent's hook check-in, so a terminal the
-  // human was already typing in still offered to start one.
-  it('never offers to start a grill while the terminal is still launching', () => {
+  // human was already typing in still offered to start one. The constant Chat
+  // door is not that offer: it is the way back to the terminal already up, and
+  // the primary is what must stay silent (decision 8).
+  it('never promotes the chat to primary while the terminal is still launching', () => {
     const ns = nextStep(auditFull({ live: true, sessionStatus: 'launching' }), { driving: false })
     expect(ns.kick).toBe('SESSION LIVE')
     expect(ns.primary).toBeUndefined()
-    expect(kinds(ns)).not.toContain('startGrill')
+    expect(kinds(ns)).toEqual([undefined, 'chat', 'merge'])
   })
 
   it('offers only the session door once planning is idle', () => {
     const ns = nextStep(auditFull({}), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
     expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
@@ -499,16 +606,16 @@ describe('nextStep — live sessions go status-only', () => {
     const full = auditFull({})
     const resumable = {
       ...full,
-      sessions: [{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }],
+      sessions: [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }],
     } as unknown as FeatureFull
     const ns = nextStep(resumable, { driving: false })
-    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'chat' })
     expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
   it('offers only the session door once the spec is written and nothing is live', () => {
     const ns = nextStep(auditFull({ docs: ['decisions.md', 'spec.md'] }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
     expect(ns.secondary).toEqual([MERGE_ACTION])
   })
 
@@ -517,16 +624,17 @@ describe('nextStep — live sessions go status-only', () => {
       driving: false,
     })
     expect(live.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
-    expect(live.secondary).toEqual([MERGE_ACTION])
+    // Chat no longer waits for the terminal to be free — the door is the same in
+    // both bars, and only its hint distinguishes them (decision 8).
+    expect(live.secondary).toEqual([
+      { ...CHAT_ACTION, hint: 'Open the chat to change the tickets before burning' },
+      MERGE_ACTION,
+    ])
 
     const idle = nextStep(auditFull({ tickets: 2 }), { driving: false })
     expect(idle.primary).toEqual({ label: 'Burn 2 tickets', kind: 'burn' })
     expect(idle.secondary).toEqual([
-      {
-        label: 'Ask for changes',
-        kind: 'revisit',
-        hint: 'Open a session to change the tickets before burning',
-      },
+      { ...CHAT_ACTION, hint: 'Open the chat to change the tickets before burning' },
       MERGE_ACTION,
     ])
   })
@@ -542,7 +650,7 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.kick).toBe('WAITING')
     expect(ns.desc).toContain('The session is finishing the tickets')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   /**
@@ -597,12 +705,12 @@ describe('nextStep — live sessions go status-only', () => {
     expect(ns.kick).toBe('WAITING')
     expect(ns.title).toBe('Emitting tickets')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
-  it('still offers a grill to emit the first tickets when nothing is live', () => {
+  it('still offers a chat to emit the first tickets when nothing is live', () => {
     const ns = nextStep(auditFull({ docs: ['decisions.md', 'spec.md'] }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
 
   it('never offers the scroll-to-terminal action in any live state', () => {
@@ -636,7 +744,7 @@ describe('nextStep at review', () => {
       lap: opts.ticketLaps?.[i] ?? opts.lap ?? 1,
       commits: [],
     }))
-    const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : []
+    const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : []
     return {
       feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
       tickets,
@@ -650,7 +758,7 @@ describe('nextStep at review', () => {
   it('offers Iterate and keeps Merge & ship primary when no tickets are pending', () => {
     const ns = nextStep(reviewFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Chat', 'Start test drive', 'Iterate'])
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'iterate' })
   })
 
@@ -685,7 +793,7 @@ describe('nextStep at review', () => {
   it('promotes Burn to primary and drops Merge & ship to secondary with a pending ticket', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['done', 'pending'] }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Start test drive', 'Iterate'])
     expect(ns.secondary).toContainEqual({ label: 'Iterate', kind: 'iterate' })
   })
 
@@ -695,7 +803,7 @@ describe('nextStep at review', () => {
   it('compounds Iterate with the end of a live session, never disabling it', () => {
     const ns = nextStep(reviewFull({ sessionLive: true }), { driving: false })
     expect(ns.primary?.label).toBe('Merge & ship')
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'End session & iterate'])
+    expect(labels(ns.secondary)).toEqual(['Chat', 'Start test drive', 'End session & iterate'])
     expect(ns.secondary).toContainEqual({
       label: 'End session & iterate',
       kind: 'endSessionAndIterate',
@@ -745,14 +853,14 @@ describe('nextStep at review', () => {
       const ns = nextStep(reviewFull({}), { driving: false, driveState: 'bare-checkout' })
       expect(ns.title).toBe('Branch checked out for inspection')
       expect(ns.primary).toEqual({ label: 'Stop test drive', kind: 'testDriveStop' })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Iterate'])
+      expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Iterate'])
     })
 
     it('offers Fix drive over a failed setup, with the stop beside it', () => {
       const ns = nextStep(reviewFull({}), { driving: false, driveState: 'setup-failed' })
       expect(ns.title).toBe('Drive setup failed — fix it or stop the drive')
       expect(ns.primary).toEqual({ label: 'Fix drive', kind: 'fixDrive' })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
+      expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Stop test drive', 'Iterate'])
     })
 
     it('says who is driving when the drive is the review agent’s', () => {
@@ -785,6 +893,7 @@ describe('nextStep at review', () => {
     )
     expect(ns.primary).toEqual({ label: 'Burn 1 ticket', kind: 'burn' })
     expect(labels(ns.secondary)).toEqual([
+      'Chat',
       'Merge & ship',
       'Start test drive',
       'End session & iterate',
@@ -794,19 +903,35 @@ describe('nextStep at review', () => {
   it('keeps the test-drive toggle and Merge & ship available while driving', () => {
     const ns = nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: true })
     expect(ns.primary?.kind).toBe('burn')
-    expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Stop test drive', 'Iterate'])
   })
 
-  it('never offers a bare revisit — review`s verbs are Fix, Iterate and Merge', () => {
-    for (const full of [reviewFull({}), reviewFull({ ticketStatuses: ['pending'] })]) {
-      const ns = nextStep(full, { driving: false })
-      expect(ns.secondary.map((a) => a.kind)).not.toContain('revisit')
+  /**
+   * One chat per feature, decision 8 — review is the page that had NO session
+   * door: asking the agent a question from here meant clicking Rethink, which
+   * bumped the lap and threw the feature back to planning. Chat is on every
+   * branch this resolver can return, in the same leading position, and it never
+   * disturbs the trail's own verbs.
+   */
+  it('carries the Chat door first on every review branch, whatever else is offered', () => {
+    const bars = [
+      nextStep(reviewFull({}), { driving: false }),
+      nextStep(reviewFull({ ticketStatuses: ['pending'] }), { driving: false }),
+      nextStep(reviewFull({}), { driving: false, openNotes: 2 }),
+      nextStep(reviewFull({}), { driving: false, driveState: 'setup-failed' }),
+      nextStep(reviewFull({}), { driving: false, laterLaps: '- the inspector' }),
+      nextStep(reviewFull({ sessionLive: true }), { driving: false }),
+      nextStep(reviewFull({}), { driving: true }),
+    ]
+    for (const ns of bars) {
+      expect(ns.secondary[0]).toEqual(CHAT_ACTION)
+      expect(ns.secondary.filter((a) => a.kind === 'chat')).toHaveLength(1)
     }
   })
 
   it('offers the same verbs on a later lap (the bar does not vary by lap)', () => {
     const ns = nextStep(reviewFull({ lap: 3 }), { driving: false })
-    expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+    expect(labels(ns.secondary)).toEqual(['Chat', 'Start test drive', 'Iterate'])
   })
 
   /**
@@ -863,6 +988,7 @@ describe('nextStep at review', () => {
       })
       expect(ns.primary?.kind).toBe('resolveConflict')
       expect(labels(ns.secondary)).toEqual([
+        'Chat',
         'Retry Merge & ship',
         'Burn 2 tickets',
         'Start test drive',
@@ -882,6 +1008,7 @@ describe('nextStep at review', () => {
         conflict,
       })
       expect(labels(ns.secondary)).toEqual([
+        'Chat',
         'Retry Merge & ship',
         'Burn 1 ticket',
         'Start test drive',
@@ -1067,7 +1194,7 @@ describe('nextStep at review', () => {
     it('makes answering the open work the primary, with Merge one click below', () => {
       const ns = nextStep(reviewFull({}), { driving: false, openNotes: 2, openDefects: 3 })
       expect(ns.primary).toEqual({ label: 'Iterate', kind: 'iterate' })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
+      expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Start test drive'])
       // Open work is information, never a block: the demoted merge is not nagged about.
       expect(ns.note).toBeUndefined()
     })
@@ -1179,7 +1306,7 @@ describe('nextStep at review', () => {
       const ns = nextStep(reviewFull({}), { driving: false, laterLaps })
       expect(ns.primary).toEqual({ label: 'Start lap 2', kind: 'iterate' })
       expect(ns.secondary).toContainEqual({ label: 'Merge & ship', kind: 'merge' })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive'])
+      expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Start test drive'])
     })
 
     it('counts the next lap off the feature’s own lap', () => {
@@ -1199,7 +1326,7 @@ describe('nextStep at review', () => {
       for (const later of [null, undefined, '']) {
         const ns = nextStep(reviewFull({}), { driving: false, laterLaps: later })
         expect(ns.primary).toEqual({ label: 'Merge & ship', kind: 'merge' })
-        expect(labels(ns.secondary)).toEqual(['Start test drive', 'Iterate'])
+        expect(labels(ns.secondary)).toEqual(['Chat', 'Start test drive', 'Iterate'])
       }
     })
 
@@ -1214,7 +1341,7 @@ describe('nextStep at review', () => {
         disabled: 'Stop the test drive first — the branch is checked out',
         escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
       })
-      expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Stop test drive'])
+      expect(labels(ns.secondary)).toEqual(['Chat', 'Merge & ship', 'Stop test drive'])
     })
 
     // Decision 4 — a live session used to suppress the flip entirely, because
@@ -1413,7 +1540,7 @@ describe('nextStep at planning — the step derived from the artifacts', () => {
   it('asks for the conversation while nothing is written', () => {
     const ns = nextStep(planningFull(), { driving: false })
     expect(ns.title).toBe('Shape the idea with the agent')
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
 
   it('asks for the spec once the decisions are on disk', () => {
@@ -1497,7 +1624,7 @@ describe('nextStep at planning on a later lap', () => {
 
   it('points at the lap session rather than the artifacts lap 1 left behind', () => {
     const ns = nextStep(lapFull({ lap: 2 }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'revisit' })
+    expect(ns.primary).toEqual({ label: 'Start lap 2 session', kind: 'chat' })
     expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(ns.title).toBe('Work lap 2')
     expect(ns.desc).toContain('test-drive notes')
@@ -1508,31 +1635,31 @@ describe('nextStep at planning on a later lap', () => {
     full.feature.mapped = true
     expect(nextStep(full, { driving: false }).primary).toEqual({
       label: 'Start lap 2 session',
-      kind: 'revisit',
+      kind: 'chat',
     })
   })
 
   it('says Resume once the lap has a conversation on disk', () => {
     const ns = nextStep(
-      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'revisit', ccSessionId: 'cc-1' }] }),
+      lapFull({ lap: 3, sessions: [{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }] }),
       { driving: false },
     )
-    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'revisit' })
+    expect(ns.primary).toEqual({ label: 'Resume lap 3 session', kind: 'chat' })
   })
 
   it('shows the live lap session status-only, as the lap`s work', () => {
     const ns = nextStep(
-      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'revisit' }] }),
+      lapFull({ lap: 2, sessions: [{ id: 's1', status: 'live', kind: 'chat' }] }),
       { driving: false },
     )
     expect(ns.title).toBe('Lap 2 in progress')
     expect(ns.primary).toBeUndefined()
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   it('leaves lap 1 to the derived ladder — spec.md on disk asks for tickets', () => {
     const ns = nextStep(lapFull({ lap: 1 }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
     expect(ns.title).toBe('Emit the tickets')
     expect(ns.secondary).toEqual([MERGE_ACTION])
   })
@@ -2437,7 +2564,7 @@ describe('nextStep at building', () => {
         lap: 1,
         commits: [],
       })),
-      sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'revisit' }] : [],
+      sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : [],
       runs: opts.runs ?? [],
       gate: { next: null, satisfied: false, reason: null },
     }) as unknown as FeatureFull
@@ -2479,11 +2606,17 @@ describe('nextStep at building', () => {
     expect(ns.busy).toBe(true)
   })
 
-  it('hides Revisit while a session is live (one terminal per feature)', () => {
-    const ns = nextStep(buildFull({ sessionLive: true }), { driving: false })
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+  /**
+   * One chat per feature, decision 8 — the old Revisit door vanished while a
+   * session was live, because a second launch would have been refused. The one
+   * Chat door is the way back INTO that session, so it is the same bar either
+   * way: nothing here is hidden or disabled because a terminal is up.
+   */
+  it('keeps the Chat door whether or not a session is live', () => {
+    const live = nextStep(buildFull({ sessionLive: true }), { driving: false })
+    expect(live.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
     expect(nextStep(buildFull({}), { driving: false }).secondary).toEqual([
-      { label: 'Revisit', kind: 'revisit' },
+      CHAT_ACTION,
       MERGE_ACTION,
     ])
   })
@@ -2502,7 +2635,7 @@ describe('nextStep at building', () => {
       { driving: false },
     )
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
-    expect(ns.secondary).toEqual([{ label: 'Revisit', kind: 'revisit' }, MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   /**
@@ -2514,7 +2647,7 @@ describe('nextStep at building', () => {
     const running = nextStep(buildFull({ runs: [{ id: 'r1', status: 'running', startedAt: 1 }] }), {
       driving: false,
     })
-    expect(running.secondary).toEqual([MERGE_ACTION])
+    expect(running.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
     expect(running.primary).toEqual({ label: 'Cancel run', kind: 'cancelRun', danger: true })
   })
 
@@ -2780,7 +2913,7 @@ describe('nextStep — the map mode inside planning owns Converge', () => {
   it('makes Converge the primary action once every waypoint is terminal', () => {
     const ns = nextStep(mappedIdeation({ complete: true }), { driving: false })
     expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
     expect(ns.title).toBe('The map is complete')
   })
 
@@ -2789,7 +2922,7 @@ describe('nextStep — the map mode inside planning owns Converge', () => {
     expect(ns.primary).toEqual({ label: 'Work next', kind: 'workNext', waypointId: 'next' })
     expect(ns.desc).toContain('1 of 3 waypoints done · 2 ready to work')
     expect(ns.desc).toContain('next: Choose storage')
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
   })
 
   it('surfaces unspecified map text as one note without gating Work next', () => {
@@ -2849,7 +2982,7 @@ describe('nextStep at planning — which door the artifacts open', () => {
     const ns = nextStep(written, { driving: false })
     expect(ns.title).toBe('Emit the tickets')
     expect(ns.desc).toContain('The spec is written')
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
 
   it('offers Resume on a written spec whose conversation is still on disk', () => {
@@ -2860,7 +2993,7 @@ describe('nextStep at planning — which door the artifacts open', () => {
     ] as unknown as FeatureFull['sessions']
     const ns = nextStep(written, { driving: false })
     expect(ns.title).toBe('Emit the tickets')
-    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'startGrill' })
+    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'chat' })
   })
 
   /**
@@ -2871,7 +3004,7 @@ describe('nextStep at planning — which door the artifacts open', () => {
     const feature = full({ phase: 'planning' })
     feature.feature = { ...feature.feature, lap: 2 }
     feature.sessions = [
-      { id: 's1', status: 'ended', kind: 'revisit', lap: 2, ccSessionId: 'cc-1' },
+      { id: 's1', status: 'ended', kind: 'chat', lap: 2, ccSessionId: 'cc-1' },
     ] as unknown as FeatureFull['sessions']
     feature.docs = docs('decisions.md', 'spec.md')
     feature.tickets = Array.from({ length: 11 }, (_, i) => ({
@@ -3152,8 +3285,8 @@ describe('liveSessionBlocker', () => {
   it('reports no waypoint for a live session holding none (the ideation grill)', () => {
     const ws = [wp({ id: 'w1', seq: 1, title: 'charted by the grill' })]
     expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'ideation' }]), ws),
-    ).toEqual({ sessionId: 'sess_1', kind: 'ideation', waypointTitle: undefined })
+      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'chat' }]), ws),
+    ).toEqual({ sessionId: 'sess_1', kind: 'chat', waypointTitle: undefined })
   })
 
   it('ignores a resolved waypoint that merely remembers the session', () => {
@@ -3178,45 +3311,48 @@ describe('liveSessionBlocker', () => {
 })
 
 /**
- * "Ask a question" lives on the shipped bar, so the terminal it opens has to
- * appear in the shipped body — but only the Q&A conversation, and only when there
- * is one worth showing: a shipped feature is full of ended pipeline sessions, and
- * a quiet one must stay the plain hero. This is the derivation the body renders
+ * Chat lives on the shipped bar, so the terminal it resumes has to appear in the
+ * shipped body — but only the chat conversation, and only when there is one
+ * worth showing: a shipped feature is full of ended pipeline sessions, and a
+ * quiet one must stay the plain hero. This is the derivation the body renders
  * through.
  */
-describe('shippedQaSessions', () => {
+describe('shippedChatSessions', () => {
   const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
 
-  it('shows a live qa session', () => {
-    const rows = sessions([{ id: 's1', status: 'live', kind: 'qa', ccSessionId: null }])
-    expect(shippedQaSessions(rows)).toEqual(rows)
+  it('shows a live chat session', () => {
+    const rows = sessions([{ id: 's1', status: 'live', kind: 'chat', ccSessionId: null }])
+    expect(shippedChatSessions(rows)).toEqual(rows)
   })
 
-  it('shows an ended qa session whose conversation is still on disk', () => {
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: 'cc-qa' }])
-    expect(shippedQaSessions(rows)).toEqual(rows)
+  it('shows an ended chat session whose conversation is still on disk', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' }])
+    expect(shippedChatSessions(rows)).toEqual(rows)
   })
 
-  it('shows nothing for an ended qa session that never reached live (no cc id)', () => {
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'qa', ccSessionId: null }])
-    expect(shippedQaSessions(rows)).toEqual([])
+  it('shows nothing for an ended chat session that never reached live (no cc id)', () => {
+    const rows = sessions([{ id: 's1', status: 'ended', kind: 'chat', ccSessionId: null }])
+    expect(shippedChatSessions(rows)).toEqual([])
   })
 
-  it('shows nothing on a shipped feature that was never asked a question', () => {
+  it('shows nothing on a shipped feature that was never talked to', () => {
     // Every pipeline session is ended and resumable by the time a feature ships —
     // those belong to the phase bodies that own them, not to the shipped hero.
     const rows = sessions([
-      { id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' },
-      { id: 's2', status: 'ended', kind: 'revisit', ccSessionId: 'cc-2' },
+      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+      { id: 's2', status: 'ended', kind: 'waypoint', ccSessionId: 'cc-2' },
     ])
-    expect(shippedQaSessions(rows)).toEqual([])
-    expect(shippedQaSessions(sessions([]))).toEqual([])
+    expect(shippedChatSessions(rows)).toEqual([])
+    expect(shippedChatSessions(sessions([]))).toEqual([])
   })
 
-  it('keeps only the qa rows when the feature also has other sessions', () => {
-    const qa = { id: 's2', status: 'live', kind: 'qa', ccSessionId: null }
-    const rows = sessions([{ id: 's1', status: 'ended', kind: 'ideation', ccSessionId: 'cc-1' }, qa])
-    expect(shippedQaSessions(rows)).toEqual([qa])
+  it('keeps only the chat rows when the feature also has other sessions', () => {
+    const chat = { id: 's2', status: 'live', kind: 'chat', ccSessionId: null }
+    const rows = sessions([
+      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+      chat,
+    ])
+    expect(shippedChatSessions(rows)).toEqual([chat])
   })
 })
 
@@ -3539,7 +3675,7 @@ describe('nextStep — naming the runtime in the copy', () => {
     }) as unknown as FeatureFull
 
   const liveGrill = (runtime: string | null) => [
-    { id: 's1', status: 'live', kind: 'ideation', runtime },
+    { id: 's1', status: 'live', kind: 'chat', runtime },
   ]
 
   it('names the runtime the live grill session is running on', () => {

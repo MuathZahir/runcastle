@@ -35,8 +35,7 @@ describe('per-step models (#48)', () => {
   it('exposes a field per step, the burn’s reviewer included', () => {
     const view = getSettings(ctx, undefined, io())
     for (const step of [
-      'ideation',
-      'qa',
+      'chat',
       'waypoint',
       'converge',
       'research',
@@ -103,9 +102,9 @@ describe('per-step models (#48)', () => {
   })
 
   it('emits a settings.updated event on a step write', () => {
-    updateSettings(ctx, { key: 'stepModels.qa', value: 'claude-haiku-4-5-20251001' }, io())
+    updateSettings(ctx, { key: 'stepModels.chat', value: 'claude-haiku-4-5-20251001' }, io())
     const raw = JSON.parse(readFileSync(configFile, 'utf8'))
-    expect(raw.stepModels.qa).toBe('claude-haiku-4-5-20251001')
+    expect(raw.stepModels.chat).toBe('claude-haiku-4-5-20251001')
   })
 
   /**

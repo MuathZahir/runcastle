@@ -42,7 +42,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     reviewTicket = storeTickets(ctx, feature.id, [
       { ...ticketInput('Review'), kind: 'review' },
     ])[0]
-    session = createSessionRow(ctx, { featureId: feature.id, kind: 'revisit', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
@@ -94,10 +94,9 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     it('is offered to the kinds that shape a lap’s work, and to nobody else', () => {
       // The same roster as `emit_tickets`: any session that can card the work
       // answering a defect can also say what that work did to it.
-      for (const kind of ['ideation', 'revisit', 'converge', 'waypoint', 'drive-fix'] as const) {
+      for (const kind of ['chat', 'converge', 'waypoint', 'drive-fix'] as const) {
         expect(toolsForAudience(kind), kind).toContain('resolve_finding')
       }
-      expect(toolsForAudience('qa')).not.toContain('resolve_finding')
       expect(toolsForAudience('project')).not.toContain('resolve_finding')
       expect(toolsForAudience('run')).not.toContain('resolve_finding')
     })
@@ -142,7 +141,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
       const other = seedFeature(ctx, project.id, { slug: 'other' })
       const stranger = createSessionRow(ctx, {
         featureId: other.id,
-        kind: 'revisit',
+        kind: 'chat',
         worktreePath: repoPath,
       })
       expect(() =>
@@ -151,14 +150,14 @@ describe('the lap session dispositions earlier laps’ defects', () => {
       expect(findingById(findingId)?.status).toBe('failed')
     })
 
-    it('refuses a qa session, whose contract is read-only', () => {
+    it('allows a chat session to resolve a finding', () => {
       const findingId = openDefect()
       const qa = createSessionRow(ctx, {
         featureId: feature.id,
-        kind: 'qa',
+        kind: 'chat',
         worktreePath: repoPath,
       })
-      expect(() => toolResolveFinding(ctx, qa, { findingId, disposition: 'carry' })).toThrow(GateError)
+      expect(toolResolveFinding(ctx, qa, { findingId, disposition: 'carry' }).ok).toBe(true)
     })
 
     it('still takes a carried defect — parked is not frozen', () => {

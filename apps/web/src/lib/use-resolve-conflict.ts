@@ -47,7 +47,7 @@ export function useResolveConflict(featureId: string, branch: string) {
       }
       launch.mutate({
         featureId,
-        kind: 'revisit',
+        kind: 'chat',
         kickoffLine: mergeConflictKickoff(conflict.base, branch, conflict.files),
         // The purpose is what lets the session actually do what the kickoff asks:
         // the edit guard exempts its writes while the merge below is in progress

@@ -4,9 +4,9 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
-import type { TicketInput, WaypointInput } from '@runcastle/core'
+import type { RunStatus, Ticket, TicketInput, WaypointInput } from '@runcastle/core'
 import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { runs } from '../src/db/schema'
+import { runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -29,9 +29,17 @@ import mcpApp, {
   toolUpdateTicket,
   toolsForAudience,
 } from '../src/mcp/server'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
-import { cancelTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
+import { reportFinding } from '../src/services/review-findings'
+import { addNote } from '../src/services/test-notes'
+import {
+  cancelTicket,
+  getTicket,
+  listByFeature,
+  storeTickets,
+  updateTicket,
+} from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -58,12 +66,41 @@ describe('mcp tools', () => {
     slug = 'dark-mode'
     const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
-    session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
 
   afterEach(() => clearRuntimeCtx())
+
+  /**
+   * A burn as the runner records one: the `runs` row plus the `run.started`
+   * event naming the lanes it opened with. That event is what makes a ticket
+   * claimed before the run has said anything else about it.
+   */
+  function startBurn(
+    runId: string,
+    lanes: Ticket[],
+    run: { status: RunStatus; endedAt?: number },
+  ): void {
+    ctx.db
+      .insert(runs)
+      .values({
+        id: runId,
+        featureId,
+        workflow: 'ticket-burner',
+        status: run.status,
+        startedAt: 20,
+        endedAt: run.endedAt ?? null,
+      })
+      .run()
+    emit(ctx, featureId, {
+      type: 'run.started',
+      message: 'run started (ticket-burner)',
+      runId,
+      data: { workflow: 'ticket-burner', ticketIds: lanes.map((lane) => lane.id) },
+    })
+  }
 
   it('emit_tickets validates + stores the batch and reports each ticket’s assigned seq', () => {
     const out = toolEmitTickets(ctx, session, {
@@ -263,6 +300,113 @@ describe('mcp tools', () => {
   })
 
   /**
+   * The state a chat used to have no channel to (decisions.md #7): how the last
+   * burn went lives on the `runs` table, and what this lap's review found lives
+   * in `review_findings` and in host scratch space outside the repo. One call
+   * states all of it.
+   */
+  it('get_feature_context states the last burn, this lap’s review and the notes that still stand', () => {
+    const [landed, broke, review] = storeTickets(ctx, featureId, [
+      ticket('landed'),
+      ticket('broke'),
+      { ...ticket('review the lap'), kind: 'review' },
+    ])
+    startBurn('run_burn', [landed, broke, review], { status: 'failed', endedAt: 30 })
+    updateTicket(ctx, landed.id, { status: 'done' })
+    updateTicket(ctx, broke.id, { status: 'failed', error: 'container died\n  at burn.ts:1' })
+    updateTicket(ctx, review.id, { status: 'done' })
+    reportFinding(ctx, {
+      featureId,
+      reviewTicket: getTicket(ctx, review.id),
+      input: {
+        kind: 'defect',
+        severity: 'high',
+        title: 'Save loses edits',
+        location: 'screen: editor',
+        citation: 'spec.md: edits persist',
+        detail: 'The old value returns.',
+        reproStep: 'Edit the title, save, reload.',
+      },
+    })
+    addNote(ctx, featureId, 'the empty state flashes')
+
+    const out = toolGetFeatureContext(ctx, session)
+    // Counted over the lanes that burn HELD — the fix ticket the finding just
+    // minted is the next burn's work and counts for neither side. The review
+    // pass is a lane like any other, so landing it lands a ticket.
+    expect(out.latestRun).toEqual({
+      status: 'failed',
+      ticketsLanded: 2,
+      ticketsFailed: 1,
+      errorHeadlines: ['container died'],
+    })
+    expect(out.currentLapReview).toEqual([
+      expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done', lap: 1 }),
+    ])
+    expect(out.currentLapReview[0].digestPath).toContain('DIGEST.md')
+    expect(out.findings.map((finding) => finding.title)).toEqual(['Save loses edits'])
+    expect(out.testNotes.map((note) => note.text)).toEqual(['the empty state flashes'])
+  })
+
+  it('get_feature_context omits latestRun entirely on a feature that has never burned', () => {
+    const out = toolGetFeatureContext(ctx, session)
+    expect('latestRun' in out).toBe(false)
+    expect(out.currentLapReview).toEqual([])
+    expect(out.findings).toEqual([])
+    expect(out.testNotes).toEqual([])
+  })
+
+  /**
+   * Keyed on status, not on the lap number alone — the mistake `carriedWork`
+   * documents. A note carried into this lap keeps the lap that captured it, so
+   * asking only for this lap's would lose exactly the notes still owed.
+   */
+  it('get_feature_context keeps a note an earlier lap carried rather than answered', () => {
+    const feature = seedFeature(ctx, getFeatureRow(ctx, featureId).projectId, {
+      slug: 'second-lap',
+      lap: 2,
+    })
+    const carried = addNote(ctx, feature.id, 'the contrast is still wrong')
+    ctx.db
+      .update(testNotes)
+      .set({ lap: 1, status: 'carried' })
+      .where(eq(testNotes.id, carried.id))
+      .run()
+    addNote(ctx, feature.id, 'this lap’s own note')
+
+    const out = featureContext(ctx, { featureId: feature.id, sessionId: session.id })
+    expect(out.testNotes.map((note) => note.text)).toEqual([
+      'the contrast is still wrong',
+      'this lap’s own note',
+    ])
+  })
+
+  it('ticket surgery refuses a ticket the live burn holds and allows one it does not', () => {
+    const [claimed, unclaimed] = storeTickets(ctx, featureId, [
+      ticket('claimed'),
+      ticket('next burn'),
+    ])
+    startBurn('run_active', [claimed], { status: 'running' })
+
+    // The refusal names both the run and the ticket: a chat told only "refused"
+    // cannot tell the human which burn to wait for.
+    for (const edit of [
+      () => toolUpdateTicket(ctx, session, { id: claimed.id, title: 'nope' }),
+      () => toolCancelTicket(ctx, session, { id: claimed.id }),
+    ]) {
+      expect(edit).toThrow(GateError)
+      expect(edit).toThrow(/run_active/)
+      expect(edit).toThrow(new RegExp(`#${claimed.seq} claimed`))
+    }
+    // The point of the guard's narrowness: the chat still shapes the NEXT burn
+    // while this one runs.
+    expect(toolUpdateTicket(ctx, session, { id: unclaimed.id, title: 'edited' }).ticket.title).toBe(
+      'edited',
+    )
+    expect(toolCancelTicket(ctx, session, { id: unclaimed.id }).ticket.status).toBe('cancelled')
+  })
+
+  /**
    * The docs allowlist (`packages/core/src/docs.ts`). What is worth pinning is
    * both halves at once: the payload must SHRINK, and nothing may become
    * unreachable — an index entry that the agent cannot cash in would be a
@@ -387,7 +531,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     slug = 'big-feature'
     const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
     featureId = feature.id
-    session = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
@@ -453,7 +597,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
 
   it('emit_waypoints works from any session kind once mapped (qa can branch the map)', () => {
     toolEscalateToMap(ctx, session, { destination: 'dest' })
-    const qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
+    const qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     const out = toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] })
     expect(out.stored).toBe(1)
     expect(listWaypoints(ctx, featureId).map((w) => w.title)).toContain('from-qa')
@@ -506,7 +650,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
     const out = toolGetFeatureContext(ctx, session)
     expect(out.assignedWaypointId).toBe(a.id)
     // a session with no claim (e.g. the ideation session) has none
-    const other = createSessionRow(ctx, { featureId, kind: 'ideation', worktreePath: repoPath })
+    const other = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     expect(toolGetFeatureContext(ctx, other).assignedWaypointId).toBeUndefined()
   })
 
@@ -530,12 +674,7 @@ describe('mcp mapped write path (ADR-0001 §13.3)', () => {
   })
 })
 
-/**
- * The `qa` kind's read-only contract, which until now lived only in prose. A qa
- * session HAS a feature, so `requireFeatureId` waved every write tool through —
- * three separate prompts forbade what nothing enforced.
- */
-describe('mcp qa read-only contract', () => {
+describe('mcp chat write contract', () => {
   let ctx: AppCtx
   let repoPath: string
   let featureId: string
@@ -546,34 +685,18 @@ describe('mcp qa read-only contract', () => {
     repoPath = tmpRepo()
     const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'planning' })
     featureId = feature.id
-    qa = createSessionRow(ctx, { featureId, kind: 'qa', worktreePath: repoPath })
+    qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     setRuntimeCtx(ctx)
   })
 
   afterEach(() => clearRuntimeCtx())
 
-  it('refuses every write tool with a message that says what to do instead', () => {
+  it('allows ticket writes from chat', () => {
     const [existing] = storeTickets(ctx, featureId, [ticket('already here')])
-    const calls: [string, () => unknown][] = [
-      ['emit_tickets', () => toolEmitTickets(ctx, qa, { tickets: [ticket('new')] })],
-      ['update_ticket', () => toolUpdateTicket(ctx, qa, { id: existing.id, title: 'x' })],
-      ['cancel_ticket', () => toolCancelTicket(ctx, qa, { id: existing.id })],
-      ['complete_phase', () => toolCompletePhase(ctx, qa, { phase: 'tickets' })],
-    ]
-    for (const [name, call] of calls) {
-      let thrown: unknown
-      try {
-        call()
-      } catch (e) {
-        thrown = e
-      }
-      expect(thrown, name).toBeInstanceOf(GateError)
-      expect((thrown as GateError).message, name).toMatch(/read-only/i)
-      expect((thrown as GateError).message, name).toMatch(/tell them/i)
-    }
-    // Nothing landed: the deny is the enforcement, not a warning.
-    expect(listByFeature(ctx, featureId)).toHaveLength(1)
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
+    expect(toolEmitTickets(ctx, qa, { tickets: [ticket('new')] }).stored).toBe(1)
+    expect(toolUpdateTicket(ctx, qa, { id: existing.id, title: 'changed' }).ticket.title).toBe('changed')
+    expect(toolCancelTicket(ctx, qa, { id: existing.id }).ticket.status).toBe('cancelled')
+    expect(listByFeature(ctx, featureId)).toHaveLength(2)
   })
 
   it('still reads, and still branches the map — "any session may branch the map"', () => {
@@ -595,8 +718,8 @@ describe('mcp session resolution', () => {
   it('prefers the header session id, falling back to the most recent live session', () => {
     const project = seedProject(ctx)
     const feature = seedFeature(ctx, project.id, { slug: 'f2' })
-    const s1 = createSessionRow(ctx, { featureId: feature.id, kind: 'ideation', worktreePath: 'x' })
-    const s2 = createSessionRow(ctx, { featureId: feature.id, kind: 'qa', worktreePath: 'y' })
+    const s1 = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: 'x' })
+    const s2 = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: 'y' })
     markSessionLive(ctx, s1.id)
     markSessionLive(ctx, s2.id)
 
@@ -616,7 +739,7 @@ describe('mcp session resolution', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'f2' })
     const live = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: 'x',
     })
     markSessionLive(ctx, live.id)
@@ -647,7 +770,7 @@ describe('mcp run-scoped feature reads', () => {
     // The live human conversation the fallback used to hand review agents.
     const talk = createSessionRow(ctx, {
       featureId: theirs,
-      kind: 'ideation',
+      kind: 'chat',
       worktreePath: repoPath,
     })
     markSessionLive(ctx, talk.id)
@@ -687,12 +810,12 @@ describe('mcp run-scoped feature reads', () => {
  */
 describe('mcp tool registration by audience', () => {
   it('offers each kind only the tools its own runtime gates can let through', () => {
-    const qa = toolsForAudience('qa')
-    expect(qa).toContain('get_feature_context')
-    expect(qa).toContain('list_tickets')
-    expect(qa).toContain('emit_waypoints') // any session may branch the map
+    const chat = toolsForAudience('chat')
+    expect(chat).toContain('get_feature_context')
+    expect(chat).toContain('list_tickets')
+    expect(chat).toContain('emit_waypoints')
     for (const write of ['emit_tickets', 'complete_phase', 'update_ticket', 'cancel_ticket']) {
-      expect(qa, write).not.toContain(write)
+      expect(chat, write).toContain(write)
     }
 
     // A project session has no feature, so none of the feature surface.
@@ -705,9 +828,9 @@ describe('mcp tool registration by audience', () => {
 
     // Single-kind tools stay single-kind.
     expect(toolsForAudience('prepare')).toContain('dry_run_drive')
-    expect(toolsForAudience('ideation')).not.toContain('dry_run_drive')
+    expect(toolsForAudience('chat')).not.toContain('dry_run_drive')
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')
-    expect(toolsForAudience('ideation')).not.toContain('retry_drive')
+    expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
@@ -728,11 +851,11 @@ describe('mcp tool registration by audience', () => {
     expect(all).toContain('get_feature_context')
     expect(all).toContain('get_project_context')
     expect(all).toContain('review_drive')
-    expect(all.length).toBeGreaterThan(toolsForAudience('qa').length)
+    expect(all.length).toBeGreaterThan(toolsForAudience('chat').length)
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['ideation', 'qa', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })

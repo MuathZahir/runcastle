@@ -60,7 +60,7 @@ describe('launch model resolution (#48)', () => {
     cleanup.push(worktreeDir(project.id, slug))
     const { sessionId } = await launchSession(
       ctx,
-      { featureId: feature.id, kind: 'ideation' },
+      { featureId: feature.id, kind: 'chat' },
       { spawn: false },
     )
     cleanup.push(sessionDir(sessionId))
@@ -81,12 +81,12 @@ describe('launch model resolution (#48)', () => {
   })
 
   it('a global per-step model applies to a project that sets no model', async () => {
-    ctx.config.stepModels = { ...ctx.config.stepModels, ideation: 'claude-haiku-4-5-20251001' }
+    ctx.config.stepModels = { ...ctx.config.stepModels, chat: 'claude-haiku-4-5-20251001' }
     expect(await launchAndReadModel('step-model')).toBe('claude-haiku-4-5-20251001')
   })
 
   it("a project's model wins over the global per-step model", async () => {
-    ctx.config.stepModels = { ...ctx.config.stepModels, ideation: 'claude-haiku-4-5-20251001' }
+    ctx.config.stepModels = { ...ctx.config.stepModels, chat: 'claude-haiku-4-5-20251001' }
     expect(await launchAndReadModel('proj-beats-step', 'claude-sonnet-5')).toBe('claude-sonnet-5')
   })
 })

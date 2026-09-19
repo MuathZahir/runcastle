@@ -5,7 +5,7 @@ import { SANDBOX_MODE } from '../../../lib/env'
 import { shortSha } from '../../../lib/format'
 import { useLivePoll } from '../../../lib/live'
 import { effectiveStepModel, rosterFromView } from '../../../lib/settings'
-import { sessionActive } from '../../../lib/feature-ui'
+import { bodySessions, sessionActive } from '../../../lib/feature-ui'
 import { useToast } from '../../../lib/toast'
 import { Button, DimLine } from '../../../ui'
 import { DocPeek } from '../../DocPeek'
@@ -15,7 +15,7 @@ import { SessionStrip } from '../../session/SessionStrip'
 import { TicketLedger } from './TicketLedger'
 import type { TicketPatch } from './TicketEditor'
 
-export function TicketsBody({ featureId }: { featureId: string }) {
+export function TicketsBody({ featureId, chatDocked = false }: { featureId: string; /** The chat panel holds the chat's terminal, so this body does not (decision 16). */ chatDocked?: boolean }) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
@@ -39,7 +39,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
   // (decision 6), so the body owns it rather than the panel — which means
   // reading it here, above the loading guards where every hook has to live.
   const data = full.data
-  const sessions = data?.sessions ?? []
+  const sessions = bodySessions(data?.sessions ?? [], chatDocked)
   const live = [...sessions].reverse().find(sessionActive)
   const lapTickets = data ? data.tickets.filter((ticket) => ticket.lap === data.feature.lap) : []
   const terminal = useTerminalStrip(live?.id, lapTickets.length)
