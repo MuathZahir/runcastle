@@ -1,0 +1,17 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-19T00:00:00Z" },
+  "title": "Chat Placement Options",
+  "launch": { "view": "canvas" },
+  "boards": {
+    "InlinePanel.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 800, "title": "A — Inline panel beside the body (recommended)" },
+    "BodyPlacement.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 800, "title": "B — Chat as a full body view" },
+    "PanelRedesign.dc.html": { "x": 2720, "y": 0, "w": 1280, "h": 800, "title": "C — Redesigned slide-over panel" }
+  },
+  "order": ["InlinePanel.dc.html", "BodyPlacement.dc.html", "PanelRedesign.dc.html"],
+  "notes": {
+    "t1": { "x": 0, "y": -300, "text": "Where does the feature chat live? Three placements, same transcript.", "kind": "title1", "maxW": 4000 }
+  },
+  "pages": [],
+  "designSystems": []
+}

@@ -12,7 +12,7 @@ The shape:
 
 **One kind.** `ideation`, `revisit`, and `qa` collapse into a single session kind `chat` (decision 3). `waypoint`, `converge`, `prepare`, `project`, and `drive-fix` are untouched; the map stays its own mode. A one-time DB migration rewrites existing session rows of the three collapsed kinds to `chat` (decision 5) — no legacy aliases; the newest migrated row's transcript becomes the seed of the feature's one chat. The shipped body's Q&A panel filter follows the rename.
 
-**One transcript, unconditional resume.** Every door resumes the most recent `chat` session. The `chat` kind skips the resume-cap check entirely — no byte cap, no re-entry cap (decision 4); Claude Code's own auto-compact manages the window, and the docs on disk plus the kickoff carry the record. The cap machinery survives unchanged for the kinds that keep it. Kickoff overrides ride the resume (decision 13): resolveConflict, stopDriveAndIterate and lap briefings are delivered into the resumed transcript, never a reason to discard it, and every resume re-delivers the fresh feature-state header. Clicking Chat while a chat is already live returns you to the live conversation — the one-live-session guard prevents a second spawn without presenting as an error (decision 12).
+**One transcript, unconditional resume.** Every door resumes the most recent `chat` session. The `chat` kind skips the resume-cap check entirely — no byte cap, no re-entry cap (decision 4); Claude Code's own auto-compact manages the window, and the docs on disk plus the kickoff carry the record. The cap machinery survives unchanged for the kinds that keep it. Kickoff overrides ride the resume (decision 13): resolveConflict, stopDriveAndIterate and lap briefings are delivered into the resumed transcript, never a reason to discard it, and every resume re-delivers the fresh feature-state header. Clicking Chat while a chat is already live returns you to the live conversation — the one-live-session guard prevents a second spawn without presenting as an error (decision 12). Briefing delivery to a live chat is observable (decision 15): the terminal write returns success or failure, `session.kickoff` is emitted only after a successful write, and a live DB row with no PTY behind it is a reported failure, never a silent drop of the override.
 
 **Coexistence with a burn** (decisions 2, 9). Outside a burn the chat lives in the talk worktree checked out to the feature branch, committing docs directly — unchanged. During a branch-claiming run the same worktree sits on a temp chat branch forked from the feature tip instead of detached HEAD; each docs commit lands promptly through the landing queue, which is **promoted from per-run to per-feature** so chat landings serialize with ticket landings (ADR-0002's queue, wider scope). At the boundaries: Burn clicked under a live chat switches the worktree to a fresh chat branch in place (files unmoved, session unaffected); run end lands any unlanded chat commits as the last landing and checks the worktree back out to the feature branch. An empty chat branch is deleted; the boot sweep's merged/unmerged rule covers crashes. The spawn guard splits: "one live HITL session per feature" stays; "refuse terminals while a run claims the branch" is deleted.
 
@@ -22,7 +22,7 @@ The shape:
 
 **Burn agents stay headless** (decision 6). No channel to the chat in either direction; the run's events and ticket updates are their voice.
 
-**UI** (decision 8). One action kind `chat` replaces `startGrill`, `askQuestions`, and `revisit` in the next-step vocabulary. It is a constant secondary on the bar in all four states — same position, one-word label "Chat" — promoted to primary only where talking is genuinely the next step (planning with nothing live). During a burn the bar keeps "Cancel run" primary and gains Chat. On Review, Chat sits beside the trail's actions without touching them. `resolveConflict` and `stopDriveAndIterate` survive as roads launching `chat` with their kickoff overrides.
+**UI** (decisions 8, 16). One action kind `chat` replaces `startGrill`, `askQuestions`, and `revisit` in the next-step vocabulary. It is a constant secondary on the bar in all four states — same position, one-word label "Chat" — promoted to primary only where talking is genuinely the next step (planning with nothing live). During a burn the bar keeps "Cancel run" primary and gains Chat. On Review, Chat sits beside the trail's actions without touching them. `resolveConflict` and `stopDriveAndIterate` survive as roads launching `chat` with their kickoff overrides. As of lap 3 the door toggles an **inline panel docked beside the feature body** (decision 16): the body keeps doing its phase job while the panel sits to its right in all four states, reusing the existing transcript rendering — compact header, roled transcript, composer — collapsible, and inert when collapsed. Prototypes of the three candidate placements live at `docs/features/one-chat-per-feature/prototypes/chat-placement/`.
 
 ## Seams
 
@@ -47,11 +47,14 @@ The shape:
 
 A pure fix lap (decision 10): the lap-1 review's 11 open defects, consolidated to eight work items — the broken test suite and lost transcript-marker producer, the resume/override/header semantics (decision 13), the Chat door's live-chat behavior (decision 12), the review kickoff's real drive outcome, `stepModels` read-compat (decision 11), the missing `chat-branch.ts` event emissions, and the dead qa leftovers in the MCP server. Nothing promoted from `## Later laps`.
 
+## Lap 3 scope
+
+No test drive preceded this lap. Two work items (decision 14): the delivery-observability fix for lap 2's open defect (`finding_8EGyEYX6ye8B`, decision 15), and the inline chat panel promoted from `## Later laps` (decision 16). The rollover deferral is closed as a permanent no — unconditional resume plus auto-compact is the final answer (decisions 4, 14).
+
 ## Open questions
 
 None blocking. The prerequisite features (`native-first-message-delivery-for-session-kickoffs`, the Codex resume-lifecycle fix) are in flight; tickets that depend on reliable kickoff delivery and resume land after they do.
 
 ## Later laps
 
-- UI placement beyond the constant bar action: inline panel, body placement, redesign of the shipped body's transcript panel — to be judged against lap-1 test-drive evidence.
-- Any richer rollover story than unconditional resume, should real transcripts prove auto-compact insufficient.
+Nothing parked. Both lap-1 deferrals were settled in lap 3: UI placement became the inline panel (decision 16), and the richer-rollover question was closed as a permanent no (decision 14).
