@@ -472,12 +472,14 @@ export async function launchSession(
 
   // The Chat door clicked on a chat that is already up is not a refusal
   // (decision 12): the feature has ONE conversation and this door's whole
-  // promise is to take you to it, so the live row is the answer. Answering
-  // before the worktree, the model chain and the session row means the no-op
-  // leaves no debris and costs no spawn — the one-live-session guard still
-  // holds, it just stops presenting as an error to the one door that is
-  // constant in every state and never disabled. A live session of any OTHER
-  // kind is still `assertSpawnable`'s one-terminal-per-feature refusal below.
+  // promise is to take you to it, so the live row is the answer — carrying
+  // whatever briefing the door came with into it ({@link briefLiveChat}).
+  // Answering before the worktree, the model chain and the session row means
+  // nothing is created to leave behind and no spawn is paid for — the
+  // one-live-session guard still holds, it just stops presenting as an error to
+  // the one door that is constant in every state and never disabled. A live
+  // session of any OTHER kind is still `assertSpawnable`'s
+  // one-terminal-per-feature refusal below.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
     if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
