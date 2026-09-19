@@ -818,7 +818,10 @@ describe('what the review agent is handed', () => {
       expect(template).toMatch(/dev URL answers but .*browser attach/i)
       expect(template).toMatch(/Gates mode (?:\*\*)?in full/)
     }
-    expect(verificationTemplate).toMatch(/defects mint fix tickets/)
+    // review-findings.ts guards minting with `!verification`, so a verification
+    // defect lands open with `openReason: 'verification'` and no fix ticket.
+    expect(verificationTemplate).toMatch(/never mint fix tickets/)
+    expect(verificationTemplate).not.toMatch(/Confirmed defects mint fix tickets/)
     expect(verificationTemplate).toMatch(/carry\/link\/close rules/)
   })
 })

@@ -42,7 +42,7 @@ In **Gates mode**, read each fix diff against its finding and run the configured
 
 {{GATE_NOTES}}
 
-Report findings through `mcp__runcastle__report_finding` as usual. Confirmed defects mint fix tickets; unresolved findings are carried under the existing carry/link/close rules. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
+Report findings through `mcp__runcastle__report_finding` as usual. Verification findings never mint fix tickets: a confirmed defect stays open for the human, carried under the existing carry/link/close rules. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
 
 Write `{{DIGEST_PATH}}`. Its first line must name the inherited mode and say "verification pass" (for example, `Drive verification pass`). Summarise which fixes held, which did not, and anything plainly broken on the tour. No `<promise>` markers inside the digest — the completion signal is a line in your message, never a line in this file. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. Either way, the file you write is the last thing you do before signalling COMPLETE.
 
