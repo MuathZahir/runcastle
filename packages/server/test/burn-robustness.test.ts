@@ -10,7 +10,7 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { GateError } from '../src/errors'
 import { emit, listAfter } from '../src/services/events'
-import { agenticReview, retryTicket } from '../src/services/features'
+import { agenticReview, getFeatureFull, retryTicket } from '../src/services/features'
 import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
@@ -437,9 +437,19 @@ describe('findPreservedTicketBranch (fallback for pre-attemptBranch burns)', () 
 // retryTicket — the manual per-ticket retry service
 // ---------------------------------------------------------------------------
 
+/**
+ * What the last stubbed burn was handed: the snapshot the run opened with, and
+ * what a mid-run re-read would admit on top of it. Both matter for a scoped
+ * burn — a scope the re-read ignores is a scope the scheduler walks straight
+ * out of when the review settles.
+ */
+const burnScope: { opened: string[]; reread: string[] } = { opened: [], reread: [] }
+
 const stubBurner: WorkflowDef = {
   id: 'ticket-burner',
-  async run() {
+  async run(wctx) {
+    burnScope.opened = wctx.tickets.map((t) => t.id)
+    burnScope.reread = (wctx.listTickets?.() ?? []).map((t) => t.id)
     return { status: 'succeeded', summary: 'stub' }
   },
 }
@@ -730,6 +740,24 @@ describe('retryTicket', () => {
         .run()
       await expect(agenticReview(ctx, featureId)).rejects.toThrow(/run is live/)
       expect(listByFeature(ctx, featureId)).toEqual([expect.objectContaining({ id: review.id })])
+    })
+
+    it('burns the minted pass alone, leaving pending fix tickets and the lap where they were', async () => {
+      const { dir } = await initRepoWithFeature()
+      const { featureId, review } = seedDeniedReview(dir, { denied: false })
+      // The state the button exists for: a review found defects and its fix
+      // tickets are sitting pending for the human to decide on.
+      const [fix] = storeTickets(ctx, featureId, [ticketInput('fix the defect')])
+
+      await agenticReview(ctx, featureId)
+
+      const minted = listByFeature(ctx, featureId).find(
+        (t) => t.kind === 'review' && t.id !== review.id,
+      )
+      expect(burnScope.opened).toEqual([minted?.id])
+      expect(burnScope.reread).toEqual([minted?.id])
+      expect(getTicket(ctx, fix.id).status).toBe('pending')
+      expect(getFeatureFull(ctx, featureId).feature.lap).toBe(1)
     })
 
     it('keeps ticket retry failed-only after a dirty denial', async () => {
