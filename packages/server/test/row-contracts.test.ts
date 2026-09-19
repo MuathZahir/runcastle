@@ -1,4 +1,4 @@
-import type { Feature, Project, TicketInput, WaypointInput } from '@runcastle/core'
+import type { Feature, Project, SessionKind, TicketInput, WaypointInput } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -126,7 +126,7 @@ describe('row → wire contracts', () => {
       .values({
         id: newId('sess'),
         featureId: feature.id,
-        kind: 'seance' as 'ideation',
+        kind: 'seance' as SessionKind,
         ccSessionId: null,
         transcriptPath: null,
         status: 'live',
