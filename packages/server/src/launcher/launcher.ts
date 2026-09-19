@@ -379,6 +379,78 @@ function applyResumeCap(
   })
 }
 
+/**
+ * How long after the briefing text the submitting `\r` follows. A TUI reads one
+ * burst of bytes as a paste, in which a carriage return is a newline and not a
+ * submit, so the two go out as separate keystrokes.
+ */
+const LIVE_BRIEFING_SUBMIT_MS = 350
+
+/**
+ * The Chat door answered with the conversation that is already up (decision 12)
+ * — and, when the door carried something new to say, that briefing delivered
+ * into it (decision 13).
+ *
+ * A plain Chat click brings nothing of its own: it is a door back into the
+ * conversation, and re-briefing one mid-thought would be noise. The purpose-
+ * specific roads DO — resolveConflict and stopDriveAndIterate pass their
+ * `kickoffLine`, and a lap in flight briefs itself ({@link planKickoff}) — and
+ * losing it is the whole defect this closes: the door foregrounded the terminal
+ * and silently dropped the reason the human opened it.
+ *
+ * ADR-0009 put a launch's briefing in the CLI's argv precisely so nothing had to
+ * be typed at a terminal, and that is still how every LAUNCH briefs. A session
+ * already live has no argv left to carry one, so the door that must never refuse
+ * and must never lose its context has exactly one channel: the terminal itself.
+ * The startup race the ADR retired is not this write's — the session reported
+ * live and its conversation is underway — and per the same decision nothing here
+ * confirms delivery, retries it, or re-sends it.
+ */
+function briefLiveChat(
+  ctx: AppCtx,
+  feature: Feature,
+  liveChat: SessionRow,
+  kickoffLine: string | undefined,
+): LaunchSessionResult {
+  const plan = planKickoff({
+    kind: 'chat',
+    lap: feature.lap,
+    kickoffLine,
+    lapInFlight: lapInFlight({
+      lap: feature.lap,
+      phase: feature.phase,
+      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
+    }),
+    carried: carriedWork(ctx, feature.id),
+  })
+  if (!plan.line) return { sessionId: liveChat.id }
+
+  writeToLiveTerminal(liveChat.id, plan.line)
+  emit(ctx, feature.id, {
+    type: 'session.kickoff',
+    message: 'handing the live chat its briefing',
+    data: { sessionId: liveChat.id, kind: liveChat.kind, line: plan.line, mechanism: 'pty' },
+  })
+  return { sessionId: liveChat.id }
+}
+
+/**
+ * Type `line` into a live session's terminal and submit it. Each write checks
+ * the registry afresh, so a terminal that exits between the text and the `\r`
+ * never gets a stray carriage return; a session with no terminal (the
+ * `spawn:false` smoke driver) is written to nowhere rather than throwing.
+ */
+function writeToLiveTerminal(sessionId: string, line: string): void {
+  const write = (data: string): void => {
+    const entry = ptyRegistry().get(sessionId)
+    if (entry && !entry.exited) entry.pty.write(data)
+  }
+  write(line)
+  const submit = setTimeout(() => write('\r'), LIVE_BRIEFING_SUBMIT_MS)
+  // Never hold the process open for a keystroke (tests, shutdown).
+  submit.unref?.()
+}
+
 export async function launchSession(
   ctx: AppCtx,
   input: LaunchSessionInput,
@@ -400,15 +472,17 @@ export async function launchSession(
 
   // The Chat door clicked on a chat that is already up is not a refusal
   // (decision 12): the feature has ONE conversation and this door's whole
-  // promise is to take you to it, so the live row is the answer. Answering
-  // before the worktree, the model chain and the session row means the no-op
-  // leaves no debris and costs no spawn — the one-live-session guard still
-  // holds, it just stops presenting as an error to the one door that is
-  // constant in every state and never disabled. A live session of any OTHER
-  // kind is still `assertSpawnable`'s one-terminal-per-feature refusal below.
+  // promise is to take you to it, so the live row is the answer — carrying
+  // whatever briefing the door came with into it ({@link briefLiveChat}).
+  // Answering before the worktree, the model chain and the session row means
+  // nothing is created to leave behind and no spawn is paid for — the
+  // one-live-session guard still holds, it just stops presenting as an error to
+  // the one door that is constant in every state and never disabled. A live
+  // session of any OTHER kind is still `assertSpawnable`'s
+  // one-terminal-per-feature refusal below.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat) return { sessionId: liveChat.id }
+    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
   }
 
   const project = projectForFeature(ctx, feature)
