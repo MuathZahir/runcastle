@@ -7,7 +7,6 @@ import {
   awaitingCheckIn,
   burnInterruption,
   capLane,
-  chatTerminalPhase,
   defaultBaseBranch,
   deferredScope,
   DRAFT_GLYPH,
@@ -260,16 +259,6 @@ describe('nextStep — the one Chat door, in all four states', () => {
     }
   })
 
-  // Where the click lands (decision 12). A second click answers with the chat
-  // that is already live rather than an error, so the door has to put that
-  // conversation on screen — and review is the one page that renders no
-  // terminal of its own to put it in.
-  it('travels to the terminal only from the page that renders none', () => {
-    expect(chatTerminalPhase('review')).toBe('planning')
-    for (const phase of PHASE_ORDER.filter((p) => p !== 'review')) {
-      expect(chatTerminalPhase(phase)).toBeNull()
-    }
-  })
 })
 
 /**

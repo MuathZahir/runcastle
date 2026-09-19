@@ -258,6 +258,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
               onToggleMapRail={ws.toggleMapRail}
               artifactPaneCollapsed={ws.artifactPaneCollapsed}
               onToggleArtifactPane={ws.toggleArtifactPane}
+              chatPanelOpen={ws.chatPanelOpen}
+              onToggleChatPanel={ws.toggleChatPanel}
               driving={driving}
               onDriveChange={setDriving}
             />

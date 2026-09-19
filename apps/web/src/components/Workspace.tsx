@@ -15,7 +15,7 @@ import {
   burnInterruption,
   burnLap,
   burnSummary,
-  chatTerminalPhase,
+  bodySessions,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
@@ -53,6 +53,7 @@ import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
+import { ChatDock, ChatPanel } from './workspace/ChatPanel'
 import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { NextStepBar } from './workspace/NextStepBar'
@@ -77,6 +78,8 @@ export function Workspace({
   onToggleMapRail,
   artifactPaneCollapsed,
   onToggleArtifactPane,
+  chatPanelOpen,
+  onToggleChatPanel,
   driving,
   onDriveChange,
 }: {
@@ -88,6 +91,8 @@ export function Workspace({
   onToggleMapRail: () => void
   artifactPaneCollapsed: boolean
   onToggleArtifactPane: () => void
+  chatPanelOpen: boolean
+  onToggleChatPanel: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
 }) {
@@ -470,6 +475,9 @@ export function Workspace({
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
   const liveSession = activeSession(full.sessions)
+  // The conversation is the session that is up — what the Chat door consults
+  // before launching, so it never re-briefs a chat the human is already in.
+  const liveChat = liveSession?.kind === 'chat' ? liveSession : undefined
   // An Iterate whose lap session could not be opened (decision 26g), from the
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
@@ -557,15 +565,28 @@ export function Workspace({
    * the first one, or — with the chat already live — answers with the session
    * that is up rather than refusing; the door never has to know which.
    *
-   * What it does have to do is LAND the human in the terminal, and review
-   * renders none of its own, so the door pins the view that holds it on the way
-   * through. `chatTerminalPhase` is read before the mutation fires so the pin is
-   * the page the human clicked from, not wherever the feature has drifted to by
-   * the time the server answers.
+   * It no longer has to land the human anywhere: the conversation shows up in
+   * the docked panel beside whatever body is up (decision 16), so the door that
+   * used to pin review's view onto planning now opens the panel in place.
    */
   const openChat = () => {
-    const pin = chatTerminalPhase(effective)
-    launch.mutate({ featureId, kind: 'chat' }, pin ? { onSuccess: () => onViewPhase(pin) } : {})
+    launch.mutate({ featureId, kind: 'chat' })
+  }
+
+  /**
+   * The bar's constant Chat door, which is now a toggle (decision 16): away, it
+   * docks the panel and resumes the conversation; docked, it sends the panel
+   * back without touching the session — collapsing the chat is not ending it.
+   *
+   * A chat that is already up is not re-launched on the way in. The server would
+   * answer with that same session (decision 12), but it would also write a fresh
+   * state header into its terminal on every click (decision 13) — and a header
+   * is for a human arriving at a conversation they had lost sight of, not for
+   * one that is on screen already and one toggle away.
+   */
+  const toggleChat = () => {
+    if (!chatPanelOpen && !liveChat) openChat()
+    onToggleChatPanel()
   }
 
   const runAction = (kind: ActionKind, waypointId?: string) => {
@@ -578,7 +599,7 @@ export function Workspace({
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
       case 'chat':
-        openChat()
+        toggleChat()
         break
       case 'iterate':
         enterIterate()
@@ -838,34 +859,51 @@ export function Workspace({
           being the scroll container and stops centering on --content-max.
           Review joined them for its notes rail, which has to stay put while the
           main column moves. */}
-      <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
-        <div
-          className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
-          key={isDraft ? 'draft' : bodyPhase}
-        >
-          {/* Status wins over phase here (decision 9): a draft is created at
-              `ideation`, and the grill body would offer a terminal on a feature
-              that has no branch to open one against. */}
-          {isDraft ? (
-            <DraftBody full={full} />
-          ) : (
-            <PhaseBody
-              effective={bodyPhase}
-              full={full}
-              events={events}
-              driving={driving}
-              conflict={conflict}
-              runId={run?.id ?? null}
-              readonly={readonly}
-              mapRailCollapsed={mapRailCollapsed}
-              onToggleMapRail={onToggleMapRail}
-              onViewPhase={onViewPhase}
-              artifactPaneCollapsed={artifactPaneCollapsed}
-              onToggleArtifactPane={onToggleArtifactPane}
-            />
-          )}
+      {/* The chat is docked beside all of that, in every state (decision 16) —
+          the body keeps doing its phase job at its own width, and away, the dock
+          renders the body and nothing else. */}
+      <ChatDock
+        open={chatPanelOpen}
+        panel={
+          <ChatPanel
+            featureId={featureId}
+            sessions={full.sessions}
+            busy={launch.isPending}
+            onOpenChat={openChat}
+            onCollapse={onToggleChatPanel}
+          />
+        }
+      >
+        <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
+          <div
+            className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
+            key={isDraft ? 'draft' : bodyPhase}
+          >
+            {/* Status wins over phase here (decision 9): a draft is created at
+                `ideation`, and the grill body would offer a terminal on a feature
+                that has no branch to open one against. */}
+            {isDraft ? (
+              <DraftBody full={full} />
+            ) : (
+              <PhaseBody
+                effective={bodyPhase}
+                full={full}
+                events={events}
+                driving={driving}
+                conflict={conflict}
+                runId={run?.id ?? null}
+                readonly={readonly}
+                chatDocked={chatPanelOpen}
+                mapRailCollapsed={mapRailCollapsed}
+                onToggleMapRail={onToggleMapRail}
+                onViewPhase={onViewPhase}
+                artifactPaneCollapsed={artifactPaneCollapsed}
+                onToggleArtifactPane={onToggleArtifactPane}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </ChatDock>
     </section>
   )
 }
@@ -878,6 +916,7 @@ function PhaseBody({
   conflict,
   runId,
   readonly,
+  chatDocked,
   mapRailCollapsed,
   onToggleMapRail,
   onViewPhase,
@@ -891,6 +930,8 @@ function PhaseBody({
   conflict: MergeConflictState | null
   runId: string | null
   readonly: boolean
+  /** The chat panel is up beside this body, so the chat's terminal is not ours. */
+  chatDocked: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
@@ -916,6 +957,7 @@ function PhaseBody({
         <GrillBody
           full={full}
           effective={effective}
+          chatDocked={chatDocked}
           mapRailCollapsed={mapRailCollapsed}
           onToggleMapRail={onToggleMapRail}
           artifactPaneCollapsed={artifactPaneCollapsed}
@@ -929,9 +971,14 @@ function PhaseBody({
       // (decision 21: review the one card, then Burn), and it also rescues a
       // feature whose G3 was overridden.
       return runId ? (
-        <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
+        <RunBody
+          featureId={full.feature.id}
+          runId={runId}
+          readonly={readonly}
+          chatDocked={chatDocked}
+        />
       ) : (
-        <TicketsBody featureId={full.feature.id} />
+        <TicketsBody featureId={full.feature.id} chatDocked={chatDocked} />
       )
     case 'review':
       return (
@@ -946,6 +993,6 @@ function PhaseBody({
         />
       )
     case 'shipped':
-      return <ShippedBody full={full} />
+      return <ShippedBody full={full} chatDocked={chatDocked} />
   }
 }
