@@ -112,7 +112,7 @@ describe('the `project` session kind', () => {
     expect(SessionKind.parse('project')).toBe('project')
     expect(isProjectSessionKind('project')).toBe(true)
     // …and it did not accidentally reclassify the feature kinds.
-    expect(isProjectSessionKind('ideation')).toBe(false)
+    expect(isProjectSessionKind('chat')).toBe(false)
 
     expect(KICKOFF_LINES.project).toContain('/runcastle:project')
     expect(KICKOFF_LINES.project).not.toMatch(/[\r\n]/)
@@ -135,8 +135,8 @@ describe('the `project` session kind', () => {
     )
 
     // Every other kind keeps the full set (regression guard on the split).
-    const ideation = renderSettings('/hooks/hook-client.ts', 'ideation')
-    expect(ideation.permissions.allow).toEqual(
+    const chat = renderSettings('/hooks/hook-client.ts', 'chat')
+    expect(chat.permissions.allow).toEqual(
       expect.arrayContaining([...SESSION_BASH_WRITE_RULES]),
     )
   })

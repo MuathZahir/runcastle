@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
-import { KICKOFF_LINES, claudeRuntime } from '../src/launcher/runtimes/claude'
+import { claudeRuntime } from '../src/launcher/runtimes/claude'
 import type { PtyEntry } from '../src/pty/registry'
 import { ptyRegistry } from '../src/pty/registry'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
@@ -95,12 +95,12 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     cleanup.push(sessionDir(sessionId))
 
     expect(kickoffs(feature.id)).toHaveLength(1)
-    expect(kickoffs(feature.id)[0]?.data).toMatchObject({
-      sessionId,
-      kind: 'chat',
-      line: KICKOFF_LINES.ideation,
-      mechanism: 'argv',
-    })
+    const recorded = kickoffs(feature.id)[0]?.data
+    expect(recorded).toMatchObject({ sessionId, kind: 'chat', mechanism: 'argv' })
+    // what was recorded is the composed chat briefing: the opening this feature's
+    // state calls for (nothing on disk yet, so ideation), then the state header
+    expect(recorded?.line).toContain('/runcastle:ideate')
+    expect(recorded?.line).toContain('Feature state: planning')
   })
 
   it('records nothing for a smoke launch, which spawns no CLI to brief', async () => {

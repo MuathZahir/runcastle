@@ -85,7 +85,7 @@ describe('evaluateEditGuard — the resolve-conflict exemption', () => {
 
   /** A merge in someone else's worktree grants nothing — the purpose is the key. */
   it('denies a session with no purpose even while a merge is in progress', () => {
-    for (const kind of ['ideation', 'qa', 'waypoint', 'converge', 'revisit'] as const) {
+    for (const kind of ['chat', 'waypoint', 'converge'] as const) {
       const denial = evaluateEditGuard({
         ...GUARD_BASE,
         kind,
