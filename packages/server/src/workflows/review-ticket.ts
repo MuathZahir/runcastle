@@ -151,18 +151,7 @@ export function findOnPath(
   return undefined
 }
 
-/**
- * The `{{DRIVE_AVAILABILITY}}` block: whether Drive mode is open at all.
- *
- * The prompt's first step asks two questions — does this lap have a surface a
- * human could operate, and is a drive available. The first is a judgement only
- * the agent can make from the ticket and the diff; the second is a host fact it
- * would otherwise pay a `review_drive` start to discover, on the human's real
- * checkout. So it is answered here, and when the answer is no the block says so
- * flatly: the mode is already decided, and the agent should not call the tool.
- *
- * Pure — the caller does the PATH probe and passes the result.
- */
+/** Every piece a drive needs that this host does not have, in prompt prose. */
 function missingDrivePieces(
   browserPath: string | undefined,
   devCommand: string | undefined,
@@ -195,19 +184,34 @@ function missingDrivePieces(
  * "Verified · gates" with nothing to distinguish "chose Gates" from "never had
  * the choice", which is the class of silence this feature exists to end.
  *
- * Pure — the caller does the probing and passes the results.
+ * Pure — the caller does the probing and passes the results. Every probe is an
+ * explicit argument, with no defaulting of one binary's path to another's: a
+ * silently-defaulted `ffmpegPath` would report a drive as available on a host
+ * that cannot record one, which is the exact lie this is here to prevent.
  */
 export function driveWithheldReason(
   browserPath: string | undefined,
   devCommand: string | undefined,
-  browserHealthy = true,
-  ffmpegPath: string | null | undefined = browserPath,
+  browserHealthy: boolean,
+  ffmpegPath: string | null | undefined,
 ): string | undefined {
   const missing = missingDrivePieces(browserPath, devCommand, browserHealthy, ffmpegPath)
   if (missing.length === 0) return undefined
   return `Drive was unavailable: ${missing.join(', and ')}.`
 }
 
+/**
+ * The `{{DRIVE_AVAILABILITY}}` block: whether Drive mode is open at all.
+ *
+ * The prompt's first step asks two questions — does this lap have a surface a
+ * human could operate, and is a drive available. The first is a judgement only
+ * the agent can make from the ticket and the diff; the second is a host fact it
+ * would otherwise pay a `review_drive` start to discover, on the human's real
+ * checkout. So it is answered here, and when the answer is no the block says so
+ * flatly: the mode is already decided, and the agent should not call the tool.
+ *
+ * Pure — the caller does the PATH probe and passes the result.
+ */
 export function buildDriveAvailability(
   browserPath: string | undefined,
   devCommand: string | undefined,

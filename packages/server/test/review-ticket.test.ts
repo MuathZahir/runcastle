@@ -879,8 +879,11 @@ describe('the mode the review is handed', () => {
     expect(noFfmpeg).toContain(FFMPEG_BIN)
     expect(noFfmpeg).toContain('Drive was unavailable')
 
+    // Probed absence, as `findOnPath` reports it — undefined, not null.
+    expect(driveWithheldReason('/browser', 'bun dev', true, undefined)).toContain(FFMPEG_BIN)
+
     expect(driveWithheldReason('/browser', 'bun dev', false, '/ffmpeg')).toContain('failed its health check')
-    expect(driveWithheldReason(undefined, undefined)).toContain('no dev command configured')
+    expect(driveWithheldReason(undefined, undefined, true, undefined)).toContain('no dev command configured')
 
     // One list, one wording: the availability block quotes the same pieces.
     expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain(
@@ -1103,6 +1106,32 @@ describe('the agent-browser probe', () => {
     expect(findOnPath('agent-browser', { PATH: dir }, 'linux')).toBe(join(dir, 'agent-browser'))
     expect(findOnPath('nope-not-here', { PATH: dir }, 'linux')).toBeUndefined()
     expect(findOnPath('agent-browser', { PATH: '' }, 'linux')).toBeUndefined()
+  })
+
+  /**
+   * The repro this ticket was minted from: a host with `agent-browser` but no
+   * `ffmpeg`, and a pass that honestly declares gates/verified with no reason
+   * of its own. The reason the host knew used to stop at the prompt.
+   */
+  it('carries the ffmpeg-less host reason all the way into the pass outcome', () => {
+    writeFileSync(join(dir, 'agent-browser'), '#!/bin/sh\n')
+    const env = { PATH: dir }
+
+    const withheld = driveWithheldReason(
+      findOnPath(AGENT_BROWSER_BIN, env, 'linux'),
+      'bun dev',
+      true,
+      findOnPath(FFMPEG_BIN, env, 'linux'),
+    )
+
+    const resolution = resolveReviewDeclaration(
+      'account\n\nREVIEW-MODE: gates\nREVIEW-VERDICT: verified\nREVIEW-REASON: ',
+      { webmExists: false, offeredMode: 'gates', ...(withheld ? { driveWithheldReason: withheld } : {}) },
+    )
+
+    expect(resolution.reviewVerdict).toBe('verified')
+    expect(resolution.reason).not.toBe('')
+    expect(resolution.reason).toContain(FFMPEG_BIN)
   })
 
   it('needs a PATHEXT suffix on Windows', () => {
