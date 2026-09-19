@@ -519,16 +519,27 @@ export function ImageBuildAction({
   if (probe.status === 'custom') {
     return <span className="basis-full text-right text-xs text-text-3">{probe.fix}</span>
   }
-  // The resolver refused for its own reason — a tag runcastle does not manage,
-  // which the probe did not necessarily call `custom` (a legacy global image
-  // reads as one). Say the reason it gave, the way the custom row says its fix,
-  // rather than leaving a disabled button with nothing on it.
+  // The resolver refused, and its reason carries the way out — so the row says
+  // it, the way the custom-probe row above says its fix. The probe need not
+  // agree that the image is `custom` for this to happen: the two answers are
+  // resolved separately, and a button left disabled over the disagreement is
+  // the stuck "resolving…" this row was rewritten for.
   if (target.kind === 'refused') {
     return <span className="basis-full text-right text-xs text-text-3">{target.reason}</span>
   }
   // "Build" while there is nothing to rebuild — an image runcastle has never
   // built, whether that is the stock one or the project's own Dockerfile.
   const verb = probe.status === 'missing' || probe.status === 'not-built-yet' ? 'Build' : 'Rebuild'
+  // The tag alone names the image: the Dockerfile path it is built from is long,
+  // is `Dockerfile` at its basename whichever image this is, and is in the
+  // tooltip already. A wait is only named while the query is actually out.
+  const label = pending
+    ? 'Starting…'
+    : target.kind === 'ready'
+      ? `${verb} image · ${target.tag}`
+      : target.kind === 'loading'
+        ? `${verb} image · resolving…`
+        : `${verb} image`
   return (
     <>
       <Button
@@ -544,16 +555,7 @@ export function ImageBuildAction({
         }
         onClick={onStart}
       >
-        {/* The tag alone: it is what names the image, and the Dockerfile path
-            it is built from is long, identical between projects at its
-            basename, and already in the tooltip. */}
-        {pending
-          ? 'Starting…'
-          : target.kind === 'ready'
-            ? `${verb} image · ${target.tag}`
-            : target.kind === 'loading'
-              ? `${verb} image · resolving…`
-              : `${verb} image`}
+        {label}
       </Button>
       {target.kind === 'error' && (
         <span className="basis-full text-right text-xs text-warn">{target.message}</span>
