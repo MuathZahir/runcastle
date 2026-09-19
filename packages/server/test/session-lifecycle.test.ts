@@ -10,7 +10,6 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
-import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   activeSessionsForFeature,
   createSessionRow,
@@ -489,7 +488,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     )
   })
 
-  it('does not announce unavailable when an explicit briefing deliberately starts Codex fresh', async () => {
+  it('a chat override rides the resumed Codex conversation with fresh state', async () => {
     useCodexRuntime()
     const f = await feature('codex-explicit')
     const first = await launch(f.id, 'chat')
@@ -503,10 +502,13 @@ describe('relaunching a terminal resumes its own conversation', () => {
     )
     cleanup.push(sessionDir(sessionId))
 
-    expect(commandFor(f.id, sessionId)).not.toContain('resume')
-    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain(
-      'session.resume_unavailable',
-    )
+    const command = commandFor(f.id, sessionId)
+    expect(command).toContain('resume codex-prior')
+    expect(command).toContain('Start this explicit task.')
+    expect(command).toContain('Feature state:')
+    const eventTypes = listAfter(ctx, f.id, 0).map((e) => e.type)
+    expect(eventTypes).not.toContain('session.resume_skipped')
+    expect(eventTypes).not.toContain('session.resume_unavailable')
   })
 
   it('resumes the newest chat conversation', async () => {
@@ -535,7 +537,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, next)).not.toContain('--resume')
   })
 
-  it('sends a resumed terminal no kickoff — its conversation already carries one', async () => {
+  it('sends every resumed chat its fresh feature-state header', async () => {
     const f = await feature('kickoff')
     const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
@@ -543,12 +545,10 @@ describe('relaunching a terminal resumes its own conversation', () => {
 
     const second = await launch(f.id, 'chat')
 
-    // the FIRST launch was fresh and carried its briefing in the argv; the
-    // resumed one carries only the conversation id
     expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
-    expect(command).not.toContain(KICKOFF_LINES.chat)
+    expect(command).toContain('Feature state:')
   })
 })
 
