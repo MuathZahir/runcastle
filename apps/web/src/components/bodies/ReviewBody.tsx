@@ -394,6 +394,11 @@ export function ReviewBody({
                 featureId={feature.id}
                 denial={denial}
                 readonly={readonly}
+                // Exactly one solid button per view (STYLE.md). Both banners can
+                // be up at once — a denied drive whose pass then declares
+                // nothing — and both mints are the same verb, so the loud one
+                // below keeps the solid and this one steps down to ghost.
+                primary={!unverified}
                 onDismiss={() => setDismissedDenial(denial.eventId)}
               />
             )}

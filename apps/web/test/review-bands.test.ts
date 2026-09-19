@@ -178,6 +178,25 @@ const LIVE_IDEATION = {
   createdAt: 1,
 } as unknown as FeatureFull['sessions'][number]
 
+/** A review drive the human's own uncommitted files refused. */
+const DENIED: EventRow = {
+  id: 7,
+  projectId: 'proj_1',
+  featureId: 'feat_1',
+  ts: 1_760_000_000_000,
+  type: 'reviewdrive.denied',
+  message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
+  data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
+}
+
+/** The `solid` variant's own class run (`ui.tsx`), which no other variant has. */
+const SOLID = 'border-accent bg-accent font-semibold'
+/** Every `solid` button on the page, by its label. */
+const solidButtons = (html: string): string[] =>
+  [...html.matchAll(/<button[^>]*>[^<]*/g)]
+    .filter((m) => m[0].includes(SOLID))
+    .map((m) => m[0].slice(m[0].indexOf('>') + 1).trim())
+
 /** The feature as each prototype state has it, plus what the queries answer. */
 function render(
   over: {
@@ -373,15 +392,6 @@ describe('the review page’s arrival bands', () => {
    * used to be the only account of it is read long afterwards.
    */
   describe('a review drive refused over a dirty tree', () => {
-    const DENIED: EventRow = {
-      id: 7,
-      projectId: 'proj_1',
-      featureId: 'feat_1',
-      ts: 1_760_000_000_000,
-      type: 'reviewdrive.denied',
-      message: 'review drive denied — 1 uncommitted file(s) in the working tree: src/App.tsx',
-      data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
-    }
     const RUN = (startedAt: number): FeatureFull['runs'][number] => ({
       id: `run_${startedAt}`,
       featureId: 'feat_1',
@@ -482,6 +492,29 @@ describe('the review page’s arrival bands', () => {
     it('offers the Agentic review mint as the banner’s action', () => {
       const banner = arrival().slice(0, arrival().indexOf('checks passed'))
       expect(banner).toContain('Agentic review')
+    })
+
+    /**
+     * STYLE.md: exactly one `solid` button is visible per view. Both alerts can
+     * be up at once — a pass denied its drive over a dirty tree that then leaves
+     * no parseable declaration block lands unverified while the denial is still
+     * showing — and both mints are the same verb, so only the loud banner's is
+     * the page's primary and the denial's steps down to ghost.
+     */
+    it('keeps one solid mint when the denied-drive banner is up beside it', () => {
+      const html = arrival({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(html).toContain('Nothing verified this lap')
+      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      // And it is this banner's: the denial above it carries no solid at all.
+      expect(solidButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
+    })
+
+    /** With no unverified lap the denial's mint is the alert band's primary. */
+    it('leaves the denied-drive banner its solid mint when nothing is unverified', () => {
+      const html = render({ events: [DENIED] })
+      expect(html).toContain('Review couldn’t drive')
+      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
     })
 
     it('says nothing when the lap’s pass verified something', () => {

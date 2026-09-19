@@ -112,6 +112,7 @@ const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}
     createElement(ReviewDriveDeniedCard, {
       denial: DENIAL,
       readonly: false,
+      primary: true,
       busy: false,
       refusal: null,
       onReview: () => undefined,
@@ -187,5 +188,14 @@ describe('ReviewDriveDeniedCard', () => {
     const html = render()
     expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
+  })
+
+  /** STYLE.md's one-solid-button rule: the mint keeps its action and loses only
+   *  its weight when another banner on the page is carrying the same one. */
+  it('steps its mint down to ghost when it is not the page’s primary', () => {
+    const ghost = render({ primary: false })
+    expect(ghost).toContain('Agentic review')
+    expect(ghost).not.toContain('bg-accent')
+    expect(render()).toContain('bg-accent')
   })
 })
