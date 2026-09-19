@@ -388,6 +388,20 @@ export async function launchSession(
 
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
+
+  // The Chat door clicked on a chat that is already up is not a refusal
+  // (decision 12): the feature has ONE conversation and this door's whole
+  // promise is to take you to it, so the live row is the answer. Answering
+  // before the worktree, the model chain and the session row means the no-op
+  // leaves no debris and costs no spawn — the one-live-session guard still
+  // holds, it just stops presenting as an error to the one door that is
+  // constant in every state and never disabled. A live session of any OTHER
+  // kind is still `assertSpawnable`'s one-terminal-per-feature refusal below.
+  if (input.kind === 'chat') {
+    const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
+    if (liveChat) return { sessionId: liveChat.id }
+  }
+
   const project = projectForFeature(ctx, feature)
 
   // The session kind IS a model step (issue #48): resolve per-step model,
@@ -474,9 +488,11 @@ export async function launchSession(
   }
 
   // Chat resumes the feature's one conversation. One-live-session guard first — same failure mode
-  // as the waypoint path (end the just-created row, rethrow). No resumable
-  // conversation is fine: the docs carry the state, so it starts fresh and the
-  // timeline says so.
+  // as the waypoint path (end the just-created row, rethrow). A live CHAT was
+  // already answered with above, so what this catches is a terminal of another
+  // kind, or a second chat that raced this one past the `ensureWorktree` await.
+  // No resumable conversation is fine: the docs carry the state, so it starts
+  // fresh and the timeline says so.
   if (input.kind === 'chat') {
     try {
       assertSpawnable(ctx, feature, session.id)
