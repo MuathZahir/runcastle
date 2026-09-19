@@ -12,7 +12,7 @@ The shape:
 
 **One kind.** `ideation`, `revisit`, and `qa` collapse into a single session kind `chat` (decision 3). `waypoint`, `converge`, `prepare`, `project`, and `drive-fix` are untouched; the map stays its own mode. A one-time DB migration rewrites existing session rows of the three collapsed kinds to `chat` (decision 5) — no legacy aliases; the newest migrated row's transcript becomes the seed of the feature's one chat. The shipped body's Q&A panel filter follows the rename.
 
-**One transcript, unconditional resume.** Every door resumes the most recent `chat` session. The `chat` kind skips the resume-cap check entirely — no byte cap, no re-entry cap (decision 4); Claude Code's own auto-compact manages the window, and the docs on disk plus the kickoff carry the record. The cap machinery survives unchanged for the kinds that keep it.
+**One transcript, unconditional resume.** Every door resumes the most recent `chat` session. The `chat` kind skips the resume-cap check entirely — no byte cap, no re-entry cap (decision 4); Claude Code's own auto-compact manages the window, and the docs on disk plus the kickoff carry the record. The cap machinery survives unchanged for the kinds that keep it. Kickoff overrides ride the resume (decision 13): resolveConflict, stopDriveAndIterate and lap briefings are delivered into the resumed transcript, never a reason to discard it, and every resume re-delivers the fresh feature-state header. Clicking Chat while a chat is already live returns you to the live conversation — the one-live-session guard prevents a second spawn without presenting as an error (decision 12).
 
 **Coexistence with a burn** (decisions 2, 9). Outside a burn the chat lives in the talk worktree checked out to the feature branch, committing docs directly — unchanged. During a branch-claiming run the same worktree sits on a temp chat branch forked from the feature tip instead of detached HEAD; each docs commit lands promptly through the landing queue, which is **promoted from per-run to per-feature** so chat landings serialize with ticket landings (ADR-0002's queue, wider scope). At the boundaries: Burn clicked under a live chat switches the worktree to a fresh chat branch in place (files unmoved, session unaffected); run end lands any unlanded chat commits as the last landing and checks the worktree back out to the feature branch. An empty chat branch is deleted; the boot sweep's merged/unmerged rule covers crashes. The spawn guard splits: "one live HITL session per feature" stays; "refuse terminals while a run claims the branch" is deleted.
 
@@ -42,6 +42,10 @@ The shape:
 - The map: waypoint and converge sessions stay as ADR-0001 defines them.
 - Any summarization/compaction machinery for long transcripts.
 - Any channel between burn agents and the chat.
+
+## Lap 2 scope
+
+A pure fix lap (decision 10): the lap-1 review's 11 open defects, consolidated to eight work items — the broken test suite and lost transcript-marker producer, the resume/override/header semantics (decision 13), the Chat door's live-chat behavior (decision 12), the review kickoff's real drive outcome, `stepModels` read-compat (decision 11), the missing `chat-branch.ts` event emissions, and the dead qa leftovers in the MCP server. Nothing promoted from `## Later laps`.
 
 ## Open questions
 

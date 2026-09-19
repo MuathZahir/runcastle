@@ -35,3 +35,21 @@
 ## 9. Worktree handoff at burn boundaries
 **Decision:** Burn clicked while the chat is live: the runner switches the talk worktree to a fresh `runcastle/chat/<slug>/<unique>` branch at the feature tip (`checkout -b`; working files unmoved, session unaffected) instead of detaching it. Run end (success, failure, or cancel): unlanded chat commits land through the queue as the run's last landing, then the talk worktree checks back out to `feature/<slug>` at the new tip. The chat session never restarts across the boundary — only its worktree's branch changes underneath it. An empty chat temp branch at run end is deleted; the boot sweep's existing merged/unmerged rule covers crashes.
 **Why:** Keeps decision 2's model symmetric at both edges with no new concepts: the branch is released to the landing queue either way, and the chat merely keeps a named place to commit.
+
+## Lap 2 (revisited 2026-09-19)
+
+## 10. Lap 2 is a pure fix lap
+**Decision:** No test drive happened before this lap; its scope is exactly the review's 11 open defects, consolidated to eight work items (three findings duplicate earlier ones and are closed against the tickets that fix their siblings). Nothing is promoted from `## Later laps` — both parked items (richer UI placement, richer rollover) stay parked.
+**Why:** The lap-1 review found the feature's headline promise unimplemented in three places (resume discarded by overrides, no header on resume, Chat door erroring on a live chat) plus a broken test suite and a boot-breaking config gap. Until the spec that already exists holds, new scope is noise.
+
+## 11. Config read-compat: persisted `stepModels` keys migrate, never fail parse
+**Decision:** `loadConfig` migrates a persisted `config.json` before validation: `stepModels.ideation` becomes `stepModels.chat` when `chat` is not already set; `qa` and `revisit` keys are dropped. Parse never fails over a key the kind collapse removed.
+**Why:** Failing at boot over an operator's old settings file is unacceptable. `ideation` is the nearest intent to `chat` (it was the talk-session default); `qa`/`revisit` have no distinct successor, and dropping them merely returns those steps to the ordinary model resolution.
+
+## 12. The Chat door on a live chat returns you to it, never errors
+**Decision:** `launchSession` for kind `chat` when a live chat already exists is not a refusal: the server answers with the live session (no second spawn), and the UI brings that terminal forward. The "one live HITL session per feature" guard still prevents a second spawn — it just stops presenting as an error to the one door whose whole promise is "always takes you to the conversation." Supersedes the error path the lap-1 guard produced (decision 8 promised the behavior; this pins the mechanism).
+**Why:** The door is constant and never disabled by design; a constant door that throws is worse than a hidden one. Sharpest on the review page, which has no other terminal surface.
+
+## 13. Kickoff overrides ride the resume; every resume gets a fresh header
+**Decision:** The launcher's pre-existing "an explicit briefing replaces the prior conversation" rule does not apply to `chat`: a kickoff override (resolveConflict, stopDriveAndIterate, a lap briefing) is delivered into the resumed transcript, never a reason to start a fresh one, and every resumed chat receives the current feature-state header alongside the conversation id. The tests that lock in the old behavior are rewritten with it. Clarifies decisions 4/7/8, which promised this without reconciling the launcher rule.
+**Why:** Two lap-1 findings share this root; "one transcript, resumed by every door" is the feature's name, and a resume that arrives blind to current state defeats decision 7's re-orientation story.
