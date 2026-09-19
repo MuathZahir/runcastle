@@ -454,6 +454,55 @@ describe('quickChange service — a one-ticket feature born ready to burn', () =
     expect(row.phase).toBe('planning')
   })
 
+  /**
+   * Readiness is TRUE AT BIRTH on this path: the tickets are complete and no
+   * session is enriching them. Nothing else would ever write the stamp here —
+   * only `complete_phase("tickets")` calls `markTicketsReady`, and a quick
+   * change has no planning session to run it — so without this the column stays
+   * `null` forever and the web's planning bar reads any later chat as "Finishing
+   * the tickets", hiding Burn for as long as that terminal is open.
+   *
+   * The stamp goes in the insert rather than through `markTicketsReady`, so the
+   * `tickets.awaiting_burn` milestone that function emits is NOT fired: nothing
+   * consumes it, and `feature.quick_change` already records the birth.
+   */
+  it('is born with its tickets stamped ready, and no awaiting-burn milestone', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Darker empty state',
+      tickets: [PROSE],
+    })
+
+    expect(feature.ticketsReadyLap).toBe(1)
+    expect(getFeatureRow(ctx, feature.id).ticketsReadyLap).toBe(1)
+    expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).not.toContain('tickets.awaiting_burn')
+  })
+
+  /**
+   * The contrast that makes the stamp a readiness fact rather than a
+   * quick-change marker (ADR-0010 §7): a feature whose tickets a session is
+   * still writing is born unready, draft or not, and stays that way until that
+   * session says otherwise.
+   */
+  it('leaves the ordinary create path — and its drafts — unstamped', async () => {
+    const live = await features.createFeature(ctx, {
+      projectId,
+      title: 'Ordinary',
+      oneLiner: 'Came in through the grill door.',
+    })
+    const draft = await features.createFeature(ctx, {
+      projectId,
+      title: 'Parked',
+      oneLiner: 'Parked for later.',
+      draft: true,
+    })
+
+    expect(live.ticketsReadyLap).toBeNull()
+    expect(getFeatureRow(ctx, live.id).ticketsReadyLap).toBeNull()
+    expect(draft.ticketsReadyLap).toBeNull()
+    expect(getFeatureRow(ctx, draft.id).ticketsReadyLap).toBeNull()
+  })
+
   it('deduplicates slugs against existing features, like create does', async () => {
     const first = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
     const second = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
