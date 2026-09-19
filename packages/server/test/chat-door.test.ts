@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { Feature, Phase } from '@runcastle/core'
 import { featureDocsRel, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
 import {
@@ -12,7 +12,10 @@ import {
   createSessionRow,
   markSessionLive,
 } from '../src/launcher/sessions'
+import type { PtyEntry } from '../src/pty/registry'
+import { ptyRegistry } from '../src/pty/registry'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
+import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { listSessionsByFeature } from '../src/services/repo'
 import { useDataDir } from './helpers/data-dir'
@@ -52,6 +55,7 @@ describe('the Chat door on a live chat', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     stopAllDocsWatch()
     restoreDataDir()
     for (const dir of cleanup) rmTemp(dir)
@@ -59,8 +63,8 @@ describe('the Chat door on a live chat', () => {
   })
 
   /** A feature on a real branch, in whichever state the door is clicked from. */
-  async function featureIn(phase: Phase, slug: string): Promise<Feature> {
-    const feature = seedFeature(ctx, projectId, { slug, phase })
+  async function featureIn(phase: Phase, slug: string, lap = 1): Promise<Feature> {
+    const feature = seedFeature(ctx, projectId, { slug, phase, lap })
     const docsDir = join(repoPath, ...featureDocsRel(slug).split('/'))
     mkdirSync(docsDir, { recursive: true })
     writeFileSync(join(docsDir, 'brief.md'), '# brief.md\n', 'utf8')
@@ -82,6 +86,24 @@ describe('the Chat door on a live chat', () => {
     cleanup.push(sessionDir(sessionId))
     markSessionLive(ctx, sessionId, { ccSessionId: `cc-${sessionId}` })
     return sessionId
+  }
+
+  /** Stand a terminal up for a live session and record what is typed into it. */
+  function terminalFor(sessionId: string): string[] {
+    const typed: string[] = []
+    const entry = {
+      sessionId,
+      exited: false,
+      pty: { write: (data: string) => typed.push(data) },
+    } as unknown as PtyEntry
+    vi.spyOn(ptyRegistry(), 'get').mockImplementation((id) =>
+      id === sessionId ? entry : undefined,
+    )
+    return typed
+  }
+
+  function kickoffs(featureId: string): { data: Record<string, unknown> | null }[] {
+    return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.kickoff')
   }
 
   it('answers with the live conversation instead of refusing a second one', async () => {
@@ -124,5 +146,62 @@ describe('the Chat door on a live chat', () => {
     await expect(
       launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),
     ).rejects.toThrow(/already live/i)
+  })
+
+  /**
+   * Decision 13: a purpose-specific briefing rides the conversation it is
+   * headed for. Answering with the live chat used to answer with ONLY the live
+   * chat — resolve-conflict, stop-drive-and-iterate and a lap in flight all
+   * foregrounded the terminal and dropped the reason the human opened it.
+   */
+  it('delivers a purpose-specific briefing into the live conversation', async () => {
+    const feature = await featureIn('review', 'briefed-chat')
+    const first = await openChat(feature)
+    const typed = terminalFor(first)
+
+    vi.useFakeTimers()
+    let again: { sessionId: string }
+    try {
+      again = await launchSession(
+        ctx,
+        { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' },
+        { spawn: false },
+      )
+      vi.runAllTimers()
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(again.sessionId).toBe(first)
+    expect(typed).toEqual(['OVERRIDE', '\r'])
+    expect(kickoffs(feature.id).at(-1)?.data).toMatchObject({
+      sessionId: first,
+      kind: 'chat',
+      line: 'OVERRIDE',
+      mechanism: 'pty',
+    })
+  })
+
+  it('delivers the briefing a lap in flight writes for itself', async () => {
+    const feature = await featureIn('planning', 'lap-chat', 2)
+    const first = await openChat(feature)
+    const typed = terminalFor(first)
+
+    const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+
+    expect(again.sessionId).toBe(first)
+    expect(typed[0]).toContain('LAP 2 REVIEW ITERATION')
+  })
+
+  it('types nothing into a conversation the door merely returns to', async () => {
+    const feature = await featureIn('shipped', 'quiet-chat')
+    const first = await openChat(feature)
+    const typed = terminalFor(first)
+
+    const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+
+    expect(again.sessionId).toBe(first)
+    expect(typed).toEqual([])
+    expect(kickoffs(feature.id)).toEqual([])
   })
 })
