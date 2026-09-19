@@ -313,6 +313,15 @@ export function useLiveSync(): LiveStatus {
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
       void u.settings.get.invalidate()
+      // The image a click would build. It moves on settings writes nobody types
+      // — the machine-wide `sandboxImage` clear, and the doctor's decision-8
+      // heal of an orphaned project column — and both emit `settings.updated`,
+      // so the AFK card's Build/Rebuild button has to re-resolve on the same
+      // push. Without this it kept describing the image resolution had already
+      // left behind until a hard reload. It belongs on the allowlist where
+      // `setup.doctor` does not: it probes nothing, it reads the project row and
+      // one `existsSync`.
+      void u.setup.imageBuildTarget.invalidate()
       // The project chat's landing branch is a settings write like any other, so
       // the picker that shows it has to move on the same push — it has no
       // polling interval of its own, and the settings overlay carries a row for
