@@ -10,7 +10,6 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
-import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   activeSessionsForFeature,
   createSessionRow,

@@ -111,7 +111,7 @@ describe('lapInFlight', () => {
   })
 })
 
-describe('launchSession — an explicit briefing launches fresh', () => {
+describe('launchSession — lap briefings', () => {
   let ctx: AppCtx
   let repoPath: string
   const cleanup: string[] = []

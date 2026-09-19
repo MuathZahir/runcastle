@@ -408,10 +408,10 @@ export async function launchSession(
     model,
   })
 
-  // What this terminal opens with, decided before anything else: an explicit
-  // briefing makes the session FRESH (no `--resume`, so no summary chooser to
-  // swallow it — see `KickoffPlan.explicit`), and a lap in flight additionally
-  // tells the artifacts which lap they are rendering for.
+  // What this terminal opens with, decided before anything else. An explicit
+  // briefing makes non-chat sessions fresh; chat briefings ride the persistent
+  // conversation's resume. A lap in flight additionally tells the artifacts
+  // which lap they are rendering for.
   //
   // The lap is read off FEATURE STATE — phase, lap number, and whether tickets
   // exist at that lap — not off what the caller typed. `listTicketsByFeature` is
@@ -435,6 +435,9 @@ export async function launchSession(
     carried,
   })
   if (input.kind === 'chat') {
+    // Every opening re-orients the persistent conversation. Purpose-specific
+    // text comes first so it remains the immediate task, followed by current
+    // feature state rather than the state captured on the previous turn.
     const header = chatKickoffHeader(ctx, feature, runtime.id)
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
