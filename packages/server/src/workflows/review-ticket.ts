@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
@@ -10,6 +10,8 @@ import { appendTranscript, beginTranscript, endTranscript } from '../services/ag
 import { releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
 import { killRegistry, registerHostChildren } from './kill-registry'
+import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
+export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
 import {
   buildBurnAgent,
@@ -104,43 +106,6 @@ export function renderReviewPrompt(
     ? templateOrTicket
     : readFileSync(reviewTemplatePath(templateOrTicket), 'utf8')
   return renderTemplate(template, values)
-}
-
-/** The CLI the review agent drives the app with. */
-export const AGENT_BROWSER_BIN = 'agent-browser'
-
-/**
- * Whether `agent-browser` is on this machine's PATH. Probed BEFORE the agent is
- * spawned: a review that discovers halfway through that it cannot open a browser
- * has already switched the human's checkout and burned an agent to say so, and
- * "the CLI is not installed" is a fact the burner can establish for free.
- *
- * It selects the mode rather than failing the ticket. A machine with no browser
- * can still run Gates mode, which needs nothing but the repository — refusing
- * the whole review there withheld the mode that was still perfectly available.
- *
- * PATH is walked directly rather than shelling out to `which`/`where`, which
- * differ per platform and cost a process either way.
- */
-export function findOnPath(
-  bin: string,
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
-  // On Windows a bare name is only executable via one of PATHEXT's suffixes;
-  // elsewhere the name IS the file.
-  const suffixes =
-    platform === 'win32'
-      ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : ['']
-  for (const dir of dirs) {
-    for (const suffix of suffixes) {
-      const candidate = join(dir, `${bin}${suffix}`)
-      if (existsSync(candidate)) return candidate
-    }
-  }
-  return undefined
 }
 
 /**
@@ -302,16 +267,88 @@ interface ReviewArtifacts {
   walkthroughPath: string
 }
 
-function writeReviewArtifacts(
+export interface ReviewDirectoryFs {
+  readonly mkdir: (path: string, options: { recursive: true }) => unknown
+  readonly readDir: (path: string) => string[]
+  readonly rename: (oldPath: string, newPath: string) => unknown
+  readonly remove: (path: string, options: { recursive: true; force: true }) => unknown
+}
+
+export interface PrepareReviewDirectoryOptions {
+  readonly now?: () => number
+  readonly fs?: Partial<ReviewDirectoryFs>
+}
+
+const REVIEW_DIRECTORY_FS: ReviewDirectoryFs = {
+  mkdir: mkdirSync,
+  readDir: readdirSync,
+  rename: renameSync,
+  remove: rmSync,
+}
+
+/** Wipe one attempt's artifacts, preserving progress when Windows locks a child file. */
+export function prepareReviewDirectory(
+  dir: string,
+  options: PrepareReviewDirectoryOptions = {},
+): void {
+  const fs = { ...REVIEW_DIRECTORY_FS, ...options.fs }
+  const parent = dirname(dir)
+  const stalePrefix = `${basename(dir)}.stale-`
+
+  try {
+    for (const sibling of fs.readDir(parent)) {
+      if (!sibling.startsWith(stalePrefix)) continue
+      try {
+        fs.remove(join(parent, sibling), { recursive: true, force: true })
+      } catch {
+        // A previous recorder may still hold this corpse; the next pass retries it.
+      }
+    }
+  } catch {
+    // The parent need not exist on the first review attempt.
+  }
+
+  try {
+    fs.remove(dir, { recursive: true, force: true })
+  } catch (removeError) {
+    const staleDir = `${dir}.stale-${(options.now ?? Date.now)()}`
+    try {
+      fs.rename(dir, staleDir)
+    } catch (renameError) {
+      throw new Error(
+        `Review directory ${dir} is held open by another process and could not be moved aside. ` +
+        'Kill the agent-browser daemon with taskkill /PID <pid> /T /F, then retry.',
+        { cause: renameError instanceof Error ? renameError : removeError },
+      )
+    }
+  }
+  fs.mkdir(dir, { recursive: true })
+}
+
+export interface PrepareReviewArtifactsDirectoryOptions extends PrepareReviewDirectoryOptions {
+  readonly recorderReap?: typeof reapRecorder
+}
+
+/** Reap the deterministic session before touching the directory it may hold open. */
+export async function prepareReviewArtifactsDirectory(
+  ticketId: string,
+  dir: string = reviewDir(ticketId),
+  options: PrepareReviewArtifactsDirectoryOptions = {},
+): Promise<void> {
+  await (options.recorderReap ?? reapRecorder)(ticketId)
+  prepareReviewDirectory(dir, options)
+}
+
+async function writeReviewArtifacts(
   ticket: Ticket,
   runId: string,
   config: RuncastleConfig,
-): ReviewArtifacts {
+  recorderReap: typeof reapRecorder = reapRecorder,
+): Promise<ReviewArtifacts> {
   const dir = reviewDir(ticket.id)
   // A re-burn of the same ticket must not inherit the last attempt's DIGEST.md
   // or BLOCKED.md — that is how a failed review reports success.
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
+  await prepareReviewArtifactsDirectory(ticket.id, dir, { recorderReap })
   const mcpConfigPath = join(dir, 'mcp.json')
   const mcpConfig = renderRunMcpConfig(runId, config)
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf8')
@@ -391,6 +428,10 @@ export interface ReviewDeps {
    * surprised each implementer, and what each left undone — live only here.
    */
   lapDigests: readonly HarvestedDigest[]
+  /** System boundaries overridden only by seam-level workflow tests. */
+  runAgent?: (options: RunOptions) => Promise<unknown>
+  recorderReap?: typeof reapRecorder
+  releaseDrive?: () => Promise<void>
 }
 
 /**
@@ -437,7 +478,7 @@ async function reviewTicketOutcome(
     )
   }
 
-  const artifacts = writeReviewArtifacts(ticket, ctx.runId, deps.config)
+  const artifacts = await writeReviewArtifacts(ticket, ctx.runId, deps.config, deps.recorderReap)
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
@@ -500,6 +541,10 @@ async function reviewTicketOutcome(
     agent: buildBurnAgent(deps.config, deps.token, deps.model, {
       onHost: true,
       mcp: artifacts.mcp,
+      hostEnv: {
+        AGENT_BROWSER_SESSION: `review-${ticket.id}`,
+        AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+      },
     }),
     // What a stop actually kills. The abort above only interrupts sandcastle's
     // fiber; the `claude.cmd` shim it spawned — and the node grandchild doing
@@ -523,19 +568,39 @@ async function reviewTicketOutcome(
   }
 
   let runError: unknown
+  let cancellationError: unknown
+  let recorderConfirmed = true
   try {
-    await run(options)
+    await (deps.runAgent ?? run)(options)
   } catch (err) {
-    if (ctx.signal.aborted) throw err // run cancelled — the runner finalizes it
-    runError = err
+    if (ctx.signal.aborted) cancellationError = err // run cancelled — the runner finalizes it
+    else runError = err
   } finally {
     releaseTicketAbort(ticket.id)
     killRegistry().release(ticket.id)
     throttle.flush()
     endTranscript(ticket.id)
+    try {
+      recorderConfirmed = (await (deps.recorderReap ?? reapRecorder)(ticket.id)).confirmed
+    } catch {
+      // The real reap never rejects; preserve that contract for injected/system failures too.
+      recorderConfirmed = false
+    }
     // Before the harvest below, so the review is never read off a machine the
     // drive still holds.
-    await releaseDriveQuietly()
+    if (deps.releaseDrive) await deps.releaseDrive()
+    else await releaseDriveQuietly()
+  }
+
+  const recorderNote = recorderConfirmed ? '' : '; recorder may still be running'
+  if (cancellationError !== undefined) {
+    if (!recorderConfirmed) {
+      throw new Error(
+        `${errorHeadline(cancellationError instanceof Error ? cancellationError.message : String(cancellationError))}${recorderNote}`,
+        { cause: cancellationError },
+      )
+    }
+    throw cancellationError
   }
 
   // The outcome is read off what the agent LEFT, not off how its process ended
@@ -543,19 +608,24 @@ async function reviewTicketOutcome(
   // wrote its digest reviewed the feature, whatever `run()` did on the way out.
   const blocked = readAgentFile([artifacts.dir], 'BLOCKED.md')?.trim()
   const digest = harvestDigest([artifacts.dir])
-  if (blocked) return couldNotReview(ticket, blocked, digest)
+  if (blocked) return couldNotReview(ticket, `${blocked}${recorderNote}`, digest)
   if (runError !== undefined && digest === undefined) {
     return couldNotReview(
       ticket,
       ticketAbort.signal.aborted
-        ? 'stopped by user'
-        : `the review agent died: ${errorHeadline(runError instanceof Error ? runError.message : String(runError))}`,
+        ? `stopped by user${recorderNote}`
+        : `the review agent died: ${errorHeadline(runError instanceof Error ? runError.message : String(runError))}${recorderNote}`,
     )
   }
   // Ran to completion: done, with no commits, because a review never writes
   // code. Its findings are already stored, each defect's fix ticket already
   // minted — the scheduler admits them the moment this outcome lands.
-  return { status: 'done', commits: [], ...(digest ? { digest } : {}) }
+  const finalDigest = recorderConfirmed
+    ? digest
+    : digest
+      ? `${digest}\n\n**Recorder may still be running.**`
+      : '**Recorder may still be running.**'
+  return { status: 'done', commits: [], ...(finalDigest ? { digest: finalDigest } : {}) }
 }
 
 /**
