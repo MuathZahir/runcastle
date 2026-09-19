@@ -90,12 +90,20 @@ export async function ensureTalkWorktreeDuringRun(
   const worktreePath = await ensureTalkWorktree(project, feature)
   if (!(await chatBranchInWorktree(worktreePath))) {
     const branch = nextChatBranch(feature.slug)
-    await startBranchInWorktree(worktreePath, branch)
-    emit(ctx, feature.id, {
-      type: 'chat.worktree_parked',
-      message: `parked the chat worktree on ${branch}`,
-      data: { branch, worktreePath },
-    })
+    if (await startBranchInWorktree(worktreePath, branch)) {
+      emit(ctx, feature.id, {
+        type: 'chat.worktree_parked',
+        message: `parked the chat worktree on ${branch}`,
+        data: { branch, worktreePath },
+      })
+    } else {
+      await detachWorktree(worktreePath)
+      emit(ctx, feature.id, {
+        type: 'chat.worktree_detached',
+        message: 'detached the chat worktree while the run holds the feature branch',
+        data: { worktreePath },
+      })
+    }
   }
   return worktreePath
 }
