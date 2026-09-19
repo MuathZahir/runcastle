@@ -425,7 +425,11 @@ function briefLiveChat(
   })
   if (!plan.line) return { sessionId: liveChat.id }
 
-  writeToLiveTerminal(liveChat.id, plan.line)
+  if (!writeToLiveTerminal(liveChat.id, plan.line)) {
+    throw new GateError(
+      'the live chat terminal is not available, so its briefing was not delivered',
+    )
+  }
   emit(ctx, feature.id, {
     type: 'session.kickoff',
     message: 'handing the live chat its briefing',
@@ -437,18 +441,22 @@ function briefLiveChat(
 /**
  * Type `line` into a live session's terminal and submit it. Each write checks
  * the registry afresh, so a terminal that exits between the text and the `\r`
- * never gets a stray carriage return; a session with no terminal (the
- * `spawn:false` smoke driver) is written to nowhere rather than throwing.
+ * never gets a stray carriage return. The result makes the initial write
+ * observable to the launcher: a database row is not proof that its terminal
+ * still exists.
  */
-function writeToLiveTerminal(sessionId: string, line: string): void {
-  const write = (data: string): void => {
+function writeToLiveTerminal(sessionId: string, line: string): boolean {
+  const write = (data: string): boolean => {
     const entry = ptyRegistry().get(sessionId)
-    if (entry && !entry.exited) entry.pty.write(data)
+    if (!entry || entry.exited) return false
+    entry.pty.write(data)
+    return true
   }
-  write(line)
+  if (!write(line)) return false
   const submit = setTimeout(() => write('\r'), LIVE_BRIEFING_SUBMIT_MS)
   // Never hold the process open for a keystroke (tests, shutdown).
   submit.unref?.()
+  return true
 }
 
 export async function launchSession(

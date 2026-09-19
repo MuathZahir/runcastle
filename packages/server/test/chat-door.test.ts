@@ -182,6 +182,22 @@ describe('the Chat door on a live chat', () => {
     })
   })
 
+  it('reports a purpose-specific briefing that has no live terminal', async () => {
+    const feature = await featureIn('review', 'missing-terminal-chat')
+    await openChat(feature)
+    const kickoffsBefore = kickoffs(feature.id)
+
+    await expect(
+      launchSession(
+        ctx,
+        { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' },
+        { spawn: false },
+      ),
+    ).rejects.toThrow(/terminal.*not available/i)
+
+    expect(kickoffs(feature.id)).toEqual(kickoffsBefore)
+  })
+
   it('delivers the briefing a lap in flight writes for itself', async () => {
     const feature = await featureIn('planning', 'lap-chat', 2)
     const first = await openChat(feature)
