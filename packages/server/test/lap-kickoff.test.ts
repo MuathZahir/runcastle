@@ -216,6 +216,9 @@ describe('launchSession — lap briefings', () => {
 
   it('a lap-1 grill keeps the chat’s own opening line', () => {
     expect(planKickoff({ kind: 'chat', lap: 1 }).line).toBeUndefined()
+    // no lap briefing, so the table's state-unknown default stands: the chat's
+    // own opening skill, not a lap framing
+    expect(KICKOFF_LINES.chat).toContain('/runcastle:revisit')
     expect(KICKOFF_LINES.chat).not.toContain('REVIEW ITERATION')
   })
 
