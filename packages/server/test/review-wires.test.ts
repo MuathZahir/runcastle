@@ -378,7 +378,7 @@ describe('the review agent wires', () => {
 
     await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(GateError)
     await expect(toolReviewDrive(ctx, { session }, { action: 'start' })).rejects.toThrow(
-      /revisit session/,
+      /chat session/,
     )
     expect(() => toolAddTestNote(ctx, { session }, { text: 'nope' })).toThrow(GateError)
 
