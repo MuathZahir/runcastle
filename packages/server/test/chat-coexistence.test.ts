@@ -181,6 +181,24 @@ describe('the chat beside a burn', () => {
     expect(landedEvents[0]?.data).toMatchObject({ branch: landed?.branch, commits: 1 })
   })
 
+  it('names the rolled-over chat branch on the timeline before it reports the landing', async () => {
+    seedBurn()
+    await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+    await chatCommits('rollover-note.md')
+
+    const landed = await landChatCommits(ctx, project, feature)
+    const rolledTo = await chatBranchInWorktree(talkWt)
+
+    const chatEvents = listAfter(ctx, feature.id, 0).filter((e) => e.type.startsWith('chat.'))
+    expect(chatEvents.map((e) => e.type)).toEqual([
+      'chat.worktree_parked', // the spawn's park
+      'chat.worktree_parked', // the rollover this landing cut
+      'chat.landed',
+    ])
+    expect(chatEvents[1]?.data).toMatchObject({ branch: rolledTo, worktreePath: talkWt })
+    expect(rolledTo).not.toBe(landed?.branch)
+  })
+
   it('has nothing to land outside a burn — the chat commits to the feature branch directly', async () => {
     const note = await chatCommits('planning-note.md')
 

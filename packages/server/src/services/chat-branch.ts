@@ -48,6 +48,41 @@ function talkWorktree(project: Project, feature: Feature): string {
 }
 
 /**
+ * Move the talk worktree onto a fresh chat branch and say so on the timeline —
+ * the one mutation every path here performs, so the one place that announces it.
+ * Returns the branch, or `undefined` when git refused to cut it; what that
+ * means is the caller's to decide.
+ */
+async function startFreshChatBranch(
+  ctx: AppCtx,
+  feature: Feature,
+  worktreePath: string,
+): Promise<string | undefined> {
+  const branch = nextChatBranch(feature.slug)
+  if (!(await startBranchInWorktree(worktreePath, branch))) return undefined
+  emit(ctx, feature.id, {
+    type: 'chat.worktree_parked',
+    message: `parked the chat worktree on ${branch}`,
+    data: { branch, worktreePath },
+  })
+  return branch
+}
+
+/**
+ * Release `feature/<slug>`: a fresh chat branch if one can be cut, the old
+ * detach if not — so a run is never blocked by a worktree that will not move.
+ */
+async function parkWorktree(ctx: AppCtx, feature: Feature, worktreePath: string): Promise<void> {
+  if (await startFreshChatBranch(ctx, feature, worktreePath)) return
+  await detachWorktree(worktreePath)
+  emit(ctx, feature.id, {
+    type: 'chat.worktree_detached',
+    message: 'detached the chat worktree while the run holds the feature branch',
+    data: { worktreePath },
+  })
+}
+
+/**
  * Free `feature/<slug>` for a branch-claiming run by putting the talk worktree
  * on a fresh chat branch. Falls back to the old detach when the branch cannot be
  * cut (so a run is never blocked by it), and no-ops when the worktree is already
@@ -60,21 +95,7 @@ export async function parkTalkWorktreeForRun(
 ): Promise<void> {
   const worktreePath = talkWorktree(project, feature)
   if (await chatBranchInWorktree(worktreePath)) return
-  const branch = nextChatBranch(feature.slug)
-  if (await startBranchInWorktree(worktreePath, branch)) {
-    emit(ctx, feature.id, {
-      type: 'chat.worktree_parked',
-      message: `parked the chat worktree on ${branch}`,
-      data: { branch, worktreePath },
-    })
-    return
-  }
-  await detachWorktree(worktreePath)
-  emit(ctx, feature.id, {
-    type: 'chat.worktree_detached',
-    message: 'detached the chat worktree while the run holds the feature branch',
-    data: { worktreePath },
-  })
+  await parkWorktree(ctx, feature, worktreePath)
 }
 
 /**
@@ -89,21 +110,7 @@ export async function ensureTalkWorktreeDuringRun(
 ): Promise<string> {
   const worktreePath = await ensureTalkWorktree(project, feature)
   if (!(await chatBranchInWorktree(worktreePath))) {
-    const branch = nextChatBranch(feature.slug)
-    if (await startBranchInWorktree(worktreePath, branch)) {
-      emit(ctx, feature.id, {
-        type: 'chat.worktree_parked',
-        message: `parked the chat worktree on ${branch}`,
-        data: { branch, worktreePath },
-      })
-    } else {
-      await detachWorktree(worktreePath)
-      emit(ctx, feature.id, {
-        type: 'chat.worktree_detached',
-        message: 'detached the chat worktree while the run holds the feature branch',
-        data: { worktreePath },
-      })
-    }
+    await parkWorktree(ctx, feature, worktreePath)
   }
   return worktreePath
 }
@@ -170,7 +177,7 @@ export async function landChatCommits(
   const commits = await branchCommitsAhead(project.repoPath, feature.branch, branch)
   if (commits.length === 0) return null
 
-  await startBranchInWorktree(worktreePath, nextChatBranch(feature.slug))
+  await startFreshChatBranch(ctx, feature, worktreePath)
   return await land(ctx, project, feature, branch, commits.length)
 }
 
