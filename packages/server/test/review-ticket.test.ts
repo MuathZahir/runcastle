@@ -586,6 +586,10 @@ describe('what the review agent is handed', () => {
       { id: 'claude-opus-5', runtime: 'claude-code' },
       {
         onHost: true,
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
         mcp: {
           path: '/tmp/reviews/tkt_9/mcp.json',
           config: {
@@ -609,7 +613,33 @@ describe('what the review agent is handed', () => {
     // The host build's markers: the host env passes through, and permissions
     // are bypassed so the agent can actually call its tools.
     expect(agent.env.PATH).toBe(process.env.PATH)
+    expect(agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_9')
+    expect(agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
     expect(command).toContain('--permission-mode bypassPermissions')
+  })
+
+  it('does not put review browser settings in implementation or container agents', () => {
+    const hostImplementation = buildBurnAgent(
+      { ...config, sandbox: 'noSandbox' },
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+    )
+    const container = buildBurnAgent(
+      config,
+      undefined,
+      { id: 'claude-opus-5', runtime: 'claude-code' },
+      {
+        hostEnv: {
+          AGENT_BROWSER_SESSION: 'review-tkt_9',
+          AGENT_BROWSER_IDLE_TIMEOUT_MS: '1800000',
+        },
+      },
+    )
+
+    expect(hostImplementation.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(hostImplementation.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_SESSION).toBeUndefined()
+    expect(container.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBeUndefined()
   })
 
   it('gets a prompt with every placeholder filled', () => {
@@ -1090,6 +1120,89 @@ describe('the base the review diffs against', () => {
     if (outcome.status !== 'failed') return
     expect(outcome.error).toContain('no recorded base branch')
     expect(outcome.error).toContain('feature/demo')
+  })
+})
+
+describe('review recorder teardown stays inside the terminal-outcome gate', () => {
+  let dataDir: string
+  let previousDataDir: string | undefined
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rc-recorder-teardown-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+  })
+
+  afterEach(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
+  function reviewDeps(overrides: Partial<Parameters<typeof executeReviewTicket>[2]> = {}) {
+    return {
+      config: { serverPort: 4512, sandbox: 'docker', burnMaxIterations: 1 } as RuncastleConfig,
+      token: undefined,
+      model: { id: 'claude-opus-5', runtime: 'claude-code' } as const,
+      docsDigest: '',
+      lapDigests: [],
+      releaseDrive: async () => {},
+      ...overrides,
+    }
+  }
+
+  it('awaits recorder confirmation before releasing the drive or returning', async () => {
+    const order: string[] = []
+    let finishReap: (() => void) | undefined
+    let reapCalls = 0
+    const outcome = executeReviewTicket(makeCtx([review(3)]), review(3), reviewDeps({
+      runAgent: async (options) => {
+        expect(options.agent.env.AGENT_BROWSER_SESSION).toBe('review-tkt_3')
+        expect(options.agent.env.AGENT_BROWSER_IDLE_TIMEOUT_MS).toBe('1800000')
+        order.push('agent')
+      },
+      recorderReap: async () => {
+        reapCalls += 1
+        if (reapCalls === 1) {
+          order.push('pre-wipe-reap')
+          return { confirmed: true }
+        }
+        order.push('reap-start')
+        await new Promise<void>((resolve) => { finishReap = resolve })
+        order.push('reap-end')
+        return { confirmed: true }
+      },
+      releaseDrive: async () => { order.push('drive-release') },
+    }))
+
+    for (let i = 0; i < 20 && !finishReap; i++) await Promise.resolve()
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start'])
+    let returned = false
+    void outcome.then(() => { returned = true })
+    await Promise.resolve()
+    expect(returned).toBe(false)
+
+    finishReap?.()
+    expect(await outcome).toMatchObject({ status: 'done' })
+    expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start', 'reap-end', 'drive-release'])
+  })
+
+  it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {
+    const failed = await executeReviewTicket(makeCtx([review(4)]), review(4), reviewDeps({
+      runAgent: async () => { throw new Error('agent crashed') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))
+    expect(failed).toMatchObject({ status: 'failed' })
+    expect(failed.error).toContain('recorder may still be running')
+    expect(failed.digest).toContain('recorder may still be running')
+
+    const controller = new AbortController()
+    controller.abort(new Error('run cancelled'))
+    const cancelledCtx = { ...makeCtx([review(5)]), signal: controller.signal }
+    await expect(executeReviewTicket(cancelledCtx, review(5), reviewDeps({
+      runAgent: async () => { throw new Error('run cancelled') },
+      recorderReap: async () => ({ confirmed: false }),
+    }))).rejects.toThrow('recorder may still be running')
   })
 })
 

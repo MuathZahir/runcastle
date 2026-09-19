@@ -3789,6 +3789,7 @@ function buildAgentEnv(
   onHost: boolean,
   token: string | undefined,
   runtime: AgentRuntime,
+  extraEnv?: Readonly<Record<string, string>>,
 ): Record<string, string> {
   const env: Record<string, string> = {}
   if (onHost) {
@@ -3797,6 +3798,7 @@ function buildAgentEnv(
     }
   }
   if (token) env[RUNTIME_AUTH_KEY[runtime]] = token
+  if (onHost && extraEnv) Object.assign(env, extraEnv)
   return env
 }
 
@@ -3822,6 +3824,8 @@ export interface BurnAgentOptions {
    * the host env and the host permission mode from a docker-configured burn too.
    */
   onHost?: boolean
+  /** Environment owned by a host-only lane, such as a review browser session. */
+  hostEnv?: Readonly<Record<string, string>>
   /**
    * Give the agent the runcastle MCP server. sandcastle 0.12.0 has no MCP field
    * on either agent's options, so it rides the print command — the same seam the
@@ -3878,7 +3882,7 @@ export function buildBurnAgent(
   options: BurnAgentOptions = {},
 ): AgentProvider {
   const onHost = options.onHost ?? config.sandbox === 'noSandbox'
-  const env = buildAgentEnv(onHost, token, model.runtime)
+  const env = buildAgentEnv(onHost, token, model.runtime, options.hostEnv)
   const agent =
     model.runtime === 'codex'
       ? codex(model.id, { env } satisfies CodexOptions)

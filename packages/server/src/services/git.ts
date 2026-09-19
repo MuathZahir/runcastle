@@ -527,9 +527,45 @@ export async function ensureTalkWorktree(project: Project, feature: Feature): Pr
   // `ensureProjectWorktree`.
   if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
     if (await checkoutInWorktree(worktreePath, branch)) return worktreePath
+    return reclaimTalkBranch(g, project.repoPath, worktreePath, branch)
   }
 
   return addWorktree(g, worktreePath, branch, 'talk worktree')
+}
+
+/**
+ * The talk worktree is registered but could not take `feature/<slug>` back, so
+ * something else holds the branch — git checks a branch out in one worktree at a
+ * time. Free it from the stray worktree still holding it and retry the checkout
+ * once; otherwise say plainly who holds it.
+ *
+ * Detaching a stray is non-destructive (its files stay, at the same commit) and
+ * safe: `assertSpawnable` guarantees no branch-claiming run is live when a
+ * terminal spawns, so any non-main holder — the burner's `.sandcastle/worktrees/*`
+ * checkout, a session's abandoned scratch worktree — is stale. The main checkout
+ * is the one exception: it holds the branch only during a live test drive, so it
+ * is named, never detached.
+ *
+ * Falling through to {@link addWorktree} from here, as this used to, could only
+ * ever produce `fatal: '<path>' already exists` on a path git still owns —
+ * masking the real cause.
+ */
+async function reclaimTalkBranch(
+  g: SimpleGit,
+  repoPath: string,
+  worktreePath: string,
+  branch: string,
+): Promise<string> {
+  // `worktreesOnBranch` excludes the main checkout, so these are exactly the
+  // holders that may be detached. The talk worktree is not among them — it is
+  // detached already, which is why the checkout was needed.
+  const strays = await worktreesOnBranch(g, branch, repoPath)
+  for (const stray of strays) await detachWorktree(stray)
+  if (strays.length > 0 && (await checkoutInWorktree(worktreePath, branch))) return worktreePath
+
+  throw new InvalidInputError(
+    `${branch} is checked out at ${strays[0] ?? repoPath}; end the test drive or remove that worktree`,
+  )
 }
 
 /**
