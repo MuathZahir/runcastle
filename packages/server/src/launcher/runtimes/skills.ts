@@ -26,6 +26,29 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
   return SPELLINGS[runtime](skill)
 }
 
+/** Which skill the feature's one chat opens on — see `chatOpening` in artifacts.ts. */
+export type ChatOpening = 'ideate' | 'revisit'
+
+/**
+ * The chat's opening move, spelled for `runtime`.
+ *
+ * The one chat has TWO of them, because one kind now covers the whole feature: a
+ * feature that has not produced a decision, a spec or a ticket yet opens on
+ * `ideate` — the grilling that creates them — and every other state opens on
+ * `revisit`, amending a record that exists. Which one is a question about the
+ * feature's artifacts, so only a caller holding the feature can answer it; the
+ * per-kind table below can hold just one line and holds the revisit form, while
+ * the launcher composes the real line (`chatKickoffHeader`) with the opening the
+ * artifacts call for and the system prompt names.
+ */
+export function chatKickoffFor(runtime: AgentRuntime, opening: ChatOpening): string {
+  return opening === 'ideate'
+    ? `Proceed with your task: invoke the ${skillRef(runtime, 'ideate')} skill and drive this ` +
+        "feature's ideation to completion."
+    : `Proceed with your task: invoke the ${skillRef(runtime, 'revisit')} skill and continue this ` +
+        "feature's conversation."
+}
+
 /**
  * The per-kind kickoff line typed into a freshly-live session so no session
  * starts dead. Each line names the same opening skill its appended system prompt
@@ -40,9 +63,9 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
 export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, string> {
   const skill = (name: string): string => skillRef(runtime, name)
   return {
-    chat:
-      `Proceed with your task: invoke the ${skill('revisit')} skill and continue this feature's ` +
-      'conversation.',
+    // State-unknown default: a chat launched through `launchSession` gets the
+    // composed line instead, which picks between this feature's two openings.
+    chat: chatKickoffFor(runtime, 'revisit'),
     waypoint:
       `Proceed with your task: invoke the ${skill('waypoint')} skill and work your assigned ` +
       'waypoint to a resolution.',

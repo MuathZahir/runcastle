@@ -13,12 +13,12 @@ import type {
   Waypoint,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { resolveModelEntry } from '@runcastle/core'
+import { DEFAULT_RUNTIME, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } from './runtimes'
-import { prepareConfirmKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, prepareConfirmKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
@@ -47,8 +47,9 @@ import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
+import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -131,8 +132,19 @@ export interface LaunchSessionInput {
   purposeData?: MergeBranchPair
 }
 
-/** Fresh orientation for the feature's persistent chat. */
-export function chatKickoffHeader(ctx: AppCtx, feature: Feature): string {
+/**
+ * Fresh orientation for the feature's persistent chat, opening with the move its
+ * state calls for.
+ *
+ * The opening comes from {@link chatOpening} — the same predicate the injected
+ * system prompt splits on — so a brand-new Planning feature is told to ideate by
+ * both, and a feature with a record on disk is told to revisit by both.
+ */
+export function chatKickoffHeader(
+  ctx: AppCtx,
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
   const counts = new Map<string, number>()
   for (const ticket of listTicketsByFeature(ctx, feature.id)) {
     counts.set(ticket.status, (counts.get(ticket.status) ?? 0) + 1)
@@ -145,7 +157,8 @@ export function chatKickoffHeader(ctx: AppCtx, feature: Feature): string {
   const review = feature.phase === 'review'
     ? ' Drive outcome: review; see the review evidence in get_feature_context.'
     : ''
-  return `Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
+  const opening = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature)))
+  return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {
@@ -421,7 +434,7 @@ export async function launchSession(
     }),
     carried,
   })
-  if (input.kind === 'chat' && !plan.line) plan.line = chatKickoffHeader(ctx, feature)
+  if (input.kind === 'chat' && !plan.line) plan.line = chatKickoffHeader(ctx, feature, runtime.id)
 
   // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
   // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
@@ -582,6 +595,8 @@ export async function launchSession(
     waypoint,
     lap: plan.lap,
     carried: plan.lap === undefined ? undefined : carried,
+    // Which of the chat's two openings its brief renders (see `chatOpening`).
+    planning: planningFacts(ctx, feature),
     purpose: input.purpose,
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
