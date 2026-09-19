@@ -7,6 +7,7 @@ import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import {
+  bodySessions,
   laneFacts,
   sessionActive,
   soloRetrySeq,
@@ -54,10 +55,13 @@ export function RunBody({
   featureId,
   runId,
   readonly = false,
+  chatDocked = false,
 }: {
   featureId: string
   runId: string | null
   readonly?: boolean
+  /** The chat panel holds the chat's terminal, so this body does not (decision 16). */
+  chatDocked?: boolean
 }) {
   const poll = useLivePoll()
   const toast = useToast()
@@ -328,7 +332,7 @@ export function RunBody({
           a conversation from a phase the feature has already left (F10.6). */}
       <SessionPanel
         featureId={featureId}
-        sessions={sessions}
+        sessions={bodySessions(sessions, chatDocked)}
         className="tickets-session"
       />
 

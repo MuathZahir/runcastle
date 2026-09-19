@@ -3,6 +3,7 @@ import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import {
+  bodySessions,
   deferredScope,
   lapChip,
   lastTestDriveLap,
@@ -38,7 +39,14 @@ import { SessionPanel } from '../SessionPanel'
  * do it. The "merged when" reads `relTimeAgo`, which is why the hero no longer
  * says "merged now ago" (decision 30c).
  */
-export function ShippedBody({ full }: { full: FeatureFull }) {
+export function ShippedBody({
+  full,
+  chatDocked = false,
+}: {
+  full: FeatureFull
+  /** The chat panel holds the chat's terminal, so this body does not (decision 16). */
+  chatDocked?: boolean
+}) {
   const { feature, tickets, runs } = full
   const events = useEventLog(feature.id)
   const merged = shippedAt(events)
@@ -133,7 +141,7 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
           so it keeps the panel; every ended conversation is a row below. */}
       <SessionPanel
         featureId={feature.id}
-        sessions={chats.filter(sessionActive)}
+        sessions={bodySessions(chats.filter(sessionActive), chatDocked)}
         className="shipped-session"
       />
 

@@ -74,6 +74,37 @@ export function liveSessionBlocker(
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
 
+// --- the docked chat panel ---------------------------------------------------
+
+/**
+ * The feature's one conversation, as the docked panel has to show it
+ * (decision 16): the chat that is up, or — with none up — the newest chat row,
+ * whose transcript is what "one transcript, resumed" means when nothing is live.
+ *
+ * `undefined` is a feature nobody has talked to yet, which the panel answers
+ * with its own door rather than an empty transcript.
+ */
+export function dockedChat(sessions: FeatureFull['sessions']): FeatureFull['sessions'][number] | undefined {
+  const chats = sessions.filter((s) => s.kind === 'chat')
+  const ordered = [...chats].reverse()
+  return ordered.find((s) => s.status !== 'ended') ?? ordered[0]
+}
+
+/**
+ * The sessions a phase body may still raise a terminal for (decision 16).
+ *
+ * With the chat docked beside the body, the chat's terminal lives THERE — a body
+ * that mounted it too would put one PTY on screen twice, and the two xterms
+ * would then fight over the single grid size the pty is resized to. Collapsed,
+ * this is the identity function and every body behaves exactly as it did.
+ */
+export function bodySessions<T extends { kind: SessionKind }>(
+  sessions: readonly T[],
+  chatDocked: boolean,
+): T[] {
+  return chatDocked ? sessions.filter((s) => s.kind !== 'chat') : [...sessions]
+}
+
 // --- the shipped body's chat terminal ---------------------------------------
 
 /**

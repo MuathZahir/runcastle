@@ -23,7 +23,14 @@ interface Turn {
  * writes, and hands that runtime back with the turns — so the bubbles are
  * labelled with the name of whoever actually answered (decision 11).
  */
-export function ConversationTranscript({ sessionId }: { sessionId: string }) {
+export function ConversationTranscript({
+  sessionId,
+  className,
+}: {
+  sessionId: string
+  /** Replaces the default self-scrolling box, for a surface that scrolls itself. */
+  className?: string
+}) {
   const q = trpc.project.conversationTranscript.useQuery({ sessionId })
 
   if (q.isPending) return <DimLine>reading the transcript…</DimLine>
@@ -35,8 +42,17 @@ export function ConversationTranscript({ sessionId }: { sessionId: string }) {
   const turns = q.data?.turns ?? []
   if (turns.length === 0) return <DimLine>no transcript kept for this conversation.</DimLine>
 
-  return <TranscriptBubbles turns={turns} assistant={agentName(q.data?.runtime)} />
+  return (
+    <TranscriptBubbles
+      turns={turns}
+      assistant={agentName(q.data?.runtime)}
+      {...(className ? { className } : {})}
+    />
+  )
 }
+
+/** The box the turns scroll inside, where the surface does not scroll itself. */
+const BUBBLES_BOX = 'flex max-h-[clamp(300px,calc(100dvh-340px),1200px)] flex-col gap-4 overflow-y-auto pr-1'
 
 /**
  * The exchange itself. The human's own turns sit right and accented — a
@@ -45,9 +61,17 @@ export function ConversationTranscript({ sessionId }: { sessionId: string }) {
  * as Markdown and used to show their `##` and `**` literally. A human's turn is
  * what they typed, so it stays plain text with its line breaks kept.
  */
-export function TranscriptBubbles({ turns, assistant }: { turns: Turn[]; assistant: string }) {
+export function TranscriptBubbles({
+  turns,
+  assistant,
+  className = BUBBLES_BOX,
+}: {
+  turns: Turn[]
+  assistant: string
+  className?: string
+}) {
   return (
-    <div className="flex max-h-[clamp(300px,calc(100dvh-340px),1200px)] flex-col gap-4 overflow-y-auto pr-1">
+    <div className={className}>
       {turns.map((turn, i) => {
         const user = turn.role === 'user'
         return (

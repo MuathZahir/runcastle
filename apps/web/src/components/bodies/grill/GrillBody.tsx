@@ -1,6 +1,6 @@
 import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../../lib/api'
-import { mapDocPath } from '../../../lib/feature-ui'
+import { bodySessions, mapDocPath } from '../../../lib/feature-ui'
 import { IconTerminal } from '../../../icons'
 import { EmptyState } from '../../../ui'
 import { SessionPanel } from '../../SessionPanel'
@@ -18,14 +18,17 @@ import { MapRail } from './MapRail'
  * with the rest of the workspace unclaimed beside it), which is the width
  * decision 15 hides the Details panel to avoid.
  */
-export function GrillBody({ full, effective, mapRailCollapsed, onToggleMapRail, artifactPaneCollapsed, onToggleArtifactPane }: {
-  full: FeatureFull; effective: Phase; mapRailCollapsed: boolean; onToggleMapRail: () => void; artifactPaneCollapsed: boolean; onToggleArtifactPane: () => void
+export function GrillBody({ full, effective, chatDocked = false, mapRailCollapsed, onToggleMapRail, artifactPaneCollapsed, onToggleArtifactPane }: {
+  full: FeatureFull; effective: Phase; chatDocked?: boolean; mapRailCollapsed: boolean; onToggleMapRail: () => void; artifactPaneCollapsed: boolean; onToggleArtifactPane: () => void
 }) {
   // Planning is one state but two documents, so the pane follows the same
   // derived rule the rest of the collapse uses: spec.md on disk means the spec
   // step is done and the spec is what there is to read; before that, the
   // decisions are.
   const kind = full.docs.some((doc) => doc.relPath.endsWith('spec.md')) ? 'spec' : 'decisions'
+  // With the chat docked beside this body it owns the chat's terminal, so what
+  // is left here is the map's own sessions (decision 16).
+  const sessions = bodySessions(full.sessions, chatDocked)
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
       {full.feature.mapped && effective === 'planning' ? (
@@ -34,11 +37,15 @@ export function GrillBody({ full, effective, mapRailCollapsed, onToggleMapRail, 
         <ArtifactPane featureId={full.feature.id} kind={kind} docs={full.docs} collapsed={artifactPaneCollapsed} onToggle={onToggleArtifactPane} mapped={full.feature.mapped} />
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {full.sessions.length > 0 ? (
-          <SessionPanel featureId={full.feature.id} sessions={full.sessions} full={full} />
+        {sessions.length > 0 ? (
+          <SessionPanel featureId={full.feature.id} sessions={sessions} full={full} />
         ) : (
           <div className="flex min-h-0 flex-1 rounded-lg border border-hairline bg-panel-2">
-            <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint="Start a session from the bar above — you and the agent shape the idea here before any code is written." />
+            {chatDocked ? (
+              <EmptyState icon={<IconTerminal size={16} />} title="The chat is docked" hint="The conversation is in the panel on the right — collapse it to bring the terminal back here." />
+            ) : (
+              <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint="Start a session from the bar above — you and the agent shape the idea here before any code is written." />
+            )}
           </div>
         )}
       </div>
