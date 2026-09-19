@@ -97,8 +97,8 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     expect(kickoffs(feature.id)).toHaveLength(1)
     const recorded = kickoffs(feature.id)[0]?.data
     expect(recorded).toMatchObject({ sessionId, kind: 'chat', mechanism: 'argv' })
-    // the composed chat briefing verbatim: the opening this feature's state calls
-    // for (nothing on disk yet, so ideation) followed by the state header
+    // what was recorded is the composed chat briefing: the opening this feature's
+    // state calls for (nothing on disk yet, so ideation), then the state header
     expect(recorded?.line).toContain('/runcastle:ideate')
     expect(recorded?.line).toContain('Feature state: planning')
   })
