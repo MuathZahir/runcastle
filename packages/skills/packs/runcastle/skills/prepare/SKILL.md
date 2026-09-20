@@ -1,7 +1,7 @@
 ---
 name: prepare
 description: Establish a project's host settings with evidence — the dev command, the drive setup/stop scripts, the dev-database reset — by running them on the developer's own machine rather than guessing them from config. Covers the drive contract, discovering a project's shape, and the closing dry-run drive. Entry skill for kind=prepare sessions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Prepare — establish this project's host settings

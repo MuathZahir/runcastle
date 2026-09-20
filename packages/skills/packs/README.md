@@ -73,36 +73,50 @@ claude ... --plugin-dir "<abs path>/packages/skills/packs/runcastle" ...
 
 The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:ideate` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:ideate` for ideation, `/runcastle:qa` for Q&A).
 
-### `disable-model-invocation` — session entries off, chained and reached ones on
+### Entry-skill isolation — settings deny rules, not `disable-model-invocation`
 
 Every skill's `description` is loaded into every session in the pack, whether or
 not that session can use it. That is cheap for a skill the model might genuinely
-need and actively harmful for one it must not run: a `qa` session was carrying
-the descriptions of `ideate`, `spec`, `tickets`, `converge`, `revisit`,
-`waypoint` and `project` (~582 tokens), every one of them advertising a procedure
-`qa/SKILL.md` forbids. Sharper still, `project/SKILL.md` says "**Never run an
-ideation grilling**" while `ideate`'s description sat in the same list offering
-exactly that.
+need and risky for one it must not run: a session carrying the descriptions of
+every other kind's entry skill is one description-match away from running
+another session's procedure — `project/SKILL.md` says "**Never run an ideation
+grilling**" while `ideate`'s description sits in the same list offering exactly
+that.
 
-So the six **session-entry** skills — `ideate`, `qa`, `converge`, `revisit`,
-`waypoint`, `project` — carry `disable-model-invocation: true`. They are never
-model-chosen: the kickoff line the launcher injects names the one skill for that
-kind explicitly, by name, and explicit invocation works fine for a skill with
-model invocation disabled. Nothing else should ever reach them, because reaching
-one means a session running another session's procedure.
+The seven **session-entry** skills — `ideate`, `qa`, `converge`, `revisit`,
+`waypoint`, `project`, `prepare` — used to carry `disable-model-invocation:
+true` for that reason, on the build-era understanding that explicit invocation
+kept working (CC-INTEGRATION-NOTES §1). It no longer does: Claude Code now
+hard-blocks the **Skill tool** for such a skill even when the prompt names it,
+and only a *user-typed* `/runcastle:<skill>` gets through. The launcher's
+kickoff lines are prose ("Proceed with your task: invoke the /runcastle:project
+skill…"), so every fresh session was directed to do the one thing its skill's
+frontmatter forbade — and a `/clear` left the session with no path back to its
+own entry skill at all (recorded in `docs/research/CORRECTIONS.md`).
 
-The remaining three stay `false`, each for a reason:
+So all skills in the pack are now `disable-model-invocation: false`, and the
+cross-kind prohibition moved to where the other standing prohibitions already
+live: **per-session settings**. The launcher launches each session with
+`permissions.deny` rules — `Skill(runcastle:<x>)` plus `Skill(runcastle:<x> *)`
+— for every entry skill that is not that kind's own (`entrySkillsFor` /
+`entrySkillDenyRules` in `packages/server/src/launcher`), and each injected
+prompt states the policy in one line. Same layering as the edit guard: the
+prompt says it, the harness enforces it. `chat` keeps both of its openings
+(`ideate` + `revisit`); `qa` — whose session kind was retired — is denied
+everywhere; `drive-fix` has no entry skill and denies all seven.
 
-- `spec` and `tickets` are **chained**, invoked by name from inside `ideate`
-  and `converge` mid-conversation.
-- `code-review` is the one skill that is not a session entry point at all — being
-  reached by description is the only way it is reached.
+The chained/reached skills — `spec` and `tickets` (invoked by name from inside
+`ideate` and `converge`) and `code-review` (reached by description) — are in no
+deny list.
 
-The rule, for anything added later: **a session-entry skill disables model
-invocation; a chained or genuinely description-reached one does not.** The
-question is not "might this be useful?" but "is there a session whose *whole job*
-is something else that could pick this up by mistake?" If yes, disable it and
-invoke it by name.
+The rule, for anything added later: **a session-entry skill goes into
+`ENTRY_SKILLS` and the per-kind table in
+`packages/server/src/launcher/runtimes/skills.ts`; a chained or genuinely
+description-reached one does not.** The question is not "might this be useful?"
+but "is there a session whose *whole job* is something else that could pick this
+up by mistake?" If yes, it is an entry skill and every other kind denies it.
+`disable-model-invocation` stays `false` across the pack — setting it `true`
+breaks the prose kickoff.
 
 ## Layering: prompt, skill, hook — one home each
 

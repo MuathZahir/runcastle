@@ -77,3 +77,26 @@ note wins; this file records why.
 - **Also (one mutation → one event):** `emit_tickets` used to emit a `tickets.emitted`
   note *in addition to* `storeTickets`'s `tickets.stored`, double-logging one
   action. The tool's extra emit is dropped; `tickets.stored` is the single event.
+
+## C4 — `disable-model-invocation: true` blocks Skill-tool invocation even when named
+
+- **Where:** `CC-INTEGRATION-NOTES.md §1` — "**`disable-model-invocation: true`
+  for plugin skills — CONFIRMED WORKING.** … Disables Claude auto-invoking the
+  skill by description-matching while leaving it invocable via explicit
+  `/plugin-name:skill-name`."
+- **Correction (observed live, 2026-09-20, in a runcastle project session):**
+  "explicit" holds only for a *user-typed* slash command. The current Claude Code
+  hard-blocks the **Skill tool** for such a skill regardless of how explicitly
+  the prompt names it — the refusal reads "cannot be used with Skill tool due to
+  disable-model-invocation. Ask the user to run /runcastle:project themselves" —
+  and instructs the model not to replicate the skill's workflow by other means.
+  The launcher's kickoff lines are prose ("Proceed with your task: invoke the
+  /runcastle:project skill…"), not bare slash commands, so they get no CLI-side
+  expansion and rely on exactly the model-side invocation the flag forbids.
+  A `/clear` mid-session had the same effect with no recovery path.
+- **Resolution:** every pack skill is `disable-model-invocation: false`; the
+  entry-skill isolation the flag used to provide moved to per-session
+  `permissions.deny` rules (`Skill(runcastle:<x>)` / `Skill(runcastle:<x> *)`,
+  documented at code.claude.com/docs/en/skills) rendered by `renderSettings` —
+  see `packages/skills/packs/README.md` §"Entry-skill isolation" and
+  `entrySkillsFor`/`entrySkillDenyRules` in `packages/server/src/launcher`.

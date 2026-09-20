@@ -26,6 +26,64 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
   return SPELLINGS[runtime](skill)
 }
 
+/**
+ * Every SESSION-ENTRY skill in the pack — the ones whose whole procedure belongs
+ * to one session kind. The chained/reached skills (`spec`, `tickets`,
+ * `code-review`) are deliberately not here: any session may reach them.
+ *
+ * These used to carry `disable-model-invocation: true` so no session could pick
+ * up another kind's procedure by description-matching. Claude Code now hard-blocks
+ * the Skill tool for such a skill even when the kickoff names it explicitly —
+ * which broke every launch, since the kickoff lines are prose ("invoke the
+ * /runcastle:project skill…"), not user-typed slash commands. So the flags are
+ * `false` and the cross-kind prohibition moved to per-session settings: each
+ * session is launched with `Skill(runcastle:<x>)` DENY rules for every entry
+ * skill that is not its own ({@link entrySkillsFor} → `entrySkillDenyRules` in
+ * artifacts.ts).
+ */
+export const ENTRY_SKILLS = [
+  'ideate',
+  'qa',
+  'converge',
+  'revisit',
+  'waypoint',
+  'project',
+  'prepare',
+] as const
+export type EntrySkill = (typeof ENTRY_SKILLS)[number]
+
+/**
+ * The entry skill(s) a session of `kind` may open — everything else in
+ * {@link ENTRY_SKILLS} is denied to it.
+ *
+ * - `chat` gets both of its openings (see {@link chatKickoffFor}): the one
+ *   conversation persists across feature states, so a chat that opened on
+ *   `ideate` can legitimately be resumed into `revisit` territory.
+ * - `qa` is allowed nowhere: no live kind opens on it (the qa session kind was
+ *   retired with one-chat-per-feature), which matches its pre-flip reachability
+ *   of exactly zero.
+ * - `drive-fix` has no entry skill at all — its whole briefing is the prompt.
+ * - An UNKNOWN kind gets none, for the edit-guard's reason: a session whose kind
+ *   we do not know is not one to hand another kind's procedure to.
+ */
+export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
+  switch (kind) {
+    case 'chat':
+      return ['ideate', 'revisit']
+    case 'waypoint':
+      return ['waypoint']
+    case 'converge':
+      return ['converge']
+    case 'prepare':
+      return ['prepare']
+    case 'project':
+      return ['project']
+    case 'drive-fix':
+    case undefined:
+      return []
+  }
+}
+
 /** Which skill the feature's one chat opens on — see `chatOpening` in artifacts.ts. */
 export type ChatOpening = 'ideate' | 'revisit'
 

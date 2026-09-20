@@ -12,6 +12,7 @@ import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_ALLOW_RULES,
   SESSION_BASH_READ_RULES,
+  entrySkillDenyRules,
   sessionBashAllowRules,
   SESSION_START_SOURCES,
   hookClientPath,
@@ -165,6 +166,53 @@ describe('renderSettings', () => {
     }
     // and `project` still gets read-only (whole-repo write, prompts for the rest)
     expect(sessionBashAllowRules('project')).toEqual([...SESSION_BASH_READ_RULES])
+  })
+
+  /**
+   * Entry-skill isolation moved from the skills' `disable-model-invocation`
+   * frontmatter (which Claude Code now enforces against the Skill tool even for
+   * explicitly-named invocations, breaking the prose kickoff lines — CORRECTIONS
+   * C4) into per-session `permissions.deny` rules. Each kind denies every entry
+   * skill that is not its own, in both documented rule forms (bare + `*` args).
+   */
+  it('denies the other kinds\' entry skills, and only those', () => {
+    // each kind's own entry skill(s) never appear in its deny list
+    const own: Record<string, string[]> = {
+      chat: ['ideate', 'revisit'],
+      waypoint: ['waypoint'],
+      converge: ['converge'],
+      prepare: ['prepare'],
+      project: ['project'],
+      'drive-fix': [],
+    }
+    for (const kind of SessionKind.options) {
+      const deny = entrySkillDenyRules(kind)
+      for (const skill of own[kind] ?? []) {
+        expect(deny).not.toContain(`Skill(runcastle:${skill})`)
+        expect(deny).not.toContain(`Skill(runcastle:${skill} *)`)
+      }
+      // every rule targets a pack skill, in one of the two documented forms
+      for (const rule of deny) {
+        expect(rule).toMatch(/^Skill\(runcastle:[a-z-]+( \*)?\)$/)
+      }
+      // the chained/reached skills are never denied to anyone
+      for (const open of ['spec', 'tickets', 'code-review']) {
+        expect(deny).not.toContain(`Skill(runcastle:${open})`)
+      }
+      // both forms travel together
+      const bare = deny.filter((r) => !r.includes(' *'))
+      expect(deny).toHaveLength(bare.length * 2)
+    }
+    // a waypoint session cannot open another kind's procedure…
+    expect(entrySkillDenyRules('waypoint')).toEqual(
+      expect.arrayContaining(['Skill(runcastle:ideate)', 'Skill(runcastle:project *)']),
+    )
+    // …an unknown kind gets no entry skill at all (the edit guard's stance)…
+    expect(entrySkillDenyRules(undefined)).toContain('Skill(runcastle:ideate)')
+    // …and the rendered settings carry the list
+    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
+    expect(s.permissions.deny).toEqual(entrySkillDenyRules('project'))
+    expect(s.permissions.deny).not.toContain('Skill(runcastle:project)')
   })
 
   /**

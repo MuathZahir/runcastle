@@ -1,7 +1,7 @@
 ---
 name: waypoint
 description: The runcastle waypoint session. Work ONE waypoint on a feature's map — grill, prototype, or run a task checklist for its assigned question — write the decision prose to the docs, then resolve the waypoint. Entry skill for kind=waypoint sessions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 <!-- runcastle mapped-ideation waypoint session (ADR-0001 §13.5) -->
 
