@@ -1,7 +1,7 @@
 ---
 name: qa
 description: Answer questions about an existing (possibly shipped) feature from its docs and the codebase. Read-only — never advances phases, never emits tickets. Entry skill for kind=qa sessions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's grilling + domain-modeling skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
 

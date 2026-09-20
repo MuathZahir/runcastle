@@ -1,7 +1,7 @@
 ---
 name: revisit
 description: Fold late-arriving information into a feature whose sessions are finished — amend the docs, then reconcile tickets (update/cancel/emit); an ordinary revisit never moves the feature. Also the lap session: digest the test drive, amend decisions + spec, emit the lap's tickets and report ideation → spec → tickets in the one session. Entry skill for kind=revisit sessions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Revisit

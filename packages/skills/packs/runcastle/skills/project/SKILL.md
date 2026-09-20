@@ -1,7 +1,7 @@
 ---
 name: project
 description: The runcastle project session. Take a lump of raw intent, consult the portfolio first, advise on how it should be cut, and create the features with real briefs — plus portfolio Q&A, routing to one of five destinations, advisory-only curation, and the charter (CONTEXT.md), which this is the only session allowed to write. Entry skill for kind=project sessions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's grilling + domain-modeling skills, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle's project-level session -->
 

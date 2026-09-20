@@ -19,7 +19,7 @@ import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
-import { type ChatOpening, skillRef } from './runtimes/skills'
+import { type ChatOpening, ENTRY_SKILLS, entrySkillsFor, skillRef } from './runtimes/skills'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -244,6 +244,7 @@ export function renderSystemPrompt(
     '',
     '## Rules',
     noCodeRule(docs),
+    otherEntrySkillsRule(),
     '',
     '## Your task',
     `Begin by invoking the \`${skillRef(runtime, 'ideate')}\` skill and drive the ideation session to completion.`,
@@ -348,6 +349,7 @@ export function renderWaypointPrompt(
     '- Your tools here are the map\'s: read the context, branch the map, resolve your',
     '  waypoint, note a milestone. The pipeline tools are not yours — a waypoint session',
     '  does not spec, emit tickets or report a planning step, and the server refuses it.',
+    otherEntrySkillsRule(),
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'waypoint')}\` skill and work your assigned waypoint to a resolution.`,
@@ -393,6 +395,7 @@ export function renderConvergePrompt(
     noCodeRule(docs),
     '- DO call `complete_phase` — this session reports the remaining planning steps itself',
     '  (spec, then tickets). Nothing else will.',
+    otherEntrySkillsRule(),
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'converge')}\` skill. Working from the map + decisions only,`,
@@ -612,6 +615,7 @@ export function renderRevisitPrompt(
     // The conflict-resolution revisit is briefed to resolve the merge, so the
     // blanket ban would contradict the very kickoff it was opened with (F18).
     purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
+    otherEntrySkillsRule(),
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
@@ -800,7 +804,8 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     'note or a commit message — `record_finding` is the only place a value belongs.',
     '',
     '## Your task',
-    'Invoke the `/runcastle:prepare` skill; it carries the method.',
+    'Invoke the `/runcastle:prepare` skill; it carries the method. It is your only entry',
+    "skill here — the pack's others belong to other session kinds and are denied by settings.",
     open
       ? 'Then open by telling the human which fields are still open and what you need from them ' +
         'for each, and work them one at a time.'
@@ -1013,6 +1018,9 @@ export function renderProjectPrompt(
     'Every merged feature\'s docs are already on disk in this worktree — read them with your',
     'ordinary file tools. The project context\'s feature index says where.',
     '',
+    "The runcastle skill pack also carries the feature sessions' entry skills; they are",
+    'denied to this session by settings. Yours is the one named below.',
+    '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
@@ -1028,7 +1036,7 @@ interface CommandHook {
 }
 
 export interface SessionSettings {
-  permissions: { allow: string[] }
+  permissions: { allow: string[]; deny: string[] }
   hooks: {
     SessionStart: { matcher: string; hooks: CommandHook[] }[]
     UserPromptSubmit: { hooks: CommandHook[] }[]
@@ -1137,6 +1145,43 @@ export const HOST_SESSION_BASH_WRITE_RULES: readonly string[] = [
 /** Kinds that run in the developer's OWN checkout rather than a talk worktree. */
 const HOST_SIDE_KINDS: readonly SessionKind[] = ['prepare', 'drive-fix']
 
+/**
+ * The `Skill(...)` DENY rules a session of `kind` is launched with: every
+ * session-entry skill in the pack that is not this kind's own (see
+ * {@link entrySkillsFor} and the history on `ENTRY_SKILLS`). Rule syntax is the
+ * documented skill-permission form (code.claude.com/docs/en/skills — "Allow or
+ * deny specific skills with permission rules"): `Skill(name)` matches an exact
+ * bare invocation, `Skill(name *)` the same skill invoked with arguments; both
+ * are emitted so an argumented call cannot slip past the exact rule. The name is
+ * the plugin-namespaced one (`runcastle:<skill>`), matching how Claude Code
+ * resolves pack skills.
+ *
+ * This is the mechanical half of the same layering the edit guard uses: the
+ * prompt states the policy in one line ({@link otherEntrySkillsRule}), settings
+ * enforce it. `drive-fix` and an unknown kind deny all of them.
+ */
+export function entrySkillDenyRules(kind?: SessionKind): string[] {
+  const allowed = new Set<string>(entrySkillsFor(kind))
+  return ENTRY_SKILLS.filter((skill) => !allowed.has(skill)).flatMap((skill) => [
+    `Skill(runcastle:${skill})`,
+    `Skill(runcastle:${skill} *)`,
+  ])
+}
+
+/**
+ * The prompt half of {@link entrySkillDenyRules} — the one line of policy the
+ * settings enforce, rendered into every prompt that names an entry skill. All
+ * pack skills' descriptions are loaded into every session (that is what flipping
+ * `disable-model-invocation` to false costs), so the line exists to make a
+ * denied invocation a non-event rather than a surprise.
+ */
+function otherEntrySkillsRule(): string {
+  return (
+    "- The runcastle skill pack also carries other session kinds' entry skills; they are " +
+    'denied to this session by settings. Your entry skill is the one named under "Your task".'
+  )
+}
+
 /** The git rules a session of `kind` is launched with (see the split above). */
 export function sessionBashAllowRules(kind?: SessionKind): readonly string[] {
   if (kind === 'project') return SESSION_BASH_READ_RULES
@@ -1172,6 +1217,9 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   stall on a Bash approval prompt. `kind` narrows that git surface to the
  *   read-only rules for the one kind whose worktree is not docs-only
  *   (see {@link sessionBashAllowRules}); omitted, every rule is granted.
+ * - `permissions.deny` blocks the pack entry skills that belong to OTHER session
+ *   kinds ({@link entrySkillDenyRules}) — the enforcement behind flipping their
+ *   `disable-model-invocation` frontmatter to false.
  * - `command` = `bun run "<abs hook-client.ts>" <route-event>` where the route
  *   event is the kebab-case `/api/hooks/:event` segment the client POSTs to.
  * - `SessionStart` is registered for EVERY source (see
@@ -1196,7 +1244,10 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
     timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
   return {
-    permissions: { allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)] },
+    permissions: {
+      allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)],
+      deny: entrySkillDenyRules(kind),
+    },
     hooks: {
       SessionStart: SESSION_START_SOURCES.map((source) => ({
         matcher: source,
