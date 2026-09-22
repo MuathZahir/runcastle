@@ -188,6 +188,20 @@ describe('OpenProject', () => {
     expect(alert.textContent?.split('/tmp/notes')).toHaveLength(2)
   })
 
+  // Exactly one `solid` button is visible per view (apps/web/STYLE.md). Open is
+  // the screen's primary and stays it; the offer takes the quiet variant every
+  // other action that sits inside a row already takes.
+  it('leaves Open the only primary action while the offer is up', () => {
+    stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
+    open()
+    tryPath('/tmp/notes')
+
+    const primaries = screen
+      .getAllByRole('button')
+      .filter((button) => button.className.includes('bg-accent'))
+    expect(primaries.map((button) => button.textContent)).toEqual(['Open'])
+  })
+
   it('initializes the rejected folder and opens it on the same click', async () => {
     stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
     open()

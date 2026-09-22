@@ -190,8 +190,10 @@ export function OpenProject({
               id="open-repo-error"
               action={
                 failure.offer === 'init-repo' ? (
+                  // Ghost, like every other action that sits inside a row: Open
+                  // is this view's one `solid` button (apps/web/STYLE.md), and a
+                  // second one beside it would be two primaries competing.
                   <Button
-                    variant="solid"
                     size="xs"
                     onClick={() => initRepo.mutate({ repoPath: attempted })}
                     disabled={busy}
