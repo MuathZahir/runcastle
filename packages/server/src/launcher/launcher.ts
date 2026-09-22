@@ -347,7 +347,12 @@ async function ensureWorktree(
   try {
     return besideRun
       ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
-      : await git.ensureTalkWorktree(project, feature)
+      : await git.ensureTalkWorktree(project, feature, () =>
+          emit(ctx, feature.id, {
+            type: 'repo.head_healed',
+            message: 'created runcastle: initial commit so branches can be cut',
+          }),
+        )
   } catch (e) {
     if (isNotImplemented(e)) {
       const fallback = worktreeDir(project.id, feature.slug)

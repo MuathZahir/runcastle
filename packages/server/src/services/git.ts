@@ -525,7 +525,12 @@ export async function listBranches(
  * clobbered) — so a feature forked off a remote line still has a real, local,
  * push-able ship destination. Throws if the pick names neither.
  */
-export async function resolveBaseBranch(project: Project, base: string): Promise<string> {
+export async function resolveBaseBranch(
+  project: Project,
+  base: string,
+  onHealed?: HeadHealedReporter,
+): Promise<string> {
+  await healUnbornHead(project.repoPath, onHealed)
   const g = git(project.repoPath)
   const local = await g.branchLocal()
   if (local.all.includes(base)) return base

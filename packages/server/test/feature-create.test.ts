@@ -100,6 +100,26 @@ describe('feature.create', () => {
     expect(listByProject(ctx, unbornProject.id).filter((event) => event.type === 'repo.head_healed')).toHaveLength(1)
   })
 
+  it('heals before resolving an explicit base in an unborn repository', async () => {
+    const unbornRepo = tmpRepo()
+    const g = simpleGit(unbornRepo)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.email', 'test@runcastle.dev')
+    await g.addConfig('user.name', 'Runcastle Test')
+    const unbornProject = seedProject(ctx, unbornRepo)
+
+    const feature = await createFeature(ctx, {
+      projectId: unbornProject.id,
+      title: 'Explicit Base',
+      oneLiner: 'starts from named main',
+      baseBranch: 'main',
+    })
+
+    expect(feature.baseBranch).toBe('main')
+    expect((await g.branchLocal()).all).toContain('feature/explicit-base')
+    expect(listByProject(ctx, unbornProject.id).filter((event) => event.type === 'repo.head_healed')).toHaveLength(1)
+  })
+
   it('falls back to the branch the checkout is standing on, not a stored default', async () => {
     // The project's stored main line is `main`; the human is working on develop.
     const g = simpleGit(repoPath)
