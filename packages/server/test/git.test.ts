@@ -28,6 +28,7 @@ import {
   createFeatureBranch,
   docsCommitMessage,
   listBranches,
+  makeInitialCommit,
   detachWorktree,
   ensureTalkWorktree,
   mergeFeature,
@@ -42,6 +43,7 @@ import {
   testDrive,
   ticketBranchName,
 } from '../src/services/git'
+import { InvalidInputError } from '../src/errors'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
@@ -70,6 +72,16 @@ async function initRepo(dir: string): Promise<SimpleGit> {
   writeFileSync(join(dir, 'README.md'), 'base\n')
   await g.add(['README.md'])
   await g.commit('initial commit')
+  return g
+}
+
+/** git init -b main + local identity, deliberately leaving HEAD unborn. */
+async function initUnbornRepo(dir: string): Promise<SimpleGit> {
+  const g = simpleGit(dir)
+  await g.init(['-b', 'main'])
+  await g.addConfig('user.email', 'test@runcastle.dev')
+  await g.addConfig('user.name', 'Runcastle Test')
+  await g.addConfig('core.autocrlf', 'false')
   return g
 }
 
@@ -166,6 +178,35 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 beforeEach(() => {
   __resetTestDriveState()
+})
+
+describe('makeInitialCommit', () => {
+  it('creates the empty plumbing commit on an unborn branch', async () => {
+    const repo = mkTmp('rc-initial-')
+    const g = await initUnbornRepo(repo)
+
+    await makeInitialCommit(repo)
+
+    expect((await g.raw(['log', '-1', '--format=%s'])).trim()).toBe('runcastle: initial commit')
+    expect((await g.raw(['rev-list', '--count', 'HEAD'])).trim()).toBe('1')
+  })
+
+  it('maps a missing git identity to actionable typed input guidance', async () => {
+    const repo = mkTmp('rc-no-identity-')
+    const g = simpleGit(repo)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.useConfigOnly', 'true')
+    await g.addConfig('user.name', '')
+    await g.addConfig('user.email', '')
+
+    const failure = await makeInitialCommit(repo).catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(InvalidInputError)
+    expect(String(failure)).toContain('user.name')
+    expect(String(failure)).toContain('user.email')
+    expect(String(failure)).toContain('git config --global user.name')
+    expect(String(failure)).toContain('git config --global user.email')
+  })
 })
 
 afterEach(async () => {
@@ -391,6 +432,23 @@ describe('ensureTalkWorktree', () => {
     expect(wt).toBe(worktreeDir(project.id, feature.slug))
     expect(existsSync(wt)).toBe(true)
     expect(await currentBranch(simpleGit(wt))).toBe('feature/wt')
+  })
+
+  it('heals an unborn HEAD once before cutting the feature branch', async () => {
+    const repo = mkTmp('rc-unborn-talk-')
+    await initUnbornRepo(repo)
+    const unbornProject = seedProject(ctx, repo)
+    const unbornFeature = seedFeature(ctx, unbornProject.id, { slug: 'newborn' })
+    const healed: string[] = []
+
+    const wt = await ensureTalkWorktree(unbornProject, unbornFeature, () => healed.push('healed'))
+    await ensureTalkWorktree(unbornProject, unbornFeature, () => healed.push('healed'))
+
+    expect(await currentBranch(simpleGit(wt))).toBe('feature/newborn')
+    expect((await simpleGit(repo).raw(['log', '--format=%s', 'main'])).trim()).toBe(
+      'runcastle: initial commit',
+    )
+    expect(healed).toEqual(['healed'])
   })
 
   it('reuses an existing valid worktree', async () => {

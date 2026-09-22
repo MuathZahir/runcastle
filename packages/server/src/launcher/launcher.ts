@@ -347,7 +347,12 @@ async function ensureWorktree(
   try {
     return besideRun
       ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
-      : await git.ensureTalkWorktree(project, feature)
+      : await git.ensureTalkWorktree(project, feature, () =>
+          emit(ctx, feature.id, {
+            type: 'repo.head_healed',
+            message: 'created runcastle: initial commit so branches can be cut',
+          }),
+        )
   } catch (e) {
     if (isNotImplemented(e)) {
       const fallback = worktreeDir(project.id, feature.slug)
@@ -1088,6 +1093,11 @@ export async function launchProjectSession(
 
   const { worktreePath, base } = await git.ensureProjectWorktree(project, (res) =>
     reportProjectLanding(ctx, project, res, { retried: true }),
+    () =>
+      emitProject(ctx, project.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      }),
   )
   const session = createSessionRow(ctx, {
     projectId: project.id,

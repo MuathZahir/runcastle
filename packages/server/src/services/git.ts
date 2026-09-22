@@ -320,6 +320,42 @@ export async function detectMainBranch(repoPath: string): Promise<string> {
   return 'main'
 }
 
+const INITIAL_COMMIT_SUBJECT = 'runcastle: initial commit'
+
+/** Notification boundary for callers that own a project or feature timeline. */
+export type HeadHealedReporter = () => void
+
+/**
+ * Give an unborn repository the commit every downstream git operation needs.
+ * Identity remains the user's configuration; runcastle never manufactures it.
+ */
+export async function makeInitialCommit(repoPath: string): Promise<void> {
+  try {
+    await git(repoPath).raw([
+      'commit',
+      '--allow-empty',
+      '--no-verify',
+      '-m',
+      INITIAL_COMMIT_SUBJECT,
+    ])
+  } catch (error) {
+    const message = errMsg(error)
+    if (/author identity unknown|unable to auto-detect email address|empty ident name/i.test(message)) {
+      throw new InvalidInputError(
+        'Git user.name and user.email are not configured. Run `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`, then try again.',
+      )
+    }
+    throw error
+  }
+}
+
+/** Heal HEAD exactly while it is unborn; a normal repository is untouched. */
+async function healUnbornHead(repoPath: string, onHealed?: HeadHealedReporter): Promise<void> {
+  if (await headSha(repoPath, 'HEAD')) return
+  await makeInitialCommit(repoPath)
+  onHealed?.()
+}
+
 /** The project session's landing branch, as the picker needs to render it. */
 export interface SessionBranchView {
   /** What a human explicitly picked, or `null` while nobody has. */
@@ -340,7 +376,11 @@ export interface SessionBranchView {
  * quietly land a session's charter commits somewhere the human never picked, so
  * this throws and names the picker instead.
  */
-export async function resolveSessionBranch(project: Project): Promise<string> {
+export async function resolveSessionBranch(
+  project: Project,
+  onHealed?: HeadHealedReporter,
+): Promise<string> {
+  await healUnbornHead(project.repoPath, onHealed)
   const stored = project.sessionBranch?.trim()
   if (!stored) return detectMainBranch(project.repoPath)
   const local = await git(project.repoPath).branchLocal()
@@ -371,7 +411,11 @@ export async function sessionBranchView(project: Project): Promise<SessionBranch
  * fall back to and this says so rather than handing back simple-git's sha
  * pseudo-branch, which would fail later and less legibly.
  */
-export async function currentCheckoutBranch(project: Project): Promise<string> {
+export async function currentCheckoutBranch(
+  project: Project,
+  onHealed?: HeadHealedReporter,
+): Promise<string> {
+  await healUnbornHead(project.repoPath, onHealed)
   const local = await git(project.repoPath).branchLocal()
   if (local.detached || !local.current) {
     throw new InvalidInputError(
@@ -394,7 +438,9 @@ export async function createFeatureBranch(
   project: Project,
   slug: string,
   base: string,
+  onHealed?: HeadHealedReporter,
 ): Promise<string> {
+  await healUnbornHead(project.repoPath, onHealed)
   const branch = featureBranch(slug)
   const from = base.trim()
   const g = git(project.repoPath)
@@ -479,7 +525,12 @@ export async function listBranches(
  * clobbered) — so a feature forked off a remote line still has a real, local,
  * push-able ship destination. Throws if the pick names neither.
  */
-export async function resolveBaseBranch(project: Project, base: string): Promise<string> {
+export async function resolveBaseBranch(
+  project: Project,
+  base: string,
+  onHealed?: HeadHealedReporter,
+): Promise<string> {
+  await healUnbornHead(project.repoPath, onHealed)
   const g = git(project.repoPath)
   const local = await g.branchLocal()
   if (local.all.includes(base)) return base
@@ -506,10 +557,15 @@ export async function resolveBaseBranch(project: Project, base: string): Promise
  * stale/corrupt state (dir gone but still registered, etc.) prunes the worktree
  * registry and retries once, erroring clearly if that also fails.
  */
-export async function ensureTalkWorktree(project: Project, feature: Feature): Promise<string> {
+export async function ensureTalkWorktree(
+  project: Project,
+  feature: Feature,
+  onHealed?: HeadHealedReporter,
+): Promise<string> {
   const worktreePath = worktreeDir(project.id, feature.slug)
   const branch = featureBranch(feature.slug)
   const g = git(project.repoPath)
+  await healUnbornHead(project.repoPath, onHealed)
 
   // The worktree can only be checked out to an existing branch. Normally the
   // branch already exists (created at feature.create); this only recreates it if
@@ -732,12 +788,14 @@ export interface ProjectWorktree {
 export async function ensureProjectWorktree(
   project: Project,
   onLanded?: (res: ProjectLandResult) => void,
+  onHealed?: HeadHealedReporter,
 ): Promise<ProjectWorktree> {
   const worktreePath = worktreeDir(project.id, PROJECT_WORKTREE_SLUG)
   const g = git(project.repoPath)
+  await healUnbornHead(project.repoPath, onHealed)
   // Resolved once, before anything is cut or landed: a stored pick that has
   // vanished fails the launch here, rather than after the work has moved.
-  const base = await resolveSessionBranch(project)
+  const base = await resolveSessionBranch(project, onHealed)
 
   // The retry the landing protocol promises. Reported through `onLanded`,
   // because this merge puts commits on the human's own branch: a silent success
