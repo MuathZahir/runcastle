@@ -1562,6 +1562,16 @@ export function buildSlotStamp(imageName: string, packageManagerField?: string):
  *    cost. Otherwise fetch this attempt's temp branch straight from the mounted
  *    workspace and hard-reset onto it, then re-point the local branch at it so
  *    the post-commit hook's `HEAD:<tempBranch>` push still has its name.
+ *
+ *    The fetch names an explicit `+<tempBranch>:refs/remotes/origin/<tempBranch>`
+ *    refspec rather than the bare branch, because the hook pushes with a
+ *    valueless `--force-with-lease` and that reads its baseline out of the
+ *    remote-tracking ref. A bare-branch fetch writes FETCH_HEAD and nothing
+ *    else, so every attempt after the cloning one — a branch name the slot has
+ *    never seen — had no baseline and had every commit rejected as `stale
+ *    info`. Writing the ref here is what keeps the lease bare: the baseline is
+ *    the workspace tip this sync just read, and the slot is that branch's only
+ *    writer.
  * 4. `git clean -fd` — untracked files from the previous burn go, IGNORED ones
  *    stay. That is the entire point of the slot: `node_modules`, `dist`,
  *    `.turbo`, `.tsbuildinfo` and the test runner's cache survive to be warm.
@@ -1594,7 +1604,7 @@ export function buildSlotSetupCommand(
     `RC_SYNC_START=$(date +%s%3N)`,
     `mkdir -p ${slotDirPath(slot)} ${burnCacheDirectories(pm).join(' ')}`,
     `rm -f ${repo}/.git/*.lock`,
-    `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
+    `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1; else git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} +${tempBranch}:refs/remotes/origin/${tempBranch} && git -C ${repo} reset --hard FETCH_HEAD && git -C ${repo} checkout -B ${tempBranch}; fi`,
     `git -C ${repo} clean -fd`,
     `if [ "$(cat ${stampFile} 2>/dev/null)" != "$RC_STAMP" ]; then rm -rf ${repo}/node_modules && git -C ${repo} clean -fdX && RC_COLD=1 && printf '%s\\n' "$RC_STAMP" > ${stampFile}; fi`,
     ...steps.pre,
