@@ -74,8 +74,10 @@ describe('workspaceView', () => {
 
   // Opening it deliberately (the rail's nudge, ⌘K) beats every automatic rule
   // below it — including one that would swap it away the moment it succeeds.
-  it('honours a deliberately opened preparation over the selected feature', () => {
-    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1' }))).toBe('prepare')
+  it('honours a deliberately opened preparation even for an empty repository', () => {
+    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1', empty: true }))).toBe(
+      'prepare',
+    )
   })
 
   it('still lets a creation form outrank it', () => {

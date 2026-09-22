@@ -87,10 +87,10 @@ export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empt
  * more — it opens a fresh conversation in the project workspace.)
  *
  * The last line is the interesting one. A project with no features and no
- * preparation has exactly ONE sensible next step, so it gets the whole body
- * rather than a card tucked under the new-feature buttons — which is where
- * preparation was, and why nobody found it. Once features exist the rail's
- * pinned nudge carries it instead and the home reads normally again.
+ * preparation gives preparation the whole body only when the repository has
+ * code to prepare. A born-empty repository gets the ordinary project home;
+ * preparation remains available from the rail. Once features exist the rail's
+ * pinned nudge carries it and the home reads normally again.
  */
 export function workspaceView(state: {
   creating: boolean
