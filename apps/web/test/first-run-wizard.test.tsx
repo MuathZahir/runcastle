@@ -60,6 +60,7 @@ vi.mock('../src/trpc', () => {
       },
       project: {
         open: mutation(),
+        initRepo: mutation(),
         roots: query(() => []),
         browse: query(() => undefined),
       },
