@@ -227,6 +227,24 @@ describe('ensureProjectWorktree', () => {
     expect(git(repoPath, 'status', '--porcelain')).toBe('')
   })
 
+  it('heals an unborn HEAD before resolving and cutting the project branch', async () => {
+    const unborn = mkdtempSync(join(tmpdir(), 'rc-proj-unborn-'))
+    cleanup.push(unborn)
+    git(unborn, 'init', '-b', 'fresh')
+    git(unborn, 'config', 'user.email', 'test@runcastle.dev')
+    git(unborn, 'config', 'user.name', 'Runcastle Test')
+    const unbornProject = seedProject(ctx, unborn)
+    const healed: string[] = []
+
+    const result = await ensureProjectWorktree(unbornProject, undefined, () => healed.push('healed'))
+
+    expect(result.base).toBe('fresh')
+    expect(git(unborn, 'log', '-1', '--format=%s')).toBe('runcastle: initial commit')
+    expect(git(unborn, 'rev-list', '--count', 'HEAD')).toBe('1')
+    expect(git(unborn, 'rev-parse', PROJECT_BRANCH)).toBe(git(unborn, 'rev-parse', 'fresh'))
+    expect(healed).toEqual(['healed'])
+  })
+
   it('is idempotent across relaunches', async () => {
     const first = await ensureProjectWorktree(project)
     const second = await ensureProjectWorktree(project)

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { listAfter } from '../src/services/events'
+import { listAfter, listByProject } from '../src/services/events'
 import { createFeature } from '../src/services/features'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -73,6 +73,31 @@ describe('feature.create', () => {
     ])
     expect(brief).toContain('# Brancher')
     expect(existsSync(join(repoPath, 'docs', 'features', 'brancher', 'brief.md'))).toBe(false)
+  })
+
+  it('creates a feature end-to-end from an unborn repository', async () => {
+    const unbornRepo = tmpRepo()
+    const g = simpleGit(unbornRepo)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.email', 'test@runcastle.dev')
+    await g.addConfig('user.name', 'Runcastle Test')
+    const unbornProject = seedProject(ctx, unbornRepo)
+
+    const feature = await createFeature(ctx, {
+      projectId: unbornProject.id,
+      title: 'First Feature',
+      oneLiner: 'starts from nothing',
+    })
+
+    expect((await g.branchLocal()).all).toContain('feature/first-feature')
+    expect(await g.show(['feature/first-feature:docs/features/first-feature/brief.md'])).toContain(
+      '# First Feature',
+    )
+    expect((await g.raw(['log', '--reverse', '--format=%s', 'feature/first-feature'])).trim().split('\n')).toEqual([
+      'runcastle: initial commit',
+      'runcastle: scaffold first-feature docs',
+    ])
+    expect(listByProject(ctx, unbornProject.id).filter((event) => event.type === 'repo.head_healed')).toHaveLength(1)
   })
 
   it('falls back to the branch the checkout is standing on, not a stored default', async () => {

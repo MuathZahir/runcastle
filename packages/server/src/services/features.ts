@@ -150,7 +150,7 @@ export async function createFeature(
   // materialized a local tracking branch), always a real merge target at ship time.
   const cut = input.draft
     ? null
-    : await ensureFeatureBranch(project, slug, await requestedBase(project, input.baseBranch))
+    : await ensureFeatureBranch(project, slug, await requestedBase(ctx, project, input.baseBranch))
 
   const row = {
     id: newId('feat'),
@@ -235,7 +235,7 @@ export async function startDraft(
     throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
   }
   const project = projectForFeature(ctx, feature)
-  const base = await requestedBase(project, opts.baseBranch)
+  const base = await requestedBase(ctx, project, opts.baseBranch)
 
   const { branchReady, baseBranch } = await ensureFeatureBranch(project, feature.slug, base)
 
@@ -386,7 +386,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
-  const base = await requestedBase(project, input.baseBranch)
+  const base = await requestedBase(ctx, project, input.baseBranch)
   const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, base)
 
   const inserted = ctx.db
@@ -503,8 +503,20 @@ function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[
  * a base nobody chose, that no surface showed, is exactly what this replaced.
  * Every shipped surface names one, so the fallback is a backstop, not a path.
  */
-async function requestedBase(project: Project, picked: string | undefined): Promise<string> {
-  return picked?.trim() || (await git.currentCheckoutBranch(project))
+async function requestedBase(
+  ctx: AppCtx,
+  project: Project,
+  picked: string | undefined,
+): Promise<string> {
+  return (
+    picked?.trim() ||
+    (await git.currentCheckoutBranch(project, () => {
+      emitProject(ctx, project.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      })
+    }))
+  )
 }
 
 /**
@@ -556,7 +568,12 @@ async function scaffoldDocsOnFeatureBranch(
 ): Promise<void> {
   let worktreePath: string
   try {
-    worktreePath = await git.ensureTalkWorktree(project, feature)
+    worktreePath = await git.ensureTalkWorktree(project, feature, () => {
+      emit(ctx, feature.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      })
+    })
   } catch (e) {
     // Pre-B2 the git service is a stub: no branch was cut and no worktree can be,
     // so the docs stay in the checkout, uncommitted, exactly as they did then.
