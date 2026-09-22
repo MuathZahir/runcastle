@@ -196,6 +196,13 @@ function withoutTrailingSeparators(path: string): string {
 }
 
 /**
+ * A remedy runcastle can run itself, for the caller to render as the failure's
+ * one action. `init-repo` initializes the rejected folder and re-opens it —
+ * the button is the confirmation, there is no dialog behind it (decision 2).
+ */
+export type RepoOpenOffer = 'init-repo'
+
+/**
  * The inline failure this flow shows about a path — the open-a-project form's
  * rejected repo, and the picker's refused listing.
  *
@@ -205,13 +212,6 @@ function withoutTrailingSeparators(path: string): string {
  * about — and the commonest one of all, "not a git repository", has an obvious
  * next move the toast never mentioned.
  */
-/**
- * A remedy runcastle can run itself, for the caller to render as the failure's
- * one action. `init-repo` initializes the rejected folder and re-opens it —
- * the button is the confirmation, there is no dialog behind it (decision 2).
- */
-export type RepoOpenOffer = 'init-repo'
-
 export interface RepoOpenFailure {
   /** The problem, said once and in full — never with the path spliced into it. */
   message: string
