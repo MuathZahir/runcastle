@@ -99,12 +99,13 @@ export function workspaceView(state: {
   selectedFeatureId: string | null
   featureCount: number
   prepared: boolean
+  empty: boolean
 }): WorkspaceView {
   if (state.creating) return 'create'
   if (state.preparing) return 'prepare'
   if (state.projectSelected) return 'project'
   if (state.selectedFeatureId) return 'feature'
-  return state.featureCount === 0 && !state.prepared ? 'prepare' : 'empty'
+  return state.featureCount === 0 && !state.prepared && !state.empty ? 'prepare' : 'empty'
 }
 
 /**

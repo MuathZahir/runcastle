@@ -28,6 +28,7 @@ const state = (over: Partial<Parameters<typeof workspaceView>[0]> = {}) => ({
   selectedFeatureId: null,
   featureCount: 1,
   prepared: true,
+  empty: false,
   ...over,
 })
 
@@ -58,8 +59,12 @@ describe('workspaceView', () => {
    * a card beside the new-feature buttons — where it was, and where nobody found
    * it.
    */
-  it('gives the whole body to preparation on an unprepared, featureless project', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: false }))).toBe('prepare')
+  it('gives the whole body to preparation on an unprepared, featureless project with code', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: false }))).toBe('prepare')
+  })
+
+  it('uses the ordinary empty home when a featureless project has nothing to prepare', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: true }))).toBe('empty')
   })
 
   it('reads as the ordinary home once either half of that stops holding', () => {

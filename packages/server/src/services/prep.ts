@@ -1,5 +1,6 @@
 import type { PreparedKey, Project, ProjectFinding } from '@runcastle/core'
 import { and, desc, eq, inArray } from 'drizzle-orm'
+import { readdir } from 'node:fs/promises'
 import type { AppCtx } from '../db/types'
 import { events, sessions } from '../db/schema'
 import { hasCompletedProjectSession } from '../launcher/sessions'
@@ -106,6 +107,8 @@ export interface PrepView {
   findings: ProjectFinding[]
   /** Nothing left to establish, or a conversation has already been through it. */
   prepared: boolean
+  /** No project files exist outside git metadata and runcastle's docs scaffolding. */
+  empty: boolean
   /**
    * When the last preparation conversation closed (epoch ms), or `null` when none
    * has — a project can be `prepared` with no conversation behind it, because
@@ -126,10 +129,12 @@ export interface PrepView {
 
 export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {
   const drive = activeDriveInfo()
+  const rootEntries = await readdir(project.repoPath)
   return {
     pendingKeys: keysToPrepare(ctx, project),
     findings: await listFindings(ctx, project),
     prepared: isPrepared(ctx, project),
+    empty: rootEntries.every((entry) => entry === '.git' || entry === 'docs'),
     preparedAt: preparedAt(ctx, project.id),
     dryRun: drive?.dryRun ? drive : null,
   }

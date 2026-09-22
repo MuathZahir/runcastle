@@ -69,6 +69,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // through the call-to-action on its way to the real one.
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
   const prepared = prep.data?.prepared ?? true
+  const empty = prep.data?.empty ?? true
 
   const features = list.data
 
@@ -165,7 +166,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     return () => window.removeEventListener('keydown', onKey)
   }, [setCmdk])
 
-  const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared })
+  const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared, empty })
   // The inspector starts collapsed in ideation/spec/tickets unless the human
   // has expressed a preference (decision: docs menu makes the panel optional).
   const selectedPhase = features?.find((feature) => feature.id === selectedFeatureId)?.phase
@@ -314,10 +315,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 }
 
 /**
- * The project home — the screen you land on with no feature selected. An
- * unprepared project with no features never sees it: `workspaceView` gives the
- * body to preparation instead, because there is exactly one thing to do first
- * and putting it beside these buttons is what made it invisible.
+ * The project home — the screen you land on with no feature selected. An empty
+ * repository sees it even before preparation; an unprepared repository with
+ * code gives the body to preparation instead.
  *
  * Exported for the copy sweep alone (`intake-copy`), which reads the words this
  * screen says about the two doors — the shell around it needs no mocking to
