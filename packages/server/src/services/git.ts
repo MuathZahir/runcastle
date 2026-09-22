@@ -349,6 +349,37 @@ export async function makeInitialCommit(repoPath: string): Promise<void> {
   }
 }
 
+/**
+ * Initialize a repository in a folder that is not one yet, and give it the
+ * commit every downstream branch cut needs (decisions 2–3). `-b main` matches
+ * {@link detectMainBranch}'s fallback, but a user who configured
+ * `init.defaultBranch` keeps their name — detection reads any real branch once
+ * a commit exists. Nothing but the repo is scaffolded: no README, no
+ * `.gitignore`, which would be stack-specific.
+ */
+export async function initRepository(repoPath: string): Promise<void> {
+  if (!existsSync(repoPath)) {
+    throw new InvalidInputError(`path does not exist: ${repoPath}`)
+  }
+  const g = git(repoPath)
+  if (await g.checkIsRepo()) {
+    throw new InvalidInputError(`already a git repository: ${repoPath}`)
+  }
+  const configured = await hasConfiguredDefaultBranch(repoPath)
+  await g.init(configured ? [] : ['-b', 'main'])
+  await makeInitialCommit(repoPath)
+}
+
+/** Whether the user named their own `init.defaultBranch` for git to honour. */
+async function hasConfiguredDefaultBranch(repoPath: string): Promise<boolean> {
+  try {
+    return (await git(repoPath).raw(['config', '--get', 'init.defaultBranch'])).trim() !== ''
+  } catch {
+    // `git config --get` exits non-zero when the key is unset anywhere.
+    return false
+  }
+}
+
 /** Heal HEAD exactly while it is unborn; a normal repository is untouched. */
 async function healUnbornHead(repoPath: string, onHealed?: HeadHealedReporter): Promise<void> {
   if (await headSha(repoPath, 'HEAD')) return

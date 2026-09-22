@@ -6,7 +6,13 @@ import { prepView } from '../../services/prep'
 import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
 import { conversationTranscript, listProjectConversations } from '../../services/conversations'
-import { closeProject, listProjects, openProject, renameProject } from '../../services/projects'
+import {
+  closeProject,
+  initProjectRepo,
+  listProjects,
+  openProject,
+  renameProject,
+} from '../../services/projects'
 import { requireProjectById } from '../../services/repo'
 import { publicProcedure, router } from '../context'
 
@@ -56,6 +62,16 @@ export const projectRouter = router({
   open: publicProcedure
     .input(z.object({ repoPath: z.string().min(1) }))
     .mutation(({ ctx, input }) => openProject(ctx, input.repoPath)),
+
+  /**
+   * Initialize a repository in a folder `open` refused as a non-repo, so the
+   * open screen's failure note can offer the fix instead of naming it
+   * (decisions 2–3). Returns the normalized path for the retry; refuses a
+   * missing path and a folder that is already a repository.
+   */
+  initRepo: publicProcedure
+    .input(z.object({ repoPath: z.string().min(1) }))
+    .mutation(({ input }) => initProjectRepo(input.repoPath)),
 
   close: publicProcedure
     .input(z.object({ projectId: z.string() }))
