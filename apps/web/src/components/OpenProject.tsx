@@ -54,8 +54,25 @@ export function OpenProject({
     onError: () => undefined,
   })
 
+  /**
+   * The offer behind the "Not a git repository" failure (decisions 2–3): it
+   * initializes the folder the human already picked and re-opens it, so the
+   * click that answers the error is also the last one — they never leave the
+   * screen, and nothing asks them to confirm the same decision twice.
+   */
+  const initRepo = trpc.project.initRepo.useMutation({
+    onSuccess: ({ repoPath: inited }) => {
+      setAttempted(inited)
+      open.mutate({ repoPath: inited })
+    },
+    // Inline like `open`'s: a failed init (an unset git identity) is a fact
+    // about the note the button sits in.
+    onError: () => undefined,
+  })
+
   const clearFailure = () => {
     open.reset()
+    initRepo.reset()
     setRelative(false)
   }
 
@@ -78,14 +95,21 @@ export function OpenProject({
     setPicking(true)
   }
 
+  // Initializing runs an open straight after it, so the row stays busy across
+  // both halves of the one click rather than flickering back between them.
+  const busy = open.isPending || initRepo.isPending
+
+  // A refused init replaces the failure that offered it — the git identity it
+  // names is the problem now, and the same offer would fail the same way.
+  const rejection = initRepo.error ?? open.error
   const failure: RepoOpenFailure | null = relative
     ? {
         message: 'Enter an absolute path',
         hint: `A path from the root of this machine, like ${pathPlaceholder()}.`,
         path: null,
       }
-    : open.error
-      ? repoOpenFailure(open.error.message, attempted)
+    : rejection
+      ? repoOpenFailure(rejection.message, attempted)
       : null
 
   /**
@@ -147,13 +171,13 @@ export function OpenProject({
               if (e.key === 'Enter') submit()
             }}
           />
-          <Button variant="ghost" onClick={browse} disabled={open.isPending}>
+          <Button variant="ghost" onClick={browse} disabled={busy}>
             Browse…
           </Button>
           <Button
             variant="solid"
             onClick={() => submit()}
-            disabled={open.isPending || repoPath.trim() === ''}
+            disabled={busy || repoPath.trim() === ''}
           >
             {open.isPending ? 'Opening…' : 'Open'}
           </Button>
@@ -161,7 +185,22 @@ export function OpenProject({
 
         {failure ? (
           <div className="mt-3">
-            <FailureNote {...failure} id="open-repo-error" />
+            <FailureNote
+              {...failure}
+              id="open-repo-error"
+              action={
+                failure.offer === 'init-repo' ? (
+                  <Button
+                    variant="solid"
+                    size="xs"
+                    onClick={() => initRepo.mutate({ repoPath: attempted })}
+                    disabled={busy}
+                  >
+                    {initRepo.isPending ? 'Initializing…' : 'Initialize repository'}
+                  </Button>
+                ) : undefined
+              }
+            />
           </div>
         ) : (
           <p className="mt-3 text-sm text-text-3">
@@ -172,7 +211,7 @@ export function OpenProject({
 
         {!firstRun && (
           <div className="mt-8">
-            <Button variant="ghost" onClick={onCancel} disabled={open.isPending}>
+            <Button variant="ghost" onClick={onCancel} disabled={busy}>
               Cancel
             </Button>
           </div>

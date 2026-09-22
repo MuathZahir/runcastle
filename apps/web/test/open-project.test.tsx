@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OpenProject } from '../src/components/OpenProject'
 import { ToastProvider } from '../src/lib/toast'
@@ -15,6 +15,9 @@ const stub = vi.hoisted(() => ({
   /** What the next `project.open` rejects with, or null to succeed. */
   rejectWith: null as { message: string } | null,
   opened: [] as { repoPath: string }[],
+  /** What the next `project.initRepo` rejects with, or null to succeed. */
+  initRejectWith: null as { message: string } | null,
+  inited: [] as { repoPath: string }[],
 }))
 
 vi.mock('../src/trpc', async () => {
@@ -24,7 +27,9 @@ vi.mock('../src/trpc', async () => {
       useUtils: () => ({ project: { list: { invalidate: async () => undefined } } }),
       project: {
         open: {
-          useMutation: () => {
+          useMutation: (opts?: {
+            onSuccess?: (project: { id: string; name: string }) => unknown
+          }) => {
             const [error, setError] = useState<{ message: string } | null>(null)
             return {
               error,
@@ -33,6 +38,26 @@ vi.mock('../src/trpc', async () => {
               mutate: (input: { repoPath: string }) => {
                 stub.opened.push(input)
                 setError(stub.rejectWith)
+                if (!stub.rejectWith) void opts?.onSuccess?.({ id: 'proj_1', name: 'notes' })
+              },
+            }
+          },
+        },
+        // The offer behind the "Not a git repository" note: a real init makes
+        // the folder a repository, so the open that follows it succeeds.
+        initRepo: {
+          useMutation: (opts?: { onSuccess?: (result: { repoPath: string }) => unknown }) => {
+            const [error, setError] = useState<{ message: string } | null>(null)
+            return {
+              error,
+              isPending: false,
+              reset: () => setError(null),
+              mutate: (input: { repoPath: string }) => {
+                stub.inited.push(input)
+                setError(stub.initRejectWith)
+                if (stub.initRejectWith) return
+                stub.rejectWith = null
+                opts?.onSuccess?.({ repoPath: input.repoPath })
               },
             }
           },
@@ -89,6 +114,8 @@ describe('OpenProject', () => {
     pinPosixPlatform()
     stub.rejectWith = null
     stub.opened = []
+    stub.initRejectWith = null
+    stub.inited = []
     onCancel.mockClear()
     onOpened.mockClear()
   })
@@ -145,17 +172,57 @@ describe('OpenProject', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
-  it('says a folder is not a repository once, with the path and git init', () => {
+  it('says a folder is not a repository once, and offers to initialize it', () => {
     stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
     open()
     tryPath('/tmp/notes')
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain('Not a git repository')
-    expect(alert.textContent).toContain('git init')
+    // The button is the offer AND the confirmation (born-empty-projects
+    // decision 2) — nothing else stands between the click and the repo.
+    expect(screen.getByRole('button', { name: 'Initialize repository' })).toBeTruthy()
+    expect(screen.queryByRole('dialog')).toBeNull()
     // Said once: the server's message named the path, and the hint named it
     // again, which is the doubling decision 5 removes.
     expect(alert.textContent?.split('/tmp/notes')).toHaveLength(2)
+  })
+
+  it('initializes the rejected folder and opens it on the same click', async () => {
+    stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
+    open()
+    tryPath('/tmp/notes')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Initialize repository' }))
+
+    expect(stub.inited).toEqual([{ repoPath: '/tmp/notes' }])
+    // The open is re-submitted for them: the first one is the refusal they
+    // answered, the second is the one that lands.
+    expect(stub.opened).toEqual([{ repoPath: '/tmp/notes' }, { repoPath: '/tmp/notes' }])
+    expect(screen.queryByRole('alert')).toBeNull()
+    await waitFor(() => expect(onOpened).toHaveBeenCalledOnce())
+  })
+
+  // runcastle never sets an identity on the user's behalf, so the one thing it
+  // cannot do is the one thing the note asks of them.
+  it('names both git config commands when the identity is unset', () => {
+    stub.rejectWith = { message: 'not a git repository: /tmp/notes' }
+    stub.initRejectWith = {
+      message:
+        'Git user.name and user.email are not configured. Run `git config --global user.name "Your Name"` and `git config --global user.email "you@example.com"`, then try again.',
+    }
+    open()
+    tryPath('/tmp/notes')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Initialize repository' }))
+
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('git config --global user.name')
+    expect(alert.textContent).toContain('git config --global user.email')
+    // One problem at a time: the identity is what stands in the way now, and
+    // the offer that would fail the same way again is gone with it.
+    expect(alert.textContent).not.toContain('Not a git repository')
+    expect(screen.queryByRole('button', { name: 'Initialize repository' })).toBeNull()
   })
 
   it('says a missing path is missing, and points at Browse…', () => {
