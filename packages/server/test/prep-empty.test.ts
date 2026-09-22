@@ -34,6 +34,21 @@ describe('prepView repository emptiness', () => {
     expect((await prepView(ctx, project)).empty).toBe(true)
   })
 
+  it('still reports runcastle ADRs as empty', async () => {
+    const adrDir = join(repoPath, 'docs', 'adr')
+    mkdirSync(adrDir, { recursive: true })
+    writeFileSync(join(adrDir, '0001-first-decision.md'), '# ADR-0001\n')
+
+    expect((await prepView(ctx, project)).empty).toBe(true)
+  })
+
+  it('reports project files under docs as non-empty', async () => {
+    mkdirSync(join(repoPath, 'docs'), { recursive: true })
+    writeFileSync(join(repoPath, 'docs', 'index.ts'), 'export {}\n')
+
+    expect((await prepView(ctx, project)).empty).toBe(false)
+  })
+
   it('reports tracked or untracked project files as non-empty', async () => {
     writeFileSync(join(repoPath, 'tracked.ts'), 'export {}\n')
     await simpleGit(repoPath).add(['tracked.ts'])

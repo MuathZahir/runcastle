@@ -1,6 +1,7 @@
 import type { PreparedKey, Project, ProjectFinding } from '@runcastle/core'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { AppCtx } from '../db/types'
 import { events, sessions } from '../db/schema'
 import { hasCompletedProjectSession } from '../launcher/sessions'
@@ -127,14 +128,35 @@ export interface PrepView {
   dryRun: DriveInfo | null
 }
 
+/**
+ * The `docs/` subdirectories runcastle scaffolds itself — feature knowledge
+ * (`featureDocsRel`) and project ADRs (`ADR_DIR_REL`). Anything else under
+ * `docs/` is the project's own, a documentation site's sources as much as code,
+ * and ends its emptiness like a file at the root would.
+ */
+const SCAFFOLDED_DOCS_DIRS = ['adr', 'features']
+
+/**
+ * Whether the working tree holds no project files besides git metadata and
+ * runcastle's own docs scaffolding (decision 5). Computed live per request and
+ * never stored — emptiness ends the moment code appears.
+ */
+async function isEmptyRepo(repoPath: string): Promise<boolean> {
+  const rootEntries = await readdir(repoPath)
+  if (!rootEntries.every((entry) => entry === '.git' || entry === 'docs')) return false
+  if (!rootEntries.includes('docs')) return true
+
+  const docsEntries = await readdir(join(repoPath, 'docs'))
+  return docsEntries.every((entry) => SCAFFOLDED_DOCS_DIRS.includes(entry))
+}
+
 export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {
   const drive = activeDriveInfo()
-  const rootEntries = await readdir(project.repoPath)
   return {
     pendingKeys: keysToPrepare(ctx, project),
     findings: await listFindings(ctx, project),
     prepared: isPrepared(ctx, project),
-    empty: rootEntries.every((entry) => entry === '.git' || entry === 'docs'),
+    empty: await isEmptyRepo(project.repoPath),
     preparedAt: preparedAt(ctx, project.id),
     dryRun: drive?.dryRun ? drive : null,
   }
