@@ -382,6 +382,24 @@ export const TestNote = z.object({
 })
 export type TestNote = z.infer<typeof TestNote>
 
+// --- project notes ---------------------------------------------------------
+
+export const ProjectNoteStatus = z.enum(['open', 'triaged'])
+export type ProjectNoteStatus = z.infer<typeof ProjectNoteStatus>
+
+export const ProjectNote = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  text: z.string(),
+  status: ProjectNoteStatus,
+  outcome: z.string().optional(),
+  featureId: z.string().optional(),
+  screenshotUrl: z.string().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export type ProjectNote = z.infer<typeof ProjectNote>
+
 // --- core entities ---------------------------------------------------------
 
 /**

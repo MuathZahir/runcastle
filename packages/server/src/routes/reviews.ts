@@ -3,17 +3,20 @@ import { Readable } from 'node:stream'
 import {
   NOTE_SCREENSHOT_ROUTE,
   NOTE_SCREENSHOT_UPLOAD_ROUTE,
+  PROJECT_NOTE_SCREENSHOT_ROUTE,
+  PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE,
   REVIEW_ARTIFACTS_ROUTE,
   REVIEW_WALKTHROUGH_ROUTE,
   reviewWalkthroughUrl,
   type Ticket,
 } from '@runcastle/core'
-import { annotationPath, reviewWalkthroughPath } from '@runcastle/core/paths'
+import { annotationPath, projectNotePath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
 import { NotFoundError } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { attachScreenshot, getNote } from '../services/test-notes'
+import { attachScreenshot as attachProjectNoteScreenshot, getNote as getProjectNote } from '../services/project-notes'
 import { getTicket, listByFeature } from '../services/tickets'
 
 /**
@@ -267,6 +270,27 @@ reviews.get(NOTE_SCREENSHOT_ROUTE, async (c) => {
   const size = fileSize(path)
   if (size === undefined) return c.notFound()
 
+  const headers = { 'content-type': 'image/png', 'content-length': String(size) }
+  if (size === 0) return c.body(null, 200, headers)
+  return c.body(fileStream(path, 0, size - 1), 200, headers)
+})
+
+reviews.post(PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE, async (c) => {
+  const ctx = await getRuntimeCtx()
+  const note = lookupOrUndefined(() => getProjectNote(ctx, c.req.param('noteId')))
+  if (!note) return c.notFound()
+  const png = new Uint8Array(await c.req.arrayBuffer())
+  if (!isPng(png)) return c.json({ error: 'body is not a PNG' }, 400)
+  return c.json(attachProjectNoteScreenshot(ctx, note.id, png))
+})
+
+reviews.get(PROJECT_NOTE_SCREENSHOT_ROUTE, async (c) => {
+  const ctx = await getRuntimeCtx()
+  const note = lookupOrUndefined(() => getProjectNote(ctx, c.req.param('noteId')))
+  if (!note) return c.notFound()
+  const path = projectNotePath(note.id)
+  const size = fileSize(path)
+  if (size === undefined) return c.notFound()
   const headers = { 'content-type': 'image/png', 'content-length': String(size) }
   if (size === 0) return c.body(null, 200, headers)
   return c.body(fileStream(path, 0, size - 1), 200, headers)
