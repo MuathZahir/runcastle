@@ -821,10 +821,23 @@ describe('mcp tool registration by audience', () => {
     // A project session has no feature, so none of the feature surface.
     const project = toolsForAudience('project')
     expect(project).toEqual(
-      expect.arrayContaining(['create_feature', 'get_project_context', 'read_adr', 'get_work_record']),
+      expect.arrayContaining([
+        'create_feature',
+        'get_project_context',
+        'read_adr',
+        'get_work_record',
+        'list_project_notes',
+        'triage_project_note',
+        'update_project_note',
+      ]),
     )
     expect(project).not.toContain('get_feature_context')
     expect(project).not.toContain('emit_tickets')
+    for (const tool of ['list_project_notes', 'triage_project_note', 'update_project_note']) {
+      expect(toolsForAudience('prepare'), tool).not.toContain(tool)
+      expect(toolsForAudience('chat'), tool).not.toContain(tool)
+      expect(toolsForAudience('run'), tool).not.toContain(tool)
+    }
 
     // Single-kind tools stay single-kind.
     expect(toolsForAudience('prepare')).toContain('dry_run_drive')

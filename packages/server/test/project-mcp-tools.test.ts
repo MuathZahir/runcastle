@@ -3,7 +3,9 @@ import { join } from 'node:path'
 import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runs } from '../src/db/schema'
+import { projectNotePath } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
+import { projectNotes, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -18,13 +20,21 @@ import {
   toolGetFeatureContext,
   toolGetProjectContext,
   toolGetWorkRecord,
+  toolListProjectNotes,
   toolReadAdr,
   toolRecordEvent,
   toolResolveWaypoint,
+  toolTriageProjectNote,
+  toolUpdateProjectNote,
   toolUpdateTicket,
 } from '../src/mcp/server'
 import { emit, listByProject } from '../src/services/events'
 import { openProject } from '../src/services/projects'
+import {
+  addNote as addProjectNote,
+  attachScreenshot,
+  getNote as getProjectNote,
+} from '../src/services/project-notes'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { useDataDir } from './helpers/data-dir'
@@ -115,6 +125,9 @@ describe('project-session MCP tools', () => {
       expect(message, name).toMatch(/project-scoped/i)
       // The refusal points at the half of the surface this session DOES have.
       expect(message, name).toMatch(/create_feature/)
+      expect(message, name).toMatch(/list_project_notes/)
+      expect(message, name).toMatch(/triage_project_note/)
+      expect(message, name).toMatch(/update_project_note/)
     }
   })
 
@@ -136,6 +149,70 @@ describe('project-session MCP tools', () => {
 
     const thrown = await toolGetProjectContext(ctx, featureSession).catch((e: unknown) => e)
     expect((thrown as GateError).message).toMatch(/get_feature_context/)
+  })
+
+  it('lists only open notes oldest first and describes screenshots only when present', () => {
+    const newer = addProjectNote(ctx, projectId, 'newer plain note')
+    const oldest = addProjectNote(ctx, projectId, 'oldest illustrated note')
+    ctx.db.update(projectNotes).set({ createdAt: 10 }).where(eq(projectNotes.id, oldest.id)).run()
+    ctx.db.update(projectNotes).set({ createdAt: 20 }).where(eq(projectNotes.id, newer.id)).run()
+    attachScreenshot(ctx, oldest.id, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))
+    toolTriageProjectNote(ctx, session, { noteIds: [newer.id], outcome: 'dismissed' })
+    const latestOpen = addProjectNote(ctx, projectId, 'latest open note')
+    ctx.db.update(projectNotes).set({ createdAt: 30 }).where(eq(projectNotes.id, latestOpen.id)).run()
+
+    expect(toolListProjectNotes(ctx, session)).toEqual([
+      {
+        id: oldest.id,
+        text: 'oldest illustrated note',
+        createdAt: 10,
+        screenshotPath: projectNotePath(oldest.id),
+        attachmentSentence:
+          `A screenshot of the problem is at .runcastle-attachments/${oldest.id}.png in your workspace — Read it before starting.`,
+      },
+      { id: latestOpen.id, text: 'latest open note', createdAt: 30 },
+    ])
+  })
+
+  it('triages a batch and rewrites only open notes', () => {
+    const first = addProjectNote(ctx, projectId, 'first')
+    const second = addProjectNote(ctx, projectId, 'second')
+    const feature = seedFeature(ctx, projectId, { slug: 'notes-destination' })
+
+    const triaged = toolTriageProjectNote(ctx, session, {
+      noteIds: [first.id, second.id],
+      outcome: '→ new feature Notes destination',
+      featureId: feature.id,
+    })
+    expect(triaged.notes.map((note) => note.status)).toEqual(['triaged', 'triaged'])
+    expect(getProjectNote(ctx, first.id)).toMatchObject({
+      outcome: '→ new feature Notes destination',
+      featureId: feature.id,
+    })
+    expect(() => toolUpdateProjectNote(ctx, session, { noteId: first.id, text: 'changed' })).toThrow(
+      /cannot edit.*triaged/,
+    )
+
+    const open = addProjectNote(ctx, projectId, 'rough')
+    expect(toolUpdateProjectNote(ctx, session, { noteId: open.id, text: 'sharpened' }).note.text).toBe(
+      'sharpened',
+    )
+  })
+
+  it('refuses project-note tools at call time outside a project session', () => {
+    const prepare = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: repoPath })
+    const feature = seedFeature(ctx, projectId, { slug: 'feature-session' })
+    const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
+
+    for (const caller of [prepare, chat]) {
+      expect(() => toolListProjectNotes(ctx, caller)).toThrow(GateError)
+      expect(() =>
+        toolTriageProjectNote(ctx, caller, { noteIds: ['pnote_x'], outcome: 'dismissed' }),
+      ).toThrow(GateError)
+      expect(() => toolUpdateProjectNote(ctx, caller, { noteId: 'pnote_x', text: 'x' })).toThrow(
+        GateError,
+      )
+    }
   })
 
   it('record_event stays available to both kinds, at each one’s own scope', () => {

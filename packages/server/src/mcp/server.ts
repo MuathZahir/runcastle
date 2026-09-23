@@ -39,7 +39,7 @@ import {
   nextPlanningStep,
   withheldFeatureDocs,
 } from '@runcastle/core'
-import { featureDocsRel } from '@runcastle/core/paths'
+import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -76,6 +76,11 @@ import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
 import { PLANNING_STEP_EVENT, planningFacts, planningStepReported } from '../services/planning'
+import {
+  editNote as editProjectNote,
+  listNotes as listProjectNotes,
+  triageNotes as triageProjectNotes,
+} from '../services/project-notes'
 import {
   getFeatureRow,
   getProjectById,
@@ -187,7 +192,8 @@ function requireFeatureId(session: SessionRow): string {
   if (!session.featureId) {
     const instead =
       session.kind === 'project'
-        ? 'Your tools are create_feature, get_project_context, get_work_record and record_event — ' +
+        ? 'Your tools are create_feature, get_project_context, get_work_record, list_project_notes, ' +
+          'triage_project_note, update_project_note and record_event — ' +
           'to work an existing feature, tell the human to open its terminal.'
         : 'Use record_finding to store what you establish about the project.'
     throw new GateError(
@@ -1014,6 +1020,68 @@ function requireProject(ctx: AppCtx, session: SessionRow): Project {
   return project
 }
 
+function requireNotesProject(ctx: AppCtx, session: SessionRow): Project {
+  const project = requireProject(ctx, session)
+  if (session.kind !== 'project') {
+    throw new GateError(
+      `project note tools belong to a project session, and this is a ${session.kind} session.`,
+    )
+  }
+  return project
+}
+
+export interface ProjectNoteToolItem {
+  id: string
+  text: string
+  createdAt: number
+  screenshotPath?: string
+  attachmentSentence?: string
+}
+
+export function toolListProjectNotes(ctx: AppCtx, session: SessionRow): ProjectNoteToolItem[] {
+  const project = requireNotesProject(ctx, session)
+  return listProjectNotes(ctx, project.id)
+    .filter((note) => note.status === 'open')
+    .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+    .map((note) => {
+      if (!note.screenshotUrl) return { id: note.id, text: note.text, createdAt: note.createdAt }
+      return {
+        id: note.id,
+        text: note.text,
+        createdAt: note.createdAt,
+        screenshotPath: projectNotePath(note.id),
+        attachmentSentence:
+          `A screenshot of the problem is at ${attachmentRelPath(note.id)} in your workspace — ` +
+          'Read it before starting.',
+      }
+    })
+}
+
+export function toolTriageProjectNote(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { noteIds: string[]; outcome: string; featureId?: string },
+): { notes: ReturnType<typeof triageProjectNotes> } {
+  const project = requireNotesProject(ctx, session)
+  input.noteIds.forEach((id) => {
+    const note = listProjectNotes(ctx, project.id).find((candidate) => candidate.id === id)
+    if (!note) throw new NotFoundError(`project note ${id} not found in this project`)
+  })
+  // Resolve every id to this project before the service mutates the batch.
+  return { notes: triageProjectNotes(ctx, input.noteIds, input.outcome, input.featureId) }
+}
+
+export function toolUpdateProjectNote(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { noteId: string; text: string },
+): { note: ReturnType<typeof editProjectNote> } {
+  const project = requireNotesProject(ctx, session)
+  const note = listProjectNotes(ctx, project.id).find((candidate) => candidate.id === input.noteId)
+  if (!note) throw new NotFoundError(`project note ${input.noteId} not found in this project`)
+  return { note: editProjectNote(ctx, input.noteId, input.text) }
+}
+
 export interface RecordFindingResult {
   ok: true
   key: PreparedKeyT
@@ -1794,6 +1862,9 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_project_context: PROJECT_KINDS,
   read_adr: PROJECT_KINDS,
   get_work_record: PROJECT_KINDS,
+  list_project_notes: ['project'],
+  triage_project_note: ['project'],
+  update_project_note: ['project'],
   // `createFeatureProject`: the project kinds get the whole door, the drafting
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
@@ -2160,6 +2231,64 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(await toolGetProjectContext(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('list_project_notes')) {
+    server.registerTool(
+      'list_project_notes',
+      {
+        title: 'List project notes',
+        description:
+          'List this project’s open notes oldest first. Notes with a screenshot include its ' +
+          'absolute host path and a ready-made attachment sentence for quick-change tickets.',
+        inputSchema: {},
+      },
+      async (_args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolListProjectNotes(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('triage_project_note')) {
+    server.registerTool(
+      'triage_project_note',
+      {
+        title: 'Triage project notes',
+        description:
+          'Mark one or several open notes triaged with one outcome and an optional destination feature.',
+        inputSchema: {
+          noteIds: z.array(z.string().min(1)).min(1),
+          outcome: z.string().min(1),
+          featureId: z.string().min(1).optional(),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolTriageProjectNote(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('update_project_note')) {
+    server.registerTool(
+      'update_project_note',
+      {
+        title: 'Update project note',
+        description: 'Rewrite the text of an open note after its intent has been sharpened.',
+        inputSchema: {
+          noteId: z.string().min(1),
+          text: z.string().min(1),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolUpdateProjectNote(rs.ctx, rs.session, args))
       },
     )
   }
