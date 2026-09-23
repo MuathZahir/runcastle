@@ -6,6 +6,7 @@ import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../li
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
+import { isNoteHotkey } from '../lib/project-notes'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
@@ -28,6 +29,7 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
+import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
 
@@ -57,6 +59,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
   const [newChatRequest, setNewChatRequest] = useState(0)
+  // Note capture is shell state for one reason: it is mounted HERE, so it exists
+  // on every in-project screen and on none of the portfolio home (decisions #2).
+  // All three doors onto it — the titlebar button, the hotkey and the palette
+  // row — set the same flag (decisions #3).
+  const [capturing, setCapturing] = useState(false)
+  const jot = () => setCapturing(true)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -153,12 +161,20 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else talk.start()
   }
 
-  // Global ⌘K / Ctrl-K → command palette.
+  // Global ⌘K / Ctrl-K → command palette, ⌘/Ctrl+J → jot a note.
+  //
+  // The note chord has to fire with the focus inside an embedded terminal, which
+  // is where most of the time is spent — xterm would otherwise send Ctrl+J's LF
+  // to the PTY and cancel the event. `mapTerminalKey` swallows it there without
+  // cancelling, which is what lets it reach this listener (lib/terminal-keys).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCmdk(true)
+      } else if (isNoteHotkey(e)) {
+        e.preventDefault()
+        setCapturing(true)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -188,6 +204,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         view={view}
         featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
+        onOpenNote={jot}
         onOpenSettings={() => ws.openSettings()}
         onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
@@ -294,7 +311,17 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         // The palette navigates, it never launches: this opens the project
         // workspace, where the conversation list decides new-versus-resume.
         onOpenProjectChat={ws.selectProject}
+        onOpenNote={jot}
         nav={nav}
+      />
+
+      {/* Mounted by the in-project shell, so capture is on every screen inside a
+          project and on none of the portfolio home (decisions #2). */}
+      <NoteCapture
+        projectId={projectId}
+        open={capturing}
+        onClose={() => setCapturing(false)}
+        onOpenInbox={selectProject}
       />
 
       {ws.settings && (

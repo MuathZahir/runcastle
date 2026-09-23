@@ -43,6 +43,7 @@ function titlebar(over: {
       featureTitle: null,
       runsElsewhere: 0,
       onOpenCmdk: () => undefined,
+      onOpenNote: () => undefined,
       onOpenSettings: () => undefined,
       onGoToProjectHome: () => undefined,
       onToggleInspector: () => undefined,
@@ -100,6 +101,19 @@ describe('titlebar breadcrumb', () => {
 
     expect(html).toContain('Search or jump to…')
     expect(html).toMatch(/<kbd[^>]*>(⌘K|Ctrl\+K)<\/kbd>/)
+  })
+
+  /**
+   * Project-notes decisions #3 — the Note button is what makes ⌘/Ctrl+J
+   * discoverable without having to already know it, so it names its own chord.
+   */
+  it('carries the Note door beside the search field, on every in-project view', () => {
+    for (const view of ['empty', 'feature', 'project', 'prepare'] as const) {
+      const html = titlebar({ view })
+
+      expect(html).toContain('>Note<')
+      expect(html).toMatch(/title="Jot a note about this project \((⌘J|Ctrl\+J)\)"/)
+    }
   })
 })
 

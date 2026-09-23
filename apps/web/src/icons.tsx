@@ -157,6 +157,16 @@ export function IconDoc(p: IconProps) {
   )
 }
 
+/** Jot something down — the note capture door. */
+export function IconPencil(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M10.6 2.4a1.7 1.7 0 0 1 2.4 2.4L5.5 12.3 2.4 13.1l.8-3.1z" />
+      <path d="M9.4 3.6l2.4 2.4" />
+    </svg>
+  )
+}
+
 export function IconActivity(p: IconProps) {
   return (
     <svg {...base(p)}>

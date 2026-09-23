@@ -114,3 +114,35 @@ describe('mapTerminalKey — paste', () => {
     expect(mapTerminalKey(ev({ key: 'b', code: 'KeyB', ctrlKey: true }))).toEqual({ intercept: false })
   })
 })
+
+/**
+ * Project-notes ticket 4 — ⌘/Ctrl+J opens the capture popover from any screen,
+ * and most of the time the focus is inside a terminal. Ctrl+J is LF, which stock
+ * xterm both sends to the PTY and cancels, so the chord has to be swallowed here
+ * for the shell's window listener to ever see it.
+ */
+describe('mapTerminalKey — the note hotkey', () => {
+  it('swallows Ctrl+J without sending, so the PTY never gets its LF', () => {
+    expect(mapTerminalKey(ev({ key: 'j', code: 'KeyJ', ctrlKey: true }))).toEqual({
+      intercept: true,
+      bytes: '',
+    })
+  })
+
+  it('swallows ⌘J the same way, for the Mac chord', () => {
+    expect(mapTerminalKey(ev({ key: 'j', code: 'KeyJ', metaKey: true }))).toEqual({
+      intercept: true,
+      bytes: '',
+    })
+  })
+
+  it('leaves a plain "j" and every longer chord to xterm', () => {
+    expect(mapTerminalKey(ev({ key: 'j', code: 'KeyJ' }))).toEqual({ intercept: false })
+    expect(mapTerminalKey(ev({ key: 'j', code: 'KeyJ', ctrlKey: true, shiftKey: true }))).toEqual({
+      intercept: false,
+    })
+    expect(mapTerminalKey(ev({ key: 'j', code: 'KeyJ', ctrlKey: true, altKey: true }))).toEqual({
+      intercept: false,
+    })
+  })
+})
