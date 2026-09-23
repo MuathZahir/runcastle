@@ -1099,6 +1099,13 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__create_feature',
   'mcp__runcastle__get_project_context',
   'mcp__runcastle__get_work_record',
+  // The notes-triage tools, project-only for the same reason and so inert
+  // elsewhere too. A triage chat is briefed at launch to list the open notes,
+  // so an un-allowed `list_project_notes` stalls the session on a permission
+  // prompt before triage says its first word.
+  'mcp__runcastle__list_project_notes',
+  'mcp__runcastle__triage_project_note',
+  'mcp__runcastle__update_project_note',
 ]
 
 /**

@@ -101,6 +101,16 @@ describe('renderSettings', () => {
         'mcp__runcastle__get_work_record',
       ]),
     )
+    // the notes-triage tools, likewise project-only at the server and so
+    // likewise inert elsewhere — without them a triage chat stalls on an
+    // approval prompt the moment its briefing tells it to list the notes
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__list_project_notes',
+        'mcp__runcastle__triage_project_note',
+        'mcp__runcastle__update_project_note',
+      ]),
+    )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
     // every rule is either anchored to our own MCP server or a scoped git Bash
