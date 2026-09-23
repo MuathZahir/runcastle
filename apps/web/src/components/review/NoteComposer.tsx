@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent
 import type { TestNote } from '@runcastle/core'
 import { Button, Dialog } from '../../ui'
 import { trpc } from '../../trpc'
-import { toPngBlob, uploadScreenshot } from '../../lib/reviews'
+import { imageOnClipboard, toPngBlob, uploadScreenshot } from '../../lib/reviews'
 import { saveAnnotatedNote } from '../../lib/walkthrough'
 import { useToast } from '../../lib/toast'
 
@@ -30,24 +30,6 @@ interface StagedImage {
   png: Blob
   /** An object URL for the preview, revoked when the staging is dropped. */
   preview: string
-}
-
-/**
- * The image on the clipboard, or null. Files first — that is where a screenshot
- * pasted from the OS lands — then the items list, which is where some browsers
- * put an image copied out of another page.
- */
-function imageOnClipboard(data: DataTransfer | null): Blob | null {
-  if (!data) return null
-  for (const file of Array.from(data.files)) {
-    if (file.type.startsWith('image/')) return file
-  }
-  for (const item of Array.from(data.items)) {
-    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
-    const file = item.getAsFile()
-    if (file) return file
-  }
-  return null
 }
 
 /** Stage a picture for a note, converting whatever was pasted into PNG bytes. */
