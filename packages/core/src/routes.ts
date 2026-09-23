@@ -67,3 +67,14 @@ export function noteScreenshotUrl(noteId: string): string {
 export function noteScreenshotUploadUrl(noteId: string): string {
   return fillNoteId(NOTE_SCREENSHOT_UPLOAD_ROUTE, noteId)
 }
+
+export const PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE = '/project-note/:noteId/screenshot'
+export const PROJECT_NOTE_SCREENSHOT_ROUTE = `${PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE}.png`
+
+export function projectNoteScreenshotUrl(noteId: string): string {
+  return fillNoteId(PROJECT_NOTE_SCREENSHOT_ROUTE, noteId)
+}
+
+export function projectNoteScreenshotUploadUrl(noteId: string): string {
+  return fillNoteId(PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE, noteId)
+}
