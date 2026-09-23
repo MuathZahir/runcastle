@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import type { ProjectNote } from '@runcastle/core'
 import { newId, ProjectNote as ProjectNoteSchema, projectNoteScreenshotUrl } from '@runcastle/core'
 import { projectNotePath, projectNotesDir } from '@runcastle/core/paths'
-import { desc, eq, inArray } from 'drizzle-orm'
+import { and, count, desc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { features, projectNotes } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
@@ -58,7 +58,8 @@ export function listNotes(ctx: AppCtx, projectId: string): ProjectNote[] {
 }
 
 export function openCount(ctx: AppCtx, projectId: string): number {
-  return listNotes(ctx, projectId).filter((note) => note.status === 'open').length
+  return ctx.db.select({ value: count() }).from(projectNotes)
+    .where(and(eq(projectNotes.projectId, projectId), eq(projectNotes.status, 'open'))).get()?.value ?? 0
 }
 
 export function editNote(ctx: AppCtx, noteId: string, text: string): ProjectNote {
