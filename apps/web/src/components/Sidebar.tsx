@@ -387,6 +387,12 @@ export function SidebarResizeHandle({
  * It shows the project's own identity plus a live indicator while the intake
  * conversation is launching or up — the same "something is happening here" signal
  * a feature row gives for a run, driven by the same 1.5s poll.
+ *
+ * It also carries the open-note count (project-notes decisions #10). The badge
+ * belongs here rather than in the titlebar because this row IS the door the pile
+ * is read and triaged behind, and it is on every in-project screen — so the pile
+ * stays visible without the frame growing a counter of its own. Hidden at zero:
+ * an empty inbox is not news.
  */
 function ProjectRow({
   projectId,
@@ -402,6 +408,9 @@ function ProjectRow({
   // Same query key the nav polls — no extra fetch, just the project's name.
   const projects = trpc.project.list.useQuery()
   const project = projects.data?.find((p) => p.id === projectId)
+  // No interval of its own: every write to the pile emits a project event, and
+  // the stream invalidates this key with the rest (lib/live.ts).
+  const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
 
   return (
     <div className="shrink-0 border-b border-hairline-soft px-3 pb-3">
@@ -411,6 +420,13 @@ function ProjectRow({
         }`}
         onClick={onSelect}
         title="Talk to the project — intake, decomposition, and portfolio questions"
+        // The badge is a bare number; a screen reader should get what it counts,
+        // the same way the preparation row's own fragment is spelled out.
+        aria-label={
+          openNotes > 0
+            ? `${project?.name ?? 'This project'} — ${openNotes} open note${openNotes === 1 ? '' : 's'}`
+            : undefined
+        }
       >
         <span className={`flex shrink-0 items-center ${active ? '' : 'opacity-85'}`}>
           <LogoMark size={14} variant="outline" />
@@ -420,6 +436,14 @@ function ProjectRow({
         >
           {project?.name ?? 'This project'}
         </span>
+        {openNotes > 0 && (
+          <span
+            className="shrink-0 rounded-pill border border-hairline bg-panel-3 px-1.5 text-xs text-text-2"
+            title={`${openNotes} note${openNotes === 1 ? '' : 's'} waiting to be triaged`}
+          >
+            {openNotes}
+          </span>
+        )}
         {state === 'none' ? (
           <span className="shrink-0 text-xs tracking-[0.07em] text-text-3 uppercase">Project</span>
         ) : (
