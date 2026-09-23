@@ -978,3 +978,37 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
     />
   )
 }
+
+/**
+ * The picture a note is evidence for, as the door onto it: ~96×54, big enough
+ * to recognise the screen it was taken on, and a button because the full PNG
+ * opens in the app's own lightbox rather than in a bare browser tab.
+ *
+ * Shared because both lists of notes wear it — the review lap's rows and the
+ * project inbox's — and a thumbnail written out twice is two lightbox doors and
+ * two alt texts free to drift apart. Takes a nullable url and renders nothing
+ * for a note without a picture, so neither surface repeats that guard either.
+ */
+export function NoteThumbnail({
+  url,
+  onOpen,
+}: {
+  url: string | null | undefined
+  onOpen: (url: string) => void
+}) {
+  if (!url) return null
+  return (
+    <button
+      type="button"
+      className="h-[54px] w-24 shrink-0 overflow-hidden rounded-sm border border-hairline bg-black p-0 hover:border-accent-line"
+      title="see the whole picture"
+      onClick={() => onOpen(url)}
+    >
+      <img
+        src={url}
+        alt="the picture attached to this note"
+        className="h-full w-full object-cover"
+      />
+    </button>
+  )
+}

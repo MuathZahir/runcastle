@@ -6,7 +6,7 @@ import { relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { pathFor } from '../../lib/routes'
 import { useToast } from '../../lib/toast'
-import { Button, DimLine, SectionTitle } from '../../ui'
+import { Button, DimLine, NoteThumbnail, SectionTitle } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
 
 /**
@@ -228,8 +228,8 @@ function noteCount(n: number): string {
 /**
  * One row: the picture that justifies the note beside whatever the section makes
  * of it. Evidence-forward, on the anatomy the review notes list already uses —
- * the thumbnail is big enough to read and opens in the app rather than in a bare
- * browser tab.
+ * and on its actual thumbnail, {@link NoteThumbnail}, so the two lists of notes
+ * cannot drift into two lightbox doors.
  */
 function NoteLine({
   note,
@@ -240,23 +240,9 @@ function NoteLine({
   onOpenImage: (url: string) => void
   children: ReactNode
 }) {
-  const picture = note.screenshotUrl
   return (
     <div className="flex gap-3 border-t border-hairline-soft py-3 first:border-t-0">
-      {picture && (
-        <button
-          type="button"
-          className="h-[54px] w-24 shrink-0 overflow-hidden rounded-sm border border-hairline bg-black p-0 hover:border-accent-line"
-          title="see the whole picture"
-          onClick={() => onOpenImage(picture)}
-        >
-          <img
-            src={picture}
-            alt="the picture attached to this note"
-            className="h-full w-full object-cover"
-          />
-        </button>
-      )}
+      <NoteThumbnail url={note.screenshotUrl} onOpen={onOpenImage} />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="font-mono text-xs text-text-3">{relTime(note.createdAt)}</span>
         {children}
