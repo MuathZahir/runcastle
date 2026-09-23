@@ -817,7 +817,15 @@ describe('claudeRuntime.writeArtifacts', () => {
       return { prepare: { project, remainingKeys: ['devCommand'], established: [] } }
     }
     if (kind === 'project') {
-      return { projectBrief: { project, branch: 'runcastle/project', worktreePath: 'C:\\wt\\p' } }
+      return {
+        projectBrief: {
+          project,
+          branch: 'runcastle/project',
+          worktreePath: 'C:\\wt\\p',
+          base: 'main',
+          openNotes: 0,
+        },
+      }
     }
     if (kind === 'drive-fix') {
       return {
@@ -1032,7 +1040,13 @@ describe('codexRuntime.writeArtifacts', () => {
     // approval posture differs
     await launchSpec('project', {
       permissionMode: 'default',
-      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+      projectBrief: {
+        project,
+        branch: 'runcastle/project',
+        worktreePath: worktree,
+        base: 'main',
+        openNotes: 0,
+      },
     })
     expect(configToml('sess_codex_project')).toContain('[features]\nhooks = true')
   })
@@ -1040,7 +1054,13 @@ describe('codexRuntime.writeArtifacts', () => {
   it('maps the project session\'s `default` posture to an approval policy that asks', async () => {
     await launchSpec('project', {
       permissionMode: 'default',
-      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+      projectBrief: {
+        project,
+        branch: 'runcastle/project',
+        worktreePath: worktree,
+        base: 'main',
+        openNotes: 0,
+      },
     })
     const projected = configToml('sess_codex_project')
     // decision 18: a project session runs against the whole repo checkout, which
