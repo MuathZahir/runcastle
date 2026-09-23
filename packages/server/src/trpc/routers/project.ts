@@ -105,6 +105,9 @@ export const projectRouter = router({
    * Opens a NEW conversation by default (decision 5). `resumeSessionId` names a
    * row from {@link conversations} to pick back up instead; `fresh` says so
    * explicitly and overrules it.
+   *
+   * `purpose: 'triage'` is the Notes card's "Triage N notes" door: it briefs the
+   * new conversation to work the project's open notes, and never resumes.
    */
   talkToProject: publicProcedure
     .input(
@@ -112,6 +115,7 @@ export const projectRouter = router({
         projectId: z.string(),
         fresh: z.boolean().optional(),
         resumeSessionId: z.string().optional(),
+        purpose: z.literal('triage').optional(),
       }),
     )
     .mutation(({ ctx, input }) => launchProjectSession(ctx, input)),

@@ -5,8 +5,10 @@ import { dirname, join } from 'node:path'
 import type { EventRow, Project, SessionRow } from '@runcastle/core'
 import { SessionKind, isProjectSessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { sessions } from '../src/db/schema'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
   SESSION_BASH_READ_RULES,
@@ -24,6 +26,7 @@ import {
 } from '../src/launcher/sessions'
 import { endSession } from '../src/pty/end-session'
 import { listByProject } from '../src/services/events'
+import { addNote as addProjectNote } from '../src/services/project-notes'
 import type { ProjectLandResult } from '../src/services/git'
 import {
   PROJECT_BRANCH,
@@ -154,6 +157,7 @@ describe('the `project` session kind', () => {
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
       base: 'develop',
+      openNotes: 0,
     })
     expect(out).toContain(PROJECT_BRANCH)
     expect(out).toContain('/wt/__project')
@@ -184,10 +188,30 @@ describe('the `project` session kind', () => {
       branch: PROJECT_BRANCH,
       worktreePath: '/wt/__project',
       base: 'main',
+      openNotes: 0,
     })
     const task = out.slice(out.lastIndexOf('## Your task'))
     expect(task).toMatch(/open by asking/i)
     expect(task).toMatch(/do not explore/i)
+  })
+
+  /**
+   * The jotted pile, named at launch so a plain New chat can OFFER triage
+   * (spec: Briefing). Counted, never inlined — the texts would go stale the
+   * moment a note is jotted mid-chat, so the session reads them with its tool.
+   */
+  it('names the open-note count only when the project has open notes', () => {
+    const brief = {
+      project: { id: 'proj_1', name: 'acme', repoPath: '/repo' },
+      branch: PROJECT_BRANCH,
+      worktreePath: '/wt/__project',
+      base: 'main',
+    }
+    expect(renderProjectPrompt({ ...brief, openNotes: 3 })).toContain(
+      'This project has 3 open notes',
+    )
+    // an empty pile says nothing at all, rather than "0 open notes"
+    expect(renderProjectPrompt({ ...brief, openNotes: 0 })).not.toContain('open notes')
   })
 })
 
@@ -506,6 +530,54 @@ describe('launching, resuming and landing a project session', () => {
   // Which conversation a launch opens — a new one by default, a named past one
   // on request (decision 5) — lives in `project-conversations.test.ts` with the
   // rest of the list it belongs to.
+
+  /**
+   * The Notes card's "Triage N notes" door (decisions.md #6). Its briefing is the
+   * session's opening MOVE, so ADR-0009 #4 makes the launch fresh whatever
+   * conversation it was pointed at — a `--resume` shows Claude Code's "start from
+   * a summary?" chooser, which eats the keystrokes carrying the briefing.
+   */
+  it('carries the triage briefing in argv and never resumes', async () => {
+    const prior = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    endSession(ctx, prior.sessionId)
+    ctx.db
+      .update(sessions)
+      .set({ ccSessionId: 'cc-prior' })
+      .where(eq(sessions.id, prior.sessionId))
+      .run()
+    await awaitProjectLandings()
+
+    await launchProjectSession(
+      ctx,
+      { projectId: project.id, purpose: 'triage', resumeSessionId: prior.sessionId },
+      { spawn: false },
+    )
+
+    const command = launchCommand()
+    expect(command).toContain('list_project_notes')
+    expect(command).toContain('/runcastle:project')
+    expect(command).not.toContain('--resume')
+    expect(listByProject(ctx, project.id).map((e) => e.type)).not.toContain('session.resumed')
+  })
+
+  /** The one-live-session guard is orthogonal to the purpose and still stands. */
+  it('still refuses a triage launch while a chat is open', async () => {
+    await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    await expect(
+      launchProjectSession(ctx, { projectId: project.id, purpose: 'triage' }, { spawn: false }),
+    ).rejects.toThrow(/already open/i)
+  })
+
+  /** The count the system prompt states is the one the store holds at launch. */
+  it('states the open-note count in the system prompt it launches with', async () => {
+    addProjectNote(ctx, project.id, 'crumbs overflow on a long title')
+    addProjectNote(ctx, project.id, 'the burn page flashes on resolve')
+
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+
+    const prompt = readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8')
+    expect(prompt).toContain('This project has 2 open notes')
+  })
 
   it('lands the session’s commits on the base branch when the terminal ends', async () => {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
