@@ -1,11 +1,11 @@
 import { trpc } from '../trpc'
 import { projectStats, runsElsewhere } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
-import { modKey } from '../lib/platform'
+import { modKey, shortcut } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { WorkspaceView } from '../lib/project-workspace'
 import { Kbd } from '../ui'
-import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
+import { IconPanelRight, IconPencil, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
@@ -73,6 +73,8 @@ interface TitlebarProps {
   /** The selected feature's title — the third crumb on a feature view. */
   featureTitle: string | null
   onOpenCmdk: () => void
+  /** Open the note capture popover — the discoverable half of ⌘/Ctrl+J. */
+  onOpenNote: () => void
   onOpenSettings: () => void
   /** Up one level from the third crumb: this project with nothing selected. */
   onGoToProjectHome: () => void
@@ -90,6 +92,7 @@ export function TitlebarChrome({
   featureTitle,
   runsElsewhere: elsewhere,
   onOpenCmdk,
+  onOpenNote,
   onOpenSettings,
   onGoToProjectHome,
   onToggleInspector,
@@ -146,6 +149,19 @@ export function TitlebarChrome({
           <span className="truncate">Search or jump to…</span>
         </span>
         <Kbd>{mod}</Kbd>
+      </button>
+
+      {/* The note door, beside the palette's (decisions #3). The hotkey is the
+          ten-second path and this is what makes it findable without knowing it. */}
+      <button
+        className={`${TB_BUTTON} h-8 shrink-0 gap-1.5 bg-transparent px-2.5`}
+        onClick={onOpenNote}
+        title={`Jot a note about this project (${shortcut('J')})`}
+      >
+        <span className="flex items-center text-text-3 group-hover:text-text">
+          <IconPencil size={13} />
+        </span>
+        <span className="text-sm text-text-3 group-hover:text-text-2">Note</span>
       </button>
 
       {elsewhere > 0 && (
