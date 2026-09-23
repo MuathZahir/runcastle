@@ -1243,6 +1243,20 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(existsSync(join(worktree, '.gitignore'))).toBe(false)
   })
 
+  it('renders a skill’s on-demand references beside its SKILL.md', async () => {
+    const spec = await launchSpec('project')
+    const skillDir = join(worktree, '.agents', 'skills', 'project')
+
+    // `project/SKILL.md` sends a triage session to `./references/triage.md`; an
+    // instruction whose file was never installed is one Codex cannot follow.
+    const triage = join(skillDir, 'references', 'triage.md')
+    expect(spec.files).toContain(triage)
+    expect(readFileSync(triage, 'utf8')).toContain('# Notes triage')
+    // the whole on-demand set travels, not just the one a triage chat reads
+    expect(spec.files).toContain(join(skillDir, 'references', 'charter.md'))
+    expect(spec.files).toContain(join(skillDir, 'SKILL.md'))
+  })
+
   it('renders nothing into a worktree that is not on disk (the smoke path computes one)', async () => {
     const absent = join(tmpdir(), 'runcastle-codex-absent-wt')
     const spec = await launchSpec('chat', { worktreePath: absent })

@@ -324,6 +324,12 @@ const CODEX_SKILLS_IGNORE = '.agents/'
  * rather than a translation — the day a skill's prose changes, both runtimes get
  * it.
  *
+ * The whole skill DIRECTORY travels, not just its `SKILL.md`: several skills
+ * send the session to an on-demand `./references/<name>.md` (the project skill's
+ * triage procedure, its charter rules, prepare's recipes), and a reference the
+ * worktree never received is an instruction Codex cannot follow. A directory
+ * with no `SKILL.md` is not a skill and is skipped, as before.
+ *
  * The worktree is a real checkout of the feature branch, so the rendered files
  * must never become part of the human's diff. They are excluded through
  * `.git/info/exclude` — the repo's own `.gitignore` is the human's file and
@@ -341,16 +347,25 @@ function writeCodexSkills(worktreePath: string, packDir: string): string[] {
 
   const written: string[] = []
   for (const name of readdirSync(source)) {
-    const skill = join(source, name, 'SKILL.md')
-    if (!existsSync(skill)) continue
+    const skillDir = join(source, name)
+    if (!existsSync(join(skillDir, 'SKILL.md'))) continue
     const target = join(worktreePath, CODEX_SKILLS_REL, name)
-    mkdirSync(target, { recursive: true })
-    const path = join(target, 'SKILL.md')
-    copyFileSync(skill, path)
-    written.push(path)
+    cpSync(skillDir, target, { recursive: true })
+    written.push(...filesUnder(target))
   }
   if (written.length > 0) excludeFromGit(worktreePath, CODEX_SKILLS_IGNORE)
   return written
+}
+
+/** Every file under `dir`, recursively, as absolute paths. */
+function filesUnder(dir: string): string[] {
+  const paths: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) paths.push(...filesUnder(path))
+    else paths.push(path)
+  }
+  return paths
 }
 
 /**
