@@ -119,6 +119,7 @@ closes it does not also close the dialog around it.
 | `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
 | `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
 | `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |
+| `NoteThumbnail` | The picture attached to a note, ~96×54, as the button that opens it in the app's lightbox. Worn by both lists of notes — the review lap's rows and the project inbox's. Renders **nothing** without a url, so neither surface repeats that guard. | — |
 | `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
 | `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
 | `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |
