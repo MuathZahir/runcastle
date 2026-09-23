@@ -23,12 +23,12 @@ import { LiveChat } from './project/LiveChat'
  * At rest it is three pieces and nothing else (decisions.md #6): a header line
  * naming the branch this chat runs on and the branch its work lands on, the New
  * chat card, and the list — plus the Notes inbox between the last two, on the
- * projects that have jotted one. It used to carry a paragraph on every card — what the
- * chat already knows, what the landing branch means, why changing it would not
- * affect the chat already running — which is first-use explanation charged to
- * every visit. The chat's own greeting says what it knows; the landing branch
- * moved into a menu beside the button it argues (decisions.md #3), which is what
- * retired the grey note apologising for it.
+ * projects that have jotted one. It used to carry a paragraph on every card —
+ * what the chat already knows, what the landing branch means, why changing it
+ * would not affect the chat already running — which is first-use explanation
+ * charged to every visit. The chat's own greeting says what it knows; the
+ * landing branch moved into a menu beside the button it argues (decisions.md
+ * #3), which is what retired the grey note apologising for it.
  *
  * A list, not a terminal, is the resting state (decision 5). Only one chat runs
  * at a time — the launcher's rule — so a live conversation takes the body over,

@@ -91,7 +91,7 @@ export function NotesCard({
             title={open.length === 0 ? 'nothing is open to triage' : undefined}
             onClick={onTriage}
           >
-            {triaging ? 'Opening…' : `Triage ${countOf(open.length, 'note')}`}
+            {triaging ? 'Opening…' : `Triage ${noteCount(open.length)}`}
           </Button>
         </div>
 
@@ -221,8 +221,8 @@ function byNewest(notes: ProjectNote[]): ProjectNote[] {
 }
 
 /** `1 note` / `4 notes` — the button's count, spelled so it stays grammatical. */
-function countOf(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`
+function noteCount(n: number): string {
+  return `${n} note${n === 1 ? '' : 's'}`
 }
 
 /**
