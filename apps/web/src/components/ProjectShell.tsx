@@ -61,7 +61,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const [newChatRequest, setNewChatRequest] = useState(0)
   // Note capture is shell state for one reason: it is mounted HERE, so it exists
   // on every in-project screen and on none of the portfolio home (decisions #2).
+  // All three doors onto it — the titlebar button, the hotkey and the palette
+  // row — set the same flag (decisions #3).
   const [capturing, setCapturing] = useState(false)
+  const jot = () => setCapturing(true)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -201,7 +204,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         view={view}
         featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
-        onOpenNote={() => setCapturing(true)}
+        onOpenNote={jot}
         onOpenSettings={() => ws.openSettings()}
         onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
@@ -308,7 +311,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         // The palette navigates, it never launches: this opens the project
         // workspace, where the conversation list decides new-versus-resume.
         onOpenProjectChat={ws.selectProject}
-        onOpenNote={() => setCapturing(true)}
+        onOpenNote={jot}
         nav={nav}
       />
 

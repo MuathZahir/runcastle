@@ -5,7 +5,14 @@ import { modKey, shortcut } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { WorkspaceView } from '../lib/project-workspace'
 import { Kbd } from '../ui'
-import { IconPanelRight, IconPencil, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
+import {
+  IconPanelRight,
+  IconPencil,
+  IconSearch,
+  IconSettings,
+  LogoMark,
+  LogoWordmark,
+} from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
