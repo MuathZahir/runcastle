@@ -17,9 +17,12 @@ short list of findings the human can route.
 - Docs that drifted from the code — a `spec.md` the code has moved past is the
   common one.
 - `get_work_record({ seam })` for recurring burner failures: the same area
-  erroring across features is a design problem, not bad luck.
+  erroring across features is a design problem, not bad luck. Its rows carry
+  each ticket's error but no digest.
 - `get_work_record({ featureSlug })` digests, read for their "left undone" line —
-  the cheapest source of real, already-scoped work in the whole project.
+  the cheapest source of real, already-scoped work in the whole project. A
+  ticket marked `digestNotInlined: true` had its digest moved out for size;
+  read it with `get_work_record({ featureSlug, seq })`.
 - Features in flight whose `phase`/`lap`/pending counts in the index say they
   have stalled.
 

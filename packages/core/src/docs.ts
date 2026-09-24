@@ -100,3 +100,25 @@ export function agentDigestDocOrder(relPath: string): number {
   const i = (AGENT_DIGEST_DOCS as readonly string[]).indexOf(relPath.toLowerCase())
   return i === -1 ? AGENT_DIGEST_DOCS.length : i
 }
+
+/**
+ * The order canonical docs claim room in a size-capped payload
+ * (`get_feature_context`'s never-hidden ceiling): brief first, map last. Distinct
+ * from the {@link AGENT_DIGEST_DOCS} reading order, which other callers rely on.
+ */
+export const AGENT_DIGEST_FILL_ORDER: readonly AgentDigestDoc[] = [
+  'brief.md',
+  'decisions.md',
+  'spec.md',
+  'map.md',
+]
+
+/**
+ * Sort key for {@link AGENT_DIGEST_FILL_ORDER}, case-insensitive. A doc it does
+ * not rank sorts after every one it does, so it is the first to be moved out
+ * rather than the first to claim room.
+ */
+export function agentDigestFillRank(relPath: string): number {
+  const i = (AGENT_DIGEST_FILL_ORDER as readonly string[]).indexOf(relPath.toLowerCase())
+  return i === -1 ? AGENT_DIGEST_FILL_ORDER.length : i
+}

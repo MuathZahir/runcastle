@@ -30,7 +30,7 @@ import {
   TicketStatus,
   WaypointDisposition,
   WaypointInput,
-  agentDigestDocOrder,
+  agentDigestFillRank,
   isAgentDigestDoc,
   isPastPhase,
   isProjectSessionKind,
@@ -61,6 +61,7 @@ import {
   currentLapReviewEvidence,
 } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
+import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   carryFinding,
@@ -108,6 +109,7 @@ import {
   resolve as resolveWaypoint,
   storeWaypoints,
 } from '../services/waypoints'
+import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
  * runcastle MCP server (SPEC §6 + §13.3) — zod-validated tools over Streamable HTTP
@@ -257,22 +259,45 @@ export interface FeatureDocRef {
 }
 
 /**
- * A ticket as the WORKING context sees it: everything a session needs to plan,
- * amend or burn, minus the burner's after-the-fact `digest`.
+ * A ticket as the WORKING context sees it: a row, with the goal.
  *
- * The digest is dropped here for the same reason the run-level aggregate is
- * dropped from `get_work_record` (decision 7): `outcome.md` is literally built
- * by re-concatenating these digests (`services/outcome.ts`), so a payload that
- * inlines the outcome AND every digest pays twice for one set of facts. A
- * session that wants the burner's account asks `get_work_record`, which exists
- * for exactly that question.
- *
- * `goal`, `context` and `acceptanceCriteria` deliberately STAY: unlike the
- * digest they are the live work — the thing this session is here to edit, block,
- * cancel or complete — and a ticket without them is a title.
+ * One lap's ticket bodies alone reached 104K chars on a real feature, far past
+ * the point where Claude Code hides a reply from the agent (decisions.md #4 of
+ * `mcp-read-tools-stay-within-a-context-budget`). So the context carries every
+ * ticket's name, state and edges plus its `goal` — small, and the what-and-why
+ * that keeps a session from working off a title alone — and `get_ticket` serves
+ * the rest: context, acceptance criteria and the burner's digest.
  */
-export type FeatureContextTicket = Omit<Ticket, 'digest'>
+export type FeatureContextTicketRow = Pick<
+  Ticket,
+  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error'
+> & {
+  /** Absent only when moved out whole to fit the ceiling — then `goalNotInlined` says so. */
+  goal?: string
+  goalNotInlined?: true
+}
 
+/** An earlier lap whose ticket rows did not fit the ceiling, moved out whole. */
+export interface LapNotInlined {
+  lap: number
+  seqs: number[]
+}
+
+/** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
+export interface NotInlinedDoc {
+  relPath: string
+  /** The file on disk, in the reader's checkout when there is one. */
+  absPath: string
+  bytes: number
+  /** Why it is missing, and the instruction to read it before acting. */
+  reason: string
+}
+
+/**
+ * Key order is part of the contract: `JSON.stringify` keeps insertion order,
+ * and `featureContext` builds this header first so the decision-critical fields
+ * reach the agent in the first few hundred characters, never at the tail.
+ */
 export interface FeatureContext {
   feature: ReturnType<typeof getFeatureRow>
   phase: PhaseT
@@ -282,13 +307,18 @@ export interface FeatureContext {
    */
   lap: number
   /**
-   * The canonical docs (`AGENT_DIGEST_DOCS`) in full, in reading order:
-   * brief → map → decisions → spec.
+   * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
+   * ceiling, whole, in fill order: brief → decisions → spec → map.
    */
   docs: { relPath: string; content: string }[]
+  /**
+   * The canonical docs that did NOT fit — never truncated, moved out whole with
+   * a path to read them by. Empty when every one fit.
+   */
+  notInlined: NotInlinedDoc[]
   /** Every other doc that exists, as an index — fetch one with `read_feature_doc`. */
   moreDocs: FeatureDocRef[]
-  /** Says, in the payload itself, that `moreDocs` is fetchable rather than gone. */
+  /** Says, in the payload itself, that `moreDocs` and `notInlined` are fetchable rather than gone. */
   docsNote: string
   /**
    * The defects this feature's review left open, each with the fields a session
@@ -312,7 +342,7 @@ export interface FeatureContext {
    * `DIGEST.md` the review agent wrote, the screenshots and walkthrough beside
    * it, and how that pass ended. Paths rather than content, and the third thing
    * with no other channel: the directory is host scratch space outside the repo,
-   * and `tickets` below strips the very digest a session would otherwise read.
+   * and `tickets` below are rows, without the digest a session would otherwise read.
    *
    * Empty outside a lap (lap 1, or a previous lap whose review never burned).
    */
@@ -351,7 +381,15 @@ export interface FeatureContext {
    * keeps the lap that captured it, and asking only for this lap's would lose it.
    */
   testNotes: TestNote[]
-  tickets: FeatureContextTicket[]
+  tickets: FeatureContextTicketRow[]
+  /**
+   * Earlier laps whose rows were moved out whole because even goal-less rows
+   * would not fit (oldest lap first). Absent when every row fit. The current
+   * lap's rows are never moved out.
+   */
+  ticketsNotInlined?: LapNotInlined[]
+  /** Present whenever a goal or a lap's rows were moved out: how to fetch them. */
+  ticketsNote?: string
   /**
    * The models the operator annotated with a use-case note, and the only ones a
    * ticket may be assigned (decisions.md #4). Notes ARE the opt-in: an operator
@@ -381,10 +419,25 @@ export interface FeatureContext {
 }
 
 const DOCS_NOTE =
-  'docs[] holds this feature’s canonical docs in full. moreDocs[] is everything else that ' +
-  'exists in docs/features/<slug>/ — not inlined, not gone: read any of them with ' +
-  'read_feature_doc({ relPath }). A `withheld` reason means it was left out on purpose; fetch ' +
-  'it anyway if a ticket points at it.'
+  'docs[] holds this feature’s canonical docs in full. notInlined[] lists any canonical doc ' +
+  'too large to fit this reply without hiding it — never truncated, just moved out: read each ' +
+  'one before acting, with read_feature_doc({ relPath }) or the file at its absPath. ' +
+  'moreDocs[] is everything else that exists in docs/features/<slug>/ — not inlined, not ' +
+  'gone: read any of them with read_feature_doc({ relPath }). A `withheld` reason means it ' +
+  'was left out on purpose; fetch it anyway if a ticket points at it.'
+
+const TICKETS_NOTE =
+  'Some ticket detail did not fit this reply and was moved out whole, never truncated. A row ' +
+  'marked goalNotInlined: true has its goal in get_ticket({ seq }). ticketsNotInlined[] names ' +
+  'earlier laps whose rows were moved out: list_tickets indexes them and get_ticket({ seq }) ' +
+  'reads one. Fetch before acting on any of those tickets.'
+
+function notInlinedReason(relPath: string): string {
+  return (
+    'Not inlined: too large to fit this reply without hiding it. Read it before acting: ' +
+    `read_feature_doc({ relPath: '${relPath}' }) or the file at absPath.`
+  )
+}
 
 /**
  * The newest burn as a headline, or nothing at all when the feature has never
@@ -427,6 +480,14 @@ function latestBurnSummary(
  * `test-notes.md`, i.e. the postmortem of work the session was being asked to
  * continue past. An allowlist plus an index costs one extra call for the rare
  * doc that is actually wanted, and nothing at all for the common case.
+ *
+ * The whole reply stays under {@link MCP_READ_CEILING_CHARS}, past which Claude
+ * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
+ * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
+ * `notInlined`, a half-shown doc being worse than a plainly missing one. On a
+ * feature whose rows and to-do alone cross the ceiling, goals and then earlier
+ * laps' rows move out whole the same way, marked `goalNotInlined` and named in
+ * `ticketsNotInlined`.
  */
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
@@ -442,7 +503,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   const carried = carriedWork(ctx, feature.id)
   const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
 
-  const docs: { relPath: string; content: string }[] = []
+  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
+  const canonical: { doc: { relPath: string; content: string }; ref: NotInlinedDoc }[] = []
   const moreDocs: FeatureDocRef[] = []
   for (const summary of listDocs(ctx, feature)) {
     let content: string
@@ -452,7 +514,15 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       content = ''
     }
     if (isAgentDigestDoc(summary.relPath)) {
-      docs.push({ relPath: summary.relPath, content })
+      canonical.push({
+        doc: { relPath: summary.relPath, content },
+        ref: {
+          relPath: summary.relPath,
+          absPath: join(docsDir, summary.relPath),
+          bytes: Buffer.byteLength(content, 'utf8'),
+          reason: notInlinedReason(summary.relPath),
+        },
+      })
       continue
     }
     const withheld = withheldDocs[summary.relPath.toLowerCase()]
@@ -463,45 +533,108 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       ...(withheld ? { withheld } : {}),
     })
   }
-  docs.sort((a, b) => agentDigestDocOrder(a.relPath) - agentDigestDocOrder(b.relPath))
+  // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
+  canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
-  const context: FeatureContext = {
+  // A mapped feature also exposes its map state so any session can read the
+  // waypoints and pick up the frontier (claiming stays a server-only effect).
+  // A waypoint session works exactly the waypoint it claimed — surface it so
+  // the entry skill knows its assignment without guessing from the frontier.
+  // A run agent has no session id, so it correctly has no assignment.
+  const assigned =
+    feature.mapped && reader.sessionId
+      ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
+      : undefined
+
+  const header = {
     feature,
     phase: feature.phase,
     lap: feature.lap,
-    docs,
-    moreDocs,
-    docsNote: DOCS_NOTE,
-    openDefects: carried.openDefects,
-    carriedDefects: carried.carriedDefects,
-    reviewEvidence: carried.reviewEvidence,
-    ...latestBurnSummary(ctx, feature.id, allTickets),
-    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
-    findings,
-    testNotes,
-    tickets: allTickets.map(stripDigest),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
+    ...latestBurnSummary(ctx, feature.id, allTickets),
+    ...(feature.mapped
+      ? { frontierIds: waypointFrontier(ctx, feature.id).map((w) => w.id) }
+      : {}),
+    ...(assigned ? { assignedWaypointId: assigned.id } : {}),
+    reviewEvidence: carried.reviewEvidence,
+    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
   }
-  // A mapped feature also exposes its map state so any session can read the
-  // waypoints and pick up the frontier (claiming stays a server-only effect).
-  if (feature.mapped) {
-    context.waypoints = listWaypoints(ctx, feature.id)
-    context.frontierIds = waypointFrontier(ctx, feature.id).map((w) => w.id)
-    // A waypoint session works exactly the waypoint it claimed — surface it so
-    // the entry skill knows its assignment without guessing from the frontier.
-    // A run agent has no session id, so it correctly has no assignment.
-    const assigned = reader.sessionId
-      ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
-      : undefined
-    if (assigned) context.assignedWaypointId = assigned.id
+  const toDo = {
+    openDefects: carried.openDefects,
+    carriedDefects: carried.carriedDefects,
+    findings,
+    testNotes,
+    ...(feature.mapped ? { waypoints: listWaypoints(ctx, feature.id) } : {}),
+  }
+  let rows = allTickets.map(ticketRow)
+  const lapsNotInlined: LapNotInlined[] = []
+  // Built in priority order, and JSON keeps that order: the header the incident
+  // hid at the tail of an 80K reply now opens it (decisions.md #6).
+  const assemble = (docs: FeatureContext['docs'], notInlined: NotInlinedDoc[]): FeatureContext => ({
+    ...header,
+    tickets: rows,
+    ...(lapsNotInlined.length > 0 ? { ticketsNotInlined: lapsNotInlined } : {}),
+    ...(rows.length < allTickets.length || rows.some((row) => row.goalNotInlined)
+      ? { ticketsNote: TICKETS_NOTE }
+      : {}),
+    ...toDo,
+    docs,
+    notInlined,
+    moreDocs,
+    docsNote: DOCS_NOTE,
+  })
+  const allDocsOut = canonical.map((c) => c.ref)
+  const fits = (context: FeatureContext) => serializedLength(context) <= MCP_READ_CEILING_CHARS
+
+  // Docs are moved out first, because they are the one part with a cheap,
+  // well-known fetch — so they only claim room the rest leaves. When even the
+  // rest does not fit with every doc out, ticket detail moves out whole next,
+  // each part behind `get_ticket`: goals, oldest lap first (lowest seq first
+  // within a lap), then earlier laps' rows, oldest first. The current lap's rows
+  // and the lap's to-do never move.
+  for (const row of [...rows].sort((a, b) => a.lap - b.lap || a.seq - b.seq)) {
+    if (fits(assemble([], allDocsOut))) break
+    delete row.goal
+    row.goalNotInlined = true
+  }
+  const earlierLaps = [...new Set(rows.map((row) => row.lap))]
+    .filter((lap) => lap < feature.lap)
+    .sort((a, b) => a - b)
+  for (const lap of earlierLaps) {
+    if (fits(assemble([], allDocsOut))) break
+    lapsNotInlined.push({ lap, seqs: rows.filter((row) => row.lap === lap).map((row) => row.seq) })
+    rows = rows.filter((row) => row.lap !== lap)
+  }
+
+  // Every canonical doc starts in `notInlined`, and each is inlined in fill
+  // order only if the WHOLE reply still fits — measured with the later docs'
+  // index entries still counted, so the final shape is the one checked.
+  let context = assemble([], allDocsOut)
+  for (const { doc, ref } of canonical) {
+    const candidate = assemble(
+      [...context.docs, doc],
+      context.notInlined.filter((r) => r !== ref),
+    )
+    if (fits(candidate)) context = candidate
   }
   return context
 }
 
-function stripDigest(ticket: Ticket): FeatureContextTicket {
-  const { digest: _digest, ...rest } = ticket
-  return rest
+function ticketRow(ticket: Ticket): FeatureContextTicketRow {
+  return {
+    id: ticket.id,
+    seq: ticket.seq,
+    title: ticket.title,
+    status: ticket.status,
+    kind: ticket.kind,
+    lap: ticket.lap,
+    blockedBy: ticket.blockedBy,
+    ...(ticket.model !== undefined ? { model: ticket.model } : {}),
+    seams: ticket.seams,
+    ...(ticket.error !== undefined ? { error: ticket.error } : {}),
+    goal: ticket.goal,
+  }
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
@@ -568,6 +701,18 @@ export function toolListTickets(
       seams: t.seams,
     })),
   }
+}
+
+/**
+ * One ticket of the reader's own feature, in full: the stored row with its
+ * context, acceptance criteria and the burner's digest — everything the
+ * `get_feature_context` row leaves out. Addressed by `seq`, the number the UI,
+ * `blockedBy` and those rows all speak in.
+ */
+export function toolGetTicket(ctx: AppCtx, reader: FeatureReader, input: { seq: number }): Ticket {
+  const ticket = listByFeature(ctx, reader.featureId).find((t) => t.seq === input.seq)
+  if (!ticket) throw new NotFoundError(`ticket #${input.seq} not found on this feature`)
+  return ticket
 }
 
 /** A waypoint named the way the map speaks about it: id, seq and title. */
@@ -1492,8 +1637,14 @@ export interface BaseBranches {
   detectedMain: string
 }
 
+/**
+ * The key order is the reading order: what the project is and where a feature
+ * would cut from, then the charter that binds every decision, then the indexes.
+ */
 export interface ProjectContext {
   project: Project
+  /** The base a new feature would cut from; see {@link BaseBranches}. */
+  baseBranches: BaseBranches
   /** `CONTEXT.md` in full; absent when the project has no charter yet. */
   charter?: string
   /**
@@ -1503,16 +1654,29 @@ export interface ProjectContext {
   adrs: AdrRef[]
   /** Says, in the payload itself, that `adrs` is fetchable rather than gone. */
   adrsNote: string
-  /** One line per feature (decision 14 part 2); see {@link featureIndexLine}. */
+  /** One line per listed feature; see {@link featureIndex}. */
   featureIndex: string[]
-  /** The base a new feature would cut from; see {@link BaseBranches}. */
-  baseBranches: BaseBranches
+  /** Says where shipped features' docs live and how to reach an unlisted one. */
+  featureIndexNote: string
 }
 
 const ADRS_NOTE =
   'adrs[] is an index of the project’s LIVE decisions (superseded ones are already omitted), not ' +
   'their text. Read the ones your work touches with read_adr({ relPath }) — they bind you the ' +
   'same either way. They are also plain files in this worktree at docs/adr/.'
+
+const FEATURE_INDEX_NOTE =
+  'featureIndex lists every in-flight feature, then every draft, then the most recently shipped, ' +
+  'one `slug — title [state]` line each. A shipped feature’s docs live at docs/features/<slug>/ ' +
+  'in this worktree; an in-flight or draft feature’s docs live on an unmerged branch. Any ' +
+  'feature’s brief is read_feature_brief({ slug }); what one actually did is ' +
+  'get_work_record({ featureSlug }).'
+
+/**
+ * How many shipped features the index names, most recently shipped first
+ * (decision 8). Counted rather than dated, so a quiet project still lists some.
+ */
+export const FEATURE_INDEX_SHIPPED_CAP = 50
 
 /**
  * Everything that is true of the project right now: the row, the charter, an
@@ -1541,15 +1705,62 @@ export async function toolGetProjectContext(
   session: SessionRow,
 ): Promise<ProjectContext> {
   const project = requireProject(ctx, session)
+  const baseBranches = await readBaseBranches(project)
   const charter = readCharter(session.worktreePath)
   return {
     project,
+    baseBranches,
     ...(charter !== undefined ? { charter } : {}),
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
-    featureIndex: listFeatures(ctx, project.id).map(featureIndexLine),
-    baseBranches: await readBaseBranches(project),
+    featureIndex: featureIndex(ctx, project.id),
+    featureIndexNote: FEATURE_INDEX_NOTE,
   }
+}
+
+/**
+ * The project's features, one line each, sized to stay stable however many
+ * features the project eventually ships (decisions 7 and 8).
+ *
+ * Every in-flight feature and draft is always listed: collision detection needs
+ * all of them, and their docs are on no branch this session can read. Shipped
+ * features are listed most recently shipped first, up to
+ * {@link FEATURE_INDEX_SHIPPED_CAP}; a feature with no ship event sorts last.
+ * The older shipped ones and every archived one collapse into one closing line
+ * that names how many were left out and how to reach them — their docs are on
+ * disk, where a search answers "did we already do X?" better than a title list.
+ */
+function featureIndex(ctx: AppCtx, projectId: string): string[] {
+  const all = listFeatures(ctx, projectId)
+  const shipped = all
+    .filter((f) => f.status === 'shipped')
+    .map((feature) => ({ feature, shippedAt: latestEventTs(ctx, feature.id, 'feature.shipped') }))
+    .sort((a, b) => {
+      if (a.shippedAt === undefined) return b.shippedAt === undefined ? 0 : 1
+      if (b.shippedAt === undefined) return -1
+      return b.shippedAt - a.shippedAt
+    })
+    .map(({ feature }) => feature)
+  const listed = [
+    ...all.filter((f) => f.status === 'active'),
+    ...all.filter((f) => f.status === 'draft'),
+    ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
+  ]
+  const lines = listed.map(featureIndexLine)
+
+  const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
+  const archived = all.filter((f) => f.status === 'archived').length
+  const left = [
+    ...(olderShipped > 0 ? [`${olderShipped} older shipped`] : []),
+    ...(archived > 0 ? [`${archived} archived`] : []),
+  ]
+  if (left.length > 0) {
+    lines.push(
+      `… ${left.join(' and ')} features not listed: search docs/features/*/brief.md on disk, ` +
+        'or read_feature_brief({ slug }) if you know the slug.',
+    )
+  }
+  return lines
 }
 
 /**
@@ -1607,36 +1818,72 @@ export function toolReadAdr(
 }
 
 /**
- * One feature, one line — and for an in-flight feature, one line the portfolio
- * lookup can actually be DONE with.
+ * One feature, one line: `slug — title [state]`, and nothing longer.
  *
- * A shipped feature gets its slug, one-liner and docs path: its record is on
- * disk and readable. Decision 16 then withheld everything from an in-flight
- * feature but its title, on the ground that a one-liner and a docs path living
- * only on an unmerged branch promise a read that cannot happen. That is right
- * about the DOCS PATH and it stays — but it was over-applied. The project
- * session's skill makes the portfolio lookup mandatory ("'I did not check' is
- * not a thing this session is allowed to say") and names collision-detection
- * between in-flight features as its job, while `get_work_record` matches on
- * SLUG — which this line never gave it. Slug, phase, lap and the ticket counts
- * are all in SQLite, are true of the feature rather than of a branch, and are
- * the difference between an index and a list of titles.
+ * The one-liner is gone from every line (decision 7): one-liners grew into
+ * paragraphs and were most of the payload, and `read_feature_brief` serves one
+ * on request. The per-line docs path went with it; the index note says once
+ * where shipped docs live. The in-flight state keeps what the portfolio lookup
+ * is asked for — phase, lap and ticket counts, all true of the feature in
+ * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
+ * and `read_feature_brief` match on.
  */
 function featureIndexLine(feature: FeatureListItem): string {
-  if (feature.status === 'shipped') {
-    return `${feature.slug} — ${feature.oneLiner} [shipped] ${featureDocsRel(feature.slug)}/`
-  }
-  if (feature.status === 'archived' || feature.status === 'draft') {
-    return `${feature.slug} — ${feature.title} [${feature.status}]`
-  }
+  if (feature.status !== 'active') return `${feature.slug} — ${feature.title} [${feature.status}]`
   const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
   if (feature.mapped) state.push('mapped')
-  // The one-liner and the docs path stay withheld: both live on the unmerged
-  // branch, and the docs cannot be read from this worktree at all.
   return `${feature.slug} — ${feature.title} [${state.join(', ')}]`
+}
+
+/** One feature's brief on request: the fetch-one behind a slim index line. */
+export interface FeatureBrief {
+  slug: string
+  title: string
+  oneLiner: string
+  status: FeatureStatusT
+  phase: PhaseT
+  lap: number
+  /** Absent when neither the docs on disk nor the database recorded one. */
+  brief?: string
+  /** Present only when `brief` is absent, saying so. */
+  note?: string
+}
+
+/**
+ * Any feature of the project, by slug: what it is for, from wherever its brief
+ * is true (decision 7). A shipped feature's brief is `brief.md` in this
+ * session's worktree, where the merge put it, falling back to the database row
+ * if the file is gone. An in-flight or draft feature's docs live on an
+ * unmerged branch this session cannot read, so its brief is the database's.
+ */
+export function toolReadFeatureBrief(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { slug: string },
+): FeatureBrief {
+  const project = requireProject(ctx, session)
+  const feature = listFeatures(ctx, project.id).find((f) => f.slug === input.slug)
+  if (!feature) throw new NotFoundError(`feature not found: ${input.slug}`)
+
+  const onDisk = join(session.worktreePath, featureDocsRel(feature.slug), 'brief.md')
+  const brief =
+    feature.status === 'shipped' && existsSync(onDisk)
+      ? readFileSync(onDisk, 'utf8')
+      : feature.brief
+  return {
+    slug: feature.slug,
+    title: feature.title,
+    oneLiner: feature.oneLiner,
+    status: feature.status,
+    phase: feature.phase,
+    lap: feature.lap,
+    ...(brief !== undefined
+      ? { brief }
+      : { note: 'No brief was recorded for this feature, on disk or in the database.' }),
+  }
 }
 
 /** One ticket as history: what it touched and what came of it, never its intent. */
@@ -1647,8 +1894,13 @@ export interface WorkRecordTicket {
   seams: string[]
   commits: string[]
   error?: string
-  /** The burner's own account of the work, written just before it signalled done. */
+  /**
+   * The burner's own account of the work, written just before it signalled
+   * done. Only the slug and seq forms serve it; the seam form lists.
+   */
   digest?: string
+  /** The digest exists but was moved out whole to stay under the ceiling. */
+  digestNotInlined?: true
 }
 
 export interface WorkRecordRun {
@@ -1669,6 +1921,12 @@ export interface WorkRecordFeature {
   tickets: WorkRecordTicket[]
 }
 
+export interface WorkRecord {
+  features: WorkRecordFeature[]
+  /** Present only when digests were moved out, saying how to fetch one. */
+  note?: string
+}
+
 /**
  * The work record (decision 15): facts about what features actually DID.
  *
@@ -1686,24 +1944,37 @@ export interface WorkRecordFeature {
  * run-level aggregate does not: it is these same digests re-concatenated, and
  * serving both would double the response for no new fact (decision 7).
  *
- * Queryable two ways. By slug: "what did X actually do?". By seam: "who has
- * touched this before?" — a case-insensitive SUBSTRING match, because seams are
- * uncoordinated free prose across features (decision 27) and exact equality
- * would under-report invisibly. A feature contributes only its matching tickets.
+ * Queryable three ways (decision 9 of `mcp-read-tools-stay-within-a-context-budget`):
+ * - By seam: "who has touched this before?" — a case-insensitive SUBSTRING
+ *   match, because seams are uncoordinated free prose across features
+ *   (decision 27) and exact equality would under-report invisibly. A feature
+ *   contributes only its matching tickets, as rows WITHOUT digests: a sideways
+ *   search finds who touched an area, and inlining every feature's digests is
+ *   what made it overflow.
+ * - By slug: "what did X actually do?" — digests inline, except that when the
+ *   reply would cross {@link MCP_READ_CEILING_CHARS} they are moved out whole,
+ *   oldest lap first, each marked `digestNotInlined`. Never truncated.
+ * - By slug and seq: that one ticket, digest included — the drill-down.
  */
 export function toolGetWorkRecord(
   ctx: AppCtx,
   session: SessionRow,
-  input: { featureSlug?: string; seam?: string },
-): { features: WorkRecordFeature[] } {
+  input: { featureSlug?: string; seam?: string; seq?: number },
+): WorkRecord {
   const project = requireProject(ctx, session)
   const slug = input.featureSlug?.trim()
-  const seam = input.seam?.trim().toLowerCase()
+  const seq = input.seq
+  if (seq !== undefined && !slug) {
+    throw new InvalidInputError('get_work_record takes seq only together with its featureSlug')
+  }
+  const seam = seq === undefined ? input.seam?.trim().toLowerCase() : undefined
   if (!slug && !seam) {
     throw new InvalidInputError('get_work_record needs a featureSlug or a seam to look up')
   }
 
   const records: WorkRecordFeature[] = []
+  // The laps the slug form moves digests out by; rows never carry the lap.
+  const lapBySeq = new Map<number, number>()
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
@@ -1711,6 +1982,11 @@ export function toolGetWorkRecord(
       tickets = tickets.filter((t) => t.seams.some((s) => s.toLowerCase().includes(seam)))
       if (tickets.length === 0) continue
     }
+    if (seq !== undefined) {
+      tickets = tickets.filter((t) => t.seq === seq)
+      if (tickets.length === 0) throw new NotFoundError(`ticket #${seq} not found on ${slug}`)
+    }
+    for (const t of tickets) lapBySeq.set(t.seq, t.lap)
     const shippedAt = latestEventTs(ctx, feature.id, 'feature.shipped')
     records.push({
       slug: feature.slug,
@@ -1731,12 +2007,33 @@ export function toolGetWorkRecord(
         seams: t.seams,
         commits: t.commits,
         ...(t.error !== undefined ? { error: t.error } : {}),
-        ...(t.digest !== undefined ? { digest: t.digest } : {}),
+        ...(!seam && t.digest !== undefined ? { digest: t.digest } : {}),
       })),
     })
   }
-  return { features: records }
+  if (seq !== undefined && records.length === 0) {
+    throw new NotFoundError(`feature not found: ${slug}`)
+  }
+
+  const record: WorkRecord = { features: records }
+  if (seam || seq !== undefined) return record
+  // The slug form names one feature, so every digest here is that feature's.
+  const movable = records
+    .flatMap((f) => f.tickets)
+    .filter((t) => t.digest !== undefined)
+    .sort((a, b) => (lapBySeq.get(a.seq) ?? 0) - (lapBySeq.get(b.seq) ?? 0) || a.seq - b.seq)
+  for (const ticket of movable) {
+    if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
+    delete ticket.digest
+    ticket.digestNotInlined = true
+    record.note = WORK_RECORD_DIGESTS_NOTE
+  }
+  return record
 }
+
+const WORK_RECORD_DIGESTS_NOTE =
+  'Some digests did not fit and were moved out whole, oldest lap first: each such ticket carries ' +
+  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
 
 // --- MCP server assembly ----------------------------------------------------
 
@@ -1832,6 +2129,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_feature_context: [...FEATURE_KINDS, 'run'],
   read_feature_doc: [...FEATURE_KINDS, 'run'],
   list_tickets: [...FEATURE_KINDS, 'run'],
+  get_ticket: [...FEATURE_KINDS, 'run'],
   emit_tickets: FEATURE_KINDS,
   update_ticket: FEATURE_KINDS,
   cancel_ticket: FEATURE_KINDS,
@@ -1850,6 +2148,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_project_context: PROJECT_KINDS,
   read_adr: PROJECT_KINDS,
   get_work_record: PROJECT_KINDS,
+  read_feature_brief: PROJECT_KINDS,
   list_project_notes: ['project'],
   triage_project_note: ['project'],
   update_project_note: ['project'],
@@ -2204,15 +2503,17 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get project context',
         description:
-          'The project as it stands: the project row, the charter (CONTEXT.md) in full, an INDEX ' +
-          'of every live ADR (superseded ones omitted) and a one-line index of every feature. ' +
-          'ADR bodies are not inlined — read the ones your work touches with `read_adr`. Shipped ' +
-          'features carry their one-liner and docs path (readable on disk); in-flight ones carry ' +
-          'slug, phase, lap and ticket counts but no docs path, because their docs live on an ' +
-          'unmerged branch. Use the slug with `get_work_record` to see what one actually did. ' +
-          'Plus `baseBranches` — the branch a new feature would cut from: the checkout’s `current` ' +
-          'branch, `currentIsSelectable` (false mid test drive or on a detached HEAD, the one case ' +
-          'with no default), every `selectable` base, and the `detectedMain` line to suggest then.',
+          'The project as it stands, in this order: the project row; `baseBranches` — the branch ' +
+          'a new feature would cut from: the checkout’s `current` branch, `currentIsSelectable` ' +
+          '(false mid test drive or on a detached HEAD, the one case with no default), every ' +
+          '`selectable` base, and the `detectedMain` line to suggest then; the charter ' +
+          '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
+          'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
+          'lines: every in-flight feature (phase, lap, ticket counts), then every draft, then the ' +
+          `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped. Older shipped and archived ` +
+          'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
+          'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
+          '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -2307,6 +2608,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  if (wants('read_feature_brief')) {
+    server.registerTool(
+      'read_feature_brief',
+      {
+        title: 'Read a feature brief',
+        description:
+          'Any feature of the project, by slug: { slug, title, oneLiner, status, phase, lap, ' +
+          'brief } — what it is for, behind the one line `get_project_context` indexes it by. A ' +
+          'shipped feature’s brief is its docs/features/<slug>/brief.md in this worktree; an ' +
+          'in-flight or draft feature’s comes from the database, because its docs live on an ' +
+          'unmerged branch. When neither recorded one, `brief` is absent and a `note` says so.',
+        inputSchema: {
+          slug: z
+            .string()
+            .min(1)
+            .describe('A feature slug, exactly as `get_project_context`’s index spells it.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolReadFeatureBrief(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
   if (wants('get_work_record')) {
     server.registerTool(
       'get_work_record',
@@ -2314,10 +2641,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Get work record',
         description:
           'What features actually DID — facts only: per feature its status, ship date, run ' +
-          'summaries and tickets as { seq, title, status, seams, commits, error?, digest? }. The ' +
-          'digest is the burner’s own account, written after the work: what it did, what ' +
-          'surprised it, what it left undone. Never a ticket’s goal or acceptance criteria — ' +
-          'those are intent from before the code existed. Send exactly one of the two arguments.',
+          'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
+          '`featureSlug` each ticket also carries its `digest`: the burner’s own account, written ' +
+          'after the work — what it did, what surprised it, what it left undone. If they would not ' +
+          'all fit, the oldest laps’ digests are moved out whole and those tickets say ' +
+          '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
+          'a `featureSlug` to get that one ticket with its digest. Never a ticket’s goal or ' +
+          'acceptance criteria — those are intent from before the code existed. Send a ' +
+          'featureSlug (optionally with seq) or a seam.',
         inputSchema: z.union([
           z.object({
             featureSlug: z
@@ -2325,6 +2656,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
               .min(1)
               .describe('A feature slug, exactly as `get_project_context`’s index spells it: "what did X do?"'),
             seam: z.string().min(1).optional(),
+            seq: z
+              .number()
+              .int()
+              .min(1)
+              .optional()
+              .describe(
+                'One ticket of that feature, by its seq, returned alone with its digest — how to ' +
+                  'read a digest marked `digestNotInlined`.',
+              ),
           }),
           z.object({
             featureSlug: z.string().min(1).optional(),
@@ -2337,6 +2677,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
                   'are free prose that differs between features — so a short fragment ' +
                   '("router") finds more than an exact phrase.',
               ),
+            // Accepted only so the tool can refuse it: zod would otherwise strip a
+            // `seq` sent without its featureSlug and run a plain seam search.
+            seq: z.number().int().min(1).optional(),
           }),
         ]),
       },
@@ -2354,21 +2697,25 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get feature context',
         description:
-          'Everything true of the current feature: the feature row, its phase and lap, its ' +
-          'canonical docs (brief, map, decisions, spec) in full, an INDEX of every other doc in ' +
-          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. `latestRun` ' +
-          'is how the newest burn went — its status, how many tickets landed or failed, and each ' +
-          'failure’s headline — absent only on a feature that has never burned. `currentLapReview` ' +
-          'says what THIS lap’s review passes did and where each left its evidence, `findings` is ' +
-          'every defect they reported, and `testNotes` the drive notes that still stand. Mapped ' +
-          'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
-          'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
-          'not the burner’s post-hoc digest — ask `get_work_record` for that. `reviewEvidence` ' +
-          'names, by absolute path, where the PREVIOUS lap’s review agent left its DIGEST.md, ' +
-          'screenshots and walkthrough — read them before planning a lap. `annotatedModels` ' +
-          'lists the models the operator described a use case for — the only ones `emit_tickets` ' +
-          'may assign (empty when they annotated none). `burnConcurrency` is how many tickets ' +
-          'this project burns at once — budget a batch’s blocking edges against it.',
+          'Everything true of the current feature, as a summary that never grows past what you ' +
+          'can see. It opens with a header: the feature row, phase, lap, `annotatedModels` (the ' +
+          'models the operator described a use case for — the only ones `emit_tickets` may ' +
+          'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
+          'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
+          'the newest burn went; absent only on a feature that has never burned), `frontierIds` ' +
+          'and `assignedWaypointId` on mapped features, `reviewEvidence` (where the PREVIOUS ' +
+          'lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
+          'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
+          'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
+          '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
+          '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
+          'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
+          'Then this lap’s to-do in full: `openDefects`, ' +
+          '`carriedDefects`, `findings`, `testNotes`, and `waypoints` on mapped features. Last, ' +
+          'the canonical docs (brief, decisions, spec, map) in full while they fit; any doc in ' +
+          '`notInlined` was too large to include and MUST be read before acting ' +
+          '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
+          'docs/features/<slug>/.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -2415,7 +2762,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
           'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
           'from; use it instead of `get_feature_context` when you only need to find or name a ' +
-          'ticket. Full ticket bodies are in `get_feature_context`.',
+          'ticket. A ticket’s full body is `get_ticket({ seq })`.',
         inputSchema: {
           status: TicketStatus.optional().describe(
             'Return only tickets in this state. Omit for all of them, across every lap.',
@@ -2426,6 +2773,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const r = await resolveReader(extra)
         if (!r) return noSession()
         return ok(toolListTickets(r.ctx, r.reader, args))
+      },
+    )
+  }
+
+  if (wants('get_ticket')) {
+    server.registerTool(
+      'get_ticket',
+      {
+        title: 'Get a ticket',
+        description:
+          'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
+          'blockedBy, status, error, and the burner’s `digest` of what the burn actually did. ' +
+          '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
+          'rest here before editing, reviewing or planning around a ticket.',
+        inputSchema: {
+          seq: z
+            .number()
+            .int()
+            .min(1)
+            .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.'),
+        },
+      },
+      async (args, extra) => {
+        const r = await resolveReader(extra)
+        if (!r) return noSession()
+        return ok(toolGetTicket(r.ctx, r.reader, args))
       },
     )
   }

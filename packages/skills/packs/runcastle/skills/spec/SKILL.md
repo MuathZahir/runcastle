@@ -11,7 +11,7 @@ Turn the ideation conversation plus `docs/features/<slug>/decisions.md` into a s
 
 ## Process
 
-1. **Load state.** `mcp__runcastle__get_feature_context` for the feature, the locked `decisions.md`, and any existing `spec.md` (this may be a re-run). Explore the codebase for its current state if you have not already; use the project's domain vocabulary throughout and respect any ADRs in the area you touch.
+1. **Load state.** `mcp__runcastle__get_feature_context` for the feature, the locked `decisions.md`, and any existing `spec.md` (this may be a re-run). A canonical doc too large to inline arrives in `notInlined` instead of `docs[]` — read it (`mcp__runcastle__read_feature_doc({ relPath })` or the file at its `absPath`) before writing a word; tickets arrive as summary rows with their `goal`, and `mcp__runcastle__get_ticket({ seq })` holds a ticket's context, acceptance criteria and digest. Explore the codebase for its current state if you have not already; use the project's domain vocabulary throughout and respect any ADRs in the area you touch.
 
 2. **Sketch the seams** — the public boundaries the feature will be tested at. Prefer *existing* seams to new ones; use the *highest* seam possible; the fewer across the codebase, the better — the ideal is one. If new seams are needed, propose them at the highest point you can. These seams flow straight into the tickets and the burner, so get them right here.
 

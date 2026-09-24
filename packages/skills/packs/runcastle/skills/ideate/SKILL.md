@@ -15,12 +15,12 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 0. Orient
 
-1. Call `mcp__runcastle__get_feature_context`. It returns the feature (`slug`, `title`, `oneLiner`), current `phase` and `lap`, the canonical docs inlined in `docs[]` (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), an index of every other doc in `moreDocs[]` (fetch one with `mcp__runcastle__read_feature_doc({ relPath })`), and any tickets.
+1. Call `mcp__runcastle__get_feature_context`. It opens with a header — the feature (`slug`, `title`, `oneLiner`), current `phase` and `lap`, `annotatedModels`, `burnConcurrency` — then any tickets as summary rows (`seq`, `title`, `status`, `goal`, …; a ticket's context, acceptance criteria and digest come from `mcp__runcastle__get_ticket({ seq })`), then the canonical docs inlined in `docs[]` (`brief.md`, and any `decisions.md` — **this may be a resumed session; read what is already locked and do not re-ask it**), and an index of every other doc in `moreDocs[]` (fetch one with `mcp__runcastle__read_feature_doc({ relPath })`). A canonical doc too large to inline is listed in `notInlined` with its `relPath` and `absPath` instead — **read it before acting**, with `read_feature_doc` or off disk.
 2. Decisions live at `docs/features/<slug>/decisions.md` in this worktree. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state.
 
 **Your tools**, and there are not many — this session's real work is the conversation:
 
-- `mcp__runcastle__get_feature_context` / `mcp__runcastle__read_feature_doc` / `mcp__runcastle__list_tickets` — the record.
+- `mcp__runcastle__get_feature_context` / `mcp__runcastle__read_feature_doc` / `mcp__runcastle__list_tickets` / `mcp__runcastle__get_ticket` — the record.
 - `mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` — park scope creep as a draft feature (§1). `draft: true` is the only door open to you; a full create belongs to the project session.
 - `mcp__runcastle__escalate_to_map` + `mcp__runcastle__emit_waypoints` — the escalation branch (§3). This is the entire entry point into mapped ideation: no other surface charts a map from a linear feature.
 - `mcp__runcastle__complete_phase` — the phase boundaries (§4), and the ones `/runcastle:spec` and `/runcastle:tickets` cross after you.

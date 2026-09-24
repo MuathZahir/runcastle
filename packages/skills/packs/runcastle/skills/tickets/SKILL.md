@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # Tickets
 
-Break the work into **tickets** — vertical slices, each cutting end-to-end through every layer it needs, each big enough to be worth a whole agent session and small enough to finish inside one — and emit them to the runcastle store via `mcp__runcastle__emit_tickets`. You are still in the unbroken ideation window: synthesize from the spec (`docs/features/<slug>/spec.md`). Do not compact or clear.
+Break the work into **tickets** — vertical slices, each cutting end-to-end through every layer it needs, each big enough to be worth a whole agent session and small enough to finish inside one — and emit them to the runcastle store via `mcp__runcastle__emit_tickets`. You are still in the unbroken ideation window: synthesize from the spec (`docs/features/<slug>/spec.md`). Do not compact or clear. If `get_feature_context` lists a canonical doc in `notInlined`, read it before you slice. Its existing tickets are summary rows (`seq`, `title`, `status`, `goal`, …); `mcp__runcastle__get_ticket({ seq })` holds one ticket's context, acceptance criteria and digest.
 
 ## The one thing that makes a runcastle ticket different
 
@@ -87,7 +87,7 @@ Each ticket:
 
 ### Assigning a model (only from the annotated roster)
 
-`mcp__runcastle__get_feature_context` returns `annotatedModels`: `{ id, runtime, note }` for the models the human wrote a use-case note against, and only those. That list is the *entire* set of ids you may put in a ticket's `model`.
+`mcp__runcastle__get_feature_context` returns `annotatedModels` in its header: `{ id, runtime, note }` for the models the human wrote a use-case note against, and only those. That list is the *entire* set of ids you may put in a ticket's `model`.
 
 - **Empty list → never set `model`.** The human annotated nothing, so there is no stated reason to prefer one model over another. Omit the field on every ticket.
 - **Non-empty → set it only where a note actually fits the ticket.** The note is the human's own vocabulary for what that model is good at ("UI/UX taste", "mechanical refactors"); assign it when this ticket's work is plainly that, and leave the field unset when nothing in the list speaks to it. Unset is the good default — it falls through to the model the project already burns on.

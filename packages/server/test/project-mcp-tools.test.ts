@@ -1,16 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { newId } from '@runcastle/core'
-import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { projectNotePath } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
-import { projectNotes, runs } from '../src/db/schema'
+import { Hono } from 'hono'
+import { simpleGit } from 'simple-git'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { projectNotes, runs, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { GateError, InvalidInputError } from '../src/errors'
+import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow } from '../src/launcher/sessions'
-import {
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import mcpApp, {
+  FEATURE_INDEX_SHIPPED_CAP,
   toolCancelTicket,
   toolCompletePhase,
   toolCreateFeature,
@@ -22,12 +24,14 @@ import {
   toolGetWorkRecord,
   toolListProjectNotes,
   toolReadAdr,
+  toolReadFeatureBrief,
   toolRecordEvent,
   toolResolveWaypoint,
   toolTriageProjectNote,
   toolUpdateProjectNote,
   toolUpdateTicket,
 } from '../src/mcp/server'
+import { MCP_READ_CEILING_CHARS, serializedLength } from '../src/mcp/read-ceiling'
 import { emit, listByProject } from '../src/services/events'
 import { openProject } from '../src/services/projects'
 import {
@@ -462,20 +466,127 @@ describe('project-session MCP tools', () => {
       InvalidInputError,
     )
 
-    expect(out.featureIndex).toContain(
-      'laps — one trip round the pipeline [shipped] docs/features/laps/',
-    )
-    // The in-flight line now carries what the portfolio lookup is asked for:
-    // the SLUG (`get_work_record` matches on it, and the index never gave it),
-    // the pipeline position and the ticket counts. All of it is in SQLite and
-    // true of the feature rather than of an unmerged branch.
-    expect(out.featureIndex).toContain(
+    // Every line is `slug — title [state]`: the in-flight state carries what the
+    // portfolio lookup is asked for (phase, lap, ticket counts), and no line
+    // carries a one-liner or a docs path — one note says where shipped docs live.
+    expect(out.featureIndex).toEqual([
       'promotion-at-merge — Promotion at merge [in flight: planning, lap 1, 2 pending]',
-    )
-    // Decision 16 still holds where it was right: the one-liner and the docs
-    // path live on the unmerged branch and stay withheld.
+      'laps — Laps [shipped]',
+    ])
     expect(out.featureIndex.join('\n')).not.toContain('must not appear')
-    expect(out.featureIndex.join('\n')).not.toContain('docs/features/promotion-at-merge')
+    expect(out.featureIndex.join('\n')).not.toContain('one trip round the pipeline')
+    expect(out.featureIndex.join('\n')).not.toContain('docs/features/')
+    expect(out.featureIndexNote).toContain('docs/features/<slug>/')
+    expect(out.featureIndexNote).toContain('read_feature_brief')
+
+    // The reading order: what the project is, then the charter, then the indexes.
+    expect(Object.keys(out)).toEqual([
+      'project',
+      'baseBranches',
+      'charter',
+      'adrs',
+      'adrsNote',
+      'featureIndex',
+      'featureIndexNote',
+    ])
+  })
+
+  it('groups the index in flight, then drafts, then shipped most recently first', async () => {
+    const olderShip = seedFeature(ctx, projectId, { slug: 'older-ship', title: 'Older ship' })
+    setFeatureStatus(ctx, olderShip.id, 'shipped')
+    seedFeature(ctx, projectId, { slug: 'parked', title: 'Parked', status: 'draft' })
+    const newerShip = seedFeature(ctx, projectId, { slug: 'newer-ship', title: 'Newer ship' })
+    setFeatureStatus(ctx, newerShip.id, 'shipped')
+    const neverMarked = seedFeature(ctx, projectId, { slug: 'no-ship-event', title: 'No event' })
+    setFeatureStatus(ctx, neverMarked.id, 'shipped')
+    seedFeature(ctx, projectId, { slug: 'burning', title: 'Burning', phase: 'building' })
+    seedFeature(ctx, projectId, { slug: 'shelved', title: 'Shelved', status: 'archived' })
+    // Ship order is the timeline's, not the feature rows' creation order.
+    emit(ctx, newerShip.id, { type: 'feature.shipped', message: 'merged' })
+    await new Promise((r) => setTimeout(r, 5))
+    emit(ctx, olderShip.id, { type: 'feature.shipped', message: 'merged' })
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    expect(out.featureIndex).toEqual([
+      'burning — Burning [in flight: building, lap 1]',
+      'parked — Parked [draft]',
+      'older-ship — Older ship [shipped]',
+      'newer-ship — Newer ship [shipped]',
+      'no-ship-event — No event [shipped]',
+      '… 1 archived features not listed: search docs/features/*/brief.md on disk, or ' +
+        'read_feature_brief({ slug }) if you know the slug.',
+    ])
+  })
+
+  it('lists every in-flight feature and draft, but only the 50 most recently shipped', async () => {
+    for (let i = 1; i <= 3; i++) seedFeature(ctx, projectId, { slug: `live-${i}`, title: `Live ${i}` })
+    for (let i = 1; i <= 2; i++) {
+      seedFeature(ctx, projectId, { slug: `draft-${i}`, title: `Draft ${i}`, status: 'draft' })
+    }
+    for (let i = 1; i <= 2; i++) {
+      seedFeature(ctx, projectId, { slug: `gone-${i}`, title: `Gone ${i}`, status: 'archived' })
+    }
+    for (let i = 1; i <= FEATURE_INDEX_SHIPPED_CAP + 7; i++) {
+      const shipped = seedFeature(ctx, projectId, { slug: `ship-${i}`, title: `Ship ${i}` })
+      setFeatureStatus(ctx, shipped.id, 'shipped')
+      emit(ctx, shipped.id, { type: 'feature.shipped', message: 'merged' })
+    }
+
+    const out = await toolGetProjectContext(ctx, session)
+
+    const lines = out.featureIndex
+    expect(lines.filter((l) => l.includes('[in flight'))).toHaveLength(3)
+    expect(lines.filter((l) => l.endsWith('[draft]'))).toHaveLength(2)
+    expect(lines.filter((l) => l.endsWith('[shipped]'))).toHaveLength(FEATURE_INDEX_SHIPPED_CAP)
+    expect(lines.join('\n')).not.toContain('[archived]')
+    expect(lines).toHaveLength(3 + 2 + FEATURE_INDEX_SHIPPED_CAP + 1)
+    expect(lines.at(-1)).toBe(
+      '… 7 older shipped and 2 archived features not listed: search docs/features/*/brief.md ' +
+        'on disk, or read_feature_brief({ slug }) if you know the slug.',
+    )
+  })
+
+  // --- read_feature_brief ----------------------------------------------------
+
+  it('reads a shipped feature’s brief from brief.md in the session worktree', () => {
+    const shipped = seedFeature(ctx, projectId, {
+      slug: 'laps',
+      title: 'Laps',
+      oneLiner: 'one trip round the pipeline',
+      brief: 'the stale copy in the database',
+    })
+    setFeatureStatus(ctx, shipped.id, 'shipped')
+    write(repoPath, 'docs/features/laps/brief.md', '# Laps\n\nThe brief as it merged.\n')
+
+    expect(toolReadFeatureBrief(ctx, session, { slug: 'laps' })).toEqual({
+      slug: 'laps',
+      title: 'Laps',
+      oneLiner: 'one trip round the pipeline',
+      status: 'shipped',
+      phase: 'planning',
+      lap: 1,
+      brief: '# Laps\n\nThe brief as it merged.\n',
+    })
+  })
+
+  it('reads an in-flight or draft feature’s brief from the database', () => {
+    write(repoPath, 'docs/features/live/brief.md', 'a file that is not this branch’s truth')
+    seedFeature(ctx, projectId, { slug: 'live', title: 'Live', brief: 'the brief in flight' })
+    seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', brief: 'a parked brief' })
+
+    expect(toolReadFeatureBrief(ctx, session, { slug: 'live' }).brief).toBe('the brief in flight')
+    expect(toolReadFeatureBrief(ctx, session, { slug: 'parked' }).brief).toBe('a parked brief')
+  })
+
+  it('omits the brief and says so when none was recorded; an unknown slug is not found', () => {
+    const shipped = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    setFeatureStatus(ctx, shipped.id, 'shipped')
+
+    const out = toolReadFeatureBrief(ctx, session, { slug: 'laps' })
+    expect(out).not.toHaveProperty('brief')
+    expect(out.note).toMatch(/no brief/i)
+    expect(() => toolReadFeatureBrief(ctx, session, { slug: 'nope' })).toThrow(NotFoundError)
   })
 
   it('reports an absent charter as absent, with no error', async () => {
@@ -654,7 +765,7 @@ describe('project-session MCP tools', () => {
     expect(bare).not.toHaveProperty('digest')
   })
 
-  it('serves digests on seam-matched tickets too', () => {
+  it('lists seam-matched tickets as rows without digests', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
     const [ticket] = storeTickets(ctx, feature.id, [
       {
@@ -666,10 +777,129 @@ describe('project-session MCP tools', () => {
         blockedBy: [],
       },
     ])
-    updateTicket(ctx, ticket.id, { status: 'done', digest: 'Rewired the router.' })
+    updateTicket(ctx, ticket.id, {
+      status: 'failed',
+      commits: ['abc123'],
+      error: 'the router test timed out',
+      digest: 'Rewired the router.',
+    })
 
     const out = toolGetWorkRecord(ctx, session, { seam: 'router' })
-    expect(out.features[0]?.tickets[0]?.digest).toBe('Rewired the router.')
+    expect(out.features[0]?.slug).toBe('laps')
+    expect(out.features[0]?.tickets).toEqual([
+      {
+        seq: ticket.seq,
+        title: 'touches the router',
+        status: 'failed',
+        seams: ['tRPC Feature Router'],
+        commits: ['abc123'],
+        error: 'the router test timed out',
+      },
+    ])
+    expect(JSON.stringify(out)).not.toContain('Rewired the router.')
+  })
+
+  it('returns one ticket with its digest for featureSlug + seq', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    const [first, second] = storeTickets(ctx, feature.id, [
+      { title: 'one', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+      { title: 'two', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, first.id, { status: 'done', digest: 'the first digest' })
+    updateTicket(ctx, second.id, { status: 'done', digest: 'the second digest' })
+
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps', seq: second.seq })
+    expect(out.features).toHaveLength(1)
+    expect(out.features[0]?.tickets).toHaveLength(1)
+    expect(out.features[0]?.tickets[0]).toMatchObject({ seq: second.seq, digest: 'the second digest' })
+
+    expect(() => toolGetWorkRecord(ctx, session, { featureSlug: 'laps', seq: 99 })).toThrow(
+      NotFoundError,
+    )
+    expect(() => toolGetWorkRecord(ctx, session, { seq: second.seq })).toThrow(InvalidInputError)
+  })
+
+  it('refuses seq sent with a seam but no featureSlug over MCP, instead of running a seam search', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    storeTickets(ctx, feature.id, [
+      { title: 'one', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['server'], blockedBy: [] },
+    ])
+    markSessionLive(ctx, session.id)
+    const app = new Hono()
+    app.route('/mcp', mcpApp)
+
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'X-Runcastle-Session': session.id,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'get_work_record', arguments: { seam: 'server', seq: 1 } },
+      }),
+    })
+    const body = (await res.json()) as { result?: { isError?: boolean; content?: { text: string }[] } }
+    expect(body.result?.isError).toBe(true)
+    expect(body.result?.content?.[0]?.text).toContain('seq only together with its featureSlug')
+  })
+
+  it('moves the oldest lap’s digests out whole when the slug form would cross the ceiling', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    const digestChars = 8_000
+    const stored = storeTickets(
+      ctx,
+      feature.id,
+      Array.from({ length: 10 }, (_, i) => ({
+        title: `ticket ${i + 1}`,
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: ['a'],
+        seams: [],
+        blockedBy: [],
+      })),
+    )
+    for (const t of stored) {
+      updateTicket(ctx, t.id, { status: 'done', digest: `#${t.seq} `.padEnd(digestChars, 'x') })
+    }
+    // Put #6-#10 on the OLDER lap, so lap order and seq order disagree.
+    for (const t of stored) {
+      ctx.db
+        .update(tickets)
+        .set({ lap: t.seq > 5 ? 1 : 2 })
+        .where(eq(tickets.id, t.id))
+        .run()
+    }
+
+    // Ten 8K digests are 80K; three moved out leaves ~57K with the rows.
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
+
+    expect(serializedLength(out)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+    const rows = out.features[0]?.tickets ?? []
+    const moved = rows.filter((t) => t.digestNotInlined).map((t) => t.seq)
+    const kept = rows.filter((t) => t.digest !== undefined).map((t) => t.seq)
+    expect(moved).toEqual([6, 7, 8])
+    expect(kept).toEqual([1, 2, 3, 4, 5, 9, 10])
+    for (const t of rows) {
+      if (t.digestNotInlined) expect(t).not.toHaveProperty('digest')
+      else expect(t.digest).toHaveLength(digestChars)
+    }
+    expect(out.note).toContain('get_work_record({ featureSlug, seq })')
+  })
+
+  it('adds no note when every digest fits', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    const [ticket] = storeTickets(ctx, feature.id, [
+      { title: 'one', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] },
+    ])
+    updateTicket(ctx, ticket.id, { status: 'done', digest: 'small' })
+
+    const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
+    expect(out).not.toHaveProperty('note')
+    expect(out.features[0]?.tickets[0]).not.toHaveProperty('digestNotInlined')
   })
 
   // Decision 7: the run aggregate is the same digests re-concatenated, so it is

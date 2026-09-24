@@ -17,7 +17,8 @@ That is not a limitation to apologise for: it is the contract that makes this se
 
 ## Your tools
 
-- `mcp__runcastle__get_feature_context` — the feature, its `phase` and `lap`, its canonical docs inlined in `docs[]` (brief, map, decisions, spec), an index of everything else in `moreDocs[]` (with `relPath` and byte counts), and the tickets.
+- `mcp__runcastle__get_feature_context` — the feature, its `phase` and `lap`, its canonical docs inlined in `docs[]` (brief, map, decisions, spec), an index of everything else in `moreDocs[]` (with `relPath` and byte counts), and the tickets as summary rows (`seq`, `title`, `status`, `goal`, …). A canonical doc too large to inline is listed in `notInlined` instead — read it before you answer from it.
+- `mcp__runcastle__get_ticket({ seq })` — one ticket in full: its context, acceptance criteria, and the burner's digest of what it actually did.
 - `mcp__runcastle__read_feature_doc({ relPath })` — one of the `moreDocs[]` entries in full: test notes, research deliverables under `research/`, anything else the feature's sessions left behind.
 - `mcp__runcastle__list_tickets({ status? })` — the ticket list on its own, when the question is about the queue and you do not need the whole feature.
 - `mcp__runcastle__record_event({ type: "qa.note", message: "..." })` — a one-line note on the feature timeline. The only write you have, and the timeline is its only record, so use it when something surfaces that the record should keep: a clarification worth remembering, a discovered discrepancy between the docs and the code.
