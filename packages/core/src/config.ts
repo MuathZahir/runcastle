@@ -501,10 +501,14 @@ export function resolveModel(
  */
 export type ModelConfig = Pick<RuncastleConfig, 'model' | 'stepModels'> & {
   models?: readonly ModelEntry[]
+  discovered: readonly ModelEntry[]
 }
 
 /** What a config knows about models: its own roster, or none. */
-export type ModelRosterConfig = { models?: readonly ModelEntry[] }
+export type ModelRosterConfig = {
+  models?: readonly ModelEntry[]
+  discovered: readonly ModelEntry[]
+}
 
 /**
  * Upsert `overrides` into `base` by model id, preserving `base`'s order and
@@ -521,9 +525,18 @@ export function mergeModelEntries(
   return [...merged, ...overrides.filter((m) => !seen.has(m.id))]
 }
 
-/** Every model the UI offers: {@link CURATED_MODELS} with the operator's roster over it. */
+/** Every model the UI offers: curated, then discovered, then the operator's roster. */
 export function modelRoster(config: ModelRosterConfig): ModelEntry[] {
-  return mergeModelEntries(CURATED_MODELS, config.models ?? [])
+  return mergeModelEntries(mergeModelEntries(CURATED_MODELS, config.discovered), config.models ?? [])
+}
+
+/** Flatten a discovery snapshot to roster entries in canonical runtime order. */
+export function discoveredEntries(
+  snapshot: import('./schemas').DiscoverySnapshot,
+): ModelEntry[] {
+  return AGENT_RUNTIMES.flatMap((runtime) =>
+    snapshot.sources[runtime].models.map(({ id }) => ({ id, runtime })),
+  )
 }
 
 /**

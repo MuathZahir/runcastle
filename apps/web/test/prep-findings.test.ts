@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EMPTY_DISCOVERY_SNAPSHOT } from '@runcastle/core'
 import { driveCapabilities } from '../src/lib/prep-findings'
 import type { SettingField, SettingsView } from '../src/lib/api'
 
@@ -22,6 +23,7 @@ const field = (over: Partial<SettingField>): SettingField =>
 const view = (fields: Partial<SettingField>[], projectId?: string): SettingsView => ({
   projectId,
   fields: fields.map(field),
+  discovery: EMPTY_DISCOVERY_SNAPSHOT,
 })
 
 /**

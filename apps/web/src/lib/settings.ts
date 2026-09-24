@@ -2,8 +2,10 @@ import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
   DEFAULT_DOCS_COMMIT_PREFIX,
+  EMPTY_DISCOVERY_SNAPSHOT,
   MODEL_STEPS,
   ModelEntry,
+  discoveredEntries,
   modelEntryFor,
   modelRoster,
 } from '@runcastle/core'
@@ -120,7 +122,10 @@ export function customModelsFromView(view: SettingsView | undefined): ModelEntry
 
 /** Every model this view offers: the curated list with the operator's roster over it. */
 export function rosterFromView(view: SettingsView | undefined): ModelEntry[] {
-  return modelRoster({ models: customModelsFromView(view) })
+  return modelRoster({
+    discovered: discoveredEntries(view?.discovery ?? EMPTY_DISCOVERY_SNAPSHOT),
+    models: customModelsFromView(view),
+  })
 }
 
 /**
@@ -971,7 +976,10 @@ export interface StepRow {
  * override" picker, which made the whole per-step idea a two-step discovery.
  */
 export function stepRows(view: SettingsView): StepRow[] {
-  const config = { models: customModelsFromView(view) }
+  const config = {
+    discovered: discoveredEntries(view.discovery),
+    models: customModelsFromView(view),
+  }
   const fallback = defaultModelOf(view)
   return STEP_META.map((meta) => {
     const value = ownStepModel(view, meta.step)

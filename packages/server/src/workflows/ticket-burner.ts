@@ -17,6 +17,7 @@ import type {
 import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  discoveredEntries,
   docsDigestSizeWarning,
   fmtClock,
   isAgentDigestDoc,
@@ -43,6 +44,7 @@ import type { ExecFn, ExecOutcome } from '../doctor/doctor'
 import { createSystemExec } from '../doctor/system-exec'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
+import { readDiscoverySnapshot } from '../services/model-discovery'
 import {
   appendTranscript,
   beginTranscript,
@@ -4986,7 +4988,8 @@ export function resolveTicketModel(
  */
 function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
   const config = loadConfig()
-  const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
+  const modelConfig = { ...config, discovered: discoveredEntries(readDiscoverySnapshot()) }
+  const model = resolveModelEntry('implement', modelConfig, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
   const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
@@ -5047,7 +5050,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
    * never disagree about what this ticket would run with.
    */
   const ticketCredentials = (ticket: Ticket): { model: ModelEntry; token: string | undefined } => {
-    const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+    const ticketModel = resolveTicketModel(modelConfig, ctx.project, ctx.modelOverride, ticket)
     return {
       model: ticketModel,
       token:

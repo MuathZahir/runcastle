@@ -3627,7 +3627,7 @@ describe.skip('landingFeature', () => {
 })
 
 describe('ticketModelChip — what a card says about its burn model', () => {
-  const roster = modelRoster({ models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
+  const roster = modelRoster({ discovered: [], models: [{ id: 'my-proxy', runtime: 'codex', note: 'bulk edits' }] })
 
   it('says nothing for an unassigned ticket', () => {
     expect(ticketModelChip({ model: undefined }, roster)).toBeNull()

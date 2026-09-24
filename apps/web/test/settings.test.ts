@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EMPTY_DISCOVERY_SNAPSHOT } from '@runcastle/core'
 import {
   customModelCommit,
   customModelsFromView,
@@ -323,6 +324,7 @@ describe('effectiveStepModel — mirrors core resolveModel', () => {
 const view = (fields: Partial<SettingField>[], projectId?: string): SettingsView => ({
   projectId,
   fields: fields.map(field),
+  discovery: EMPTY_DISCOVERY_SNAPSHOT,
 })
 
 describe('globalRows', () => {

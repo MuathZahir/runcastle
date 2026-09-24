@@ -18,6 +18,7 @@ import { InvalidInputError } from '../../errors'
 import { burnerDockerfilePath } from '../../launcher/asset-paths'
 import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
+import { rosterConfig } from '../../services/model-discovery'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
 import { allProjects, requireProjectById } from '../../services/repo'
 import {
@@ -84,7 +85,7 @@ export const setupRouter = router({
         // token there through `afkToken` while the server runs, so a probe that
         // saw only `process.env` would keep reporting it missing forever.
         env: envWithAfkCredentials(),
-        runtimes: configuredRuntimes(ctx.config, projectModels),
+        runtimes: configuredRuntimes(rosterConfig(ctx), projectModels),
         // Deliberately WITHOUT the project: the probe layers the project column
         // over this itself, so that clearing an orphaned column (decision 8)
         // leaves it reporting on the image resolution falls back to.
