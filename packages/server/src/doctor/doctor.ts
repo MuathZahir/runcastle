@@ -673,6 +673,8 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     stored = null
   }
 
+  const unchecked = uncheckedRuntimes(hostVersions)
+
   const stock = await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)
   const stockVerdict = imageFreshness({
     image: stock,
@@ -701,7 +703,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     // its containers actually run — so its CLI drift is judged here, not on the base.
     const own = imageFreshness({ image, expectedHash: projectHash, host: hostVersions })
     if (!own.fresh) {
-      return staleImage(describeStale(tag, own.reasons, '.runcastle/sandbox/Dockerfile'))
+      return staleImage(describeStale(tag, own.reasons, '.runcastle/sandbox/Dockerfile'), unchecked)
     }
     if (!stockVerdict.fresh) {
       const layer = stockVerdict.reasons.find((r) => r.kind !== 'cli')
@@ -709,13 +711,14 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
         layer === undefined
           ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the burner Dockerfile')}`
           : `${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${layer.kind === 'missing' ? 'is not built' : 'no longer matches the burner Dockerfile'}`,
+        unchecked,
       )
     }
     return {
       ...IMAGE_ROW,
       status: 'ok',
       severity: 'error',
-      detail: `${tag} built from .runcastle/sandbox/Dockerfile`,
+      detail: `${tag} built from .runcastle/sandbox/Dockerfile${unchecked}`,
     }
   }
 
@@ -780,9 +783,17 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     }
   }
   if (!stockVerdict.fresh) {
-    return staleImage(describeStale(imageName, stockVerdict.reasons, 'the burner Dockerfile'))
+    return staleImage(
+      describeStale(imageName, stockVerdict.reasons, 'the burner Dockerfile'),
+      unchecked,
+    )
   }
-  return { ...IMAGE_ROW, status: 'ok', severity: 'error', detail: `${imageName} present` }
+  return {
+    ...IMAGE_ROW,
+    status: 'ok',
+    severity: 'error',
+    detail: `${imageName} present${unchecked}`,
+  }
 }
 
 /**
@@ -798,6 +809,20 @@ function describeStale(tag: string, reasons: FreshnessReason[], dockerfile: stri
         : describeFreshnessReason(tag, reason),
     )
     .join('; ')
+}
+
+/**
+ * The trailing clause a managed image's row carries for every agent runtime the
+ * freshness verdict could not judge (decision 4): with no host version there is
+ * nothing to drift from, so `imageFreshness` skips that runtime rather than
+ * calling the image stale over it. Saying so is the difference between an image
+ * whose CLIs were checked and one where half the question was never asked — a
+ * silent row reads as the former. Empty when the host has every CLI, so a fully
+ * checked row keeps its long-standing wording.
+ */
+function uncheckedRuntimes(host: HostAgentVersions): string {
+  const skipped = AGENT_RUNTIMES.filter((r) => host[r] === null).map((r) => RUNTIME_SPECS[r].label)
+  return skipped.length === 0 ? '' : ` (${skipped.join(' and ')} not on host — not checked)`
 }
 
 /**
@@ -845,14 +870,16 @@ async function presentRuntime(exec: ExecFn): Promise<Runtime | null> {
  * A stale verdict over whichever layer drifted. The fix names the settings page
  * the web turns into a link (flow-redesign-settings decision 9), so it lands the
  * reader on the image row rather than telling them to go looking for it — and
- * one Rebuild heals the whole chain, whichever layer this is about.
+ * one Rebuild heals the whole chain, whichever layer this is about. `unchecked`
+ * is {@link uncheckedRuntimes}, kept after the call to action so what to do
+ * comes before what was skipped.
  */
-function staleImage(detail: string): ProbeResult {
+function staleImage(detail: string, unchecked = ''): ProbeResult {
   return {
     ...IMAGE_ROW,
     status: 'stale',
     severity: 'error',
-    detail: `${detail} — rebuild`,
+    detail: `${detail} — rebuild${unchecked}`,
     fix: 'Open Settings → Burns (Rebuild image).',
   }
 }
