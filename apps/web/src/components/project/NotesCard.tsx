@@ -281,13 +281,18 @@ function NoteRow({
 type RowActionTone = 'plain' | 'danger'
 
 // Delete names its danger only under the pointer: repeated down a list at rest,
-// a red control per row shouts over the notes themselves.
+// a red control per row shouts over the notes themselves. The row is already
+// the unnamed `group`, so the button's own hover is the named `group/act`.
 const ROW_ACTION_HOVER: Record<RowActionTone, string> = {
-  plain: 'hover:text-text',
-  danger: 'hover:text-danger',
+  plain: 'group-hover/act:text-text',
+  danger: 'group-hover/act:text-danger',
 }
 
-/** A row's verb as an icon. The label is both its name and its tooltip. */
+/**
+ * A row's verb as an icon. The label is both its name and its tooltip. The
+ * tone sits on a span inside: the unlayered `button { color: inherit }` beats a
+ * `text-*` utility written on the button itself (apps/web/STYLE.md).
+ */
 function RowAction({
   label,
   tone = 'plain',
@@ -308,9 +313,9 @@ function RowAction({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`${BARE_BUTTON} grid size-6.5 cursor-pointer place-items-center rounded-sm p-0 text-text-3 hover:bg-hairline disabled:cursor-not-allowed disabled:opacity-40 ${ROW_ACTION_HOVER[tone]}`}
+      className={`${BARE_BUTTON} group/act grid size-6.5 cursor-pointer place-items-center rounded-sm p-0 hover:bg-hairline disabled:cursor-not-allowed disabled:opacity-40`}
     >
-      {children}
+      <span className={`flex text-text-3 ${ROW_ACTION_HOVER[tone]}`}>{children}</span>
     </button>
   )
 }

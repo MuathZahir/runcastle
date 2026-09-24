@@ -111,9 +111,18 @@ describe('the Notes card', () => {
       expect(tray).toContain('group-hover:opacity-100')
       expect(tray).toContain('group-focus-within:opacity-100')
     }
-    // Delete turns red only under the pointer
-    expect(button('Delete').className).toContain('hover:text-danger')
-    expect(button('Delete').className).not.toMatch(/(^| )text-danger/)
+    // the unlayered `button { color: inherit }` beats a colour on the button, so
+    // none is written there: the tone lives on a span inside, keyed to the
+    // button's own hover — Delete turns red only under the pointer
+    for (const name of ['Edit', 'Dismiss', 'Delete']) {
+      expect(button(name).className).not.toMatch(/(^| )[\w:/-]*text-(text|danger)/)
+      expect(button(name).className).toMatch(/(^| )group\/act( |$)/)
+    }
+    const deleteTone = button('Delete').firstElementChild?.className ?? ''
+    expect(deleteTone).toContain('text-text-3')
+    expect(deleteTone).toContain('group-hover/act:text-danger')
+    expect(deleteTone).not.toMatch(/(^| )text-danger/)
+    expect(button('Edit').firstElementChild?.className).toContain('group-hover/act:text-text')
     // the time is what the verbs replace
     expect(screen.getByText('the crumbs overflow on a long title').closest('li')?.innerHTML).toContain(
       'group-hover:hidden',
