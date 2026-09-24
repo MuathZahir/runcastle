@@ -527,7 +527,12 @@ export function mergeModelEntries(
 
 /** Every model the UI offers: curated, then discovered, then the operator's roster. */
 export function modelRoster(config: ModelRosterConfig): ModelEntry[] {
-  return mergeModelEntries(mergeModelEntries(CURATED_MODELS, config.discovered), config.models ?? [])
+  // The field is required for typed callers, but tolerate older persisted/test
+  // shapes crossing a runtime boundary during an upgrade.
+  return mergeModelEntries(
+    mergeModelEntries(CURATED_MODELS, config.discovered ?? []),
+    config.models ?? [],
+  )
 }
 
 /** Flatten a discovery snapshot to roster entries in canonical runtime order. */

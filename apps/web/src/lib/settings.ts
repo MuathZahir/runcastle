@@ -977,7 +977,7 @@ export interface StepRow {
  */
 export function stepRows(view: SettingsView): StepRow[] {
   const config = {
-    discovered: discoveredEntries(view.discovery),
+    discovered: discoveredEntries(view.discovery ?? EMPTY_DISCOVERY_SNAPSHOT),
     models: customModelsFromView(view),
   }
   const fallback = defaultModelOf(view)
