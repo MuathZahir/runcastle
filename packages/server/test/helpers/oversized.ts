@@ -182,6 +182,12 @@ export const OVERSIZED_PORTFOLIO = {
   openNotes: 30,
   noteChars: 1_200,
   triagedNotes: 20,
+  /** `CONTEXT.md`, past the real 10K charter with headroom; always inlined whole. */
+  charterChars: 15_000,
+  /** Live ADRs past the real eleven, plus superseded ones the index must omit. */
+  liveAdrs: 20,
+  supersededAdrs: 3,
+  adrChars: 11_500,
 } as const
 
 export interface OversizedPortfolio {
@@ -208,7 +214,8 @@ function ticketInput(title: string, seams: string[]): TicketInput {
  * Seed every kind of feature a long-lived project carries, 120+ in all, each
  * with a multi-thousand-char one-liner; every shipped one gets its
  * `feature.shipped` event. The shipped `briefSlug` gets a real-max `brief.md`
- * under `worktreePath`, the project session's own tree.
+ * under `worktreePath`, the project session's own tree, which also gets a
+ * past-real-max charter and ADR set.
  */
 export function seedOversizedPortfolio(
   ctx: AppCtx,
@@ -274,6 +281,18 @@ export function seedOversizedPortfolio(
     addProjectNote(ctx, project.id, prose(`triaged note ${n + 1}`, P.noteChars)),
   )
   triageNotes(ctx, triaged.map((note) => note.id), 'folded into an existing feature')
+  writeFileSync(join(worktreePath, 'CONTEXT.md'), prose('CONTEXT.md', P.charterChars), 'utf8')
+  const adrDir = join(worktreePath, 'docs', 'adr')
+  mkdirSync(adrDir, { recursive: true })
+  for (let n = 1; n <= P.liveAdrs + P.supersededAdrs; n++) {
+    const id = String(n).padStart(4, '0')
+    const status = n <= P.supersededAdrs ? `Status: superseded by ADR-${P.liveAdrs + n}\n\n` : ''
+    writeFileSync(
+      join(adrDir, `${id}-a-realistically-long-decision-slug-${n}.md`),
+      `# ADR-${id}: a realistically long decision title for its index entry\n\n${status}${prose(`adr ${n}`, P.adrChars)}`,
+      'utf8',
+    )
+  }
 
   return { workRecordSlug: record.slug, seam: 'shared shell', briefSlug }
 }
