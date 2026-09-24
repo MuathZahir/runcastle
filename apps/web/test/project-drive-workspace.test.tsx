@@ -207,7 +207,7 @@ describe('the Test drive card', () => {
     mount()
     const card = screen.getByRole('region', { name: 'Test drive' })
     expect((within(card).getByRole('button', { name: 'Test drive' }) as HTMLButtonElement).disabled).toBe(true)
-    expect(card.textContent).toContain('a test drive of feature/x is running')
+    expect(card.textContent).toContain('A test drive of feature/x is running')
   })
 })
 

@@ -42,12 +42,12 @@ describe('projectDriveCard', () => {
     const feature = { featureId: 'feat_1', holderLabel: 'a test drive of feature/x' }
     expect(projectDriveCard({ ...base, drive: feature })).toEqual({
       state: 'blocked',
-      reason: 'a test drive of feature/x is running',
+      reason: 'A test drive of feature/x is running',
     })
     const other = { ...projectDrive, projectId: 'proj_2' }
     expect(projectDriveCard({ ...base, drive: other })).toEqual({
       state: 'blocked',
-      reason: 'a project drive of main is running',
+      reason: 'A project drive of main is running',
     })
   })
 

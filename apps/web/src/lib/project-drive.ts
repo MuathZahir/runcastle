@@ -1,4 +1,5 @@
 import type { ProjectNote } from '@runcastle/core'
+import { holderSentence } from './feature-ui/drive'
 
 /**
  * The project drive's derivations (project-level-test-drive decisions 4, 5, 7):
@@ -56,7 +57,7 @@ export function projectDriveCard({
   if (empty) return { state: 'hidden' }
   if (isThisProjectDrive(drive, projectId)) return { state: 'running' }
   if (!setupCommand?.trim() && !devCommand?.trim()) return { state: 'prepare' }
-  if (drive) return { state: 'blocked', reason: `${drive.holderLabel} is running` }
+  if (drive) return { state: 'blocked', reason: `${holderSentence(drive.holderLabel)} is running` }
   return { state: 'ready' }
 }
 
