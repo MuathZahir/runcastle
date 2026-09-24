@@ -21,18 +21,13 @@ import { seedFeature } from './fixtures'
  * A long-lived feature for the never-hidden guard test to hold every read tool
  * against (spec of `mcp-read-tools-stay-within-a-context-budget`).
  *
- * What the summary MOVES OUT is sized past the real maxima measured on
- * 2026-09-24: every ticket's context, acceptance criteria and digest at its
- * real maximum, and canonical docs over 111K (an 83K `decisions.md`).
- *
- * What the summary keeps INLINE — ticket rows with their goals, findings, test
- * notes, waypoints — is sized to what the design can hold, NOT to every real
- * maximum at once. Docs are the only part `get_feature_context` moves out
- * (decisions.md #6), and 45+ ticket rows (~13K of row fields before any goal),
- * a real-max 5K goal, ~21K of findings plus notes and a 12-waypoint map already
- * use most of the ceiling. At the spec's 35K of findings plus notes on the same
- * feature, the payload would cross the ceiling with nothing left to move out —
- * the spec's accepted risk, reached sooner than it estimated.
+ * Every part is sized past the real maxima measured on 2026-09-24: every
+ * ticket's context, acceptance criteria and digest at its real maximum, goals
+ * of 1K (three laps well past the real 4–6K per lap) with one real-max 5K goal,
+ * ~35K of this lap's findings plus test notes, and canonical docs over 111K (an
+ * 83K `decisions.md`). With every doc moved out, the rows and to-do alone still
+ * cross the ceiling, so the fixture also exercises the ticket move-out tiers:
+ * goals on both feature shapes, and on the mapped one an earlier lap's rows.
  */
 
 /** `n` chars of filler prose, labelled so a failing assertion can say whose. */
@@ -45,15 +40,15 @@ export const OVERSIZED = {
   laps: 3,
   ticketsPerLap: 15,
   largestGoalChars: 5_000,
-  goalChars: 150,
+  goalChars: 1_000,
   contextChars: 9_000,
   acceptanceCriteria: 10,
   acceptanceCriterionChars: 750,
   digestChars: 8_000,
   findings: 7,
-  findingDetailChars: 1_400,
+  findingDetailChars: 2_800,
   testNotes: 7,
-  testNoteChars: 1_100,
+  testNoteChars: 2_200,
   waypoints: 12,
   waypointQuestionChars: 400,
   docs: {
