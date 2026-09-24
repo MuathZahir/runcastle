@@ -23,9 +23,18 @@ export function isWindowsLike(platform: string, userAgent = ''): boolean {
   return /win/i.test(platform) || /windows/i.test(userAgent)
 }
 
+/**
+ * A shortcut spelled the way this machine spells it — "⌘J" on a Mac, "Ctrl+J"
+ * everywhere else. The app has two of them now (the palette and note capture),
+ * so the modifier is written once.
+ */
+export function shortcutLabel(key: string, platform: string, userAgent = ''): string {
+  return isMacLike(platform, userAgent) ? `⌘${key}` : `Ctrl+${key}`
+}
+
 /** The modifier the command palette actually answers to, spelled for a human. */
 export function modKeyLabel(platform: string, userAgent = ''): string {
-  return isMacLike(platform, userAgent) ? '⌘K' : 'Ctrl+K'
+  return shortcutLabel('K', platform, userAgent)
 }
 
 /** A repository path that looks like one on this machine. */
@@ -59,6 +68,12 @@ function nav(): { platform: string; userAgent: string } {
 export function modKey(): string {
   const n = nav()
   return modKeyLabel(n.platform, n.userAgent)
+}
+
+/** {@link shortcutLabel} for the browser this is running in. */
+export function shortcut(key: string): string {
+  const n = nav()
+  return shortcutLabel(key, n.platform, n.userAgent)
 }
 
 /** {@link repoPathPlaceholder} for the browser this is running in. */

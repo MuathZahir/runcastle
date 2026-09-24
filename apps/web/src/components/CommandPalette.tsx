@@ -4,7 +4,7 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import { PHASE_LABELS } from '../lib/feature-ui'
 import { matchesPreparation, matchesProjectChat } from '../lib/project-workspace'
 import { Kbd, PhaseDot } from '../ui'
-import { IconFolder, IconMessage, IconSettings } from '../icons'
+import { IconFolder, IconMessage, IconPencil, IconSettings } from '../icons'
 
 /**
  * ⌘K command palette for the pipeline-first shell (decision 12). Three labeled
@@ -34,11 +34,13 @@ export interface CommandPaletteProps {
   onOpenPreparation: () => void
   /** Give the workspace over to the project chat — its conversation list. */
   onOpenProjectChat: () => void
+  /** Open the note capture popover — the third door onto it (decisions #3). */
+  onOpenNote: () => void
   nav: ProjectNavApi
 }
 
 /** The rows that are not a feature or a project: the palette's action list. */
-type ActionKind = 'home' | 'openProject' | 'settings' | 'preparation' | 'projectChat'
+type ActionKind = 'home' | 'openProject' | 'settings' | 'preparation' | 'projectChat' | 'newNote'
 
 type Row =
   | { kind: 'feature'; feature: FeatureListItem }
@@ -71,6 +73,7 @@ export function CommandPalette(props: CommandPaletteProps) {
     onOpenSettings,
     onOpenPreparation,
     onOpenProjectChat,
+    onOpenNote,
     nav,
   } = props
 
@@ -117,7 +120,7 @@ export function CommandPalette(props: CommandPaletteProps) {
   // a home in the feature pipeline, so neither is reachable except through the
   // rail row someone has to already know about. Their terms live in lib/ because
   // they are the searchable half of that discoverability, and are tested there.
-  // The three whose terms are written here answer to the same rule: an empty
+  // The rest, whose terms are written here, answer to the same rule: an empty
   // query shows the row, a typed one has to be found in its terms.
   const actions = useMemo<Action[]>(() => {
     const all: (Action & { shows: boolean })[] = [
@@ -131,6 +134,15 @@ export function CommandPalette(props: CommandPaletteProps) {
         glyph: <IconMessage size={13} />,
         label: 'Project chat — talk an idea through, or reopen a past conversation',
         run: onOpenProjectChat,
+      },
+      {
+        // The capture popover's third door (decisions #3) — near-free here, and
+        // the one someone finds when they have not learned the hotkey yet.
+        kind: 'newNote',
+        shows: q === '' || 'new note jot capture'.includes(q),
+        glyph: <IconPencil size={13} />,
+        label: 'New note — jot what you just noticed, triage it later',
+        run: onOpenNote,
       },
       {
         kind: 'preparation',
@@ -162,7 +174,7 @@ export function CommandPalette(props: CommandPaletteProps) {
       },
     ]
     return all.filter((a) => a.shows)
-  }, [q, onOpenProjectChat, onOpenSettings, onOpenPreparation, nav])
+  }, [q, onOpenProjectChat, onOpenNote, onOpenSettings, onOpenPreparation, nav])
 
   const rows = useMemo<Row[]>(() => {
     const r: Row[] = filteredFeatures.map((f) => ({ kind: 'feature' as const, feature: f }))

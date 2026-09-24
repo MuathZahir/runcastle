@@ -6,6 +6,7 @@ import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../li
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
+import { isNoteHotkey } from '../lib/project-notes'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
@@ -28,6 +29,7 @@ import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { CommandPalette } from './CommandPalette'
+import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
 import { SettingsDialog } from './settings/SettingsDialog'
 
@@ -57,6 +59,27 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
   const [newChatRequest, setNewChatRequest] = useState(0)
+  // Note capture is shell state for one reason: it is mounted HERE, so it exists
+  // on every in-project screen and on none of the portfolio home (decisions #2).
+  // All three doors onto it — the titlebar button, the hotkey and the palette
+  // row — set the same flag (decisions #3).
+  // Each press is also counted, so one landing while the bar is already up still
+  // reaches it — over the saved line it starts the next note.
+  const [capturing, setCapturing] = useState(false)
+  const [jots, setJots] = useState(0)
+  const jot = () => {
+    setCapturing(true)
+    setJots((n) => n + 1)
+  }
+  // The saved line's View: the project workspace, with its Notes card brought
+  // into view — selecting the workspace alone does nothing visible from the
+  // workspace itself, or with the card scrolled off (decisions #16).
+  const [inboxRequest, setInboxRequest] = useState(0)
+  const openInbox = () => {
+    selectProject()
+    setInboxRequest((request) => request + 1)
+  }
+  const consumeInboxRequest = () => setInboxRequest(0)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -154,12 +177,20 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else talk.start()
   }
 
-  // Global ⌘K / Ctrl-K → command palette.
+  // Global ⌘K / Ctrl-K → command palette, ⌘/Ctrl+J → jot a note.
+  //
+  // The note chord has to fire with the focus inside an embedded terminal, which
+  // is where most of the time is spent — xterm would otherwise send Ctrl+J's LF
+  // to the PTY and cancel the event. `mapTerminalKey` swallows it there without
+  // cancelling, which is what lets it reach this listener (lib/terminal-keys).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setCmdk(true)
+      } else if (isNoteHotkey(e)) {
+        e.preventDefault()
+        jot()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -189,6 +220,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         view={view}
         featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
+        onOpenNote={jot}
+        noteOpen={capturing}
         onOpenSettings={() => ws.openSettings()}
         onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
@@ -237,6 +270,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             talk={talk}
             newChatRequest={newChatRequest}
             onConsumeNewChatRequest={() => setNewChatRequest(0)}
+            inboxRequest={inboxRequest}
+            onConsumeInboxRequest={consumeInboxRequest}
           />
         ) : view === 'feature' && selectedFeatureId ? (
           // The feature view is the app's one unbounded render surface — it
@@ -295,7 +330,19 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         // The palette navigates, it never launches: this opens the project
         // workspace, where the conversation list decides new-versus-resume.
         onOpenProjectChat={ws.selectProject}
+        onOpenNote={jot}
         nav={nav}
+      />
+
+      {/* Mounted by the in-project shell, so capture is on every screen inside a
+          project and on none of the portfolio home (decisions #2). */}
+      <NoteCapture
+        projectId={projectId}
+        projectName={nav.currentProject?.name ?? ''}
+        open={capturing}
+        openRequest={jots}
+        onClose={() => setCapturing(false)}
+        onOpenInbox={openInbox}
       />
 
       {ws.settings && (

@@ -1,11 +1,18 @@
 import { trpc } from '../trpc'
 import { projectStats, runsElsewhere } from '../lib/projects'
 import { useLivePoll } from '../lib/live'
-import { modKey } from '../lib/platform'
+import { modKey, shortcut } from '../lib/platform'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { WorkspaceView } from '../lib/project-workspace'
 import { Kbd } from '../ui'
-import { IconPanelRight, IconSearch, IconSettings, LogoMark, LogoWordmark } from '../icons'
+import {
+  IconPanelRight,
+  IconPencil,
+  IconSearch,
+  IconSettings,
+  LogoMark,
+  LogoWordmark,
+} from '../icons'
 import { ProjectSwitcher } from './ProjectSwitcher'
 
 /**
@@ -73,6 +80,10 @@ interface TitlebarProps {
   /** The selected feature's title — the third crumb on a feature view. */
   featureTitle: string | null
   onOpenCmdk: () => void
+  /** Open the note capture popover — the discoverable half of ⌘/Ctrl+J. */
+  onOpenNote: () => void
+  /** Capture is up — the pencil wears the accent while it is. */
+  noteOpen: boolean
   onOpenSettings: () => void
   /** Up one level from the third crumb: this project with nothing selected. */
   onGoToProjectHome: () => void
@@ -90,6 +101,8 @@ export function TitlebarChrome({
   featureTitle,
   runsElsewhere: elsewhere,
   onOpenCmdk,
+  onOpenNote,
+  noteOpen,
   onOpenSettings,
   onGoToProjectHome,
   onToggleInspector,
@@ -146,6 +159,27 @@ export function TitlebarChrome({
           <span className="truncate">Search or jump to…</span>
         </span>
         <Kbd>{mod}</Kbd>
+      </button>
+
+      {/* The note door, beside the palette's (decisions #3, #15). The hotkey is
+          the ten-second path and this is what makes it findable without knowing
+          it — an icon like every other control here, tinted while capture is up. */}
+      <button
+        className={`${TB_BUTTON} size-8 shrink-0 justify-center ${
+          noteOpen ? 'bg-accent-soft' : 'bg-transparent'
+        }`}
+        title={`Jot a note (${shortcut('J')})`}
+        aria-label="Jot a note"
+        aria-pressed={noteOpen}
+        onClick={onOpenNote}
+      >
+        <span
+          className={`flex items-center ${
+            noteOpen ? 'text-accent-hi' : 'text-text-3 group-hover:text-text'
+          }`}
+        >
+          <IconPencil size={14} />
+        </span>
       </button>
 
       {elsewhere > 0 && (

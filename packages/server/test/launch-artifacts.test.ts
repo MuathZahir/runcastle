@@ -101,6 +101,16 @@ describe('renderSettings', () => {
         'mcp__runcastle__get_work_record',
       ]),
     )
+    // the notes-triage tools, likewise project-only at the server and so
+    // likewise inert elsewhere — without them a triage chat stalls on an
+    // approval prompt the moment its briefing tells it to list the notes
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__list_project_notes',
+        'mcp__runcastle__triage_project_note',
+        'mcp__runcastle__update_project_note',
+      ]),
+    )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
     // every rule is either anchored to our own MCP server or a scoped git Bash
@@ -817,7 +827,15 @@ describe('claudeRuntime.writeArtifacts', () => {
       return { prepare: { project, remainingKeys: ['devCommand'], established: [] } }
     }
     if (kind === 'project') {
-      return { projectBrief: { project, branch: 'runcastle/project', worktreePath: 'C:\\wt\\p' } }
+      return {
+        projectBrief: {
+          project,
+          branch: 'runcastle/project',
+          worktreePath: 'C:\\wt\\p',
+          base: 'main',
+          openNotes: 0,
+        },
+      }
     }
     if (kind === 'drive-fix') {
       return {
@@ -1032,7 +1050,13 @@ describe('codexRuntime.writeArtifacts', () => {
     // approval posture differs
     await launchSpec('project', {
       permissionMode: 'default',
-      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+      projectBrief: {
+        project,
+        branch: 'runcastle/project',
+        worktreePath: worktree,
+        base: 'main',
+        openNotes: 0,
+      },
     })
     expect(configToml('sess_codex_project')).toContain('[features]\nhooks = true')
   })
@@ -1040,7 +1064,13 @@ describe('codexRuntime.writeArtifacts', () => {
   it('maps the project session\'s `default` posture to an approval policy that asks', async () => {
     await launchSpec('project', {
       permissionMode: 'default',
-      projectBrief: { project, branch: 'runcastle/project', worktreePath: worktree },
+      projectBrief: {
+        project,
+        branch: 'runcastle/project',
+        worktreePath: worktree,
+        base: 'main',
+        openNotes: 0,
+      },
     })
     const projected = configToml('sess_codex_project')
     // decision 18: a project session runs against the whole repo checkout, which
@@ -1221,6 +1251,20 @@ describe('codexRuntime.writeArtifacts', () => {
     ).toBe('')
     expect(readFileSync(join(worktree, '.git', 'info', 'exclude'), 'utf8')).toContain('.agents/')
     expect(existsSync(join(worktree, '.gitignore'))).toBe(false)
+  })
+
+  it('renders a skill’s on-demand references beside its SKILL.md', async () => {
+    const spec = await launchSpec('project')
+    const skillDir = join(worktree, '.agents', 'skills', 'project')
+
+    // `project/SKILL.md` sends a triage session to `./references/triage.md`; an
+    // instruction whose file was never installed is one Codex cannot follow.
+    const triage = join(skillDir, 'references', 'triage.md')
+    expect(spec.files).toContain(triage)
+    expect(readFileSync(triage, 'utf8')).toContain('# Notes triage')
+    // the whole on-demand set travels, not just the one a triage chat reads
+    expect(spec.files).toContain(join(skillDir, 'references', 'charter.md'))
+    expect(spec.files).toContain(join(skillDir, 'SKILL.md'))
   })
 
   it('renders nothing into a worktree that is not on disk (the smoke path computes one)', async () => {

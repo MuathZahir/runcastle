@@ -25,12 +25,21 @@
  * paste and must arrive as ESC+v, which xterm only produces off macOS — see
  * IMAGE_PASTE_BYTES.
  *
+ * NOTE HOTKEY — ⌘/Ctrl+J opens the project-note capture popover from any screen,
+ * and most of the time the focus is in here. Ctrl+J is a control character
+ * (LF) that xterm would both send to the PTY and cancel, so the chord is
+ * swallowed: xterm skips its handling and, because the interception path never
+ * cancels the event, it reaches the shell's window listener. The predicate is
+ * `isNoteHotkey` in `lib/project-notes.ts` so the two ends cannot drift.
+ *
  * DOUBLE-FIRE — xterm's custom key handler runs on both `keydown` and `keypress`
  * (see `_keyDown`/`_keyPress` in @xterm/xterm). We carry the bytes on `keydown`
  * and swallow the matching `keypress` (empty bytes, no send) so xterm's own
  * Enter handling never also emits a bare `\r`. `keyup` and every non-target key
  * pass straight through to xterm untouched.
  */
+
+import { isNoteHotkey } from './project-notes'
 
 /** Minimal subset of `KeyboardEvent` the mapping reads. */
 export interface TerminalKeyEvent {
@@ -75,8 +84,9 @@ function isVKey(ev: TerminalKeyEvent): boolean {
  * Map a terminal keyboard event to a send/passthrough decision.
  *
  * Shift+Enter and Ctrl+Enter become a prompt newline; Ctrl+V is swallowed so the
- * browser's own paste runs, and Alt+V becomes ESC+v for Claude Code's image
- * paste. Everything else — plain Enter, Cmd+V and Ctrl+Shift+V included — passes
+ * browser's own paste runs, Alt+V becomes ESC+v for Claude Code's image paste,
+ * and ⌘/Ctrl+J is swallowed so the note hotkey reaches the shell. Everything
+ * else — plain Enter, Cmd+V and Ctrl+Shift+V included — passes
  * through so ordinary typing, submit, Ctrl+C and arrows/history keep xterm's
  * native behavior. (Alt+Enter needs no handling here: xterm already ESC-prefixes
  * it into the same `\x1b\r`.)
@@ -89,6 +99,9 @@ export function mapTerminalKey(ev: TerminalKeyEvent): TerminalKeyAction {
   if (ev.key === 'Enter' && (ev.shiftKey || ev.ctrlKey)) {
     return { intercept: true, bytes: down ? NEWLINE_BYTES : '' }
   }
+
+  // The note chord belongs to the shell, never to the PTY — send nothing.
+  if (isNoteHotkey(ev)) return { intercept: true, bytes: '' }
 
   if (isVKey(ev) && !ev.shiftKey && !ev.metaKey) {
     // Ctrl+V — send nothing at all; the browser's paste event does the work.

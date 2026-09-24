@@ -281,6 +281,13 @@
       "when": 1789766400001,
       "tag": "0039_chat_session_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790175840112,
+      "tag": "0040_new_maestro",
+      "breakpoints": true
     }
   ]
 }

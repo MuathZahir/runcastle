@@ -64,6 +64,17 @@ describe('Button', () => {
     }
   })
 
+  // styles.css's unlayered `button { color: inherit }` beats any `text-*`
+  // utility on the <button> itself (STYLE.md, "Legacy rules beat utilities"),
+  // so the violet ghost's label colour has to ride on an element inside it.
+  it('paints the accent variant`s label from inside the button, not on it', () => {
+    const out = render({ variant: 'accent' })
+    const buttonClass = /<button[^>]*class="([^"]*)"/.exec(out)?.[1] ?? ''
+    expect(buttonClass).toContain('border-accent-line')
+    expect(buttonClass).not.toContain('text-accent-hi')
+    expect(out).toMatch(/<span class="[^"]*\btext-accent-hi\b[^"]*">Ship it<\/span>/)
+  })
+
   it('keeps a caller`s className and forwards button attributes', () => {
     const out = render({ className: 'self-start', disabled: true, type: 'submit' })
     expect(out).toContain('self-start')

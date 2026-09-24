@@ -1,0 +1,369 @@
+<title>Project Notes Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f5f5f9; --surface:#ffffff; --surface-2:#f0f0f6; --inset:#ebebf3;
+  --hairline:#dfe1ea; --hairline-strong:#c9ccd9;
+  --text:#171a23; --text-2:#4d5566; --text-3:#7a8293;
+  --accent:#5a4ae0; --accent-hi:#4838c9; --accent-soft:#efedfd; --accent-line:#cdc6f6; --accent-ink:#ffffff;
+  --ok:#1f8a36; --ok-soft:#e5f4e8; --warn:#9a6300; --warn-soft:#fbf0dc;
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --shadow:0 1px 2px rgba(20,18,50,.06),0 8px 24px rgba(20,18,50,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#090b10; --surface:#0f121a; --surface-2:#141824; --inset:#0b0e15;
+    --hairline:#1c2230; --hairline-strong:#2a3242;
+    --text:#dde3ed; --text-2:#96a0b0; --text-3:#6a7586;
+    --accent:#7c6cf6; --accent-hi:#a49bff; --accent-soft:#161329; --accent-line:#3d3670; --accent-ink:#0d0722;
+    --ok:#3fb950; --ok-soft:#0f2415; --warn:#d29922; --warn-soft:#241c0b;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#090b10; --surface:#0f121a; --surface-2:#141824; --inset:#0b0e15;
+  --hairline:#1c2230; --hairline-strong:#2a3242;
+  --text:#dde3ed; --text-2:#96a0b0; --text-3:#6a7586;
+  --accent:#7c6cf6; --accent-hi:#a49bff; --accent-soft:#161329; --accent-line:#3d3670; --accent-ink:#0d0722;
+  --ok:#3fb950; --ok-soft:#0f2415; --warn:#d29922; --warn-soft:#241c0b;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;padding:0 16px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding-block:48px 80px;display:flex;flex-direction:column;gap:64px}
+code,.mono{font-family:var(--mono);font-size:.86em}
+code{background:var(--surface-2);border:1px solid var(--hairline);border-radius:4px;padding:1px 5px;color:var(--text)}
+h1,h2,h3{text-wrap:balance;margin:0;letter-spacing:-.015em}
+h1{font-size:34px;line-height:1.15;font-weight:700}
+h2{font-size:22px;line-height:1.3;font-weight:650}
+h3{font-size:15px;font-weight:600}
+p{margin:0;max-width:66ch}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-hi)}
+.muted{color:var(--text-2)}
+.dim{color:var(--text-3)}
+header.top{display:flex;flex-direction:column;gap:14px}
+header.top p{font-size:17px;color:var(--text-2)}
+.loop{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:18px;border:1px solid var(--hairline);border-radius:12px;background:var(--surface)}
+.loop a{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;border:1px solid var(--hairline);background:var(--surface-2);color:var(--text);text-decoration:none;font-size:13px;font-weight:500}
+.loop a:hover,.loop a:focus-visible{border-color:var(--accent-line);background:var(--accent-soft);outline:none}
+.loop a .k{font-family:var(--mono);font-size:11px;color:var(--text-3)}
+.loop .arr{color:var(--text-3);font-size:13px}
+.loop .human{border-color:var(--accent-line);color:var(--accent-hi)}
+.loop .back{margin-left:auto;font-size:12px;color:var(--text-3)}
+section.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:32px;align-items:start}
+section.stage .copy{display:flex;flex-direction:column;gap:14px}
+section.stage .copy ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text-2)}
+section.stage .copy li strong{color:var(--text);font-weight:600}
+@media (max-width:760px){section.stage{grid-template-columns:1fr}}
+.mock{border:1px solid var(--hairline);border-radius:12px;background:var(--inset);padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.mock .cap{font-size:11px;color:var(--text-3);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.win{border:1px solid var(--hairline);border-radius:10px;background:var(--surface);overflow:hidden}
+.titlebar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hairline);font-size:12px;color:var(--text-2);flex-wrap:wrap}
+.titlebar .crumb{color:var(--text)}
+.titlebar .sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hairline);border-radius:999px;padding:3px 9px;font-size:11.5px;color:var(--text-2);background:var(--surface-2)}
+.pill.note{border-color:var(--accent-line);color:var(--accent-hi);background:var(--accent-soft)}
+.kbd{font-family:var(--mono);font-size:10.5px;border:1px solid var(--hairline-strong);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--text-2);background:var(--surface)}
+.stagebody{position:relative;min-height:190px;padding:14px;background:repeating-linear-gradient(0deg,transparent 0 22px,var(--surface-2) 22px 23px)}
+.term{font-family:var(--mono);font-size:11px;color:var(--text-3);line-height:1.7}
+.popover{position:absolute;left:50%;top:26px;transform:translateX(-50%);width:min(340px,86%);background:var(--surface);border:1px solid var(--accent-line);border-radius:10px;box-shadow:var(--shadow);padding:12px;display:flex;flex-direction:column;gap:10px}
+.popover .input{border:1px solid var(--hairline-strong);border-radius:6px;padding:7px 9px;font-size:13px;color:var(--text);background:var(--surface)}
+.popover .input::after{content:"";display:inline-block;width:1px;height:14px;background:var(--accent-hi);vertical-align:-2px;margin-left:1px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.popover .input::after{animation:none}}
+.shot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-3)}
+.thumb{width:54px;height:34px;border-radius:4px;border:1px solid var(--hairline-strong);background:linear-gradient(135deg,var(--surface-2),var(--accent-soft));position:relative;flex:none}
+.thumb::after{content:"";position:absolute;left:8px;right:14px;top:12px;height:4px;border-radius:2px;background:var(--accent-line)}
+.popover .foot{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text-3)}
+.toast{align-self:flex-start;font-size:12px;color:var(--ok);background:var(--ok-soft);border-radius:6px;padding:4px 9px}
+.toast u{text-underline-offset:2px}
+.split{display:grid;grid-template-columns:150px minmax(0,1fr);min-height:260px}
+@media (max-width:520px){.split{grid-template-columns:1fr}.rail{border-right:0!important;border-bottom:1px solid var(--hairline)}}
+.rail{border-right:1px solid var(--hairline);padding:10px 8px;display:flex;flex-direction:column;gap:4px;font-size:12px;background:var(--surface)}
+.rail .row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:6px;color:var(--text-2)}
+.rail .row.proj{background:var(--accent-soft);color:var(--text);font-weight:600}
+.badge{min-width:18px;height:18px;border-radius:9px;padding:0 5px;background:var(--accent);color:var(--accent-ink);font-size:10.5px;font-weight:700;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.rail .lane{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);padding:10px 8px 2px}
+.pane{padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2);min-width:0}
+.card{border:1px solid var(--hairline);border-radius:8px;background:var(--surface);padding:10px 12px;font-size:12.5px}
+.card.newchat{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--text-2)}
+.btn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;border:1px solid var(--hairline-strong);background:var(--surface);color:var(--text);white-space:nowrap}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.notes-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+.note{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--hairline)}
+.note .t{min-width:0}
+.note .acts{display:flex;gap:8px;font-size:11px;color:var(--text-3);white-space:nowrap}
+.note .mini{width:28px;height:18px;border-radius:3px;background:linear-gradient(135deg,var(--surface-2),var(--accent-soft));border:1px solid var(--hairline-strong);display:inline-block;vertical-align:middle;margin-left:6px}
+details.triaged{margin-top:6px;border-top:1px solid var(--hairline);padding-top:7px}
+details.triaged summary{cursor:pointer;color:var(--text-2);font-size:12px;list-style:none}
+details.triaged summary::-webkit-details-marker{display:none}
+details.triaged summary::before{content:"▸ ";color:var(--text-3)}
+details.triaged[open] summary::before{content:"▾ "}
+.outcome{font-size:11.5px;color:var(--text-3);margin-top:2px}
+.outcome a{color:var(--accent-hi)}
+.chat{display:flex;flex-direction:column;gap:10px;font-size:13px}
+.msg{border-radius:10px;padding:10px 12px;max-width:94%}
+.msg.agent{background:var(--surface);border:1px solid var(--hairline);align-self:flex-start}
+.msg.human{background:var(--accent-soft);border:1px solid var(--accent-line);align-self:flex-end}
+.msg .who{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);font-weight:600;margin-bottom:3px}
+.tool{font-family:var(--mono);font-size:11px;color:var(--text-3);padding-left:4px;overflow-wrap:anywhere}
+.tool b{color:var(--accent-hi);font-weight:500}
+.mv{display:inline-block;font-size:10.5px;font-weight:600;color:var(--accent-hi);border:1px solid var(--accent-line);border-radius:4px;padding:0 6px;margin-bottom:2px}
+.tbl{overflow-x:auto;border:1px solid var(--hairline);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--hairline);vertical-align:top}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);font-weight:600;background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+td.mono{color:var(--text-2)}
+.tag{display:inline-block;font-size:11px;border-radius:4px;padding:1px 6px;font-weight:600;white-space:nowrap}
+.tag.call{color:var(--ok);background:var(--ok-soft);font-family:var(--mono);font-weight:500}
+.tag.hand{color:var(--warn);background:var(--warn-soft)}
+.life{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:640px){.life{grid-template-columns:1fr}}
+.state{border:1px solid var(--hairline);border-radius:12px;background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:8px}
+.state .name{font-family:var(--mono);font-size:13px;font-weight:500}
+.state.open .name{color:var(--accent-hi)}
+.state.tri .name{color:var(--ok)}
+.state ul{margin:0;padding-left:18px;color:var(--text-2);font-size:13.5px}
+.edges{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;color:var(--text-2)}
+.edges b{color:var(--text);font-weight:600;font-family:var(--mono);font-size:12px}
+.chain{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media (max-width:760px){.chain{grid-template-columns:1fr}}
+.link{border:1px solid var(--hairline);border-radius:10px;background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.link .who{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--text-3)}
+.link.click{border-color:var(--accent-line);background:var(--accent-soft)}
+.link.click .who{color:var(--accent-hi)}
+.link p{color:var(--text-2);font-size:12.5px}
+.tix{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:760px){.tix{grid-template-columns:1fr}}
+.tk{border:1px solid var(--hairline);border-radius:10px;background:var(--surface);padding:12px;display:flex;flex-direction:column;gap:6px}
+.tk .seq{font-family:var(--mono);font-size:11px;color:var(--text-3);display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.tk h3{font-size:13.5px}
+.tk p{font-size:12.5px;color:var(--text-2)}
+.tk.review{border-style:dashed}
+.wave{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);font-weight:600;grid-column:1/-1;padding-top:6px}
+.later{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:640px){.later{grid-template-columns:1fr}}
+.later .state p{font-size:13.5px;color:var(--text-2)}
+.out{columns:2;column-gap:32px;margin:0;padding-left:18px;color:var(--text-2);font-size:13.5px}
+.out li{break-inside:avoid;margin-bottom:6px}
+@media (max-width:640px){.out{columns:1}}
+.sechead{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.notin{margin-top:24px;display:flex;flex-direction:column;gap:10px}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">runcastle · feature plan · lap 1</span>
+  <h1>Project notes: jot it anywhere, triage it in the project chat</h1>
+  <p>Get a small observation out of your head in ten seconds, with no structure. Do the thinking later, in the project chat, which grills you on what the notes actually mean before anything turns into work.</p>
+  <nav class="loop" aria-label="The loop">
+    <a href="#capture"><span class="k">1</span>Jot</a><span class="arr">→</span>
+    <a href="#inbox"><span class="k">2</span>Pile up</a><span class="arr">→</span>
+    <a href="#triage" class="human"><span class="k">3</span>Triage chat</a><span class="arr">→</span>
+    <a href="#routes"><span class="k">4</span>Route</a><span class="arr">→</span>
+    <a href="#build" class="human"><span class="k">5</span>Burn · Merge</a>
+    <span class="back">↺ then drive main and jot again</span>
+  </nav>
+</header>
+
+<section class="stage" id="capture">
+  <div class="copy">
+    <span class="eyebrow">1 · Capture</span>
+    <h2>Three doors, one popover, ten seconds</h2>
+    <p class="muted">Available on every screen inside a project. The note goes to the project you're in, so there's never a picker.</p>
+    <ul>
+      <li><strong><span class="kbd">Ctrl</span> <span class="kbd">J</span></strong> (<span class="kbd">⌘J</span> on Mac). Works even while your cursor is in a terminal.</li>
+      <li><strong>Note</strong> button in the titlebar, next to search.</li>
+      <li><strong>New note</strong> in the <span class="kbd">⌘K</span> palette.</li>
+      <li>One line of text, plus a pasted screenshot if you want. <strong>Enter</strong> saves, <strong>Esc</strong> discards.</li>
+      <li>No agent runs at capture time and nothing is analysed. It only records.</li>
+    </ul>
+  </div>
+  <div class="mock" aria-label="Capture popover mock-up">
+    <span class="cap">Example · feature workspace, terminal focused</span>
+    <div class="win">
+      <div class="titlebar"><span class="crumb">runcastle</span><span class="dim">/</span><span>ticket-cards</span><span class="sp"></span><span class="pill">Search <span class="kbd">⌘K</span></span><span class="pill note">✎ Note</span></div>
+      <div class="stagebody">
+        <div class="term">$ burn running · ticket 3/5<br>▸ reading apps/web/src/components/…<br>▸ writing tests…</div>
+        <div class="popover">
+          <div class="input">model chip wraps onto two lines on narrow ticket cards</div>
+          <div class="shot"><span class="thumb" aria-hidden="true"></span>screenshot pasted · <span class="dim">×</span></div>
+          <div class="foot"><span>Enter to save · Esc to discard</span><span>→ runcastle</span></div>
+        </div>
+      </div>
+    </div>
+    <span class="toast">✓ Saved · <u>4 open</u></span>
+  </div>
+</section>
+
+<section class="stage" id="inbox">
+  <div class="copy">
+    <span class="eyebrow">2 · The pile</span>
+    <h2>A badge on the project row, an inbox on the project page</h2>
+    <p class="muted">Notes are never cards in the rail. They're a count on the project row and a Notes card on the project page, just above your past conversations.</p>
+    <ul>
+      <li><strong>Open notes:</strong> edit, delete, or <strong>Dismiss</strong>. Click a thumbnail to see it full size.</li>
+      <li><strong>Triaged (N):</strong> collapsed. Each note shows where it went and has a Reopen button.</li>
+      <li><strong>Triage N notes</strong> starts the chat in step 3.</li>
+      <li>The inbox can't create work. No "→ ticket" button, by design.</li>
+    </ul>
+  </div>
+  <div class="mock" aria-label="Rail and Notes card mock-up">
+    <span class="cap">Example · project workspace</span>
+    <div class="win split">
+      <div class="rail">
+        <div class="row proj">runcastle <span class="badge">4</span></div>
+        <div class="lane">In flight</div>
+        <div class="row">ticket-cards</div>
+        <div class="row">burn-page…</div>
+        <div class="lane">Drafts</div>
+        <div class="row">project-fix-lane</div>
+      </div>
+      <div class="pane">
+        <div class="card newchat"><span>Start a new project chat</span><span class="btn">New chat</span></div>
+        <div class="card">
+          <div class="notes-h"><strong>Notes</strong><span class="btn solid">Triage 4 notes</span></div>
+          <div class="note"><span class="t">model chip wraps onto two lines on narrow ticket cards<span class="mini" aria-hidden="true"></span></span><span class="acts">edit · delete · dismiss</span></div>
+          <div class="note"><span class="t">crumbs overflow on long feature slugs</span><span class="acts">edit · delete · dismiss</span></div>
+          <div class="note"><span class="t">why does Burn say "resolving" for so long?</span><span class="acts">edit · delete · dismiss</span></div>
+          <div class="note"><span class="t">settings concurrency field has no help text</span><span class="acts">edit · delete · dismiss</span></div>
+          <details class="triaged" open>
+            <summary>Triaged (2)</summary>
+            <div class="note"><span class="t">prep row badge doesn't match other badges<span class="outcome" style="display:block">→ batch quick change <a href="#routes">UI polish · Sep 18</a></span></span><span class="acts">reopen</span></div>
+            <div class="note"><span class="t">empty state feels dead<span class="outcome" style="display:block">dropped: covered by the first-run wizard</span></span><span class="acts">reopen</span></div>
+          </details>
+        </div>
+        <div class="card dim">Conversations…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="stage" id="triage">
+  <div class="copy">
+    <span class="eyebrow">3 · Triage chat</span>
+    <h2>It grills you first, then routes</h2>
+    <p class="muted">A note written in ten seconds records a symptom, not what you want. So the session interviews you, ideation-style, before anything turns into work.</p>
+    <ul>
+      <li><strong>How notes get in:</strong> <em>Triage N notes</em> opens a <em>fresh</em> project chat whose opening briefing says "triage the open notes". The agent pulls them live with <code>list_project_notes</code>, including screenshots, so a note you jot mid-chat isn't missed.</li>
+      <li><strong>① Cluster:</strong> it reads every note, plays back the themes it sees, and you correct the grouping.</li>
+      <li><strong>② Grill per theme:</strong> one question at a time, always with a recommended answer, checking what's already built or decided. Notes can be dropped, merged, or reframed.</li>
+      <li><strong>③ Route and carry:</strong> what you settled in the grilling goes into the brief or the ticket, then <code>triage_project_note</code> marks the note.</li>
+      <li>Skip a theme and its notes stay open. Defer one and the agent rewrites it into the sharper version with <code>update_project_note</code>.</li>
+      <li>A normal <em>New chat</em> still opens by asking what you want, and mentions "4 open notes" so it can offer triage.</li>
+    </ul>
+  </div>
+  <div class="mock" aria-label="Triage conversation mock-up">
+    <span class="cap">Example · triage conversation</span>
+    <div class="chat">
+      <div class="tool">→ <b>list_project_notes</b>() · 4 open, 1 screenshot</div>
+      <div class="msg agent"><div class="who">project session</div><span class="mv">① cluster</span><br>I see two themes. <strong>Dense surfaces overflow</strong>: the model chip and the long slugs in the crumbs. <strong>Unexplained state</strong>: Burn stuck on "resolving", and the concurrency field with no help text. Does that grouping match what you had in mind?</div>
+      <div class="msg human"><div class="who">you</div>Yes, but the Burn one is really a bug, not an explanation issue.</div>
+      <div class="msg agent"><div class="who">project session</div><span class="mv">② grill</span><br><code>burn-page-rebuild-button…</code> shipped a fix for "stuck at resolving" last week. Is this the same symptom coming back, or a different screen? <em>I'd guess a regression. The fix only covered the image-clear path.</em></div>
+      <div class="msg human"><div class="who">you</div>Different path: it's after a config change. Also, drop the help-text one, I don't care anymore.</div>
+      <div class="msg agent"><div class="who">project session</div><span class="mv">③ route</span><br>The overflow theme and the Burn regression both go into <strong>one batch quick change</strong> with three tickets. The screenshot rides along on the chip ticket. The help-text note is dropped. Create it?</div>
+      <div class="tool">→ <b>create_feature</b>({ tickets: [3] }) · <b>triage_project_note</b>({ noteIds: [3], outcome: "→ batch quick change …" }) · <b>triage_project_note</b>({ outcome: "dropped: …" })</div>
+    </div>
+  </div>
+</section>
+
+<section id="routes">
+  <div class="sechead">
+    <span class="eyebrow">4 · Where a theme goes</span>
+    <h2>The same five destinations the project chat always had</h2>
+    <p class="muted">What's new is that the grilled reasoning travels into the destination, and the note records where it went.</p>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Destination</th><th>What carries the reasoning</th><th>How</th><th>Note's outcome line</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Quick change</strong><br><span class="dim">all small themes of this session, batched</span></td><td>Ticket text, plus the screenshot's attachment sentence so the burner gets the image</td><td><span class="tag call">create_feature</span></td><td class="mono">→ batch quick change &lt;title&gt;</td></tr>
+        <tr><td><strong>New feature</strong></td><td>A real brief with the grilled reasoning; screenshots by absolute path</td><td><span class="tag call">create_feature</span></td><td class="mono">→ new feature &lt;title&gt;</td></tr>
+        <tr><td><strong>Revisit</strong> of an in-flight feature</td><td>A handoff line you paste into that feature's session</td><td><span class="tag hand">you open it</span></td><td class="mono">→ revisit of &lt;slug&gt; (handoff given)</td></tr>
+        <tr><td><strong>Another lap</strong> of a feature in review</td><td>A handoff line for its Iterate session</td><td><span class="tag hand">you click Iterate</span></td><td class="mono">→ another lap of &lt;slug&gt; (handoff given)</td></tr>
+        <tr><td><strong>Nothing</strong></td><td>The reason, and whatever already settles it</td><td class="dim">no call</td><td class="mono">dropped: &lt;why&gt;</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="lifecycle">
+  <div class="sechead">
+    <span class="eyebrow">A note's life</span>
+    <h2>Two states, and triaged is frozen</h2>
+  </div>
+  <div class="life">
+    <div class="state open"><span class="name">open</span><ul><li>Counts toward the badge</li><li>Editable, deletable (deleting also removes its screenshot)</li><li>What <code>list_project_notes</code> returns</li></ul></div>
+    <div class="state tri"><span class="name">triaged</span><ul><li>Required one-line outcome, plus an optional link to a feature</li><li>Frozen: an honest record of what the work was built from</li><li>Keeps its screenshot</li></ul></div>
+    <div class="edges">
+      <span><b>open → triaged</b> the triage chat, or your <em>Dismiss</em> (outcome "dismissed")</span>
+      <span><b>triaged → open</b> <em>Reopen</em>, if the chat routed it wrong</span>
+    </div>
+  </div>
+</section>
+
+<section id="build">
+  <div class="sechead">
+    <span class="eyebrow">5 · Build</span>
+    <h2>One Burn and one Merge per triage pass</h2>
+    <p class="muted">Quick changes stay real features, because the feature is what gives an unattended burn its own branch, a review, and something you can reject. Batching removes most of the clicking.</p>
+  </div>
+  <div class="chain">
+    <div class="link"><span class="who">triage chat</span><strong>One batch quick change</strong><p>Every small theme from the session, as tickets.</p></div>
+    <div class="link click"><span class="who">your click</span><strong>Burn</strong><p>Agents build the tickets in sandboxes; screenshots are copied in.</p></div>
+    <div class="link"><span class="who">review</span><strong>Drive the batch</strong><p>Wrong with the batch → test note → Iterate. Unrelated → <span class="kbd">Ctrl J</span> project note.</p></div>
+    <div class="link click"><span class="who">your click</span><strong>Merge</strong><p>Lands on main.</p></div>
+    <div class="link"><span class="who">later feature</span><strong>Drive main</strong><p><code>project-level-test-drive</code> writes its notes into this same inbox.</p></div>
+  </div>
+</section>
+
+<section id="tickets">
+  <div class="sechead">
+    <span class="eyebrow">The burn plan</span>
+    <h2>Six tickets. Critical path: 2 deep. Up to 3 at once.</h2>
+  </div>
+  <div class="tix">
+    <div class="wave">Starts immediately</div>
+    <div class="tk"><div class="seq"><span>#1 · backend</span><span>blocks 3 · 4 · 5</span></div><h3>Notes store</h3><p><code>project_notes</code> table, service with the lifecycle, tRPC router, screenshot routes, live events.</p></div>
+    <div class="tk"><div class="seq"><span>#2 · skill</span><span>no blockers</span></div><h3>Project skill learns triage</h3><p><code>references/triage.md</code>: cluster → grill → route and carry. §0 and the tools list are amended.</p></div>
+    <div class="wave">After #1, side by side</div>
+    <div class="tk"><div class="seq"><span>#3 · backend</span><span>after 1</span></div><h3>MCP tools + burner</h3><p>The three note tools, for project sessions only. The burner learns to find project-note screenshots.</p></div>
+    <div class="tk"><div class="seq"><span>#4 · UI</span><span>after 1</span></div><h3>Capture from anywhere</h3><p>Popover, <span class="kbd">⌘/Ctrl J</span> (works through the terminal), titlebar button, palette entry, rail badge.</p></div>
+    <div class="tk"><div class="seq"><span>#5 · UI + launch</span><span>after 1</span></div><h3>Inbox + Triage button</h3><p>Notes card; "Triage N notes" starts a briefed, fresh chat; the open-notes line in the system prompt.</p></div>
+    <div class="wave">Last</div>
+    <div class="tk review"><div class="seq"><span>#6 · review</span><span>after all</span></div><h3>Drive the whole loop</h3><p>Capture from several screens → badge → inbox actions → triage launch.</p></div>
+  </div>
+</section>
+
+<section id="later">
+  <div class="sechead">
+    <span class="eyebrow">Built with the future in mind</span>
+    <h2>What plugs in next</h2>
+  </div>
+  <div class="later">
+    <div class="state"><span class="name">project-level-test-drive</span><p>Drive main with the dev pane and video tools. Every note from the drive lands in this inbox through the same write path. Its brief gets amended in its own revisit.</p></div>
+    <div class="state"><span class="name">project-fix-lane <span class="dim">(parked draft)</span></span><p>If batches still feel heavy: one standing, feature-shaped lane per project, fed by triage one lap at a time. It's also the natural home for a future "no Burn click" setting. Only the routing text in <code>triage.md</code> would change.</p></div>
+  </div>
+  <div class="notin">
+    <h3>Not in this lap</h3>
+    <ul class="out">
+      <li>No "note → ticket" button in the inbox</li>
+      <li>No <code>notes.md</code> file. The chat reads rows directly.</li>
+      <li>No agent, diagnosis, or analysis at capture</li>
+      <li>No capture outside runcastle, or on the portfolio home</li>
+      <li>No annotation, element picking, or video on capture</li>
+      <li>No cleanup of old triaged notes</li>
+      <li>No featureless burn straight onto main</li>
+      <li>No changes to feature test notes or drives</li>
+    </ul>
+  </div>
+</section>
+
+</div>

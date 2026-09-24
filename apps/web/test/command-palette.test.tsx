@@ -42,6 +42,7 @@ describe('CommandPalette', () => {
             onOpenSettings={vi.fn()}
             onOpenPreparation={vi.fn()}
             onOpenProjectChat={vi.fn()}
+            onOpenNote={vi.fn()}
             nav={nav}
           />
         </>
@@ -79,6 +80,7 @@ describe('CommandPalette', () => {
         onOpenSettings={vi.fn()}
         onOpenPreparation={vi.fn()}
         onOpenProjectChat={vi.fn()}
+        onOpenNote={vi.fn()}
         nav={{ ...nav, showOpen }}
       />,
     )
@@ -88,5 +90,34 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(showOpen).toHaveBeenCalledOnce()
+  })
+
+  /**
+   * The capture popover's third door (project-notes decisions #3). The hotkey
+   * is the ten-second path, but someone who has not learned it has to be able
+   * to find capture by typing what it is.
+   */
+  it('finds and opens note capture by the words someone would type for it', () => {
+    const onOpenNote = vi.fn()
+    render(
+      <CommandPalette
+        open
+        onClose={vi.fn()}
+        features={[]}
+        selectedFeatureId={null}
+        onSelect={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenPreparation={vi.fn()}
+        onOpenProjectChat={vi.fn()}
+        onOpenNote={onOpenNote}
+        nav={nav}
+      />,
+    )
+
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'jot' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(onOpenNote).toHaveBeenCalledOnce()
   })
 })

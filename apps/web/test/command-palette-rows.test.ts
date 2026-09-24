@@ -62,14 +62,16 @@ function palette(features: FeatureListItem[] = [], selectedFeatureId: string | n
       onOpenSettings: () => undefined,
       onOpenPreparation: () => undefined,
       onOpenProjectChat: () => undefined,
+      onOpenNote: () => undefined,
       nav,
     }),
   )
 }
 
-/** The five rows that are not a feature or a project. */
+/** The six rows that are not a feature or a project. */
 const ACTIONS = [
   'Project chat',
+  'New note',
   'Preparation',
   'Settings',
   'All projects (home)',

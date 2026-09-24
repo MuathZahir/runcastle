@@ -101,6 +101,38 @@ describe('per-step models (#48)', () => {
     expect(raw.stepModels).toEqual({ smoke: 'claude-legacy', research: 'claude-sonnet-5' })
   })
 
+  it('shows a legacy ideation model as the chat step, the model a chat session launches on', () => {
+    writeFileSync(configFile, JSON.stringify({ stepModels: { ideation: 'claude-fable-5[1m]' } }))
+
+    const chat = field(getSettings(ctx, undefined, io()), 'stepModels.chat')
+    expect(chat.value).toBe('claude-fable-5[1m]')
+    expect(chat.source).toBe('file')
+  })
+
+  it('persists the migrated step map on the next step write, keeping the migrated chat', () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({
+        stepModels: { ideation: 'claude-fable-5[1m]', qa: 'qa-model', revisit: 'revisit-model' },
+      }),
+    )
+
+    updateSettings(ctx, { key: 'stepModels.implement', value: 'claude-sonnet-5' }, io())
+    expect(JSON.parse(readFileSync(configFile, 'utf8')).stepModels).toEqual({
+      chat: 'claude-fable-5[1m]',
+      implement: 'claude-sonnet-5',
+    })
+  })
+
+  it('shows an explicit chat model over a legacy ideation one', () => {
+    writeFileSync(
+      configFile,
+      JSON.stringify({ stepModels: { chat: 'chat-model', ideation: 'ideation-model' } }),
+    )
+
+    expect(field(getSettings(ctx, undefined, io()), 'stepModels.chat').value).toBe('chat-model')
+  })
+
   it('emits a settings.updated event on a step write', () => {
     updateSettings(ctx, { key: 'stepModels.chat', value: 'claude-haiku-4-5-20251001' }, io())
     const raw = JSON.parse(readFileSync(configFile, 'utf8'))

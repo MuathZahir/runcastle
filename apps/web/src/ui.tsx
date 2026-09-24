@@ -41,7 +41,7 @@ function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
-type Variant = 'solid' | 'ghost' | 'danger'
+type Variant = 'solid' | 'ghost' | 'accent' | 'danger'
 type ButtonSize = 'md' | 'xs'
 
 const BUTTON_BASE =
@@ -72,8 +72,24 @@ const BUTTON_VARIANT: Record<Variant, string> = {
     'border-hairline bg-transparent text-text enabled:hover:border-hairline-strong enabled:hover:bg-panel',
   solid:
     'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
+  // The violet ghost: a view's second door that still wants to read as the
+  // accent's, without becoming a second solid (the Notes card's Triage). Its
+  // label colour is in BUTTON_LABEL, not here.
+  accent: 'border-accent-line bg-transparent enabled:hover:bg-accent-soft',
   danger:
     'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
+}
+
+/**
+ * A variant's label colour, painted on a `display: contents` span around the
+ * children rather than on the `<button>`. The unlayered `button { color:
+ * inherit }` in styles.css beats any `text-*` utility on the button itself
+ * (STYLE.md, "Legacy rules beat utilities"), and moving that rule is its own
+ * migration (theme.css, the button reset). `contents` leaves the button's flex
+ * layout exactly as it was; colour still inherits down the DOM.
+ */
+const BUTTON_LABEL: Partial<Record<Variant, string>> = {
+  accent: 'text-accent-hi',
 }
 
 /**
@@ -91,13 +107,14 @@ export function Button({
   children,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
+  const label = BUTTON_LABEL[variant]
   return (
     <button
       type={type}
       className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
       {...rest}
     >
-      {children}
+      {label ? <span className={cx('contents', label)}>{children}</span> : children}
     </button>
   )
 }
@@ -283,7 +300,7 @@ export function FailureNote({
   )
 }
 
-type DialogSize = 'sm' | 'md' | 'lg' | 'xl'
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette'
 
 const DIALOG_SIZE: Record<DialogSize, string> = {
   sm: 'max-w-[460px]',
@@ -291,6 +308,23 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
   lg: 'max-w-[780px]',
   // Settings: a page rail beside a five-column model roster. `lg` clipped it.
   xl: 'max-w-[940px]',
+  // Note capture: the ⌘K palette's width, so it reads as the same gesture.
+  palette: 'max-w-[560px]',
+}
+
+type DialogScrim = 'dim' | 'light' | 'none'
+
+/**
+ * How much of the page the backdrop hides. A lookup rather than a
+ * `backdropClassName` override: two background utilities on one element are a
+ * coin flip without `tailwind-merge`.
+ */
+const DIALOG_SCRIM: Record<DialogScrim, string> = {
+  dim: 'bg-bg/70',
+  // Note capture: you are noting something on the page, so it stays readable.
+  light: 'bg-[rgba(4,6,10,0.28)]',
+  // Nothing left to dim — clicks fall through to the page (the panel opts back in).
+  none: 'pointer-events-none bg-transparent',
 }
 
 /**
@@ -311,8 +345,9 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
  * - **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
  *   inside the panel (selecting a slug, a summary, a field value) and releases
  *   outside it is a selection, not a dismissal.
- * - **Focus returns to the opener.** Otherwise closing a dialog drops the
- *   keyboard back at the top of the document.
+ * - **Focus returns to the opener** — if it was still ours at close. Otherwise
+ *   closing a dialog drops the keyboard back at the top of the document; but a
+ *   focus the human already moved into the page stays where they put it.
  *
  * The panel keeps whatever `className` the caller passes and the backdrop
  * whatever `backdropClassName` it passes: the five existing overlays hand over
@@ -323,6 +358,7 @@ export function Dialog({
   open,
   onClose,
   size = 'md',
+  scrim = 'dim',
   label,
   labelledBy,
   dirty = false,
@@ -337,6 +373,8 @@ export function Dialog({
   open: boolean
   onClose: () => void
   size?: DialogSize
+  /** How much the backdrop dims the page behind the panel. */
+  scrim?: DialogScrim
   /** Accessible name, when no visible element in the panel can supply one. */
   label?: string
   /** Id of the element that names the panel — takes precedence over `label`. */
@@ -376,6 +414,13 @@ export function Dialog({
       ;(initialFocusRef?.current ?? panel).focus()
     }
     return () => {
+      // Only hand the focus back if it was still ours when we closed. With the
+      // scrim lifted the human can click into the page, and a close that fires
+      // after that (a timer, say) must not drag the caret back mid-word.
+      const focused = document.activeElement
+      const stillOurs =
+        focused === null || focused === document.body || !focused.isConnected || !!panel?.contains(focused)
+      if (!stillOurs) return
       const target = opener instanceof HTMLElement && opener.isConnected ? opener : returnFocusRef?.current
       if (!target?.isConnected) return
       target.focus()
@@ -423,7 +468,12 @@ export function Dialog({
       className={cx(
         inline
           ? 'flex flex-1 items-center justify-center p-6'
-          : 'fixed inset-0 z-[200] flex items-start justify-center bg-bg/70 px-4 pt-[8vh] pb-4',
+          : cx(
+              'fixed inset-0 z-[200] flex items-start justify-center px-4 pb-4',
+              // The palette sits at 12vh; every other dialog at 8vh.
+              size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]',
+              DIALOG_SCRIM[scrim],
+            ),
         backdropClassName,
       )}
       onMouseDown={(e) => {
@@ -445,6 +495,7 @@ export function Dialog({
         tabIndex={-1}
         className={cx(
           'w-full rounded-lg border border-hairline-strong bg-panel shadow-overlay',
+          scrim === 'none' && 'pointer-events-auto',
           DIALOG_SIZE[size],
           className,
         )}
@@ -980,5 +1031,54 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
       className={cx('inline-block size-2 shrink-0 rounded-pill', SESSION_DOT[status])}
       title={status}
     />
+  )
+}
+
+type NoteThumbnailSize = 'md' | 'sm'
+
+const NOTE_THUMBNAIL_SIZE: Record<NoteThumbnailSize, string> = {
+  md: 'h-[54px] w-24 rounded-sm border-hairline',
+  sm: 'h-[26px] w-10 rounded-[4px] border-hairline-strong cursor-zoom-in',
+}
+
+/**
+ * The picture a note is evidence for, as the door onto it: ~96×54, big enough
+ * to recognise the screen it was taken on, and a button because the full PNG
+ * opens in the app's own lightbox rather than in a bare browser tab.
+ *
+ * Shared because both lists of notes wear it — the review lap's rows and the
+ * project inbox's — and a thumbnail written out twice is two lightbox doors and
+ * two alt texts free to drift apart. Takes a nullable url and renders nothing
+ * for a note without a picture, so neither surface repeats that guard either.
+ *
+ * `sm` (~40×26) is the one that rides a dense one-line row — the project inbox
+ * (decisions.md #17) — where the picture only has to say "there is one".
+ */
+export function NoteThumbnail({
+  url,
+  onOpen,
+  size = 'md',
+}: {
+  url: string | null | undefined
+  onOpen: (url: string) => void
+  size?: NoteThumbnailSize
+}) {
+  if (!url) return null
+  return (
+    <button
+      type="button"
+      className={cx(
+        'shrink-0 overflow-hidden border bg-black p-0 hover:border-accent-line',
+        NOTE_THUMBNAIL_SIZE[size],
+      )}
+      title="see the whole picture"
+      onClick={() => onOpen(url)}
+    >
+      <img
+        src={url}
+        alt="the picture attached to this note"
+        className="h-full w-full object-cover"
+      />
+    </button>
   )
 }

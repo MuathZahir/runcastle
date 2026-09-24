@@ -78,6 +78,27 @@ export function useReviewArtifacts(
  * WebP is re-encoded here rather than rejected at the door. A PNG passes through
  * untouched: re-encoding one would cost a decode for no change.
  */
+/**
+ * The image on the clipboard, or null. Files first — that is where a screenshot
+ * pasted from the OS lands — then the items list, which is where some browsers
+ * put an image copied out of another page.
+ *
+ * Beside {@link toPngBlob} because every capture surface in the app pastes into
+ * the same pipeline: the review note composer, and the project-note popover.
+ */
+export function imageOnClipboard(data: DataTransfer | null): Blob | null {
+  if (!data) return null
+  for (const file of Array.from(data.files)) {
+    if (file.type.startsWith('image/')) return file
+  }
+  for (const item of Array.from(data.items)) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) return file
+  }
+  return null
+}
+
 export async function toPngBlob(image: Blob): Promise<Blob> {
   if (image.type === 'image/png') return image
 

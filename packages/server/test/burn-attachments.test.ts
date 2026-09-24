@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { ATTACHMENTS_DIR, annotationPath, attachmentRelPath } from '@runcastle/core/paths'
+import {
+  ATTACHMENTS_DIR,
+  annotationPath,
+  attachmentRelPath,
+  projectNotePath,
+} from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -36,6 +41,7 @@ const runCommand = promisify(exec)
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
 const NOTE = 'n_Ab3-xY_9qWer'
 const OTHER_NOTE = 'n_ZZ0011aabbcc'
+const PROJECT_NOTE = 'pnote_Ab3-xY_9qWer'
 
 /** The context the promotion writes for a note with a screenshot. */
 function contextNaming(...noteIds: string[]): string {
@@ -84,6 +90,17 @@ describe('burn attachments — which screenshots actually ride along', () => {
     writeFileSync(annotationPath(NOTE), PNG)
 
     expect(attachmentSources(contextNaming(NOTE))).toEqual([annotationPath(NOTE)])
+  })
+
+  it('resolves project-note ids from the project-notes store and keeps test notes unchanged', () => {
+    mkdirSync(dirname(projectNotePath(PROJECT_NOTE)), { recursive: true })
+    writeFileSync(projectNotePath(PROJECT_NOTE), PNG)
+    writeFileSync(annotationPath(NOTE), PNG)
+
+    expect(attachmentSources(contextNaming(PROJECT_NOTE, NOTE))).toEqual([
+      projectNotePath(PROJECT_NOTE),
+      annotationPath(NOTE),
+    ])
   })
 
   it('drops a note whose PNG was deleted between promotion and burn', () => {

@@ -3,17 +3,22 @@ import { Readable } from 'node:stream'
 import {
   NOTE_SCREENSHOT_ROUTE,
   NOTE_SCREENSHOT_UPLOAD_ROUTE,
+  PROJECT_NOTE_SCREENSHOT_ROUTE,
+  PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE,
   REVIEW_ARTIFACTS_ROUTE,
   REVIEW_WALKTHROUGH_ROUTE,
   reviewWalkthroughUrl,
+  type ProjectNote,
+  type TestNote,
   type Ticket,
 } from '@runcastle/core'
-import { annotationPath, reviewWalkthroughPath } from '@runcastle/core/paths'
-import { Hono } from 'hono'
+import { annotationPath, projectNotePath, reviewWalkthroughPath } from '@runcastle/core/paths'
+import { Hono, type Context } from 'hono'
 import type { AppCtx } from '../db/types'
 import { NotFoundError } from '../errors'
 import { getRuntimeCtx } from '../launcher/runtime'
 import { attachScreenshot, getNote } from '../services/test-notes'
+import { attachScreenshot as attachProjectNoteScreenshot, getNote as getProjectNote } from '../services/project-notes'
 import { getTicket, listByFeature } from '../services/tickets'
 
 /**
@@ -218,12 +223,6 @@ reviews.get(REVIEW_WALKTHROUGH_ROUTE, async (c) => {
   return c.body(fileStream(path, start, end), range ? 206 : 200, headers)
 })
 
-/**
- * The note this id names, or `undefined` when no row matches. The note-keyed
- * counterpart of {@link findReviewTicket}, and it exists for the same reason:
- * the screenshot path is computed from the row's own id via
- * {@link annotationPath}, so a URL segment never reaches the filesystem.
- */
 /** The 8-byte PNG signature every PNG file starts with (RFC 2083 §3.1). */
 const PNG_MAGIC = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
@@ -232,44 +231,98 @@ function isPng(bytes: Uint8Array): boolean {
 }
 
 /**
- * POST /api/reviews/note/:noteId/screenshot — the annotated frame, as PNG bytes
- * in the request body.
+ * All one kind of note contributes to its screenshot pair: how to find the row
+ * an id names, where that row's PNG lives, and how to record uploaded bytes.
  *
- * The body is raw bytes rather than multipart: the player has exactly one blob
- * from `canvas.toBlob`, and a form envelope around a single file buys nothing.
- * The signature check is what keeps the GET below honest — it answers
- * `image/png` unconditionally, so it must never have been handed something else.
+ * Test notes and project notes carry the same screenshot contract — raw PNG
+ * bytes up, the whole file back — so both pairs of routes are the two handlers
+ * below over this triple rather than two copies free to drift apart on
+ * validation, headers or streaming.
  */
-reviews.post(NOTE_SCREENSHOT_UPLOAD_ROUTE, async (c) => {
+interface NoteScreenshot<Note extends { id: string }> {
+  /** The row this id names; throws `NotFoundError` when none matches. */
+  find: (ctx: AppCtx, noteId: string) => Note
+  /**
+   * Where that note's PNG lives. Called with the looked-up row's own id, never
+   * with a URL segment, so nothing a caller sent is joined into a path — the
+   * note-keyed counterpart of what {@link findReviewTicket} does for videos.
+   */
+  path: (noteId: string) => string
+  /** Records the uploaded bytes, and returns the note as it now reads. */
+  attach: (ctx: AppCtx, noteId: string, png: Uint8Array) => Note
+}
+
+const testNoteScreenshot: NoteScreenshot<TestNote> = {
+  find: getNote,
+  path: annotationPath,
+  attach: attachScreenshot,
+}
+
+const projectNoteScreenshot: NoteScreenshot<ProjectNote> = {
+  find: getProjectNote,
+  path: projectNotePath,
+  attach: attachProjectNoteScreenshot,
+}
+
+/**
+ * The upload half: PNG bytes in the request body become this note's screenshot.
+ *
+ * The body is raw bytes rather than multipart: a caller has exactly one blob —
+ * from `canvas.toBlob`, or from a paste — and a form envelope around a single
+ * file buys nothing. The signature check is what keeps {@link serveScreenshot}
+ * honest: it answers `image/png` unconditionally, so it must never have been
+ * handed something else.
+ */
+async function receiveScreenshot<Note extends { id: string }>(
+  c: Context,
+  noteId: string,
+  kind: NoteScreenshot<Note>,
+): Promise<Response> {
   const ctx = await getRuntimeCtx()
-  const note = lookupOrUndefined(() => getNote(ctx, c.req.param('noteId')))
+  const note = lookupOrUndefined(() => kind.find(ctx, noteId))
   if (!note) return c.notFound()
 
   const png = new Uint8Array(await c.req.arrayBuffer())
   if (!isPng(png)) return c.json({ error: 'body is not a PNG' }, 400)
 
-  return c.json(attachScreenshot(ctx, note.id, png))
-})
+  return c.json(kind.attach(ctx, note.id, png))
+}
 
 /**
- * GET /api/reviews/note/:noteId/screenshot.png — the annotated frame itself.
+ * The download half: the screenshot itself.
  *
  * No range handling: an `<img>` fetches a screenshot whole. 404 covers every
- * kind of absence — unknown note, a note nobody annotated — because to the
+ * kind of absence — unknown note, a note nobody gave an image — because to the
  * browser they are the same fact: there is no image here.
  */
-reviews.get(NOTE_SCREENSHOT_ROUTE, async (c) => {
+async function serveScreenshot<Note extends { id: string }>(
+  c: Context,
+  noteId: string,
+  kind: NoteScreenshot<Note>,
+): Promise<Response> {
   const ctx = await getRuntimeCtx()
-  const note = lookupOrUndefined(() => getNote(ctx, c.req.param('noteId')))
+  const note = lookupOrUndefined(() => kind.find(ctx, noteId))
   if (!note) return c.notFound()
 
-  const path = annotationPath(note.id)
+  const path = kind.path(note.id)
   const size = fileSize(path)
   if (size === undefined) return c.notFound()
 
   const headers = { 'content-type': 'image/png', 'content-length': String(size) }
   if (size === 0) return c.body(null, 200, headers)
   return c.body(fileStream(path, 0, size - 1), 200, headers)
-})
+}
+
+/** POST/GET /api/reviews/note/:noteId/screenshot[.png] — an annotated frame. */
+reviews.post(NOTE_SCREENSHOT_UPLOAD_ROUTE, (c) =>
+  receiveScreenshot(c, c.req.param('noteId'), testNoteScreenshot))
+reviews.get(NOTE_SCREENSHOT_ROUTE, (c) =>
+  serveScreenshot(c, c.req.param('noteId'), testNoteScreenshot))
+
+/** POST/GET /api/reviews/project-note/:noteId/screenshot[.png] — a jotted note's image. */
+reviews.post(PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE, (c) =>
+  receiveScreenshot(c, c.req.param('noteId'), projectNoteScreenshot))
+reviews.get(PROJECT_NOTE_SCREENSHOT_ROUTE, (c) =>
+  serveScreenshot(c, c.req.param('noteId'), projectNoteScreenshot))
 
 export default reviews
