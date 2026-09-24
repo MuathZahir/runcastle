@@ -15,7 +15,7 @@ import {
   foldLegacyModelConfig,
   resolveDefaultBurnConcurrency,
 } from '@runcastle/core'
-import { hostLogicalCpus } from '@runcastle/core/config-load'
+import { hostLogicalCpus, migrateCollapsedModelSteps } from '@runcastle/core/config-load'
 import { configPath } from '@runcastle/core/paths'
 import * as z from 'zod'
 import { eq } from 'drizzle-orm'
@@ -306,16 +306,17 @@ export interface SettingsIO {
 
 /**
  * Read the raw config JSON, folding the legacy `smokeModel` key into
- * `stepModels.smoke` (issue #48) so both the settings VIEW and a write-through
- * (which reads-modifies-writes this shape) see the new shape — the next write
- * therefore drops `smokeModel` and persists `stepModels`.
+ * `stepModels.smoke` (issue #48) and the collapsed `ideation`/`qa`/`revisit`
+ * steps into `chat` (the same migration `loadConfig` runs) so both the settings
+ * VIEW and a write-through (which reads-modifies-writes this shape) see what a
+ * launch sees — the next write therefore drops the legacy keys for good.
  */
 function readRawConfig(configFile: string): Record<string, unknown> {
   if (!existsSync(configFile)) return {}
   try {
     const parsed: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
     if (typeof parsed !== 'object' || parsed === null) return {}
-    return foldLegacyModelConfig(parsed) as Record<string, unknown>
+    return foldLegacyModelConfig(migrateCollapsedModelSteps(parsed)) as Record<string, unknown>
   } catch {
     return {}
   }
@@ -620,7 +621,8 @@ const STEP_SET = new Set<string>(MODEL_STEPS)
 /**
  * Write (or clear, on `null`) one per-step model override (issue #48). Global
  * only, write-through: persists the nested `stepModels` map to the config file
- * (dropping any legacy `smokeModel`, since `readRawConfig` folds it) and
+ * (dropping any legacy `smokeModel`/`ideation`/`qa`/`revisit`, since
+ * `readRawConfig` migrates them) and
  * refreshes `ctx.config.stepModels` in place so the next launch/run sees it.
  */
 function updateStepModel(

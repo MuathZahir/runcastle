@@ -4,11 +4,14 @@ import { RuncastleConfig, resolveDefaultBurnConcurrency } from './config'
 import { configPath } from './paths'
 
 /**
- * Read-compat for session kinds collapsed into `chat`. This applies only to
- * persisted config: once the settings UI writes the parsed shape back, the
- * removed keys disappear permanently.
+ * Read-compat for session kinds collapsed into `chat`: legacy `ideation`
+ * becomes `chat` unless `chat` is set, and `qa`/`revisit` are dropped. This
+ * applies only to persisted config, and is the one migration both
+ * {@link loadConfig} and the settings view/write-through run, so what Settings
+ * shows is what a launch uses — and the settings write-through persists the
+ * migrated map, so the removed keys disappear on the next write.
  */
-const migrateCollapsedModelSteps = (raw: unknown): unknown => {
+export const migrateCollapsedModelSteps = (raw: unknown): unknown => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
 
   const config = { ...(raw as Record<string, unknown>) }
