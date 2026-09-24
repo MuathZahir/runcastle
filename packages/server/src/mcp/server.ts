@@ -1857,12 +1857,12 @@ export function toolGetWorkRecord(
   const project = requireProject(ctx, session)
   const slug = input.featureSlug?.trim()
   const seq = input.seq
+  if (seq !== undefined && !slug) {
+    throw new InvalidInputError('get_work_record takes seq only together with its featureSlug')
+  }
   const seam = seq === undefined ? input.seam?.trim().toLowerCase() : undefined
   if (!slug && !seam) {
     throw new InvalidInputError('get_work_record needs a featureSlug or a seam to look up')
-  }
-  if (seq !== undefined && !slug) {
-    throw new InvalidInputError('get_work_record takes seq only together with its featureSlug')
   }
 
   const records: WorkRecordFeature[] = []
@@ -2509,6 +2509,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
                   'are free prose that differs between features — so a short fragment ' +
                   '("router") finds more than an exact phrase.',
               ),
+            // Accepted only so the tool can refuse it: zod would otherwise strip a
+            // `seq` sent without its featureSlug and run a plain seam search.
+            seq: z.number().int().min(1).optional(),
           }),
         ]),
       },

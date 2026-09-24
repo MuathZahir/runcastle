@@ -2,14 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
+import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runs, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow } from '../src/launcher/sessions'
-import {
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import mcpApp, {
   FEATURE_INDEX_SHIPPED_CAP,
   toolCancelTicket,
   toolCompletePhase,
@@ -740,6 +741,34 @@ describe('project-session MCP tools', () => {
       NotFoundError,
     )
     expect(() => toolGetWorkRecord(ctx, session, { seq: second.seq })).toThrow(InvalidInputError)
+  })
+
+  it('refuses seq sent with a seam but no featureSlug over MCP, instead of running a seam search', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
+    storeTickets(ctx, feature.id, [
+      { title: 'one', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['server'], blockedBy: [] },
+    ])
+    markSessionLive(ctx, session.id)
+    const app = new Hono()
+    app.route('/mcp', mcpApp)
+
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'X-Runcastle-Session': session.id,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'get_work_record', arguments: { seam: 'server', seq: 1 } },
+      }),
+    })
+    const body = (await res.json()) as { result?: { isError?: boolean; content?: { text: string }[] } }
+    expect(body.result?.isError).toBe(true)
+    expect(body.result?.content?.[0]?.text).toContain('seq only together with its featureSlug')
   })
 
   it('moves the oldest lap’s digests out whole when the slug form would cross the ceiling', () => {
