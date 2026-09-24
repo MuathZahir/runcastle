@@ -328,8 +328,9 @@ const DIALOG_SCRIM: Record<DialogScrim, string> = {
  * - **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
  *   inside the panel (selecting a slug, a summary, a field value) and releases
  *   outside it is a selection, not a dismissal.
- * - **Focus returns to the opener.** Otherwise closing a dialog drops the
- *   keyboard back at the top of the document.
+ * - **Focus returns to the opener** — if it was still ours at close. Otherwise
+ *   closing a dialog drops the keyboard back at the top of the document; but a
+ *   focus the human already moved into the page stays where they put it.
  *
  * The panel keeps whatever `className` the caller passes and the backdrop
  * whatever `backdropClassName` it passes: the five existing overlays hand over
@@ -396,6 +397,13 @@ export function Dialog({
       ;(initialFocusRef?.current ?? panel).focus()
     }
     return () => {
+      // Only hand the focus back if it was still ours when we closed. With the
+      // scrim lifted the human can click into the page, and a close that fires
+      // after that (a timer, say) must not drag the caret back mid-word.
+      const focused = document.activeElement
+      const stillOurs =
+        focused === null || focused === document.body || !focused.isConnected || !!panel?.contains(focused)
+      if (!stillOurs) return
       const target = opener instanceof HTMLElement && opener.isConnected ? opener : returnFocusRef?.current
       if (!target?.isConnected) return
       target.focus()

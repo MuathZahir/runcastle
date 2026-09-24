@@ -115,6 +115,30 @@ describe('Dialog', () => {
     expect(document.activeElement).toBe(opener)
   })
 
+  it('leaves the focus alone when it closes after the focus has already left it', () => {
+    const page = (open: boolean) => (
+      <>
+        <button>Open</button>
+        <input aria-label="page input" />
+        <Dialog open={open} onClose={() => {}} scrim="none" label="Test dialog">
+          <button>Inside</button>
+        </Dialog>
+      </>
+    )
+    const view = render(page(false))
+    screen.getByRole('button', { name: 'Open' }).focus()
+    view.rerender(page(true))
+    expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true)
+
+    // The human clicks into the page, then something else closes the dialog — a timer, say.
+    const pageInput = screen.getByLabelText('page input')
+    pageInput.focus()
+    view.rerender(page(false))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(pageInput)
+  })
+
   it('captures the opener before a newly mounted child passive effect changes focus', async () => {
     function PassiveFocus() {
       useEffect(() => {
