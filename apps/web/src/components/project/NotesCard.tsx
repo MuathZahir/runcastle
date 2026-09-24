@@ -6,12 +6,13 @@ import { relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { pathFor } from '../../lib/routes'
 import { useToast } from '../../lib/toast'
-import { Button, DimLine, NoteThumbnail, SectionTitle } from '../../ui'
+import { IconCheck, IconChevronRight, IconPencil, IconTrash, IconUndo } from '../../icons'
+import { BARE_BUTTON, Button, NoteThumbnail } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
 
 /**
- * The project's note inbox (decisions.md #10) — the pile, and the door that
- * triages it.
+ * The project's note inbox (decisions.md #10, presentation #17) — the pile, and
+ * the door that triages it.
  *
  * Notes are never cards in the rail: a jotted observation is not a third kind of
  * thing beside drafts and features, it is raw material. So the inbox is a card
@@ -24,6 +25,9 @@ import { Lightbox } from '../review/Lightbox'
  * reopen, and nothing that cuts a feature or a ticket. Routing a note is the
  * project session's job, because it is the only surface that can consult the
  * portfolio first.
+ *
+ * It reads as a list of one-liners, not a form: each row's verbs are icons that
+ * surface on hover and on keyboard focus, in place of the row's time.
  *
  * Hidden entirely until the project has had a note — an empty inbox on a project
  * that has never used one is a control explaining itself to nobody.
@@ -77,177 +81,237 @@ export function NotesCard({
   }
 
   return (
-    <section className="flex flex-col gap-2">
-      <SectionTitle>Notes</SectionTitle>
-      <div className="flex flex-col gap-4 rounded-lg border border-hairline bg-panel px-6 py-5">
-        <div className="flex items-center gap-6">
-          <p className="m-0 max-w-[46ch] flex-1 text-sm text-text-2">
-            What you jotted while working. The chat clusters them, grills you on what they meant,
-            and routes each one.
-          </p>
-          <Button
-            className="shrink-0"
-            disabled={open.length === 0 || triaging}
-            title={open.length === 0 ? 'nothing is open to triage' : undefined}
-            onClick={onTriage}
+    <section aria-label="Notes" className="rounded-lg border border-hairline bg-panel">
+      <div className="flex items-center gap-2.5 border-b border-hairline-soft py-3 pr-3 pl-4.5">
+        <h3 className="m-0 text-base font-semibold text-text">Notes</h3>
+        {open.length > 0 && (
+          <span
+            className="inline-grid h-4.5 min-w-4.5 place-items-center rounded-pill border border-accent-line bg-accent-soft px-1.5 text-xs font-semibold text-accent-hi tabular-nums"
+            title={`${open.length} open`}
           >
-            {triaging ? 'Opening…' : `Triage ${noteCount(open.length)}`}
-          </Button>
-        </div>
-
-        {open.length === 0 ? (
-          <DimLine>Nothing open — every note has been triaged.</DimLine>
-        ) : (
-          <div className="flex flex-col">
-            {open.map((note) => (
-              <NoteLine key={note.id} note={note} onOpenImage={setPicture}>
-                {editing === note.id ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      aria-label="edit this note"
-                      className={NOTE_TEXTAREA}
-                      value={draft}
-                      autoFocus
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          e.preventDefault()
-                          setEditing(null)
-                          return
-                        }
-                        if (e.key !== 'Enter' || e.shiftKey) return
-                        e.preventDefault()
-                        save(note.id)
-                      }}
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="xs"
-                        disabled={!draft.trim() || edit.isPending}
-                        onClick={() => save(note.id)}
-                      >
-                        Save
-                      </Button>
-                      <Button size="xs" onClick={() => setEditing(null)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="m-0 text-sm text-pretty whitespace-pre-wrap text-text">
-                      {note.text}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="xs"
-                        onClick={() => {
-                          setEditing(note.id)
-                          setDraft(note.text)
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      {/* Waving a note away without opening a chat for it — the
-                          same triage the session does, with outcome "dismissed". */}
-                      <Button
-                        size="xs"
-                        disabled={busy}
-                        onClick={() => dismiss.mutate({ noteId: note.id })}
-                      >
-                        Dismiss
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="danger"
-                        disabled={busy}
-                        onClick={() => remove.mutate({ noteId: note.id })}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </NoteLine>
-            ))}
-          </div>
+            {open.length}
+          </span>
         )}
-
-        {triaged.length > 0 && (
-          <details className="border-t border-hairline-soft pt-3">
-            <summary className="cursor-pointer list-none text-sm text-text-3">
-              Triaged ({triaged.length})
-            </summary>
-            <div className="mt-2 flex flex-col">
-              {triaged.map((note) => (
-                <NoteLine key={note.id} note={note} onOpenImage={setPicture}>
-                  <p className="m-0 text-sm text-pretty whitespace-pre-wrap text-text-2">
-                    {note.text}
-                  </p>
-                  {/* Where it went, as the record rather than as a control — a
-                      triaged note is frozen, so this outlives every action. */}
-                  <div className="font-mono text-xs text-text-3">{note.outcome}</div>
-                  <div className="flex items-center gap-2">
-                    <FeatureLink
-                      projectId={projectId}
-                      feature={featuresQ.data?.find((f) => f.id === note.featureId)}
-                    />
-                    <Button
-                      size="xs"
-                      disabled={busy}
-                      onClick={() => reopen.mutate({ noteId: note.id })}
-                    >
-                      Reopen
-                    </Button>
-                  </div>
-                </NoteLine>
-              ))}
-            </div>
-          </details>
-        )}
+        <span className="min-w-0 flex-1 truncate text-sm text-text-3">
+          Grouped, questioned and routed in a triage chat.
+        </span>
+        <Button
+          variant="accent"
+          className="shrink-0"
+          disabled={open.length === 0 || triaging}
+          title={open.length === 0 ? 'nothing is open to triage' : undefined}
+          onClick={onTriage}
+        >
+          {triaging ? 'Opening…' : `Triage ${open.length}`}
+        </Button>
       </div>
+
+      <ul className={LIST}>
+        {open.length === 0 ? (
+          <li className="px-4.5 py-3 text-sm text-text-3">
+            Nothing open — every note has been triaged.
+          </li>
+        ) : (
+          open.map((note) => (
+            <NoteRow
+              key={note.id}
+              lead={
+                note.screenshotUrl ? (
+                  <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={setPicture} />
+                ) : (
+                  <span className="grid w-10 place-items-center" aria-hidden>
+                    <i className="size-1.25 rounded-pill bg-accent-line" />
+                  </span>
+                )
+              }
+              when={relTime(note.createdAt)}
+              actions={
+                <>
+                  <RowAction
+                    label="Edit"
+                    onClick={() => {
+                      setEditing(note.id)
+                      setDraft(note.text)
+                    }}
+                  >
+                    <IconPencil size={14} />
+                  </RowAction>
+                  {/* Waving a note away without opening a chat for it — the
+                      same triage the session does, with outcome "dismissed". */}
+                  <RowAction
+                    label="Dismiss"
+                    disabled={busy}
+                    onClick={() => dismiss.mutate({ noteId: note.id })}
+                  >
+                    <IconCheck size={14} />
+                  </RowAction>
+                  <RowAction
+                    label="Delete"
+                    tone="danger"
+                    disabled={busy}
+                    onClick={() => remove.mutate({ noteId: note.id })}
+                  >
+                    <IconTrash size={14} />
+                  </RowAction>
+                </>
+              }
+            >
+              {editing === note.id ? (
+                <input
+                  aria-label="edit this note"
+                  className={NOTE_INPUT}
+                  value={draft}
+                  autoFocus
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setEditing(null)
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault()
+                      save(note.id)
+                    }
+                  }}
+                />
+              ) : (
+                <span className="text-text">{note.text}</span>
+              )}
+            </NoteRow>
+          ))
+        )}
+      </ul>
+
+      {triaged.length > 0 && (
+        <details className="group/tri border-t border-hairline-soft">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4.5 py-2.5 text-sm text-text-3 hover:text-text-2 [&::-webkit-details-marker]:hidden">
+            <IconChevronRight
+              size={12}
+              className="transition-transform duration-(--dur-1) group-open/tri:rotate-90"
+            />
+            {triaged.length} triaged
+          </summary>
+          <ul className={LIST}>
+            {triaged.map((note) => (
+              <NoteRow
+                key={note.id}
+                lead={
+                  note.screenshotUrl ? (
+                    <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={setPicture} />
+                  ) : (
+                    <span className="w-10" aria-hidden />
+                  )
+                }
+                actions={
+                  <RowAction
+                    label="Reopen"
+                    disabled={busy}
+                    onClick={() => reopen.mutate({ noteId: note.id })}
+                  >
+                    <IconUndo size={14} />
+                  </RowAction>
+                }
+              >
+                <span className="text-text-3">{note.text}</span>
+                {/* Where it went, as the record rather than as a control — a
+                    triaged note is frozen, so this outlives every action. */}
+                <span className="mt-px flex flex-wrap items-baseline gap-x-2 text-sm text-text-3">
+                  <span>{note.outcome}</span>
+                  <FeatureLink
+                    projectId={projectId}
+                    feature={featuresQ.data?.find((f) => f.id === note.featureId)}
+                  />
+                </span>
+              </NoteRow>
+            ))}
+          </ul>
+        </details>
+      )}
       <Lightbox url={picture} onClose={() => setPicture(null)} />
     </section>
   )
 }
 
-const NOTE_TEXTAREA =
-  'min-h-16 w-full resize-y rounded-md border border-hairline bg-panel-inset px-3 py-2 ' +
-  'font-mono text-sm text-text placeholder:text-text-4 focus:border-accent-line focus:outline-none'
+/** No preflight (apps/web/STYLE.md): a list states its own reset. */
+const LIST = 'm-0 list-none py-1 pl-0'
+
+const NOTE_INPUT =
+  'h-7 w-full min-w-0 rounded-sm border border-accent-line bg-panel-inset px-2 ' +
+  'text-base text-text focus:outline-none'
 
 /** Newest first — the pile is read from the top, where the last thing you saw is. */
 function byNewest(notes: ProjectNote[]): ProjectNote[] {
   return [...notes].sort((a, b) => b.createdAt - a.createdAt)
 }
 
-/** `1 note` / `4 notes` — the button's count, spelled so it stays grammatical. */
-function noteCount(n: number): string {
-  return `${n} note${n === 1 ? '' : 's'}`
-}
-
 /**
- * One row: the picture that justifies the note beside whatever the section makes
- * of it. Evidence-forward, on the anatomy the review notes list already uses —
- * and on its actual thumbnail, {@link NoteThumbnail}, so the two lists of notes
- * cannot drift into two lightbox doors.
+ * One dense row: picture (or its absence), the text, and — at rest — the time.
+ * The verbs sit beside the time and take its place under the pointer or the
+ * keyboard's focus; they are always in the tab order, so focusing one is what
+ * reveals it.
  */
-function NoteLine({
-  note,
-  onOpenImage,
+function NoteRow({
+  lead,
+  when,
+  actions,
   children,
 }: {
-  note: ProjectNote
-  onOpenImage: (url: string) => void
+  lead: ReactNode
+  when?: string
+  actions: ReactNode
   children: ReactNode
 }) {
   return (
-    <div className="flex gap-3 border-t border-hairline-soft py-3 first:border-t-0">
-      <NoteThumbnail url={note.screenshotUrl} onOpen={onOpenImage} />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="font-mono text-xs text-text-3">{relTime(note.createdAt)}</span>
-        {children}
+    <li className="group grid min-h-10.5 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-hairline-soft py-1.5 pr-3 pl-4.5 first:border-t-0 focus-within:bg-panel-3 hover:bg-panel-3">
+      {lead}
+      <div className="flex min-w-0 flex-col text-base wrap-anywhere">{children}</div>
+      <div className="flex items-center gap-0.5">
+        {when && (
+          <span className="pr-1.5 font-mono text-xs text-text-3 tabular-nums group-focus-within:hidden group-hover:hidden">
+            {when}
+          </span>
+        )}
+        <span className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur-1) group-focus-within:opacity-100 group-hover:opacity-100">
+          {actions}
+        </span>
       </div>
-    </div>
+    </li>
+  )
+}
+
+type RowActionTone = 'plain' | 'danger'
+
+// Delete names its danger only under the pointer: repeated down a list at rest,
+// a red control per row shouts over the notes themselves.
+const ROW_ACTION_HOVER: Record<RowActionTone, string> = {
+  plain: 'hover:text-text',
+  danger: 'hover:text-danger',
+}
+
+/** A row's verb as an icon. The label is both its name and its tooltip. */
+function RowAction({
+  label,
+  tone = 'plain',
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  tone?: RowActionTone
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${BARE_BUTTON} grid size-6.5 cursor-pointer place-items-center rounded-sm p-0 text-text-3 hover:bg-hairline disabled:cursor-not-allowed disabled:opacity-40 ${ROW_ACTION_HOVER[tone]}`}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -266,7 +330,7 @@ function FeatureLink({
   if (!feature) return null
   return (
     <a
-      className="text-sm text-accent underline decoration-dotted"
+      className="text-accent-hi underline decoration-dotted"
       href={pathFor({ kind: 'feature', projectId, featureSlug: feature.slug })}
     >
       {feature.title}

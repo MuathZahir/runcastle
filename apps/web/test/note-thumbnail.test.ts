@@ -18,8 +18,8 @@ import { NoteRow } from '../src/components/review/NoteRow'
 
 const URL = '/api/reviews/note/note_1/screenshot.png'
 
-function thumbnail(url: string | null): string {
-  return renderToStaticMarkup(createElement(NoteThumbnail, { url, onOpen: () => {} }))
+function thumbnail(url: string | null, size?: 'md' | 'sm'): string {
+  return renderToStaticMarkup(createElement(NoteThumbnail, { url, onOpen: () => {}, size }))
 }
 
 function surface(name: string): string {
@@ -41,6 +41,20 @@ describe('NoteThumbnail', () => {
 
   it('renders nothing when the note has no picture', () => {
     expect(thumbnail(null)).toBe('')
+    expect(thumbnail(null, 'sm')).toBe('')
+  })
+
+  /** The project inbox's dense row (decisions.md #17) wears the same door, smaller. */
+  it('comes small, ~40×26, as the same door onto the same picture', () => {
+    const html = thumbnail(URL, 'sm')
+
+    expect(html).toContain(URL)
+    expect(html).toContain('the picture attached to this note')
+    expect(html).toContain('w-10')
+    expect(html).toContain('h-[26px]')
+    expect(html).not.toContain('h-[54px]')
+    // the default is untouched: the review lap's rows keep their size
+    expect(thumbnail(URL)).toBe(thumbnail(URL, 'md'))
   })
 
   it('is what both note surfaces render, rather than each styling its own', () => {
