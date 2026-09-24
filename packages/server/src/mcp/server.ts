@@ -1167,6 +1167,10 @@ export interface ProjectNoteToolItem {
   id: string
   text: string
   createdAt: number
+  /** The branch a project drive was driving when the note was taken. */
+  driveBranch?: string
+  /** That drive's short start commit, `+dirty` on a dirty tree. */
+  driveCommit?: string
   screenshotPath?: string
   attachmentSentence?: string
 }
@@ -1177,11 +1181,16 @@ export function toolListProjectNotes(ctx: AppCtx, session: SessionRow): ProjectN
     .filter((note) => note.status === 'open')
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
     .map((note) => {
-      if (!note.screenshotUrl) return { id: note.id, text: note.text, createdAt: note.createdAt }
-      return {
+      const base = {
         id: note.id,
         text: note.text,
         createdAt: note.createdAt,
+        ...(note.driveBranch ? { driveBranch: note.driveBranch } : {}),
+        ...(note.driveCommit ? { driveCommit: note.driveCommit } : {}),
+      }
+      if (!note.screenshotUrl) return base
+      return {
+        ...base,
         screenshotPath: projectNotePath(note.id),
         attachmentSentence:
           `A screenshot of the problem is at ${attachmentRelPath(note.id)} in your workspace — ` +

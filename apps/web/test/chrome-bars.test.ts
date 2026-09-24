@@ -37,6 +37,7 @@ function titlebar(over: {
   featureTitle?: string | null
   runsElsewhere?: number
   noteOpen?: boolean
+  drivingBranch?: string | null
 }): string {
   return renderToStaticMarkup(
     createElement(TitlebarChrome, {
@@ -155,6 +156,17 @@ describe('titlebar runs pill', () => {
 
     expect(html).not.toMatch(/server (ok|down)/)
     expect(html).not.toContain('server healthy')
+  })
+})
+
+/** Project-level test drive decisions 4, 9 — a live project drive stays visible. */
+describe('titlebar drive pill', () => {
+  it("names the branch this project's drive is driving", () => {
+    expect(titlebar({ view: 'feature', drivingBranch: 'main' })).toContain('driving main')
+  })
+
+  it('is absent with no project drive live', () => {
+    expect(titlebar({ view: 'feature' })).not.toContain('driving ')
   })
 })
 

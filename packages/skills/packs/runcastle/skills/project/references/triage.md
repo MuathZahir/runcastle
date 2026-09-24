@@ -24,6 +24,10 @@ order.
   `text`, `createdAt`, and, when the note has a screenshot, `screenshotPath` (an
   absolute host path — `Read` it) and `attachmentSentence` (ready-made prose
   naming `.runcastle-attachments/<noteId>.png`, to paste into a ticket string).
+  A note taken during a project test drive also carries `driveBranch` and
+  `driveCommit` — it was noted while driving `<driveBranch>` @ `<driveCommit>`
+  (`+dirty` means uncommitted edits were driven too), so you can tell whether
+  it predates a fix that has landed since.
 - `mcp__runcastle__triage_project_note({ noteIds, outcome, featureId? })` — marks
   one or several notes triaged with the outcome line they are frozen with. It
   takes several ids so a whole theme closes in one call.

@@ -25,7 +25,12 @@ export interface NextStepContext {
   mapContent?: string
   conflict?: MergeConflictState | null
   unverifiedDriveKeys?: string[]
-  dryRunActive?: boolean
+  /**
+   * The server's `holderLabel` for a drive that is NOT this feature's and holds
+   * the one slot — a dry run, another feature's drive, or a project drive
+   * (project-level-test-drive decision 9). Absent while the slot is free or ours.
+   */
+  slotHolder?: string
   draftBaseMissing?: DraftBaseMissing
   openNotes?: number
   openDefects?: number

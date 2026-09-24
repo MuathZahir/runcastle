@@ -471,7 +471,10 @@ export function Workspace({
     mapContent: mapQ.data?.content,
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
-    dryRunActive: !!driveQ.data?.dryRun,
+    // Whoever else holds the one drive slot, named as the server names it.
+    ...(driveQ.data && driveQ.data.featureId !== feature.id
+      ? { slotHolder: driveQ.data.holderLabel }
+      : {}),
     ...(burnStatsQ.data ? { burnStats: burnStatsQ.data } : {}),
     ...(digestQ.data ? { docsDigestBytes: digestQ.data.bytes } : {}),
     ...(draftBaseMissing ? { draftBaseMissing } : {}),
@@ -828,6 +831,11 @@ export function Workspace({
             lap: feature.lap,
             driveTaken,
             openNotes,
+            // A project drive of this project serves from the checkout the
+            // merge commits in, so the server stops it first (decision 6).
+            ...(driveQ.data?.projectDrive && driveQ.data.projectId === feature.projectId
+              ? { projectDrive: { holderLabel: driveQ.data.holderLabel } }
+              : {}),
             freshness: reviewFreshness,
             conflict,
             laterLaps,

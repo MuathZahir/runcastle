@@ -31,6 +31,23 @@ export function openAppWaitingLabel(open: OpenApp): string {
   return open.state === 'timedOut' ? `${open.url} — not answering` : `starting… ${open.url}`
 }
 
+/**
+ * The server's `holderLabel` ("a project drive of main") opening a sentence.
+ * The label itself is shown verbatim — only its first letter moves.
+ */
+export function holderSentence(holderLabel: string): string {
+  return `${holderLabel.charAt(0).toUpperCase()}${holderLabel.slice(1)}`
+}
+
+/**
+ * Why a feature's Test drive cannot start while another drive holds the one
+ * slot (project-level-test-drive decision 9) — named by the server's own label,
+ * in the same words the server's refusal uses.
+ */
+export function slotHeldReason(holderLabel: string): string {
+  return `${holderSentence(holderLabel)} is running — stop it first`
+}
+
 /** A drive whose setup hook failed, as the review panel surfaces it. */
 export interface DriveFailure {
   /** The setup command the project ran, verbatim. */

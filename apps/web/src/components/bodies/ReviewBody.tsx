@@ -17,6 +17,7 @@ import {
   liveSessionLine,
   reviewChecks,
   reviewDriveDenial,
+  slotHeldReason,
   specDocPath,
   unverifiedLap,
   verificationState,
@@ -35,6 +36,7 @@ import { FullAccounts } from '../review/FullAccounts'
 import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { NothingVerifiedAlert } from '../review/NothingVerifiedAlert'
 import { NotesRail } from '../review/NotesRail'
+import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { ReviewTrail } from '../review/ReviewTrail'
 import { StatusStrip } from '../review/StatusStrip'
@@ -268,9 +270,14 @@ export function ReviewBody({
   // behind it takes the stage away (decision 6), and an overlay over that would
   // be an empty window with no way out of it.
   const expand: StageExpand = { expanded: expanding && stageMounted, set: setExpanding }
-  // The one drive slot is taken by somebody else — another feature, or a
-  // preparation dry run (decision 9).
-  const driveSlotTaken = !!drive.data && drive.data.featureId !== feature.id
+  // The one drive slot is taken by somebody else — another feature, a
+  // preparation dry run (decision 9) or a project drive — named as the server
+  // names it (project-level-test-drive decision 9).
+  const slotHolder =
+    drive.data && drive.data.featureId !== feature.id ? drive.data : undefined
+  // A project drive is the human's own, so this page offers to stop it.
+  const blockingProjectDrive =
+    slotHolder?.projectDrive && slotHolder.projectId ? slotHolder.projectId : undefined
   // A review drive the human's own uncommitted files refused (decision 7). Only
   // while the feature is actually AT review — this body also mounts to look back
   // at review on a feature that has moved on, and a denial answered by a later
@@ -461,12 +468,19 @@ export function ReviewBody({
                       onStart: () => startDrive.mutate({ featureId: feature.id, action: 'start' }),
                       ...(startDrive.isPending
                         ? { blocked: 'starting…' }
-                        : driveSlotTaken
-                          ? { blocked: 'the one drive slot is taken — stop the other drive first' }
+                        : slotHolder
+                          ? { blocked: slotHeldReason(slotHolder.holderLabel) }
                           : {}),
                     },
                   })}
             />
+
+            {!readonly && !driveUp && slotHolder && blockingProjectDrive && (
+              <ProjectDriveBlocking
+                projectId={blockingProjectDrive}
+                holderLabel={slotHolder.holderLabel}
+              />
+            )}
 
             {/* What this project says a driver needs to know, under the state
                 line that carries the Test drive control (decision 6). Nothing at

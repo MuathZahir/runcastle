@@ -11,6 +11,7 @@ export function LiveChat({
   hidden,
   onBack,
   endControl,
+  switcher,
   children,
 }: {
   session: NonNullable<ProjectSession>
@@ -19,6 +20,8 @@ export function LiveChat({
   hidden: boolean
   onBack: () => void
   endControl: ReactNode
+  /** The Chat | Drive switch, when a project drive shares the body. */
+  switcher?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -41,8 +44,10 @@ export function LiveChat({
         <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-xs text-text-2">
           → {branch ?? '…'}
         </span>
+        <span className="flex-1" />
+        {switcher}
         <span
-          className="ml-auto font-mono text-xs text-text-3"
+          className="font-mono text-xs text-text-3"
           title={session.ccSessionId ?? session.id}
         >
           {(session.ccSessionId ?? session.id).slice(0, 8)}

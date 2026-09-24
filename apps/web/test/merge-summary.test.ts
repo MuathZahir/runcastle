@@ -195,6 +195,17 @@ describe('mergeSummary', () => {
       expect(mergeSummary({ ...clean, burning: false }).warnings).toEqual([])
     })
 
+    /**
+     * project-level-test-drive decision 6: merge stops a live project drive of
+     * the same project, and the dialog says so up front, naming it.
+     */
+    it('warns that the named project drive will be stopped', () => {
+      expect(
+        mergeSummary({ ...clean, projectDrive: { holderLabel: 'a project drive of main' } })
+          .warnings,
+      ).toEqual(['A project drive of main is running on your checkout — merging stops it.'])
+    })
+
     /** Decision 11: the merge dialog is the last catch for waived work. */
     it('names waived tickets as set-aside work', () => {
       const s = mergeSummary({ ...clean, tickets: [ticket('done'), ticket('cancelled')] })

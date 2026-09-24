@@ -396,6 +396,10 @@ export const projectNotes = sqliteTable('project_notes', {
   status: text('status').notNull().$type<ProjectNoteStatus>(),
   outcome: text('outcome'),
   featureId: text('feature_id'),
+  /** Branch a project drive was driving when the note was taken; null off-drive. */
+  driveBranch: text('drive_branch'),
+  /** Short HEAD SHA at that drive's start, `+dirty` on a dirty tree. */
+  driveCommit: text('drive_commit'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })

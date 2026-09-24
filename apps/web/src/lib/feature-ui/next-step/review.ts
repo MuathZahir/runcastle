@@ -1,5 +1,5 @@
 import type { DriveState } from '@runcastle/core'
-import { driveView } from '../drive'
+import { driveView, slotHeldReason } from '../drive'
 import { ONE_TERMINAL_WARNING } from '../gates'
 import { burnLabel, noun } from '../laps'
 import { CHAT_ACTION } from './chat'
@@ -51,19 +51,18 @@ export function resolveReview(input: ResolverInput): NextStep {
   // Review offers two forward verbs (decision 21): Iterate — keep working, which
   // is the triage door below — and Merge & ship. Test drive stays available
   // throughout.
-  // A dry run holds the same singleton drive slot, so the server refuses a
-  // feature drive outright while one is up (decision 9) — said here rather
-  // than on click. Unverified keys never disable: they are a caveat about
-  // what the drive may do, not a reason it cannot run (decision 7), and the
-  // refusal outranks the caveat when both apply.
+  // Any other drive — a dry run, another feature's, a project drive — holds the
+  // same singleton slot, so the server refuses a feature drive outright while
+  // one is up (decision 9) — said here rather than on click, naming the holder.
+  // Unverified keys never disable: they are a caveat about what the drive may
+  // do, not a reason it cannot run (decision 7), and the refusal outranks the
+  // caveat when both apply.
   const testDriveAction: NextAction = driving
     ? { label: 'Stop test drive', kind: 'testDriveStop' }
     : {
         label: 'Start test drive',
         kind: 'testDriveStart',
-        ...(ctx.dryRunActive
-          ? { disabled: 'A preparation dry-run is in progress — stop it first' }
-          : {}),
+        ...(ctx.slotHolder ? { disabled: slotHeldReason(ctx.slotHolder) } : {}),
       }
   // The unverified-drive caveat is not the bar's any more: it is a chip in the
   // state line, beside the Test drive control it is about. The bar carries one

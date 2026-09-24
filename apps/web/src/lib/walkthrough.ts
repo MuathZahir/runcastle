@@ -206,8 +206,8 @@ export async function captureAnnotation(
 }
 
 /** A saved annotation: the note that now exists, and how its PNG fared. */
-export interface SavedAnnotation {
-  note: TestNote
+export interface SavedAnnotation<N extends { id: string } = TestNote> {
+  note: N
   /** Why the screenshot did not land, when it did not. The note stands either way. */
   uploadError?: string
 }
@@ -222,10 +222,10 @@ export interface SavedAnnotation {
  * by hand. Note creation failing is a different matter and propagates — there is
  * nothing to attach a screenshot to.
  */
-export async function saveAnnotatedNote(steps: {
-  createNote: () => Promise<TestNote>
+export async function saveAnnotatedNote<N extends { id: string } = TestNote>(steps: {
+  createNote: () => Promise<N>
   uploadScreenshot: (noteId: string) => Promise<unknown>
-}): Promise<SavedAnnotation> {
+}): Promise<SavedAnnotation<N>> {
   const note = await steps.createNote()
   try {
     await steps.uploadScreenshot(note.id)

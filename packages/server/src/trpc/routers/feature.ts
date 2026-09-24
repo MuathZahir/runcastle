@@ -204,6 +204,13 @@ export const featureRouter = router({
       if (git.activeTestDriveFeatureId() === feature.id) {
         await git.testDrive(ctx, project, feature, 'stop')
       }
+      // A project drive serves from the very checkout the merge commits in;
+      // merging underneath its dev server would leave it describing old code.
+      // Stop it the same way (project-level-test-drive decision 6).
+      const drive = git.activeDriveInfo()
+      if (drive?.projectDrive && drive.projectId === project.id) {
+        await git.projectDrive(ctx, project, 'stop')
+      }
       const delta = await git.mergeDelta(project, feature)
       const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
       const res = await git.mergeFeature(project, feature)

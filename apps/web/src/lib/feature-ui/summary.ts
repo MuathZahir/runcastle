@@ -1,5 +1,6 @@
 import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
+import { holderSentence } from './drive'
 import type { MergeConflictState } from './gates'
 import { noun } from './laps'
 import { parseMapSections } from './map'
@@ -205,6 +206,12 @@ export function mergeSummary(input: {
   driveTaken: boolean
   /** Notes captured during the test drive that were never ticked off. */
   openNotes?: number
+  /**
+   * A project drive of this feature's project, live on the checkout the merge
+   * commits in — the server stops it before merging (project-level-test-drive
+   * decision 6). `holderLabel` is the server's own name for it.
+   */
+  projectDrive?: { holderLabel: string }
   /** How fresh the review evidence is — the same stamp the status strip shows. */
   freshness: Freshness
   /** The standing merge conflict, or null when the branch merges cleanly. */
@@ -231,6 +238,13 @@ export function mergeSummary(input: {
   if (input.burning) {
     warnings.push(
       'A burn is live — work landing after this merge stays unshipped on the branch.',
+    )
+  }
+  // Said before the click, not discovered after it: the notes are saved, but
+  // the dev server the human may be looking at goes down with the merge.
+  if (input.projectDrive) {
+    warnings.push(
+      `${holderSentence(input.projectDrive.holderLabel)} is running on your checkout — merging stops it.`,
     )
   }
   // Informational, never blocking (decisions #7): shipping over findings the

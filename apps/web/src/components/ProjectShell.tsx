@@ -7,6 +7,7 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
 import { isNoteHotkey } from '../lib/project-notes'
+import { isThisProjectDrive } from '../lib/project-drive'
 import { showsInspector, workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
@@ -80,6 +81,14 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     setInboxRequest((request) => request + 1)
   }
   const consumeInboxRequest = () => setInboxRequest(0)
+  // The titlebar's drive pill: the project workspace, with its live project
+  // drive brought to the front (project-level-test-drive decision 4).
+  const [driveRequest, setDriveRequest] = useState(0)
+  const openDrive = () => {
+    selectProject()
+    setDriveRequest((request) => request + 1)
+  }
+  const consumeDriveRequest = () => setDriveRequest(0)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -93,6 +102,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const prep = trpc.project.prep.useQuery({ projectId }) as { data?: PrepView }
   const prepared = prep.data?.prepared ?? true
   const empty = prep.data?.empty ?? true
+  // The one drive query every drive surface polls, read for the titlebar pill.
+  const slot = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() }).data
+  const projectDrive = isThisProjectDrive(slot, projectId) ? slot : null
 
   const features = list.data
 
@@ -226,6 +238,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
         inspectorCollapsed={inspectorCollapsed}
+        drivingBranch={projectDrive?.branch ?? null}
+        onOpenDrive={openDrive}
       />
 
       {/* The inspector column exists only where the Inspector does — a third
@@ -272,6 +286,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onConsumeNewChatRequest={() => setNewChatRequest(0)}
             inboxRequest={inboxRequest}
             onConsumeInboxRequest={consumeInboxRequest}
+            empty={empty}
+            onOpenPreparation={ws.startPreparation}
+            driveRequest={driveRequest}
+            onConsumeDriveRequest={consumeDriveRequest}
           />
         ) : view === 'feature' && selectedFeatureId ? (
           // The feature view is the app's one unbounded render surface — it

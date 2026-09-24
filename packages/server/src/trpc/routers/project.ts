@@ -175,4 +175,15 @@ export const projectRouter = router({
     .mutation(({ ctx, input }) =>
       git.dryRunDrive(ctx, requireProjectById(ctx, input.projectId), 'stop'),
     ),
+
+  /**
+   * Start or stop a project drive: the project's checkout driven as it is, with
+   * no feature and no branch switch (project-level-test-drive decision 3). Its
+   * live state is read through the one `feature.driveInfo` query.
+   */
+  testDrive: publicProcedure
+    .input(z.object({ projectId: z.string(), action: z.enum(['start', 'stop']) }))
+    .mutation(({ ctx, input }) =>
+      git.projectDrive(ctx, requireProjectById(ctx, input.projectId), input.action),
+    ),
 })

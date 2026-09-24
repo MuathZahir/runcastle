@@ -31,6 +31,8 @@ vi.mock('../src/trpc', () => {
       }),
       project: {
         list: { useQuery: query([{ id: 'proj_1', name: 'acme' }]) },
+        branches: { useQuery: query({ current: 'main', detected: 'main', branches: ['main'] }) },
+        testDrive: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
         projectSession: { useQuery: () => ({ data: session, isPending: false }) },
         conversations: { useQuery: query([]) },
         talkToProject: { useMutation: () => ({ mutate: launch, isPending: false }) },
@@ -44,6 +46,7 @@ vi.mock('../src/trpc', () => {
       },
       feature: {
         list: { useQuery: query([]) },
+        driveInfo: { useQuery: query(null) },
         endSession: {
           useMutation: (opts: { onSuccess?: () => void }) => {
             endOptions = opts
