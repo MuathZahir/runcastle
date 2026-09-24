@@ -4,6 +4,7 @@ import { trpc } from '../../trpc'
 import {
   customModelsFromView,
   defaultModelOf,
+  discoveryStatusLines,
   modelOptionGroups,
   projectModelWarning,
   rosterFromView,
@@ -12,7 +13,8 @@ import {
   stepRows,
   type ModelOptionGroup,
 } from '../../lib/settings'
-import { DimLine } from '../../ui'
+import type { SettingsView } from '../../lib/api'
+import { Button, DimLine } from '../../ui'
 import { Select, SelectContent, SelectTrigger, SelectValue } from '../../ui/select'
 import { ModelOptions, Refusal, RosterTable, SaveMark } from './RosterTable'
 import { StepTable } from './StepTable'
@@ -148,6 +150,7 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
             the tickets agent, which may pick it per ticket; models without a note are never picked
             automatically.
           </p>
+          <DiscoveryStatus view={view} />
           <RosterTable
             rows={roster}
             stepLabels={stepLabels}
@@ -181,6 +184,44 @@ function GroupHeading({ children }: { children: string }) {
       {children}
       <span className="h-px flex-1 bg-hairline-soft" />
     </h3>
+  )
+}
+
+/**
+ * Where the discovered models came from: one line per source — how many and how
+ * long ago, or why it failed — and the Refresh that re-asks both now, for the
+ * "a model just shipped" moment (decision 3). A failed source is quiet: it keeps
+ * its last good models, so its line is information, not an error to act on.
+ */
+function DiscoveryStatus({ view }: { view: SettingsView }) {
+  const utils = trpc.useUtils()
+  const refresh = trpc.settings.refreshModels.useMutation({
+    onSuccess: () => void utils.settings.get.invalidate(),
+  })
+
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <ul aria-label="Model discovery" className="flex flex-col gap-0.5 text-sm">
+        {discoveryStatusLines(view).map((line) => (
+          <li key={line.runtime} className={line.failed ? 'text-warn' : 'text-text-3'}>
+            {line.text}
+          </li>
+        ))}
+        {refresh.error && (
+          <li role="alert" className="text-danger">
+            Refresh failed: {refresh.error.message}
+          </li>
+        )}
+      </ul>
+      <Button
+        size="xs"
+        className="shrink-0"
+        disabled={refresh.isPending}
+        onClick={() => refresh.mutate()}
+      >
+        {refresh.isPending ? 'Refreshing…' : 'Refresh'}
+      </Button>
+    </div>
   )
 }
 

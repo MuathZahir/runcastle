@@ -847,7 +847,7 @@ describe('rosterRows with discovery', () => {
     expect(row(rows, 'claude-opus-5')?.discovered).toBe(false)
   })
 
-  it('keeps an annotated discovered id non-custom, so clearing its note returns it to discovery', () => {
+  it('keeps an annotated discovered id non-custom, so a cleared note returns it', () => {
     const rows = rosterRows(
       discoveryView(
         [{ key: 'models', value: [{ id: 'gpt-6-luna', runtime: 'codex', note: 'cheap' }] }],
