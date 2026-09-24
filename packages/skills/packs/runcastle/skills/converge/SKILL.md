@@ -15,7 +15,7 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 0. Read the compressed knowledge — and only that
 
-Call `mcp__runcastle__get_feature_context`. The injected system prompt carries the slug and the paths; trust `get_feature_context` for the live state. It returns the feature, the current `phase`, the map, the tickets, and its docs in two parts — `docs[]`, inlined in full, and `moreDocs[]`, an index of everything else with a `relPath` and a byte count. Read, in this order:
+Call `mcp__runcastle__get_feature_context`. The injected system prompt carries the slug and the paths; trust `get_feature_context` for the live state. It returns the feature, the current `phase`, the map, the tickets as summary rows (`seq`, `title`, `status`, `goal`; `mcp__runcastle__get_ticket({ seq })` has a ticket's context, acceptance criteria and digest), and its docs in two parts — `docs[]`, inlined in full, and `moreDocs[]`, an index of everything else with a `relPath` and a byte count. A canonical doc too large to inline is listed in `notInlined` instead of `docs[]`: read it with `mcp__runcastle__read_feature_doc({ relPath })` or off disk before acting. Read, in this order:
 
 1. **`map.md`** (inlined in `docs[]`) — the destination, the notes, and what was ruled out of scope.
 2. **`decisions.md`** (inlined in `docs[]`) — every decision the waypoint sessions locked. This is the spine of the spec.

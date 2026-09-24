@@ -396,12 +396,12 @@ describe('renderSystemPrompt', () => {
     expect(review).toMatch(/fix ticket/i)
     // it points at the PER-TICKET facts that are actually in the payload —
     // there is no run outcome in `get_feature_context`, `get_work_record` is
-    // gated shut for feature sessions, and `digest` is no longer returned
+    // gated shut for feature sessions, and a ticket's `commits` and `digest`
+    // come from `get_ticket`, not the context payload's ticket rows
     expect(review).toContain('get_feature_context')
-    expect(review).toMatch(/`commits`/)
     expect(review).toMatch(/`error`/)
+    expect(review).toMatch(/`get_ticket\(\{ seq \}\)` adds the `commits` it landed and its `digest`/)
     expect(review).not.toMatch(/run outcome/i)
-    expect(review).not.toContain('digest')
     // burning from review loops back through implementation; the phase never
     // advances from within the session
     expect(review).toMatch(/click Burn/i)

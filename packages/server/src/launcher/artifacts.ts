@@ -411,10 +411,10 @@ export function renderConvergePrompt(
  *
  * The review evidence arrives as absolute paths because nothing else carries it.
  * A review agent reports through host scratch space outside the repo
- * (`~/.runcastle/reviews/<ticketId>/`), and `get_feature_context` strips every
- * ticket's `digest` out of its payload — so the previous lap's review reached a
- * lap session through no channel at all, and one planned a whole lap on "No, I
- * moved too quickly to Burn".
+ * (`~/.runcastle/reviews/<ticketId>/`), and `get_feature_context`'s ticket rows
+ * carry no `digest` (only `get_ticket` does, one ticket at a time) — so the
+ * previous lap's review once reached a lap session through no channel at all,
+ * and one planned a whole lap on "No, I moved too quickly to Burn".
  *
  * The other two are policy, stated here because they are per-lap facts about
  * what this session owes the human before it plans: read out what the docs
@@ -429,8 +429,9 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
     '### Read the evidence before you plan',
     ...(evidence.length > 0
       ? [
-          `Lap ${lap - 1}'s review left this on disk — host scratch space, NOT the repo, and your`,
-          "ONLY channel to it: a ticket's `digest` is stripped out of `get_feature_context`.",
+          `Lap ${lap - 1}'s review left this on disk — host scratch space, NOT the repo, and`,
+          "nothing else carries it: `get_feature_context`'s ticket rows have no `digest` (that",
+          'is one ticket at a time, via `get_ticket({ seq })`).',
           ...evidence.flatMap((one) => [
             `- Ticket ${one.seq}'s review pass ended \`${one.status}\` — that is the review`,
             '  outcome. It left:',
@@ -479,7 +480,7 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
  * `commits`, `lap`, `error`) rather than at a "run outcome": there is no run in
  * the `get_feature_context` payload, and `get_work_record` is gated shut for
  * feature sessions, so the old wording sent the session looking for something it
- * could not reach. `digest` is not in that payload either.
+ * could not reach. The rows carry no `commits` or `digest`; `get_ticket` does.
  *
  * The `resolve-conflict` purpose is EXCLUDED from that briefing even though it
  * is also always at `review` — its whole job is a `git merge`, and a fix-ticket
@@ -569,8 +570,9 @@ export function renderRevisitPrompt(
           'This feature is at **review**: its tickets were burned and the human has been',
           'test-driving the branch. Treat this as a fix-ticket interview — call',
           '`get_feature_context` and read what the burn actually did, ticket by ticket: each',
-          'one carries its `status`, the `commits` it landed, the `lap` it belongs to, and an',
-          '`error` when it failed. Ask what the test drive surfaced (bugs, rough edges,',
+          'row carries its `status`, the `lap` it belongs to, its `goal`, and an `error` when',
+          'it failed; `get_ticket({ seq })` adds the `commits` it landed and its `digest`, the',
+          "burner's own account of what it did. Ask what the test drive surfaced (bugs, rough edges,",
           'tweaks), then emit fix tickets for that work and edit/cancel any stale pending',
           'tickets. Moving the feature is not yours to do: once the cards are ready, tell',
           'the human to review them and click Burn — burning from review takes the feature',
@@ -937,7 +939,9 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     '## The feature',
     `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
     `- branch \`${delta.branch}\`, based on \`${delta.base}\`.`,
-    '- `get_feature_context` gives you the row, the phase, the docs and the tickets in one call.',
+    '- `get_feature_context` gives you the row, the phase, the ticket rows and the docs in one',
+    '  call — a doc it lists in `notInlined` must be read before you act; `get_ticket({ seq })`',
+    "  holds a ticket's context, acceptance criteria and digest.",
     '',
   ].join('\n')
 }
@@ -1015,8 +1019,9 @@ export function renderProjectPrompt(
     'of this session, and it does NOT open a terminal on what it creates: the new card',
     'appearing in the rail is the feedback, and the human decides what to work on next.',
     '',
-    'Every merged feature\'s docs are already on disk in this worktree — read them with your',
-    'ordinary file tools. The project context\'s feature index says where.',
+    'Every merged feature\'s docs are already on disk in this worktree at',
+    '`docs/features/<slug>/` — read them with your ordinary file tools. An in-flight',
+    'feature\'s docs are not: `read_feature_brief({ slug })` returns its brief.',
     '',
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
