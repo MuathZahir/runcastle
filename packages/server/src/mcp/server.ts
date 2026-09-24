@@ -13,7 +13,6 @@ import type {
   ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
   RunStatus as RunStatusT,
-  ModelEntry,
   SessionKind as SessionKindT,
   SessionRow,
   TestNote,
@@ -35,7 +34,6 @@ import {
   isAgentDigestDoc,
   isPastPhase,
   isProjectSessionKind,
-  modelRoster,
   nextPlanningStep,
   withheldFeatureDocs,
 } from '@runcastle/core'
@@ -92,15 +90,17 @@ import {
 import { activeBurnClaim, latestBurn, runClaimedTicketIds } from '../services/runs'
 import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
 import {
+  type AnnotatedModel,
+  annotatedModels,
   cancelTicket,
   editTicket,
   getTicket,
   listByFeature,
   pendingTickets,
+  requireAnnotatedModels,
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
-import { rosterConfig } from '../services/model-discovery'
 import {
   claimedForFeature,
   frontier as waypointFrontier,
@@ -205,23 +205,6 @@ function requireFeatureId(session: SessionRow): string {
 }
 
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
-
-/** One annotated roster entry, as the tickets session is offered it. */
-export interface AnnotatedModel {
-  id: string
-  runtime: ModelEntry['runtime']
-  note: string
-}
-
-/**
- * The roster entries carrying a use-case note, in roster order. A blank note is
- * no note — the operator cleared the field rather than describing a use case.
- */
-function annotatedModels(ctx: AppCtx): AnnotatedModel[] {
-  return modelRoster(rosterConfig(ctx)).flatMap((m) =>
-    m.note?.trim() ? [{ id: m.id, runtime: m.runtime, note: m.note.trim() }] : [],
-  )
-}
 
 /**
  * Who a feature READ is for: the feature to read, plus the session that asked
@@ -674,6 +657,9 @@ export function toolEmitTickets(
 ): { stored: number; tickets: StoredTicketRef[] } {
   const feature = getFeatureRow(ctx, requireFeatureId(session))
   refuseMisKindedReview(input.tickets)
+  // A session may only assign what `get_feature_context` offered it; the store
+  // alone takes any roster id, which is the human's (tRPC) latitude, not this.
+  requireAnnotatedModels(ctx, input.tickets.map((t) => t.model))
   // The LINK disposition: a lap ticket that names the defect it answers. Vetted
   // here rather than in `storeTickets`, which is also the internal mint used by
   // `reportFinding` and the burner's verification pass — those link findings the
@@ -734,6 +720,7 @@ export function toolUpdateTicket(
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
   const { id, ...patch } = input
+  requireAnnotatedModels(ctx, [patch.model])
   return { ok: true, ticket: editTicket(ctx, id, patch) }
 }
 
