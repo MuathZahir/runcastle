@@ -11,6 +11,7 @@ import {
   releaseTicketAbort,
   ticketStopReason,
 } from '../src/workflows/ticket-burner'
+import { imageBuildTarget } from '../src/services/sandbox-image'
 
 /**
  * Workflow-level tests: the scheduler + summary logic driven through a FAKE
@@ -360,7 +361,8 @@ describe('burnRun — scheduling and summary', () => {
       model: 'm',
       stepModels: {},
       sandbox: 'docker' as const,
-      sandboxImage: 'sandcastle:runcastle-demo',
+      // The stock image — one runcastle builds, so its drift IS a Rebuild away.
+      sandboxImage: 'sandcastle:runcastle',
     }
     const ok = (stdout = '') => ({ ok: true, code: 0, stdout, stderr: '' })
 
@@ -448,7 +450,7 @@ describe('burnRun — scheduling and summary', () => {
       )
 
       const message =
-        'could not start image sandcastle:runcastle-demo: Unable to find image locally'
+        'could not start image sandcastle:runcastle: Unable to find image locally'
       expect(calls).toEqual([])
       expect(res).toEqual({ status: 'failed', summary: message })
       expect(events).toContainEqual(
@@ -471,7 +473,7 @@ describe('burnRun — scheduling and summary', () => {
       )
 
       const message =
-        'sandcastle:runcastle-demo has Claude Code 2.1.270, the host has 2.1.280 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+        'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
       expect(probes.find((args) => args[0] === 'run')?.at(-1)).toBe(
         'for c in claude; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done; echo "@@runcastle-cli-version claude-code"; claude --version 2>/dev/null || true',
       )
@@ -480,6 +482,51 @@ describe('burnRun — scheduling and summary', () => {
       expect(events).toContainEqual(
         expect.objectContaining({ type: 'burn.image_runtime_missing', message }),
       )
+    })
+
+    it('warns but burns on a custom image, whose Rebuild button is disarmed', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      // A tag a human typed, built by someone else's tooling (stream-client's
+      // `runcastle-bl`) — so no Rebuild exists to point the drift at.
+      const customImage = 'sandcastle:runcastle-bl'
+      ctx.project = { ...project, sandboxImage: customImage }
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          config: dockerConfig,
+          hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
+          exec: imageAnswers('@@runcastle-cli-version claude-code\n2.1.215 (Claude Code)\n'),
+        }),
+      )
+
+      expect(res.status).toBe('succeeded')
+      expect(calls).toEqual([1])
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'burn.image_cli_drift',
+          message:
+            'sandcastle:runcastle-bl has Claude Code 2.1.215, the host has 2.1.280 — it is a ' +
+            'custom image managed outside runcastle, so rebuild it with the tool that built it; ' +
+            'this burn runs on it as it is.',
+        }),
+      )
+      expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
+      // The fix the warning names is the only one available: the button the old
+      // message pointed at refuses this image.
+      expect(
+        imageBuildTarget({
+          config: { sandboxImage: undefined },
+          project: {
+            id: project.id,
+            repoPath: project.repoPath,
+            sandboxImage: customImage,
+            sandboxImageOverwritable: false,
+          },
+          stockDockerfile: '/stock/Dockerfile',
+        }),
+      ).toMatchObject({ kind: 'refused', imageName: customImage })
     })
 
     it('passes when the image matches the host, skipping a runtime the host lacks', async () => {
@@ -532,7 +579,7 @@ describe('burnRun — scheduling and summary', () => {
         expect.objectContaining({
           type: 'burn.image_runtime_missing',
           message:
-            'sandcastle:runcastle-demo has Codex 0.45.0, the host has 0.46.0 — Rebuild from Settings → Burns (only the CLI layer rebuilds).',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — Rebuild from Settings → Burns (only the CLI layer rebuilds).',
         }),
       )
     })

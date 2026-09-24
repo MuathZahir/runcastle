@@ -303,6 +303,26 @@ export function unmanagedImage(project: StoredProjectImage): string | null {
   return stored
 }
 
+/**
+ * Whether the tag a burn actually resolves to is one runcastle builds — the
+ * stock image or this project's own. Everything else is a custom image someone
+ * else's tooling owns, whatever put the value there (a hand-typed project
+ * column, a machine-wide setting, `RUNCASTLE_SANDBOX_IMAGE`).
+ *
+ * This is the question the Rebuild button answers with `refused`, asked of the
+ * resolved NAME alone so callers with no provenance row to read can ask it too
+ * — the burn preflight, which holds an image's agent CLIs to the host's, has to
+ * know whether the Rebuild it would name is armed before it names it. A tag
+ * runcastle cannot rebuild must never be sent to that button (decision 3: a
+ * custom image's CLI drift warns, it does not block).
+ */
+export function isManagedImage(imageName: string, project: { id: string } | null): boolean {
+  return (
+    imageName === DEFAULT_SANDBOX_IMAGE ||
+    (project !== null && imageName === projectImageTag(project.id))
+  )
+}
+
 /** The project fields a build plan reads. */
 export type BuildableProject = {
   id: string
@@ -366,10 +386,8 @@ export function imageBuildTarget(input: ImageBuildTargetInput): ImageBuildTarget
   }
 
   const imageName = resolveSandboxImage(config, project)
-  const managed =
-    imageName === DEFAULT_SANDBOX_IMAGE ||
-    (project !== null && imageName === projectImageTag(project.id))
-  if (!managed) return { kind: 'refused', imageName, reason: unmanagedImageReason(imageName) }
+  if (!isManagedImage(imageName, project))
+    return { kind: 'refused', imageName, reason: unmanagedImageReason(imageName) }
   return { kind: 'stock', dockerfile: stockDockerfile, tag: DEFAULT_SANDBOX_IMAGE }
 }
 

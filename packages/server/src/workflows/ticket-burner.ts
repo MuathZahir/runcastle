@@ -51,6 +51,7 @@ import {
   parseAgentCliVersion,
   resolveHostAgentVersions,
 } from '../services/agent-cli-versions'
+import { isManagedImage } from '../services/sandbox-image'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -144,6 +145,8 @@ export const AUTH_MISSING_EVENT = 'auth.missing'
 export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
 /** The burn's container runtime (docker/podman) is down — no image can start. */
 export const CONTAINER_RUNTIME_DOWN_EVENT = 'burn.container_runtime_down'
+/** A custom image's agent CLI drifted from the host's — warned, never fatal. */
+export const IMAGE_CLI_DRIFT_EVENT = 'burn.image_cli_drift'
 
 const RUNTIME_BINARY: Record<AgentRuntime, string> = {
   'claude-code': 'claude',
@@ -340,6 +343,18 @@ export function parseProbedVersions(stdout: string): Partial<Record<AgentRuntime
   return versions
 }
 
+/** `<image> has Claude Code 2.1.270, the host has 2.1.280` — the drift itself. */
+function agentCliDrift(
+  image: string,
+  runtime: AgentRuntime,
+  imageVersion: string | null,
+  hostVersion: string,
+): string {
+  const { label } = RUNTIME_SPECS[runtime]
+  const inImage = imageVersion ? `${label} ${imageVersion}` : `an unknown ${label} version`
+  return `${image} has ${inImage}, the host has ${hostVersion}`
+}
+
 /**
  * The image's agent CLI differs from the host's — the drift a Rebuild fixes by
  * re-running only the install layer, which the host version is pinned into.
@@ -350,9 +365,27 @@ export function agentCliDriftMessage(
   imageVersion: string | null,
   hostVersion: string,
 ): string {
-  const { label } = RUNTIME_SPECS[runtime]
-  const inImage = imageVersion ? `${label} ${imageVersion}` : `an unknown ${label} version`
-  return `${image} has ${inImage}, the host has ${hostVersion} — Rebuild from Settings → Burns (only the CLI layer rebuilds).`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — Rebuild from Settings → Burns (only the CLI layer rebuilds).`
+}
+
+/**
+ * The same drift on an image runcastle did not build. There is no Rebuild to
+ * offer — the button is `refused` for a custom tag — so this says who owns the
+ * image instead, in the doctor's own custom-row words, and the burn goes on
+ * (decision 3: a custom image's CLI drift is a warning). Blocking here would
+ * stop every burn on a hand-built image after any host `claude update`, with no
+ * way out from inside the app.
+ */
+export function customImageCliDriftMessage(
+  image: string,
+  runtime: AgentRuntime,
+  imageVersion: string | null,
+  hostVersion: string,
+): string {
+  return (
+    `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — it is a custom image managed ` +
+    `outside runcastle, so rebuild it with the tool that built it; this burn runs on it as it is.`
+  )
 }
 
 /**
@@ -3620,14 +3653,24 @@ export async function burnRun(
       )
     }
     // Strict equality: the image runs whatever the host runs (decision 5).
-    // Burns never build — the fix is a human's one-click Rebuild.
+    // Burns never build — the fix is a human's one-click Rebuild, which exists
+    // only for an image runcastle builds. A custom tag's Rebuild is `refused`,
+    // so its drift is warned about and burned through (decision 3) rather than
+    // aborted with a fix nobody can apply.
+    const managed = isManagedImage(image, ctx.project)
     const inImage = parseProbedVersions(probe.stdout)
     for (const runtime of versionsOf) {
       const hostVersion = hostVersions?.[runtime]
       const imageVersion = inImage[runtime] ?? null
-      if (hostVersion && imageVersion !== hostVersion) {
-        return fail(agentCliDriftMessage(image, runtime, imageVersion, hostVersion))
+      if (!hostVersion || imageVersion === hostVersion) continue
+      if (!managed) {
+        ctx.emitEvent({
+          type: IMAGE_CLI_DRIFT_EVENT,
+          message: customImageCliDriftMessage(image, runtime, imageVersion, hostVersion),
+        })
+        continue
       }
+      return fail(agentCliDriftMessage(image, runtime, imageVersion, hostVersion))
     }
   }
 
