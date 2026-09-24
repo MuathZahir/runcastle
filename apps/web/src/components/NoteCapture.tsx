@@ -43,6 +43,9 @@ export interface NoteCaptureProps {
   /** Where the note goes — shown, never picked. */
   projectName: string
   open: boolean
+  /** Bumped by every press of a door onto capture, so one pressed while the bar
+   *  is already up still reaches it (`open` does not change then). */
+  openRequest?: number
   onClose: () => void
   /** Open the project workspace, where the pile is read and triaged. */
   onOpenInbox: () => void
@@ -52,7 +55,14 @@ export interface NoteCaptureProps {
  *  inherit }` beats a colour written on the button, so it goes on a span. */
 const LINK_BUTTON = 'cursor-pointer rounded-sm border-0 bg-transparent p-0'
 
-export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox }: NoteCaptureProps) {
+export function NoteCapture({
+  projectId,
+  projectName,
+  open,
+  openRequest = 0,
+  onClose,
+  onOpenInbox,
+}: NoteCaptureProps) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const [text, setText] = useState('')
@@ -66,16 +76,31 @@ export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox
   // last save's confirmation survives until then; resetting in an effect let the
   // first open render show that confirmation with no input in it, and `Dialog`'s
   // focus effect — which runs before ours — fell back to focusing the panel.
+  const fresh = (): void => {
+    setText('')
+    setStaged(null)
+    setSaving(false)
+    setSaved(false)
+  }
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
-    if (open) {
-      setText('')
-      setStaged(null)
-      setSaving(false)
-      setSaved(false)
-    }
+    if (open) fresh()
   }
+  // A door pressed while the bar is already up is not an open edge, so it is
+  // read off `openRequest` instead. Over the confirmation it starts the next
+  // note — jotting two things in a row is the natural burst — and unmounting the
+  // confirmation cancels its close timer. Over a line being typed it only puts
+  // the cursor back; the half-written note is kept.
+  const [seenRequest, setSeenRequest] = useState(openRequest)
+  if (openRequest !== seenRequest) {
+    setSeenRequest(openRequest)
+    if (open && saved) fresh()
+  }
+  useEffect(() => {
+    if (open) inputRef.current?.focus()
+    // Keyed on the request alone: the open edge's focus is `Dialog`'s job.
+  }, [openRequest])
 
   const add = trpc.projectNotes.add.useMutation()
   // Only while the box is up: the rail's badge is the count's standing reader,

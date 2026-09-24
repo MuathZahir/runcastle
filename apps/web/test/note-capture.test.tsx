@@ -77,6 +77,7 @@ vi.mock('../src/trpc', () => ({
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: pushToast }) }))
 
 const { NoteCapture } = await import('../src/components/NoteCapture')
+const { isNoteHotkey } = await import('../src/lib/project-notes')
 
 const NOTE: ProjectNote = {
   id: 'pnote_1',
@@ -294,7 +295,6 @@ describe('NoteCapture', () => {
   // job; this is the other half — that the box it opens takes the focus off
   // the terminal's textarea and puts it in the line, every time.
   it('takes the focus from a terminal when ⌘/Ctrl+J opens it, every time', async () => {
-    const { isNoteHotkey } = await import('../src/lib/project-notes')
     function Shell() {
       const [open, setOpen] = useState(false)
       useEffect(() => {
@@ -329,6 +329,69 @@ describe('NoteCapture', () => {
       fireEvent.click(screen.getByRole('button', { name: 'View' }))
       expect(screen.queryByRole('dialog')).toBeNull()
     }
+  })
+
+  // The review's repro: a second ⌘/Ctrl+J during the confirmation used to be
+  // swallowed (the bar was already open, so nothing changed) and the timer then
+  // closed the bar. Every door counts its presses, and the count is what lands.
+  describe('pressed again while the bar is up', () => {
+    function Shell() {
+      const [open, setOpen] = useState(false)
+      const [request, setRequest] = useState(0)
+      useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+          if (!isNoteHotkey(e)) return
+          setOpen(true)
+          setRequest((n) => n + 1)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [])
+      return (
+        <NoteCapture
+          projectId="proj_1"
+          projectName="runcastle-demo"
+          open={open}
+          openRequest={request}
+          onClose={() => setOpen(false)}
+          onOpenInbox={onOpenInbox}
+        />
+      )
+    }
+    const jot = async () => {
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeNull())
+    }
+
+    it('starts a fresh note over the saved line, and the bar stays up', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      render(<Shell />)
+      await jot()
+      await saveALine()
+
+      await vi.advanceTimersByTimeAsync(500)
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByText(/Noted in/)).toBeNull())
+
+      expect(line()).toHaveProperty('value', '')
+      expect(document.activeElement).toBe(line())
+      // The confirmation's close timer went with it.
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(screen.queryByRole('dialog')).not.toBeNull()
+      expect(document.activeElement).toBe(line())
+    })
+
+    it('keeps a half-typed line and puts the cursor back in it', async () => {
+      render(<Shell />)
+      await jot()
+      fireEvent.change(line(), { target: { value: 'half a thought' } })
+      screen.getByRole('dialog').focus()
+
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+
+      await waitFor(() => expect(document.activeElement).toBe(line()))
+      expect(line()).toHaveProperty('value', 'half a thought')
+    })
   })
 
   it('closes itself about a second and a half after saving', async () => {
