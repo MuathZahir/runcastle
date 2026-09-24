@@ -28,6 +28,7 @@ const state = (over: Partial<Parameters<typeof workspaceView>[0]> = {}) => ({
   selectedFeatureId: null,
   featureCount: 1,
   prepared: true,
+  empty: false,
   ...over,
 })
 
@@ -58,8 +59,12 @@ describe('workspaceView', () => {
    * a card beside the new-feature buttons — where it was, and where nobody found
    * it.
    */
-  it('gives the whole body to preparation on an unprepared, featureless project', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: false }))).toBe('prepare')
+  it('gives the whole body to preparation on an unprepared, featureless project with code', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: false }))).toBe('prepare')
+  })
+
+  it('uses the ordinary empty home when a featureless project has nothing to prepare', () => {
+    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: true }))).toBe('empty')
   })
 
   it('reads as the ordinary home once either half of that stops holding', () => {
@@ -69,8 +74,10 @@ describe('workspaceView', () => {
 
   // Opening it deliberately (the rail's nudge, ⌘K) beats every automatic rule
   // below it — including one that would swap it away the moment it succeeds.
-  it('honours a deliberately opened preparation over the selected feature', () => {
-    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1' }))).toBe('prepare')
+  it('honours a deliberately opened preparation even for an empty repository', () => {
+    expect(workspaceView(state({ preparing: true, selectedFeatureId: 'f1', empty: true }))).toBe(
+      'prepare',
+    )
   })
 
   it('still lets a creation form outrank it', () => {

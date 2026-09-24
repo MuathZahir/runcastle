@@ -354,12 +354,21 @@ describe('runsElsewhere', () => {
  * short and hands the path back separately to be shown exactly once.
  */
 describe('repoOpenFailure', () => {
-  it('states a non-repository once and names git init', () => {
+  // The hint used to spell out `git init` for the user to go and run; the
+  // failure now offers to run it (born-empty-projects decision 2).
+  it('states a non-repository once and offers to initialize it', () => {
     const f = repoOpenFailure('not a git repository: /tmp/notes', '/tmp/notes')
     expect(f.message).toBe('Not a git repository')
-    expect(f.hint).toContain('git init')
+    expect(f.offer).toBe('init-repo')
+    expect(f.hint).toContain('Initialize one here')
     expect(f.hint).not.toContain('/tmp/notes')
     expect(f.path).toBe('/tmp/notes')
+  })
+
+  // Only the failure runcastle can fix itself carries an action.
+  it('offers nothing on the failures it cannot fix', () => {
+    expect(repoOpenFailure('path does not exist: /tmp/typo', '/tmp/typo').offer).toBeUndefined()
+    expect(repoOpenFailure('EACCES: permission denied', '/root/secret').offer).toBeUndefined()
   })
 
   it('states a missing path once and points at Browse', () => {

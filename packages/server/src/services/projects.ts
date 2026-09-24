@@ -119,6 +119,21 @@ export async function openProject(ctx: AppCtx, rawPath: string): Promise<Project
 }
 
 /**
+ * Initialize a git repository in a folder the human just picked, so the open
+ * that refused it can be retried on the spot (decisions 2–3). The path is
+ * normalized exactly as {@link openProject} normalizes it and handed back, so
+ * the retry names the folder that was actually initialized.
+ *
+ * No event: nothing here is a project yet, so there is no timeline to emit on —
+ * the retried `openProject` is what puts this path on one.
+ */
+export async function initProjectRepo(rawPath: string): Promise<{ repoPath: string }> {
+  const repoPath = expandPath(rawPath)
+  await git.initRepository(repoPath)
+  return { repoPath }
+}
+
+/**
  * Hide a project. Refuses (destroying nothing) while any of its runs are in
  * flight; the project's features and rows are left intact so a later `open`
  * brings it back.

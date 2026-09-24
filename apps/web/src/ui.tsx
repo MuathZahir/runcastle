@@ -251,11 +251,14 @@ export function FailureNote({
   message,
   path,
   hint,
+  action,
   id,
 }: {
   message: string
   path?: string | null
   hint?: string | null
+  /** The one thing that fixes this failure, when runcastle can run it itself. */
+  action?: ReactNode
   id?: string
 }) {
   return (
@@ -275,6 +278,7 @@ export function FailureNote({
         </div>
       )}
       {hint && <p className="mt-1.5 text-sm text-text-2">{hint}</p>}
+      {action && <div className="mt-2.5">{action}</div>}
     </div>
   )
 }

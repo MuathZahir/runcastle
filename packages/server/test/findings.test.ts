@@ -333,7 +333,8 @@ describe('verification stamps', () => {
     recordDevCommand()
     markVerified(ctx, PROJECT_ID, ['devCommand'], 'deadbee')
 
-    const view = await prepView(ctx, project())
+    const repoPath = mkdtempSync(join(tmpdir(), 'rc-prep-view-'))
+    const view = await prepView(ctx, project({ repoPath }))
     expect(view.findings.find((f) => f.key === 'devCommand')?.verifiedSha).toBe('deadbee')
   })
 })
@@ -410,4 +411,3 @@ describe('settings scope', () => {
     expect(field?.value).toBe('project test')
   })
 })
-

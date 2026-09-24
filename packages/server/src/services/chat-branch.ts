@@ -108,7 +108,12 @@ export async function ensureTalkWorktreeDuringRun(
   project: Project,
   feature: Feature,
 ): Promise<string> {
-  const worktreePath = await ensureTalkWorktree(project, feature)
+  const worktreePath = await ensureTalkWorktree(project, feature, () =>
+    emit(ctx, feature.id, {
+      type: 'repo.head_healed',
+      message: 'created runcastle: initial commit so branches can be cut',
+    }),
+  )
   if (!(await chatBranchInWorktree(worktreePath))) {
     await parkWorktree(ctx, feature, worktreePath)
   }

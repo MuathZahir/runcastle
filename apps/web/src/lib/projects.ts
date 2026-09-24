@@ -196,6 +196,13 @@ function withoutTrailingSeparators(path: string): string {
 }
 
 /**
+ * A remedy runcastle can run itself, for the caller to render as the failure's
+ * one action. `init-repo` initializes the rejected folder and re-opens it —
+ * the button is the confirmation, there is no dialog behind it (decision 2).
+ */
+export type RepoOpenOffer = 'init-repo'
+
+/**
  * The inline failure this flow shows about a path — the open-a-project form's
  * rejected repo, and the picker's refused listing.
  *
@@ -210,6 +217,8 @@ export interface RepoOpenFailure {
   message: string
   /** What to do about it, when the failure has a known remedy. */
   hint: string | null
+  /** The remedy this failure offers to run, for the failures that have one. */
+  offer?: RepoOpenOffer
   /**
    * The rejected path, for the caller to render exactly once (decision 5). The
    * server's message names it too, so a recognised failure is restated as a
@@ -323,8 +332,11 @@ export function repoOpenFailure(message: string, path: string): RepoOpenFailure 
   if (/not a git repository/i.test(message)) {
     return {
       message: 'Not a git repository',
-      hint: 'runcastle tracks work as branches, so it needs a git repository. Run `git init` there, or pick a folder that already is one.',
+      // The `git init` the hint used to spell out is the offer's own job now
+      // (decision 2) — a folder nobody has to leave the screen to fix.
+      hint: 'runcastle tracks work as branches, so it needs a git repository. Initialize one here, or pick a folder that already is one.',
       path: where,
+      offer: 'init-repo',
     }
   }
   const missing = /does not exist/i.test(message)

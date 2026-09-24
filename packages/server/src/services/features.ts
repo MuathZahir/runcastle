@@ -150,7 +150,7 @@ export async function createFeature(
   // materialized a local tracking branch), always a real merge target at ship time.
   const cut = input.draft
     ? null
-    : await ensureFeatureBranch(project, slug, await requestedBase(project, input.baseBranch))
+    : await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
 
   const row = {
     id: newId('feat'),
@@ -235,9 +235,9 @@ export async function startDraft(
     throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
   }
   const project = projectForFeature(ctx, feature)
-  const base = await requestedBase(project, opts.baseBranch)
+  const base = await requestedBase(ctx, project, opts.baseBranch)
 
-  const { branchReady, baseBranch } = await ensureFeatureBranch(project, feature.slug, base)
+  const { branchReady, baseBranch } = await ensureFeatureBranch(ctx, project, feature.slug, base)
 
   ctx.db
     .update(features)
@@ -386,8 +386,8 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
-  const base = await requestedBase(project, input.baseBranch)
-  const { branchReady, baseBranch } = await ensureFeatureBranch(project, slug, base)
+  const base = await requestedBase(ctx, project, input.baseBranch)
+  const { branchReady, baseBranch } = await ensureFeatureBranch(ctx, project, slug, base)
 
   const inserted = ctx.db
     .insert(features)
@@ -503,8 +503,20 @@ function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[
  * a base nobody chose, that no surface showed, is exactly what this replaced.
  * Every shipped surface names one, so the fallback is a backstop, not a path.
  */
-async function requestedBase(project: Project, picked: string | undefined): Promise<string> {
-  return picked?.trim() || (await git.currentCheckoutBranch(project))
+async function requestedBase(
+  ctx: AppCtx,
+  project: Project,
+  picked: string | undefined,
+): Promise<string> {
+  return (
+    picked?.trim() ||
+    (await git.currentCheckoutBranch(project, () => {
+      emitProject(ctx, project.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      })
+    }))
+  )
 }
 
 /**
@@ -513,13 +525,20 @@ async function requestedBase(project: Project, picked: string | undefined): Prom
  * lands this transparently starts creating real branches — no caller change.
  */
 async function ensureFeatureBranch(
+  ctx: AppCtx,
   project: Project,
   slug: string,
   base: string,
 ): Promise<{ branchReady: boolean; baseBranch: string }> {
   try {
-    const baseBranch = await git.resolveBaseBranch(project, base)
-    await git.createFeatureBranch(project, slug, baseBranch)
+    const reportHeal = (): void => {
+      emitProject(ctx, project.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      })
+    }
+    const baseBranch = await git.resolveBaseBranch(project, base, reportHeal)
+    await git.createFeatureBranch(project, slug, baseBranch, reportHeal)
     return { branchReady: true, baseBranch }
   } catch (e) {
     // Pre-B2 the git service is a stub — the feature is created branchless and
@@ -556,7 +575,12 @@ async function scaffoldDocsOnFeatureBranch(
 ): Promise<void> {
   let worktreePath: string
   try {
-    worktreePath = await git.ensureTalkWorktree(project, feature)
+    worktreePath = await git.ensureTalkWorktree(project, feature, () => {
+      emit(ctx, feature.id, {
+        type: 'repo.head_healed',
+        message: 'created runcastle: initial commit so branches can be cut',
+      })
+    })
   } catch (e) {
     // Pre-B2 the git service is a stub: no branch was cut and no worktree can be,
     // so the docs stay in the checkout, uncommitted, exactly as they did then.
