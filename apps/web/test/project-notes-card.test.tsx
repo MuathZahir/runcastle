@@ -230,4 +230,38 @@ describe('the Notes card', () => {
     expect(button(/^Triage 0$/).hasAttribute('disabled')).toBe(true)
     expect(screen.queryByTitle('0 open')).toBeNull()
   })
+
+  /** Capture's View (decisions #16): the prototype scrolls the inbox into view. */
+  it('scrolls itself into view when revealed, once its notes have arrived', () => {
+    const scroll = vi.fn()
+    const original = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scroll
+    try {
+      const onRevealed = vi.fn()
+      const view = (reveal: boolean) => (
+        <NotesCard
+          projectId="proj_1"
+          onTriage={() => {}}
+          triaging={false}
+          reveal={reveal}
+          onRevealed={onRevealed}
+        />
+      )
+      // asked before the list answers: nothing to scroll to yet
+      const { rerender } = render(view(true))
+      expect(scroll).not.toHaveBeenCalled()
+
+      notes.mockReturnValue([note()])
+      rerender(view(true))
+      expect(scroll).toHaveBeenCalledTimes(1)
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+      expect(scroll.mock.contexts[0]).toBe(screen.getByRole('region', { name: 'Notes' }))
+      expect(onRevealed).toHaveBeenCalledTimes(1)
+
+      rerender(view(false))
+      expect(scroll).toHaveBeenCalledTimes(1)
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
+  })
 })

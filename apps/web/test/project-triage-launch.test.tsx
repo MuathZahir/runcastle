@@ -175,4 +175,28 @@ describe('the project workspace at rest', () => {
     fireEvent.click(screen.getByRole('button', { name: 'End it and start new' }))
     expect(api.replace).toHaveBeenCalledWith('triage')
   })
+
+  /** Capture's View asks for the inbox; a live chat must not hide it. */
+  it('steps out of a live chat to the Notes card when the inbox is asked for', () => {
+    const scroll = vi.fn()
+    const original = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scroll
+    try {
+      const consumed = vi.fn()
+      render(
+        <ProjectWorkspace
+          projectId="proj_1"
+          talk={talk({ session: live })}
+          inboxRequest={1}
+          onConsumeInboxRequest={consumed}
+        />,
+      )
+      const card = screen.getByRole('region', { name: 'Notes' })
+      expect(card.closest('[hidden]')).toBeNull()
+      expect(scroll.mock.contexts).toContain(card)
+      expect(consumed).toHaveBeenCalled()
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original
+    }
+  })
 })

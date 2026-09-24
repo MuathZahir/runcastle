@@ -63,8 +63,23 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // on every in-project screen and on none of the portfolio home (decisions #2).
   // All three doors onto it — the titlebar button, the hotkey and the palette
   // row — set the same flag (decisions #3).
+  // Each press is also counted, so one landing while the bar is already up still
+  // reaches it — over the saved line it starts the next note.
   const [capturing, setCapturing] = useState(false)
-  const jot = () => setCapturing(true)
+  const [jots, setJots] = useState(0)
+  const jot = () => {
+    setCapturing(true)
+    setJots((n) => n + 1)
+  }
+  // The saved line's View: the project workspace, with its Notes card brought
+  // into view — selecting the workspace alone does nothing visible from the
+  // workspace itself, or with the card scrolled off (decisions #16).
+  const [inboxRequest, setInboxRequest] = useState(0)
+  const openInbox = () => {
+    selectProject()
+    setInboxRequest((request) => request + 1)
+  }
+  const consumeInboxRequest = () => setInboxRequest(0)
   // The rail's width is a screen preference, kept globally (decision 10). It
   // lives here rather than in the rail because the frame's grid is what reads
   // it — the rail only reports what a drag measured.
@@ -174,7 +189,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         setCmdk(true)
       } else if (isNoteHotkey(e)) {
         e.preventDefault()
-        setCapturing(true)
+        jot()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -254,6 +269,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             talk={talk}
             newChatRequest={newChatRequest}
             onConsumeNewChatRequest={() => setNewChatRequest(0)}
+            inboxRequest={inboxRequest}
+            onConsumeInboxRequest={consumeInboxRequest}
           />
         ) : view === 'feature' && selectedFeatureId ? (
           // The feature view is the app's one unbounded render surface — it
@@ -322,8 +339,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         projectId={projectId}
         projectName={nav.currentProject?.name ?? ''}
         open={capturing}
+        openRequest={jots}
         onClose={() => setCapturing(false)}
-        onOpenInbox={selectProject}
+        onOpenInbox={openInbox}
       />
 
       {ws.settings && (
