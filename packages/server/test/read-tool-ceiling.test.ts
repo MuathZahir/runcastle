@@ -165,6 +165,9 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
     it('get_project_context fits, charter and ADR index ahead of the feature index', async () => {
       const context = await toolGetProjectContext(ctx, session)
       expect(context.featureIndex.length).toBeGreaterThan(50)
+      expect(context.charter).toBeDefined()
+      expect(context.charter?.length).toBeGreaterThanOrEqual(OVERSIZED_PORTFOLIO.charterChars)
+      expect(context.adrs).toHaveLength(OVERSIZED_PORTFOLIO.liveAdrs)
       expect(serializedLength(context)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
       expect(Object.keys(context).indexOf('featureIndex')).toBeGreaterThan(
         Object.keys(context).indexOf('adrsNote'),
