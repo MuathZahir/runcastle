@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { loadConfig } from '../src/config-load'
+import { loadConfig, migrateCollapsedModelSteps } from '../src/config-load'
 
 /**
  * Env-override edge cases for `loadConfig`. The hazard these pin down is the
@@ -189,5 +189,11 @@ describe('loadConfig — collapsed chat step read-compat', () => {
     )
 
     expect(loadConfig({}, 16).stepModels).toEqual({ chat: 'chat-model' })
+  })
+
+  it('is the exported migration, leaving every key outside stepModels untouched', () => {
+    expect(
+      migrateCollapsedModelSteps({ model: 'm', stepModels: { ideation: 'i', qa: 'q' } }),
+    ).toEqual({ model: 'm', stepModels: { chat: 'i' } })
   })
 })
