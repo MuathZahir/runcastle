@@ -87,12 +87,27 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       expect(text.indexOf('"annotatedModels"')).toBeLessThan(2_000)
       expect(text.indexOf('"burnConcurrency"')).toBeGreaterThan(-1)
       expect(text.indexOf('"burnConcurrency"')).toBeLessThan(2_000)
-      expect(Object.keys(context).slice(0, 5)).toEqual([
+      // Header, then rows, then the lap's to-do, then docs (the fixture never
+      // burned, so `latestRun` is absent, and nobody claimed a waypoint).
+      expect(Object.keys(context)).toEqual([
         'feature',
         'phase',
         'lap',
         'annotatedModels',
         'burnConcurrency',
+        ...(mapped ? ['frontierIds'] : []),
+        'reviewEvidence',
+        'currentLapReview',
+        'tickets',
+        'openDefects',
+        'carriedDefects',
+        'findings',
+        'testNotes',
+        ...(mapped ? ['waypoints'] : []),
+        'docs',
+        'notInlined',
+        'moreDocs',
+        'docsNote',
       ])
     })
   })
