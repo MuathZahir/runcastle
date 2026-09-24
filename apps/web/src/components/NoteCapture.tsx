@@ -66,9 +66,14 @@ export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox
   // last save's confirmation survives until then; resetting in an effect let the
   // first open render show that confirmation with no input in it, and `Dialog`'s
   // focus effect — which runs before ours — fell back to focusing the panel.
+  // Each open or close starts a new session, and a save only confirms in the
+  // session it began in: a request that lands after the bar was closed (and
+  // perhaps reopened on a fresh line) must not take that line over.
+  const session = useRef(0)
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
+    session.current += 1
     if (open) {
       setText('')
       setStaged(null)
@@ -136,6 +141,8 @@ export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox
 
   const submit = async (): Promise<void> => {
     if (!text.trim() || saving) return
+    const started = session.current
+    const current = (): boolean => session.current === started
     setSaving(true)
     try {
       // Note first, PNG second — the upload is keyed by the id the server just
@@ -155,11 +162,11 @@ export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox
       // and let the refetch the invalidate starts settle the true number.
       utils.projectNotes.openCount.setData({ projectId }, (n) => (n === undefined ? n : n + 1))
       void utils.projectNotes.invalidate()
-      setSaved(true)
+      if (current()) setSaved(true)
     } catch (e) {
       toast.push(e instanceof Error ? e.message : 'the note could not be saved')
     } finally {
-      setSaving(false)
+      if (current()) setSaving(false)
     }
   }
 

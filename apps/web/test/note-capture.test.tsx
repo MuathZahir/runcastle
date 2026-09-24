@@ -331,6 +331,34 @@ describe('NoteCapture', () => {
     }
   })
 
+  // A save belongs to the open it started in: closing mid-save and reopening
+  // must not let the first request's answer turn the new line into its
+  // confirmation and close the bar under the human's fingers.
+  it('keeps a reopened bar when the save from an earlier open lands late', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let land: (note: ProjectNote) => void = () => undefined
+    addNote.mockImplementationOnce(() => new Promise<ProjectNote>((resolve) => (land = resolve)))
+    const view = popover()
+
+    fireEvent.change(line(), { target: { value: 'a' } })
+    fireEvent.keyDown(line(), { key: 'Enter' })
+    await waitFor(() => expect(addNote).toHaveBeenCalled())
+    view.rerender(capture(false))
+    view.rerender(capture(true))
+    fireEvent.change(line(), { target: { value: 'b' } })
+
+    land(NOTE)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(screen.queryByText(/Noted in/)).toBeNull()
+    expect(line()).toHaveProperty('value', 'b')
+    expect(onClose).not.toHaveBeenCalled()
+    // The new open saves on its own, not blocked by the old one's in-flight flag.
+    fireEvent.keyDown(line(), { key: 'Enter' })
+    await screen.findByText(/Noted in/)
+    expect(addNote).toHaveBeenLastCalledWith({ projectId: 'proj_1', text: 'b' })
+  })
+
   it('closes itself about a second and a half after saving', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     popover()
