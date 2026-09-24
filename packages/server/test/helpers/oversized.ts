@@ -6,6 +6,11 @@ import { eq } from 'drizzle-orm'
 import { features } from '../../src/db/schema'
 import type { AppCtx } from '../../src/db/types'
 import { emit } from '../../src/services/events'
+import {
+  addNote as addProjectNote,
+  attachScreenshot,
+  triageNotes,
+} from '../../src/services/project-notes'
 import { reportFinding } from '../../src/services/review-findings'
 import { addNote } from '../../src/services/test-notes'
 import { getTicket, storeTickets, updateTicket } from '../../src/services/tickets'
@@ -178,6 +183,10 @@ export const OVERSIZED_PORTFOLIO = {
   /** Tickets across that many shipped features share one seam, each with a digest. */
   seamTickets: 40,
   errorChars: 600,
+  /** An untriaged notes backlog, every other note with a screenshot, plus triaged ones it must skip. */
+  openNotes: 30,
+  noteChars: 1_200,
+  triagedNotes: 20,
 } as const
 
 export interface OversizedPortfolio {
@@ -260,6 +269,16 @@ export function seedOversizedPortfolio(
   const briefDir = join(worktreePath, 'docs', 'features', briefSlug)
   mkdirSync(briefDir, { recursive: true })
   writeFileSync(join(briefDir, 'brief.md'), prose('brief.md', OVERSIZED.docs['brief.md']), 'utf8')
+
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+  for (let i = 1; i <= P.openNotes; i++) {
+    const note = addProjectNote(ctx, project.id, prose(`open note ${i}`, P.noteChars))
+    if (i % 2 === 0) attachScreenshot(ctx, note.id, png)
+  }
+  const triaged = Array.from({ length: P.triagedNotes }, (_, n) =>
+    addProjectNote(ctx, project.id, prose(`triaged note ${n + 1}`, P.noteChars)),
+  )
+  triageNotes(ctx, triaged.map((note) => note.id), 'folded into an existing feature')
 
   return { workRecordSlug: record.slug, seam: 'shared shell', briefSlug }
 }

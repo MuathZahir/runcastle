@@ -11,6 +11,7 @@ import {
   toolGetProjectContext,
   toolGetTicket,
   toolGetWorkRecord,
+  toolListProjectNotes,
   toolListTickets,
   toolReadFeatureBrief,
 } from '../src/mcp/server'
@@ -191,6 +192,13 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       const brief = toolReadFeatureBrief(ctx, session, { slug: portfolio.briefSlug })
       expect(brief.brief).toBeDefined()
       expect(serializedLength(brief)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+    })
+
+    it('list_project_notes fits on an untriaged backlog with screenshots', () => {
+      const notes = toolListProjectNotes(ctx, session)
+      expect(notes).toHaveLength(OVERSIZED_PORTFOLIO.openNotes)
+      expect(notes.some((note) => note.attachmentSentence !== undefined)).toBe(true)
+      expect(serializedLength(notes)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
     })
   })
 })
