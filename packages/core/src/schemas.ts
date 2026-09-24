@@ -679,7 +679,9 @@ export const SettingField = z.object({
 })
 export type SettingField = z.infer<typeof SettingField>
 
-export const DiscoveredModel = ModelEntry.extend({
+export const DiscoveredModel = z.object({
+  id: z.string().min(1),
+  runtime: AgentRuntime,
   displayName: z.string().optional(),
   description: z.string().optional(),
   retirement: z

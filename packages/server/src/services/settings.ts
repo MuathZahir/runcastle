@@ -439,7 +439,11 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
   const fields = visible.map((d) => resolveField(d, { env, fileRaw, overrides, defaults }))
   // Per-step model overrides (issue #48) are global-only, so they resolve the
   // same in both scopes — append them to whichever view was requested.
-  return { projectId, fields: [...fields, ...stepModelFields(fileRaw)], discovery: discoverySnapshot(ctx) }
+  return {
+    projectId,
+    fields: [...fields, ...stepModelFields(fileRaw)],
+    discovery: discoverySnapshot(ctx),
+  }
 }
 
 /**
