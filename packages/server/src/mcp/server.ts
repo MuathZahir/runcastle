@@ -95,6 +95,7 @@ import {
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
+import { rosterConfig } from '../services/model-discovery'
 import {
   claimedForFeature,
   frontier as waypointFrontier,
@@ -211,7 +212,7 @@ export interface AnnotatedModel {
  * no note — the operator cleared the field rather than describing a use case.
  */
 function annotatedModels(ctx: AppCtx): AnnotatedModel[] {
-  return modelRoster(ctx.config).flatMap((m) =>
+  return modelRoster(rosterConfig(ctx)).flatMap((m) =>
     m.note?.trim() ? [{ id: m.id, runtime: m.runtime, note: m.note.trim() }] : [],
   )
 }

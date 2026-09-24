@@ -60,7 +60,8 @@ delete process.env.RUNCASTLE_DATA_DIR
 
 const paths = await import('../packages/core/src/paths.ts')
 const { loadConfig } = await import('../packages/core/src/config-load.ts')
-const { resolveModel } = await import('../packages/core/src/config.ts')
+const { discoveredEntries, resolveModel } = await import('../packages/core/src/config.ts')
+const { readDiscoverySnapshot } = await import('../packages/server/src/services/model-discovery.ts')
 const { createDb } = await import('../packages/server/src/db/client.ts')
 const { runMigrations } = await import('../packages/server/src/db/migrate.ts')
 const { buildApp } = await import('../packages/server/src/index.ts')
@@ -102,7 +103,10 @@ const ctx = { db, config } as { db: typeof db; config: typeof config }
 const app = buildApp(ctx as never)
 const trpc = createCallerFactory(appRouter)(ctx as never)
 
-const smokeModel = resolveModel('smoke', config)
+const smokeModel = resolveModel('smoke', {
+  ...config,
+  discovered: discoveredEntries(readDiscoverySnapshot()),
+})
 log(`runcastle smoke — data dir: ${paths.dataDir()}`)
 log(`smoke model = ${smokeModel} (resolved for the 'smoke' step)`)
 

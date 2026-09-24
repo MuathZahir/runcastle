@@ -147,7 +147,7 @@ export function ticketModelChip(
 ): TicketModelChip | null {
   const id = ticket.model?.trim()
   if (!id) return null
-  const { runtime } = modelEntryFor(id, { models: roster })
+  const { runtime } = modelEntryFor(id, { discovered: [], models: roster })
   return { id, runtime, runtimeLabel: RUNTIME_LABEL[runtime] }
 }
 

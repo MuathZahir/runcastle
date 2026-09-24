@@ -4,7 +4,8 @@ import { AGENT_RUNTIMES, mergeModelEntries } from '@runcastle/core'
 import type { AgentRuntime, ModelEntry, ModelStep } from '@runcastle/core'
 import {
   customModelCommit,
-  hiddenCuratedCount,
+  DISCOVERY_SOURCE_LABEL,
+  hiddenRosterCount,
   rosterVisibleRows,
   RUNTIME_LABEL,
   type ModelOptionGroup,
@@ -76,7 +77,7 @@ export function RosterTable({
   const shown = (showAll || filtering ? rows : rosterVisibleRows(rows)).filter((row) =>
     showsSetting(filter, row.id),
   )
-  const hidden = showAll || filtering ? 0 : hiddenCuratedCount(rows)
+  const hidden = showAll || filtering ? 0 : hiddenRosterCount(rows)
 
   return (
     <>
@@ -104,7 +105,7 @@ export function RosterTable({
       </div>
       {hidden > 0 && (
         <p className="text-sm text-text-3">
-          {hidden} curated {hidden === 1 ? 'model' : 'models'} not shown:{' '}
+          {hidden} more {hidden === 1 ? 'model' : 'models'} not shown:{' '}
           <button
             type="button"
             className={`${BARE_BUTTON} text-accent-hi hover:underline`}
@@ -164,11 +165,18 @@ function ModelRow({
   return (
     <div className="group border-t border-hairline-soft">
       <div className={`${COLUMNS} min-h-10 px-2.5 py-1.5 text-sm`}>
-        <span
-          className={`truncate font-mono ${row.isDefault ? 'text-accent-hi' : 'text-text'}`}
-          title={row.id}
-        >
-          {row.id}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`truncate font-mono ${row.isDefault ? 'text-accent-hi' : 'text-text'}`}
+            title={row.displayName ? `${row.displayName} — ${row.id}` : row.id}
+          >
+            {row.id}
+          </span>
+          {row.isNew && (
+            <span className="shrink-0 rounded-pill border border-ok/35 bg-ok/10 px-1.5 text-xs font-semibold tracking-[0.06em] text-ok uppercase">
+              New
+            </span>
+          )}
         </span>
         <RuntimeChip runtime={row.runtime} />
         <div className="flex min-w-0 items-center gap-1.5">
@@ -208,8 +216,30 @@ function ModelRow({
           </button>
         )}
       </div>
+      <ProviderNotice row={row} />
       <Refusal writes={writes} cell={cell} />
     </div>
+  )
+}
+
+/**
+ * What the providers say about a row that is not in its cells: that its source
+ * stopped offering it while something still uses it, and when the Codex cache
+ * says it retires — each a warning before a launch fails on it.
+ */
+function ProviderNotice({ row }: { row: RosterRow }) {
+  if (!row.noLongerOffered && !row.retirement) return null
+  return (
+    <p className="flex flex-wrap gap-x-3 px-2.5 pb-1.5 text-sm text-warn">
+      {row.noLongerOffered && (
+        <span>no longer offered by {DISCOVERY_SOURCE_LABEL[row.noLongerOffered]}</span>
+      )}
+      {row.retirement && (
+        <span>
+          retires {row.retirement.at} → {row.retirement.replacement}
+        </span>
+      )}
+    </p>
   )
 }
 

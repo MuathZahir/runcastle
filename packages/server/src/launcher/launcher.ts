@@ -26,6 +26,7 @@ import { ptyRegistry } from '../pty/registry'
 import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
+import { rosterConfig } from '../services/model-discovery'
 import * as git from '../services/git'
 import {
   getFeatureRow,
@@ -507,7 +508,7 @@ export async function launchSession(
   // falling back through the per-project override to the global default. The
   // winner decides the runtime too (decision 2), so the adapter — and whether it
   // can run at all — is settled before anything is created.
-  const model = resolveModelEntry(input.kind, ctx.config, project)
+  const model = resolveModelEntry(input.kind, rosterConfig(ctx), project)
   const runtime = runtimeAdapterFor(model.runtime)
   assertRuntimeReady(runtime, opts)
 
@@ -781,7 +782,7 @@ export async function launchPrepareSession(
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
 
-  const model = resolveModelEntry('prepare', ctx.config, project)
+  const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   const runtime = runtimeAdapterFor(model.runtime)
   assertRuntimeReady(runtime, opts)
 
@@ -934,7 +935,7 @@ export async function launchDriveFixSession(
   // Prepare's step, deliberately: this is the same host-side environment work
   // under a narrower mandate, and a step of its own would be a settings field
   // nobody asked for.
-  const model = resolveModelEntry('prepare', ctx.config, project)
+  const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
   const runtime = runtimeAdapterFor(model.runtime)
   assertRuntimeReady(runtime, opts)
 
@@ -1087,7 +1088,7 @@ export async function launchProjectSession(
     )
   }
 
-  const model = resolveModelEntry('project', ctx.config, project)
+  const model = resolveModelEntry('project', rosterConfig(ctx), project)
   const runtime = runtimeAdapterFor(model.runtime)
   assertRuntimeReady(runtime, opts)
 

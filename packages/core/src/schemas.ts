@@ -679,10 +679,60 @@ export const SettingField = z.object({
 })
 export type SettingField = z.infer<typeof SettingField>
 
+export const DiscoveredModel = z.object({
+  id: z.string().min(1),
+  runtime: AgentRuntime,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  retirement: z
+    .object({
+      at: z.string(),
+      replacement: z.string(),
+    })
+    .optional(),
+})
+export type DiscoveredModel = z.infer<typeof DiscoveredModel>
+
+export const DiscoverySource = z.object({
+  status: z.enum(['never', 'ok', 'failed']),
+  lastSuccessAt: z.number().optional(),
+  lastAttemptAt: z.number().optional(),
+  error: z.string().optional(),
+  models: z.array(DiscoveredModel),
+  newIds: z.array(z.string()),
+  /**
+   * Every id this source has offered in a successful run, including runs before
+   * the latest. It is what tells a model the provider withdrew apart from one
+   * the operator typed themselves, long after the model left `models`.
+   */
+  knownIds: z.array(z.string()).default([]),
+})
+export type DiscoverySource = z.infer<typeof DiscoverySource>
+
+export const DiscoverySnapshot = z.object({
+  sources: z.record(AgentRuntime, DiscoverySource),
+})
+export type DiscoverySnapshot = z.infer<typeof DiscoverySnapshot>
+
+const emptyDiscoverySource = (): DiscoverySource => ({
+  status: 'never',
+  models: [],
+  newIds: [],
+  knownIds: [],
+})
+
+export const EMPTY_DISCOVERY_SNAPSHOT: DiscoverySnapshot = {
+  sources: {
+    'claude-code': emptyDiscoverySource(),
+    codex: emptyDiscoverySource(),
+  },
+}
+
 /** `settings.get` output: the resolved field set, plus the project it was scoped to (if any). */
 export const SettingsView = z.object({
   projectId: z.string().optional(),
   fields: z.array(SettingField),
+  discovery: DiscoverySnapshot,
 })
 export type SettingsView = z.infer<typeof SettingsView>
 

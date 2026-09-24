@@ -3,12 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ModelEntry, SettingField } from '@runcastle/core'
+import type { DiscoverySnapshot, ModelEntry, SettingField } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, followConfigFile, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp from '../src/mcp/server'
 import { createCallerFactory } from '../src/trpc/context'
+import { writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -129,5 +130,32 @@ describe('config visibility (roster notes reach the agent)', () => {
 
     // …so the session must see them too, rather than the boot snapshot.
     expect(await annotatedModels()).toEqual(ANNOTATED)
+  })
+
+  it('serves one persisted discovered layer to settings and MCP', async () => {
+    const snapshot: DiscoverySnapshot = {
+      sources: {
+        'claude-code': { status: 'never', models: [], newIds: [], knownIds: [] },
+        codex: {
+          status: 'ok',
+          models: [
+            { id: 'gpt-next', runtime: 'codex' },
+            { id: 'gpt-unannotated', runtime: 'codex' },
+          ],
+          newIds: ['gpt-next', 'gpt-unannotated'],
+          knownIds: ['gpt-next', 'gpt-unannotated'],
+        },
+      },
+    }
+    writeDiscoverySnapshot(snapshot)
+    await trpc.settings.update({
+      key: 'models',
+      value: [{ id: 'gpt-next', runtime: 'codex', note: 'new provider model' }],
+    })
+
+    expect((await trpc.settings.get()).discovery).toEqual(snapshot)
+    expect(await annotatedModels()).toEqual([
+      { id: 'gpt-next', runtime: 'codex', note: 'new provider model' },
+    ])
   })
 })

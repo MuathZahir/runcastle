@@ -113,11 +113,17 @@ describe('model vocabulary — runtime-aware entries', () => {
     }
   })
 
-  it('merges a custom roster over the curated one, matched by id', () => {
+  it('merges curated, discovered, then operator entries by id', () => {
     const roster = modelRoster({
+      discovered: [
+        { id: 'gpt-next', runtime: 'codex' },
+        { id: 'claude-opus-5', runtime: 'claude-code' },
+        { id: 'operator-wins', runtime: 'claude-code' },
+      ],
       models: [
         { id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' },
         { id: 'my-proxy/gpt', runtime: 'codex' },
+        { id: 'operator-wins', runtime: 'codex', note: 'chosen by the operator' },
       ],
     })
     // the custom entry replaces the curated one in place, not appended twice
@@ -126,6 +132,11 @@ describe('model vocabulary — runtime-aware entries', () => {
     ])
     expect(roster.at(-1)).toEqual({ id: 'my-proxy/gpt', runtime: 'codex' })
     expect(roster.map((m) => m.id)).toContain('claude-opus-5')
+    expect(roster.filter((m) => m.id === 'claude-opus-5')).toHaveLength(1)
+    expect(roster.find((m) => m.id === 'gpt-next')).toEqual({ id: 'gpt-next', runtime: 'codex' })
+    expect(roster.find((m) => m.id === 'operator-wins')).toEqual({
+      id: 'operator-wins', runtime: 'codex', note: 'chosen by the operator',
+    })
   })
 
   it('mergeModelEntries upserts by id, preserving order', () => {
@@ -147,14 +158,14 @@ describe('model vocabulary — runtime-aware entries', () => {
   })
 
   it('resolves an unknown/bare id to the historical claude-code runtime', () => {
-    expect(modelEntryFor('some-unlisted-model', { models: [] })).toEqual({
+    expect(modelEntryFor('some-unlisted-model', { discovered: [], models: [] })).toEqual({
       id: 'some-unlisted-model',
       runtime: 'claude-code',
     })
   })
 
   it('resolves a custom roster entry to its declared runtime', () => {
-    const config = { models: [{ id: 'my-proxy/gpt', runtime: 'codex' as const, note: 'cheap' }] }
+    const config = { discovered: [], models: [{ id: 'my-proxy/gpt', runtime: 'codex' as const, note: 'cheap' }] }
     expect(modelEntryFor('my-proxy/gpt', config)).toEqual({
       id: 'my-proxy/gpt',
       runtime: 'codex',
@@ -345,6 +356,7 @@ describe('resolveModel — chain runOverride ?? project.model ?? stepModels[step
   const config = {
     model: 'global-default',
     stepModels: { implement: 'step-implement', smoke: 'step-smoke' },
+    discovered: [],
   }
 
   it('falls back to the global default when nothing else is set', () => {
@@ -390,6 +402,7 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
     model: 'claude-opus-5',
     stepModels: { implement: 'gpt-5.6-sol', smoke: 'my-proxy/gpt' },
     models: [{ id: 'my-proxy/gpt', runtime: 'codex' as const, note: 'cheap smoke' }],
+    discovered: [{ id: 'gpt-next', runtime: 'codex' as const }],
   }
 
   it('yields an entry for every step', () => {
@@ -437,6 +450,14 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
       runtime: 'claude-code',
     })
   })
+
+  it('resolves a discovered-only model to its discovered runtime', () => {
+    expect(resolveModelEntry('chat', { ...config, model: 'gpt-next' })).toEqual({
+      id: 'gpt-next',
+      runtime: 'codex',
+    })
+    expect(modelEntryFor('gpt-next', config)).toEqual({ id: 'gpt-next', runtime: 'codex' })
+  })
 })
 
 /**
@@ -446,12 +467,12 @@ describe('resolveModelEntry — the same chain, resolved to { id, runtime }', ()
  */
 describe('configuredRuntimes', () => {
   it('is claude-code alone on a stock config', () => {
-    expect(configuredRuntimes(RuncastleConfig.parse({}))).toEqual(['claude-code'])
+    expect(configuredRuntimes({ ...RuncastleConfig.parse({}), discovered: [] })).toEqual(['claude-code'])
   })
 
   it('picks up a runtime a per-step override brought in', () => {
     const config = RuncastleConfig.parse({ stepModels: { implement: 'gpt-5.6-sol' } })
-    expect(configuredRuntimes(config)).toEqual(['claude-code', 'codex'])
+    expect(configuredRuntimes({ ...config, discovered: [] })).toEqual(['claude-code', 'codex'])
   })
 
   it('is codex alone for a codex-only operator', () => {
@@ -459,19 +480,19 @@ describe('configuredRuntimes', () => {
       model: 'gpt-5.6-sol',
       stepModels: { smoke: 'gpt-5.6-luna' },
     })
-    expect(configuredRuntimes(config)).toEqual(['codex'])
+    expect(configuredRuntimes({ ...config, discovered: [] })).toEqual(['codex'])
   })
 
   it('honours the operator roster for a custom id, and extra ids the caller holds', () => {
     const config = RuncastleConfig.parse({ models: [{ id: 'my-proxy/gpt', runtime: 'codex' }] })
-    expect(configuredRuntimes(config, ['my-proxy/gpt'])).toEqual(['claude-code', 'codex'])
+    expect(configuredRuntimes({ ...config, discovered: [] }, ['my-proxy/gpt'])).toEqual(['claude-code', 'codex'])
     // A project override / ticket assignment nothing knows is claude-code, the
     // historical default — never inferred from the id string.
-    expect(configuredRuntimes(config, ['mystery-model'])).toEqual(['claude-code'])
+    expect(configuredRuntimes({ ...config, discovered: [] }, ['mystery-model'])).toEqual(['claude-code'])
   })
 
   it('ignores blank extra ids — an unset override selects no runtime', () => {
     const config = RuncastleConfig.parse({ model: 'gpt-5.6-sol', stepModels: {} })
-    expect(configuredRuntimes(config, [null, undefined, ''])).toEqual(['codex'])
+    expect(configuredRuntimes({ ...config, discovered: [] }, [null, undefined, ''])).toEqual(['codex'])
   })
 })

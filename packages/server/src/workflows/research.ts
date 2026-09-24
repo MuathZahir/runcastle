@@ -10,7 +10,7 @@ import type {
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
-import { newId, resolveModelEntry } from '@runcastle/core'
+import { discoveredEntries, newId, resolveModelEntry } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { envPath, featureDocsRel, logsDir } from '@runcastle/core/paths'
 import { resolveSkillsRoot } from '../launcher/skills-root'
@@ -25,6 +25,7 @@ import {
 import type { KillHandleOptions, StreamThrottle, ThrottledEvent } from './ticket-burner'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import { RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
+import { readDiscoverySnapshot } from '../services/model-discovery'
 import {
   AUTH_MISSING_EVENT,
   buildBurnAgent,
@@ -413,7 +414,8 @@ async function realExecuteResearchRun(
  */
 function resolveResearchDeps(ctx: WorkflowCtx): ResearchDeps {
   const config = loadConfig()
-  const model = resolveModelEntry('research', config, ctx.project, ctx.modelOverride)
+  const modelConfig = { ...config, discovered: discoveredEntries(readDiscoverySnapshot()) }
+  const model = resolveModelEntry('research', modelConfig, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
   return {
     config,

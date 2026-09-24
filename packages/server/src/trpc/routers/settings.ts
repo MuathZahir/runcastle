@@ -1,6 +1,7 @@
 import { SettingsUpdateInput } from '@runcastle/core'
 import * as z from 'zod'
 import { getSettings, updateSettings } from '../../services/settings'
+import { refreshModelDiscovery } from '../../services/model-discovery'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -17,4 +18,6 @@ export const settingsRouter = router({
   update: publicProcedure
     .input(SettingsUpdateInput)
     .mutation(({ ctx, input }) => updateSettings(ctx, input)),
+
+  refreshModels: publicProcedure.mutation(({ ctx }) => refreshModelDiscovery(ctx)),
 })

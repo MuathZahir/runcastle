@@ -17,6 +17,7 @@ import type {
 import {
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  discoveredEntries,
   docsDigestSizeWarning,
   fmtClock,
   isAgentDigestDoc,
@@ -54,6 +55,7 @@ import {
 import { isManagedImage } from '../services/sandbox-image'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
+import { readDiscoverySnapshot } from '../services/model-discovery'
 import {
   appendTranscript,
   beginTranscript,
@@ -5168,7 +5170,8 @@ export function resolveTicketModel(
  */
 async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
   const config = loadConfig()
-  const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
+  const modelConfig = { ...config, discovered: discoveredEntries(readDiscoverySnapshot()) }
+  const model = resolveModelEntry('implement', modelConfig, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
   // Only a container burn holds an image to the host's CLIs; noSandbox runs them.
@@ -5232,7 +5235,7 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
    * never disagree about what this ticket would run with.
    */
   const ticketCredentials = (ticket: Ticket): { model: ModelEntry; token: string | undefined } => {
-    const ticketModel = resolveTicketModel(config, ctx.project, ctx.modelOverride, ticket)
+    const ticketModel = resolveTicketModel(modelConfig, ctx.project, ctx.modelOverride, ticket)
     return {
       model: ticketModel,
       token:

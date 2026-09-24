@@ -19,6 +19,12 @@ const server = vi.hoisted(() => ({
   updates: [] as Record<string, unknown>[],
   /** Set to make the next commit come back refused, with this message. */
   reject: null as string | null,
+  /** How many times the page asked discovery to re-run. */
+  refreshes: 0,
+  /** Hold `settings.refreshModels` in flight, as a slow discovery would be. */
+  refreshPending: false,
+  /** How many times the page asked for `settings.get` to be refetched. */
+  invalidations: 0,
 }))
 
 vi.mock('../src/trpc', () => ({
@@ -26,7 +32,7 @@ vi.mock('../src/trpc', () => ({
   // everything below is exactly what the dialog calls.
   trpc: {
     useUtils: () => ({
-      settings: { get: { invalidate: () => undefined } },
+      settings: { get: { invalidate: () => void server.invalidations++ } },
       project: { prep: { invalidate: () => undefined } },
     }),
     settings: {
@@ -47,6 +53,16 @@ vi.mock('../src/trpc', () => ({
             server.updates.push(input)
             if (server.reject) opts?.onError?.({ message: server.reject })
             else opts?.onSuccess?.()
+          },
+        }),
+      },
+      refreshModels: {
+        useMutation: (opts?: { onSuccess?: () => void }) => ({
+          isPending: server.refreshPending,
+          error: null,
+          mutate: () => {
+            server.refreshes++
+            if (!server.refreshPending) opts?.onSuccess?.()
           },
         }),
       },
@@ -113,6 +129,9 @@ describe('Models page', () => {
     server.scoped = view(projectFields())
     server.updates = []
     server.reject = null
+    server.refreshes = 0
+    server.refreshPending = false
+    server.invalidations = 0
   })
   afterEach(cleanup)
 
@@ -238,6 +257,111 @@ describe('Models page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'show all' }))
 
     expect(screen.getByLabelText('Note for claude-sonnet-5')).toBeTruthy()
+  })
+
+  describe('with discovery', () => {
+    const HOUR = 3_600_000
+    /** Codex just found two models, one of them new; Claude could not run. */
+    const discovered = (): SettingsView =>
+      ({
+        fields: globalFields,
+        discovery: {
+          sources: {
+            'claude-code': {
+              status: 'failed',
+              error: 'not logged in',
+              models: [],
+              newIds: [],
+              knownIds: [],
+            },
+            codex: {
+              status: 'ok',
+              lastSuccessAt: Date.now() - 2 * HOUR,
+              models: [
+                { id: 'gpt-6-astra', runtime: 'codex', displayName: 'GPT-6 Astra' },
+                {
+                  id: 'gpt-6-luna',
+                  runtime: 'codex',
+                  retirement: { at: '2026-10-14', replacement: 'gpt-6-astra' },
+                },
+              ],
+              newIds: ['gpt-6-astra'],
+              knownIds: ['gpt-6-astra', 'gpt-6-luna'],
+            },
+          },
+        },
+      }) as SettingsView
+
+    beforeEach(() => {
+      server.globals = discovered()
+    })
+
+    it('says per source how many models it found, or why it failed', () => {
+      open()
+
+      const lines = within(screen.getByRole('list', { name: 'Model discovery' }))
+        .getAllByRole('listitem')
+        .map((li) => li.textContent)
+      expect(lines).toEqual(['Claude: failed — not logged in', 'Codex: 2 models · 2h ago'])
+    })
+
+    it('says a source has not run yet on a fresh machine', () => {
+      server.globals = view(globalFields)
+      open()
+
+      expect(screen.getByText('Claude: not run yet')).toBeTruthy()
+      expect(screen.getByText('Codex: not run yet')).toBeTruthy()
+    })
+
+    it('re-runs discovery on Refresh and refetches settings when it lands', () => {
+      open()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+      expect(server.refreshes).toBe(1)
+      expect(server.invalidations).toBe(1)
+    })
+
+    it('shows Refresh as pending while discovery runs', () => {
+      server.refreshPending = true
+      open()
+
+      const button = screen.getByRole('button', { name: 'Refreshing…' }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+    })
+
+    it('shows a new model without “show all”, and the rest behind it', () => {
+      open()
+
+      expect(within(rowOf('gpt-6-astra')).getByText('New')).toBeTruthy()
+      expect(screen.queryByLabelText('Note for gpt-6-luna')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'show all' }))
+      expect(screen.getByLabelText('Note for gpt-6-luna')).toBeTruthy()
+    })
+
+    it('carries the Codex retirement notice on its row', () => {
+      open()
+      fireEvent.click(screen.getByRole('button', { name: 'show all' }))
+
+      const row = within(rowOf('gpt-6-luna'))
+      expect(row.getByText('retires 2026-10-14 → gpt-6-astra')).toBeTruthy()
+    })
+
+    it('flags a model in use that its source stopped offering', () => {
+      open()
+
+      // gpt-5.6-sol runs Implement, and Codex's latest run left it out.
+      expect(within(rowOf('gpt-5.6-sol')).getByText('no longer offered by Codex')).toBeTruthy()
+      // Claude's run failed, so the default is not flagged on its account.
+      expect(within(rowOf('claude-opus-5')).queryByText(/no longer offered/)).toBeNull()
+    })
+
+    it('offers discovered models in the default dropdown under their runtime', () => {
+      open()
+
+      pickOption(screen.getByLabelText('Default model'), 'gpt-6-astra')
+      expect(lastUpdate()).toEqual({ key: 'model', value: 'gpt-6-astra' })
+    })
   })
 
   it('names every one of the nine step selects', () => {

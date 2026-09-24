@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
-import type { RunStatus, Ticket, TicketInput, WaypointInput } from '@runcastle/core'
+import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput, WaypointInput } from '@runcastle/core'
 import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
 import { runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
@@ -32,6 +33,7 @@ import mcpApp, {
 import { emit, listAfter } from '../src/services/events'
 import { getFeatureRow } from '../src/services/repo'
 import { reportFinding } from '../src/services/review-findings'
+import { writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { addNote } from '../src/services/test-notes'
 import {
   cancelTicket,
@@ -42,7 +44,7 @@ import {
 } from '../src/services/tickets'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 function ticket(title: string, blockedBy: number[] = []): TicketInput {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy }
@@ -261,6 +263,44 @@ describe('mcp tools', () => {
       { id: 'claude-opus-5', runtime: 'claude-code', note: 'UI/UX taste' },
       { id: 'my-proxy-model', runtime: 'codex', note: 'cheap bulk edits' },
     ])
+  })
+
+  it('offers and accepts an annotated discovered model but hides unannotated discovery', () => {
+    const previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    const discoveryDir = mkdtempSync(join(tmpdir(), 'runcastle-mcp-discovery-'))
+    process.env.RUNCASTLE_DATA_DIR = discoveryDir
+    try {
+      const snapshot: DiscoverySnapshot = {
+        sources: {
+          'claude-code': { status: 'never', models: [], newIds: [] },
+          codex: {
+            status: 'ok',
+            models: [
+              { id: 'gpt-next', runtime: 'codex' },
+              { id: 'gpt-hidden', runtime: 'codex' },
+            ],
+            newIds: [],
+          },
+        },
+      }
+      writeDiscoverySnapshot(snapshot)
+      ctx.config = {
+        ...ctx.config,
+        models: [{ id: 'gpt-next', runtime: 'codex', note: 'provider-discovered refactors' }],
+      }
+
+      expect(toolGetFeatureContext(ctx, session).annotatedModels).toEqual([
+        { id: 'gpt-next', runtime: 'codex', note: 'provider-discovered refactors' },
+      ])
+      toolEmitTickets(ctx, session, {
+        tickets: [{ ...ticket('use the new model'), model: 'gpt-next' }],
+      })
+      expect(listByFeature(ctx, featureId)[0].model).toBe('gpt-next')
+    } finally {
+      if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+      else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+      rmTemp(discoveryDir)
+    }
   })
 
   /**

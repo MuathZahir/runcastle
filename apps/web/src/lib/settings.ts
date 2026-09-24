@@ -2,12 +2,15 @@ import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
   DEFAULT_DOCS_COMMIT_PREFIX,
+  DEFAULT_RUNTIME,
+  EMPTY_DISCOVERY_SNAPSHOT,
   MODEL_STEPS,
   ModelEntry,
+  discoveredEntries,
   modelEntryFor,
   modelRoster,
 } from '@runcastle/core'
-import type { AgentRuntime, ModelStep } from '@runcastle/core'
+import type { AgentRuntime, DiscoveredModel, DiscoverySnapshot, ModelStep } from '@runcastle/core'
 import type { SettingField, SettingsView } from './api'
 import {
   describeFinding,
@@ -120,7 +123,10 @@ export function customModelsFromView(view: SettingsView | undefined): ModelEntry
 
 /** Every model this view offers: the curated list with the operator's roster over it. */
 export function rosterFromView(view: SettingsView | undefined): ModelEntry[] {
-  return modelRoster({ models: customModelsFromView(view) })
+  return modelRoster({
+    discovered: discoveredEntries(view?.discovery ?? EMPTY_DISCOVERY_SNAPSHOT),
+    models: customModelsFromView(view),
+  })
 }
 
 /**
@@ -903,10 +909,18 @@ function ownStepModel(view: SettingsView, step: ModelStep): string | null {
   return f?.source === 'file' && typeof f.value === 'string' && f.value !== '' ? f.value : null
 }
 
+/** How a discovery source is named to a human — by provider, not by CLI. */
+export const DISCOVERY_SOURCE_LABEL: Record<AgentRuntime, string> = {
+  'claude-code': 'Claude',
+  codex: 'Codex',
+}
+
 /** One line of the roster table (decision 15/16). */
 export interface RosterRow {
   id: string
   runtime: AgentRuntime
+  /** The provider's name for the model, when discovery reported one. */
+  displayName: string | null
   /** The use-case note; '' when the model has none and is not offered per ticket. */
   note: string
   /** The steps that resolve to this model — the "Used for" column. */
@@ -914,12 +928,49 @@ export interface RosterRow {
   isDefault: boolean
   /** The operator added this id themselves, so it can be removed again. */
   custom: boolean
+  /** A provider reported this id in its source's latest discovery. */
+  discovered: boolean
+  /** The id appeared in its source's latest run and was absent from the one before. */
+  isNew: boolean
+  /**
+   * The source that stopped offering this model while something still uses it
+   * — null unless that source's latest run SUCCEEDED without it. A failed or
+   * never-run source flags nothing: it has not said anything about the model.
+   */
+  noLongerOffered: AgentRuntime | null
+  /** A retirement notice the Codex cache carries: when, and what replaces it. */
+  retirement: DiscoveredModel['retirement'] | null
+}
+
+/** The view's discovery snapshot; an older wire shape without one has discovered nothing. */
+function discoveryOf(view: SettingsView): DiscoverySnapshot {
+  return view.discovery ?? EMPTY_DISCOVERY_SNAPSHOT
+}
+
+/**
+ * Who withdrew a referenced id that no roster layer carries. The id itself says
+ * nothing about its runtime — runcastle never infers one from an id's spelling
+ * — so the only evidence is which sources have spoken: a source whose latest
+ * run SUCCEEDED and did not list it is one that stopped offering it. With one
+ * such source that is the answer; with both, the tie goes to the runtime a
+ * launch would use for an unknown id, which is what the rest of the UI already
+ * attributes it to. With none, nobody has said anything and nothing is flagged.
+ */
+function withdrawnSource(sources: DiscoverySnapshot['sources']): AgentRuntime | null {
+  const succeeded = AGENT_RUNTIMES.filter((runtime) => sources[runtime].status === 'ok')
+  if (succeeded.length === 0) return null
+  return succeeded.length === 1 ? succeeded[0]! : DEFAULT_RUNTIME
 }
 
 /**
  * The roster table: every model this machine offers, with what it is used for.
  * Read off the GLOBAL view — the roster and the per-step map are machine-wide,
  * and a project's own model is called out separately (`projectModelWarning`).
+ *
+ * An id the default or a step points at always gets a row, even when no layer
+ * of the roster carries it — a discovered model its source stopped offering, or
+ * one typed straight into the config file. Dropping it would hide the very
+ * model a launch is about to fail on (spec §Approach 5).
  */
 export function rosterRows(view: SettingsView): RosterRow[] {
   const defaultModel = defaultModelOf(view)
@@ -927,28 +978,108 @@ export function rosterRows(view: SettingsView): RosterRow[] {
     MODEL_STEPS.map((step) => [step, ownStepModel(view, step) ?? defaultModel] as const),
   )
   const curated = new Set(CURATED_MODELS.map((m) => m.id))
-  return rosterFromView(view).map((m) => ({
-    id: m.id,
-    runtime: m.runtime,
-    note: m.note ?? '',
-    usedFor: MODEL_STEPS.filter((step) => resolved.get(step) === m.id),
-    isDefault: m.id === defaultModel,
-    custom: !curated.has(m.id),
-  }))
+  const { sources } = discoveryOf(view)
+  const discovered = new Map(
+    AGENT_RUNTIMES.flatMap((runtime) =>
+      sources[runtime].models.map((m) => [m.id, { model: m, runtime }] as const),
+    ),
+  )
+  const roster = rosterFromView(view)
+  const rostered = new Set(roster.map((m) => m.id))
+  const withdrawnBy = withdrawnSource(sources)
+  const unrostered = new Set(
+    [defaultModel, ...resolved.values()].filter((id) => id !== '' && !rostered.has(id)),
+  )
+  const entries: ModelEntry[] = [
+    ...roster,
+    ...[...unrostered].map((id) => ({ id, runtime: withdrawnBy ?? DEFAULT_RUNTIME })),
+  ]
+  return entries.map((m) => {
+    const note = m.note ?? ''
+    const usedFor = MODEL_STEPS.filter((step) => resolved.get(step) === m.id)
+    const isDefault = m.id === defaultModel
+    const found = discovered.get(m.id)
+    // A reference no roster layer carries has no entry to remove, so it is
+    // not the operator's own however much it looks like a hand-typed one.
+    const custom = !curated.has(m.id) && !found && !unrostered.has(m.id)
+    const referenced = isDefault || usedFor.length > 0 || note !== ''
+    return {
+      id: m.id,
+      runtime: m.runtime,
+      displayName: found?.model.displayName ?? null,
+      note,
+      usedFor,
+      isDefault,
+      custom,
+      discovered: found !== undefined,
+      isNew: found !== undefined && sources[found.runtime].newIds.includes(m.id),
+      // Only a model the providers could have offered can stop being offered:
+      // one runcastle curates, one no roster layer carries at all, or one this
+      // source did offer in an earlier run. An id only ever typed by the
+      // operator was never theirs to withdraw — and an annotated discovery is
+      // both custom and withdrawn, so `custom` cannot stand in for that.
+      noLongerOffered:
+        referenced &&
+        !found &&
+        (curated.has(m.id) ||
+          unrostered.has(m.id) ||
+          sources[m.runtime].knownIds.includes(m.id)) &&
+        sources[m.runtime].status === 'ok'
+          ? m.runtime
+          : null,
+      retirement: found?.model.retirement ?? null,
+    }
+  })
 }
 
 /**
  * The roster rows worth showing by default: the default, anything a step uses,
- * anything annotated, and everything the operator added. A curated model nobody
- * has touched is noise — it collapses behind "show all" (spec, Models page).
+ * anything annotated, everything the operator added, and a model discovery just
+ * found. A curated or discovered model nobody has touched is noise — it
+ * collapses behind "show all" (spec, Models page).
  */
 export function rosterVisibleRows(rows: readonly RosterRow[]): RosterRow[] {
-  return rows.filter((r) => r.isDefault || r.usedFor.length > 0 || r.note !== '' || r.custom)
+  return rows.filter(
+    (r) => r.isDefault || r.usedFor.length > 0 || r.note !== '' || r.custom || r.isNew,
+  )
 }
 
-/** How many curated models "show all" would reveal. */
-export function hiddenCuratedCount(rows: readonly RosterRow[]): number {
+/** How many curated and discovered models "show all" would reveal. */
+export function hiddenRosterCount(rows: readonly RosterRow[]): number {
   return rows.length - rosterVisibleRows(rows).length
+}
+
+/** One discovery source's status, as the line above the roster says it. */
+export interface DiscoveryStatusLine {
+  runtime: AgentRuntime
+  text: string
+  failed: boolean
+}
+
+/**
+ * One line per discovery source: how many models it offered and how long ago,
+ * why it failed (and when it last worked), or that it has not run yet.
+ */
+export function discoveryStatusLines(view: SettingsView, now = Date.now()): DiscoveryStatusLine[] {
+  const { sources } = discoveryOf(view)
+  return AGENT_RUNTIMES.map((runtime) => {
+    const source = sources[runtime]
+    const label = DISCOVERY_SOURCE_LABEL[runtime]
+    const lastGood = source.lastSuccessAt
+    if (source.status === 'never') return { runtime, text: `${label}: not run yet`, failed: false }
+    if (source.status === 'failed') {
+      const since = lastGood === undefined ? '' : ` (last good ${relativeAge(lastGood, now)})`
+      const reason = source.error ?? 'unknown error'
+      return { runtime, text: `${label}: failed — ${reason}${since}`, failed: true }
+    }
+    const count = source.models.length
+    const age = lastGood === undefined ? '' : ` · ${relativeAge(lastGood, now)}`
+    return {
+      runtime,
+      text: `${label}: ${count} ${count === 1 ? 'model' : 'models'}${age}`,
+      failed: false,
+    }
+  })
 }
 
 /** One line of the per-step table: all eleven steps, always (decision 15). */
@@ -971,7 +1102,10 @@ export interface StepRow {
  * override" picker, which made the whole per-step idea a two-step discovery.
  */
 export function stepRows(view: SettingsView): StepRow[] {
-  const config = { models: customModelsFromView(view) }
+  const config = {
+    discovered: discoveredEntries(discoveryOf(view)),
+    models: customModelsFromView(view),
+  }
   const fallback = defaultModelOf(view)
   return STEP_META.map((meta) => {
     const value = ownStepModel(view, meta.step)

@@ -74,6 +74,9 @@ vi.mock('../src/trpc', () => ({
           },
         }),
       },
+      refreshModels: {
+        useMutation: () => ({ isPending: false, error: null, mutate: () => undefined }),
+      },
     },
   } as unknown as typeof import('../src/trpc').trpc,
 }))

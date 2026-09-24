@@ -1,10 +1,11 @@
-import { configuredRuntimes, resolveSandboxImage, type AgentRuntime } from '@runcastle/core'
+import { configuredRuntimes, discoveredEntries, resolveSandboxImage, type AgentRuntime } from '@runcastle/core'
 import { loadConfig } from '@runcastle/core/config-load'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
 import { envWithAfkCredentials } from './afk-env'
 import { runDoctor, exitCodeFor, type DoctorEnv, type DoctorMode } from './doctor'
 import { formatReport } from './report'
 import { createSystemExec } from './system-exec'
+import { readDiscoverySnapshot } from '../services/model-discovery'
 
 /**
  * `runcastle doctor` — the prerequisite CLI. Diagnostic by default (reports
@@ -27,7 +28,7 @@ export function resolveDoctorEnv(): DoctorEnv {
   try {
     const config = loadConfig()
     imageName = resolveSandboxImage(config)
-    runtimes = configuredRuntimes(config)
+    runtimes = configuredRuntimes({ ...config, discovered: discoveredEntries(readDiscoverySnapshot()) })
   } catch {
     // Config unreadable — fall back to DEFAULT_SANDBOX_IMAGE and the default runtime.
     imageName = undefined

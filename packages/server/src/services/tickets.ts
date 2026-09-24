@@ -7,6 +7,7 @@ import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { getFeatureRow } from './repo'
 import { markFailed } from './review-findings'
+import { rosterConfig } from './model-discovery'
 
 /**
  * Ticket storage. The ideation session emits `TicketInput[]` in one batch via
@@ -73,7 +74,7 @@ function resolveBlocking(inputs: TicketInput[], startSeq: number) {
 function normalizeModel(ctx: AppCtx, value: string | null | undefined): string | null {
   const id = value?.trim()
   if (!id) return null
-  const roster = modelRoster(ctx.config)
+  const roster = modelRoster(rosterConfig(ctx))
   if (!roster.some((m) => m.id === id)) {
     throw new InvalidInputError(
       `unknown model "${id}" — assign one of the configured models: ${roster.map((m) => m.id).join(', ')}`,
