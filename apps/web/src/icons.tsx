@@ -105,6 +105,24 @@ export function IconX(p: IconProps) {
   )
 }
 
+export function IconTrash(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
+    </svg>
+  )
+}
+
+/** Take something back out of where it went — a triaged note's Reopen. */
+export function IconUndo(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 6h5a3 3 0 0 1 0 6H7" />
+      <path d="M7 3.5 4.5 6 7 8.5" />
+    </svg>
+  )
+}
+
 export function IconChevronDown(p: IconProps) {
   return (
     <svg {...base(p)}>

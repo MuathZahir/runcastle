@@ -41,7 +41,7 @@ function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
-type Variant = 'solid' | 'ghost' | 'danger'
+type Variant = 'solid' | 'ghost' | 'accent' | 'danger'
 type ButtonSize = 'md' | 'xs'
 
 const BUTTON_BASE =
@@ -72,6 +72,10 @@ const BUTTON_VARIANT: Record<Variant, string> = {
     'border-hairline bg-transparent text-text enabled:hover:border-hairline-strong enabled:hover:bg-panel',
   solid:
     'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
+  // The violet ghost: a view's second door that still wants to read as the
+  // accent's, without becoming a second solid (the Notes card's Triage).
+  accent:
+    'border-accent-line bg-transparent text-accent-hi enabled:hover:bg-accent-soft',
   danger:
     'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
 }
@@ -979,6 +983,13 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
   )
 }
 
+type NoteThumbnailSize = 'md' | 'sm'
+
+const NOTE_THUMBNAIL_SIZE: Record<NoteThumbnailSize, string> = {
+  md: 'h-[54px] w-24 rounded-sm border-hairline',
+  sm: 'h-[26px] w-10 rounded-[4px] border-hairline-strong cursor-zoom-in',
+}
+
 /**
  * The picture a note is evidence for, as the door onto it: ~96×54, big enough
  * to recognise the screen it was taken on, and a button because the full PNG
@@ -988,19 +999,27 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
  * project inbox's — and a thumbnail written out twice is two lightbox doors and
  * two alt texts free to drift apart. Takes a nullable url and renders nothing
  * for a note without a picture, so neither surface repeats that guard either.
+ *
+ * `sm` (~40×26) is the one that rides a dense one-line row — the project inbox
+ * (decisions.md #17) — where the picture only has to say "there is one".
  */
 export function NoteThumbnail({
   url,
   onOpen,
+  size = 'md',
 }: {
   url: string | null | undefined
   onOpen: (url: string) => void
+  size?: NoteThumbnailSize
 }) {
   if (!url) return null
   return (
     <button
       type="button"
-      className="h-[54px] w-24 shrink-0 overflow-hidden rounded-sm border border-hairline bg-black p-0 hover:border-accent-line"
+      className={cx(
+        'shrink-0 overflow-hidden border bg-black p-0 hover:border-accent-line',
+        NOTE_THUMBNAIL_SIZE[size],
+      )}
       title="see the whole picture"
       onClick={() => onOpen(url)}
     >
