@@ -302,6 +302,33 @@ describe('the build the terminal runs', () => {
 
   // The project image inherits the stock labels through FROM; its own
   // Dockerfile declares no version ARGs to consume.
+  // The Rebuild route's composition: a stock image whose hash still matches but
+  // whose CLI drifted from the host is not fresh, so the chain rebuilds it first.
+  it('rebuilds a CLI-drifted stock image before the project image', () => {
+    const context = stockContext()
+    const hostVersions = { 'claude-code': '2.1.280', codex: '0.46.0' }
+    const { fresh } = imageFreshness({
+      image: {
+        present: true,
+        hash: hashDockerfileContents(STOCK_DOCKERFILE),
+        versions: { 'claude-code': '2.1.270', codex: '0.46.0' },
+      },
+      expectedHash: hashDockerfile(join(context, 'Dockerfile')),
+      host: hostVersions,
+    })
+    const plan = buildable(
+      planImageBuild({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repoWithDockerfile(), sandboxImageOverwritable: true },
+        stockContext: context,
+        stockFresh: fresh,
+        buildArgs: {},
+        hostVersions,
+      }),
+    )
+    expect(plan.steps.map((s) => s.tag)).toEqual([DEFAULT_SANDBOX_IMAGE, 'sandcastle:runcastle-proj_java'])
+  })
+
   it('pins the CLIs on the stock step of a chain and not on the project step', () => {
     const plan = buildable(
       planImageBuild({

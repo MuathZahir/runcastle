@@ -429,7 +429,12 @@ function ImageRow({
   const toast = useToast()
   const target = trpc.setup.imageBuildTarget.useQuery(projectId ? { projectId } : undefined)
   const start = trpc.setup.startTerminal.useMutation({
-    onSuccess: ({ sessionId }) => setSessionId(sessionId),
+    onSuccess: ({ sessionId, notices }) => {
+      setSessionId(sessionId)
+      // A host CLI version the server could not read: the build runs unpinned
+      // for that runtime, and this is the only place that says so.
+      for (const notice of notices) toast.push(notice)
+    },
     onError: (e) => toast.push(e.message),
   })
   if (!probe) return null
