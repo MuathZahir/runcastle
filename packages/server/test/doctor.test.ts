@@ -15,7 +15,11 @@ import {
   applyInstalledAssetEnv,
   sandcastleTemplateDir,
 } from '../src/launcher/asset-paths'
-import { DOCKERFILE_HASH_LABEL } from '../src/services/sandbox-image'
+import {
+  CLAUDE_CODE_VERSION_LABEL,
+  CODEX_VERSION_LABEL,
+  DOCKERFILE_HASH_LABEL,
+} from '../src/services/sandbox-image'
 
 /**
  * A canned exec: maps `"cmd arg arg"` to an outcome. Anything not in the map is
@@ -36,7 +40,10 @@ const STOCK_HASH = 'a'.repeat(64)
 
 /** The canned-exec key for the label read the image probe makes (decision 4). */
 function inspectKey(runtime: 'docker' | 'podman', tag: string): string {
-  return `${runtime} image inspect --format {{index .Config.Labels "${DOCKERFILE_HASH_LABEL}"}} ${tag}`
+  const format = [DOCKERFILE_HASH_LABEL, CLAUDE_CODE_VERSION_LABEL, CODEX_VERSION_LABEL]
+    .map((label) => `{{index .Config.Labels "${label}"}}`)
+    .join('|')
+  return `${runtime} image inspect --format ${format} ${tag}`
 }
 
 const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {

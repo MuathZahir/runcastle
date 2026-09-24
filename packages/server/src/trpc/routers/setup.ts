@@ -20,10 +20,12 @@ import { ptyRegistry } from '../../pty/registry'
 import { isOverwritable } from '../../services/findings'
 import { adoptProjectImage, releaseProjectImage } from '../../services/project-image'
 import { allProjects, requireProjectById } from '../../services/repo'
+import { resolveHostAgentVersions } from '../../services/agent-cli-versions'
 import {
   hashDockerfile,
   imageBuildTarget,
   imageBuildTerminal,
+  imageFreshness,
   inspectBuiltImage,
   planImageBuild,
   stockBuildArgs,
@@ -153,6 +155,10 @@ export const setupRouter = router({
    * its output there; `claude-login`/`codex-login` run each runtime's own
    * interactive sign-in; `setup-token` runs Claude Code's long-lived AFK-token
    * flow (which self-heals its own host-login prompt on the way).
+   *
+   * `notices` are things the human should hear about a flow that still started
+   * — only `build-image` fills it, naming a host CLI version it could not read
+   * and so did not pin.
    */
   startTerminal: publicProcedure
     .input(
@@ -167,10 +173,14 @@ export const setupRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const sessionId = newId('setup')
-      const { spec, onExit } =
+      const { spec, onExit, notices } =
         input.kind === 'build-image'
           ? await buildImageTerminal(ctx, input.projectId)
-          : { spec: { ...terminalSpec(input.kind), cwd: process.cwd() }, onExit: undefined }
+          : {
+              spec: { ...terminalSpec(input.kind), cwd: process.cwd() },
+              onExit: undefined,
+              notices: [],
+            }
 
       // Resolve through PATHEXT like the launcher does for `claude` — a bare
       // `spawn('docker'|'claude')` misses a Windows `.cmd`/`.ps1` shim, and
@@ -183,7 +193,7 @@ export const setupRouter = router({
         opts: { cwd: spec.cwd, env: process.env },
         ...(onExit ? { onExit } : {}),
       })
-      return { sessionId }
+      return { sessionId, notices }
     }),
 })
 
@@ -205,7 +215,8 @@ function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
 
 /**
  * The image build behind the AFK card's Build button: refresh the stock context,
- * ask the built stock image whether it still matches its Dockerfile, and plan
+ * ask the built stock image whether it still matches its Dockerfile and the
+ * host's agent CLI versions (`imageFreshness`, the verdict the doctor shares), and plan
  * the build from the project's own state — stock alone, the two-step chain when
  * the repo carries `.runcastle/sandbox/Dockerfile`, or nothing at all when the
  * image is a tag runcastle does not manage (decision 5 — the button must never
@@ -220,12 +231,24 @@ function projectImageEnv(ctx: AppCtx, project: Project): ProjectImageEnv {
 async function buildImageTerminal(
   ctx: AppCtx,
   projectId: string | undefined,
-): Promise<{ spec: ImageBuildTerminal; onExit?: (info: { exitCode: number }) => void }> {
+): Promise<{
+  spec: ImageBuildTerminal
+  onExit?: (info: { exitCode: number }) => void
+  notices: string[]
+}> {
   const exec = createSystemExec()
   const runtime = await resolveRuntime(exec, ctx.config.sandbox === 'podman' ? 'podman' : 'docker')
   const project = projectId ? requireProjectById(ctx, projectId) : null
   const stockContext = prepareSandboxBuildContext()
-  const stockHash = hashDockerfile(join(stockContext, 'Dockerfile'))
+  // Decision 8: a host CLI whose version cannot be read does not refuse the
+  // build — it goes ahead unpinned for that runtime, and the card says why.
+  const host = await resolveHostAgentVersions(exec)
+  const notices = Object.values(host.problems)
+  const stockFresh = imageFreshness({
+    image: await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE),
+    expectedHash: hashDockerfile(join(stockContext, 'Dockerfile')),
+    host: host.versions,
+  }).fresh
   const plan = planImageBuild({
     config: ctx.config,
     project: project
@@ -238,18 +261,18 @@ async function buildImageTerminal(
       : null,
     stockContext,
     stockDockerfile: burnerDockerfilePath(),
-    stockFresh:
-      stockHash !== null &&
-      (await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)).hash === stockHash,
+    stockFresh,
     buildArgs: stockBuildArgs(runtime),
+    hostVersions: host.versions,
   })
   if (plan.kind === 'refused') throw new InvalidInputError(plan.reason)
 
   const spec = imageBuildTerminal(runtime, plan)
-  if (plan.kind !== 'chain' || !project) return { spec }
+  if (plan.kind !== 'chain' || !project) return { spec, notices }
   const { projectTag } = plan
   return {
     spec,
+    notices,
     onExit: ({ exitCode }) => {
       if (exitCode === 0) adoptProjectImage(ctx, project.id, projectTag)
     },

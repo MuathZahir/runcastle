@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
-import type { ExecFn } from '../doctor/doctor'
+import {
+  AGENT_RUNTIMES,
+  type AgentRuntime,
+  DEFAULT_SANDBOX_IMAGE,
+  resolveSandboxImage,
+  type RuncastleConfig,
+} from '@runcastle/core'
+import { type ExecFn, RUNTIME_SPECS } from '../doctor/doctor'
+import type { HostAgentVersions } from './agent-cli-versions'
 import type { Runtime } from './setup'
 
 /**
@@ -30,6 +37,21 @@ import type { Runtime } from './setup'
 
 /** Image label carrying the sha256 of the Dockerfile an image was built from. */
 export const DOCKERFILE_HASH_LABEL = 'runcastle.dockerfile-hash'
+
+/**
+ * Image labels carrying the agent CLI versions the stock build was asked to
+ * install (feature `sandbox-agent-clis-track-the-host-version`, decision 3).
+ * Stamped with the same values passed as build-args, empty when the host has no
+ * such CLI; a project image inherits them from the stock one through `FROM`.
+ */
+export const CLAUDE_CODE_VERSION_LABEL = 'runcastle.claude-code-version'
+export const CODEX_VERSION_LABEL = 'runcastle.codex-version'
+
+/** Per runtime: the label an image records its CLI version under, and the stock Dockerfile ARG that pins it. */
+const AGENT_CLI_PINS: Record<AgentRuntime, { label: string; buildArg: string }> = {
+  'claude-code': { label: CLAUDE_CODE_VERSION_LABEL, buildArg: 'CLAUDE_CODE_VERSION' },
+  codex: { label: CODEX_VERSION_LABEL, buildArg: 'CODEX_VERSION' },
+}
 
 /** The `.runcastle/sandbox/` build context a project may carry, and its Dockerfile. */
 export function projectSandboxDir(repoPath: string): string {
@@ -70,25 +92,97 @@ export interface BuiltImage {
    * vouch for).
    */
   hash: string | null
+  /**
+   * The agent CLI versions its labels record, per runtime — null when the image
+   * is absent, predates the labels, or was built with no host CLI to pin to.
+   */
+  versions: Record<AgentRuntime, string | null>
 }
 
-/** Ask a local image whether it is there and which Dockerfile it was built from. */
+const NO_VERSIONS: Record<AgentRuntime, string | null> = { 'claude-code': null, codex: null }
+
+/** Ask a local image whether it is there, which Dockerfile it was built from, and which CLIs it pins. */
 export async function inspectBuiltImage(
   exec: ExecFn,
   runtime: Runtime,
   tag: string,
 ): Promise<BuiltImage> {
+  const labels = [DOCKERFILE_HASH_LABEL, ...AGENT_RUNTIMES.map((r) => AGENT_CLI_PINS[r].label)]
   const out = await exec(runtime, [
     'image',
     'inspect',
     '--format',
-    `{{index .Config.Labels "${DOCKERFILE_HASH_LABEL}"}}`,
+    labels.map((label) => `{{index .Config.Labels "${label}"}}`).join('|'),
     tag,
   ])
-  if (!(out.ok && out.code === 0)) return { present: false, hash: null }
-  const value = out.stdout.trim()
+  if (!(out.ok && out.code === 0)) return { present: false, hash: null, versions: NO_VERSIONS }
   // Both runtimes print a placeholder rather than nothing for a missing key.
-  return { present: true, hash: value === '' || value === '<no value>' ? null : value }
+  const [hash, ...versions] = out.stdout
+    .trim()
+    .split('|')
+    .map((value) => (value === '' || value === '<no value>' ? null : value))
+  return {
+    present: true,
+    hash: hash ?? null,
+    versions: Object.fromEntries(
+      AGENT_RUNTIMES.map((r, i) => [r, versions[i] ?? null]),
+    ) as Record<AgentRuntime, string | null>,
+  }
+}
+
+/** One reason an image is not fresh; see {@link imageFreshness}. */
+export type FreshnessReason =
+  | { kind: 'missing' }
+  | { kind: 'hash' }
+  | { kind: 'cli'; runtime: AgentRuntime; image: string | null; host: string }
+
+export type ImageFreshness = { fresh: true } | { fresh: false; reasons: FreshnessReason[] }
+
+export interface ImageFreshnessInput {
+  image: BuiltImage
+  /** The Dockerfile's hash, or null when it cannot be read. */
+  expectedHash: string | null
+  host: HostAgentVersions
+}
+
+/**
+ * Is a managed image current with both what it was built from and what the host
+ * runs (decision 9)? The one verdict the doctor's image rows and the Build
+ * button's plan share, so Rebuild rebuilds exactly when the doctor says stale.
+ *
+ * - An absent image is only `missing` — there is nothing else to judge.
+ * - A hash we cannot read is no evidence of drift, so it is never a reason.
+ * - A runtime with no host version is never drift (decision 4: not checked).
+ * - Otherwise the image's version label must equal the host's, and a missing
+ *   label counts as drift: runcastle cannot vouch for what an unlabelled image
+ *   installed, the same precedent as an unlabelled hash.
+ */
+export function imageFreshness(input: ImageFreshnessInput): ImageFreshness {
+  const { image, expectedHash, host } = input
+  if (!image.present) return { fresh: false, reasons: [{ kind: 'missing' }] }
+  const reasons: FreshnessReason[] = []
+  if (expectedHash !== null && image.hash !== expectedHash) reasons.push({ kind: 'hash' })
+  for (const runtime of AGENT_RUNTIMES) {
+    const want = host[runtime]
+    const have = image.versions[runtime]
+    if (want !== null && have !== want) reasons.push({ kind: 'cli', runtime, image: have, host: want })
+  }
+  return reasons.length === 0 ? { fresh: true } : { fresh: false, reasons }
+}
+
+/** One {@link FreshnessReason} as a human reads it on a doctor row. */
+export function describeFreshnessReason(tag: string, reason: FreshnessReason): string {
+  switch (reason.kind) {
+    case 'missing':
+      return `${tag} is not built`
+    case 'hash':
+      return `${tag} no longer matches the Dockerfile it was built from`
+    case 'cli': {
+      const { label } = RUNTIME_SPECS[reason.runtime]
+      const inImage = reason.image === null ? `no ${label} version recorded` : `${label} ${reason.image} in image`
+      return `${tag}: ${inImage}, ${reason.host} on host`
+    }
+  }
 }
 
 /** One `<runtime> build` invocation: what to build, from where, under which hash. */
@@ -99,6 +193,8 @@ export interface ImageBuildStep {
   /** sha256 of that Dockerfile, published as {@link DOCKERFILE_HASH_LABEL}. */
   dockerfileHash: string
   buildArgs: Record<string, string>
+  /** Labels stamped next to {@link DOCKERFILE_HASH_LABEL} — the stock step's CLI versions. */
+  labels: Record<string, string>
 }
 
 /**
@@ -224,10 +320,12 @@ export interface PlanImageBuildInput {
   stockContext: string
   /** Packaged Dockerfile copied into {@link stockContext}; used in user-facing build descriptions. */
   stockDockerfile?: string
-  /** Whether the stock image already carries the stock Dockerfile's hash. */
+  /** The stock image's {@link imageFreshness} verdict: its hash and CLI versions are current. */
   stockFresh: boolean
   /** `AGENT_UID`/`AGENT_GID` for the stock build; see {@link stockBuildArgs}. */
   buildArgs: Record<string, string>
+  /** The host's agent CLI versions the stock build pins to and stamps as labels. */
+  hostVersions: HostAgentVersions
 }
 
 export type ImageBuildTarget =
@@ -306,7 +404,7 @@ function shippedDockerfile(project: BuildableProject | null): string | null {
 
 /**
  * Decide the build. A project carrying `.runcastle/sandbox/Dockerfile` gets the
- * chain — the stock image first when it is missing or hash-stale, because the
+ * chain — the stock image first when it is not fresh ({@link imageFreshness}), because the
  * project image is `FROM` it, then the project image itself. Otherwise the stock
  * image alone, unless the resolved image is a tag runcastle does not manage, in
  * which case there is nothing safe to build.
@@ -315,18 +413,25 @@ function shippedDockerfile(project: BuildableProject | null): string | null {
  * the build could produce the project image but never adopt it, so the button
  * disarms rather than building a tag no burn would resolve to.
  *
- * The project image's own build args are empty on purpose: the ARGs live in the
- * stock Dockerfile, which the project image inherits already applied, and
- * passing unconsumed args would print a build warning for nothing.
+ * The stock step pins each agent CLI to the host's version (decision 2) and
+ * stamps the same value as a label (decision 3) — empty for a runtime the host
+ * lacks, which installs latest and records nothing to drift from (decision 4).
+ *
+ * The project image's own build args and version labels are empty on purpose:
+ * the ARGs live in the stock Dockerfile, which the project image inherits
+ * already applied, and passing unconsumed args would print a build warning for
+ * nothing. Its version labels come down from the stock image through `FROM`.
  */
 export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
-  const { config, project, stockContext, stockFresh, buildArgs } = input
+  const { config, project, stockContext, stockFresh, buildArgs, hostVersions } = input
   const stockHash = hashDockerfile(join(stockContext, 'Dockerfile')) ?? ''
+  const pins = AGENT_RUNTIMES.map((r) => ({ ...AGENT_CLI_PINS[r], version: hostVersions[r] ?? '' }))
   const stockStep: ImageBuildStep = {
     tag: DEFAULT_SANDBOX_IMAGE,
     context: stockContext,
     dockerfileHash: stockHash,
-    buildArgs,
+    buildArgs: { ...buildArgs, ...Object.fromEntries(pins.map((p) => [p.buildArg, p.version])) },
+    labels: Object.fromEntries(pins.map((p) => [p.label, p.version])),
   }
 
   const target = imageBuildTarget({
@@ -348,6 +453,7 @@ export function planImageBuild(input: PlanImageBuildInput): ImageBuildPlan {
           context: projectSandboxDir(project.repoPath),
           dockerfileHash: hashDockerfile(target.dockerfile) ?? '',
           buildArgs: {},
+          labels: {},
         },
       ],
     }
@@ -367,6 +473,7 @@ function buildStepArgs(step: ImageBuildStep): string[] {
     step.tag,
     '--label',
     `${DOCKERFILE_HASH_LABEL}=${step.dockerfileHash}`,
+    ...Object.entries(step.labels).flatMap(([key, value]) => ['--label', `${key}=${value}`]),
     ...Object.entries(step.buildArgs).flatMap(([key, value]) => ['--build-arg', `${key}=${value}`]),
     step.context,
   ]
