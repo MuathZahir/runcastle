@@ -24,7 +24,7 @@ const state = vi.hoisted(() => ({
   carriedFindings: [] as ReviewFinding[],
   summary: undefined as { found: number; fixed: number; open: number; observations: number } | undefined,
   recordings: [] as ReviewArtifacts[],
-  drive: undefined as { featureId: string; state: string; dryRun: boolean } | undefined,
+  drive: undefined as { featureId: string; state: string; dryRun: boolean; holderLabel: string } | undefined,
   driveInstructions: undefined as string | undefined,
   events: [] as EventRow[],
 }))
@@ -310,13 +310,13 @@ describe('the review page’s arrival bands', () => {
     // does not take the way to your own drive away.
     expect(walkthrough).toContain('>Test drive<')
 
-    const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false } })
+    const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } })
     expect(driving).toContain('id="evidence-stage"')
     // ...except while a drive is up, which the stage itself is there to stop.
     expect(driving).not.toContain('>Test drive<')
     // A drive of some OTHER feature is not this page's evidence.
     expect(
-      render({ drive: { featureId: 'feat_9', state: 'serving', dryRun: false } }),
+      render({ drive: { featureId: 'feat_9', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/other' } }),
     ).not.toContain('id="evidence-stage"')
   })
 
@@ -574,7 +574,7 @@ describe('the review page’s arrival bands', () => {
         render({}),
         openWork(),
         render({ recordings: [RECORDING] }),
-        render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false } }),
+        render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } }),
       ]) {
         expect.soft(html).toContain('>Agentic review<')
       }
