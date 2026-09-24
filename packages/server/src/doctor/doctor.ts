@@ -523,12 +523,18 @@ export async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<Prob
  * Container runtime — the one probe where presence and health genuinely diverge.
  * Tries docker first, then podman; classifies the exact failure so the fix line
  * is honest: not-installed vs. daemon-dead (docker) vs. machine-stopped (podman).
+ *
+ * `only` narrows it to one runtime — the burn preflight's, which must judge the
+ * runtime the burn is configured for, not whichever one happens to be healthy.
  */
-export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> {
+export async function containerRuntimeProbe(
+  exec: ExecFn,
+  only?: 'docker' | 'podman',
+): Promise<ProbeResult> {
   const id = 'container-runtime'
   const label = 'Container runtime (Docker / Podman)'
-  const docker = await exec('docker', ['--version'])
-  if (docker.ok && docker.code === 0) {
+  const docker = only === 'podman' ? undefined : await exec('docker', ['--version'])
+  if (docker?.ok && docker.code === 0) {
     const info = await exec('docker', ['info'])
     if (info.ok && info.code === 0) {
       return {
@@ -551,8 +557,8 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
     }
   }
 
-  const podman = await exec('podman', ['--version'])
-  if (podman.ok && podman.code === 0) {
+  const podman = only === 'docker' ? undefined : await exec('podman', ['--version'])
+  if (podman?.ok && podman.code === 0) {
     const info = await exec('podman', ['info'])
     if (info.ok && info.code === 0) {
       return {
@@ -581,7 +587,7 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
     tier: 2,
     status: 'missing',
     severity: 'error',
-    detail: 'neither docker nor podman found on PATH',
+    detail: only ? `${only} not found on PATH` : 'neither docker nor podman found on PATH',
     fix: 'Install Docker Desktop or Podman (see docs/research/PREREQS-NOTES.md §4). Not needed for interactive-only use.',
   }
 }
