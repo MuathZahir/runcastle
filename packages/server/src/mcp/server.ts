@@ -280,8 +280,18 @@ export interface FeatureDocRef {
  */
 export type FeatureContextTicketRow = Pick<
   Ticket,
-  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error' | 'goal'
->
+  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error'
+> & {
+  /** Absent only when moved out whole to fit the ceiling — then `goalNotInlined` says so. */
+  goal?: string
+  goalNotInlined?: true
+}
+
+/** An earlier lap whose ticket rows did not fit the ceiling, moved out whole. */
+export interface LapNotInlined {
+  lap: number
+  seqs: number[]
+}
 
 /** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
 export interface NotInlinedDoc {
@@ -383,6 +393,14 @@ export interface FeatureContext {
   testNotes: TestNote[]
   tickets: FeatureContextTicketRow[]
   /**
+   * Earlier laps whose rows were moved out whole because even goal-less rows
+   * would not fit (oldest lap first). Absent when every row fit. The current
+   * lap's rows are never moved out.
+   */
+  ticketsNotInlined?: LapNotInlined[]
+  /** Present whenever a goal or a lap's rows were moved out: how to fetch them. */
+  ticketsNote?: string
+  /**
    * The models the operator annotated with a use-case note, and the only ones a
    * ticket may be assigned (decisions.md #4). Notes ARE the opt-in: an operator
    * who annotated nothing gets an empty array here, and the emitting session
@@ -424,6 +442,12 @@ const DOCS_NOTE =
  * (brief → map → decisions → spec), a reading order other callers rely on.
  */
 const DOC_FILL_ORDER = ['brief.md', 'decisions.md', 'spec.md', 'map.md']
+
+const TICKETS_NOTE =
+  'Some ticket detail did not fit this reply and was moved out whole, never truncated. A row ' +
+  'marked goalNotInlined: true has its goal in get_ticket({ seq }). ticketsNotInlined[] names ' +
+  'earlier laps whose rows were moved out: list_tickets indexes them and get_ticket({ seq }) ' +
+  'reads one. Fetch before acting on any of those tickets.'
 
 function notInlinedReason(relPath: string): string {
   return (
@@ -477,7 +501,10 @@ function latestBurnSummary(
  * The whole reply stays under {@link MCP_READ_CEILING_CHARS}, past which Claude
  * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
  * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
- * `notInlined`, a half-shown doc being worse than a plainly missing one.
+ * `notInlined`, a half-shown doc being worse than a plainly missing one. On a
+ * feature whose rows and to-do alone cross the ceiling, goals and then earlier
+ * laps' rows move out whole the same way, marked `goalNotInlined` and named in
+ * `ticketsNotInlined`.
  */
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
@@ -535,9 +562,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
       : undefined
 
-  // Built in priority order, and JSON keeps that order: the header the incident
-  // hid at the tail of an 80K reply now opens it (decisions.md #6).
-  let context: FeatureContext = {
+  const header = {
     feature,
     phase: feature.phase,
     lap: feature.lap,
@@ -550,28 +575,64 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     ...(assigned ? { assignedWaypointId: assigned.id } : {}),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
-    tickets: allTickets.map(ticketRow),
+  }
+  const toDo = {
     openDefects: carried.openDefects,
     carriedDefects: carried.carriedDefects,
     findings,
     testNotes,
     ...(feature.mapped ? { waypoints: listWaypoints(ctx, feature.id) } : {}),
-    docs: [],
-    notInlined: canonical.map((c) => c.ref),
+  }
+  let rows = allTickets.map(ticketRow)
+  const lapsNotInlined: LapNotInlined[] = []
+  // Built in priority order, and JSON keeps that order: the header the incident
+  // hid at the tail of an 80K reply now opens it (decisions.md #6).
+  const assemble = (docs: FeatureContext['docs'], notInlined: NotInlinedDoc[]): FeatureContext => ({
+    ...header,
+    tickets: rows,
+    ...(lapsNotInlined.length > 0 ? { ticketsNotInlined: lapsNotInlined } : {}),
+    ...(rows.length < allTickets.length || rows.some((row) => row.goalNotInlined)
+      ? { ticketsNote: TICKETS_NOTE }
+      : {}),
+    ...toDo,
+    docs,
+    notInlined,
     moreDocs,
     docsNote: DOCS_NOTE,
+  })
+  const allDocsOut = canonical.map((c) => c.ref)
+  const fits = (context: FeatureContext) => serializedLength(context) <= MCP_READ_CEILING_CHARS
+
+  // Docs are moved out first, because they are the one part with a cheap,
+  // well-known fetch — so they only claim room the rest leaves. When even the
+  // rest does not fit with every doc out, ticket detail moves out whole next,
+  // each part behind `get_ticket`: goals, oldest lap first (lowest seq first
+  // within a lap), then earlier laps' rows, oldest first. The current lap's rows
+  // and the lap's to-do never move.
+  for (const row of [...rows].sort((a, b) => a.lap - b.lap || a.seq - b.seq)) {
+    if (fits(assemble([], allDocsOut))) break
+    delete row.goal
+    row.goalNotInlined = true
   }
-  // Docs are the one part moved out, because they are the one part with a cheap,
-  // well-known fetch. Every canonical doc starts in `notInlined`, and each is
-  // inlined in fill order only if the WHOLE reply still fits — measured with the
-  // later docs' index entries still counted, so the final shape is the one checked.
+  const earlierLaps = [...new Set(rows.map((row) => row.lap))]
+    .filter((lap) => lap < feature.lap)
+    .sort((a, b) => a - b)
+  for (const lap of earlierLaps) {
+    if (fits(assemble([], allDocsOut))) break
+    lapsNotInlined.push({ lap, seqs: rows.filter((row) => row.lap === lap).map((row) => row.seq) })
+    rows = rows.filter((row) => row.lap !== lap)
+  }
+
+  // Every canonical doc starts in `notInlined`, and each is inlined in fill
+  // order only if the WHOLE reply still fits — measured with the later docs'
+  // index entries still counted, so the final shape is the one checked.
+  let context = assemble([], allDocsOut)
   for (const { doc, ref } of canonical) {
-    const candidate: FeatureContext = {
-      ...context,
-      docs: [...context.docs, doc],
-      notInlined: context.notInlined.filter((r) => r !== ref),
-    }
-    if (serializedLength(candidate) <= MCP_READ_CEILING_CHARS) context = candidate
+    const candidate = assemble(
+      [...context.docs, doc],
+      context.notInlined.filter((r) => r !== ref),
+    )
+    if (fits(candidate)) context = candidate
   }
   return context
 }
@@ -2536,7 +2597,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
           'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
           'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
-          '`get_ticket({ seq })`. Then this lap’s to-do in full: `openDefects`, ' +
+          '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
+          '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
+          'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
+          'Then this lap’s to-do in full: `openDefects`, ' +
           '`carriedDefects`, `findings`, `testNotes`, and `waypoints` on mapped features. Last, ' +
           'the canonical docs (brief, decisions, spec, map) in full while they fit; any doc in ' +
           '`notInlined` was too large to include and MUST be read before acting ' +

@@ -95,6 +95,39 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       }
     })
 
+    it('moves ticket detail out whole, oldest first, when rows and to-do alone cross it', () => {
+      const context = featureContext(ctx, { featureId: seeded.feature.id })
+      const reader = { featureId: seeded.feature.id }
+      const all = toolListTickets(ctx, reader, {}).tickets
+
+      // Goals leave oldest lap first, lowest seq first: the moved ones are a
+      // prefix of that order, and each is marked rather than silently gone.
+      const byAge = [...context.tickets].sort((a, b) => a.lap - b.lap || a.seq - b.seq)
+      const firstKept = byAge.findIndex((row) => row.goal !== undefined)
+      const moved = firstKept === -1 ? byAge : byAge.slice(0, firstKept)
+      expect(moved.length).toBeGreaterThan(0)
+      for (const row of moved) expect(row.goalNotInlined).toBe(true)
+      for (const row of byAge.slice(moved.length)) {
+        expect(row.goal).toBe(toolGetTicket(ctx, reader, { seq: row.seq }).goal)
+        expect(row.goalNotInlined).toBeUndefined()
+      }
+      expect(context.ticketsNote).toContain('get_ticket')
+
+      // Every ticket is a row or named in a moved-out lap, and the current
+      // lap's rows never leave.
+      const movedLaps = context.ticketsNotInlined ?? []
+      expect([...context.tickets.map((r) => r.seq), ...movedLaps.flatMap((l) => l.seqs)].sort(
+        (a, b) => a - b,
+      )).toEqual(all.map((t) => t.seq).sort((a, b) => a - b))
+      for (const { lap } of movedLaps) expect(lap).toBeLessThan(context.lap)
+      expect(context.tickets.filter((r) => r.lap === context.lap).length).toBe(
+        all.filter((t) => t.lap === context.lap).length,
+      )
+      // Oldest lap first: the moved laps run 1, 2, … with no gap.
+      expect(movedLaps.map((l) => l.lap)).toEqual(movedLaps.map((_, i) => i + 1))
+      if (mapped) expect(movedLaps.length).toBeGreaterThan(0)
+    })
+
     it('opens with the decision-critical header', () => {
       const context = featureContext(ctx, { featureId: seeded.feature.id })
       const text = JSON.stringify(context)
@@ -114,6 +147,8 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'reviewEvidence',
         'currentLapReview',
         'tickets',
+        ...(mapped ? ['ticketsNotInlined'] : []),
+        'ticketsNote',
         'openDefects',
         'carriedDefects',
         'findings',
