@@ -4,7 +4,7 @@ import { AGENT_RUNTIMES, mergeModelEntries } from '@runcastle/core'
 import type { AgentRuntime, ModelEntry, ModelStep } from '@runcastle/core'
 import {
   customModelCommit,
-  hiddenCuratedCount,
+  hiddenRosterCount,
   rosterVisibleRows,
   RUNTIME_LABEL,
   type ModelOptionGroup,
@@ -76,7 +76,7 @@ export function RosterTable({
   const shown = (showAll || filtering ? rows : rosterVisibleRows(rows)).filter((row) =>
     showsSetting(filter, row.id),
   )
-  const hidden = showAll || filtering ? 0 : hiddenCuratedCount(rows)
+  const hidden = showAll || filtering ? 0 : hiddenRosterCount(rows)
 
   return (
     <>

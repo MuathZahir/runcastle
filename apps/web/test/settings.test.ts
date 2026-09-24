@@ -9,7 +9,8 @@ import {
   fieldCommit,
   filterSettings,
   globalRows,
-  hiddenCuratedCount,
+  discoveryStatusLines,
+  hiddenRosterCount,
   modelOptionGroups,
   pageRows,
   projectModelWarning,
@@ -766,6 +767,11 @@ describe('rosterRows', () => {
       usedFor: [],
       isDefault: false,
       custom: true,
+      displayName: null,
+      discovered: false,
+      isNew: false,
+      noLongerOffered: null,
+      retirement: null,
     })
     // Annotating a curated model writes a roster entry; it is still curated.
     expect(rows.find((r) => r.id === 'claude-haiku-4-5')).toMatchObject({
@@ -782,8 +788,171 @@ describe('rosterRows', () => {
       'gpt-5.6-sol',
       'my-proxy/gpt',
     ])
-    expect(hiddenCuratedCount(rows)).toBe(rows.length - 4)
-    expect(hiddenCuratedCount(rows)).toBeGreaterThan(0)
+    expect(hiddenRosterCount(rows)).toBe(rows.length - 4)
+    expect(hiddenRosterCount(rows)).toBeGreaterThan(0)
+  })
+})
+
+const HOUR = 3_600_000
+const NOW = 1_800_000_000_000
+type DiscoverySources = SettingsView['discovery']['sources']
+
+/** A settings view whose discovery reports `sources`; the rest never ran. */
+const discoveryView = (
+  fields: Partial<SettingField>[],
+  sources: Partial<DiscoverySources>,
+): SettingsView => ({
+  ...view(fields),
+  discovery: { sources: { ...EMPTY_DISCOVERY_SNAPSHOT.sources, ...sources } },
+})
+
+/**
+ * What discovery adds to the roster table (spec §Approach 5): a new model is
+ * visible without anyone typing it, a referenced model a provider stopped
+ * offering is flagged, and a retirement notice rides along on its row.
+ */
+describe('rosterRows with discovery', () => {
+  const codexOk: DiscoverySources['codex'] = {
+    status: 'ok',
+    lastSuccessAt: NOW - 2 * HOUR,
+    models: [
+      { id: 'gpt-6-astra', runtime: 'codex', displayName: 'GPT-6 Astra' },
+      {
+        id: 'gpt-6-luna',
+        runtime: 'codex',
+        retirement: { at: '2026-10-14', replacement: 'gpt-6-astra' },
+      },
+    ],
+    newIds: ['gpt-6-astra'],
+  }
+  const row = (rows: ReturnType<typeof rosterRows>, id: string) => rows.find((r) => r.id === id)
+  const defaultOnly = [{ key: 'model', value: 'claude-opus-5' }]
+
+  it('marks discovered ids, never as custom, with the snapshot’s metadata', () => {
+    const rows = rosterRows(discoveryView(defaultOnly, { codex: codexOk }))
+    expect(row(rows, 'gpt-6-astra')).toMatchObject({
+      runtime: 'codex',
+      displayName: 'GPT-6 Astra',
+      custom: false,
+      discovered: true,
+      isNew: true,
+      retirement: null,
+    })
+    expect(row(rows, 'gpt-6-luna')).toMatchObject({
+      displayName: null,
+      discovered: true,
+      isNew: false,
+      retirement: { at: '2026-10-14', replacement: 'gpt-6-astra' },
+    })
+    expect(row(rows, 'claude-opus-5')?.discovered).toBe(false)
+  })
+
+  it('keeps an annotated discovered id non-custom, so clearing its note returns it to discovery', () => {
+    const rows = rosterRows(
+      discoveryView(
+        [{ key: 'models', value: [{ id: 'gpt-6-luna', runtime: 'codex', note: 'cheap' }] }],
+        { codex: codexOk },
+      ),
+    )
+    expect(row(rows, 'gpt-6-luna')).toMatchObject({ note: 'cheap', custom: false })
+  })
+
+  it('shows a new discovered model by default and collapses the untouched rest', () => {
+    const rows = rosterRows(discoveryView(defaultOnly, { codex: codexOk }))
+    expect(rosterVisibleRows(rows).map((r) => r.id)).toEqual(['claude-opus-5', 'gpt-6-astra'])
+    // "show all" reveals every curated AND discovered model left out.
+    expect(hiddenRosterCount(rows)).toBe(rows.length - 2)
+    expect(rows.some((r) => r.id === 'gpt-6-luna')).toBe(true)
+  })
+
+  it('flags a referenced model its source’s latest successful run left out', () => {
+    const rows = rosterRows(
+      discoveryView(
+        [
+          { key: 'model', value: 'claude-opus-5' },
+          { key: 'models', value: [{ id: 'gpt-5.6-terra', runtime: 'codex', note: 'bulk' }] },
+          { key: 'stepModels.implement', value: 'gpt-5.6-sol', source: 'file' },
+        ],
+        { codex: codexOk },
+      ),
+    )
+    expect(row(rows, 'gpt-5.6-sol')?.noLongerOffered).toBe('codex')
+    expect(row(rows, 'gpt-5.6-terra')?.noLongerOffered).toBe('codex')
+    // Nothing uses it: it is not flagged, it is simply collapsed.
+    expect(row(rows, 'gpt-5.6-luna')?.noLongerOffered).toBeNull()
+    // Claude's source has not run: its models are not flagged.
+    expect(row(rows, 'claude-opus-5')?.noLongerOffered).toBeNull()
+  })
+
+  it('flags nothing for a source that failed or never ran, nor an operator’s own id', () => {
+    const fields: Partial<SettingField>[] = [
+      { key: 'model', value: 'claude-opus-5' },
+      { key: 'models', value: [{ id: 'my-proxy/gpt', runtime: 'codex', note: 'mine' }] },
+      { key: 'stepModels.implement', value: 'gpt-5.6-sol', source: 'file' },
+    ]
+    const flagged = (sources: Partial<DiscoverySources>) =>
+      rosterRows(discoveryView(fields, sources)).filter((r) => r.noLongerOffered !== null)
+    expect(
+      flagged({
+        codex: { ...codexOk, status: 'failed', error: 'no cache found' },
+        'claude-code': { status: 'failed', models: [], newIds: [], error: 'not logged in' },
+      }),
+    ).toEqual([])
+    expect(flagged({})).toEqual([])
+    expect(flagged({ codex: codexOk }).map((r) => r.id)).toEqual(['gpt-5.6-sol'])
+  })
+
+  it('lists discovered ids in their runtime’s dropdown group', () => {
+    const groups = modelOptionGroups(rosterFromView(discoveryView([], { codex: codexOk })))
+    const ids = (runtime: string) =>
+      groups.find((g) => g.runtime === runtime)?.entries.map((m) => m.id)
+    expect(ids('codex')).toEqual(expect.arrayContaining(['gpt-6-astra', 'gpt-6-luna']))
+    expect(ids('claude-code')).not.toContain('gpt-6-astra')
+  })
+})
+
+describe('discoveryStatusLines', () => {
+  it('says each source’s count and age, or its failure and when it last worked', () => {
+    const lines = discoveryStatusLines(
+      discoveryView([], {
+        'claude-code': {
+          status: 'ok',
+          lastSuccessAt: NOW - 2 * HOUR,
+          models: Array.from({ length: 7 }, (_, i) => ({
+            id: `claude-${i}`,
+            runtime: 'claude-code' as const,
+          })),
+          newIds: [],
+        },
+        codex: {
+          status: 'failed',
+          error: 'cache file unparseable',
+          lastSuccessAt: NOW - 72 * HOUR,
+          models: [],
+          newIds: [],
+        },
+      }),
+      NOW,
+    )
+    expect(lines).toEqual([
+      { runtime: 'claude-code', text: 'Claude: 7 models · 2h ago', failed: false },
+      {
+        runtime: 'codex',
+        text: 'Codex: failed — cache file unparseable (last good 3d ago)',
+        failed: true,
+      },
+    ])
+  })
+
+  it('reads a fresh machine as not run yet, and a first failure without a last good', () => {
+    expect(discoveryStatusLines(view([]), NOW).map((l) => l.text)).toEqual([
+      'Claude: not run yet',
+      'Codex: not run yet',
+    ])
+    const codex = { status: 'failed' as const, error: 'no cache found', models: [], newIds: [] }
+    expect(discoveryStatusLines(discoveryView([], { codex }), NOW)[1]?.text).toBe(
+      'Codex: failed — no cache found',
+    )
   })
 })
 
