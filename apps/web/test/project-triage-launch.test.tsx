@@ -157,7 +157,7 @@ describe('the project workspace at rest', () => {
     const api = talk()
     render(<ProjectWorkspace projectId="proj_1" talk={api} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Triage 1 note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
     expect(api.triage).toHaveBeenCalledTimes(1)
   })
 
@@ -168,7 +168,7 @@ describe('the project workspace at rest', () => {
 
     // the live conversation owns the body; the inbox is a step back from it
     fireEvent.click(screen.getByRole('button', { name: '← Conversations' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Triage 1 note' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
     expect(api.triage).not.toHaveBeenCalled()
     expect(screen.getByRole('status').textContent).toContain('A chat is already open.')
 
