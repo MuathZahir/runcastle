@@ -31,7 +31,6 @@ import {
   TicketStatus,
   WaypointDisposition,
   WaypointInput,
-  agentDigestDocOrder,
   isAgentDigestDoc,
   isPastPhase,
   isProjectSessionKind,
@@ -63,6 +62,7 @@ import {
   currentLapReviewEvidence,
 } from '../services/carried-work'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
+import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
   carryFinding,
@@ -103,6 +103,7 @@ import {
   resolve as resolveWaypoint,
   storeWaypoints,
 } from '../services/waypoints'
+import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
  * runcastle MCP server (SPEC §6 + §13.3) — zod-validated tools over Streamable HTTP
@@ -268,22 +269,35 @@ export interface FeatureDocRef {
 }
 
 /**
- * A ticket as the WORKING context sees it: everything a session needs to plan,
- * amend or burn, minus the burner's after-the-fact `digest`.
+ * A ticket as the WORKING context sees it: a row, with the goal.
  *
- * The digest is dropped here for the same reason the run-level aggregate is
- * dropped from `get_work_record` (decision 7): `outcome.md` is literally built
- * by re-concatenating these digests (`services/outcome.ts`), so a payload that
- * inlines the outcome AND every digest pays twice for one set of facts. A
- * session that wants the burner's account asks `get_work_record`, which exists
- * for exactly that question.
- *
- * `goal`, `context` and `acceptanceCriteria` deliberately STAY: unlike the
- * digest they are the live work — the thing this session is here to edit, block,
- * cancel or complete — and a ticket without them is a title.
+ * One lap's ticket bodies alone reached 104K chars on a real feature, far past
+ * the point where Claude Code hides a reply from the agent (decisions.md #4 of
+ * `mcp-read-tools-stay-within-a-context-budget`). So the context carries every
+ * ticket's name, state and edges plus its `goal` — small, and the what-and-why
+ * that keeps a session from working off a title alone — and `get_ticket` serves
+ * the rest: context, acceptance criteria and the burner's digest.
  */
-export type FeatureContextTicket = Omit<Ticket, 'digest'>
+export type FeatureContextTicketRow = Pick<
+  Ticket,
+  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error' | 'goal'
+>
 
+/** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
+export interface NotInlinedDoc {
+  relPath: string
+  /** The file on disk, in the reader's checkout when there is one. */
+  absPath: string
+  bytes: number
+  /** Why it is missing, and the instruction to read it before acting. */
+  reason: string
+}
+
+/**
+ * Key order is part of the contract: `JSON.stringify` keeps insertion order,
+ * and `featureContext` builds this header first so the decision-critical fields
+ * reach the agent in the first few hundred characters, never at the tail.
+ */
 export interface FeatureContext {
   feature: ReturnType<typeof getFeatureRow>
   phase: PhaseT
@@ -293,13 +307,18 @@ export interface FeatureContext {
    */
   lap: number
   /**
-   * The canonical docs (`AGENT_DIGEST_DOCS`) in full, in reading order:
-   * brief → map → decisions → spec.
+   * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
+   * ceiling, whole, in fill order: brief → decisions → spec → map.
    */
   docs: { relPath: string; content: string }[]
+  /**
+   * The canonical docs that did NOT fit — never truncated, moved out whole with
+   * a path to read them by. Empty when every one fit.
+   */
+  notInlined: NotInlinedDoc[]
   /** Every other doc that exists, as an index — fetch one with `read_feature_doc`. */
   moreDocs: FeatureDocRef[]
-  /** Says, in the payload itself, that `moreDocs` is fetchable rather than gone. */
+  /** Says, in the payload itself, that `moreDocs` and `notInlined` are fetchable rather than gone. */
   docsNote: string
   /**
    * The defects this feature's review left open, each with the fields a session
@@ -323,7 +342,7 @@ export interface FeatureContext {
    * `DIGEST.md` the review agent wrote, the screenshots and walkthrough beside
    * it, and how that pass ended. Paths rather than content, and the third thing
    * with no other channel: the directory is host scratch space outside the repo,
-   * and `tickets` below strips the very digest a session would otherwise read.
+   * and `tickets` below are rows, without the digest a session would otherwise read.
    *
    * Empty outside a lap (lap 1, or a previous lap whose review never burned).
    */
@@ -362,7 +381,7 @@ export interface FeatureContext {
    * keeps the lap that captured it, and asking only for this lap's would lose it.
    */
   testNotes: TestNote[]
-  tickets: FeatureContextTicket[]
+  tickets: FeatureContextTicketRow[]
   /**
    * The models the operator annotated with a use-case note, and the only ones a
    * ticket may be assigned (decisions.md #4). Notes ARE the opt-in: an operator
@@ -392,10 +411,26 @@ export interface FeatureContext {
 }
 
 const DOCS_NOTE =
-  'docs[] holds this feature’s canonical docs in full. moreDocs[] is everything else that ' +
-  'exists in docs/features/<slug>/ — not inlined, not gone: read any of them with ' +
-  'read_feature_doc({ relPath }). A `withheld` reason means it was left out on purpose; fetch ' +
-  'it anyway if a ticket points at it.'
+  'docs[] holds this feature’s canonical docs in full. notInlined[] lists any canonical doc ' +
+  'too large to fit this reply without hiding it — never truncated, just moved out: read each ' +
+  'one before acting, with read_feature_doc({ relPath }) or the file at its absPath. ' +
+  'moreDocs[] is everything else that exists in docs/features/<slug>/ — not inlined, not ' +
+  'gone: read any of them with read_feature_doc({ relPath }). A `withheld` reason means it ' +
+  'was left out on purpose; fetch it anyway if a ticket points at it.'
+
+/**
+ * The order canonical docs claim room under the never-hidden ceiling
+ * (decisions.md #5). Deliberately local rather than `agentDigestDocOrder`
+ * (brief → map → decisions → spec), a reading order other callers rely on.
+ */
+const DOC_FILL_ORDER = ['brief.md', 'decisions.md', 'spec.md', 'map.md']
+
+function notInlinedReason(relPath: string): string {
+  return (
+    'Not inlined: too large to fit this reply without hiding it. Read it before acting: ' +
+    `read_feature_doc({ relPath: '${relPath}' }) or the file at absPath.`
+  )
+}
 
 /**
  * The newest burn as a headline, or nothing at all when the feature has never
@@ -438,6 +473,11 @@ function latestBurnSummary(
  * `test-notes.md`, i.e. the postmortem of work the session was being asked to
  * continue past. An allowlist plus an index costs one extra call for the rare
  * doc that is actually wanted, and nothing at all for the common case.
+ *
+ * The whole reply stays under {@link MCP_READ_CEILING_CHARS}, past which Claude
+ * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
+ * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
+ * `notInlined`, a half-shown doc being worse than a plainly missing one.
  */
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
@@ -453,7 +493,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   const carried = carriedWork(ctx, feature.id)
   const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
 
-  const docs: { relPath: string; content: string }[] = []
+  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
+  const canonical: { doc: { relPath: string; content: string }; ref: NotInlinedDoc }[] = []
   const moreDocs: FeatureDocRef[] = []
   for (const summary of listDocs(ctx, feature)) {
     let content: string
@@ -463,7 +504,15 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       content = ''
     }
     if (isAgentDigestDoc(summary.relPath)) {
-      docs.push({ relPath: summary.relPath, content })
+      canonical.push({
+        doc: { relPath: summary.relPath, content },
+        ref: {
+          relPath: summary.relPath,
+          absPath: join(docsDir, summary.relPath),
+          bytes: Buffer.byteLength(content, 'utf8'),
+          reason: notInlinedReason(summary.relPath),
+        },
+      })
       continue
     }
     const withheld = withheldDocs[summary.relPath.toLowerCase()]
@@ -474,45 +523,77 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       ...(withheld ? { withheld } : {}),
     })
   }
-  docs.sort((a, b) => agentDigestDocOrder(a.relPath) - agentDigestDocOrder(b.relPath))
+  canonical.sort((a, b) => docFillRank(a.doc.relPath) - docFillRank(b.doc.relPath))
 
-  const context: FeatureContext = {
+  // A mapped feature also exposes its map state so any session can read the
+  // waypoints and pick up the frontier (claiming stays a server-only effect).
+  // A waypoint session works exactly the waypoint it claimed — surface it so
+  // the entry skill knows its assignment without guessing from the frontier.
+  // A run agent has no session id, so it correctly has no assignment.
+  const assigned =
+    feature.mapped && reader.sessionId
+      ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
+      : undefined
+
+  // Built in priority order, and JSON keeps that order: the header the incident
+  // hid at the tail of an 80K reply now opens it (decisions.md #6).
+  let context: FeatureContext = {
     feature,
     phase: feature.phase,
     lap: feature.lap,
-    docs,
-    moreDocs,
-    docsNote: DOCS_NOTE,
-    openDefects: carried.openDefects,
-    carriedDefects: carried.carriedDefects,
-    reviewEvidence: carried.reviewEvidence,
-    ...latestBurnSummary(ctx, feature.id, allTickets),
-    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
-    findings,
-    testNotes,
-    tickets: allTickets.map(stripDigest),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
+    ...latestBurnSummary(ctx, feature.id, allTickets),
+    ...(feature.mapped
+      ? { frontierIds: waypointFrontier(ctx, feature.id).map((w) => w.id) }
+      : {}),
+    ...(assigned ? { assignedWaypointId: assigned.id } : {}),
+    reviewEvidence: carried.reviewEvidence,
+    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
+    tickets: allTickets.map(ticketRow),
+    openDefects: carried.openDefects,
+    carriedDefects: carried.carriedDefects,
+    findings,
+    testNotes,
+    ...(feature.mapped ? { waypoints: listWaypoints(ctx, feature.id) } : {}),
+    docs: [],
+    notInlined: canonical.map((c) => c.ref),
+    moreDocs,
+    docsNote: DOCS_NOTE,
   }
-  // A mapped feature also exposes its map state so any session can read the
-  // waypoints and pick up the frontier (claiming stays a server-only effect).
-  if (feature.mapped) {
-    context.waypoints = listWaypoints(ctx, feature.id)
-    context.frontierIds = waypointFrontier(ctx, feature.id).map((w) => w.id)
-    // A waypoint session works exactly the waypoint it claimed — surface it so
-    // the entry skill knows its assignment without guessing from the frontier.
-    // A run agent has no session id, so it correctly has no assignment.
-    const assigned = reader.sessionId
-      ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
-      : undefined
-    if (assigned) context.assignedWaypointId = assigned.id
+  // Docs are the one part moved out, because they are the one part with a cheap,
+  // well-known fetch. Every canonical doc starts in `notInlined`, and each is
+  // inlined in fill order only if the WHOLE reply still fits — measured with the
+  // later docs' index entries still counted, so the final shape is the one checked.
+  for (const { doc, ref } of canonical) {
+    const candidate: FeatureContext = {
+      ...context,
+      docs: [...context.docs, doc],
+      notInlined: context.notInlined.filter((r) => r !== ref),
+    }
+    if (serializedLength(candidate) <= MCP_READ_CEILING_CHARS) context = candidate
   }
   return context
 }
 
-function stripDigest(ticket: Ticket): FeatureContextTicket {
-  const { digest: _digest, ...rest } = ticket
-  return rest
+function docFillRank(relPath: string): number {
+  return DOC_FILL_ORDER.indexOf(relPath.toLowerCase())
+}
+
+function ticketRow(ticket: Ticket): FeatureContextTicketRow {
+  return {
+    id: ticket.id,
+    seq: ticket.seq,
+    title: ticket.title,
+    status: ticket.status,
+    kind: ticket.kind,
+    lap: ticket.lap,
+    blockedBy: ticket.blockedBy,
+    ...(ticket.model !== undefined ? { model: ticket.model } : {}),
+    seams: ticket.seams,
+    ...(ticket.error !== undefined ? { error: ticket.error } : {}),
+    goal: ticket.goal,
+  }
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
@@ -579,6 +660,18 @@ export function toolListTickets(
       seams: t.seams,
     })),
   }
+}
+
+/**
+ * One ticket of the reader's own feature, in full: the stored row with its
+ * context, acceptance criteria and the burner's digest — everything the
+ * `get_feature_context` row leaves out. Addressed by `seq`, the number the UI,
+ * `blockedBy` and those rows all speak in.
+ */
+export function toolGetTicket(ctx: AppCtx, reader: FeatureReader, input: { seq: number }): Ticket {
+  const ticket = listByFeature(ctx, reader.featureId).find((t) => t.seq === input.seq)
+  if (!ticket) throw new NotFoundError(`ticket #${input.seq} not found on this feature`)
+  return ticket
 }
 
 /** A waypoint named the way the map speaks about it: id, seq and title. */
@@ -1777,6 +1870,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_feature_context: [...FEATURE_KINDS, 'run'],
   read_feature_doc: [...FEATURE_KINDS, 'run'],
   list_tickets: [...FEATURE_KINDS, 'run'],
+  get_ticket: [...FEATURE_KINDS, 'run'],
   emit_tickets: FEATURE_KINDS,
   update_ticket: FEATURE_KINDS,
   cancel_ticket: FEATURE_KINDS,
@@ -2238,21 +2332,22 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get feature context',
         description:
-          'Everything true of the current feature: the feature row, its phase and lap, its ' +
-          'canonical docs (brief, map, decisions, spec) in full, an INDEX of every other doc in ' +
-          'docs/features/<slug>/ (read one with `read_feature_doc`), and its tickets. `latestRun` ' +
-          'is how the newest burn went — its status, how many tickets landed or failed, and each ' +
-          'failure’s headline — absent only on a feature that has never burned. `currentLapReview` ' +
-          'says what THIS lap’s review passes did and where each left its evidence, `findings` is ' +
-          'every defect they reported, and `testNotes` the drive notes that still stand. Mapped ' +
-          'features also get their waypoints, `frontierIds`, and `assignedWaypointId` when this ' +
-          'session claimed one. Tickets carry their goal, context and acceptance criteria but ' +
-          'not the burner’s post-hoc digest — ask `get_work_record` for that. `reviewEvidence` ' +
-          'names, by absolute path, where the PREVIOUS lap’s review agent left its DIGEST.md, ' +
-          'screenshots and walkthrough — read them before planning a lap. `annotatedModels` ' +
-          'lists the models the operator described a use case for — the only ones `emit_tickets` ' +
-          'may assign (empty when they annotated none). `burnConcurrency` is how many tickets ' +
-          'this project burns at once — budget a batch’s blocking edges against it.',
+          'Everything true of the current feature, as a summary that never grows past what you ' +
+          'can see. It opens with a header: the feature row, phase, lap, `annotatedModels` (the ' +
+          'models the operator described a use case for — the only ones `emit_tickets` may ' +
+          'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
+          'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
+          'the newest burn went; absent only on a feature that has never burned), `frontierIds` ' +
+          'and `assignedWaypointId` on mapped features, `reviewEvidence` (where the PREVIOUS ' +
+          'lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
+          'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
+          'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
+          '`get_ticket({ seq })`. Then this lap’s to-do in full: `openDefects`, ' +
+          '`carriedDefects`, `findings`, `testNotes`, and `waypoints` on mapped features. Last, ' +
+          'the canonical docs (brief, decisions, spec, map) in full while they fit; any doc in ' +
+          '`notInlined` was too large to include and MUST be read before acting ' +
+          '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
+          'docs/features/<slug>/.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -2299,7 +2394,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
           'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
           'from; use it instead of `get_feature_context` when you only need to find or name a ' +
-          'ticket. Full ticket bodies are in `get_feature_context`.',
+          'ticket. A ticket’s full body is `get_ticket({ seq })`.',
         inputSchema: {
           status: TicketStatus.optional().describe(
             'Return only tickets in this state. Omit for all of them, across every lap.',
@@ -2310,6 +2405,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const r = await resolveReader(extra)
         if (!r) return noSession()
         return ok(toolListTickets(r.ctx, r.reader, args))
+      },
+    )
+  }
+
+  if (wants('get_ticket')) {
+    server.registerTool(
+      'get_ticket',
+      {
+        title: 'Get a ticket',
+        description:
+          'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
+          'blockedBy, status, error, and the burner’s `digest` of what the burn actually did. ' +
+          '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
+          'rest here before editing, reviewing or planning around a ticket.',
+        inputSchema: {
+          seq: z
+            .number()
+            .int()
+            .min(1)
+            .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.'),
+        },
+      },
+      async (args, extra) => {
+        const r = await resolveReader(extra)
+        if (!r) return noSession()
+        return ok(toolGetTicket(r.ctx, r.reader, args))
       },
     )
   }
