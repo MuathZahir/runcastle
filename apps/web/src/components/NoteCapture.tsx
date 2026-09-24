@@ -150,6 +150,10 @@ export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox
           )
         }
       }
+      // The count was read when the bar opened, before this note existed: bump
+      // the cached one so the confirmation's first frame already includes it,
+      // and let the refetch the invalidate starts settle the true number.
+      utils.projectNotes.openCount.setData({ projectId }, (n) => (n === undefined ? n : n + 1))
       void utils.projectNotes.invalidate()
       setSaved(true)
     } catch (e) {
