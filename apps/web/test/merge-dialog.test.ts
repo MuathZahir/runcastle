@@ -86,6 +86,15 @@ describe('MergeFeatureDialog', () => {
       expect(html).toContain('Merge &amp; ship')
       expect(html).not.toContain('disabled=""')
     })
+
+    /** project-level-test-drive decision 6: stopping the drive is the merge's to do. */
+    it('names the project drive merging will stop, and still lets the merge through', () => {
+      const html = render({
+        summary: summary({ projectDrive: { holderLabel: 'a project drive of main' } }),
+      })
+      expect(html).toContain('A project drive of main is running on your checkout — merging stops it.')
+      expect(html).not.toContain('disabled=""')
+    })
   })
 
   /**

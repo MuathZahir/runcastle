@@ -1124,12 +1124,30 @@ describe('nextStep at review', () => {
     })
 
     it('disables the start with the dry-run reason while one is up', () => {
-      const ns = nextStep(reviewFull({}), { driving: false, dryRunActive: true })
+      const ns = nextStep(reviewFull({}), {
+        driving: false,
+        slotHolder: 'a preparation dry-run',
+      })
       expect(start(ns)).toEqual({
         label: 'Start test drive',
         kind: 'testDriveStart',
-        disabled: 'A preparation dry-run is in progress — stop it first',
+        disabled: 'A preparation dry-run is running — stop it first',
       })
+    })
+
+    // project-level-test-drive decision 9: whoever holds the slot is named, in
+    // the server's own words.
+    it('names a project drive, or another feature drive, holding the slot', () => {
+      const project = nextStep(reviewFull({}), {
+        driving: false,
+        slotHolder: 'a project drive of main',
+      })
+      expect(start(project)?.disabled).toBe('A project drive of main is running — stop it first')
+      const other = nextStep(reviewFull({}), {
+        driving: false,
+        slotHolder: 'a test drive of feature/x',
+      })
+      expect(start(other)?.disabled).toBe('A test drive of feature/x is running — stop it first')
     })
 
     // The dry run holds the same singleton drive slot, so the refusal stands
@@ -1137,10 +1155,10 @@ describe('nextStep at review', () => {
     it('keeps the refusal when an unproven key applies too', () => {
       const ns = nextStep(reviewFull({}), {
         driving: false,
-        dryRunActive: true,
+        slotHolder: 'a preparation dry-run',
         unverifiedDriveKeys: ['devCommand'],
       })
-      expect(start(ns)?.disabled).toBe('A preparation dry-run is in progress — stop it first')
+      expect(start(ns)?.disabled).toBe('A preparation dry-run is running — stop it first')
     })
   })
 
