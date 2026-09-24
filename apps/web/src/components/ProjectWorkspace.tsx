@@ -13,6 +13,10 @@ import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
 import { TranscriptPane } from './project/TranscriptPane'
 import { LiveChat } from './project/LiveChat'
+import { ChatDriveSwitch, ProjectDriveView } from './project/ProjectDriveView'
+import { TestDriveCard } from './project/TestDriveCard'
+import { projectDriveCard } from '../lib/project-drive'
+import { useProjectDrive } from '../lib/use-project-drive'
 
 /**
  * The project workspace (decision 20) — what the rail's pinned row swaps in.
@@ -41,6 +45,10 @@ export function ProjectWorkspace({
   onConsumeNewChatRequest,
   inboxRequest = 0,
   onConsumeInboxRequest,
+  empty = false,
+  onOpenPreparation,
+  driveRequest = 0,
+  onConsumeDriveRequest,
 }: {
   projectId: string
   talk: ProjectTalkApi
@@ -49,17 +57,31 @@ export function ProjectWorkspace({
   /** Capture's View asked for the Notes inbox (decisions #16). */
   inboxRequest?: number
   onConsumeInboxRequest?: () => void
+  /** Born-empty: nothing to drive, so no Test drive card (drive decision 7). */
+  empty?: boolean
+  /** Open the preparation workspace — where drive commands are established. */
+  onOpenPreparation?: () => void
+  /** The titlebar's drive pill asked for the live project drive. */
+  driveRequest?: number
+  onConsumeDriveRequest?: () => void
 }) {
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
   const projectsQ = trpc.project.list.useQuery()
   const project = projectsQ.data?.find((p) => p.id === projectId)
   const landing = useSessionBranch(projectId)
+  // The same key the landing menu reads, so the checkout's branch is free.
+  const branchesQ = trpc.project.branches.useQuery({ projectId, includeFeatureBranches: true })
+  const projectDrive = useProjectDrive(projectId)
+  const drive = projectDrive.drive
   const session = talk.session
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
   // Keep the terminal mounted behind the list so xterm retains its client-side
   // buffer and socket; `TerminalView` tears both down when it unmounts.
   const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
+  // A live chat and a live drive coexist (drive decision 4); this is which of
+  // the two fills the body when both could.
+  const [front, setFront] = useState<'chat' | 'drive'>('chat')
   const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
   // What the pending open/replace choice is FOR. A Triage click on a project
   // that already has a chat open raises the same notice New chat does, and
@@ -87,14 +109,53 @@ export function ProjectWorkspace({
       setNoticePurpose(undefined)
     }
   }, [session])
+  // A chat that opens is what the human just asked for, so it comes to the front
+  // of a drive that shares the body.
+  const sessionId = session?.id
+  useEffect(() => {
+    if (sessionId) setFront('chat')
+  }, [sessionId])
+  const showDrive = (): void => {
+    setViewing(null)
+    setShowList(false)
+    setFront('drive')
+  }
+  const showChat = (): void => {
+    setShowList(false)
+    setFront('chat')
+  }
+  // Out of the drive to the resting page. `showList` is only the chat's step
+  // back: with no chat, a drive out of the front already leaves the page at rest,
+  // and setting it would keep the next chat opened from taking the body.
+  const toRestingPage = (): void => {
+    setFront('chat')
+    if (session) setShowList(true)
+  }
+  // The titlebar's pill: back to the drive from wherever in the project.
+  useEffect(() => {
+    if (driveRequest > 0) {
+      showDrive()
+      onConsumeDriveRequest?.()
+    }
+  }, [driveRequest, onConsumeDriveRequest])
+
   const reading = viewing
+  // What fills the body. The resting page, unless a live chat or a live drive
+  // has been brought to the front; with both live, `front` picks between them.
+  const resting = reading !== null || showList || (!session && !(drive && front === 'drive'))
+  const driveInFront = Boolean(drive) && !resting && (front === 'drive' || !session)
+  const chatInFront = Boolean(session) && !resting && !driveInFront
+  const switcher =
+    session && drive ? (
+      <ChatDriveSwitch front={driveInFront ? 'drive' : 'chat'} onPick={setFront} />
+    ) : undefined
   // Reopening leaves the read-only pane behind: what comes back is the terminal,
   // and closing that should land on the list, not on the transcript of the
   // conversation you have just been having.
   const reopen = (sessionId: string): void => {
     talk.resume(sessionId)
     setViewing(null)
-    setShowList(false)
+    showChat()
   }
 
   return (
@@ -103,10 +164,7 @@ export function ProjectWorkspace({
           header, 24px between the body's cards, 32px from header to body. The
           width and gutter are the shell's, so swapping to this page does not
           shift the column the feature workspace beside it uses. */}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8"
-        hidden={Boolean(session && !showList && !reading)}
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8" hidden={!resting}>
         <div className="mx-auto flex w-full max-w-[calc(var(--content-max)+56px)] flex-col gap-8 px-7">
           <header className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
@@ -131,14 +189,14 @@ export function ProjectWorkspace({
                 if (reading.status === 'ended') reopen(reading.id)
                 else {
                   setViewing(null)
-                  setShowList(false)
+                  showChat()
                 }
               }}
               reopening={talk.starting}
             >
               <ConversationTranscript sessionId={reading.id} />
             </TranscriptPane>
-          ) : !session || showList ? (
+          ) : resting ? (
             <div className="flex flex-col gap-6">
               <NewChatCard
                 landing={landing}
@@ -150,16 +208,35 @@ export function ProjectWorkspace({
                         onOpen: () => {
                           setShowOpenNotice(false)
                           setNoticePurpose(undefined)
-                          setShowList(false)
+                          showChat()
                         },
                         onReplace: () => {
                           setShowOpenNotice(false)
                           talk.replace(noticePurpose)
-                          setShowList(false)
+                          showChat()
                         },
                       }
                     : undefined
                 }
+              />
+              <TestDriveCard
+                card={projectDriveCard({
+                  // Nothing to say until the row answers, rather than a
+                  // "Prepare drive" that flickers into "Test drive".
+                  empty: empty || !project,
+                  setupCommand: project?.driveSetupCommand,
+                  devCommand: project?.devCommand,
+                  drive: projectDrive.slot,
+                  projectId,
+                })}
+                branch={drive?.branch ?? (branchesQ.data?.current || null)}
+                setupCommand={project?.driveSetupCommand}
+                devCommand={project?.devCommand}
+                stopCommand={project?.driveStopCommand}
+                starting={projectDrive.starting}
+                onStart={() => projectDrive.start(showDrive)}
+                onPrepare={() => onOpenPreparation?.()}
+                onReturn={showDrive}
               />
               {/* Between the door and the list (decisions.md #10): the pile is
                   read on the way to triaging it, and triage starts here. */}
@@ -184,19 +261,35 @@ export function ProjectWorkspace({
                 pending={talk.conversationsPending}
                 busy={talk.starting}
                 onResume={reopen}
-                onOpen={() => setShowList(false)}
+                onOpen={showChat}
                 onView={setViewing}
               />
             </div>
           ) : null}
         </div>
       </div>
+      {drive && (
+        <ProjectDriveView
+          projectId={projectId}
+          repoPath={project?.repoPath}
+          drive={drive}
+          hidden={!driveInFront}
+          onProjectPage={toRestingPage}
+          // Stop lands on the resting page, where the drive's notes are waiting
+          // on the Notes card. No summary, no prompt: the inbox is the exit.
+          onStop={() => projectDrive.stop(toRestingPage)}
+          stopping={projectDrive.stopping}
+          onOpenPreparation={() => onOpenPreparation?.()}
+          switcher={switcher}
+        />
+      )}
       {session && (
         <LiveChat
           session={session}
           title={titleFor(talk.conversations, session.id) ?? 'project'}
           branch={landing.value}
-          hidden={showList || reading !== null}
+          hidden={!chatInFront}
+          switcher={switcher}
           onBack={() => {
             setShowOpenNotice(false)
             setShowList(true)

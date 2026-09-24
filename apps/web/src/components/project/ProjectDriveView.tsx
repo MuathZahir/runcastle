@@ -192,6 +192,44 @@ function ProjectStage({
   }
 }
 
+/**
+ * Which of a live chat and a live drive fills the body (decision 4). Both keep
+ * running; this only chooses what is in front.
+ */
+export function ChatDriveSwitch({
+  front,
+  onPick,
+}: {
+  front: 'chat' | 'drive'
+  onPick: (front: 'chat' | 'drive') => void
+}) {
+  const option = (value: 'chat' | 'drive', label: string, dot: string) => (
+    <button
+      type="button"
+      aria-pressed={front === value}
+      onClick={() => onPick(value)}
+      // The background is stated once per state, not over BARE_BUTTON's own:
+      // two utilities for one property are a coin flip without tailwind-merge.
+      className={`inline-flex h-6.5 cursor-pointer items-center gap-1.5 border-0 px-2.5 ${
+        front === value ? 'bg-panel-3' : 'bg-transparent hover:bg-panel-2'
+      }`}
+    >
+      <i className={`size-1.5 rounded-pill ${dot}`} />
+      <span className={`text-sm ${front === value ? 'text-text' : 'text-text-3'}`}>{label}</span>
+    </button>
+  )
+  return (
+    <span
+      role="group"
+      aria-label="Show"
+      className="inline-flex shrink-0 divide-x divide-hairline-strong overflow-hidden rounded-sm border border-hairline-strong"
+    >
+      {option('chat', 'Chat', 'bg-ok')}
+      {option('drive', 'Drive', 'bg-drive')}
+    </span>
+  )
+}
+
 /** The stage's frame when it is not showing the app. */
 function StageBox({ children }: { children: ReactNode }) {
   return (
