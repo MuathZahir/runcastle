@@ -6,7 +6,10 @@ import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk'
 import {
   discoverClaudeModels,
   discoverCodexModels,
+  refreshModelDiscovery,
 } from '../src/services/model-discovery'
+import { listByProject } from '../src/services/events'
+import { makeTestCtx } from './helpers/db'
 
 describe('Claude model discovery', () => {
   it('uses pinned ids, deduplicates them, never sends a prompt, and closes the query', async () => {
@@ -157,5 +160,109 @@ describe('Codex model discovery', () => {
     await expect(
       discoverCodexModels({ env: {}, readFile: async () => readFileSync(import.meta.filename, 'utf8') }),
     ).rejects.toThrow('invalid Codex models cache')
+  })
+})
+
+describe('model discovery refresh', () => {
+  const dirs: string[] = []
+
+  afterEach(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+    dirs.length = 0
+  })
+
+  it('persists successes, tracks new ids, keeps last-good data on failure, and emits only changes', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'runcastle-discovery-service-'))
+    dirs.push(dataDir)
+    const previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+    const ctx = await makeTestCtx()
+    let now = 100
+    let claudeModels = [
+      { id: 'claude-one', runtime: 'claude-code' as const, displayName: 'Claude One' },
+    ]
+    let codexFailure: Error | undefined
+    const deps = {
+      discoverClaude: async () => claudeModels,
+      discoverCodex: async () => {
+        if (codexFailure) throw codexFailure
+        return [{ id: 'gpt-one', runtime: 'codex' as const }]
+      },
+      now: () => now,
+    }
+
+    try {
+      const first = await refreshModelDiscovery(ctx, deps)
+      expect(first.sources['claude-code']).toMatchObject({
+        status: 'ok',
+        lastAttemptAt: 100,
+        lastSuccessAt: 100,
+        newIds: [],
+      })
+      expect(first.sources.codex.newIds).toEqual([])
+      expect(JSON.parse(readFileSync(join(dataDir, 'discovered-models.json'), 'utf8'))).toEqual(first)
+      expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(1)
+
+      now = 200
+      await refreshModelDiscovery(ctx, deps)
+      expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(1)
+
+      now = 300
+      claudeModels = [
+        ...claudeModels,
+        { id: 'claude-two', runtime: 'claude-code' as const, displayName: 'Claude Two' },
+      ]
+      const changed = await refreshModelDiscovery(ctx, deps)
+      expect(changed.sources['claude-code'].newIds).toEqual(['claude-two'])
+
+      now = 400
+      codexFailure = new Error('Codex cache broke')
+      const failed = await refreshModelDiscovery(ctx, deps)
+      expect(failed.sources.codex).toMatchObject({
+        status: 'failed',
+        error: 'Codex cache broke',
+        lastAttemptAt: 400,
+        lastSuccessAt: 300,
+        models: [{ id: 'gpt-one', runtime: 'codex' }],
+        newIds: [],
+      })
+      expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(3)
+    } finally {
+      if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+      else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    }
+  })
+
+  it('shares one provider run between concurrent refresh calls', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'runcastle-discovery-concurrent-'))
+    dirs.push(dataDir)
+    const previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+    const ctx = await makeTestCtx()
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const discoverClaude = vi.fn(async () => {
+      await gate
+      return []
+    })
+    const discoverCodex = vi.fn(async () => {
+      await gate
+      return []
+    })
+
+    try {
+      const first = refreshModelDiscovery(ctx, { discoverClaude, discoverCodex, now: () => 1 })
+      const second = refreshModelDiscovery(ctx, { discoverClaude, discoverCodex, now: () => 1 })
+      expect(second).toBe(first)
+      release?.()
+      await Promise.all([first, second])
+      expect(discoverClaude).toHaveBeenCalledOnce()
+      expect(discoverCodex).toHaveBeenCalledOnce()
+    } finally {
+      if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+      else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    }
   })
 })

@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { query, type ModelInfo } from '@anthropic-ai/claude-agent-sdk'
 import {
   type DiscoveredModel,
+  type DiscoverySource,
   DiscoverySnapshot,
   EMPTY_DISCOVERY_SNAPSHOT,
   discoveredEntries,
@@ -12,9 +13,9 @@ import {
 import { dataDir } from '@runcastle/core/paths'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import { NotImplementedError } from '../errors'
 import { claudeRuntime } from '../launcher/runtimes/claude'
 import { codexHomeDir } from './codex-auth'
+import { emitProject } from './events'
 
 const CLAUDE_DISCOVERY_TIMEOUT_MS = 30_000
 
@@ -185,6 +186,7 @@ export function writeDiscoverySnapshot(snapshot: DiscoverySnapshot): void {
 }
 
 const cachedSnapshots = new WeakMap<AppCtx, DiscoverySnapshot>()
+const refreshes = new WeakMap<AppCtx, Promise<DiscoverySnapshot>>()
 
 export function discoverySnapshot(ctx: AppCtx): DiscoverySnapshot {
   const cached = cachedSnapshots.get(ctx)
@@ -198,6 +200,105 @@ export function rosterConfig(ctx: AppCtx): ModelConfig {
   return { ...ctx.config, discovered: discoveredEntries(discoverySnapshot(ctx)) }
 }
 
-export async function refreshModelDiscovery(_ctx: AppCtx): Promise<DiscoverySnapshot> {
-  throw new NotImplementedError('model-discovery')
+export interface ModelDiscoveryDependencies {
+  discoverClaude(): Promise<DiscoveredModel[]>
+  discoverCodex(): Promise<DiscoveredModel[]>
+  now(): number
+}
+
+const defaultDiscoveryDependencies: ModelDiscoveryDependencies = {
+  discoverClaude: () => discoverClaudeModels(),
+  discoverCodex: () => discoverCodexModels(),
+  now: () => Date.now(),
+}
+
+/** Refresh both providers once; concurrent callers share the same in-flight run. */
+export function refreshModelDiscovery(
+  ctx: AppCtx,
+  dependencies: ModelDiscoveryDependencies = defaultDiscoveryDependencies,
+): Promise<DiscoverySnapshot> {
+  const active = refreshes.get(ctx)
+  if (active) return active
+
+  const refresh = runRefresh(ctx, dependencies).finally(() => {
+    if (refreshes.get(ctx) === refresh) refreshes.delete(ctx)
+  })
+  refreshes.set(ctx, refresh)
+  return refresh
+}
+
+async function runRefresh(
+  ctx: AppCtx,
+  dependencies: ModelDiscoveryDependencies,
+): Promise<DiscoverySnapshot> {
+  const previous = discoverySnapshot(ctx)
+  const attemptedAt = dependencies.now()
+  const [claude, codex] = await Promise.allSettled([
+    dependencies.discoverClaude(),
+    dependencies.discoverCodex(),
+  ])
+  const snapshot = DiscoverySnapshot.parse({
+    sources: {
+      'claude-code': nextSource(previous.sources['claude-code'], claude, attemptedAt),
+      codex: nextSource(previous.sources.codex, codex, attemptedAt),
+    },
+  })
+
+  writeDiscoverySnapshot(snapshot)
+  cachedSnapshots.set(ctx, snapshot)
+  if (discoveryChanged(previous, snapshot)) {
+    emitProject(ctx, 'global', {
+      type: 'settings.updated',
+      message: 'model discovery refreshed',
+      data: { key: 'discovery' },
+    })
+  }
+  return snapshot
+}
+
+function nextSource(
+  previous: DiscoverySource,
+  result: PromiseSettledResult<DiscoveredModel[]>,
+  attemptedAt: number,
+): DiscoverySource {
+  if (result.status === 'rejected') {
+    return {
+      ...previous,
+      status: 'failed',
+      lastAttemptAt: attemptedAt,
+      error: errorMessage(result.reason),
+    }
+  }
+
+  const previousIds = previous.models.map((model) => model.id)
+  const ids = result.value.map((model) => model.id)
+  const sameIds = arrayEqual(previousIds, ids)
+  return {
+    status: 'ok',
+    lastAttemptAt: attemptedAt,
+    lastSuccessAt: attemptedAt,
+    models: result.value,
+    newIds:
+      previous.status === 'never'
+        ? []
+        : sameIds
+          ? previous.newIds
+          : ids.filter((id) => !previousIds.includes(id)),
+  }
+}
+
+function discoveryChanged(previous: DiscoverySnapshot, next: DiscoverySnapshot): boolean {
+  return (['claude-code', 'codex'] as const).some((runtime) => {
+    const before = previous.sources[runtime]
+    const after = next.sources[runtime]
+    return (
+      before.status !== after.status ||
+      before.error !== after.error ||
+      JSON.stringify(before.models) !== JSON.stringify(after.models)
+    )
+  })
+}
+
+function arrayEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }

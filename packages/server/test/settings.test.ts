@@ -49,7 +49,7 @@ describe('model discovery settings socket', () => {
     expect(readDiscoverySnapshot()).toEqual(snapshot)
   })
 
-  it('serves the persisted snapshot and exposes the not-yet-implemented refresh mutation', async () => {
+  it('serves the persisted snapshot and refreshes through the settings mutation', async () => {
     const ctx = await makeTestCtx()
     const snapshot: DiscoverySnapshot = {
       sources: {
@@ -61,9 +61,10 @@ describe('model discovery settings socket', () => {
     expect(getSettings(ctx).discovery).toEqual(snapshot)
 
     const caller = createCallerFactory(appRouter)(ctx)
-    await expect(caller.settings.refreshModels()).rejects.toThrow(
-      'not yet implemented (model-discovery)',
-    )
+    const refreshed = await caller.settings.refreshModels()
+    expect(refreshed.sources['claude-code'].status).not.toBe('never')
+    expect(refreshed.sources.codex.status).not.toBe('never')
+    expect(getSettings(ctx).discovery).toEqual(refreshed)
   })
 })
 
