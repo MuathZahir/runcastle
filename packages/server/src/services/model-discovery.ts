@@ -227,6 +227,19 @@ export function refreshModelDiscovery(
   return refresh
 }
 
+/** Start provider discovery without making server readiness depend on either provider. */
+export function startModelDiscovery(
+  ctx: AppCtx,
+  refresh: (ctx: AppCtx) => Promise<unknown> = refreshModelDiscovery,
+  log: (message: string) => void = console.warn,
+): void {
+  void refresh(ctx).catch((error: unknown) => {
+    log(
+      `runcastle: model discovery refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  })
+}
+
 async function runRefresh(
   ctx: AppCtx,
   dependencies: ModelDiscoveryDependencies,

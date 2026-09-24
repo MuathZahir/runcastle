@@ -7,6 +7,7 @@ import {
   discoverClaudeModels,
   discoverCodexModels,
   refreshModelDiscovery,
+  startModelDiscovery,
 } from '../src/services/model-discovery'
 import { listByProject } from '../src/services/events'
 import { makeTestCtx } from './helpers/db'
@@ -264,5 +265,23 @@ describe('model discovery refresh', () => {
       if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
       else process.env.RUNCASTLE_DATA_DIR = previousDataDir
     }
+  })
+
+  it('can be started without awaiting provider completion', async () => {
+    const ctx = await makeTestCtx()
+    let release: (() => void) | undefined
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let called = false
+
+    const result = startModelDiscovery(ctx, async () => {
+      called = true
+      await pending
+    })
+
+    expect(result).toBeUndefined()
+    expect(called).toBe(true)
+    release?.()
   })
 })
