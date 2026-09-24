@@ -1,15 +1,30 @@
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Project } from '@runcastle/core'
+import type { Project, SessionRow } from '@runcastle/core'
+import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { featureContext, toolGetTicket, toolListTickets } from '../src/mcp/server'
+import { createSessionRow } from '../src/launcher/sessions'
+import {
+  featureContext,
+  toolGetProjectContext,
+  toolGetTicket,
+  toolGetWorkRecord,
+  toolListTickets,
+  toolReadFeatureBrief,
+} from '../src/mcp/server'
 import { MCP_READ_CEILING_CHARS, serializedLength } from '../src/mcp/read-ceiling'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedProject } from './helpers/fixtures'
-import { type OversizedFeature, seedOversizedFeature } from './helpers/oversized'
+import {
+  OVERSIZED_PORTFOLIO,
+  type OversizedFeature,
+  type OversizedPortfolio,
+  seedOversizedFeature,
+  seedOversizedPortfolio,
+} from './helpers/oversized'
 
 /**
  * The never-hidden guard (decisions.md #3 of
@@ -122,5 +137,60 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
     expect(serializedLength(toolListTickets(ctx, reader, {}))).toBeLessThanOrEqual(
       MCP_READ_CEILING_CHARS,
     )
+  })
+
+  describe('the project-scope read tools on a 120+ feature portfolio', () => {
+    let session: SessionRow
+    let portfolio: OversizedPortfolio
+
+    beforeEach(async () => {
+      // `get_project_context` reads the checkout's branches, so the project
+      // needs a real repo; the session's worktree stands in as that repo.
+      const repoPath = join(home, 'repo')
+      mkdirSync(repoPath)
+      const g = simpleGit(repoPath)
+      await g.init(['-b', 'main'])
+      await g.addConfig('user.email', 'test@runcastle.dev')
+      await g.addConfig('user.name', 'Runcastle Test')
+      await g.commit('initial commit', { '--allow-empty': null })
+      const repoProject = seedProject(ctx, repoPath)
+      session = createSessionRow(ctx, {
+        projectId: repoProject.id,
+        kind: 'project',
+        worktreePath: repoPath,
+      })
+      portfolio = seedOversizedPortfolio(ctx, repoProject, repoPath)
+    })
+
+    it('get_project_context fits, charter and ADR index ahead of the feature index', async () => {
+      const context = await toolGetProjectContext(ctx, session)
+      expect(context.featureIndex.length).toBeGreaterThan(50)
+      expect(serializedLength(context)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+      expect(Object.keys(context).indexOf('featureIndex')).toBeGreaterThan(
+        Object.keys(context).indexOf('adrsNote'),
+      )
+    })
+
+    it('get_work_record fits in its seam, slug and seq forms', () => {
+      const bySeam = toolGetWorkRecord(ctx, session, { seam: portfolio.seam })
+      expect(bySeam.features.length).toBeGreaterThanOrEqual(OVERSIZED_PORTFOLIO.seamTickets)
+      expect(serializedLength(bySeam)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+
+      const bySlug = toolGetWorkRecord(ctx, session, { featureSlug: portfolio.workRecordSlug })
+      const rows = bySlug.features[0]?.tickets ?? []
+      expect(rows.some((t) => t.digestNotInlined)).toBe(true)
+      expect(rows.some((t) => t.digest !== undefined)).toBe(true)
+      expect(serializedLength(bySlug)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+
+      const one = toolGetWorkRecord(ctx, session, { featureSlug: portfolio.workRecordSlug, seq: 1 })
+      expect(one.features[0]?.tickets[0]?.digest).toBeDefined()
+      expect(serializedLength(one)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+    })
+
+    it('read_feature_brief fits on a real-max brief', () => {
+      const brief = toolReadFeatureBrief(ctx, session, { slug: portfolio.briefSlug })
+      expect(brief.brief).toBeDefined()
+      expect(serializedLength(brief)).toBeLessThanOrEqual(MCP_READ_CEILING_CHARS)
+    })
   })
 })

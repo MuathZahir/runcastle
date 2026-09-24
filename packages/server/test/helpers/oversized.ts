@@ -5,6 +5,7 @@ import { worktreeDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { features } from '../../src/db/schema'
 import type { AppCtx } from '../../src/db/types'
+import { emit } from '../../src/services/events'
 import { reportFinding } from '../../src/services/review-findings'
 import { addNote } from '../../src/services/test-notes'
 import { getTicket, storeTickets, updateTicket } from '../../src/services/tickets'
@@ -158,4 +159,107 @@ export function seedOversizedFeature(
 
   // Ticket #1 carries the 5K goal alongside every other maximum.
   return { feature: { ...feature, lap: OVERSIZED.laps }, largestTicketSeq: 1, docsDir }
+}
+
+/**
+ * A project past the real portfolio (108 features, one-liners up to 2.5K) for
+ * the project-scope read tools: `get_project_context`, `get_work_record` and
+ * `read_feature_brief`.
+ */
+export const OVERSIZED_PORTFOLIO = {
+  inFlight: 4,
+  drafts: 2,
+  archived: 3,
+  shipped: 115,
+  oneLinerChars: 2_500,
+  /** One feature's work record: three laps of ten tickets, each with a real-max digest. */
+  workRecordLaps: 3,
+  workRecordTicketsPerLap: 10,
+  /** Tickets across that many shipped features share one seam, each with a digest. */
+  seamTickets: 40,
+  errorChars: 600,
+} as const
+
+export interface OversizedPortfolio {
+  /** A shipped feature whose slug-form work record must move digests out. */
+  workRecordSlug: string
+  /** A seam fragment matching {@link OVERSIZED_PORTFOLIO.seamTickets} tickets. */
+  seam: string
+  /** A shipped feature with a real-max `brief.md` in the session worktree. */
+  briefSlug: string
+}
+
+function ticketInput(title: string, seams: string[]): TicketInput {
+  return {
+    title,
+    goal: prose(`goal ${title}`, OVERSIZED.goalChars),
+    context: prose(`context ${title}`, OVERSIZED.contextChars),
+    acceptanceCriteria: [prose(`ac ${title}`, OVERSIZED.acceptanceCriterionChars)],
+    seams,
+    blockedBy: [],
+  }
+}
+
+/**
+ * Seed every kind of feature a long-lived project carries, 120+ in all, each
+ * with a multi-thousand-char one-liner; every shipped one gets its
+ * `feature.shipped` event. The shipped `briefSlug` gets a real-max `brief.md`
+ * under `worktreePath`, the project session's own tree.
+ */
+export function seedOversizedPortfolio(
+  ctx: AppCtx,
+  project: Project,
+  worktreePath: string,
+): OversizedPortfolio {
+  const P = OVERSIZED_PORTFOLIO
+  const seed = (slug: string, overrides: Partial<Feature> = {}): Feature =>
+    seedFeature(ctx, project.id, {
+      slug,
+      title: `${slug}: a realistically long feature title for its index line`,
+      oneLiner: prose(`one-liner ${slug}`, P.oneLinerChars),
+      ...overrides,
+    })
+
+  for (let i = 1; i <= P.inFlight; i++) seed(`in-flight-${i}`, { phase: 'building', lap: 2 })
+  for (let i = 1; i <= P.drafts; i++) seed(`draft-${i}`, { status: 'draft' })
+  for (let i = 1; i <= P.archived; i++) seed(`archived-${i}`, { status: 'archived' })
+
+  const seam = 'apps/web shared shell'
+  const shipped: Feature[] = []
+  for (let i = 1; i <= P.shipped; i++) {
+    const feature = seed(`shipped-${i}`, { status: 'shipped', phase: 'shipped' })
+    emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
+    shipped.push(feature)
+    if (i > P.seamTickets) continue
+    const [ticket] = storeTickets(ctx, feature.id, [ticketInput(`seam ticket ${i}`, [seam])])
+    updateTicket(ctx, ticket.id, {
+      status: 'failed',
+      commits: ['0123456789abcdef0123456789abcdef01234567'],
+      error: prose(`error ${i}`, P.errorChars),
+      digest: prose(`digest seam ${i}`, OVERSIZED.digestChars),
+    })
+  }
+
+  const record = seed('work-record', { status: 'shipped', phase: 'shipped' })
+  emit(ctx, record.id, { type: 'feature.shipped', message: 'merged to main' })
+  for (let lap = 1; lap <= P.workRecordLaps; lap++) {
+    ctx.db.update(features).set({ lap }).where(eq(features.id, record.id)).run()
+    const inputs = Array.from({ length: P.workRecordTicketsPerLap }, (_, n) =>
+      ticketInput(`lap ${lap} ticket ${n + 1}`, ['packages/server/src/mcp/server.ts']),
+    )
+    for (const stored of storeTickets(ctx, record.id, inputs)) {
+      updateTicket(ctx, stored.id, {
+        status: 'done',
+        commits: ['0123456789abcdef0123456789abcdef01234567'],
+        digest: prose(`digest ${stored.seq}`, OVERSIZED.digestChars),
+      })
+    }
+  }
+
+  const briefSlug = shipped[0].slug
+  const briefDir = join(worktreePath, 'docs', 'features', briefSlug)
+  mkdirSync(briefDir, { recursive: true })
+  writeFileSync(join(briefDir, 'brief.md'), prose('brief.md', OVERSIZED.docs['brief.md']), 'utf8')
+
+  return { workRecordSlug: record.slug, seam: 'shared shell', briefSlug }
 }
