@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ProjectNote } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { FeatureListItem } from '../../lib/api'
@@ -36,11 +36,20 @@ export function NotesCard({
   projectId,
   onTriage,
   triaging,
+  reveal = false,
+  onRevealed,
 }: {
   projectId: string
   /** Open a chat briefed to triage. The workspace owns the already-open case. */
   onTriage: () => void
   triaging: boolean
+  /**
+   * Bring the card into view — capture's View asked for the inbox (decisions
+   * #16), and landing on the workspace with the card scrolled off is no answer.
+   */
+  reveal?: boolean
+  /** The reveal has happened; the asker clears its request. */
+  onRevealed?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -74,14 +83,24 @@ export function NotesCard({
   const open = byNewest(notes.filter((n) => n.status === 'open'))
   const triaged = byNewest(notes.filter((n) => n.status === 'triaged'))
 
-  if (notes.length === 0) return null
+  // Keyed on the notes arriving too: the card renders nothing until the list
+  // answers, and a request made before then waits for the section to exist.
+  const section = useRef<HTMLElement>(null)
+  const hasNotes = notes.length > 0
+  useEffect(() => {
+    if (!reveal || !section.current) return
+    section.current.scrollIntoView?.({ block: 'center' })
+    onRevealed?.()
+  }, [reveal, hasNotes, onRevealed])
+
+  if (!hasNotes) return null
 
   const save = (noteId: string): void => {
     if (draft.trim() && !edit.isPending) edit.mutate({ noteId, text: draft })
   }
 
   return (
-    <section aria-label="Notes" className="rounded-lg border border-hairline bg-panel">
+    <section ref={section} aria-label="Notes" className="rounded-lg border border-hairline bg-panel">
       <div className="flex items-center gap-2.5 border-b border-hairline-soft py-3 pr-3 pl-4.5">
         <h3 className="m-0 text-base font-semibold text-text">Notes</h3>
         {open.length > 0 && (

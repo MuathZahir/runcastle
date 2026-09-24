@@ -39,11 +39,16 @@ export function ProjectWorkspace({
   talk,
   newChatRequest = 0,
   onConsumeNewChatRequest,
+  inboxRequest = 0,
+  onConsumeInboxRequest,
 }: {
   projectId: string
   talk: ProjectTalkApi
   newChatRequest?: number
   onConsumeNewChatRequest?: () => void
+  /** Capture's View asked for the Notes inbox (decisions #16). */
+  inboxRequest?: number
+  onConsumeInboxRequest?: () => void
 }) {
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
@@ -68,6 +73,14 @@ export function ProjectWorkspace({
       onConsumeNewChatRequest?.()
     }
   }, [newChatRequest, onConsumeNewChatRequest, session])
+  // The inbox sits on the resting page, so asking for it steps out of a live
+  // chat or a read transcript first; the card scrolls itself in once shown.
+  useEffect(() => {
+    if (inboxRequest > 0) {
+      setViewing(null)
+      setShowList(true)
+    }
+  }, [inboxRequest])
   useEffect(() => {
     if (!session) {
       setShowOpenNotice(false)
@@ -153,6 +166,8 @@ export function ProjectWorkspace({
               <NotesCard
                 projectId={projectId}
                 triaging={talk.starting}
+                reveal={inboxRequest > 0}
+                onRevealed={onConsumeInboxRequest}
                 onTriage={() => {
                   if (!session) {
                     talk.triage()
