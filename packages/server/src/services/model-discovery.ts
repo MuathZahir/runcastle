@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { query, type ModelInfo } from '@anthropic-ai/claude-agent-sdk'
+import { query, type ModelInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import {
   type DiscoveredModel,
   type DiscoverySource,
@@ -26,7 +26,7 @@ interface ClaudeDiscoveryQuery {
 
 export interface ClaudeDiscoveryIO {
   createQuery(input: {
-    prompt: AsyncIterable<unknown>
+    prompt: AsyncIterable<SDKUserMessage>
     pathToClaudeCodeExecutable: string
   }): ClaudeDiscoveryQuery
   resolveBinary(): string
@@ -38,7 +38,7 @@ async function* noPrompts(): AsyncGenerator<never> {}
 const defaultClaudeIO: ClaudeDiscoveryIO = {
   createQuery: ({ prompt, pathToClaudeCodeExecutable }) =>
     query({
-      prompt: prompt as Parameters<typeof query>[0]['prompt'],
+      prompt,
       options: { pathToClaudeCodeExecutable },
     }),
   resolveBinary: () => claudeRuntime.resolveBinary(),
@@ -285,7 +285,7 @@ function nextSource(
 
   const previousIds = previous.models.map((model) => model.id)
   const ids = result.value.map((model) => model.id)
-  const sameIds = arrayEqual(previousIds, ids)
+  const sameIds = sameSet(previousIds, ids)
   return {
     status: 'ok',
     lastAttemptAt: attemptedAt,
@@ -312,6 +312,7 @@ function discoveryChanged(previous: DiscoverySnapshot, next: DiscoverySnapshot):
   })
 }
 
-function arrayEqual(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
+function sameSet(left: string[], right: string[]): boolean {
+  const rightIds = new Set(right)
+  return left.length === rightIds.size && left.every((value) => rightIds.has(value))
 }

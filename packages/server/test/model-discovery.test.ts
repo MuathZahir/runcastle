@@ -228,6 +228,20 @@ describe('model discovery refresh', () => {
         newIds: [],
       })
       expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(3)
+
+      now = 500
+      const claudeFailed = await refreshModelDiscovery(ctx, {
+        ...deps,
+        discoverClaude: async () => {
+          throw new Error('Claude is not logged in')
+        },
+      })
+      expect(claudeFailed.sources['claude-code']).toMatchObject({
+        status: 'failed',
+        error: 'Claude is not logged in',
+        models: changed.sources['claude-code'].models,
+        newIds: ['claude-two'],
+      })
     } finally {
       if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
       else process.env.RUNCASTLE_DATA_DIR = previousDataDir

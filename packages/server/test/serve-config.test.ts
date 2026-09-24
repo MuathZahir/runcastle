@@ -21,5 +21,4 @@ describe('Bun.serve listen options', () => {
   it('stays within the idle timeout Bun accepts (max 255s)', () => {
     expect(SERVE_IDLE_TIMEOUT_SECONDS).toBeLessThanOrEqual(255)
   })
-
 })

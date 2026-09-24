@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_SANDBOX_IMAGE, EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, resolveSandboxImage, type DiscoverySnapshot } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
 import { createCallerFactory } from '../src/trpc/context'
@@ -12,6 +12,13 @@ import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/servi
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
+
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: () => ({
+    initializationResult: async () => ({ models: [] }),
+    close: () => {},
+  }),
+}))
 
 describe('model discovery settings socket', () => {
   const previousDataDir = process.env.RUNCASTLE_DATA_DIR
