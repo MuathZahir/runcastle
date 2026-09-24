@@ -1092,6 +1092,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__create_feature',
   'mcp__runcastle__get_project_context',
   'mcp__runcastle__get_work_record',
+  'mcp__runcastle__read_feature_brief',
 ]
 
 /**

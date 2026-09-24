@@ -1530,8 +1530,14 @@ export interface BaseBranches {
   detectedMain: string
 }
 
+/**
+ * The key order is the reading order: what the project is and where a feature
+ * would cut from, then the charter that binds every decision, then the indexes.
+ */
 export interface ProjectContext {
   project: Project
+  /** The base a new feature would cut from; see {@link BaseBranches}. */
+  baseBranches: BaseBranches
   /** `CONTEXT.md` in full; absent when the project has no charter yet. */
   charter?: string
   /**
@@ -1541,16 +1547,29 @@ export interface ProjectContext {
   adrs: AdrRef[]
   /** Says, in the payload itself, that `adrs` is fetchable rather than gone. */
   adrsNote: string
-  /** One line per feature (decision 14 part 2); see {@link featureIndexLine}. */
+  /** One line per listed feature; see {@link featureIndex}. */
   featureIndex: string[]
-  /** The base a new feature would cut from; see {@link BaseBranches}. */
-  baseBranches: BaseBranches
+  /** Says where shipped features' docs live and how to reach an unlisted one. */
+  featureIndexNote: string
 }
 
 const ADRS_NOTE =
   'adrs[] is an index of the project’s LIVE decisions (superseded ones are already omitted), not ' +
   'their text. Read the ones your work touches with read_adr({ relPath }) — they bind you the ' +
   'same either way. They are also plain files in this worktree at docs/adr/.'
+
+const FEATURE_INDEX_NOTE =
+  'featureIndex lists every in-flight feature, then every draft, then the most recently shipped, ' +
+  'one `slug — title [state]` line each. A shipped feature’s docs live at docs/features/<slug>/ ' +
+  'in this worktree; an in-flight or draft feature’s docs live on an unmerged branch. Any ' +
+  'feature’s brief is read_feature_brief({ slug }); what one actually did is ' +
+  'get_work_record({ featureSlug }).'
+
+/**
+ * How many shipped features the index names, most recently shipped first
+ * (decision 8). Counted rather than dated, so a quiet project still lists some.
+ */
+export const FEATURE_INDEX_SHIPPED_CAP = 50
 
 /**
  * Everything that is true of the project right now: the row, the charter, an
@@ -1579,15 +1598,62 @@ export async function toolGetProjectContext(
   session: SessionRow,
 ): Promise<ProjectContext> {
   const project = requireProject(ctx, session)
+  const baseBranches = await readBaseBranches(project)
   const charter = readCharter(session.worktreePath)
   return {
     project,
+    baseBranches,
     ...(charter !== undefined ? { charter } : {}),
     adrs: listLiveAdrs(session.worktreePath).map(adrRef),
     adrsNote: ADRS_NOTE,
-    featureIndex: listFeatures(ctx, project.id).map(featureIndexLine),
-    baseBranches: await readBaseBranches(project),
+    featureIndex: featureIndex(ctx, project.id),
+    featureIndexNote: FEATURE_INDEX_NOTE,
   }
+}
+
+/**
+ * The project's features, one line each, sized to stay stable however many
+ * features the project eventually ships (decisions 7 and 8).
+ *
+ * Every in-flight feature and draft is always listed: collision detection needs
+ * all of them, and their docs are on no branch this session can read. Shipped
+ * features are listed most recently shipped first, up to
+ * {@link FEATURE_INDEX_SHIPPED_CAP}; a feature with no ship event sorts last.
+ * The older shipped ones and every archived one collapse into one closing line
+ * that names how many were left out and how to reach them — their docs are on
+ * disk, where a search answers "did we already do X?" better than a title list.
+ */
+function featureIndex(ctx: AppCtx, projectId: string): string[] {
+  const all = listFeatures(ctx, projectId)
+  const shipped = all
+    .filter((f) => f.status === 'shipped')
+    .map((feature) => ({ feature, shippedAt: latestEventTs(ctx, feature.id, 'feature.shipped') }))
+    .sort((a, b) => {
+      if (a.shippedAt === undefined) return b.shippedAt === undefined ? 0 : 1
+      if (b.shippedAt === undefined) return -1
+      return b.shippedAt - a.shippedAt
+    })
+    .map(({ feature }) => feature)
+  const listed = [
+    ...all.filter((f) => f.status === 'active'),
+    ...all.filter((f) => f.status === 'draft'),
+    ...shipped.slice(0, FEATURE_INDEX_SHIPPED_CAP),
+  ]
+  const lines = listed.map(featureIndexLine)
+
+  const olderShipped = shipped.length - Math.min(shipped.length, FEATURE_INDEX_SHIPPED_CAP)
+  const archived = all.filter((f) => f.status === 'archived').length
+  const left = [
+    ...(olderShipped > 0 ? [`${olderShipped} older shipped`] : []),
+    ...(archived > 0 ? [`${archived} archived`] : []),
+  ]
+  if (left.length > 0) {
+    lines.push(
+      `… ${left.join(' and ')} features not listed: search docs/features/*/brief.md on disk, ` +
+        'or read_feature_brief({ slug }) if you know the slug.',
+    )
+  }
+  return lines
 }
 
 /**
@@ -1645,36 +1711,72 @@ export function toolReadAdr(
 }
 
 /**
- * One feature, one line — and for an in-flight feature, one line the portfolio
- * lookup can actually be DONE with.
+ * One feature, one line: `slug — title [state]`, and nothing longer.
  *
- * A shipped feature gets its slug, one-liner and docs path: its record is on
- * disk and readable. Decision 16 then withheld everything from an in-flight
- * feature but its title, on the ground that a one-liner and a docs path living
- * only on an unmerged branch promise a read that cannot happen. That is right
- * about the DOCS PATH and it stays — but it was over-applied. The project
- * session's skill makes the portfolio lookup mandatory ("'I did not check' is
- * not a thing this session is allowed to say") and names collision-detection
- * between in-flight features as its job, while `get_work_record` matches on
- * SLUG — which this line never gave it. Slug, phase, lap and the ticket counts
- * are all in SQLite, are true of the feature rather than of a branch, and are
- * the difference between an index and a list of titles.
+ * The one-liner is gone from every line (decision 7): one-liners grew into
+ * paragraphs and were most of the payload, and `read_feature_brief` serves one
+ * on request. The per-line docs path went with it; the index note says once
+ * where shipped docs live. The in-flight state keeps what the portfolio lookup
+ * is asked for — phase, lap and ticket counts, all true of the feature in
+ * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
+ * and `read_feature_brief` match on.
  */
 function featureIndexLine(feature: FeatureListItem): string {
-  if (feature.status === 'shipped') {
-    return `${feature.slug} — ${feature.oneLiner} [shipped] ${featureDocsRel(feature.slug)}/`
-  }
-  if (feature.status === 'archived' || feature.status === 'draft') {
-    return `${feature.slug} — ${feature.title} [${feature.status}]`
-  }
+  if (feature.status !== 'active') return `${feature.slug} — ${feature.title} [${feature.status}]`
   const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
   if (feature.mapped) state.push('mapped')
-  // The one-liner and the docs path stay withheld: both live on the unmerged
-  // branch, and the docs cannot be read from this worktree at all.
   return `${feature.slug} — ${feature.title} [${state.join(', ')}]`
+}
+
+/** One feature's brief on request: the fetch-one behind a slim index line. */
+export interface FeatureBrief {
+  slug: string
+  title: string
+  oneLiner: string
+  status: FeatureStatusT
+  phase: PhaseT
+  lap: number
+  /** Absent when neither the docs on disk nor the database recorded one. */
+  brief?: string
+  /** Present only when `brief` is absent, saying so. */
+  note?: string
+}
+
+/**
+ * Any feature of the project, by slug: what it is for, from wherever its brief
+ * is true (decision 7). A shipped feature's brief is `brief.md` in this
+ * session's worktree, where the merge put it, falling back to the database row
+ * if the file is gone. An in-flight or draft feature's docs live on an
+ * unmerged branch this session cannot read, so its brief is the database's.
+ */
+export function toolReadFeatureBrief(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { slug: string },
+): FeatureBrief {
+  const project = requireProject(ctx, session)
+  const feature = listFeatures(ctx, project.id).find((f) => f.slug === input.slug)
+  if (!feature) throw new NotFoundError(`feature not found: ${input.slug}`)
+
+  const onDisk = join(session.worktreePath, featureDocsRel(feature.slug), 'brief.md')
+  const brief =
+    feature.status === 'shipped' && existsSync(onDisk)
+      ? readFileSync(onDisk, 'utf8')
+      : feature.brief
+  return {
+    slug: feature.slug,
+    title: feature.title,
+    oneLiner: feature.oneLiner,
+    status: feature.status,
+    phase: feature.phase,
+    lap: feature.lap,
+    ...(brief !== undefined
+      ? { brief }
+      : { note: 'No brief was recorded for this feature, on disk or in the database.' }),
+  }
 }
 
 /** One ticket as history: what it touched and what came of it, never its intent. */
@@ -1685,8 +1787,13 @@ export interface WorkRecordTicket {
   seams: string[]
   commits: string[]
   error?: string
-  /** The burner's own account of the work, written just before it signalled done. */
+  /**
+   * The burner's own account of the work, written just before it signalled
+   * done. Only the slug and seq forms serve it; the seam form lists.
+   */
   digest?: string
+  /** The digest exists but was moved out whole to stay under the ceiling. */
+  digestNotInlined?: true
 }
 
 export interface WorkRecordRun {
@@ -1707,6 +1814,12 @@ export interface WorkRecordFeature {
   tickets: WorkRecordTicket[]
 }
 
+export interface WorkRecord {
+  features: WorkRecordFeature[]
+  /** Present only when digests were moved out, saying how to fetch one. */
+  note?: string
+}
+
 /**
  * The work record (decision 15): facts about what features actually DID.
  *
@@ -1724,24 +1837,37 @@ export interface WorkRecordFeature {
  * run-level aggregate does not: it is these same digests re-concatenated, and
  * serving both would double the response for no new fact (decision 7).
  *
- * Queryable two ways. By slug: "what did X actually do?". By seam: "who has
- * touched this before?" — a case-insensitive SUBSTRING match, because seams are
- * uncoordinated free prose across features (decision 27) and exact equality
- * would under-report invisibly. A feature contributes only its matching tickets.
+ * Queryable three ways (decision 9 of `mcp-read-tools-stay-within-a-context-budget`):
+ * - By seam: "who has touched this before?" — a case-insensitive SUBSTRING
+ *   match, because seams are uncoordinated free prose across features
+ *   (decision 27) and exact equality would under-report invisibly. A feature
+ *   contributes only its matching tickets, as rows WITHOUT digests: a sideways
+ *   search finds who touched an area, and inlining every feature's digests is
+ *   what made it overflow.
+ * - By slug: "what did X actually do?" — digests inline, except that when the
+ *   reply would cross {@link MCP_READ_CEILING_CHARS} they are moved out whole,
+ *   oldest lap first, each marked `digestNotInlined`. Never truncated.
+ * - By slug and seq: that one ticket, digest included — the drill-down.
  */
 export function toolGetWorkRecord(
   ctx: AppCtx,
   session: SessionRow,
-  input: { featureSlug?: string; seam?: string },
-): { features: WorkRecordFeature[] } {
+  input: { featureSlug?: string; seam?: string; seq?: number },
+): WorkRecord {
   const project = requireProject(ctx, session)
   const slug = input.featureSlug?.trim()
-  const seam = input.seam?.trim().toLowerCase()
+  const seq = input.seq
+  const seam = seq === undefined ? input.seam?.trim().toLowerCase() : undefined
   if (!slug && !seam) {
     throw new InvalidInputError('get_work_record needs a featureSlug or a seam to look up')
   }
+  if (seq !== undefined && !slug) {
+    throw new InvalidInputError('get_work_record takes seq only together with its featureSlug')
+  }
 
   const records: WorkRecordFeature[] = []
+  // The laps the slug form moves digests out by; rows never carry the lap.
+  const lapBySeq = new Map<number, number>()
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
@@ -1749,6 +1875,11 @@ export function toolGetWorkRecord(
       tickets = tickets.filter((t) => t.seams.some((s) => s.toLowerCase().includes(seam)))
       if (tickets.length === 0) continue
     }
+    if (seq !== undefined) {
+      tickets = tickets.filter((t) => t.seq === seq)
+      if (tickets.length === 0) throw new NotFoundError(`ticket #${seq} not found on ${slug}`)
+    }
+    for (const t of tickets) lapBySeq.set(t.seq, t.lap)
     const shippedAt = latestEventTs(ctx, feature.id, 'feature.shipped')
     records.push({
       slug: feature.slug,
@@ -1769,12 +1900,33 @@ export function toolGetWorkRecord(
         seams: t.seams,
         commits: t.commits,
         ...(t.error !== undefined ? { error: t.error } : {}),
-        ...(t.digest !== undefined ? { digest: t.digest } : {}),
+        ...(!seam && t.digest !== undefined ? { digest: t.digest } : {}),
       })),
     })
   }
-  return { features: records }
+  if (seq !== undefined && records.length === 0) {
+    throw new NotFoundError(`feature not found: ${slug}`)
+  }
+
+  const record: WorkRecord = { features: records }
+  if (seam || seq !== undefined) return record
+  // The slug form names one feature, so every digest here is that feature's.
+  const movable = records
+    .flatMap((f) => f.tickets)
+    .filter((t) => t.digest !== undefined)
+    .sort((a, b) => (lapBySeq.get(a.seq) ?? 0) - (lapBySeq.get(b.seq) ?? 0) || a.seq - b.seq)
+  for (const ticket of movable) {
+    if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
+    delete ticket.digest
+    ticket.digestNotInlined = true
+    record.note = WORK_RECORD_DIGESTS_NOTE
+  }
+  return record
 }
+
+const WORK_RECORD_DIGESTS_NOTE =
+  'Some digests did not fit and were moved out whole, oldest lap first: each such ticket carries ' +
+  'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
 
 // --- MCP server assembly ----------------------------------------------------
 
@@ -1889,6 +2041,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   get_project_context: PROJECT_KINDS,
   read_adr: PROJECT_KINDS,
   get_work_record: PROJECT_KINDS,
+  read_feature_brief: PROJECT_KINDS,
   // `createFeatureProject`: the project kinds get the whole door, the drafting
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
@@ -2240,15 +2393,17 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Get project context',
         description:
-          'The project as it stands: the project row, the charter (CONTEXT.md) in full, an INDEX ' +
-          'of every live ADR (superseded ones omitted) and a one-line index of every feature. ' +
-          'ADR bodies are not inlined — read the ones your work touches with `read_adr`. Shipped ' +
-          'features carry their one-liner and docs path (readable on disk); in-flight ones carry ' +
-          'slug, phase, lap and ticket counts but no docs path, because their docs live on an ' +
-          'unmerged branch. Use the slug with `get_work_record` to see what one actually did. ' +
-          'Plus `baseBranches` — the branch a new feature would cut from: the checkout’s `current` ' +
-          'branch, `currentIsSelectable` (false mid test drive or on a detached HEAD, the one case ' +
-          'with no default), every `selectable` base, and the `detectedMain` line to suggest then.',
+          'The project as it stands, in this order: the project row; `baseBranches` — the branch ' +
+          'a new feature would cut from: the checkout’s `current` branch, `currentIsSelectable` ' +
+          '(false mid test drive or on a detached HEAD, the one case with no default), every ' +
+          '`selectable` base, and the `detectedMain` line to suggest then; the charter ' +
+          '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
+          'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
+          'lines: every in-flight feature (phase, lap, ticket counts), then every draft, then the ' +
+          `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped. Older shipped and archived ` +
+          'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
+          'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
+          '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -2285,6 +2440,32 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  if (wants('read_feature_brief')) {
+    server.registerTool(
+      'read_feature_brief',
+      {
+        title: 'Read a feature brief',
+        description:
+          'Any feature of the project, by slug: { slug, title, oneLiner, status, phase, lap, ' +
+          'brief } — what it is for, behind the one line `get_project_context` indexes it by. A ' +
+          'shipped feature’s brief is its docs/features/<slug>/brief.md in this worktree; an ' +
+          'in-flight or draft feature’s comes from the database, because its docs live on an ' +
+          'unmerged branch. When neither recorded one, `brief` is absent and a `note` says so.',
+        inputSchema: {
+          slug: z
+            .string()
+            .min(1)
+            .describe('A feature slug, exactly as `get_project_context`’s index spells it.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolReadFeatureBrief(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
   if (wants('get_work_record')) {
     server.registerTool(
       'get_work_record',
@@ -2292,10 +2473,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Get work record',
         description:
           'What features actually DID — facts only: per feature its status, ship date, run ' +
-          'summaries and tickets as { seq, title, status, seams, commits, error?, digest? }. The ' +
-          'digest is the burner’s own account, written after the work: what it did, what ' +
-          'surprised it, what it left undone. Never a ticket’s goal or acceptance criteria — ' +
-          'those are intent from before the code existed. Send exactly one of the two arguments.',
+          'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
+          '`featureSlug` each ticket also carries its `digest`: the burner’s own account, written ' +
+          'after the work — what it did, what surprised it, what it left undone. If they would not ' +
+          'all fit, the oldest laps’ digests are moved out whole and those tickets say ' +
+          '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
+          'a `featureSlug` to get that one ticket with its digest. Never a ticket’s goal or ' +
+          'acceptance criteria — those are intent from before the code existed. Send a ' +
+          'featureSlug (optionally with seq) or a seam.',
         inputSchema: z.union([
           z.object({
             featureSlug: z
@@ -2303,6 +2488,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
               .min(1)
               .describe('A feature slug, exactly as `get_project_context`’s index spells it: "what did X do?"'),
             seam: z.string().min(1).optional(),
+            seq: z
+              .number()
+              .int()
+              .min(1)
+              .optional()
+              .describe(
+                'One ticket of that feature, by its seq, returned alone with its digest — how to ' +
+                  'read a digest marked `digestNotInlined`.',
+              ),
           }),
           z.object({
             featureSlug: z.string().min(1).optional(),
