@@ -283,20 +283,19 @@ function nextSource(
     }
   }
 
+  // An id is new when this run reported it and the run before did not — so on
+  // a first run, whose previous set is empty, everything reported is new.
+  // Until the set changes, the previous run's new ids keep their badge.
   const previousIds = previous.models.map((model) => model.id)
   const ids = result.value.map((model) => model.id)
-  const sameIds = sameSet(previousIds, ids)
   return {
     status: 'ok',
     lastAttemptAt: attemptedAt,
     lastSuccessAt: attemptedAt,
     models: result.value,
-    newIds:
-      previous.status === 'never'
-        ? []
-        : sameIds
-          ? previous.newIds
-          : ids.filter((id) => !previousIds.includes(id)),
+    newIds: sameSet(previousIds, ids)
+      ? previous.newIds
+      : ids.filter((id) => !previousIds.includes(id)),
   }
 }
 
