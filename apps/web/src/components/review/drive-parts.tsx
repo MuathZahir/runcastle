@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Button, SectionTitle } from '../../ui'
 import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
@@ -112,25 +112,16 @@ export function DriveSetupFailed({
   })
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <SectionTitle>Drive setup failed</SectionTitle>
-        <div className="text-sm text-text-2">
+    <DriveFailureReport
+      failure={failure}
+      explanation={
+        <>
           The branch is checked out, but <code className="font-mono">{failure.command}</code>{' '}
           {failure.outcome} — so whatever it was meant to bring up is probably not running. An agent
           can read this failure on your machine, repair the environment and retry the drive.
-        </div>
-      </div>
-      {failure.output && (
-        <details>
-          <summary className="cursor-pointer text-sm text-text-3">
-            What the command printed
-          </summary>
-          <pre className="mt-2 max-h-55 overflow-auto rounded-sm bg-danger/9 px-3 py-2.5 font-mono text-xs whitespace-pre-wrap text-text-2">
-            {failure.output}
-          </pre>
-        </details>
-      )}
+        </>
+      }
+    >
       {!readonly && (
         <div className="flex items-center gap-2">
           {failure.canFix && (
@@ -145,6 +136,42 @@ export function DriveSetupFailed({
           <StopDrive featureId={featureId} label="Stop test drive" />
         </div>
       )}
+    </DriveFailureReport>
+  )
+}
+
+/**
+ * The setup failure as read: what the command was, how it ended, and its own
+ * output behind a disclosure. The way out is the caller's — a feature drive
+ * offers Fix drive, a project drive offers preparation.
+ */
+export function DriveFailureReport({
+  failure,
+  explanation,
+  children,
+}: {
+  failure: DriveFailure
+  explanation: ReactNode
+  /** The actions under the report. */
+  children?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <SectionTitle>Drive setup failed</SectionTitle>
+        <div className="text-sm text-text-2">{explanation}</div>
+      </div>
+      {failure.output && (
+        <details>
+          <summary className="cursor-pointer text-sm text-text-3">
+            What the command printed
+          </summary>
+          <pre className="mt-2 max-h-55 overflow-auto rounded-sm bg-danger/9 px-3 py-2.5 font-mono text-xs whitespace-pre-wrap text-text-2">
+            {failure.output}
+          </pre>
+        </details>
+      )}
+      {children}
     </div>
   )
 }

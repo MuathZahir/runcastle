@@ -89,6 +89,14 @@ interface TitlebarProps {
   onGoToProjectHome: () => void
   onToggleInspector: () => void
   inspectorCollapsed: boolean
+  /**
+   * The branch this project's live project drive is driving, or null when none
+   * is live — the pill that keeps a running drive visible on every in-project
+   * screen (project-level-test-drive decisions 4, 9).
+   */
+  drivingBranch?: string | null
+  /** Back to the live project drive. */
+  onOpenDrive?: () => void
 }
 
 /**
@@ -107,6 +115,8 @@ export function TitlebarChrome({
   onGoToProjectHome,
   onToggleInspector,
   inspectorCollapsed,
+  drivingBranch = null,
+  onOpenDrive,
 }: TitlebarProps & { runsElsewhere: number }) {
   const projects = nav.projects ?? []
   const mod = modKey()
@@ -140,6 +150,23 @@ export function TitlebarChrome({
           </>
         )}
       </nav>
+
+      {drivingBranch !== null && (
+        <button
+          className={
+            'inline-flex h-6 shrink-0 cursor-pointer items-center gap-1.5 rounded-pill border ' +
+            'border-accent-line bg-accent-soft px-2 transition-colors duration-(--dur-1) ease-app ' +
+            'hover:border-hairline-strong'
+          }
+          onClick={onOpenDrive}
+          title="A project drive is live — back to it"
+        >
+          <span className="flex items-center gap-1.5 font-mono text-xs whitespace-nowrap text-drive">
+            <span className="size-1.5 animate-pulse rounded-pill bg-drive" />
+            driving {drivingBranch}
+          </span>
+        </button>
+      )}
 
       <span className="flex-1" />
 

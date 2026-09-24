@@ -9,6 +9,7 @@ import {
   tabCaptureSupported,
   type Rect,
 } from '../../lib/capture'
+import { uploadProjectNoteScreenshot } from '../../lib/project-notes'
 import { uploadScreenshot } from '../../lib/reviews'
 import { saveAnnotatedNote } from '../../lib/walkthrough'
 
@@ -52,15 +53,22 @@ function nextStreamFrame(video: HTMLVideoElement): Promise<void> {
   })
 }
 
+/**
+ * Where a capture's note lands: a feature drive writes the feature's test note,
+ * a project drive writes a project note (project-level-test-drive decision 1).
+ */
+type CaptureTarget =
+  | { featureId: string; projectId?: undefined }
+  | { projectId: string; featureId?: undefined }
+
 export function DrivePanel({
-  featureId,
   url,
   /** The review agent is holding this drive — the human watches (decision 20). */
   agentDriving = false,
   /** Looking back at a shipped feature: the app is shown, nothing is written. */
   readonly = false,
-}: {
-  featureId: string
+  ...target
+}: CaptureTarget & {
   url: string
   agentDriving?: boolean
   readonly?: boolean
@@ -231,16 +239,27 @@ export function DrivePanel({
   const save = async (): Promise<void> => {
     if (!shot || saving) return
     setSaving(true)
+    // Both stores require text; the picture is the observation here, so a
+    // wordless capture still says what it is (the same floor the walkthrough
+    // overlay takes, decision 24c).
+    const noteText = text.trim() || 'Screenshot from the test drive'
     try {
-      const saved = await saveAnnotatedNote({
-        // `notes.add` requires text; the picture is the observation here, so a
-        // wordless capture still says what it is (the same floor the walkthrough
-        // overlay takes, decision 24c).
-        createNote: () =>
-          add.mutateAsync({ featureId, text: text.trim() || 'Screenshot from the test drive' }),
-        uploadScreenshot: (noteId) => uploadScreenshot(noteId, shot.png),
-      })
-      void utils.notes.list.invalidate({ featureId })
+      let saved: { uploadError?: string }
+      if (target.projectId !== undefined) {
+        const projectId = target.projectId
+        saved = await saveAnnotatedNote({
+          createNote: () => utils.client.projectNotes.add.mutate({ projectId, text: noteText }),
+          uploadScreenshot: (noteId) => uploadProjectNoteScreenshot(noteId, shot.png),
+        })
+        void utils.projectNotes.invalidate()
+      } else {
+        const featureId = target.featureId
+        saved = await saveAnnotatedNote({
+          createNote: () => add.mutateAsync({ featureId, text: noteText }),
+          uploadScreenshot: (noteId) => uploadScreenshot(noteId, shot.png),
+        })
+        void utils.notes.list.invalidate({ featureId })
+      }
       if (saved.uploadError) {
         toast.push(`the note was saved, but its screenshot was not: ${saved.uploadError}`)
       }
