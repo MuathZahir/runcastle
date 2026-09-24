@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   AGENT_DIGEST_DOCS,
+  AGENT_DIGEST_FILL_ORDER,
   WITHHELD_FEATURE_DOCS,
   agentDigestDocOrder,
+  agentDigestFillRank,
   isAgentDigestDoc,
   withheldFeatureDocs,
 } from '../src/docs'
@@ -84,5 +86,20 @@ describe('agentDigestDocOrder', () => {
 
   it('sorts unknown docs after every canonical one', () => {
     expect(agentDigestDocOrder('outcome.md')).toBeGreaterThan(agentDigestDocOrder('spec.md'))
+  })
+})
+
+describe('agentDigestFillRank', () => {
+  it('fills brief → decisions → spec → map whatever order the fs gave', () => {
+    const shuffled = ['map.md', 'spec.md', 'Decisions.md', 'brief.md']
+    const sorted = [...shuffled].sort((a, b) => agentDigestFillRank(a) - agentDigestFillRank(b))
+    expect(sorted).toEqual(['brief.md', 'Decisions.md', 'spec.md', 'map.md'])
+  })
+
+  // A canonical doc missing from the fill order used to rank -1, ahead of
+  // brief.md, and so claim ceiling room first.
+  it('ranks every canonical doc, and anything unranked after all of them', () => {
+    expect([...AGENT_DIGEST_FILL_ORDER].sort()).toEqual([...AGENT_DIGEST_DOCS].sort())
+    expect(agentDigestFillRank('plan.md')).toBeGreaterThan(agentDigestFillRank('map.md'))
   })
 })

@@ -30,6 +30,7 @@ import {
   TicketStatus,
   WaypointDisposition,
   WaypointInput,
+  agentDigestFillRank,
   isAgentDigestDoc,
   isPastPhase,
   isProjectSessionKind,
@@ -407,13 +408,6 @@ const DOCS_NOTE =
   'gone: read any of them with read_feature_doc({ relPath }). A `withheld` reason means it ' +
   'was left out on purpose; fetch it anyway if a ticket points at it.'
 
-/**
- * The order canonical docs claim room under the never-hidden ceiling
- * (decisions.md #5). Deliberately local rather than `agentDigestDocOrder`
- * (brief → map → decisions → spec), a reading order other callers rely on.
- */
-const DOC_FILL_ORDER = ['brief.md', 'decisions.md', 'spec.md', 'map.md']
-
 function notInlinedReason(relPath: string): string {
   return (
     'Not inlined: too large to fit this reply without hiding it. Read it before acting: ' +
@@ -512,7 +506,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
       ...(withheld ? { withheld } : {}),
     })
   }
-  canonical.sort((a, b) => docFillRank(a.doc.relPath) - docFillRank(b.doc.relPath))
+  // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
+  canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
   // A mapped feature also exposes its map state so any session can read the
   // waypoints and pick up the frontier (claiming stays a server-only effect).
@@ -563,10 +558,6 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     if (serializedLength(candidate) <= MCP_READ_CEILING_CHARS) context = candidate
   }
   return context
-}
-
-function docFillRank(relPath: string): number {
-  return DOC_FILL_ORDER.indexOf(relPath.toLowerCase())
 }
 
 function ticketRow(ticket: Ticket): FeatureContextTicketRow {
