@@ -297,6 +297,7 @@ function nextSource(
         : sameIds
           ? previous.newIds
           : ids.filter((id) => !previousIds.includes(id)),
+    knownIds: [...new Set([...previous.knownIds, ...ids])],
   }
 }
 

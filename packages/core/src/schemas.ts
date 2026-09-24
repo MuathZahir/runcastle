@@ -700,6 +700,12 @@ export const DiscoverySource = z.object({
   error: z.string().optional(),
   models: z.array(DiscoveredModel),
   newIds: z.array(z.string()),
+  /**
+   * Every id this source has offered in a successful run, including runs before
+   * the latest. It is what tells a model the provider withdrew apart from one
+   * the operator typed themselves, long after the model left `models`.
+   */
+  knownIds: z.array(z.string()).default([]),
 })
 export type DiscoverySource = z.infer<typeof DiscoverySource>
 
@@ -708,7 +714,12 @@ export const DiscoverySnapshot = z.object({
 })
 export type DiscoverySnapshot = z.infer<typeof DiscoverySnapshot>
 
-const emptyDiscoverySource = (): DiscoverySource => ({ status: 'never', models: [], newIds: [] })
+const emptyDiscoverySource = (): DiscoverySource => ({
+  status: 'never',
+  models: [],
+  newIds: [],
+  knownIds: [],
+})
 
 export const EMPTY_DISCOVERY_SNAPSHOT: DiscoverySnapshot = {
   sources: {

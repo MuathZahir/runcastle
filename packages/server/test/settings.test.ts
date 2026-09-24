@@ -42,13 +42,14 @@ describe('model discovery settings socket', () => {
 
     const snapshot: DiscoverySnapshot = {
       sources: {
-        'claude-code': { status: 'never', models: [], newIds: [] },
+        'claude-code': { status: 'never', models: [], newIds: [], knownIds: [] },
         codex: {
           status: 'ok',
           lastSuccessAt: 42,
           lastAttemptAt: 42,
           models: [{ id: 'gpt-next', runtime: 'codex', displayName: 'GPT Next' }],
           newIds: ['gpt-next'],
+          knownIds: ['gpt-next'],
         },
       },
     }
@@ -60,8 +61,13 @@ describe('model discovery settings socket', () => {
     const ctx = await makeTestCtx()
     const snapshot: DiscoverySnapshot = {
       sources: {
-        'claude-code': { status: 'never', models: [], newIds: [] },
-        codex: { status: 'ok', models: [{ id: 'gpt-next', runtime: 'codex' }], newIds: [] },
+        'claude-code': { status: 'never', models: [], newIds: [], knownIds: [] },
+        codex: {
+          status: 'ok',
+          models: [{ id: 'gpt-next', runtime: 'codex' }],
+          newIds: [],
+          knownIds: ['gpt-next'],
+        },
       },
     }
     writeDiscoverySnapshot(snapshot)

@@ -981,9 +981,17 @@ export function rosterRows(view: SettingsView): RosterRow[] {
       discovered: found !== undefined,
       isNew: found !== undefined && sources[found.runtime].newIds.includes(m.id),
       // Only a model the providers could have offered can stop being offered:
-      // an operator-typed id was never theirs to withdraw.
+      // one runcastle curates, or one this source did offer in an earlier run.
+      // An id only ever typed by the operator was never theirs to withdraw —
+      // and an annotated discovery is both custom and withdrawn, so `custom`
+      // cannot stand in for that.
       noLongerOffered:
-        referenced && !custom && !found && sources[m.runtime].status === 'ok' ? m.runtime : null,
+        referenced &&
+        !found &&
+        (curated.has(m.id) || sources[m.runtime].knownIds.includes(m.id)) &&
+        sources[m.runtime].status === 'ok'
+          ? m.runtime
+          : null,
       retirement: found?.model.retirement ?? null,
     }
   })

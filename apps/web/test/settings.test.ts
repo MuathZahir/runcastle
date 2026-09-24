@@ -214,11 +214,12 @@ describe('model dropdown — runtime groups', () => {
       ...rosterView([]),
       discovery: {
         sources: {
-          'claude-code': { status: 'never' as const, models: [], newIds: [] },
+          'claude-code': { status: 'never' as const, models: [], newIds: [], knownIds: [] },
           codex: {
             status: 'ok' as const,
             models: [{ id: 'gpt-next', runtime: 'codex' as const, displayName: 'GPT Next' }],
             newIds: ['gpt-next'],
+            knownIds: ['gpt-next'],
           },
         },
       },
@@ -824,6 +825,7 @@ describe('rosterRows with discovery', () => {
       },
     ],
     newIds: ['gpt-6-astra'],
+    knownIds: ['gpt-6-astra', 'gpt-6-luna'],
   }
   const row = (rows: ReturnType<typeof rosterRows>, id: string) => rows.find((r) => r.id === id)
   const defaultOnly = [{ key: 'model', value: 'claude-opus-5' }]
@@ -895,11 +897,38 @@ describe('rosterRows with discovery', () => {
     expect(
       flagged({
         codex: { ...codexOk, status: 'failed', error: 'no cache found' },
-        'claude-code': { status: 'failed', models: [], newIds: [], error: 'not logged in' },
+        'claude-code': {
+          status: 'failed',
+          models: [],
+          newIds: [],
+          knownIds: [],
+          error: 'not logged in',
+        },
       }),
     ).toEqual([])
     expect(flagged({})).toEqual([])
     expect(flagged({ codex: codexOk }).map((r) => r.id)).toEqual(['gpt-5.6-sol'])
+  })
+
+  it('flags a withdrawn model its source once offered, even once only a note holds it', () => {
+    // Codex offered gpt-6-vega in an earlier run and no longer does; the
+    // operator's note is all that keeps the row, so it is theirs to remove
+    // (custom) AND still a model Codex withdrew.
+    const rows = rosterRows(
+      discoveryView(
+        [{ key: 'models', value: [{ id: 'gpt-6-vega', runtime: 'codex', note: 'fast' }] }],
+        {
+          codex: {
+            status: 'ok',
+            lastSuccessAt: NOW - HOUR,
+            models: [],
+            newIds: [],
+            knownIds: ['gpt-6-vega'],
+          },
+        },
+      ),
+    )
+    expect(row(rows, 'gpt-6-vega')).toMatchObject({ custom: true, noLongerOffered: 'codex' })
   })
 
   it('lists discovered ids in their runtime’s dropdown group', () => {
@@ -923,6 +952,7 @@ describe('discoveryStatusLines', () => {
             runtime: 'claude-code' as const,
           })),
           newIds: [],
+          knownIds: [],
         },
         codex: {
           status: 'failed',
@@ -930,6 +960,7 @@ describe('discoveryStatusLines', () => {
           lastSuccessAt: NOW - 72 * HOUR,
           models: [],
           newIds: [],
+          knownIds: [],
         },
       }),
       NOW,
@@ -949,7 +980,13 @@ describe('discoveryStatusLines', () => {
       'Claude: not run yet',
       'Codex: not run yet',
     ])
-    const codex = { status: 'failed' as const, error: 'no cache found', models: [], newIds: [] }
+    const codex = {
+      status: 'failed' as const,
+      error: 'no cache found',
+      models: [],
+      newIds: [],
+      knownIds: [],
+    }
     expect(discoveryStatusLines(discoveryView([], { codex }), NOW)[1]?.text).toBe(
       'Codex: failed — no cache found',
     )

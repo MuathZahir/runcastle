@@ -248,6 +248,48 @@ describe('model discovery refresh', () => {
     }
   })
 
+  /**
+   * A model a provider withdraws leaves `models`, but the roster still has to
+   * tell it apart from an id the operator typed themselves, so every id a
+   * source ever offered stays on record.
+   */
+  it('remembers every id a source has ever offered, across withdrawals and failures', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'runcastle-discovery-known-'))
+    dirs.push(dataDir)
+    const previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+    const ctx = await makeTestCtx()
+    let codexModels = [{ id: 'gpt-old', runtime: 'codex' as const }]
+    let now = 100
+    const deps = {
+      discoverClaude: async () => [],
+      discoverCodex: async () => codexModels,
+      now: () => now,
+    }
+
+    try {
+      await refreshModelDiscovery(ctx, deps)
+
+      now = 200
+      codexModels = [{ id: 'gpt-new', runtime: 'codex' as const }]
+      const withdrawn = await refreshModelDiscovery(ctx, deps)
+      expect(withdrawn.sources.codex.models.map((m) => m.id)).toEqual(['gpt-new'])
+      expect(withdrawn.sources.codex.knownIds).toEqual(['gpt-old', 'gpt-new'])
+
+      now = 300
+      const failed = await refreshModelDiscovery(ctx, {
+        ...deps,
+        discoverCodex: async () => {
+          throw new Error('no cache found')
+        },
+      })
+      expect(failed.sources.codex.knownIds).toEqual(['gpt-old', 'gpt-new'])
+    } finally {
+      if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+      else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    }
+  })
+
   it('shares one provider run between concurrent refresh calls', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'runcastle-discovery-concurrent-'))
     dirs.push(dataDir)

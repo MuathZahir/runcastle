@@ -135,7 +135,7 @@ describe('config visibility (roster notes reach the agent)', () => {
   it('serves one persisted discovered layer to settings and MCP', async () => {
     const snapshot: DiscoverySnapshot = {
       sources: {
-        'claude-code': { status: 'never', models: [], newIds: [] },
+        'claude-code': { status: 'never', models: [], newIds: [], knownIds: [] },
         codex: {
           status: 'ok',
           models: [
@@ -143,6 +143,7 @@ describe('config visibility (roster notes reach the agent)', () => {
             { id: 'gpt-unannotated', runtime: 'codex' },
           ],
           newIds: ['gpt-next', 'gpt-unannotated'],
+          knownIds: ['gpt-next', 'gpt-unannotated'],
         },
       },
     }

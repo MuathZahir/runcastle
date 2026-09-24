@@ -272,6 +272,7 @@ describe('Models page', () => {
               error: 'not logged in',
               models: [],
               newIds: [],
+              knownIds: [],
             },
             codex: {
               status: 'ok',
@@ -285,6 +286,7 @@ describe('Models page', () => {
                 },
               ],
               newIds: ['gpt-6-astra'],
+              knownIds: ['gpt-6-astra', 'gpt-6-luna'],
             },
           },
         },
