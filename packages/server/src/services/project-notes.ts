@@ -7,6 +7,7 @@ import type { AppCtx } from '../db/types'
 import { features, projectNotes } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emitProject } from './events'
+import { activeProjectDriveStamp } from './git'
 import { requireProjectById } from './repo'
 
 type ProjectNoteSelect = typeof projectNotes.$inferSelect
@@ -16,6 +17,8 @@ function rowToNote(row: ProjectNoteSelect): ProjectNote {
     ...row,
     outcome: row.outcome ?? undefined,
     featureId: row.featureId ?? undefined,
+    driveBranch: row.driveBranch ?? undefined,
+    driveCommit: row.driveCommit ?? undefined,
     screenshotUrl: existsSync(projectNotePath(row.id))
       ? projectNoteScreenshotUrl(row.id)
       : undefined,
@@ -42,9 +45,14 @@ function requireOpen(note: ProjectNote, action: string): void {
 export function addNote(ctx: AppCtx, projectId: string, text: string): ProjectNote {
   requireProjectById(ctx, projectId)
   const now = Date.now()
+  // Every door a note comes through lands here, so a note taken during this
+  // project's drive is stamped with what it was seen on without any client
+  // passing it (project-level-test-drive decision 5).
+  const stamp = activeProjectDriveStamp(projectId)
   const row = ctx.db.insert(projectNotes).values({
     id: newId('pnote'), projectId, text: clean(text, 'note text'), status: 'open',
-    outcome: null, featureId: null, createdAt: now, updatedAt: now,
+    outcome: null, featureId: null, driveBranch: stamp?.driveBranch ?? null,
+    driveCommit: stamp?.driveCommit ?? null, createdAt: now, updatedAt: now,
   }).returning().get()
   const note = rowToNote(row)
   emitProject(ctx, projectId, { type: 'project_note.added', message: 'project note captured', data: { noteId: note.id } })

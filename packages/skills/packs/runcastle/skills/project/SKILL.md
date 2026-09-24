@@ -24,7 +24,7 @@ Eight, and deliberately none of the feature pipeline's. A session with no featur
 - `mcp__runcastle__get_work_record({ featureSlug? , seam? })` — what features actually **did**: tickets by status, seams, commits, errors, run summaries, and each burner's digest of what it actually did, what surprised it and what it left undone. Facts, never intent. Send exactly one of the two arguments.
 - `mcp__runcastle__create_feature({ title, oneLiner, baseBranch?, brief?, draft?, tickets? })` — the end of intake.
 - `mcp__runcastle__record_event({ type, message })` — a note on the project timeline.
-- `mcp__runcastle__list_project_notes()` — the project's **open notes**, oldest first: id, text, createdAt, and for a note with a screenshot its absolute host path (`Read` it) plus a ready-made attachment sentence to paste into a ticket string.
+- `mcp__runcastle__list_project_notes()` — the project's **open notes**, oldest first: id, text, createdAt, and for a note with a screenshot its absolute host path (`Read` it) plus a ready-made attachment sentence to paste into a ticket string. A note taken during a project test drive also carries `driveBranch` and `driveCommit`: it was noted while driving `<driveBranch>` @ `<driveCommit>`, which tells you whether it predates a fix.
 - `mcp__runcastle__triage_project_note({ noteIds, outcome, featureId? })` — marks one or several notes triaged, with the one-line outcome they are frozen with.
 - `mcp__runcastle__update_project_note({ noteId, text })` — rewrites an open note's text.
 

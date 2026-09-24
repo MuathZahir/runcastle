@@ -395,6 +395,10 @@ export const ProjectNote = z.object({
   outcome: z.string().optional(),
   featureId: z.string().optional(),
   screenshotUrl: z.string().optional(),
+  /** Set only on a note taken during a project drive: the branch it drove. */
+  driveBranch: z.string().optional(),
+  /** Set with `driveBranch`: short HEAD SHA at drive start, `+dirty` if dirty. */
+  driveCommit: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })

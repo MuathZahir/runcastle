@@ -288,6 +288,13 @@
       "when": 1790175840112,
       "tag": "0040_new_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1790263940356,
+      "tag": "0041_round_harpoon",
+      "breakpoints": true
     }
   ]
 }
