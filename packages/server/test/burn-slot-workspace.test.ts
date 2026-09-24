@@ -233,7 +233,12 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
     expect(cmd).toContain(
       `if ! git -C ${repo} rev-parse --git-dir >/dev/null 2>&1; then rm -rf ${repo} && git clone ${SANDBOX_WORKSPACE_PATH} ${repo} && RC_COLD=1;`,
     )
-    expect(cmd).toContain(`git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} ${BRANCH}`)
+    // An explicit refspec, not a bare branch: a bare one writes FETCH_HEAD and
+    // nothing else, and the hook's valueless `--force-with-lease` reads its
+    // baseline out of refs/remotes/origin/<branch>.
+    expect(cmd).toContain(
+      `git -C ${repo} fetch ${SANDBOX_WORKSPACE_PATH} +${BRANCH}:refs/remotes/origin/${BRANCH}`,
+    )
     expect(cmd).toContain(`git -C ${repo} reset --hard FETCH_HEAD`)
     // The local branch name is what the post-commit hook's HEAD:<branch> push
     // reports against, so a re-synced slot has to be put back on it.
@@ -450,6 +455,35 @@ describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven 
     // reset is the 15–90s-per-commit mount tax this hook no longer pays; the
     // worktree is left dirty on purpose and removed host-side after the run.
     expect(existsSync(join(workspace, 'WORK.md'))).toBe(false)
+  })
+
+  // The cold slot above is armed by `git clone`, which leaves a remote-tracking
+  // ref for every branch the workspace had. A warm slot is armed by the fetch,
+  // and a fetch of a bare branch name writes FETCH_HEAD and nothing else — so
+  // the hook's valueless `--force-with-lease` had no baseline for a branch name
+  // this slot had never seen, and rejected every commit with `stale info`.
+  it('pushes a warm slot commit back on a branch name the slot has never seen', async () => {
+    await runSetup(1, BRANCH)
+
+    // The next ticket: a new temp branch off a moved workspace HEAD.
+    const next = 'runcastle/ticket/cache-volume/3-Ef56Gh78'
+    const workspaceGit = simpleGit(workspace)
+    await workspaceGit.checkoutLocalBranch(next)
+    writeFileSync(join(workspace, 'NEW.md'), 'second\n')
+    await workspaceGit.add('.')
+    await workspaceGit.commit('second')
+
+    await runSetup(1, next)
+
+    const repo = simpleGit(slotRepo(1))
+    await repo.addConfig('user.email', 'agent@runcastle.dev')
+    await repo.addConfig('user.name', 'Burn Agent')
+    writeFileSync(join(slotRepo(1), 'WORK.md'), 'done\n')
+    await repo.add('.')
+    const { stderr } = await runCommand('git commit -m "ticket(3): work"', { cwd: slotRepo(1) })
+
+    expect(stderr).not.toContain('runcastle: commit sync failed')
+    expect(await workspaceGit.revparse(['HEAD'])).toBe(await repo.revparse(['HEAD']))
   })
 
   it('syncs an amended commit that rewrites the ticket branch', async () => {
