@@ -152,6 +152,21 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
 }
 
 /**
+ * The kickoff for a project session opened from the Notes card's Triage button.
+ *
+ * An EXPLICIT briefing, which per ADR-0009 #4 is why such a launch is always
+ * fresh: it is this session's opening move, not a nudge to carry on. It names
+ * the tool rather than the note texts — the pile changes the moment a note is
+ * jotted mid-chat, so the session reads it live (decisions.md #6).
+ */
+export function projectTriageKickoffFor(runtime: AgentRuntime): string {
+  return (
+    `Proceed with your task: invoke the ${skillRef(runtime, 'project')} skill and triage this ` +
+    "project's open notes (list them with list_project_notes)."
+  )
+}
+
+/**
  * The prepare kickoff for a project with NOTHING left to establish.
  *
  * The 0-keys path used to give the session four instructions, three of which

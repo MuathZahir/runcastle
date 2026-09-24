@@ -103,11 +103,11 @@ closes it does not also close the dialog around it.
 
 | Primitive | What it is | Variants |
 |---|---|---|
-| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `type` defaults to `button` rather than to HTML's own `submit`, so a control runs its `onClick` and nothing else; pass `type="submit"` where a submit is what you want. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `danger` · `size`: `md` (default) · `xs` |
+| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `type` defaults to `button` rather than to HTML's own `submit`, so a control runs its `onClick` and nothing else; pass `type="submit"` where a submit is what you want. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `accent` (the violet ghost — accent-line border, accent-hi text; a second door that is not a second solid) · `danger` · `size`: `md` (default) · `xs` |
 | `SectionTitle` | 11px uppercase tracked label over a section. | — |
 | `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
 | `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
-| `Dialog` | The one modal shell — see [Dialog](#dialog) below. | `size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 (settings: rail + roster table) · plus `inline` |
+| `Dialog` | The one modal shell — see [Dialog](#dialog) below. | `size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 (settings: rail + roster table) · `palette` 560 at the ⌘K palette's 12vh (note capture) · `scrim`: `dim` (default) · `light` · `none` (clicks fall through) · plus `inline` |
 | `Field` | A control with its label, help and error wired to it by id. The child control is cloned with an `id` and `aria-describedby`; an `id` already on the control wins and the label follows it there. The error carries `role="alert"`. `layout` replaces the default stacked column (settings' rows are a two-column grid) and `labelAside` puts an affordance *beside* the label — a `<label>` may not contain another labelable element, so a help button or a save flash cannot be its child. | — |
 | `Card` | A bounded surface — `bg-panel`, hairline border, `rounded-lg`, `p-4` — with an optional `header` slot. | — |
 | `Section` | `SectionTitle` + `Card`. A **separate export**, not a `Card` title prop (the spec left the choice open): the title belongs outside the card's border, which is where every `SectionTitle` in the app already sits. | — |
@@ -119,6 +119,7 @@ closes it does not also close the dialog around it.
 | `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
 | `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
 | `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |
+| `NoteThumbnail` | The picture attached to a note, ~96×54, as the button that opens it in the app's lightbox. Worn by both lists of notes — the review lap's rows and the project inbox's. Renders **nothing** without a url, so neither surface repeats that guard. | `size`: `md` (default, ~96×54 — the review rows) · `sm` (~40×26 — the inbox's dense rows) |
 | `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
 | `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
 | `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |

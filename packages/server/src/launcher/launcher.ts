@@ -48,9 +48,11 @@ import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
 import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
+import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
+import { projectTriageKickoffFor } from './runtimes/skills'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -1073,10 +1075,14 @@ export async function launchDriveFixSession(
  * SESSION ROW id (what the conversation list hands back), not a Claude Code id;
  * `fresh` is the explicit spelling of the default, and wins over a row id, so a
  * "New chat" click can never resume something.
+ *
+ * `purpose: 'triage'` is the Notes card's door: the launch carries an explicit
+ * briefing to triage the project's open notes, and is fresh for the reason every
+ * explicitly-briefed launch is (ADR-0009 #4).
  */
 export async function launchProjectSession(
   ctx: AppCtx,
-  input: { projectId: string; fresh?: boolean; resumeSessionId?: string },
+  input: { projectId: string; fresh?: boolean; resumeSessionId?: string; purpose?: 'triage' },
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
@@ -1110,7 +1116,11 @@ export async function launchProjectSession(
   // The chosen conversation's Claude Code id. Absent means the row never went
   // live and has nothing the CLI could `--resume` (a bogus `--resume` makes
   // claude exit with "No conversation found"), so we spawn fresh and say so.
-  const resumeRowId = input.fresh ? undefined : input.resumeSessionId
+  //
+  // A triage launch names neither: its briefing IS the session's opening move,
+  // and ADR-0009 #4 makes such a launch fresh — a `--resume` shows Claude Code's
+  // "start from a summary?" chooser, which eats the keystrokes carrying it.
+  const resumeRowId = input.fresh || input.purpose ? undefined : input.resumeSessionId
   const resumedFrom = resumeRowId ? (getSessionRow(ctx, resumeRowId) ?? undefined) : undefined
   let resumeSessionId = resumedFrom?.ccSessionId ?? undefined
 
@@ -1158,12 +1168,24 @@ export async function launchProjectSession(
     })
   }
 
-  const kickoffLine = resumeSessionId ? undefined : kickoffLineFor('project', undefined, runtime.id)
+  const kickoffLine = resumeSessionId
+    ? undefined
+    : kickoffLineFor(
+        'project',
+        input.purpose === 'triage' ? projectTriageKickoffFor(runtime.id) : undefined,
+        runtime.id,
+      )
   const spec = await runtime.writeArtifacts({
     session,
     project,
     config: ctx.config,
-    projectBrief: { project, branch: git.PROJECT_BRANCH, worktreePath, base },
+    projectBrief: {
+      project,
+      branch: git.PROJECT_BRANCH,
+      worktreePath,
+      base,
+      openNotes: openProjectNoteCount(ctx, project.id),
+    },
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,

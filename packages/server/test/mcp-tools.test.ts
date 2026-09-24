@@ -43,6 +43,8 @@ import {
   storeTickets,
   updateTicket,
 } from '../src/services/tickets'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -227,7 +229,57 @@ describe('mcp tools', () => {
     ).toThrow(InvalidInputError)
   })
 
+  /**
+   * The 2026-09-24 regression: a resumed session stamped `claude-opus-5` from
+   * memory while only another model was annotated. The id is curated — on the
+   * roster — so the store took it; the session surfaces must not.
+   */
+  it('emit_tickets refuses a curated-but-unannotated model, naming the annotated ids', () => {
+    ctx.config = {
+      ...ctx.config,
+      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
+    }
+    const emitCurated = () =>
+      toolEmitTickets(ctx, session, {
+        tickets: [ticket('fine'), { ...ticket('stale'), model: 'claude-opus-5' }],
+      })
+    expect(emitCurated).toThrow(InvalidInputError)
+    expect(emitCurated).toThrow(/"claude-opus-5".*gpt-5\.6-sol/)
+    // All-or-nothing: the good ticket in the batch was not stored either.
+    expect(listByFeature(ctx, featureId)).toEqual([])
+
+    toolEmitTickets(ctx, session, { tickets: [{ ...ticket('ok'), model: 'gpt-5.6-sol' }] })
+    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual(['gpt-5.6-sol'])
+  })
+
+  it('emit_tickets says to omit the model when nothing is annotated, and blank still clears', () => {
+    expect(() =>
+      toolEmitTickets(ctx, session, { tickets: [{ ...ticket('x'), model: 'claude-opus-5' }] }),
+    ).toThrow(/no models are annotated, so omit `model`/)
+
+    toolEmitTickets(ctx, session, { tickets: [{ ...ticket('blank'), model: '  ' }] })
+    expect(listByFeature(ctx, featureId).map((t) => t.model)).toEqual([undefined])
+  })
+
+  it('update_ticket refuses a curated-but-unannotated model; the tRPC edit still takes it', async () => {
+    const [{ id }] = toolEmitTickets(ctx, session, { tickets: [ticket('one')] }).tickets
+    expect(() => toolUpdateTicket(ctx, session, { id, model: 'claude-opus-5' })).toThrow(
+      /no models are annotated/,
+    )
+    expect(getTicket(ctx, id).model).toBeUndefined()
+
+    // The human's card edit keeps the whole roster.
+    const caller = createCallerFactory(appRouter)(ctx)
+    expect((await caller.ticket.edit({ ticketId: id, model: 'claude-opus-5' })).model).toBe(
+      'claude-opus-5',
+    )
+  })
+
   it('update_ticket reassigns and clears a ticket model, refusing an unknown id', () => {
+    ctx.config = {
+      ...ctx.config,
+      models: [{ id: 'gpt-5.6-sol', runtime: 'codex', note: 'mechanical refactors' }],
+    }
     const out = toolEmitTickets(ctx, session, { tickets: [ticket('one')] })
     const [{ id }] = out.tickets
 
@@ -884,6 +936,9 @@ describe('mcp tool registration by audience', () => {
         'read_adr',
         'get_work_record',
         'read_feature_brief',
+        'list_project_notes',
+        'triage_project_note',
+        'update_project_note',
       ]),
     )
     expect(project).not.toContain('get_feature_context')
@@ -891,6 +946,11 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('chat')).not.toContain('read_feature_brief')
     expect(toolsForAudience('run')).not.toContain('read_feature_brief')
     expect(project).not.toContain('emit_tickets')
+    for (const tool of ['list_project_notes', 'triage_project_note', 'update_project_note']) {
+      expect(toolsForAudience('prepare'), tool).not.toContain(tool)
+      expect(toolsForAudience('chat'), tool).not.toContain(tool)
+      expect(toolsForAudience('run'), tool).not.toContain(tool)
+    }
 
     // Single-kind tools stay single-kind.
     expect(toolsForAudience('prepare')).toContain('dry_run_drive')

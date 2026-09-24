@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
-import { FindingSeverityChip, NoteAuthorChip } from '../../ui'
+import { FindingSeverityChip, NoteAuthorChip, NoteThumbnail } from '../../ui'
 import { findingOpenReason, headline } from '../../lib/feature-ui'
 import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
@@ -131,7 +131,6 @@ export function NoteRow({
         ? `carried into lap ${note.carriedLap}`
         : null
   const text = note?.text ?? finding?.title ?? ''
-  const picture = note?.screenshotUrl
   const moment = note?.videoTimestamp
   const mode = timestampMode(
     {
@@ -155,20 +154,7 @@ export function NoteRow({
         highlighted ? 'bg-accent-soft' : ''
       }`}
     >
-      {picture && (
-        <button
-          type="button"
-          className="h-[54px] w-24 shrink-0 overflow-hidden rounded-sm border border-hairline bg-black p-0 hover:border-accent-line"
-          title="see the whole picture"
-          onClick={() => onOpenImage(picture)}
-        >
-          <img
-            src={picture}
-            alt="the picture attached to this note"
-            className="h-full w-full object-cover"
-          />
-        </button>
-      )}
+      <NoteThumbnail url={note?.screenshotUrl} onOpen={onOpenImage} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
