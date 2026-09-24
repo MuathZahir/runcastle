@@ -2393,6 +2393,14 @@ const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
 const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSAL_STATUS}|forbidden)`)
 
 /**
+ * Claude Code's refusal of a model newer than itself, e.g. `API Error: 400
+ * Claude Code 2.1.270 does not support this model; version 2.1.280 or newer is
+ * required.` The in-use version is optional so a reworded prefix still reads.
+ */
+const CLI_TOO_OLD =
+  /(?:Claude Code\s+(\S+)\s+)?does not support this model[^\n]*?version\s+(\S+?)\s+or newer is required/i
+
+/**
  * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
  * `invalid_api_key` code and an exhausted account as `insufficient_quota` (a
  * billing fact no retry fixes, despite arriving as a 429).
@@ -2403,7 +2411,10 @@ const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSA
  * host, which no attempt of ours can perform.
  */
 const RUNTIME_RUN_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
-  'claude-code': [],
+  // A fact about the image's CLI, not the ticket — and it arrives as an
+  // `API Error: 400`, which the retryable `api error` entry would otherwise
+  // retry in every ticket (see {@link cliTooOldMessage}).
+  'claude-code': [CLI_TOO_OLD],
   codex: [
     /invalid_api_key/i,
     REFUSED_CREDENTIAL_STATUS,
@@ -2514,6 +2525,22 @@ export function missingAgentBinaryMessage(
   const binary = AGENT_BINARY[runtime]
   if (!missingCommandRegex(binary).test(msg)) return undefined
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+}
+
+/**
+ * Turn the "CLI too old for this model" 400 into the operator's fix. The burn
+ * preflight has already proven the image matches the host, so the host CLI is
+ * too old as well — Rebuild alone would bake the same version again, and the
+ * host update comes first (decision 7).
+ */
+export function cliTooOldMessage(err: unknown, model?: string): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const match = CLI_TOO_OLD.exec(msg)
+  if (!match) return undefined
+  const [, inUse, required] = match
+  const cli = inUse ? `Claude Code ${inUse}` : 'Claude Code'
+  const target = model ? `model ${model}` : 'this model'
+  return `${cli} is too old for ${target} (needs ${required} or newer). Run \`claude update\` on the host, then Rebuild from Settings → Burns.`
 }
 
 /** What a failed attempt means: retry it, fail the ticket, or halt the run. */
@@ -4885,11 +4912,14 @@ async function burnTicket(
         if (salvaged.length > 0) preserveChain(tempBranch)
         // Run-fatal never reaches the retry above (it is not `retryable`), and
         // it leaves here with the fact the scheduler halts the run on.
-        return {
-          status: 'failed',
-          error: msg,
-          ...(verdict === 'run-fatal' ? { runFatal: { runtime: model.runtime } } : {}),
+        if (verdict === 'run-fatal') {
+          return {
+            status: 'failed',
+            error: cliTooOldMessage(msg, model.id) ?? msg,
+            runFatal: { runtime: model.runtime },
+          }
         }
+        return { status: 'failed', error: msg }
       }
     }
 

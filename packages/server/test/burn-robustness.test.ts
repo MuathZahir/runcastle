@@ -17,6 +17,7 @@ import {
   RunHaltedAbort,
   buildRetryNotes,
   classifyTicketRunError,
+  cliTooOldMessage,
   delayUnlessAborted,
   haltTicketRun,
   missingAgentBinaryMessage,
@@ -53,6 +54,22 @@ describe('classifyTicketRunError', () => {
     ['claude-code', 'env: claude: No such file or directory'],
   ] as const)('recognizes the %s shell missing-command wording', (runtime, error) => {
     expect(classifyTicketRunError(new Error(error), runtime)).toBe('run-fatal')
+  })
+
+  /** The incident: a model newer than the image's CLI, retried in every ticket. */
+  const CLI_TOO_OLD_400 =
+    'API Error: 400 Claude Code 2.1.270 does not support this model; version 2.1.280 or newer is required.'
+
+  it('halts the run on "CLI too old for this model" instead of retrying it', () => {
+    expect(classifyTicketRunError(new Error(CLI_TOO_OLD_400), 'claude-code')).toBe('run-fatal')
+    expect(classifyTicketRunError(new Error(CLI_TOO_OLD_400))).toBe('run-fatal')
+  })
+
+  it('tells the operator to update the host CLI, then Rebuild', () => {
+    expect(cliTooOldMessage(new Error(CLI_TOO_OLD_400), 'claude-opus-5-5')).toBe(
+      'Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Run `claude update` on the host, then Rebuild from Settings → Burns.',
+    )
+    expect(cliTooOldMessage(new Error('API Error: 400 overloaded'))).toBeUndefined()
   })
 
   it.each(['codex', 'claude-code'] as const)(
