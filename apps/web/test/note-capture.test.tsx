@@ -312,4 +312,38 @@ describe('NoteCapture', () => {
     await vi.advanceTimersByTimeAsync(400)
     expect(onClose).toHaveBeenCalled()
   })
+
+  // The lifted scrim lets a click land on the page; the auto-close must not
+  // then drag the caret back to the pencil mid-word.
+  it('leaves the focus where the human put it when the saved line closes itself', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    function Shell() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Jot a note</button>
+          <input aria-label="chat composer" />
+          <NoteCapture
+            projectId="proj_1"
+            projectName="runcastle-demo"
+            open={open}
+            onClose={() => setOpen(false)}
+            onOpenInbox={onOpenInbox}
+          />
+        </>
+      )
+    }
+    render(<Shell />)
+    const pencil = screen.getByRole('button', { name: 'Jot a note' })
+    pencil.focus()
+    fireEvent.click(pencil)
+    await saveALine()
+
+    const composer = screen.getByLabelText('chat composer')
+    composer.focus()
+    await vi.advanceTimersByTimeAsync(1600)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    expect(document.activeElement).toBe(composer)
+  })
 })
