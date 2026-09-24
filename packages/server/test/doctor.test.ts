@@ -55,6 +55,12 @@ function customProbeKey(tag: string): string {
 const HOST_CLAUDE = '1.0.0'
 
 /**
+ * What every managed image row on this canned host ends with, because the host
+ * has no Codex and so the verdict never judged the image's (decision 4).
+ */
+const CODEX_UNCHECKED = ' (Codex not on host — not checked)'
+
+/**
  * What that inspect prints for an image runcastle built: its hash label, then
  * the Claude Code and Codex version labels — by default, the host's CLIs.
  */
@@ -184,7 +190,7 @@ describe('runDoctor — canned environments', () => {
     expect(image.status).toBe('stale')
     expect(image.severity).toBe('error')
     expect(image.detail).toBe(
-      'sandcastle:runcastle no longer matches the burner Dockerfile — rebuild',
+      `sandcastle:runcastle no longer matches the burner Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
     // Names the settings page the web deep-links from (decision 9).
     expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
@@ -217,7 +223,7 @@ describe('runDoctor — canned environments', () => {
     expect(image.status).toBe('stale')
     expect(image.severity).toBe('error')
     expect(image.detail).toBe(
-      'sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild',
+      `sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
     expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
   })
@@ -232,7 +238,7 @@ describe('runDoctor — canned environments', () => {
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('stale')
     expect(image.detail).toBe(
-      'sandcastle:runcastle: no Claude Code version recorded, 1.0.0 on host — rebuild',
+      `sandcastle:runcastle: no Claude Code version recorded, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
   })
 
@@ -246,7 +252,7 @@ describe('runDoctor — canned environments', () => {
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').detail).toBe(
       'sandcastle:runcastle no longer matches the burner Dockerfile; ' +
-        'sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild',
+        `sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
   })
 
@@ -269,6 +275,29 @@ describe('runDoctor — canned environments', () => {
     delete noClaude['claude --version']
     const bare = await runDoctor({ ...base, exec: cannedExec(noClaude) })
     expect(byId(bare.results, 'sandcastle-image').status).toBe('ok')
+  })
+
+  // The other half of decision 4: skipping a runtime silently leaves a human
+  // unable to tell an image whose CLIs were checked from one where half the
+  // question was never asked. This host has no Codex, so the row says so.
+  it('says which runtime was not checked because the host does not have it', async () => {
+    const report = await runDoctor({ ...base, exec: cannedExec(ALL_HEALTHY) })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('ok')
+    expect(image.detail).toBe('sandcastle:runcastle present (Codex not on host — not checked)')
+
+    // Both CLIs on the host: nothing was skipped, so nothing is said.
+    const both = await runDoctor({
+      ...base,
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        'codex --version': { stdout: 'codex-cli 0.46.0' },
+        [inspectKey('docker', 'sandcastle:runcastle')]: {
+          stdout: labelled(STOCK_HASH, HOST_CLAUDE, '0.46.0'),
+        },
+      }),
+    })
+    expect(byId(both.results, 'sandcastle-image').detail).toBe('sandcastle:runcastle present')
   })
 
   it('never asks the image when it was built, only what it was built from', async () => {
@@ -669,7 +698,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project(),
     })
     expect(row.status).toBe('ok')
-    expect(row.detail).toBe(`${TAG} built from .runcastle/sandbox/Dockerfile`)
+    expect(row.detail).toBe(`${TAG} built from .runcastle/sandbox/Dockerfile${CODEX_UNCHECKED}`)
   })
 
   it('names the project Dockerfile as the layer that drifted', async () => {
@@ -680,7 +709,9 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project(),
     })
     expect(row.status).toBe('stale')
-    expect(row.detail).toBe(`${TAG} no longer matches .runcastle/sandbox/Dockerfile — rebuild`)
+    expect(row.detail).toBe(
+      `${TAG} no longer matches .runcastle/sandbox/Dockerfile — rebuild${CODEX_UNCHECKED}`,
+    )
     expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
   })
 
@@ -695,7 +726,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     })
     expect(row.status).toBe('stale')
     expect(row.detail).toBe(
-      `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild`,
+      `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
   })
 
@@ -708,7 +739,9 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       projectImage: project(),
     })
     expect(row.status).toBe('stale')
-    expect(row.detail).toBe(`${TAG}: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild`)
+    expect(row.detail).toBe(
+      `${TAG}: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
+    )
     expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
   })
 
@@ -726,7 +759,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     })
     expect(row.status).toBe('stale')
     expect(row.detail).toBe(
-      `${TAG} is built on a stale sandcastle:runcastle — sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild`,
+      `${TAG} is built on a stale sandcastle:runcastle — sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
   })
 
@@ -766,7 +799,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(cleared).toBe(1)
     // Resolution falls back to the layers below the column — here, the stock image.
     expect(row.status).toBe('ok')
-    expect(row.detail).toBe('sandcastle:runcastle present')
+    expect(row.detail).toBe(`sandcastle:runcastle present${CODEX_UNCHECKED}`)
   })
 
   it('never clears — or offers to rebuild — a tag the human typed', async () => {
