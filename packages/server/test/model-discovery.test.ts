@@ -193,14 +193,16 @@ describe('model discovery refresh', () => {
     }
 
     try {
+      // A first run has an empty previous set, so everything it reports is new
+      // — that badge is how a fresh install surfaces the models it just found.
       const first = await refreshModelDiscovery(ctx, deps)
       expect(first.sources['claude-code']).toMatchObject({
         status: 'ok',
         lastAttemptAt: 100,
         lastSuccessAt: 100,
-        newIds: [],
+        newIds: ['claude-one'],
       })
-      expect(first.sources.codex.newIds).toEqual([])
+      expect(first.sources.codex.newIds).toEqual(['gpt-one'])
       expect(JSON.parse(readFileSync(join(dataDir, 'discovered-models.json'), 'utf8'))).toEqual(first)
       expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(1)
 
@@ -225,7 +227,7 @@ describe('model discovery refresh', () => {
         lastAttemptAt: 400,
         lastSuccessAt: 300,
         models: [{ id: 'gpt-one', runtime: 'codex' }],
-        newIds: [],
+        newIds: ['gpt-one'],
       })
       expect(listByProject(ctx, 'global').filter((event) => event.type === 'settings.updated')).toHaveLength(3)
 
