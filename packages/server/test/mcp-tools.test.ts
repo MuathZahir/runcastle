@@ -9,7 +9,7 @@ import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput, WaypointInput }
 import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
 import { runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { GateError, InvalidInputError } from '../src/errors'
+import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
@@ -23,6 +23,7 @@ import mcpApp, {
   toolEmitWaypoints,
   toolEscalateToMap,
   toolGetFeatureContext,
+  toolGetTicket,
   toolListTickets,
   toolReadFeatureDoc,
   toolRecordEvent,
@@ -497,17 +498,33 @@ describe('mcp tools', () => {
    * so a payload carrying both pays twice for one set of facts — the same rule
    * `get_work_record` already applies to the run-level aggregate (decision 7).
    */
-  it('get_feature_context drops the burner digest but keeps the live work', () => {
+  it('get_feature_context rows each ticket with its goal; get_ticket serves the rest', () => {
     const [stored] = storeTickets(ctx, featureId, [ticket('build it')])
     updateTicket(ctx, stored.id, { status: 'done', digest: 'what the burner actually did' })
 
     const [served] = toolGetFeatureContext(ctx, session).tickets
-    expect(served).not.toHaveProperty('digest')
-    // goal / context / acceptanceCriteria stay: they are what this session is
-    // here to edit, block or complete, and a ticket without them is a title.
+    expect(Object.keys(served)).toEqual([
+      'id',
+      'seq',
+      'title',
+      'status',
+      'kind',
+      'lap',
+      'blockedBy',
+      'seams',
+      'goal',
+    ])
     expect(served.goal).toBe('g')
-    expect(served.context).toBe('c')
-    expect(served.acceptanceCriteria).toEqual(['a'])
+
+    const full = toolGetTicket(ctx, { featureId, sessionId: session.id }, { seq: served.seq })
+    expect(full.context).toBe('c')
+    expect(full.acceptanceCriteria).toEqual(['a'])
+    expect(full.digest).toBe('what the burner actually did')
+  })
+
+  it('get_ticket refuses a seq the feature does not have', () => {
+    storeTickets(ctx, featureId, [ticket('only one')])
+    expect(() => toolGetTicket(ctx, { featureId }, { seq: 2 })).toThrow(NotFoundError)
   })
 
   it('list_tickets indexes ids and seqs without the prose, and filters by status', () => {
@@ -875,6 +892,7 @@ describe('mcp tool registration by audience', () => {
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
       'get_feature_context',
+      'get_ticket',
       'list_tickets',
       'read_feature_doc',
       'report_finding',

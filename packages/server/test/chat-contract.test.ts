@@ -27,6 +27,7 @@ describe('chat contract', () => {
       'emit_waypoints',
       'escalate_to_map',
       'get_feature_context',
+      'get_ticket',
       'list_tickets',
       'read_feature_doc',
       'record_event',

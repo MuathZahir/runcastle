@@ -1084,6 +1084,7 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   // a permission prompt at exactly the moment it went looking for evidence.
   'mcp__runcastle__read_feature_doc',
   'mcp__runcastle__list_tickets',
+  'mcp__runcastle__get_ticket',
   'mcp__runcastle__read_adr',
   // The project session's three (decision 19). Every session is launched with
   // the whole list: the MCP server gates each tool on the calling session's
