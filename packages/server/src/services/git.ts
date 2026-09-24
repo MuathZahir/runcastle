@@ -2028,9 +2028,10 @@ export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: st
 
 // --- test drive -------------------------------------------------------------
 
-/** Module-level in-memory drive state (SPEC §7). At most one active, of either
- *  kind — a preparation dry run and a feature test drive collide over the same
- *  repo, ports, dev pane and database server, so they share one slot (decision 9).
+/** Module-level in-memory drive state (SPEC §7). At most one active, of any
+ *  kind — a preparation dry run, a feature test drive and a project drive all
+ *  collide over the same repo, ports, dev pane and database server, so they
+ *  share one slot (decision 9).
  *  `detachedWorktree` records the talk worktree we detached to free the feature
  *  branch for the main checkout, so `stop` reattaches exactly what it detached.
  *  `devPaneId`/`devUrl` track the embedded dev pane and its sniffed localhost URL. */
