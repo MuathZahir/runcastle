@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 
@@ -33,22 +33,51 @@ vi.mock('../src/lib/reviews', async (original) => ({
 const addNote = vi.fn(async () => NOTE)
 const invalidate = vi.fn()
 const pushToast = vi.fn()
-const openCount = { data: 3 as number | undefined }
+/** The cached open count — the query cache is the one seam the bar writes to
+ *  besides the mutation, so it is a tiny store the component re-reads. */
+const openCount = {
+  data: 2 as number | undefined,
+  listeners: new Set<() => void>(),
+  set(next: number | undefined) {
+    openCount.data = next
+    for (const l of openCount.listeners) l()
+  },
+}
 
 vi.mock('../src/trpc', () => ({
   trpc: {
-    useUtils: () => ({ projectNotes: { invalidate: (...a: unknown[]) => invalidate(...a) } }),
+    useUtils: () => ({
+      projectNotes: {
+        // Never settles here: the refetch is the slow server of the repro.
+        invalidate: (...a: unknown[]) => invalidate(...a),
+        openCount: {
+          setData: (_input: unknown, update: (n: number | undefined) => number | undefined) =>
+            openCount.set(update(openCount.data)),
+        },
+      },
+    }),
     projectNotes: {
       add: {
         useMutation: () => ({ mutateAsync: (...a: unknown[]) => addNote(...(a as [])) }),
       },
-      openCount: { useQuery: () => openCount },
+      openCount: {
+        useQuery: () => ({
+          data: useSyncExternalStore(
+            (l) => {
+              openCount.listeners.add(l)
+              return () => openCount.listeners.delete(l)
+            },
+            () => openCount.data,
+          ),
+        }),
+      },
     },
   },
 }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: pushToast }) }))
 
 const { NoteCapture } = await import('../src/components/NoteCapture')
+const { isNoteHotkey } = await import('../src/lib/project-notes')
 
 const NOTE: ProjectNote = {
   id: 'pnote_1',
@@ -97,7 +126,7 @@ function pasteImage(target: Element, file: File): void {
 }
 
 beforeEach(() => {
-  openCount.data = 3
+  openCount.data = 2
   vi.stubGlobal('URL', {
     ...URL,
     createObjectURL: () => 'blob:preview',
@@ -223,6 +252,8 @@ describe('NoteCapture', () => {
     expect(dialog.textContent).not.toContain('Paste a screenshot')
   })
 
+  // The count was read at open (2, before this note); the refetch never returns
+  // here, so the line's very first frame must already include the new note.
   it('confirms in place with the open count, and View opens the inbox', async () => {
     popover()
     await saveALine()
@@ -264,7 +295,6 @@ describe('NoteCapture', () => {
   // job; this is the other half — that the box it opens takes the focus off
   // the terminal's textarea and puts it in the line, every time.
   it('takes the focus from a terminal when ⌘/Ctrl+J opens it, every time', async () => {
-    const { isNoteHotkey } = await import('../src/lib/project-notes')
     function Shell() {
       const [open, setOpen] = useState(false)
       useEffect(() => {
@@ -299,6 +329,69 @@ describe('NoteCapture', () => {
       fireEvent.click(screen.getByRole('button', { name: 'View' }))
       expect(screen.queryByRole('dialog')).toBeNull()
     }
+  })
+
+  // The review's repro: a second ⌘/Ctrl+J during the confirmation used to be
+  // swallowed (the bar was already open, so nothing changed) and the timer then
+  // closed the bar. Every door counts its presses, and the count is what lands.
+  describe('pressed again while the bar is up', () => {
+    function Shell() {
+      const [open, setOpen] = useState(false)
+      const [request, setRequest] = useState(0)
+      useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+          if (!isNoteHotkey(e)) return
+          setOpen(true)
+          setRequest((n) => n + 1)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [])
+      return (
+        <NoteCapture
+          projectId="proj_1"
+          projectName="runcastle-demo"
+          open={open}
+          openRequest={request}
+          onClose={() => setOpen(false)}
+          onOpenInbox={onOpenInbox}
+        />
+      )
+    }
+    const jot = async () => {
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeNull())
+    }
+
+    it('starts a fresh note over the saved line, and the bar stays up', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      render(<Shell />)
+      await jot()
+      await saveALine()
+
+      await vi.advanceTimersByTimeAsync(500)
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+      await waitFor(() => expect(screen.queryByText(/Noted in/)).toBeNull())
+
+      expect(line()).toHaveProperty('value', '')
+      expect(document.activeElement).toBe(line())
+      // The confirmation's close timer went with it.
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(screen.queryByRole('dialog')).not.toBeNull()
+      expect(document.activeElement).toBe(line())
+    })
+
+    it('keeps a half-typed line and puts the cursor back in it', async () => {
+      render(<Shell />)
+      await jot()
+      fireEvent.change(line(), { target: { value: 'half a thought' } })
+      screen.getByRole('dialog').focus()
+
+      fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true })
+
+      await waitFor(() => expect(document.activeElement).toBe(line()))
+      expect(line()).toHaveProperty('value', 'half a thought')
+    })
   })
 
   it('closes itself about a second and a half after saving', async () => {
