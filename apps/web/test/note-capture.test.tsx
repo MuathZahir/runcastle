@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 
 /**
  * Capturing a project note from wherever you were standing (project-notes
- * decisions #3, #10).
+ * decisions #3, #10, #16, #18).
  *
  * Tier 2 (apps/web/STYLE.md): the popover is a portalled dialog, paste is a
  * clipboard event, Escape is a window listener, and the confirmation is a timer
@@ -64,13 +65,31 @@ const JPEG = new File([new Uint8Array([2])], 'shot.jpg', { type: 'image/jpeg' })
 const onClose = vi.fn()
 const onOpenInbox = vi.fn()
 
-function popover(open = true) {
-  return render(
-    <NoteCapture projectId="proj_1" open={open} onClose={onClose} onOpenInbox={onOpenInbox} />,
+function capture(open: boolean) {
+  return (
+    <NoteCapture
+      projectId="proj_1"
+      projectName="runcastle-demo"
+      open={open}
+      onClose={onClose}
+      onOpenInbox={onOpenInbox}
+    />
   )
 }
 
+function popover(open = true) {
+  return render(capture(open))
+}
+
 const line = () => screen.getByLabelText(/what did you just notice/i)
+/** The backdrop `Dialog` portals — the scrim. */
+const scrim = () => screen.getByRole('dialog').parentElement as HTMLElement
+
+async function saveALine(): Promise<void> {
+  fireEvent.change(line(), { target: { value: 'the crumbs overflow at 900px' } })
+  fireEvent.keyDown(line(), { key: 'Enter' })
+  await screen.findByText(/Noted in/)
+}
 
 /** Paste an image onto whatever is under the caret. */
 function pasteImage(target: Element, file: File): void {
@@ -178,32 +197,119 @@ describe('NoteCapture', () => {
     expect(uploadProjectNoteScreenshot).not.toHaveBeenCalled()
   })
 
-  it('confirms with the open count, which opens the inbox', async () => {
+  // Decision #16: the palette's gesture, over a scrim that leaves the page
+  // readable, with Enter as the only way to save.
+  it('opens palette-shaped over a light scrim, with no Save button', () => {
     popover()
 
-    fireEvent.change(line(), { target: { value: 'the crumbs overflow at 900px' } })
-    fireEvent.keyDown(line(), { key: 'Enter' })
+    expect(screen.getByRole('dialog').className).toContain('max-w-[560px]')
+    expect(scrim().className).toContain('pt-[12vh]')
+    expect(scrim().className).toContain('bg-[rgba(4,6,10,0.28)]')
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+  })
 
-    const count = await screen.findByRole('button', { name: /3 open/ })
-    await screen.findByText('Saved')
+  it('says where the note goes and how to save or close it', async () => {
+    popover()
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Paste a screenshot')
+    expect(dialog.textContent).toContain('to runcastle-demo')
+    expect(dialog.textContent).toMatch(/↵\s*save/)
+    expect(dialog.textContent).toMatch(/esc\s*close/)
+
+    // A pasted picture takes the hint's place as a chip.
+    pasteImage(line(), PNG)
+    await screen.findByAltText('the picture this note will carry')
+    expect(dialog.textContent).not.toContain('Paste a screenshot')
+  })
+
+  it('confirms in place with the open count, and View opens the inbox', async () => {
+    popover()
+    await saveALine()
+
+    expect(screen.getByRole('status').textContent).toBe('Noted in runcastle-demo · 3 openView')
     // The pile is what the count refreshes — the badge and the inbox read it.
     expect(invalidate).toHaveBeenCalled()
 
-    fireEvent.click(count)
+    fireEvent.click(screen.getByRole('button', { name: 'View' }))
     expect(onOpenInbox).toHaveBeenCalled()
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('closes itself once the confirmation has been up a moment', async () => {
+  it('lifts the scrim the moment the note is saved', async () => {
+    popover()
+    await saveALine()
+
+    expect(scrim().className).toContain('bg-transparent')
+    expect(scrim().className).toContain('pointer-events-none')
+    expect(scrim().className).not.toContain('rgba(4,6,10,0.28)')
+  })
+
+  // Decision #18: the box stays mounted while closed, and the last save's
+  // confirmation used to survive into the next open — so the first render had no
+  // input for Dialog to focus, and the panel took the focus instead.
+  it('lands the cursor in the input on every open, including after a save', async () => {
+    const view = popover()
+    expect(document.activeElement).toBe(line())
+
+    await saveALine()
+    view.rerender(capture(false))
+    view.rerender(capture(true))
+
+    expect(document.activeElement).toBe(line())
+    expect(line()).toHaveProperty('value', '')
+  })
+
+  // The chord reaching the window from inside xterm is terminal-keys.test.ts's
+  // job; this is the other half — that the box it opens takes the focus off
+  // the terminal's textarea and puts it in the line, every time.
+  it('takes the focus from a terminal when ⌘/Ctrl+J opens it, every time', async () => {
+    const { isNoteHotkey } = await import('../src/lib/project-notes')
+    function Shell() {
+      const [open, setOpen] = useState(false)
+      useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+          if (isNoteHotkey(e)) setOpen(true)
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [])
+      return (
+        <>
+          <textarea aria-label="terminal input" />
+          <NoteCapture
+            projectId="proj_1"
+            projectName="runcastle-demo"
+            open={open}
+            onClose={() => setOpen(false)}
+            onOpenInbox={onOpenInbox}
+          />
+        </>
+      )
+    }
+    render(<Shell />)
+    const terminal = screen.getByLabelText('terminal input')
+
+    for (let round = 0; round < 2; round++) {
+      terminal.focus()
+      fireEvent.keyDown(terminal, { key: 'j', ctrlKey: true })
+      expect(document.activeElement).toBe(line())
+
+      await saveALine()
+      fireEvent.click(screen.getByRole('button', { name: 'View' }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+    }
+  })
+
+  it('closes itself about a second and a half after saving', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     popover()
-
-    fireEvent.change(line(), { target: { value: 'the crumbs overflow at 900px' } })
-    fireEvent.keyDown(line(), { key: 'Enter' })
-    await screen.findByText('Saved')
+    await saveALine()
     expect(onClose).not.toHaveBeenCalled()
 
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(1200)
+    expect(onClose).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(400)
     expect(onClose).toHaveBeenCalled()
   })
 })

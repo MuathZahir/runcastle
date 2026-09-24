@@ -82,6 +82,8 @@ interface TitlebarProps {
   onOpenCmdk: () => void
   /** Open the note capture popover — the discoverable half of ⌘/Ctrl+J. */
   onOpenNote: () => void
+  /** Capture is up — the pencil wears the accent while it is. */
+  noteOpen: boolean
   onOpenSettings: () => void
   /** Up one level from the third crumb: this project with nothing selected. */
   onGoToProjectHome: () => void
@@ -100,6 +102,7 @@ export function TitlebarChrome({
   runsElsewhere: elsewhere,
   onOpenCmdk,
   onOpenNote,
+  noteOpen,
   onOpenSettings,
   onGoToProjectHome,
   onToggleInspector,
@@ -158,17 +161,25 @@ export function TitlebarChrome({
         <Kbd>{mod}</Kbd>
       </button>
 
-      {/* The note door, beside the palette's (decisions #3). The hotkey is the
-          ten-second path and this is what makes it findable without knowing it. */}
+      {/* The note door, beside the palette's (decisions #3, #15). The hotkey is
+          the ten-second path and this is what makes it findable without knowing
+          it — an icon like every other control here, tinted while capture is up. */}
       <button
-        className={`${TB_BUTTON} h-8 shrink-0 gap-1.5 bg-transparent px-2.5`}
+        className={`${TB_BUTTON} size-8 shrink-0 justify-center ${
+          noteOpen ? 'bg-accent-soft' : 'bg-transparent'
+        }`}
+        title={`Jot a note (${shortcut('J')})`}
+        aria-label="Jot a note"
+        aria-pressed={noteOpen}
         onClick={onOpenNote}
-        title={`Jot a note about this project (${shortcut('J')})`}
       >
-        <span className="flex items-center text-text-3 group-hover:text-text">
-          <IconPencil size={13} />
+        <span
+          className={`flex items-center ${
+            noteOpen ? 'text-accent-hi' : 'text-text-3 group-hover:text-text'
+          }`}
+        >
+          <IconPencil size={14} />
         </span>
-        <span className="text-sm text-text-3 group-hover:text-text-2">Note</span>
       </button>
 
       {elsewhere > 0 && (

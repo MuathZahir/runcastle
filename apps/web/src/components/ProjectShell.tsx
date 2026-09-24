@@ -205,6 +205,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         featureTitle={selectedFeature?.title ?? null}
         onOpenCmdk={() => ws.setCmdk(true)}
         onOpenNote={jot}
+        noteOpen={capturing}
         onOpenSettings={() => ws.openSettings()}
         onGoToProjectHome={() => ws.select(null)}
         onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
@@ -319,6 +320,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           project and on none of the portfolio home (decisions #2). */}
       <NoteCapture
         projectId={projectId}
+        projectName={nav.currentProject?.name ?? ''}
         open={capturing}
         onClose={() => setCapturing(false)}
         onOpenInbox={selectProject}

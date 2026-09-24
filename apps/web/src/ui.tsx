@@ -279,7 +279,7 @@ export function FailureNote({
   )
 }
 
-type DialogSize = 'sm' | 'md' | 'lg' | 'xl'
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette'
 
 const DIALOG_SIZE: Record<DialogSize, string> = {
   sm: 'max-w-[460px]',
@@ -287,6 +287,23 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
   lg: 'max-w-[780px]',
   // Settings: a page rail beside a five-column model roster. `lg` clipped it.
   xl: 'max-w-[940px]',
+  // Note capture: the ⌘K palette's width, so it reads as the same gesture.
+  palette: 'max-w-[560px]',
+}
+
+type DialogScrim = 'dim' | 'light' | 'none'
+
+/**
+ * How much of the page the backdrop hides. A lookup rather than a
+ * `backdropClassName` override: two background utilities on one element are a
+ * coin flip without `tailwind-merge`.
+ */
+const DIALOG_SCRIM: Record<DialogScrim, string> = {
+  dim: 'bg-bg/70',
+  // Note capture: you are noting something on the page, so it stays readable.
+  light: 'bg-[rgba(4,6,10,0.28)]',
+  // Nothing left to dim — clicks fall through to the page (the panel opts back in).
+  none: 'pointer-events-none bg-transparent',
 }
 
 /**
@@ -319,6 +336,7 @@ export function Dialog({
   open,
   onClose,
   size = 'md',
+  scrim = 'dim',
   label,
   labelledBy,
   dirty = false,
@@ -333,6 +351,8 @@ export function Dialog({
   open: boolean
   onClose: () => void
   size?: DialogSize
+  /** How much the backdrop dims the page behind the panel. */
+  scrim?: DialogScrim
   /** Accessible name, when no visible element in the panel can supply one. */
   label?: string
   /** Id of the element that names the panel — takes precedence over `label`. */
@@ -419,7 +439,12 @@ export function Dialog({
       className={cx(
         inline
           ? 'flex flex-1 items-center justify-center p-6'
-          : 'fixed inset-0 z-[200] flex items-start justify-center bg-bg/70 px-4 pt-[8vh] pb-4',
+          : cx(
+              'fixed inset-0 z-[200] flex items-start justify-center px-4 pb-4',
+              // The palette sits at 12vh; every other dialog at 8vh.
+              size === 'palette' ? 'pt-[12vh]' : 'pt-[8vh]',
+              DIALOG_SCRIM[scrim],
+            ),
         backdropClassName,
       )}
       onMouseDown={(e) => {
@@ -441,6 +466,7 @@ export function Dialog({
         tabIndex={-1}
         className={cx(
           'w-full rounded-lg border border-hairline-strong bg-panel shadow-overlay',
+          scrim === 'none' && 'pointer-events-auto',
           DIALOG_SIZE[size],
           className,
         )}

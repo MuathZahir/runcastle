@@ -3,12 +3,12 @@ import { trpc } from '../trpc'
 import { imageOnClipboard, toPngBlob } from '../lib/reviews'
 import { uploadProjectNoteScreenshot } from '../lib/project-notes'
 import { useToast } from '../lib/toast'
-import { Button, Dialog, Kbd } from '../ui'
-import { IconX } from '../icons'
+import { Dialog, Kbd } from '../ui'
+import { IconCheck, IconPencil, IconX } from '../icons'
 
 /**
  * Jot a project note, from wherever you were standing (project-notes,
- * decisions #3 and #10).
+ * decisions #3, #16 and #18).
  *
  * One focused line and an optional pasted screenshot, and nothing else: the
  * whole contract is that an observation gets out of the human's head in under
@@ -16,17 +16,20 @@ import { IconX } from '../icons'
  * is no destination picker, no severity, and no project picker either (the note
  * belongs to the project this shell is showing).
  *
- * It runs its mechanics through `Dialog` like every other overlay in the app
- * (apps/web/STYLE.md), which is what gives it Escape-discards, focus on open and
- * focus back to whatever you were doing on close.
+ * It is shaped like the ⌘K palette — top-centre, the palette's width, one large
+ * borderless line — because that is the capture gesture the app already
+ * teaches, over a light scrim so the page being noted stays readable. There is
+ * no Save button: Enter saves. It runs its mechanics through `Dialog` like every
+ * other overlay (apps/web/STYLE.md), which is what gives it Escape-discards,
+ * focus on open and focus back to whatever you were doing on close.
  *
- * Saving does not close the box immediately: it swaps to "Saved · N open" for a
- * moment so the pile is visible growing, and the count is the door to the inbox
- * — then it closes itself.
+ * Saving confirms in place: the bar becomes "Noted in <project> · N open · View",
+ * the scrim lifts at once so nothing feels stuck behind a modal, and the bar
+ * closes itself a moment later.
  */
 
-/** How long the confirmation stays up before the popover closes itself. */
-const CONFIRM_MS = 2500
+/** How long the confirmation stays up before the bar closes itself. */
+const CONFIRM_MS = 1500
 
 /** The one picture a note may carry, staged before the note exists. */
 interface StagedImage {
@@ -37,17 +40,19 @@ interface StagedImage {
 
 export interface NoteCaptureProps {
   projectId: string
+  /** Where the note goes — shown, never picked. */
+  projectName: string
   open: boolean
   onClose: () => void
-  /** Open the project chat door, where the pile is read and triaged. */
+  /** Open the project workspace, where the pile is read and triaged. */
   onOpenInbox: () => void
 }
 
-const NOTE_INPUT =
-  'w-full rounded-md border border-hairline bg-panel-inset px-3 py-2 font-sans text-base ' +
-  'text-text placeholder:text-text-4 focus:border-accent-line focus:outline-none'
+/** A text-coloured link inside a `<button>`: the unlayered `button { color:
+ *  inherit }` beats a colour written on the button, so it goes on a span. */
+const LINK_BUTTON = 'cursor-pointer rounded-sm border-0 bg-transparent p-0'
 
-export function NoteCapture({ projectId, open, onClose, onOpenInbox }: NoteCaptureProps) {
+export function NoteCapture({ projectId, projectName, open, onClose, onOpenInbox }: NoteCaptureProps) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const [text, setText] = useState('')
@@ -56,24 +61,36 @@ export function NoteCapture({ projectId, open, onClose, onOpenInbox }: NoteCaptu
   const [saved, setSaved] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Every open is a fresh note, and the reset happens DURING the render that
+  // opens it (decision #18). The component stays mounted while closed, so the
+  // last save's confirmation survives until then; resetting in an effect let the
+  // first open render show that confirmation with no input in it, and `Dialog`'s
+  // focus effect — which runs before ours — fell back to focusing the panel.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) {
+      setText('')
+      setStaged(null)
+      setSaving(false)
+      setSaved(false)
+    }
+  }
+
   const add = trpc.projectNotes.add.useMutation()
   // Only while the box is up: the rail's badge is the count's standing reader,
   // and this one exists for the confirmation line.
   const openCount = trpc.projectNotes.openCount.useQuery({ projectId }, { enabled: open })
 
-  // Every open is a fresh note. The live object URL is mirrored into a ref so
-  // closing mid-capture revokes the one the thumbnail was reading — keying the
-  // cleanup on `staged` would instead revoke the URL the render just used.
+  // The live object URL is mirrored into a ref so closing mid-capture revokes
+  // the one the thumbnail was reading — keying the cleanup on `staged` would
+  // instead revoke the URL the render just used.
   const preview = useRef<string | null>(null)
   useEffect(() => {
     preview.current = staged?.preview ?? null
   }, [staged])
   useEffect(() => {
     if (!open) return
-    setText('')
-    setStaged(null)
-    setSaving(false)
-    setSaved(false)
     return () => {
       if (preview.current) URL.revokeObjectURL(preview.current)
     }
@@ -107,6 +124,7 @@ export function NoteCapture({ projectId, open, onClose, onOpenInbox }: NoteCaptu
       if (current) URL.revokeObjectURL(current.preview)
       return null
     })
+    inputRef.current?.focus()
   }
 
   const onPaste = (e: ReactClipboardEvent<HTMLElement>): void => {
@@ -147,31 +165,44 @@ export function NoteCapture({ projectId, open, onClose, onOpenInbox }: NoteCaptu
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="sm" label="Jot a note" initialFocusRef={inputRef}>
-      <div className="flex flex-col gap-3 p-4" onPaste={onPaste}>
-        {saved ? (
-          <div className="flex items-center gap-2 text-base text-text-2">
-            <span className="text-ok">Saved</span>
-            {openCount.data !== undefined && (
-              <>
-                <span className="text-text-4" aria-hidden="true">
-                  ·
-                </span>
-                <button
-                  className="cursor-pointer rounded-sm border-0 bg-transparent p-0 underline underline-offset-2"
-                  onClick={readInbox}
-                  title="Read the pile on the project chat door"
-                >
-                  <span className="text-accent-hi">{openCount.data} open</span>
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
-          <>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      size="palette"
+      scrim={saved ? 'none' : 'light'}
+      className="overflow-hidden"
+      label="Jot a note"
+      initialFocusRef={inputRef}
+    >
+      {saved ? (
+        <div className="flex h-13 items-center gap-2.5 px-3.5 text-base" role="status">
+          <span className="flex shrink-0 items-center text-ok">
+            <IconCheck size={16} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-text-2">
+            Noted in <span className="font-medium text-text">{projectName}</span>
+            {openCount.data !== undefined && <> · {openCount.data} open</>}
+          </span>
+          <button
+            className={LINK_BUTTON}
+            onClick={readInbox}
+            title="Read the pile on the project workspace"
+          >
+            <span className="text-sm text-accent-hi hover:underline">View</span>
+          </button>
+        </div>
+      ) : (
+        <div onPaste={onPaste}>
+          <div className="flex h-13 items-center gap-2.5 px-3.5">
+            <span className="flex shrink-0 items-center text-accent-hi">
+              <IconPencil size={16} />
+            </span>
             <input
               ref={inputRef}
-              className={NOTE_INPUT}
+              // `font-sans` because there is no preflight: an `<input>` keeps the
+              // UA's own face and size unless it is told otherwise.
+              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-lg text-text outline-none placeholder:text-text-4"
+              autoComplete="off"
               aria-label="what did you just notice?"
               placeholder="What did you just notice?"
               value={text}
@@ -182,42 +213,44 @@ export function NoteCapture({ projectId, open, onClose, onOpenInbox }: NoteCaptu
                 void submit()
               }}
             />
+          </div>
 
-            {staged && (
-              <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3 border-t border-hairline-soft bg-panel-2 px-3.5 py-2 text-sm text-text-3">
+            {staged ? (
+              <span className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-hairline-strong bg-panel-3 pr-1 pl-0.5 text-text-2">
                 <img
                   src={staged.preview}
                   alt="the picture this note will carry"
-                  className="h-[54px] w-24 rounded-sm border border-hairline bg-black object-cover"
+                  className="h-4.5 w-7 rounded-[3px] bg-black object-cover"
                 />
+                Screenshot
                 <button
-                  className="flex cursor-pointer items-center rounded-sm border-0 bg-transparent p-1 hover:bg-panel-3"
+                  className="flex size-4.5 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 hover:bg-hairline"
                   aria-label="remove the picture"
                   title="Remove the picture"
                   onClick={drop}
                 >
                   <span className="flex items-center text-text-3">
-                    <IconX size={13} />
+                    <IconX size={10} />
                   </span>
                 </button>
-              </div>
-            )}
-
-            <div className="flex items-center gap-3">
-              <Button
-                variant="solid"
-                disabled={!text.trim() || saving}
-                onClick={() => void submit()}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </Button>
-              <span className="flex items-center gap-1.5 text-sm text-text-3">
-                <Kbd>↵</Kbd> saves · <Kbd>esc</Kbd> discards · paste a screenshot
               </span>
-            </div>
-          </>
-        )}
-      </div>
+            ) : (
+              <span>Paste a screenshot</span>
+            )}
+            <span className="flex-1" />
+            <span>
+              to <span className="font-medium text-text-2">{projectName}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Kbd>↵</Kbd> save
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Kbd>esc</Kbd> close
+            </span>
+          </div>
+        </div>
+      )}
     </Dialog>
   )
 }
