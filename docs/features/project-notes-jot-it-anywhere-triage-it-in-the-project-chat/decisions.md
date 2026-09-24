@@ -55,3 +55,27 @@
 ## 14. No featureless project burn; the "project fix lane" is parked
 **Decision:** Quick changes stay feature-shaped. A project-level burn of tickets with no feature behind them is rejected. If batches later prove heavy, the direction is a **project fix lane** — one standing feature-shaped container per project whose laps are fed by triage and reviewed by the project-level drive of its branch, and the natural home for the charter's anticipated full-auto (no Burn click) toggle. It is parked as a draft feature.
 **Why:** Featureless tickets lose the branch, review, reject unit and work record that make an unattended burn safe. A lane saves only one row per triage over batching, so it should be built on evidence from using batches. Everything in this feature (store, inbox, tools, screenshot handling, feature link) works unchanged under both, since both are feature-shaped; only the routing text in `references/triage.md` would change.
+
+## Revisited 2026-09-24 — the lap-1 drive: the UI reads as bolted on
+
+The drive confirmed the loop works but the surfaces look foreign to runcastle ("looks like a school project"): a text "Note" button in an icon-only titlebar, an off-centre capture box with a disabled-looking Save, a "Saved" state that left a wide empty box over a dimmed app, and an inbox that is a wall of bordered Edit / Dismiss / red Delete buttons. The approved redesign is the working prototype at `prototypes/notes-ui.html` (published at https://claude.ai/artifact/8YtDVJRFarzZbUu1c71GwB). Behaviour, store, tools and triage are unchanged.
+
+## 15. The titlebar Note control is an icon button
+**Decision:** The titlebar control is an icon-only pencil button, the same size and ghost style as the theme and details-panel buttons beside it, with a tooltip "Jot a note" plus the shortcut. No text label. It shows an active tint while capture is open.
+**Supersedes:** the "titlebar Note button" wording of #3 (the three doors themselves are unchanged).
+**Why:** Every other titlebar control is an icon; a bordered text button was the thing that looked out of place.
+
+## 16. Capture is palette-shaped and saves in place
+**Decision:** The capture opens top-centre, in the same place and width family as the ⌘K palette, over a light scrim (the page stays readable — you are noting something on it). It is one large borderless input with a leading pencil glyph and no Save button (Enter saves). A footer strip carries "Paste a screenshot" (replaced by a thumbnail chip with a remove × once pasted), the destination ("to <project>"), and the ↵ / esc hints. On save the bar becomes a single line — "Noted in <project> · N open · View" — the scrim lifts at once and the bar closes itself after ~1.5s; View opens the project workspace's inbox.
+**Supersedes:** the popover presentation in #3 and the "Saved · N open" presentation in #10 (the count-as-link behaviour stays).
+**Why:** The palette is the capture gesture runcastle already teaches; one large line with no button is the ten-second contract made visible; confirming in place with the scrim lifted stops the save from feeling like a modal you are stuck in.
+
+## 17. The inbox is a dense list, not a form
+**Decision:** The Notes card's header carries the title, the open count, one short subtitle line and the Triage button (violet ghost — New chat stays the one solid accent). Each open note is one dense row: a small screenshot thumbnail (or a quiet dot when none), the text, and a relative time; Edit / Dismiss / Delete are icon buttons revealed on hover **and keyboard focus**, replacing the time, and Delete turns red only under the pointer. Edit is inline. Triaged notes fold into one quiet "N triaged" disclosure whose rows show the outcome and a Reopen icon. The explanatory paragraph is gone.
+**Supersedes:** the Notes card presentation in #10 (its contents and placement are unchanged).
+**Why:** Three bordered buttons on every row, a red-outlined Delete repeated N times and a paragraph made a list of one-liners read like a settings form. Revealing actions on hover/focus keeps them one move away without shouting.
+
+## 18. Capture must focus its input on every open (traced defect)
+**Decision:** Opening capture always lands the cursor in the input — first open or any later one.
+**Traced cause:** `NoteCapture` stays mounted while closed, so its `saved` flag survives the previous save. On the next open, the first render still shows the "Saved" view (no input); `Dialog`'s focus effect runs before `NoteCapture`'s own reset effect, finds `initialFocusRef` null and focuses the panel (the outline around the whole dialog); the reset then mounts the input unfocused. It reproduces on every open after at least one save in the session, never on the first.
+**Why:** The hotkey is worthless if the human has to reach for the mouse before typing.

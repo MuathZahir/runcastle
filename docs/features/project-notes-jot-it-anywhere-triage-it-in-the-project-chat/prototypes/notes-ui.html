@@ -1,0 +1,405 @@
+<title>Project Notes Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* runcastle is dark-first; this prototype commits to its one dark world and paints every color explicitly. */
+:root{
+  color-scheme:dark;
+  --bg:#090b10; --panel:#0e1117; --panel-2:#0b0e14; --panel-3:#12151d; --inset:#07080b;
+  --hair:#1c2230; --hair-soft:#151a26; --hair-strong:#2a3242;
+  --text:#dde3ed; --text-2:#96a0b0; --text-3:#5f6a7a; --text-4:#3a4354;
+  --accent:#7c6cf6; --accent-hi:#a49bff; --accent-2:#8f80f8; --accent-ink:#0d0722; --accent-soft:#161329; --accent-line:#3d3670;
+  --danger:#f4594e; --needs:#d7a94a; --ok:#3fb950;
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r-sm:6px; --r-md:8px; --r-lg:12px;
+  --shadow-overlay:0 24px 70px -24px rgba(0,0,0,.85),0 8px 24px -12px rgba(0,0,0,.6);
+  --shadow-menu:0 8px 28px -10px rgba(0,0,0,.7),0 2px 8px -2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:0 16px;-webkit-font-smoothing:antialiased}
+.page{max-width:1180px;margin:0 auto;padding-block:32px 64px;display:flex;flex-direction:column;gap:28px}
+.intro{display:flex;flex-direction:column;gap:8px;max-width:72ch}
+.intro .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--accent-hi)}
+.intro h1{margin:0;font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.01em}
+.intro p{margin:0;color:var(--text-2)}
+.try{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;color:var(--text-3)}
+.try b{color:var(--text-2);font-weight:500}
+kbd,.kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--hair-strong);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--text-2);background:var(--panel)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent-line);outline-offset:1px}
+
+/* ---- app frame ---- */
+.app{position:relative;border:1px solid var(--hair);border-radius:var(--r-lg);overflow:hidden;background:var(--bg);display:grid;grid-template-rows:44px minmax(0,1fr);height:640px}
+.titlebar{display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:var(--panel);border-bottom:1px solid var(--hair);min-width:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--accent-hi);white-space:nowrap}
+.brand i{width:14px;height:14px;border-radius:3px;background:var(--accent);display:inline-block}
+.crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden}
+.crumbs .sep{color:var(--text-4)}
+.crumbs .here{color:var(--text);font-weight:500}
+.tb-sp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:28px;width:260px;padding:0 6px 0 10px;border:1px solid var(--hair);border-radius:var(--r-sm);color:var(--text-3);font-size:12.5px;background:var(--panel-2)}
+.search span{flex:1}
+.iconbtn{position:relative;width:28px;height:28px;border-radius:var(--r-sm);border:1px solid transparent;background:transparent;color:var(--text-3);display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{background:var(--panel-3);color:var(--text)}
+.iconbtn.on{color:var(--accent-hi);background:var(--accent-soft)}
+.iconbtn svg{width:15px;height:15px}
+.tip{position:absolute;top:34px;right:0;white-space:nowrap;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-sm);padding:4px 8px;font-size:12px;color:var(--text-2);box-shadow:var(--shadow-menu);opacity:0;pointer-events:none;transition:opacity .12s;z-index:5;display:flex;gap:8px;align-items:center}
+.iconbtn:hover .tip,.iconbtn:focus-visible .tip{opacity:1}
+.body{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:0}
+.rail{background:var(--panel-2);border-right:1px solid var(--hair);padding:12px 10px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.rail .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);font-weight:600;padding:10px 8px 6px}
+.rrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r-sm);font-size:13px;color:var(--text-2)}
+.rrow .dot{width:6px;height:6px;border-radius:50%;background:var(--needs);flex:none}
+.rrow.proj{background:var(--panel-3);color:var(--text);font-weight:500;border:1px solid var(--hair)}
+.rrow .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.count{min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-hi);font-size:11px;font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.count[hidden]{display:none}
+.main{overflow-y:auto;min-width:0}
+.col{max-width:760px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:28px}
+.head{display:flex;flex-direction:column;gap:6px}
+.head .row{display:flex;align-items:center;gap:10px}
+.tag{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--accent-hi);border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:999px;padding:1px 8px}
+.head h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.head p{margin:0;font-size:12px;color:var(--text-3)}
+.head code{font-family:var(--mono);color:var(--text-2);font-size:11.5px}
+.panel{border:1px solid var(--hair);border-radius:var(--r-lg);background:var(--panel)}
+.newchat{display:flex;align-items:center;gap:16px;padding:16px 18px}
+.newchat .t{flex:1;min-width:0}
+.newchat h3{margin:0;font-size:14px;font-weight:600}
+.newchat p{margin:2px 0 0;font-size:12px;color:var(--text-3)}
+.btn{height:30px;padding:0 12px;border-radius:var(--r-sm);border:1px solid var(--hair-strong);background:var(--panel-3);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--text-4)}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.solid:hover{background:var(--accent-2)}
+.btn.violet{background:transparent;border-color:var(--accent-line);color:var(--accent-hi)}
+.btn.violet:hover{background:var(--accent-soft)}
+.btn[disabled]{opacity:.45;cursor:default}
+
+/* ---- notes inbox ---- */
+.notes-h{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 18px;border-bottom:1px solid var(--hair-soft)}
+.notes-h h3{margin:0;font-size:14px;font-weight:600}
+.notes-h .sub{font-size:12px;color:var(--text-3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list{list-style:none;margin:0;padding:4px 0}
+.item{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-height:42px;padding:6px 12px 6px 18px}
+.item + .item{border-top:1px solid var(--hair-soft)}
+.item:hover,.item:focus-within{background:var(--panel-3)}
+.shot{width:40px;height:26px;border-radius:4px;border:1px solid var(--hair-strong);background:linear-gradient(135deg,#1a2030,#161329);cursor:zoom-in;position:relative;overflow:hidden;padding:0}
+.shot::before{content:"";position:absolute;left:6px;right:10px;top:8px;height:3px;border-radius:2px;background:#3d3670}
+.shot::after{content:"";position:absolute;left:6px;right:18px;top:15px;height:3px;border-radius:2px;background:#2a3242}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.noshot{width:40px;display:grid;place-items:center;color:var(--text-4)}
+.noshot i{width:5px;height:5px;border-radius:50%;background:var(--accent-line)}
+.txt{min-width:0;font-size:13.5px;color:var(--text);overflow-wrap:anywhere}
+.txt input{width:100%;height:28px;border:1px solid var(--accent-line);border-radius:var(--r-sm);background:var(--inset);color:var(--text);font:inherit;padding:0 8px;outline:none}
+.meta{display:flex;align-items:center;gap:2px}
+.when{font-family:var(--mono);font-size:11px;color:var(--text-3);padding-right:6px;font-variant-numeric:tabular-nums}
+.acts{display:flex;gap:2px;opacity:0;transition:opacity .1s}
+.item:hover .acts,.item:focus-within .acts{opacity:1}
+.item:hover .when,.item:focus-within .when{display:none}
+.act{width:26px;height:26px;border-radius:var(--r-sm);border:0;background:transparent;color:var(--text-3);display:grid;place-items:center;cursor:pointer;position:relative}
+.act:hover{background:var(--hair);color:var(--text)}
+.act.del:hover{color:var(--danger)}
+.act svg{width:14px;height:14px}
+.act[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:30px;right:0;white-space:nowrap;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-sm);padding:3px 7px;font-size:11.5px;color:var(--text-2);box-shadow:var(--shadow-menu);z-index:3}
+details.tri{border-top:1px solid var(--hair-soft)}
+details.tri summary{list-style:none;cursor:pointer;padding:10px 18px;font-size:12px;color:var(--text-3);display:flex;align-items:center;gap:6px}
+details.tri summary::-webkit-details-marker{display:none}
+details.tri summary svg{width:12px;height:12px;transition:transform .15s}
+details.tri[open] summary svg{transform:rotate(90deg)}
+details.tri summary:hover{color:var(--text-2)}
+.item.done .txt{color:var(--text-3)}
+.outcome{display:block;font-size:12px;color:var(--text-3);margin-top:1px}
+.outcome b{color:var(--accent-hi);font-weight:500}
+.empty{padding:18px;font-size:12.5px;color:var(--text-3)}
+.convs{padding:14px 18px;font-size:12.5px;color:var(--text-3)}
+.convs .ct{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px}
+.convs .c{padding:6px 0;border-top:1px solid var(--hair-soft);color:var(--text-2)}
+
+/* ---- capture bar ---- */
+.scrim{position:absolute;inset:44px 0 0 0;background:rgba(4,6,10,.28);opacity:0;pointer-events:none;transition:opacity .12s}
+.app.capturing .scrim{opacity:1;pointer-events:auto}
+.capture{position:absolute;left:50%;top:64px;width:min(560px,calc(100% - 32px));transform:translate(-50%,-6px);opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;background:var(--panel);border:1px solid var(--hair-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-overlay);overflow:hidden;z-index:10}
+.app.capturing .capture{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.cap-in{display:flex;align-items:center;gap:10px;padding:0 14px;height:52px}
+.cap-in svg{width:16px;height:16px;color:var(--accent-hi);flex:none}
+.cap-in input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--text);font:inherit;font-size:16px;outline:none}
+.cap-in input::placeholder{color:var(--text-4)}
+.cap-foot{display:flex;align-items:center;gap:12px;padding:8px 14px;border-top:1px solid var(--hair-soft);background:var(--panel-2);font-size:12px;color:var(--text-3);flex-wrap:wrap}
+.cap-foot .sp{flex:1}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 4px 0 3px;border:1px solid var(--hair-strong);border-radius:var(--r-sm);background:var(--panel-3);color:var(--text-2)}
+.chip .th{width:28px;height:18px;border-radius:3px;overflow:hidden;background:linear-gradient(135deg,#1a2030,#161329)}
+.chip .th img{width:100%;height:100%;object-fit:cover;display:block}
+.chip button{border:0;background:transparent;color:var(--text-3);cursor:pointer;width:18px;height:18px;display:grid;place-items:center;border-radius:4px}
+.chip button:hover{background:var(--hair);color:var(--text)}
+.dest{display:inline-flex;align-items:center;gap:6px}
+.dest b{color:var(--text-2);font-weight:500}
+.saved{display:none;align-items:center;gap:10px;padding:0 14px;height:52px;font-size:14px}
+.saved svg{width:16px;height:16px;color:var(--ok)}
+.saved .t{flex:1;color:var(--text-2)}
+.saved .t b{color:var(--text);font-weight:500}
+.saved a{color:var(--accent-hi);text-decoration:none;font-size:13px;cursor:pointer}
+.saved a:hover{text-decoration:underline}
+.app.just-saved .cap-in,.app.just-saved .cap-foot{display:none}
+.app.just-saved .saved{display:flex}
+.app.just-saved .scrim{opacity:0;pointer-events:none}
+
+.lightbox{position:absolute;inset:0;background:rgba(4,6,10,.8);display:none;place-items:center;z-index:20;cursor:zoom-out;padding:40px}
+.lightbox.on{display:grid}
+.lightbox .pic{width:min(640px,100%);aspect-ratio:16/10;border-radius:var(--r-md);border:1px solid var(--hair-strong);background:linear-gradient(135deg,#1a2030,#161329);overflow:hidden;box-shadow:var(--shadow-overlay)}
+.lightbox .pic img{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+
+.toast{position:absolute;right:16px;bottom:16px;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-md);padding:8px 12px;font-size:12.5px;color:var(--text-2);box-shadow:var(--shadow-menu);opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s;pointer-events:none;max-width:340px;z-index:30}
+.toast.on{opacity:1;transform:none}
+
+/* ---- callouts ---- */
+.pin{position:absolute;width:20px;height:20px;border-radius:50%;background:var(--needs);color:#1a1405;font-size:11px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 3px rgba(215,169,74,.18);z-index:8;pointer-events:none}
+.notes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cn{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;padding:14px;border:1px solid var(--hair);border-radius:var(--r-md);background:var(--panel)}
+.cn .n{width:20px;height:20px;border-radius:50%;background:var(--needs);color:#1a1405;font-size:11px;font-weight:700;display:grid;place-items:center}
+.cn h3{margin:0 0 4px;font-size:13.5px;font-weight:600}
+.cn p{margin:0;font-size:12.5px;color:var(--text-2)}
+.cn .was{display:block;margin-top:6px;font-size:12px;color:var(--text-3)}
+.cn .was::before{content:"Lap 1: ";color:var(--danger);font-weight:600}
+@media (max-width:860px){.body{grid-template-columns:1fr}.rail{display:none}.search{display:none}.notes-grid{grid-template-columns:1fr}.pin.p-cap{display:none}}
+@media (max-width:520px){.crumbs .hide-sm{display:none}.col{padding:20px 12px}.newchat{flex-wrap:wrap}.app{height:700px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="page">
+  <header class="intro">
+    <span class="eyebrow">Prototype · lap 2 proposal</span>
+    <h1>Project notes, redrawn to sit inside runcastle instead of on top of it</h1>
+    <p>A working mock-up in runcastle's own tokens. Everything below responds: jot a note, paste a picture, and work the inbox. The numbered pins match the four problems from your drive.</p>
+    <div class="try"><span><b>Try:</b> <kbd>Ctrl</kbd> <kbd>J</kbd> or the pencil in the titlebar</span><span>paste an image while the bar is open</span><span>hover a note for its actions</span><span><kbd>Esc</kbd> closes</span></div>
+  </header>
+
+  <div class="app" id="app">
+    <div class="titlebar">
+      <span class="brand"><i aria-hidden="true"></i>runcastle</span>
+      <span class="crumbs"><span class="sep">/</span><span class="hide-sm">runcastle-demo</span><span class="sep hide-sm">/</span><span class="here">Chat</span></span>
+      <span class="tb-sp"></span>
+      <span class="search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><span>Search or jump to…</span><kbd>Ctrl+K</kbd></span>
+      <button class="iconbtn" id="noteBtn" aria-label="Jot a note (Ctrl+J)">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10.8 2.7a1.6 1.6 0 0 1 2.3 2.3L6 12.1l-3 .8.8-3z"/><path d="M9.6 3.9l2.4 2.4"/></svg>
+        <span class="tip">Jot a note <kbd>Ctrl J</kbd></span>
+        <span class="pin" style="top:-6px;right:-8px">1</span>
+      </button>
+      <button class="iconbtn" aria-label="Theme"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg></button>
+      <button class="iconbtn" aria-label="Details panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M10 3v10"/></svg></button>
+    </div>
+
+    <div class="body">
+      <nav class="rail" aria-label="Features">
+        <div class="rrow proj"><span class="grow">runcastle-demo</span><span class="count" id="railCount">4</span></div>
+        <div class="lab">Needs you</div>
+        <div class="rrow"><span class="dot"></span><span class="grow">UX audit — clarify the empty entry list</span></div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Kickoff probe (throwaway)</span></div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Weekly digest email</span></div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Realtime team collaboration</span></div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Entry tags</span></div>
+        <div class="lab">Drafts</div>
+        <div class="rrow"><span class="grow">project-fix-lane</span></div>
+      </nav>
+
+      <main class="main">
+        <div class="col">
+          <div class="head">
+            <div class="row"><span class="tag">Project</span><h2>runcastle-demo</h2></div>
+            <p>Chats run on <code>runcastle/project</code> and land on <code>main</code>.</p>
+          </div>
+
+          <section class="panel newchat">
+            <div class="t"><h3>Talk it through</h3><p>Bring a raw idea; the chat checks it against what's built and cuts it into features.</p></div>
+            <button class="btn solid">New chat</button>
+          </section>
+
+          <section class="panel" id="notesPanel" aria-label="Notes" style="position:relative">
+            <span class="pin" style="top:-9px;left:-9px">3</span>
+            <div class="notes-h">
+              <h3>Notes</h3><span class="count" id="headCount">4</span>
+              <span class="sub">Grouped, questioned and routed in a triage chat.</span>
+              <button class="btn violet" id="triageBtn">Triage 4</button>
+            </div>
+            <ul class="list" id="openList"></ul>
+            <details class="tri" id="triDetails">
+              <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4.5 3 7.5 6l-3 3"/></svg><span id="triLabel">2 triaged</span></summary>
+              <ul class="list" id="triList"></ul>
+            </details>
+          </section>
+
+          <section class="panel convs">
+            <div class="ct">Conversations</div>
+            <div class="c">Cut the weekly digest into features · yesterday</div>
+            <div class="c">Is realtime collab worth it? · 3 days ago</div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div class="capture" id="capture" role="dialog" aria-modal="true" aria-label="Jot a note">
+      <div class="cap-in">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10.8 2.7a1.6 1.6 0 0 1 2.3 2.3L6 12.1l-3 .8.8-3z"/><path d="M9.6 3.9l2.4 2.4"/></svg>
+        <input id="capInput" autocomplete="off" placeholder="What did you just notice?" aria-label="What did you just notice?">
+      </div>
+      <div class="cap-foot">
+        <span id="shotSlot"><span>Paste a screenshot</span></span>
+        <span class="sp"></span>
+        <span class="dest">to <b>runcastle-demo</b></span>
+        <span><kbd>↵</kbd> save</span>
+        <span><kbd>esc</kbd> close</span>
+      </div>
+      <div class="saved" role="status">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3.5 8.5 3 3 6-7"/></svg>
+        <span class="t">Noted in <b>runcastle-demo</b> · <span id="savedCount">5</span> open</span>
+        <a id="viewInbox">View</a>
+      </div>
+    </div>
+
+    <div class="lightbox" id="lightbox" role="dialog" aria-label="Screenshot"><div class="pic" id="lbPic"></div></div>
+    <div class="toast" id="toast" role="status"></div>
+
+        <span class="pin p-cap" style="top:54px;left:calc(50% - 290px)">2</span>
+      </div>
+
+  <section class="notes-grid" aria-label="What changed">
+    <div class="cn"><span class="n">1</span><div><h3>The Note control matches the titlebar</h3><p>An icon button, the same size and weight as theme and panel next to it. The tooltip names it and shows <kbd>Ctrl J</kbd>. No text label, so nothing sticks out.</p><span class="was">a bordered text button that looked like it came from another app.</span></div></div>
+    <div class="cn"><span class="n">2</span><div><h3>Capture works like the command palette</h3><p>Centered near the top, like <kbd>Ctrl K</kbd>, with a light scrim so you can still see what you're noting. The cursor starts in the input. One large line, with no Save button, because Enter saves. Where the note goes is shown as "to runcastle-demo", and a pasted picture shows up as a chip.</p><span class="was">off-center box, click needed before typing, disabled-looking Save.</span></div></div>
+    <div class="cn"><span class="n">2</span><div><h3>Saved confirms in place, then gets out of the way</h3><p>The bar becomes one line: "Noted in runcastle-demo · 5 open · View". The scrim lifts right away and the bar closes itself after about 1.5 seconds.</p><span class="was">a wide, empty box with the whole app still dimmed behind it.</span></div></div>
+    <div class="cn"><span class="n">3</span><div><h3>The inbox is a list, not a form</h3><p>One dense row per note: picture, text, and a quiet time. Edit, dismiss and delete are icons that appear on hover or keyboard focus, and delete only turns red under the pointer. The count and Triage sit in the header, and the paragraph is gone. Triaged notes fold into one quiet line.</p><span class="was">three bordered buttons on every row, a red-outlined Delete ×N, a paragraph, and a floating Triage button.</span></div></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var app=document.getElementById('app');
+  var capture=document.getElementById('capture');
+  var input=document.getElementById('capInput');
+  var scrim=document.getElementById('scrim');
+  var shotSlot=document.getElementById('shotSlot');
+  var toastEl=document.getElementById('toast');
+  var lightbox=document.getElementById('lightbox');
+  var lbPic=document.getElementById('lbPic');
+  var staged=null, savedTimer=null, toastTimer=null, lastFocus=null, uid=10;
+
+  var notes=[
+    {id:1,text:'model chip wraps onto two lines on narrow ticket cards',min:2,shot:true},
+    {id:2,text:'crumbs overflow on long feature slugs',min:9,shot:false},
+    {id:3,text:'why does Burn sit on "resolving" for so long after a config change?',min:41,shot:false},
+    {id:4,text:'settings concurrency field has no help text',min:180,shot:false}
+  ];
+  var triaged=[
+    {id:5,text:'prep row badge doesn’t match the other badges',outcome:'→ batch quick change <b>UI polish</b>'},
+    {id:6,text:'empty state feels dead',outcome:'dropped: covered by the first-run wizard'}
+  ];
+
+  var ICON={
+    edit:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10.8 2.7a1.6 1.6 0 0 1 2.3 2.3L6 12.1l-3 .8.8-3z"/></svg>',
+    done:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3.5 8.5 3 3 6-7"/></svg>',
+    del:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg>',
+    undo:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 6H10a3 3 0 0 1 0 6H7"/><path d="M7 3.5 4.5 6 7 8.5"/></svg>'
+  };
+  function when(m){return m<1?'now':m<60?m+'m':Math.round(m/60)+'h'}
+  function esc(s){return s.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  function shotHtml(n){
+    if(!n.shot) return '<span class="noshot" aria-hidden="true"><i></i></span>';
+    var img=n.url?'<img alt="" src="'+n.url+'">':'';
+    return '<button class="shot" data-zoom="'+n.id+'" aria-label="View screenshot">'+img+'</button>';
+  }
+  function render(){
+    var ol=document.getElementById('openList');
+    ol.innerHTML=notes.length?notes.map(function(n){
+      var txt=n.editing?'<input data-edit="'+n.id+'" value="'+esc(n.text)+'" aria-label="Edit note">':esc(n.text);
+      return '<li class="item">'+shotHtml(n)+'<span class="txt">'+txt+'</span><span class="meta"><span class="when">'+when(n.min)+'</span><span class="acts">'+
+        '<button class="act" data-a="edit" data-id="'+n.id+'" data-tip="Edit" aria-label="Edit">'+ICON.edit+'</button>'+
+        '<button class="act" data-a="dismiss" data-id="'+n.id+'" data-tip="Dismiss" aria-label="Dismiss">'+ICON.done+'</button>'+
+        '<button class="act del" data-a="delete" data-id="'+n.id+'" data-tip="Delete" aria-label="Delete">'+ICON.del+'</button>'+
+        '</span></span></li>';
+    }).join(''):'<li class="empty">Nothing open. <kbd>Ctrl J</kbd> from anywhere to jot the next thing.</li>';
+    var tl=document.getElementById('triList');
+    tl.innerHTML=triaged.map(function(n){
+      return '<li class="item done"><span class="noshot" aria-hidden="true"></span><span class="txt">'+esc(n.text)+'<span class="outcome">'+n.outcome+'</span></span><span class="meta"><span class="acts">'+
+        '<button class="act" data-a="reopen" data-id="'+n.id+'" data-tip="Reopen" aria-label="Reopen">'+ICON.undo+'</button></span></span></li>';
+    }).join('');
+    document.getElementById('triLabel').textContent=triaged.length+' triaged';
+    document.getElementById('triDetails').hidden=triaged.length===0;
+    var c=notes.length;
+    ['railCount','headCount'].forEach(function(id){var el=document.getElementById(id);el.textContent=c;el.hidden=c===0});
+    var tb=document.getElementById('triageBtn');tb.textContent='Triage '+c;tb.disabled=c===0;
+    var ed=document.querySelector('[data-edit]');
+    if(ed){ed.focus();ed.setSelectionRange(ed.value.length,ed.value.length)}
+  }
+
+  function toast(msg){toastEl.textContent=msg;toastEl.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(function(){toastEl.classList.remove('on')},2400)}
+  function renderShot(){
+    shotSlot.innerHTML=staged?'<span class="chip"><span class="th"><img alt="" src="'+staged+'"></span>Screenshot<button id="dropShot" aria-label="Remove screenshot"><svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5"><path d="m2 2 6 6M8 2 2 8"/></svg></button></span>':'<span>Paste a screenshot</span>';
+    var d=document.getElementById('dropShot'); if(d) d.onclick=function(){staged=null;renderShot();input.focus()};
+  }
+  function openCapture(){
+    if(app.classList.contains('capturing')&&!app.classList.contains('just-saved')){input.focus();return}
+    clearTimeout(savedTimer);
+    lastFocus=document.activeElement;
+    app.classList.remove('just-saved');
+    input.value='';staged=null;renderShot();
+    app.classList.add('capturing');
+    document.getElementById('noteBtn').classList.add('on');
+    requestAnimationFrame(function(){input.focus()});
+  }
+  function closeCapture(){
+    clearTimeout(savedTimer);
+    app.classList.remove('capturing','just-saved');
+    document.getElementById('noteBtn').classList.remove('on');
+    if(lastFocus&&lastFocus.focus&&app.contains(lastFocus)) lastFocus.focus();
+  }
+  function save(){
+    var t=input.value.trim(); if(!t) return;
+    notes.unshift({id:++uid,text:t,min:0,shot:!!staged,url:staged});
+    render();
+    document.getElementById('savedCount').textContent=notes.length;
+    app.classList.add('just-saved');
+    savedTimer=setTimeout(closeCapture,1600);
+  }
+
+  document.getElementById('noteBtn').onclick=openCapture;
+  scrim.onclick=closeCapture;
+  document.getElementById('viewInbox').onclick=function(){closeCapture();document.getElementById('notesPanel').scrollIntoView({behavior:'smooth',block:'center'})};
+  input.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();save()}});
+  capture.addEventListener('paste',function(e){
+    var items=(e.clipboardData&&e.clipboardData.items)||[];
+    for(var i=0;i<items.length;i++){if(items[i].type.indexOf('image/')===0){
+      var f=items[i].getAsFile(); if(!f) continue; e.preventDefault();
+      var r=new FileReader(); r.onload=function(){staged=r.result;renderShot()}; r.readAsDataURL(f); return;
+    }}
+  });
+  document.addEventListener('keydown',function(e){
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&e.key.toLowerCase()==='j'){e.preventDefault();openCapture();return}
+    if(e.key==='Escape'){
+      if(lightbox.classList.contains('on')){lightbox.classList.remove('on');return}
+      if(app.classList.contains('capturing')){closeCapture();return}
+      var ed=document.querySelector('[data-edit]'); if(ed){notes.forEach(function(n){n.editing=false});render()}
+    }
+  });
+
+  document.getElementById('notesPanel').addEventListener('click',function(e){
+    var z=e.target.closest('[data-zoom]');
+    if(z){var n=notes.find(function(x){return x.id==z.dataset.zoom});lbPic.innerHTML=n&&n.url?'<img alt="Screenshot" src="'+n.url+'">':'';lightbox.classList.add('on');return}
+    var b=e.target.closest('[data-a]'); if(!b) return;
+    var id=+b.dataset.id, a=b.dataset.a;
+    if(a==='edit'){notes.forEach(function(n){n.editing=n.id===id});render()}
+    else if(a==='dismiss'){var i=notes.findIndex(function(n){return n.id===id});var n=notes.splice(i,1)[0];triaged.unshift({id:n.id,text:n.text,outcome:'dismissed',src:n});render();toast('Dismissed. Find it under triaged to reopen.')}
+    else if(a==='delete'){notes=notes.filter(function(n){return n.id!==id});render();toast('Note deleted.')}
+    else if(a==='reopen'){var j=triaged.findIndex(function(n){return n.id===id});var t=triaged.splice(j,1)[0];notes.unshift(t.src||{id:t.id,text:t.text,min:0,shot:false});render()}
+  });
+  document.getElementById('notesPanel').addEventListener('keydown',function(e){
+    var ed=e.target.closest('[data-edit]'); if(!ed) return;
+    if(e.key==='Enter'){var n=notes.find(function(x){return x.id==ed.dataset.edit});var v=ed.value.trim();if(v)n.text=v;n.editing=false;render()}
+  });
+  lightbox.onclick=function(){lightbox.classList.remove('on')};
+  document.getElementById('triageBtn').onclick=function(){toast('Opens a fresh project chat briefed to triage these '+notes.length+' notes.')};
+
+  render();
+})();
+</script>
