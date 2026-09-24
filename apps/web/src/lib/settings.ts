@@ -986,23 +986,22 @@ export function rosterRows(view: SettingsView): RosterRow[] {
   )
   const roster = rosterFromView(view)
   const rostered = new Set(roster.map((m) => m.id))
-  const withdrawnRuntime = withdrawnSource(sources)
-  const withdrawn = [...new Set([defaultModel, ...resolved.values()])].filter(
-    (id) => id !== '' && !rostered.has(id),
+  const withdrawnBy = withdrawnSource(sources)
+  const unrostered = new Set(
+    [defaultModel, ...resolved.values()].filter((id) => id !== '' && !rostered.has(id)),
   )
   const entries: ModelEntry[] = [
     ...roster,
-    ...withdrawn.map((id) => ({ id, runtime: withdrawnRuntime ?? DEFAULT_RUNTIME })),
+    ...[...unrostered].map((id) => ({ id, runtime: withdrawnBy ?? DEFAULT_RUNTIME })),
   ]
-  const withdrawnIds = new Set(withdrawn)
   return entries.map((m) => {
     const note = m.note ?? ''
     const usedFor = MODEL_STEPS.filter((step) => resolved.get(step) === m.id)
     const isDefault = m.id === defaultModel
     const found = discovered.get(m.id)
-    // A withdrawn id has no roster entry to remove, so it is not the
-    // operator's own however much it looks like a hand-typed one.
-    const custom = !curated.has(m.id) && !found && !withdrawnIds.has(m.id)
+    // A reference no roster layer carries has no entry to remove, so it is
+    // not the operator's own however much it looks like a hand-typed one.
+    const custom = !curated.has(m.id) && !found && !unrostered.has(m.id)
     const referenced = isDefault || usedFor.length > 0 || note !== ''
     return {
       id: m.id,
