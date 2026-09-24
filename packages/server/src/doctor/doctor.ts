@@ -22,9 +22,17 @@ import {
   type AgentRuntime,
 } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
+import {
+  type HostAgentVersions,
+  parseAgentCliVersion,
+  resolveHostAgentVersions,
+} from '../services/agent-cli-versions'
 import { codexAuthFile } from '../services/codex-auth'
 import {
+  describeFreshnessReason,
+  type FreshnessReason,
   hashDockerfile,
+  imageFreshness,
   inspectBuiltImage,
   legacyGlobalImage,
   legacyGlobalImageReason,
@@ -592,6 +600,8 @@ export interface ImageProbeInput {
   /** The stock burner Dockerfile the stock image must still match. */
   burnerDockerfile: string
   dockerfileHash: (path: string) => string | null
+  /** The host's agent CLI versions every image's CLIs must match; null is never drift. */
+  hostVersions: HostAgentVersions
   project?: ProjectImageEnv
   /** See {@link DoctorEnv.knownProjectIds}; absent means "do not classify". */
   knownProjectIds?: readonly string[]
@@ -618,9 +628,15 @@ export interface ImageProbeInput {
  * A project image is stale when *either* hash mismatches, and the detail names
  * which layer: a runcastle upgrade changes the stock Dockerfile, and every
  * project image `FROM` it would otherwise stay "fresh" by its own label forever.
+ *
+ * The other half of freshness is the agent CLIs (sandbox-agent-clis-track-the-
+ * host-version, decision 9): an image whose recorded Claude Code or Codex
+ * version is not the host's is stale the same way, judged by `imageFreshness` —
+ * the one verdict the Rebuild plan also uses. A custom image carries no labels,
+ * so it is probed instead and its drift is only a warning (decision 3).
  */
 export async function sandcastleImageProbe(input: ImageProbeInput): Promise<ProbeResult> {
-  const { exec, burnerDockerfile, dockerfileHash, project } = input
+  const { exec, burnerDockerfile, dockerfileHash, hostVersions, project } = input
   const runtime = await presentRuntime(exec)
   if (!runtime) {
     return {
@@ -651,10 +667,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     stored = null
   }
 
-  const stockHash = dockerfileHash(burnerDockerfile)
   const stock = await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)
-  // A hash we cannot read is no evidence of drift — say nothing rather than cry stale.
-  const stockFresh = stock.present && (stockHash === null || stock.hash === stockHash)
+  const stockVerdict = imageFreshness({
+    image: stock,
+    expectedHash: dockerfileHash(burnerDockerfile),
+    host: hostVersions,
+  })
 
   if (project && handTyped === null && projectHash !== null) {
     const tag = projectImageTag(project.id)
@@ -673,12 +691,19 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
         fix: 'Open Settings → Burns (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
       }
     }
-    if (image.hash !== projectHash) {
-      return staleImage(`${tag} no longer matches .runcastle/sandbox/Dockerfile`)
+    // The project image's own labels, inherited through `FROM`, record the CLIs
+    // its containers actually run — so its CLI drift is judged here, not on the base.
+    const own = imageFreshness({ image, expectedHash: projectHash, host: hostVersions })
+    if (!own.fresh) {
+      return staleImage(describeStale(tag, own.reasons, '.runcastle/sandbox/Dockerfile'))
     }
-    if (!stockFresh) {
-      const base = stock.present ? 'no longer matches the burner Dockerfile' : 'is not built'
-      return staleImage(`${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${base}`)
+    if (!stockVerdict.fresh) {
+      const layer = stockVerdict.reasons.find((r) => r.kind !== 'cli')
+      return staleImage(
+        layer === undefined
+          ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the burner Dockerfile')}`
+          : `${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${layer.kind === 'missing' ? 'is not built' : 'no longer matches the burner Dockerfile'}`,
+      )
     }
     return {
       ...IMAGE_ROW,
@@ -719,6 +744,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       // waiting on a build that is never coming.
       ...(projectHash === null ? [] : [`and outranks this repo's .runcastle/sandbox/Dockerfile`]),
       ...(custom.present ? [] : ['and is not built locally']),
+      // Decision 3: no labels to read, so the one probe that starts a container.
+      // Drift is a warning only — the status stays `custom`, which is what keeps
+      // the Rebuild button disarmed, since runcastle did not build this image.
+      ...(custom.present && legacy === null
+        ? await customImageDrift(exec, runtime, imageName, hostVersions)
+        : []),
     ]
     return {
       ...IMAGE_ROW,
@@ -742,8 +773,54 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
     }
   }
-  if (!stockFresh) return staleImage(`${imageName} no longer matches the burner Dockerfile`)
+  if (!stockVerdict.fresh) {
+    return staleImage(describeStale(imageName, stockVerdict.reasons, 'the burner Dockerfile'))
+  }
   return { ...IMAGE_ROW, status: 'ok', severity: 'error', detail: `${imageName} present` }
+}
+
+/**
+ * A stale image's reasons as one detail line. A hash mismatch keeps the row's
+ * long-standing wording, naming the Dockerfile the image was built from; CLI
+ * drift names the runtime and both versions.
+ */
+function describeStale(tag: string, reasons: FreshnessReason[], dockerfile: string): string {
+  return reasons
+    .map((reason) =>
+      reason.kind === 'hash'
+        ? `${tag} no longer matches ${dockerfile}`
+        : describeFreshnessReason(tag, reason),
+    )
+    .join('; ')
+}
+
+/**
+ * Ask an unmanaged image which agent CLIs it carries, in one container, and
+ * name each that differs from the host's. A CLI missing from either side is
+ * not drift: the host has nothing to match (decision 4), and an image without
+ * a CLI is the burn preflight's to refuse. A probe that fails says nothing.
+ */
+async function customImageDrift(
+  exec: ExecFn,
+  runtime: Runtime,
+  image: string,
+  host: HostAgentVersions,
+): Promise<string[]> {
+  const script = AGENT_RUNTIMES.map((r) => `${RUNTIME_SPECS[r].bin} --version 2>/dev/null`).join(
+    '; echo ---; ',
+  )
+  const out = await exec(runtime, ['run', '--rm', '--entrypoint', 'sh', image, '-c', script])
+  if (!out.ok) return []
+  const sections = out.stdout.split('---')
+  return AGENT_RUNTIMES.flatMap((r, i) => {
+    const inImage = parseAgentCliVersion(sections[i] ?? '')
+    const onHost = host[r]
+    if (inImage === null || onHost === null || inImage === onHost) return []
+    const { label } = RUNTIME_SPECS[r]
+    return [
+      `its ${label} ${inImage} differs from the host's ${onHost} — rebuild it with the tool that built it`,
+    ]
+  })
 }
 
 /** The image row's identity, shared by every verdict it can reach. */
@@ -814,6 +891,9 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
       imageName,
       burnerDockerfile,
       dockerfileHash,
+      // Presence is the injected exec's to decide, as for every other probe
+      // here: the production exec resolves the binary the same way anyway.
+      hostVersions: (await resolveHostAgentVersions(exec, () => true)).versions,
       ...(env.projectImage ? { project: env.projectImage } : {}),
       ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
     }),

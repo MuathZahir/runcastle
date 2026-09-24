@@ -46,17 +46,33 @@ function inspectKey(runtime: 'docker' | 'podman', tag: string): string {
   return `${runtime} image inspect --format ${format} ${tag}`
 }
 
+/** The canned-exec key for the one container a custom image is probed with. */
+function customProbeKey(tag: string): string {
+  return `docker run --rm --entrypoint sh ${tag} -c claude --version 2>/dev/null; echo ---; codex --version 2>/dev/null`
+}
+
+/** The Claude Code version the canned host runs; it has no Codex. */
+const HOST_CLAUDE = '1.0.0'
+
+/**
+ * What that inspect prints for an image runcastle built: its hash label, then
+ * the Claude Code and Codex version labels — by default, the host's CLIs.
+ */
+function labelled(hash: string, claude = HOST_CLAUDE, codex = ''): string {
+  return [hash, claude, codex].join('|')
+}
+
 const ALL_HEALTHY: Record<string, Partial<ExecOutcome>> = {
   'bun --version': { stdout: '1.3.14' },
   'node --version': { stdout: 'v22.0.0' },
   'git --version': { stdout: 'git version 2.45.0' },
-  'claude --version': { stdout: '1.0.0' },
+  'claude --version': { stdout: `${HOST_CLAUDE} (Claude Code)` },
   'claude auth status': { stdout: '{"loggedIn":true}' },
   'git config --get user.email': { stdout: 'dev@example.com' },
   'git config --get user.name': { stdout: 'Dev' },
   'docker --version': { stdout: 'Docker version 27.0.0' },
   'docker info': { stdout: 'Server: ...' },
-  [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
+  [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(STOCK_HASH) },
 }
 
 function byId(results: ProbeResult[], id: string): ProbeResult {
@@ -161,7 +177,7 @@ describe('runDoctor — canned environments', () => {
   it('reports a sandcastle image as stale when its hash label is not the Dockerfile’s', async () => {
     const table = {
       ...ALL_HEALTHY,
-      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: 'b'.repeat(64) },
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled('b'.repeat(64)) },
     }
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     const image = byId(report.results, 'sandcastle-image')
@@ -187,6 +203,72 @@ describe('runDoctor — canned environments', () => {
     }
     const report = await runDoctor({ ...base, exec: cannedExec(table) })
     expect(byId(report.results, 'sandcastle-image').status).toBe('stale')
+  })
+
+  // A host `claude update` never changes the Dockerfile hash, so the CLI labels
+  // are what make it visible (sandbox-agent-clis-track-the-host-version).
+  it('reports a sandcastle image as stale when its Claude Code is not the host’s', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(STOCK_HASH, '0.9.0') },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('stale')
+    expect(image.severity).toBe('error')
+    expect(image.detail).toBe(
+      'sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild',
+    )
+    expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
+  })
+
+  it('reads an image built before the CLI labels existed as stale', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      // Hash label only: what every image built before this feature prints.
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: `${STOCK_HASH}|<no value>|<no value>` },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('stale')
+    expect(image.detail).toBe(
+      'sandcastle:runcastle: no Claude Code version recorded, 1.0.0 on host — rebuild',
+    )
+  })
+
+  it('names every drift at once, the hash included', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'sandcastle:runcastle')]: {
+        stdout: labelled('b'.repeat(64), '0.9.0'),
+      },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    expect(byId(report.results, 'sandcastle-image').detail).toBe(
+      'sandcastle:runcastle no longer matches the burner Dockerfile; ' +
+        'sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild',
+    )
+  })
+
+  // Decision 4: with no host CLI there is nothing to drift from.
+  it('never calls an image stale over a CLI the host does not have', async () => {
+    const table = {
+      ...ALL_HEALTHY,
+      // Codex is not on this host, whatever the image recorded for it.
+      [inspectKey('docker', 'sandcastle:runcastle')]: {
+        stdout: labelled(STOCK_HASH, HOST_CLAUDE, '0.46.0'),
+      },
+    }
+    const report = await runDoctor({ ...base, exec: cannedExec(table) })
+    expect(byId(report.results, 'sandcastle-image').status).toBe('ok')
+
+    const noClaude: Record<string, Partial<ExecOutcome>> = {
+      ...ALL_HEALTHY,
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(STOCK_HASH, '') },
+    }
+    delete noClaude['claude --version']
+    const bare = await runDoctor({ ...base, exec: cannedExec(noClaude) })
+    expect(byId(bare.results, 'sandcastle-image').status).toBe('ok')
   })
 
   it('never asks the image when it was built, only what it was built from', async () => {
@@ -280,16 +362,63 @@ describe('runDoctor — canned environments', () => {
 
   // Runcastle cannot build it, but it can still say a burn will not find it.
   it('still calls a custom image out when it is not built at all', async () => {
+    const asked: string[] = []
+    const table = cannedExec(ALL_HEALTHY)
     const report = await runDoctor({
       ...base,
       imageName: 'my-team/sandbox:latest',
-      exec: cannedExec(ALL_HEALTHY),
+      exec: (command, args) => {
+        asked.push([command, ...args].join(' '))
+        return table(command, args)
+      },
     })
     const image = byId(report.results, 'sandcastle-image')
     expect(image.status).toBe('custom')
     expect(image.severity).toBe('error')
     expect(image.detail).toContain('is not built locally')
     expect(report.ok).toBe(false)
+    // There is no image to start a container from.
+    expect(asked).not.toContain(customProbeKey('my-team/sandbox:latest'))
+  })
+
+  // Decision 3: no labels to read, so one probe — and drift is a warning that
+  // leaves the row `custom`, the status that keeps the Rebuild button disarmed.
+  it('warns about a custom image whose CLI differs from the host’s, without arming Rebuild', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+        [customProbeKey('my-team/sandbox:latest')]: {
+          stdout: '0.9.0 (Claude Code)\n---\ncodex-cli 0.46.0\n',
+        },
+      }),
+    })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('custom')
+    expect(image.severity).toBe('info')
+    // Codex is not on the host, so its version in the image is not checked.
+    expect(image.detail).toBe(
+      'my-team/sandbox:latest is a custom image, managed outside runcastle — ' +
+        "its Claude Code 0.9.0 differs from the host's 1.0.0 — rebuild it with the tool that built it",
+    )
+    expect(image.fix).toContain('clear the sandbox image setting')
+  })
+
+  it('says nothing more about a custom image whose CLI matches the host’s', async () => {
+    const report = await runDoctor({
+      ...base,
+      imageName: 'my-team/sandbox:latest',
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
+        [customProbeKey('my-team/sandbox:latest')]: { stdout: `${HOST_CLAUDE} (Claude Code)\n---\n` },
+      }),
+    })
+    expect(byId(report.results, 'sandcastle-image').detail).toBe(
+      'my-team/sandbox:latest is a custom image, managed outside runcastle',
+    )
   })
 })
 
@@ -516,14 +645,17 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     }
   }
 
-  /** A host with both images built, each labelled with the hash given here. */
-  const built = (stock: string, projectImage?: string) =>
+  /**
+   * A host with both images built, each labelled with the hash given here and
+   * with CLI version labels that are the host's unless `projectClaude` says otherwise.
+   */
+  const built = (stock: string, projectImage?: string, projectClaude = HOST_CLAUDE) =>
     cannedExec({
       ...ALL_HEALTHY,
-      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: stock },
+      [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(stock) },
       ...(projectImage === undefined
         ? {}
-        : { [inspectKey('docker', TAG)]: { stdout: projectImage } }),
+        : { [inspectKey('docker', TAG)]: { stdout: labelled(projectImage, projectClaude) } }),
     })
 
   const imageRow = async (env: Parameters<typeof runDoctor>[0]) =>
@@ -564,6 +696,37 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.status).toBe('stale')
     expect(row.detail).toBe(
       `${TAG} is built on sandcastle:runcastle, which no longer matches the burner Dockerfile — rebuild`,
+    )
+  })
+
+  // Its own labels, inherited through `FROM`, are what its containers run.
+  it('names the CLI drift a project image inherited, however current its hash', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: built(STOCK_HASH, PROJECT_HASH, '0.9.0'),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(`${TAG}: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild`)
+    expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
+  })
+
+  // Rebuild would rebuild the base here, so the row says so rather than "ok".
+  it('names the CLI drift of a stale base under a current project image', async () => {
+    const row = await imageRow({
+      ...base,
+      exec: cannedExec({
+        ...ALL_HEALTHY,
+        [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(STOCK_HASH, '0.9.0') },
+        [inspectKey('docker', TAG)]: { stdout: labelled(PROJECT_HASH) },
+      }),
+      dockerfileHash: hashes({ ...shipped }),
+      projectImage: project(),
+    })
+    expect(row.status).toBe('stale')
+    expect(row.detail).toBe(
+      `${TAG} is built on a stale sandcastle:runcastle — sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild`,
     )
   })
 
@@ -612,7 +775,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
       ...base,
       exec: cannedExec({
         ...ALL_HEALTHY,
-        [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: STOCK_HASH },
+        [inspectKey('docker', 'sandcastle:runcastle')]: { stdout: labelled(STOCK_HASH) },
         [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
       }),
       dockerfileHash: hashes({ ...stockOnly }),
@@ -636,7 +799,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     const table = cannedExec({
       ...ALL_HEALTHY,
       [inspectKey('docker', 'my-team/sandbox:latest')]: { stdout: '<no value>' },
-      [inspectKey('docker', TAG)]: { stdout: PROJECT_HASH },
+      [inspectKey('docker', TAG)]: { stdout: labelled(PROJECT_HASH) },
     })
     const row = await imageRow({
       ...base,
