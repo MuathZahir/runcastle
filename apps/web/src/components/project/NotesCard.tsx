@@ -9,6 +9,7 @@ import { useToast } from '../../lib/toast'
 import { IconCheck, IconChevronRight, IconPencil, IconTrash, IconUndo } from '../../icons'
 import { BARE_BUTTON, Button, NoteThumbnail } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
+import { DriveTag, NoteRow } from './NoteRow'
 
 /**
  * The project's note inbox (decisions.md #10, presentation #17) — the pile, and
@@ -193,7 +194,10 @@ export function NotesCard({
                   }}
                 />
               ) : (
-                <span className="text-text">{note.text}</span>
+                <>
+                  <span className="text-text">{note.text}</span>
+                  <DriveTag note={note} />
+                </>
               )}
             </NoteRow>
           ))
@@ -231,6 +235,7 @@ export function NotesCard({
                 }
               >
                 <span className="text-text-3">{note.text}</span>
+                <DriveTag note={note} />
                 {/* Where it went, as the record rather than as a control — a
                     triaged note is frozen, so this outlives every action. */}
                 <span className="mt-px flex flex-wrap items-baseline gap-x-2 text-sm text-text-3">
@@ -260,41 +265,6 @@ const NOTE_INPUT =
 /** Newest first — the pile is read from the top, where the last thing you saw is. */
 function byNewest(notes: ProjectNote[]): ProjectNote[] {
   return [...notes].sort((a, b) => b.createdAt - a.createdAt)
-}
-
-/**
- * One dense row: picture (or its absence), the text, and — at rest — the time.
- * The verbs sit beside the time and take its place under the pointer or the
- * keyboard's focus; they are always in the tab order, so focusing one is what
- * reveals it.
- */
-function NoteRow({
-  lead,
-  when,
-  actions,
-  children,
-}: {
-  lead: ReactNode
-  when?: string
-  actions: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <li className="group grid min-h-10.5 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-hairline-soft py-1.5 pr-3 pl-4.5 first:border-t-0 focus-within:bg-panel-3 hover:bg-panel-3">
-      {lead}
-      <div className="flex min-w-0 flex-col text-base wrap-anywhere">{children}</div>
-      <div className="flex items-center gap-0.5">
-        {when && (
-          <span className="pr-1.5 font-mono text-xs text-text-3 tabular-nums group-focus-within:hidden group-hover:hidden">
-            {when}
-          </span>
-        )}
-        <span className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur-1) group-focus-within:opacity-100 group-hover:opacity-100">
-          {actions}
-        </span>
-      </div>
-    </li>
-  )
 }
 
 type RowActionTone = 'plain' | 'danger'
