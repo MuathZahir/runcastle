@@ -2,6 +2,7 @@ import {
   AGENT_RUNTIMES,
   CURATED_MODELS,
   DEFAULT_DOCS_COMMIT_PREFIX,
+  DEFAULT_RUNTIME,
   EMPTY_DISCOVERY_SNAPSHOT,
   MODEL_STEPS,
   ModelEntry,
@@ -947,9 +948,29 @@ function discoveryOf(view: SettingsView): DiscoverySnapshot {
 }
 
 /**
+ * Who withdrew a referenced id that no roster layer carries. The id itself says
+ * nothing about its runtime — runcastle never infers one from an id's spelling
+ * — so the only evidence is which sources have spoken: a source whose latest
+ * run SUCCEEDED and did not list it is one that stopped offering it. With one
+ * such source that is the answer; with both, the tie goes to the runtime a
+ * launch would use for an unknown id, which is what the rest of the UI already
+ * attributes it to. With none, nobody has said anything and nothing is flagged.
+ */
+function withdrawnSource(sources: DiscoverySnapshot['sources']): AgentRuntime | null {
+  const succeeded = AGENT_RUNTIMES.filter((runtime) => sources[runtime].status === 'ok')
+  if (succeeded.length === 0) return null
+  return succeeded.length === 1 ? succeeded[0]! : DEFAULT_RUNTIME
+}
+
+/**
  * The roster table: every model this machine offers, with what it is used for.
  * Read off the GLOBAL view — the roster and the per-step map are machine-wide,
  * and a project's own model is called out separately (`projectModelWarning`).
+ *
+ * An id the default or a step points at always gets a row, even when no layer
+ * of the roster carries it — a discovered model its source stopped offering, or
+ * one typed straight into the config file. Dropping it would hide the very
+ * model a launch is about to fail on (spec §Approach 5).
  */
 export function rosterRows(view: SettingsView): RosterRow[] {
   const defaultModel = defaultModelOf(view)
@@ -963,12 +984,25 @@ export function rosterRows(view: SettingsView): RosterRow[] {
       sources[runtime].models.map((m) => [m.id, { model: m, runtime }] as const),
     ),
   )
-  return rosterFromView(view).map((m) => {
+  const roster = rosterFromView(view)
+  const rostered = new Set(roster.map((m) => m.id))
+  const withdrawnRuntime = withdrawnSource(sources)
+  const withdrawn = [...new Set([defaultModel, ...resolved.values()])].filter(
+    (id) => id !== '' && !rostered.has(id),
+  )
+  const entries: ModelEntry[] = [
+    ...roster,
+    ...withdrawn.map((id) => ({ id, runtime: withdrawnRuntime ?? DEFAULT_RUNTIME })),
+  ]
+  const withdrawnIds = new Set(withdrawn)
+  return entries.map((m) => {
     const note = m.note ?? ''
     const usedFor = MODEL_STEPS.filter((step) => resolved.get(step) === m.id)
     const isDefault = m.id === defaultModel
     const found = discovered.get(m.id)
-    const custom = !curated.has(m.id) && !found
+    // A withdrawn id has no roster entry to remove, so it is not the
+    // operator's own however much it looks like a hand-typed one.
+    const custom = !curated.has(m.id) && !found && !withdrawnIds.has(m.id)
     const referenced = isDefault || usedFor.length > 0 || note !== ''
     return {
       id: m.id,

@@ -902,6 +902,52 @@ describe('rosterRows with discovery', () => {
     expect(flagged({ codex: codexOk }).map((r) => r.id)).toEqual(['gpt-5.6-sol'])
   })
 
+  it('keeps a withdrawn id the default or a step still points at, flagged', () => {
+    const rows = rosterRows(
+      discoveryView(
+        [
+          { key: 'model', value: 'gpt-6-vega' },
+          { key: 'stepModels.implement', value: 'gpt-6-nova', source: 'file' },
+        ],
+        { codex: codexOk },
+      ),
+    )
+    expect(row(rows, 'gpt-6-vega')).toMatchObject({
+      runtime: 'codex',
+      isDefault: true,
+      // Nothing to remove: the operator never added it, discovery dropped it.
+      custom: false,
+      discovered: false,
+      noLongerOffered: 'codex',
+    })
+    expect(row(rows, 'gpt-6-nova')).toMatchObject({
+      usedFor: ['implement'],
+      noLongerOffered: 'codex',
+    })
+  })
+
+  it('attributes a withdrawn id to the launch runtime when both sources ran', () => {
+    const rows = rosterRows(
+      discoveryView([{ key: 'model', value: 'gpt-6-vega' }], {
+        codex: codexOk,
+        'claude-code': { status: 'ok', lastSuccessAt: NOW, models: [], newIds: [] },
+      }),
+    )
+    expect(row(rows, 'gpt-6-vega')).toMatchObject({
+      runtime: 'claude-code',
+      noLongerOffered: 'claude-code',
+    })
+  })
+
+  it('lists a referenced id no source has spoken about, unflagged', () => {
+    const rows = rosterRows(discoveryView([{ key: 'model', value: 'my-proxy/gpt' }], {}))
+    expect(row(rows, 'my-proxy/gpt')).toMatchObject({
+      runtime: 'claude-code',
+      custom: false,
+      noLongerOffered: null,
+    })
+  })
+
   it('lists discovered ids in their runtime’s dropdown group', () => {
     const groups = modelOptionGroups(rosterFromView(discoveryView([], { codex: codexOk })))
     const ids = (runtime: string) =>
