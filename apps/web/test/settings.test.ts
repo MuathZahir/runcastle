@@ -208,6 +208,26 @@ describe('model dropdown — runtime groups', () => {
     expect(codex?.entries.find((m) => m.id === 'my-proxy/gpt')?.note).toBe('mechanical refactors')
   })
 
+  it('includes provider-discovered ids from the settings view', () => {
+    const discovered = {
+      ...rosterView([]),
+      discovery: {
+        sources: {
+          'claude-code': { status: 'never' as const, models: [], newIds: [] },
+          codex: {
+            status: 'ok' as const,
+            models: [{ id: 'gpt-next', runtime: 'codex' as const, displayName: 'GPT Next' }],
+            newIds: ['gpt-next'],
+          },
+        },
+      },
+    }
+    expect(rosterFromView(discovered).find((m) => m.id === 'gpt-next')).toEqual({
+      id: 'gpt-next',
+      runtime: 'codex',
+    })
+  })
+
   it('drops a malformed roster entry rather than breaking the dropdown', () => {
     const roster = rosterFromView(rosterView([{ id: 'no-runtime' }, 'nonsense', null]))
     expect(roster.map((m) => m.id)).not.toContain('no-runtime')

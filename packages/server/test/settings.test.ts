@@ -1,14 +1,71 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_SANDBOX_IMAGE, RuncastleConfig, resolveSandboxImage } from '@runcastle/core'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_SANDBOX_IMAGE, EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, resolveSandboxImage, type DiscoverySnapshot } from '@runcastle/core'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
 import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
+import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
+
+describe('model discovery settings socket', () => {
+  const previousDataDir = process.env.RUNCASTLE_DATA_DIR
+  let discoveryDir: string
+
+  beforeEach(() => {
+    discoveryDir = mkdtempSync(join(tmpdir(), 'runcastle-discovery-'))
+    process.env.RUNCASTLE_DATA_DIR = discoveryDir
+  })
+
+  afterEach(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(discoveryDir, { recursive: true, force: true })
+  })
+
+  it('falls back for missing or malformed snapshots and round-trips a valid snapshot', () => {
+    expect(readDiscoverySnapshot()).toEqual(EMPTY_DISCOVERY_SNAPSHOT)
+    writeFileSync(join(discoveryDir, 'discovered-models.json'), '{not json', 'utf8')
+    expect(readDiscoverySnapshot()).toEqual(EMPTY_DISCOVERY_SNAPSHOT)
+
+    const snapshot: DiscoverySnapshot = {
+      sources: {
+        'claude-code': { status: 'never', models: [], newIds: [] },
+        codex: {
+          status: 'ok',
+          lastSuccessAt: 42,
+          lastAttemptAt: 42,
+          models: [{ id: 'gpt-next', runtime: 'codex', displayName: 'GPT Next' }],
+          newIds: ['gpt-next'],
+        },
+      },
+    }
+    writeDiscoverySnapshot(snapshot)
+    expect(readDiscoverySnapshot()).toEqual(snapshot)
+  })
+
+  it('serves the persisted snapshot and exposes the not-yet-implemented refresh mutation', async () => {
+    const ctx = await makeTestCtx()
+    const snapshot: DiscoverySnapshot = {
+      sources: {
+        'claude-code': { status: 'never', models: [], newIds: [] },
+        codex: { status: 'ok', models: [{ id: 'gpt-next', runtime: 'codex' }], newIds: [] },
+      },
+    }
+    writeDiscoverySnapshot(snapshot)
+    expect(getSettings(ctx).discovery).toEqual(snapshot)
+
+    const caller = createCallerFactory(appRouter)(ctx)
+    await expect(caller.settings.refreshModels()).rejects.toThrow(
+      'not yet implemented (model-discovery)',
+    )
+  })
+})
 
 /**
  * Settings backend (issue #46): the scope-resolved settings surface. Globals live
