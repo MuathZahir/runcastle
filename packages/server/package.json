@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ai-hero/sandcastle": "0.12.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.281",
     "@hono/mcp": "0.3.1",
     "@hono/trpc-server": "0.4.2",
     "@modelcontextprotocol/sdk": "1.29.0",
