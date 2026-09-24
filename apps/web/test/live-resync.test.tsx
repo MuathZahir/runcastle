@@ -112,6 +112,12 @@ describe('useLiveSync resync', () => {
     expect(paths).toContain('settings.get.invalidate')
   })
 
+  it('refreshes the project notes, so the rail badge follows a jot or a triage', () => {
+    const paths = signalOneEvent()
+
+    expect(paths).toContain('projectNotes.invalidate')
+  })
+
   it('still leaves the doctor report off the list — it shells out to probe the machine', () => {
     const paths = signalOneEvent()
 

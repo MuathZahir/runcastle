@@ -3,6 +3,7 @@ import { docsRouter } from './routers/docs'
 import { eventsRouter } from './routers/events'
 import { featureRouter } from './routers/feature'
 import { projectRouter } from './routers/project'
+import { projectNotesRouter } from './routers/project-notes'
 import { reviewFindingsRouter } from './routers/review-findings'
 import { runRouter } from './routers/run'
 import { settingsRouter } from './routers/settings'
@@ -17,6 +18,7 @@ import { ticketRouter } from './routers/ticket'
  */
 export const appRouter = router({
   project: projectRouter,
+  projectNotes: projectNotesRouter,
   feature: featureRouter,
   run: runRouter,
   ticket: ticketRouter,

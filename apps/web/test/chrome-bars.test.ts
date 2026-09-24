@@ -36,6 +36,7 @@ function titlebar(over: {
   view: WorkspaceView
   featureTitle?: string | null
   runsElsewhere?: number
+  noteOpen?: boolean
 }): string {
   return renderToStaticMarkup(
     createElement(TitlebarChrome, {
@@ -43,6 +44,8 @@ function titlebar(over: {
       featureTitle: null,
       runsElsewhere: 0,
       onOpenCmdk: () => undefined,
+      onOpenNote: () => undefined,
+      noteOpen: false,
       onOpenSettings: () => undefined,
       onGoToProjectHome: () => undefined,
       onToggleInspector: () => undefined,
@@ -100,6 +103,37 @@ describe('titlebar breadcrumb', () => {
 
     expect(html).toContain('Search or jump to…')
     expect(html).toMatch(/<kbd[^>]*>(⌘K|Ctrl\+K)<\/kbd>/)
+  })
+
+  /**
+   * Project-notes decisions #3 and #15 — the pencil is what makes ⌘/Ctrl+J
+   * discoverable without having to already know it, so it names its own chord;
+   * and it is an icon, in Settings' ghost style, like every control beside it.
+   */
+  it('carries the note door beside the search field, on every in-project view', () => {
+    for (const view of ['empty', 'feature', 'project', 'prepare'] as const) {
+      const html = titlebar({ view })
+      const door = html.match(/<button[^>]*aria-label="Jot a note"[^>]*>.*?<\/button>/)?.[0] ?? ''
+      const settings = html.match(/<button[^>]*aria-label="Settings"[^>]*>/)?.[0] ?? ''
+
+      expect(door).toMatch(/title="Jot a note \((⌘J|Ctrl\+J)\)"/)
+      expect(door).toContain('<svg')
+      // Icon-only: no text label beside the pencil.
+      expect(door.replace(/<[^>]*>/g, '')).toBe('')
+      expect(door).toContain('size-8')
+      expect(settings).toContain('size-8')
+    }
+  })
+
+  it('tints the note door while capture is open', () => {
+    const idle = titlebar({ view: 'project' })
+    const open = titlebar({ view: 'project', noteOpen: true })
+
+    expect(idle).toContain('aria-pressed="false"')
+    expect(idle).not.toContain('text-accent-hi')
+    expect(open).toContain('aria-pressed="true"')
+    expect(open).toContain('bg-accent-soft')
+    expect(open).toContain('text-accent-hi')
   })
 })
 

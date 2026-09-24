@@ -105,6 +105,24 @@ export function IconX(p: IconProps) {
   )
 }
 
+export function IconTrash(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" />
+    </svg>
+  )
+}
+
+/** Take something back out of where it went — a triaged note's Reopen. */
+export function IconUndo(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 6h5a3 3 0 0 1 0 6H7" />
+      <path d="M7 3.5 4.5 6 7 8.5" />
+    </svg>
+  )
+}
+
 export function IconChevronDown(p: IconProps) {
   return (
     <svg {...base(p)}>
@@ -153,6 +171,16 @@ export function IconDoc(p: IconProps) {
     <svg {...base(p)}>
       <path d="M4 1.8h5.2L13 5.6v8.6H4z" />
       <path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4" />
+    </svg>
+  )
+}
+
+/** Jot something down — the note capture door. */
+export function IconPencil(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M10.6 2.4a1.7 1.7 0 0 1 2.4 2.4L5.5 12.3 2.4 13.1l.8-3.1z" />
+      <path d="M9.4 3.6l2.4 2.4" />
     </svg>
   )
 }

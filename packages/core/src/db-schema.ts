@@ -16,6 +16,7 @@ import type {
   SessionStatus,
   TestNoteAuthor,
   TestNoteStatus,
+  ProjectNoteStatus,
   TicketKind,
   TicketStatus,
   WaypointStatus,
@@ -384,6 +385,17 @@ export const testNotes = sqliteTable('test_notes', {
    * against a re-recorded video costs nothing.
    */
   videoTimestamp: real('video_timestamp'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
+export const projectNotes = sqliteTable('project_notes', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull(),
+  text: text('text').notNull(),
+  status: text('status').notNull().$type<ProjectNoteStatus>(),
+  outcome: text('outcome'),
+  featureId: text('feature_id'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })

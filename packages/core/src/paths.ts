@@ -133,6 +133,14 @@ export function annotationPath(noteId: string): string {
   return join(annotationsDir(), `${noteId}.png`)
 }
 
+export function projectNotesDir(): string {
+  return join(dataDir(), 'project-notes')
+}
+
+export function projectNotePath(noteId: string): string {
+  return join(projectNotesDir(), `${noteId}.png`)
+}
+
 /**
  * The workspace-relative directory an annotated note's screenshot is copied
  * into for the burn that fixes it (spec.md "Riding into the burn"). Excluded

@@ -951,6 +951,13 @@ export interface ProjectBrief {
   worktreePath: string
   /** The resolved session branch it was cut from and lands back on. */
   base: string
+  /**
+   * How many project notes were open when this session launched. Counted here so
+   * an ordinary New chat can OFFER to triage them; the count is a snapshot and
+   * the session reads the pile itself with `list_project_notes`, which is what
+   * stays live as notes are jotted mid-chat.
+   */
+  openNotes: number
 }
 
 /**
@@ -976,7 +983,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base } = brief
+  const { project, branch, worktreePath, base, openNotes } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -1025,6 +1032,12 @@ export function renderProjectPrompt(
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
     'context you may not need. Once they have told you, read only what answering calls for.',
+    // The jotted pile, offered rather than acted on: a plain New chat is not a
+    // triage session, and the human may have opened it for something else
+    // entirely. The Triage button's own launch briefs the work outright.
+    ...(openNotes > 0
+      ? ['', `This project has ${openNotes} open notes — offer to triage them.`]
+      : []),
     '',
   ].join('\n')
 }
@@ -1086,6 +1099,13 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__create_feature',
   'mcp__runcastle__get_project_context',
   'mcp__runcastle__get_work_record',
+  // The notes-triage tools, project-only for the same reason and so inert
+  // elsewhere too. A triage chat is briefed at launch to list the open notes,
+  // so an un-allowed `list_project_notes` stalls the session on a permission
+  // prompt before triage says its first word.
+  'mcp__runcastle__list_project_notes',
+  'mcp__runcastle__triage_project_note',
+  'mcp__runcastle__update_project_note',
 ]
 
 /**

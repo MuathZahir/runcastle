@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { trpc } from '../trpc'
 import type { ProjectConversation, ProjectSession } from './api'
 import { useLivePoll } from './live'
@@ -15,6 +16,12 @@ import { useToast } from './toast'
  * anywhere shows up here without a page action.
  */
 
+/**
+ * The errand a launch is opened on, when "a new chat" does not say it. Only the
+ * Notes card has one: its briefing tells the session to triage the open notes.
+ */
+export type ProjectTalkPurpose = 'triage'
+
 export interface ProjectTalkApi {
   /** The open conversation, or null when none is. */
   session: ProjectSession
@@ -25,8 +32,14 @@ export interface ProjectTalkApi {
   conversationsPending: boolean
   /** Open a NEW conversation; no-op while one is open. */
   start: () => void
-  /** End the open conversation and launch a fresh one as one user action. */
-  replace: () => void
+  /** Open a new conversation briefed to triage the open notes; no-op while one is open. */
+  triage: () => void
+  /**
+   * End the open conversation and launch a fresh one as one user action. Carries
+   * the purpose of whichever door asked, so replacing from "Triage N notes"
+   * opens a triage chat rather than a plain one.
+   */
+  replace: (purpose?: ProjectTalkPurpose) => void
   /** Reopen a specific past conversation; no-op while one is open. */
   resume: (sessionId: string) => void
   starting: boolean
@@ -52,8 +65,17 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     // refused server-side; it lands as a toast rather than taking the shell down.
     onError: (e) => toast.push(e.message),
   })
+  // What the relaunch after an end is for. Held in a ref rather than passed
+  // through the mutation, because the launch happens in `endSession`'s callback
+  // — a render later, with nothing of the click left to read.
+  const replacing = useRef<ProjectTalkPurpose | undefined>(undefined)
   const end = trpc.feature.endSession.useMutation({
-    onSuccess: () => launch.mutate({ projectId, fresh: true }),
+    onSuccess: () =>
+      launch.mutate({
+        projectId,
+        fresh: true,
+        ...(replacing.current ? { purpose: replacing.current } : {}),
+      }),
     onError: (e) => toast.push(e.message),
   })
 
@@ -73,8 +95,14 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     start: () => {
       if (canLaunch()) launch.mutate({ projectId, fresh: true })
     },
-    replace: () => {
-      if (session && !launch.isPending && !end.isPending) end.mutate({ sessionId: session.id })
+    triage: () => {
+      if (canLaunch()) launch.mutate({ projectId, purpose: 'triage' })
+    },
+    replace: (purpose) => {
+      if (session && !launch.isPending && !end.isPending) {
+        replacing.current = purpose
+        end.mutate({ sessionId: session.id })
+      }
     },
     resume: (sessionId) => {
       if (canLaunch()) launch.mutate({ projectId, resumeSessionId: sessionId })

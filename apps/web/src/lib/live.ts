@@ -290,6 +290,11 @@ export function useLiveSync(): LiveStatus {
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.
       void u.notes.invalidate()
+      // Project notes: the rail's badge and the inbox are both counts of a pile
+      // two writers add to — the capture popover on this screen, and a triaging
+      // project session in a terminal beside it. A note jotted or triaged has to
+      // move both on the same push.
+      void u.projectNotes.invalidate()
       // The review agent's findings: `finding.*` events arrive one per finding
       // AS the review reports them, and the fix wave that follows moves them
       // again — the review page's counts line and its open-defects list are only

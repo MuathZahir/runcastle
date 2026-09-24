@@ -35,6 +35,7 @@ import {
   envPath,
   featureDocsRel,
   logsDir,
+  projectNotePath,
   worktreeDir,
 } from '@runcastle/core/paths'
 import type { McpConfig } from '../launcher/artifacts'
@@ -1784,7 +1785,9 @@ export function attachedNoteIds(context: string): string[] {
  * it proceeds on the note text, exactly as an unannotated note would.
  */
 export function attachmentSources(context: string): string[] {
-  return attachedNoteIds(context).map(annotationPath).filter((p) => existsSync(p))
+  return attachedNoteIds(context)
+    .map((id) => (id.startsWith('pnote_') ? projectNotePath(id) : annotationPath(id)))
+    .filter((p) => existsSync(p))
 }
 
 /**

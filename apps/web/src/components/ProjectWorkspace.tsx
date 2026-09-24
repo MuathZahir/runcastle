@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { trpc } from '../trpc'
 import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
-import type { ProjectTalkApi } from '../lib/use-project-talk'
+import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
 import { ConversationTranscript } from './ConversationTranscript'
 import { EndSessionButton } from './EndSessionButton'
@@ -10,6 +10,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
+import { NotesCard } from './project/NotesCard'
 import { TranscriptPane } from './project/TranscriptPane'
 import { LiveChat } from './project/LiveChat'
 
@@ -21,12 +22,13 @@ import { LiveChat } from './project/LiveChat'
  *
  * At rest it is three pieces and nothing else (decisions.md #6): a header line
  * naming the branch this chat runs on and the branch its work lands on, the New
- * chat card, and the list. It used to carry a paragraph on every card — what the
- * chat already knows, what the landing branch means, why changing it would not
- * affect the chat already running — which is first-use explanation charged to
- * every visit. The chat's own greeting says what it knows; the landing branch
- * moved into a menu beside the button it argues (decisions.md #3), which is what
- * retired the grey note apologising for it.
+ * chat card, and the list — plus the Notes inbox between the last two, on the
+ * projects that have jotted one. It used to carry a paragraph on every card —
+ * what the chat already knows, what the landing branch means, why changing it
+ * would not affect the chat already running — which is first-use explanation
+ * charged to every visit. The chat's own greeting says what it knows; the
+ * landing branch moved into a menu beside the button it argues (decisions.md
+ * #3), which is what retired the grey note apologising for it.
  *
  * A list, not a terminal, is the resting state (decision 5). Only one chat runs
  * at a time — the launcher's rule — so a live conversation takes the body over,
@@ -37,11 +39,16 @@ export function ProjectWorkspace({
   talk,
   newChatRequest = 0,
   onConsumeNewChatRequest,
+  inboxRequest = 0,
+  onConsumeInboxRequest,
 }: {
   projectId: string
   talk: ProjectTalkApi
   newChatRequest?: number
   onConsumeNewChatRequest?: () => void
+  /** Capture's View asked for the Notes inbox (decisions #16). */
+  inboxRequest?: number
+  onConsumeInboxRequest?: () => void
 }) {
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
@@ -54,15 +61,31 @@ export function ProjectWorkspace({
   // buffer and socket; `TerminalView` tears both down when it unmounts.
   const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
   const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
+  // What the pending open/replace choice is FOR. A Triage click on a project
+  // that already has a chat open raises the same notice New chat does, and
+  // "End it and start new" has to open the chat the human asked for.
+  const [noticePurpose, setNoticePurpose] = useState<ProjectTalkPurpose | undefined>(undefined)
   useEffect(() => {
     if (newChatRequest > 0 && session) {
       setShowList(true)
       setShowOpenNotice(true)
+      setNoticePurpose(undefined)
       onConsumeNewChatRequest?.()
     }
   }, [newChatRequest, onConsumeNewChatRequest, session])
+  // The inbox sits on the resting page, so asking for it steps out of a live
+  // chat or a read transcript first; the card scrolls itself in once shown.
   useEffect(() => {
-    if (!session) setShowOpenNotice(false)
+    if (inboxRequest > 0) {
+      setViewing(null)
+      setShowList(true)
+    }
+  }, [inboxRequest])
+  useEffect(() => {
+    if (!session) {
+      setShowOpenNotice(false)
+      setNoticePurpose(undefined)
+    }
   }, [session])
   const reading = viewing
   // Reopening leaves the read-only pane behind: what comes back is the terminal,
@@ -126,16 +149,35 @@ export function ProjectWorkspace({
                     ? {
                         onOpen: () => {
                           setShowOpenNotice(false)
+                          setNoticePurpose(undefined)
                           setShowList(false)
                         },
                         onReplace: () => {
                           setShowOpenNotice(false)
-                          talk.replace()
+                          talk.replace(noticePurpose)
                           setShowList(false)
                         },
                       }
                     : undefined
                 }
+              />
+              {/* Between the door and the list (decisions.md #10): the pile is
+                  read on the way to triaging it, and triage starts here. */}
+              <NotesCard
+                projectId={projectId}
+                triaging={talk.starting}
+                reveal={inboxRequest > 0}
+                onRevealed={onConsumeInboxRequest}
+                onTriage={() => {
+                  if (!session) {
+                    talk.triage()
+                    return
+                  }
+                  // One live chat per project, so the human chooses: carry on in
+                  // the one that is open, or end it and triage in a fresh one.
+                  setNoticePurpose('triage')
+                  setShowOpenNotice(true)
+                }}
               />
               <ConversationList
                 conversations={talk.conversations}

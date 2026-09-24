@@ -20,7 +20,10 @@ const toPngBlob = vi.fn(async (image: Blob) =>
   image.type === 'image/png' ? image : new Blob(['converted'], { type: 'image/png' }),
 )
 
-vi.mock('../src/lib/reviews', () => ({
+vi.mock('../src/lib/reviews', async (original) => ({
+  // `imageOnClipboard` is pure clipboard reading, not a system boundary — the
+  // real one runs so a paste in this test is the paste the app performs.
+  ...(await original<Record<string, unknown>>()),
   uploadScreenshot: (...args: unknown[]) => uploadScreenshot(...(args as [])),
   toPngBlob: (image: Blob) => toPngBlob(image),
 }))
