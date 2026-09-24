@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 
@@ -214,8 +214,12 @@ describe('the Notes card', () => {
     expect(container.querySelector('p')).toBeNull()
     // a violet ghost: New chat keeps the page's one solid accent
     const door = button('Triage 2')
-    expect(door.className).toContain('text-accent-hi')
+    expect(door.className).toContain('border-accent-line')
     expect(door.className).not.toContain('bg-accent ')
+    // the violet label rides inside the button: styles.css's unlayered
+    // `button { color: inherit }` beats a text colour on the button itself
+    expect(door.className).not.toContain('text-accent-hi')
+    expect(within(door).getByText('Triage 2').className).toContain('text-accent-hi')
     fireEvent.click(door)
     expect(triage).toHaveBeenCalledTimes(1)
   })
