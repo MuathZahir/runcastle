@@ -5,10 +5,13 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SANDBOX_IMAGE, resolveSandboxImage, type RuncastleConfig } from '@runcastle/core'
 import type { ExecFn, ExecOutcome } from '../src/doctor/doctor'
 import {
+  type BuiltImage,
+  describeFreshnessReason,
   DOCKERFILE_HASH_LABEL,
   hashDockerfile,
   hashDockerfileContents,
   imageBuildTerminal,
+  imageFreshness,
   inspectBuiltImage,
   imageBuildTarget,
   legacyGlobalImage,
@@ -54,6 +57,9 @@ function repoWithDockerfile(prefix = 'repo'): string {
   return repo
 }
 
+/** A host with neither agent CLI — nothing to pin, nothing to drift from. */
+const NO_HOST_CLIS = { 'claude-code': null, codex: null }
+
 const config = (sandboxImage?: string): Pick<RuncastleConfig, 'sandboxImage'> =>
   sandboxImage === undefined ? {} : { sandboxImage }
 
@@ -78,11 +84,22 @@ describe('inspectBuiltImage', () => {
   const inspecting = (out: Partial<ExecOutcome>): ExecFn =>
     async (): Promise<ExecOutcome> => ({ ok: true, code: 0, stdout: '', stderr: '', ...out })
 
-  it('reads the hash label off a built image', async () => {
-    expect(await inspectBuiltImage(inspecting({ stdout: 'abc123\n' }), 'docker', 'img')).toEqual({
+  it('reads the hash and both CLI version labels off a built image in one inspect', async () => {
+    const calls: string[][] = []
+    const exec: ExecFn = async (_command, args) => {
+      calls.push(args)
+      return { ok: true, code: 0, stdout: 'abc123|2.1.280|0.46.0\n', stderr: '' }
+    }
+    expect(await inspectBuiltImage(exec, 'docker', 'img')).toEqual({
       present: true,
       hash: 'abc123',
+      versions: { 'claude-code': '2.1.280', codex: '0.46.0' },
     })
+    expect(calls).toHaveLength(1)
+    const format = calls[0]?.[calls[0].indexOf('--format') + 1]
+    expect(format).toContain(DOCKERFILE_HASH_LABEL)
+    expect(format).toContain('runcastle.claude-code-version')
+    expect(format).toContain('runcastle.codex-version')
   })
 
   it('reports an image that is not there as absent', async () => {
@@ -90,15 +107,95 @@ describe('inspectBuiltImage', () => {
     expect(await inspectBuiltImage(missing, 'docker', 'img')).toEqual({
       present: false,
       hash: null,
+      versions: NO_HOST_CLIS,
     })
   })
 
-  // An image built before the label existed reads as stale, which is the safe
+  // An image built before the labels existed reads as stale, which is the safe
   // direction: nothing vouches for what is inside it. Present-but-unlabelled is
   // its own answer, because the doctor tells that apart from "not built yet".
-  it('reports an image with no such label as present without a hash', async () => {
-    expect(await inspectBuiltImage(inspecting({ stdout: '<no value>\n' }), 'podman', 'img')).toEqual(
-      { present: true, hash: null },
+  it('reports an image with no such labels as present without a hash or versions', async () => {
+    const out = inspecting({ stdout: '<no value>|<no value>|<no value>\n' })
+    expect(await inspectBuiltImage(out, 'podman', 'img')).toEqual({
+      present: true,
+      hash: null,
+      versions: NO_HOST_CLIS,
+    })
+  })
+
+  it('reads an empty version label — no host CLI at build time — as null', async () => {
+    expect(await inspectBuiltImage(inspecting({ stdout: 'abc123|2.1.280|\n' }), 'docker', 'img')).toEqual({
+      present: true,
+      hash: 'abc123',
+      versions: { 'claude-code': '2.1.280', codex: null },
+    })
+  })
+})
+
+describe('imageFreshness', () => {
+  const HOST = { 'claude-code': '2.1.280', codex: '0.46.0' }
+  const built = (over: Partial<BuiltImage> = {}): BuiltImage => ({
+    present: true,
+    hash: 'abc123',
+    versions: { ...HOST },
+    ...over,
+  })
+
+  it('is fresh when the hash and every CLI version match the host', () => {
+    expect(imageFreshness({ image: built(), expectedHash: 'abc123', host: HOST })).toEqual({
+      fresh: true,
+    })
+  })
+
+  it('reports an absent image as missing only', () => {
+    const image = { present: false, hash: null, versions: NO_HOST_CLIS }
+    expect(imageFreshness({ image, expectedHash: 'abc123', host: HOST })).toEqual({
+      fresh: false,
+      reasons: [{ kind: 'missing' }],
+    })
+  })
+
+  it('reports hash drift, and treats an unreadable expected hash as no evidence', () => {
+    const image = built({ hash: 'old' })
+    expect(imageFreshness({ image, expectedHash: 'abc123', host: HOST })).toEqual({
+      fresh: false,
+      reasons: [{ kind: 'hash' }],
+    })
+    expect(imageFreshness({ image, expectedHash: null, host: HOST })).toEqual({ fresh: true })
+  })
+
+  it('reports CLI drift per runtime with both versions', () => {
+    const image = built({ versions: { 'claude-code': '2.1.270', codex: '0.45.0' } })
+    expect(imageFreshness({ image, expectedHash: 'abc123', host: HOST })).toEqual({
+      fresh: false,
+      reasons: [
+        { kind: 'cli', runtime: 'claude-code', image: '2.1.270', host: '2.1.280' },
+        { kind: 'cli', runtime: 'codex', image: '0.45.0', host: '0.46.0' },
+      ],
+    })
+  })
+
+  it('treats a missing version label as drift when the host has that CLI', () => {
+    const image = built({ versions: NO_HOST_CLIS })
+    expect(imageFreshness({ image, expectedHash: 'abc123', host: { ...HOST, codex: null } })).toEqual({
+      fresh: false,
+      reasons: [{ kind: 'cli', runtime: 'claude-code', image: null, host: '2.1.280' }],
+    })
+  })
+
+  it('never reports drift for a runtime the host does not have', () => {
+    const image = built({ versions: { 'claude-code': '2.1.270', codex: '0.45.0' } })
+    expect(imageFreshness({ image, expectedHash: 'abc123', host: NO_HOST_CLIS })).toEqual({
+      fresh: true,
+    })
+  })
+
+  it('names the runtime and both versions for a doctor row', () => {
+    expect(
+      describeFreshnessReason('img', { kind: 'cli', runtime: 'claude-code', image: '2.1.270', host: '2.1.280' }),
+    ).toBe('img: Claude Code 2.1.270 in image, 2.1.280 on host')
+    expect(describeFreshnessReason('img', { kind: 'cli', runtime: 'codex', image: null, host: '0.46.0' })).toBe(
+      'img: no Codex version recorded, 0.46.0 on host',
     )
   })
 })
@@ -149,7 +246,7 @@ describe('imageBuildTarget', () => {
 })
 
 describe('the build the terminal runs', () => {
-  it('builds the stock image directly, with its hash label and uid build-args', () => {
+  it('builds the stock image directly, with its hash and CLI version labels and build-args', () => {
     const context = stockContext()
     const plan = planImageBuild({
       config: config(),
@@ -157,6 +254,7 @@ describe('the build the terminal runs', () => {
       stockContext: context,
       stockFresh: false,
       buildArgs: { AGENT_UID: '1000', AGENT_GID: '1000' },
+      hostVersions: { 'claude-code': '2.1.280', codex: '0.46.0' },
     })
     expect(plan.kind).toBe('stock')
     expect(imageBuildTerminal('docker', buildable(plan), 'linux')).toEqual({
@@ -167,14 +265,88 @@ describe('the build the terminal runs', () => {
         DEFAULT_SANDBOX_IMAGE,
         '--label',
         `${DOCKERFILE_HASH_LABEL}=${hashDockerfileContents(STOCK_DOCKERFILE)}`,
+        '--label',
+        'runcastle.claude-code-version=2.1.280',
+        '--label',
+        'runcastle.codex-version=0.46.0',
         '--build-arg',
         'AGENT_UID=1000',
         '--build-arg',
         'AGENT_GID=1000',
+        '--build-arg',
+        'CLAUDE_CODE_VERSION=2.1.280',
+        '--build-arg',
+        'CODEX_VERSION=0.46.0',
         context,
       ],
       cwd: context,
     })
+  })
+
+  // Decision 4: no host CLI, no pin — the Dockerfile falls back to latest, and
+  // the empty label records nothing for the doctor to call drift.
+  it('passes empty version build-args and labels for a runtime the host lacks', () => {
+    const plan = planImageBuild({
+      config: config(),
+      project: null,
+      stockContext: stockContext(),
+      stockFresh: false,
+      buildArgs: {},
+      hostVersions: { 'claude-code': '2.1.280', codex: null },
+    })
+    const { args } = imageBuildTerminal('docker', buildable(plan), 'linux')
+    expect(args).toContain('runcastle.codex-version=')
+    expect(args).toContain('CODEX_VERSION=')
+    expect(args).toContain('CLAUDE_CODE_VERSION=2.1.280')
+  })
+
+  // The project image inherits the stock labels through FROM; its own
+  // Dockerfile declares no version ARGs to consume.
+  // The Rebuild route's composition: a stock image whose hash still matches but
+  // whose CLI drifted from the host is not fresh, so the chain rebuilds it first.
+  it('rebuilds a CLI-drifted stock image before the project image', () => {
+    const context = stockContext()
+    const hostVersions = { 'claude-code': '2.1.280', codex: '0.46.0' }
+    const { fresh } = imageFreshness({
+      image: {
+        present: true,
+        hash: hashDockerfileContents(STOCK_DOCKERFILE),
+        versions: { 'claude-code': '2.1.270', codex: '0.46.0' },
+      },
+      expectedHash: hashDockerfile(join(context, 'Dockerfile')),
+      host: hostVersions,
+    })
+    const plan = buildable(
+      planImageBuild({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repoWithDockerfile(), sandboxImageOverwritable: true },
+        stockContext: context,
+        stockFresh: fresh,
+        buildArgs: {},
+        hostVersions,
+      }),
+    )
+    expect(plan.steps.map((s) => s.tag)).toEqual([DEFAULT_SANDBOX_IMAGE, 'sandcastle:runcastle-proj_java'])
+  })
+
+  it('pins the CLIs on the stock step of a chain and not on the project step', () => {
+    const plan = buildable(
+      planImageBuild({
+        config: config(),
+        project: { id: 'proj_java', repoPath: repoWithDockerfile(), sandboxImageOverwritable: true },
+        stockContext: stockContext(),
+        stockFresh: false,
+        buildArgs: {},
+        hostVersions: { 'claude-code': '2.1.280', codex: '0.46.0' },
+      }),
+    )
+    const [stock, project] = plan.steps
+    expect(stock?.labels).toEqual({
+      'runcastle.claude-code-version': '2.1.280',
+      'runcastle.codex-version': '0.46.0',
+    })
+    expect(stock?.buildArgs).toEqual({ CLAUDE_CODE_VERSION: '2.1.280', CODEX_VERSION: '0.46.0' })
+    expect(project).toMatchObject({ tag: 'sandcastle:runcastle-proj_java', labels: {}, buildArgs: {} })
   })
 
   it('chains the stock image then the project one when the base is stale', () => {
@@ -186,6 +358,7 @@ describe('the build the terminal runs', () => {
       stockContext: context,
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan.kind).toBe('chain')
     const spec = imageBuildTerminal('docker', buildable(plan), 'linux')
@@ -212,6 +385,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: true,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(imageBuildTerminal('podman', buildable(plan), 'linux')).toEqual({
       cmd: 'podman',
@@ -237,6 +411,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     const context = join(repo, '.runcastle', 'sandbox')
     expect(imageBuildTerminal('docker', buildable(plan), 'linux').args[1]).toContain(`'${context}'`)
@@ -254,6 +429,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan).toMatchObject({ kind: 'refused', imageName: 'acme/custom-image:v3' })
     expect(plan.kind === 'refused' && plan.reason).toContain('.runcastle/sandbox/Dockerfile')
@@ -271,6 +447,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan.kind).toBe('refused')
   })
@@ -290,6 +467,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan).toMatchObject({ kind: 'refused', imageName: 'acme/custom:v1' })
     // The Dockerfile is written already — clearing the setting is the whole fix.
@@ -312,6 +490,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: true,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan).toMatchObject({ kind: 'chain', projectTag: projectImageTag('proj_java') })
     // The seam agrees with the resolver every burn goes through.
@@ -333,6 +512,7 @@ describe('the build the terminal runs', () => {
       stockContext: stockContext(),
       stockFresh: false,
       buildArgs: {},
+      hostVersions: NO_HOST_CLIS,
     })
     expect(plan.kind).toBe('stock')
   })

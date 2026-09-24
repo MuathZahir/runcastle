@@ -39,8 +39,19 @@ import {
 import type { McpConfig } from '../launcher/artifacts'
 import { resolveSkillsRoot } from '../launcher/skills-root'
 import { codexHomeDir, codexLoggedIn } from '../services/codex-auth'
-import type { ExecFn, ExecOutcome } from '../doctor/doctor'
+import {
+  type ExecFn,
+  type ExecOutcome,
+  RUNTIME_SPECS,
+  containerRuntimeProbe,
+} from '../doctor/doctor'
 import { createSystemExec } from '../doctor/system-exec'
+import {
+  type HostAgentVersions,
+  parseAgentCliVersion,
+  resolveHostAgentVersions,
+} from '../services/agent-cli-versions'
+import { isManagedImage } from '../services/sandbox-image'
 import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import {
@@ -132,6 +143,10 @@ const ATTACHMENTS_PREFIX = `${ATTACHMENTS_DIR}/`
 
 export const AUTH_MISSING_EVENT = 'auth.missing'
 export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
+/** The burn's container runtime (docker/podman) is down — no image can start. */
+export const CONTAINER_RUNTIME_DOWN_EVENT = 'burn.container_runtime_down'
+/** A custom image's agent CLI drifted from the host's — warned, never fatal. */
+export const IMAGE_CLI_DRIFT_EVENT = 'burn.image_cli_drift'
 
 const RUNTIME_BINARY: Record<AgentRuntime, string> = {
   'claude-code': 'claude',
@@ -283,21 +298,94 @@ export function preflightCommandNames(input: {
   ].sort()
 }
 
+/** Opens one runtime's `--version` output in the probe's stdout. */
+const VERSION_MARKER = '@@runcastle-cli-version'
+
 /**
  * One container for the whole list: `command -v` per name, printing the ones
- * that are absent. The script always exits 0 so a missing tool arrives as a
+ * that are absent, then each `versionsOf` runtime's `--version` behind a marker
+ * line naming it. The script always exits 0 so a missing tool arrives as a
  * parsed answer rather than being indistinguishable from an image that cannot
  * start a shell at all.
  */
-export function buildToolchainProbeArgs(image: string, names: readonly string[]): string[] {
-  const script = `for c in ${names.join(' ')}; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done`
+export function buildToolchainProbeArgs(
+  image: string,
+  names: readonly string[],
+  versionsOf: readonly AgentRuntime[] = [],
+): string[] {
+  const versions = versionsOf
+    .map((r) => `; echo "${VERSION_MARKER} ${r}"; ${RUNTIME_BINARY[r]} --version 2>/dev/null || true`)
+    .join('')
+  const script = `for c in ${names.join(' ')}; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done${versions}`
   return ['run', '--rm', '--entrypoint', 'sh', image, '-c', script]
 }
 
 /** The probed names the container reported absent, in the order they were asked. */
 export function parseMissingCommands(stdout: string, names: readonly string[]): string[] {
-  const absent = new Set(stdout.split('\n').map((line) => line.trim()))
+  const sweep = stdout.split(VERSION_MARKER)[0] ?? ''
+  const absent = new Set(sweep.split('\n').map((line) => line.trim()))
   return names.filter((name) => absent.has(name))
+}
+
+/**
+ * The agent CLI versions the probe printed, per runtime asked for — `null`
+ * where the image's CLI printed no version (absent, or broken).
+ */
+export function parseProbedVersions(stdout: string): Partial<Record<AgentRuntime, string | null>> {
+  const versions: Partial<Record<AgentRuntime, string | null>> = {}
+  for (const section of stdout.split(VERSION_MARKER).slice(1)) {
+    const [header = '', ...output] = section.split('\n')
+    const runtime = header.trim()
+    if (Object.hasOwn(RUNTIME_BINARY, runtime)) {
+      versions[runtime as AgentRuntime] = parseAgentCliVersion(output.join('\n'))
+    }
+  }
+  return versions
+}
+
+/** `<image> has Claude Code 2.1.270, the host has 2.1.280` — the drift itself. */
+function agentCliDrift(
+  image: string,
+  runtime: AgentRuntime,
+  imageVersion: string | null,
+  hostVersion: string,
+): string {
+  const { label } = RUNTIME_SPECS[runtime]
+  const inImage = imageVersion ? `${label} ${imageVersion}` : `an unknown ${label} version`
+  return `${image} has ${inImage}, the host has ${hostVersion}`
+}
+
+/**
+ * The image's agent CLI differs from the host's — the drift a Rebuild fixes by
+ * re-running only the install layer, which the host version is pinned into.
+ */
+export function agentCliDriftMessage(
+  image: string,
+  runtime: AgentRuntime,
+  imageVersion: string | null,
+  hostVersion: string,
+): string {
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — Rebuild from Settings → Burns (only the CLI layer rebuilds).`
+}
+
+/**
+ * The same drift on an image runcastle did not build. There is no Rebuild to
+ * offer — the button is `refused` for a custom tag — so this says who owns the
+ * image instead, in the doctor's own custom-row words, and the burn goes on
+ * (decision 3: a custom image's CLI drift is a warning). Blocking here would
+ * stop every burn on a hand-built image after any host `claude update`, with no
+ * way out from inside the app.
+ */
+export function customImageCliDriftMessage(
+  image: string,
+  runtime: AgentRuntime,
+  imageVersion: string | null,
+  hostVersion: string,
+): string {
+  return (
+    `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — it is a custom image managed ` +
+    `outside runcastle, so rebuild it with the tool that built it; this burn runs on it as it is.`
+  )
 }
 
 /**
@@ -405,6 +493,11 @@ export interface BurnDeps {
   hasAuthToken: boolean
   /** Doctor-style injected command runner used for the pre-container image probe. */
   exec?: ExecFn
+  /**
+   * The host's agent CLI versions, which the image probe holds the image's to
+   * (decision 5). Omitted, or `null` for a runtime, skips that runtime's check.
+   */
+  hostAgentVersions?: HostAgentVersions
   /**
    * The runtime of a ticket whose OWN model cannot authenticate a container
    * burn, or `undefined` when it can. A ticket assigned to the other runtime
@@ -2403,6 +2496,14 @@ const RUN_FATAL_ERROR_PATTERNS: RegExp[] = [
 const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSAL_STATUS}|forbidden)`)
 
 /**
+ * Claude Code's refusal of a model newer than itself, e.g. `API Error: 400
+ * Claude Code 2.1.270 does not support this model; version 2.1.280 or newer is
+ * required.` The in-use version is optional so a reworded prefix still reads.
+ */
+const CLI_TOO_OLD =
+  /(?:Claude Code\s+(\S+)\s+)?does not support this model[^\n]*?version\s+(\S+?)\s+or newer is required/i
+
+/**
  * Per-runtime run-fatal wording. OpenAI reports auth as a 401 with an
  * `invalid_api_key` code and an exhausted account as `insufficient_quota` (a
  * billing fact no retry fixes, despite arriving as a 429).
@@ -2413,7 +2514,10 @@ const REFUSED_CREDENTIAL_STATUS = refusalNamingCredential(String.raw`(?:${REFUSA
  * host, which no attempt of ours can perform.
  */
 const RUNTIME_RUN_FATAL_ERROR_PATTERNS: Record<AgentRuntime, RegExp[]> = {
-  'claude-code': [],
+  // A fact about the image's CLI, not the ticket — and it arrives as an
+  // `API Error: 400`, which the retryable `api error` entry would otherwise
+  // retry in every ticket (see {@link cliTooOldMessage}).
+  'claude-code': [CLI_TOO_OLD],
   codex: [
     /invalid_api_key/i,
     REFUSED_CREDENTIAL_STATUS,
@@ -2524,6 +2628,22 @@ export function missingAgentBinaryMessage(
   const binary = AGENT_BINARY[runtime]
   if (!missingCommandRegex(binary).test(msg)) return undefined
   return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+}
+
+/**
+ * Turn the "CLI too old for this model" 400 into the operator's fix. The burn
+ * preflight has already proven the image matches the host, so the host CLI is
+ * too old as well — Rebuild alone would bake the same version again, and the
+ * host update comes first (decision 7).
+ */
+export function cliTooOldMessage(err: unknown, model?: string): string | undefined {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
+  const match = CLI_TOO_OLD.exec(msg)
+  if (!match) return undefined
+  const [, inUse, required] = match
+  const cli = inUse ? `Claude Code ${inUse}` : 'Claude Code'
+  const target = model ? `model ${model}` : 'this model'
+  return `${cli} is too old for ${target} (needs ${required} or newer). Run \`claude update\` on the host, then Rebuild from Settings → Burns.`
 }
 
 /** What a failed attempt means: retry it, fail the ticket, or halt the run. */
@@ -3490,6 +3610,15 @@ export async function burnRun(
   // run answers for all of them. The host CLI is the right one for noSandbox,
   // so probing an image there would be both wasteful and misleading.
   if (deps.config.sandbox !== 'noSandbox' && deps.exec) {
+    // A dead daemon would fail the probe below too, and read as a stale image —
+    // so the runtime is judged first, by the doctor's own classifier.
+    const runtimeHealth = await containerRuntimeProbe(deps.exec, deps.config.sandbox)
+    if (runtimeHealth.status !== 'ok') {
+      const message = `${runtimeHealth.detail} — ${runtimeHealth.fix}`
+      ctx.emitEvent({ type: CONTAINER_RUNTIME_DOWN_EVENT, message })
+      return { status: 'failed', summary: message }
+    }
+
     const image = resolveSandboxImage(deps.config, ctx.project)
     const binary = RUNTIME_BINARY[deps.runtime]
     const prepared = resolvePreparedSettings(deps.config, ctx.project)
@@ -3501,17 +3630,57 @@ export async function burnRun(
       ),
       verifyCommands: prepared.verifyCommands,
     })
-    const probe = await deps.exec(deps.config.sandbox, buildToolchainProbeArgs(image, names))
-    // A probe that could not even start a shell says nothing about which name is
-    // absent — that is the image itself, so it keeps the stale-image wording.
-    const missing =
-      probe.ok && probe.code === 0 ? parseMissingCommands(probe.stdout, names) : [binary]
-    if (missing.length > 0) {
-      const message = missing.includes(binary)
-        ? missingImageRuntimeMessage(deps.runtime, image)
-        : missingToolchainMessage(missing, image)
+    // Every runtime a container of this run will launch — a mixed run's tickets
+    // may use the other one — whose host version there is to hold it to.
+    const hostVersions = deps.hostAgentVersions
+    const usedRuntimes = new Set([
+      deps.runtime,
+      ...(deps.ticketRuntime
+        ? burnable.filter((t) => !isReviewTicket(t)).map(deps.ticketRuntime)
+        : []),
+    ])
+    const versionsOf = [...usedRuntimes].filter((r) => hostVersions?.[r] != null)
+    const probe = await deps.exec(
+      deps.config.sandbox,
+      buildToolchainProbeArgs(image, names, versionsOf),
+    )
+    const fail = (message: string) => {
       ctx.emitEvent({ type: IMAGE_RUNTIME_MISSING_EVENT, message })
-      return { status: 'failed', summary: message }
+      return { status: 'failed' as const, summary: message }
+    }
+    // The runtime is up, so a probe that could not even start a shell is the
+    // image itself — and says nothing about which name is absent.
+    if (!(probe.ok && probe.code === 0)) {
+      const why = probe.stderr.trim().split('\n')[0] || `exit ${probe.code ?? 'unknown'}`
+      return fail(`could not start image ${image}: ${why}`)
+    }
+    const missing = parseMissingCommands(probe.stdout, names)
+    if (missing.length > 0) {
+      return fail(
+        missing.includes(binary)
+          ? missingImageRuntimeMessage(deps.runtime, image)
+          : missingToolchainMessage(missing, image),
+      )
+    }
+    // Strict equality: the image runs whatever the host runs (decision 5).
+    // Burns never build — the fix is a human's one-click Rebuild, which exists
+    // only for an image runcastle builds. A custom tag's Rebuild is `refused`,
+    // so its drift is warned about and burned through (decision 3) rather than
+    // aborted with a fix nobody can apply.
+    const managed = isManagedImage(image, ctx.project)
+    const inImage = parseProbedVersions(probe.stdout)
+    for (const runtime of versionsOf) {
+      const hostVersion = hostVersions?.[runtime]
+      const imageVersion = inImage[runtime] ?? null
+      if (!hostVersion || imageVersion === hostVersion) continue
+      if (!managed) {
+        ctx.emitEvent({
+          type: IMAGE_CLI_DRIFT_EVENT,
+          message: customImageCliDriftMessage(image, runtime, imageVersion, hostVersion),
+        })
+        continue
+      }
+      return fail(agentCliDriftMessage(image, runtime, imageVersion, hostVersion))
     }
   }
 
@@ -4895,11 +5064,14 @@ async function burnTicket(
         if (salvaged.length > 0) preserveChain(tempBranch)
         // Run-fatal never reaches the retry above (it is not `retryable`), and
         // it leaves here with the fact the scheduler halts the run on.
-        return {
-          status: 'failed',
-          error: msg,
-          ...(verdict === 'run-fatal' ? { runFatal: { runtime: model.runtime } } : {}),
+        if (verdict === 'run-fatal') {
+          return {
+            status: 'failed',
+            error: cliTooOldMessage(msg, model.id) ?? msg,
+            runFatal: { runtime: model.runtime },
+          }
         }
+        return { status: 'failed', error: msg }
       }
     }
 
@@ -4994,11 +5166,14 @@ export function resolveTicketModel(
  * `review` step, see {@link resolveTicketModel}), re-resolves both, because a
  * model on the other runtime authenticates with the other key.
  */
-function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
+async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
   const config = loadConfig()
   const model = resolveModelEntry('implement', config, ctx.project, ctx.modelOverride)
   const token = readTokenFromEnvFile(envPath(), model.runtime)
   const exec = createSystemExec({ cwd: ctx.project.repoPath })
+  // Only a container burn holds an image to the host's CLIs; noSandbox runs them.
+  const hostAgentVersions =
+    config.sandbox === 'noSandbox' ? undefined : (await resolveHostAgentVersions(exec)).versions
   const imageProbeCache = new Map<string, Promise<ExecOutcome>>()
   const cachedExec: ExecFn = (command, args) => {
     // The probed command list rides in `args` (sorted, so it is stable), which
@@ -5072,6 +5247,7 @@ function resolveBurnDeps(ctx: WorkflowCtx): BurnDeps {
     runtime: model.runtime,
     hasAuthToken: burnAuthReady(model.runtime, token),
     exec: cachedExec,
+    hostAgentVersions,
     ticketAuthMissing: (ticket) => {
       const { model: ticketModel, token: ticketToken } = ticketCredentials(ticket)
       return burnAuthReady(ticketModel.runtime, ticketToken) ? undefined : ticketModel.runtime
@@ -5125,5 +5301,5 @@ export function readTokenFromEnvFile(path: string, runtime: AgentRuntime): strin
 
 export const ticketBurner: WorkflowDef = {
   id: 'ticket-burner',
-  run: (ctx) => burnRun(ctx, resolveBurnDeps(ctx)),
+  run: async (ctx) => burnRun(ctx, await resolveBurnDeps(ctx)),
 }

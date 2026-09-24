@@ -11,6 +11,7 @@ import {
   releaseTicketAbort,
   ticketStopReason,
 } from '../src/workflows/ticket-burner'
+import { imageBuildTarget } from '../src/services/sandbox-image'
 
 /**
  * Workflow-level tests: the scheduler + summary logic driven through a FAKE
@@ -182,6 +183,8 @@ describe('burnRun — scheduling and summary', () => {
     )
 
     expect(probes).toEqual([
+      { command: 'docker', args: ['--version'] },
+      { command: 'docker', args: ['info'] },
       {
         command: 'docker',
         args: [
@@ -216,7 +219,10 @@ describe('burnRun — scheduling and summary', () => {
           sandboxImage: 'sandcastle:runcastle-demo',
         },
         runtime: 'claude-code',
-        exec: async () => ({ ok: true, code: 127, stdout: '', stderr: 'claude: not found' }),
+        exec: async (_command, args) =>
+          args[0] === 'run'
+            ? { ok: true, code: 0, stdout: 'claude\n', stderr: '' }
+            : { ok: true, code: 0, stdout: '', stderr: '' },
       }),
     )
 
@@ -262,7 +268,7 @@ describe('burnRun — scheduling and summary', () => {
       }),
     )
 
-    expect(probes[0]?.args).toEqual([
+    expect(probes.find((p) => p.args[0] === 'run')?.args).toEqual([
       'run',
       '--rm',
       '--entrypoint',
@@ -311,7 +317,7 @@ describe('burnRun — scheduling and summary', () => {
       }),
     )
 
-    expect(probes[0]?.args.at(-1)).toBe(
+    expect(probes.find((p) => p.args[0] === 'run')?.args.at(-1)).toBe(
       'for c in codex gradle; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done',
     )
   })
@@ -347,6 +353,236 @@ describe('burnRun — scheduling and summary', () => {
           'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
       }),
     )
+  })
+
+  describe('preflight — container runtime health and agent CLI drift', () => {
+    const dockerConfig = {
+      serverPort: 4512,
+      model: 'm',
+      stepModels: {},
+      sandbox: 'docker' as const,
+      // The stock image — one runcastle builds, so its drift IS a Rebuild away.
+      sandboxImage: 'sandcastle:runcastle',
+    }
+    const ok = (stdout = '') => ({ ok: true, code: 0, stdout, stderr: '' })
+
+    /** A healthy docker whose image answers the probe with `probeStdout`. */
+    function imageAnswers(probeStdout: string, probes: string[][] = []): BurnDeps['exec'] {
+      return async (_command, args) => {
+        probes.push(args)
+        return ok(args[0] === 'run' ? probeStdout : '')
+      }
+    }
+
+    it('aborts with the doctor’s detail and fix when the docker daemon is down', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      const probes: string[][] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({}, calls), {
+          config: dockerConfig,
+          exec: async (_command, args) => {
+            probes.push(args)
+            return args[0] === 'info'
+              ? { ok: true, code: 1, stdout: '', stderr: 'Cannot connect to the Docker daemon' }
+              : ok('Docker version 27.0.0')
+          },
+        }),
+      )
+
+      const message =
+        'docker CLI is installed but the daemon is not responding — Start Docker Desktop (or `sudo systemctl start docker` on Linux), then re-run doctor.'
+      expect(calls).toEqual([])
+      expect(res).toEqual({ status: 'failed', summary: message })
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'burn.container_runtime_down', message }),
+      )
+      expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
+      expect(probes.some((args) => args[0] === 'run')).toBe(false)
+    })
+
+    it('judges the configured runtime, not a healthy docker beside a stopped podman', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({}, calls), {
+          config: { ...dockerConfig, sandbox: 'podman' },
+          exec: async (command, args) =>
+            command === 'podman' && args[0] === 'info'
+              ? { ok: true, code: 125, stdout: '', stderr: 'no machine' }
+              : ok(),
+        }),
+      )
+
+      expect(calls).toEqual([])
+      expect(res.status).toBe('failed')
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'burn.container_runtime_down',
+          message:
+            'podman CLI is installed but its machine is not initialized/started — Run: podman machine init && podman machine start',
+        }),
+      )
+    })
+
+    it('reports an image that cannot start a shell without calling the agent binary missing', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({}, calls), {
+          config: dockerConfig,
+          exec: async (_command, args) =>
+            args[0] === 'run'
+              ? {
+                  ok: true,
+                  code: 125,
+                  stdout: '',
+                  stderr: 'Unable to find image locally\npull access denied',
+                }
+              : ok(),
+        }),
+      )
+
+      const message =
+        'could not start image sandcastle:runcastle: Unable to find image locally'
+      expect(calls).toEqual([])
+      expect(res).toEqual({ status: 'failed', summary: message })
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'burn.image_runtime_missing', message }),
+      )
+    })
+
+    it('aborts before any ticket when the image’s Claude Code differs from the host', async () => {
+      const { ctx, events } = makeCtx([ticket(1), ticket(2)])
+      const calls: number[] = []
+      const probes: string[][] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({}, calls), {
+          config: dockerConfig,
+          hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
+          exec: imageAnswers('@@runcastle-cli-version claude-code\n2.1.270 (Claude Code)\n', probes),
+        }),
+      )
+
+      const message =
+        'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+      expect(probes.find((args) => args[0] === 'run')?.at(-1)).toBe(
+        'for c in claude; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done; echo "@@runcastle-cli-version claude-code"; claude --version 2>/dev/null || true',
+      )
+      expect(calls).toEqual([])
+      expect(res).toEqual({ status: 'failed', summary: message })
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'burn.image_runtime_missing', message }),
+      )
+    })
+
+    it('warns but burns on a custom image, whose Rebuild button is disarmed', async () => {
+      const { ctx, events } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      // A tag a human typed, built by someone else's tooling (stream-client's
+      // `runcastle-bl`) — so no Rebuild exists to point the drift at.
+      const customImage = 'sandcastle:runcastle-bl'
+      ctx.project = { ...project, sandboxImage: customImage }
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          config: dockerConfig,
+          hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
+          exec: imageAnswers('@@runcastle-cli-version claude-code\n2.1.215 (Claude Code)\n'),
+        }),
+      )
+
+      expect(res.status).toBe('succeeded')
+      expect(calls).toEqual([1])
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'burn.image_cli_drift',
+          message:
+            'sandcastle:runcastle-bl has Claude Code 2.1.215, the host has 2.1.280 — it is a ' +
+            'custom image managed outside runcastle, so rebuild it with the tool that built it; ' +
+            'this burn runs on it as it is.',
+        }),
+      )
+      expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
+      // The fix the warning names is the only one available: the button the old
+      // message pointed at refuses this image.
+      expect(
+        imageBuildTarget({
+          config: { sandboxImage: undefined },
+          project: {
+            id: project.id,
+            repoPath: project.repoPath,
+            sandboxImage: customImage,
+            sandboxImageOverwritable: false,
+          },
+          stockDockerfile: '/stock/Dockerfile',
+        }),
+      ).toMatchObject({ kind: 'refused', imageName: customImage })
+    })
+
+    it('passes when the image matches the host, skipping a runtime the host lacks', async () => {
+      const { ctx } = makeCtx([ticket(1)])
+      const calls: number[] = []
+      const probes: string[][] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({ 1: { status: 'done', commits: ['a'] } }, calls), {
+          config: dockerConfig,
+          hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
+          ticketRuntime: () => 'claude-code',
+          exec: imageAnswers('@@runcastle-cli-version claude-code\n2.1.280 (Claude Code)\n', probes),
+        }),
+      )
+
+      expect(res.status).toBe('succeeded')
+      expect(calls).toEqual([1])
+      expect(probes.find((args) => args[0] === 'run')?.at(-1)).not.toContain('codex')
+    })
+
+    it('checks every runtime a mixed run’s tickets use', async () => {
+      const tickets = [ticket(1), ticket(2)]
+      const { ctx, events } = makeCtx(tickets)
+      const calls: number[] = []
+      const probes: string[][] = []
+
+      const res = await burnRun(
+        ctx,
+        deps(fakeExecute({}, calls), {
+          config: dockerConfig,
+          runtime: 'claude-code',
+          hostAgentVersions: { 'claude-code': '2.1.280', codex: '0.46.0' },
+          ticketRuntime: (t): AgentRuntime => (t.seq === 2 ? 'codex' : 'claude-code'),
+          exec: imageAnswers(
+            '@@runcastle-cli-version claude-code\n2.1.280 (Claude Code)\n' +
+              '@@runcastle-cli-version codex\ncodex-cli 0.45.0\n',
+            probes,
+          ),
+        }),
+      )
+
+      expect(probes.find((args) => args[0] === 'run')?.at(-1)).toContain(
+        'echo "@@runcastle-cli-version codex"; codex --version',
+      )
+      expect(calls).toEqual([])
+      expect(res.status).toBe('failed')
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'burn.image_runtime_missing',
+          message:
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — Rebuild from Settings → Burns (only the CLI layer rebuilds).',
+        }),
+      )
+    })
   })
 
   it('never probes the image for noSandbox burns', async () => {

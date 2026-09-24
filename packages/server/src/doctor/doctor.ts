@@ -22,9 +22,17 @@ import {
   type AgentRuntime,
 } from '@runcastle/core'
 import { burnerDockerfilePath } from '../launcher/asset-paths'
+import {
+  type HostAgentVersions,
+  parseAgentCliVersion,
+  resolveHostAgentVersions,
+} from '../services/agent-cli-versions'
 import { codexAuthFile } from '../services/codex-auth'
 import {
+  describeFreshnessReason,
+  type FreshnessReason,
   hashDockerfile,
+  imageFreshness,
   inspectBuiltImage,
   legacyGlobalImage,
   legacyGlobalImageReason,
@@ -515,12 +523,18 @@ export async function gitIdentityProbe(exec: ExecFn, cwd?: string): Promise<Prob
  * Container runtime — the one probe where presence and health genuinely diverge.
  * Tries docker first, then podman; classifies the exact failure so the fix line
  * is honest: not-installed vs. daemon-dead (docker) vs. machine-stopped (podman).
+ *
+ * `only` narrows it to one runtime — the burn preflight's, which must judge the
+ * runtime the burn is configured for, not whichever one happens to be healthy.
  */
-export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> {
+export async function containerRuntimeProbe(
+  exec: ExecFn,
+  only?: 'docker' | 'podman',
+): Promise<ProbeResult> {
   const id = 'container-runtime'
   const label = 'Container runtime (Docker / Podman)'
-  const docker = await exec('docker', ['--version'])
-  if (docker.ok && docker.code === 0) {
+  const docker = only === 'podman' ? undefined : await exec('docker', ['--version'])
+  if (docker?.ok && docker.code === 0) {
     const info = await exec('docker', ['info'])
     if (info.ok && info.code === 0) {
       return {
@@ -543,8 +557,8 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
     }
   }
 
-  const podman = await exec('podman', ['--version'])
-  if (podman.ok && podman.code === 0) {
+  const podman = only === 'docker' ? undefined : await exec('podman', ['--version'])
+  if (podman?.ok && podman.code === 0) {
     const info = await exec('podman', ['info'])
     if (info.ok && info.code === 0) {
       return {
@@ -573,7 +587,7 @@ export async function containerRuntimeProbe(exec: ExecFn): Promise<ProbeResult> 
     tier: 2,
     status: 'missing',
     severity: 'error',
-    detail: 'neither docker nor podman found on PATH',
+    detail: only ? `${only} not found on PATH` : 'neither docker nor podman found on PATH',
     fix: 'Install Docker Desktop or Podman (see docs/research/PREREQS-NOTES.md §4). Not needed for interactive-only use.',
   }
 }
@@ -592,6 +606,8 @@ export interface ImageProbeInput {
   /** The stock burner Dockerfile the stock image must still match. */
   burnerDockerfile: string
   dockerfileHash: (path: string) => string | null
+  /** The host's agent CLI versions every image's CLIs must match; null is never drift. */
+  hostVersions: HostAgentVersions
   project?: ProjectImageEnv
   /** See {@link DoctorEnv.knownProjectIds}; absent means "do not classify". */
   knownProjectIds?: readonly string[]
@@ -618,9 +634,15 @@ export interface ImageProbeInput {
  * A project image is stale when *either* hash mismatches, and the detail names
  * which layer: a runcastle upgrade changes the stock Dockerfile, and every
  * project image `FROM` it would otherwise stay "fresh" by its own label forever.
+ *
+ * The other half of freshness is the agent CLIs (sandbox-agent-clis-track-the-
+ * host-version, decision 9): an image whose recorded Claude Code or Codex
+ * version is not the host's is stale the same way, judged by `imageFreshness` —
+ * the one verdict the Rebuild plan also uses. A custom image carries no labels,
+ * so it is probed instead and its drift is only a warning (decision 3).
  */
 export async function sandcastleImageProbe(input: ImageProbeInput): Promise<ProbeResult> {
-  const { exec, burnerDockerfile, dockerfileHash, project } = input
+  const { exec, burnerDockerfile, dockerfileHash, hostVersions, project } = input
   const runtime = await presentRuntime(exec)
   if (!runtime) {
     return {
@@ -651,10 +673,14 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
     stored = null
   }
 
-  const stockHash = dockerfileHash(burnerDockerfile)
+  const unchecked = uncheckedRuntimes(hostVersions)
+
   const stock = await inspectBuiltImage(exec, runtime, DEFAULT_SANDBOX_IMAGE)
-  // A hash we cannot read is no evidence of drift — say nothing rather than cry stale.
-  const stockFresh = stock.present && (stockHash === null || stock.hash === stockHash)
+  const stockVerdict = imageFreshness({
+    image: stock,
+    expectedHash: dockerfileHash(burnerDockerfile),
+    host: hostVersions,
+  })
 
   if (project && handTyped === null && projectHash !== null) {
     const tag = projectImageTag(project.id)
@@ -673,18 +699,26 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
         fix: 'Open Settings → Burns (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
       }
     }
-    if (image.hash !== projectHash) {
-      return staleImage(`${tag} no longer matches .runcastle/sandbox/Dockerfile`)
+    // The project image's own labels, inherited through `FROM`, record the CLIs
+    // its containers actually run — so its CLI drift is judged here, not on the base.
+    const own = imageFreshness({ image, expectedHash: projectHash, host: hostVersions })
+    if (!own.fresh) {
+      return staleImage(describeStale(tag, own.reasons, '.runcastle/sandbox/Dockerfile'), unchecked)
     }
-    if (!stockFresh) {
-      const base = stock.present ? 'no longer matches the burner Dockerfile' : 'is not built'
-      return staleImage(`${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${base}`)
+    if (!stockVerdict.fresh) {
+      const layer = stockVerdict.reasons.find((r) => r.kind !== 'cli')
+      return staleImage(
+        layer === undefined
+          ? `${tag} is built on a stale ${DEFAULT_SANDBOX_IMAGE} — ${describeStale(DEFAULT_SANDBOX_IMAGE, stockVerdict.reasons, 'the burner Dockerfile')}`
+          : `${tag} is built on ${DEFAULT_SANDBOX_IMAGE}, which ${layer.kind === 'missing' ? 'is not built' : 'no longer matches the burner Dockerfile'}`,
+        unchecked,
+      )
     }
     return {
       ...IMAGE_ROW,
       status: 'ok',
       severity: 'error',
-      detail: `${tag} built from .runcastle/sandbox/Dockerfile`,
+      detail: `${tag} built from .runcastle/sandbox/Dockerfile${unchecked}`,
     }
   }
 
@@ -719,6 +753,12 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       // waiting on a build that is never coming.
       ...(projectHash === null ? [] : [`and outranks this repo's .runcastle/sandbox/Dockerfile`]),
       ...(custom.present ? [] : ['and is not built locally']),
+      // Decision 3: no labels to read, so the one probe that starts a container.
+      // Drift is a warning only — the status stays `custom`, which is what keeps
+      // the Rebuild button disarmed, since runcastle did not build this image.
+      ...(custom.present && legacy === null
+        ? await customImageDrift(exec, runtime, imageName, hostVersions)
+        : []),
     ]
     return {
       ...IMAGE_ROW,
@@ -742,8 +782,76 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
       fix: 'Start runcastle and click "Build image" on the Enable AFK burns card — it builds this for you (one click). Only needed for AFK/sandboxed burns.',
     }
   }
-  if (!stockFresh) return staleImage(`${imageName} no longer matches the burner Dockerfile`)
-  return { ...IMAGE_ROW, status: 'ok', severity: 'error', detail: `${imageName} present` }
+  if (!stockVerdict.fresh) {
+    return staleImage(
+      describeStale(imageName, stockVerdict.reasons, 'the burner Dockerfile'),
+      unchecked,
+    )
+  }
+  return {
+    ...IMAGE_ROW,
+    status: 'ok',
+    severity: 'error',
+    detail: `${imageName} present${unchecked}`,
+  }
+}
+
+/**
+ * A stale image's reasons as one detail line. A hash mismatch keeps the row's
+ * long-standing wording, naming the Dockerfile the image was built from; CLI
+ * drift names the runtime and both versions.
+ */
+function describeStale(tag: string, reasons: FreshnessReason[], dockerfile: string): string {
+  return reasons
+    .map((reason) =>
+      reason.kind === 'hash'
+        ? `${tag} no longer matches ${dockerfile}`
+        : describeFreshnessReason(tag, reason),
+    )
+    .join('; ')
+}
+
+/**
+ * The trailing clause a managed image's row carries for every agent runtime the
+ * freshness verdict could not judge (decision 4): with no host version there is
+ * nothing to drift from, so `imageFreshness` skips that runtime rather than
+ * calling the image stale over it. Saying so is the difference between an image
+ * whose CLIs were checked and one where half the question was never asked — a
+ * silent row reads as the former. Empty when the host has every CLI, so a fully
+ * checked row keeps its long-standing wording.
+ */
+function uncheckedRuntimes(host: HostAgentVersions): string {
+  const skipped = AGENT_RUNTIMES.filter((r) => host[r] === null).map((r) => RUNTIME_SPECS[r].label)
+  return skipped.length === 0 ? '' : ` (${skipped.join(' and ')} not on host — not checked)`
+}
+
+/**
+ * Ask an unmanaged image which agent CLIs it carries, in one container, and
+ * name each that differs from the host's. A CLI missing from either side is
+ * not drift: the host has nothing to match (decision 4), and an image without
+ * a CLI is the burn preflight's to refuse. A probe that fails says nothing.
+ */
+async function customImageDrift(
+  exec: ExecFn,
+  runtime: Runtime,
+  image: string,
+  host: HostAgentVersions,
+): Promise<string[]> {
+  const script = AGENT_RUNTIMES.map((r) => `${RUNTIME_SPECS[r].bin} --version 2>/dev/null`).join(
+    '; echo ---; ',
+  )
+  const out = await exec(runtime, ['run', '--rm', '--entrypoint', 'sh', image, '-c', script])
+  if (!out.ok) return []
+  const sections = out.stdout.split('---')
+  return AGENT_RUNTIMES.flatMap((r, i) => {
+    const inImage = parseAgentCliVersion(sections[i] ?? '')
+    const onHost = host[r]
+    if (inImage === null || onHost === null || inImage === onHost) return []
+    const { label } = RUNTIME_SPECS[r]
+    return [
+      `its ${label} ${inImage} differs from the host's ${onHost} — rebuild it with the tool that built it`,
+    ]
+  })
 }
 
 /** The image row's identity, shared by every verdict it can reach. */
@@ -762,14 +870,16 @@ async function presentRuntime(exec: ExecFn): Promise<Runtime | null> {
  * A stale verdict over whichever layer drifted. The fix names the settings page
  * the web turns into a link (flow-redesign-settings decision 9), so it lands the
  * reader on the image row rather than telling them to go looking for it — and
- * one Rebuild heals the whole chain, whichever layer this is about.
+ * one Rebuild heals the whole chain, whichever layer this is about. `unchecked`
+ * is {@link uncheckedRuntimes}, kept after the call to action so what to do
+ * comes before what was skipped.
  */
-function staleImage(detail: string): ProbeResult {
+function staleImage(detail: string, unchecked = ''): ProbeResult {
   return {
     ...IMAGE_ROW,
     status: 'stale',
     severity: 'error',
-    detail: `${detail} — rebuild`,
+    detail: `${detail} — rebuild${unchecked}`,
     fix: 'Open Settings → Burns (Rebuild image).',
   }
 }
@@ -814,6 +924,9 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
       imageName,
       burnerDockerfile,
       dockerfileHash,
+      // Presence is the injected exec's to decide, as for every other probe
+      // here: the production exec resolves the binary the same way anyway.
+      hostVersions: (await resolveHostAgentVersions(exec, () => true)).versions,
       ...(env.projectImage ? { project: env.projectImage } : {}),
       ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
     }),

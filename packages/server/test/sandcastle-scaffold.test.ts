@@ -50,6 +50,39 @@ describe('sandcastleTemplateDir', () => {
     // nowhere writable to go once the build drops to the unprivileged agent.
     expect(image.indexOf('@openai/codex')).toBeLessThan(image.indexOf('USER ${AGENT_UID}'))
   })
+
+  // Each version ARG must sit directly above its install RUN: that position is
+  // what confines a version bump's cache bust to the install layer and the ones
+  // after it. A failed pinned install names itself in the build log.
+  it.each(['Containerfile', 'Dockerfile'])('pins each agent CLI to its version ARG in the %s', (file) => {
+    const lines = readFileSync(join(sandcastleTemplateDir(), file), 'utf8').split(/\r?\n/)
+    const installs = [
+      {
+        arg: 'ARG CODEX_VERSION',
+        run: 'RUN npm install -g @openai/codex@${CODEX_VERSION:-latest} \\',
+        failure: 'runcastle: Codex CLI ${CODEX_VERSION:-latest} install failed — is that version published?',
+      },
+      {
+        arg: 'ARG CLAUDE_CODE_VERSION',
+        run: 'RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} \\',
+        failure:
+          'runcastle: Claude Code CLI ${CLAUDE_CODE_VERSION:-latest} install failed — is that version published?',
+      },
+    ]
+    for (const { arg, run, failure } of installs) {
+      const at = lines.indexOf(arg)
+      expect(at).toBeGreaterThan(-1)
+      expect(lines[at + 1]).toBe(run)
+      expect(lines[at + 2]).toContain(`|| { echo "${failure}" >&2; exit 1; }`)
+    }
+  })
+
+  it('keeps the Containerfile and the Dockerfile twins', () => {
+    const dir = sandcastleTemplateDir()
+    expect(readFileSync(join(dir, 'Containerfile'), 'utf8')).toBe(
+      readFileSync(join(dir, 'Dockerfile'), 'utf8'),
+    )
+  })
 })
 
 describe('scaffoldSandcastleConfig', () => {

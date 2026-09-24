@@ -30,6 +30,10 @@ const server = vi.hoisted(() => ({
     tag: 'sandcastle:runcastle',
   } as Record<string, unknown> | undefined,
   imageTargetError: null as { message: string } | null,
+  /** The notices `setup.startTerminal` hands back with its session id. */
+  notices: [] as string[],
+  /** Every message the card pushed through the toast hook. */
+  toasts: [] as string[],
 }))
 
 vi.mock('../src/trpc', () => {
@@ -67,9 +71,11 @@ vi.mock('../src/trpc', () => {
           useQuery: () => ({ data: server.imageTarget, error: server.imageTargetError }),
         },
         startTerminal: {
-          useMutation: (opts?: { onSuccess?: (r: { sessionId: string }) => void }) => ({
+          useMutation: (
+            opts?: { onSuccess?: (r: { sessionId: string; notices: string[] }) => void },
+          ) => ({
             isPending: false,
-            mutate: () => opts?.onSuccess?.({ sessionId: server.sessionId }),
+            mutate: () => opts?.onSuccess?.({ sessionId: server.sessionId, notices: server.notices }),
           }),
         },
         afkToken: { useMutation: mutation },
@@ -84,7 +90,13 @@ vi.mock('../src/trpc', () => {
   }
 })
 
-vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
+vi.mock('../src/lib/toast', () => ({
+  useToast: () => ({
+    push: (message: string) => {
+      server.toasts.push(message)
+    },
+  }),
+}))
 
 // xterm wants a laid-out canvas; the card only cares that the terminal is
 // mounted and that it reports the PTY's exit, so the view is a stub that hands
@@ -481,6 +493,8 @@ describe('EnableAfkCard image build terminal', () => {
     server.terminal = null
     server.imageTarget = { ...STOCK_TARGET }
     server.imageTargetError = null
+    server.notices = []
+    server.toasts = []
   })
   afterEach(cleanup)
 
@@ -519,5 +533,14 @@ describe('EnableAfkCard image build terminal', () => {
     })
     expect(container.querySelector('[data-terminal]')).toBeNull()
     expect(server.refetches).toBe(2)
+  })
+
+  // A host CLI version the server could not read does not stop the build — it
+  // goes ahead unpinned — but the human hears why, next to the build they started.
+  it('names each build notice as a toast while the build still starts', () => {
+    server.notices = ["Could not read the host's Codex version (`codex --version` exited 1)"]
+    build()
+    expect(server.terminal?.sessionId).toBe('build-image-1')
+    expect(server.toasts).toEqual(server.notices)
   })
 })
