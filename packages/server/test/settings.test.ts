@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_SANDBOX_IMAGE, EMPTY_DISCOVERY_SNAPSHOT, RuncastleConfig, resolveSandboxImage, type DiscoverySnapshot } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { InvalidInputError } from '../src/errors'
 import { createCallerFactory } from '../src/trpc/context'
@@ -12,6 +12,13 @@ import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/servi
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
+
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: () => ({
+    initializationResult: async () => ({ models: [] }),
+    close: () => {},
+  }),
+}))
 
 describe('model discovery settings socket', () => {
   const previousDataDir = process.env.RUNCASTLE_DATA_DIR
@@ -49,7 +56,7 @@ describe('model discovery settings socket', () => {
     expect(readDiscoverySnapshot()).toEqual(snapshot)
   })
 
-  it('serves the persisted snapshot and exposes the not-yet-implemented refresh mutation', async () => {
+  it('serves the persisted snapshot and refreshes through the settings mutation', async () => {
     const ctx = await makeTestCtx()
     const snapshot: DiscoverySnapshot = {
       sources: {
@@ -61,9 +68,10 @@ describe('model discovery settings socket', () => {
     expect(getSettings(ctx).discovery).toEqual(snapshot)
 
     const caller = createCallerFactory(appRouter)(ctx)
-    await expect(caller.settings.refreshModels()).rejects.toThrow(
-      'not yet implemented (model-discovery)',
-    )
+    const refreshed = await caller.settings.refreshModels()
+    expect(refreshed.sources['claude-code'].status).not.toBe('never')
+    expect(refreshed.sources.codex.status).not.toBe('never')
+    expect(getSettings(ctx).discovery).toEqual(refreshed)
   })
 })
 

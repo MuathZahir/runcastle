@@ -20,6 +20,7 @@ import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { startModelDiscovery } from './services/model-discovery'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
@@ -147,6 +148,10 @@ export async function startServer(): Promise<void> {
     `runcastle${process.env.RUNCASTLE_DEV ? ' [dev]' : ''} server listening on ` +
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
+
+  // Provider failures are represented per source in the persisted snapshot;
+  // an unforeseen service-level rejection is logged, never allowed to delay boot.
+  startModelDiscovery(ctx)
 
   // Check for a newer release here, at boot, rather than lazily on the first UI
   // page load: a server booted without anyone opening the app never checked at
