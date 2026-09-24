@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 
@@ -33,16 +33,44 @@ vi.mock('../src/lib/reviews', async (original) => ({
 const addNote = vi.fn(async () => NOTE)
 const invalidate = vi.fn()
 const pushToast = vi.fn()
-const openCount = { data: 3 as number | undefined }
+/** The cached open count — the query cache is the one seam the bar writes to
+ *  besides the mutation, so it is a tiny store the component re-reads. */
+const openCount = {
+  data: 2 as number | undefined,
+  listeners: new Set<() => void>(),
+  set(next: number | undefined) {
+    openCount.data = next
+    for (const l of openCount.listeners) l()
+  },
+}
 
 vi.mock('../src/trpc', () => ({
   trpc: {
-    useUtils: () => ({ projectNotes: { invalidate: (...a: unknown[]) => invalidate(...a) } }),
+    useUtils: () => ({
+      projectNotes: {
+        // Never settles here: the refetch is the slow server of the repro.
+        invalidate: (...a: unknown[]) => invalidate(...a),
+        openCount: {
+          setData: (_input: unknown, update: (n: number | undefined) => number | undefined) =>
+            openCount.set(update(openCount.data)),
+        },
+      },
+    }),
     projectNotes: {
       add: {
         useMutation: () => ({ mutateAsync: (...a: unknown[]) => addNote(...(a as [])) }),
       },
-      openCount: { useQuery: () => openCount },
+      openCount: {
+        useQuery: () => ({
+          data: useSyncExternalStore(
+            (l) => {
+              openCount.listeners.add(l)
+              return () => openCount.listeners.delete(l)
+            },
+            () => openCount.data,
+          ),
+        }),
+      },
     },
   },
 }))
@@ -97,7 +125,7 @@ function pasteImage(target: Element, file: File): void {
 }
 
 beforeEach(() => {
-  openCount.data = 3
+  openCount.data = 2
   vi.stubGlobal('URL', {
     ...URL,
     createObjectURL: () => 'blob:preview',
@@ -223,6 +251,8 @@ describe('NoteCapture', () => {
     expect(dialog.textContent).not.toContain('Paste a screenshot')
   })
 
+  // The count was read at open (2, before this note); the refetch never returns
+  // here, so the line's very first frame must already include the new note.
   it('confirms in place with the open count, and View opens the inbox', async () => {
     popover()
     await saveALine()
