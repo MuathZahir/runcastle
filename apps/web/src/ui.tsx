@@ -73,11 +73,23 @@ const BUTTON_VARIANT: Record<Variant, string> = {
   solid:
     'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
   // The violet ghost: a view's second door that still wants to read as the
-  // accent's, without becoming a second solid (the Notes card's Triage).
-  accent:
-    'border-accent-line bg-transparent text-accent-hi enabled:hover:bg-accent-soft',
+  // accent's, without becoming a second solid (the Notes card's Triage). Its
+  // label colour is in BUTTON_LABEL, not here.
+  accent: 'border-accent-line bg-transparent enabled:hover:bg-accent-soft',
   danger:
     'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
+}
+
+/**
+ * A variant's label colour, painted on a `display: contents` span around the
+ * children rather than on the `<button>`. The unlayered `button { color:
+ * inherit }` in styles.css beats any `text-*` utility on the button itself
+ * (STYLE.md, "Legacy rules beat utilities"), and moving that rule is its own
+ * migration (theme.css, the button reset). `contents` leaves the button's flex
+ * layout exactly as it was; colour still inherits down the DOM.
+ */
+const BUTTON_LABEL: Partial<Record<Variant, string>> = {
+  accent: 'text-accent-hi',
 }
 
 /**
@@ -95,13 +107,14 @@ export function Button({
   children,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
+  const label = BUTTON_LABEL[variant]
   return (
     <button
       type={type}
       className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
       {...rest}
     >
-      {children}
+      {label ? <span className={cx('contents', label)}>{children}</span> : children}
     </button>
   )
 }
