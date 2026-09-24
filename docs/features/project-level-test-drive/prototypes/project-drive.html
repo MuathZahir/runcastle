@@ -1,0 +1,501 @@
+<title>Project Drive Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* runcastle is dark-first; this prototype commits to its one dark world and paints every color explicitly. */
+:root{
+  color-scheme:dark;
+  --bg:#090b10; --panel:#0e1117; --panel-2:#0b0e14; --panel-3:#12151d; --inset:#07080b;
+  --hair:#1c2230; --hair-soft:#151a26; --hair-strong:#2a3242;
+  --text:#dde3ed; --text-2:#96a0b0; --text-3:#5f6a7a; --text-4:#3a4354;
+  --accent:#7c6cf6; --accent-hi:#a49bff; --accent-2:#8f80f8; --accent-ink:#0d0722; --accent-soft:#161329; --accent-line:#3d3670;
+  --drive:#58c4dc; --drive-soft:#0f1d22; --drive-line:#1f4652;
+  --danger:#f4594e; --needs:#d7a94a; --ok:#3fb950;
+  --mono:"JetBrains Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r-sm:6px; --r-md:8px; --r-lg:12px;
+  --shadow-overlay:0 24px 70px -24px rgba(0,0,0,.85),0 8px 24px -12px rgba(0,0,0,.6);
+  --shadow-menu:0 8px 28px -10px rgba(0,0,0,.7),0 2px 8px -2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:0 16px;-webkit-font-smoothing:antialiased}
+.page{max-width:1240px;margin:0 auto;padding-block:32px 64px;display:flex;flex-direction:column;gap:28px}
+.intro{display:flex;flex-direction:column;gap:8px;max-width:76ch}
+.intro .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--accent-hi)}
+.intro h1{margin:0;font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.intro p{margin:0;color:var(--text-2)}
+.try{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;color:var(--text-3);align-items:center}
+.try b{color:var(--text-2);font-weight:500}
+.try label{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);cursor:pointer}
+kbd,.kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--hair-strong);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--text-2);background:var(--panel)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,summary:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--accent-line);outline-offset:1px}
+
+/* ---- app frame ---- */
+.app{position:relative;border:1px solid var(--hair);border-radius:var(--r-lg);overflow:hidden;background:var(--bg);display:grid;grid-template-rows:44px minmax(0,1fr);height:720px}
+.titlebar{display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:var(--panel);border-bottom:1px solid var(--hair);min-width:0}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--accent-hi);white-space:nowrap}
+.brand i{width:14px;height:14px;border-radius:3px;background:var(--accent);display:inline-block}
+.crumbs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden}
+.crumbs .sep{color:var(--text-4)}
+.crumbs .here{color:var(--text);font-weight:500}
+.tb-sp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:28px;width:240px;padding:0 6px 0 10px;border:1px solid var(--hair);border-radius:var(--r-sm);color:var(--text-3);font-size:12.5px;background:var(--panel-2)}
+.search span{flex:1}
+.iconbtn{position:relative;width:28px;height:28px;border-radius:var(--r-sm);border:1px solid transparent;background:transparent;color:var(--text-3);display:grid;place-items:center;cursor:pointer}
+.iconbtn:hover{background:var(--panel-3);color:var(--text)}
+.iconbtn svg{width:15px;height:15px}
+.drivepill{display:none;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--drive-line);background:var(--drive-soft);color:var(--drive);font-family:var(--mono);font-size:11px;white-space:nowrap}
+.drivepill i{width:6px;height:6px;border-radius:50%;background:var(--drive);animation:pulse 1.6s infinite}
+.app.driving .drivepill{display:inline-flex}
+@keyframes pulse{50%{opacity:.35}}
+.body{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:0}
+.rail{background:var(--panel-2);border-right:1px solid var(--hair);padding:12px 10px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.rail .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);font-weight:600;padding:10px 8px 6px}
+.rrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:var(--r-sm);font-size:13px;color:var(--text-2)}
+.rrow .dot{width:6px;height:6px;border-radius:50%;background:var(--needs);flex:none}
+.rrow.proj{background:var(--panel-3);color:var(--text);font-weight:500;border:1px solid var(--hair)}
+.rrow .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.count{min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-hi);font-size:11px;font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.count[hidden]{display:none}
+.main{min-width:0;min-height:0;display:flex;flex-direction:column}
+
+/* ---- resting page ---- */
+.rest{overflow-y:auto;min-height:0;flex:1}
+.col{max-width:760px;margin:0 auto;padding:24px 28px 40px;display:flex;flex-direction:column;gap:24px}
+.head{display:flex;flex-direction:column;gap:6px}
+.head .row{display:flex;align-items:center;gap:10px}
+.tag{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--accent-hi);border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:999px;padding:1px 8px}
+.head h2{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.head p{margin:0;font-size:12px;color:var(--text-3)}
+code{font-family:var(--mono);color:var(--text-2);font-size:11.5px}
+.panel{border:1px solid var(--hair);border-radius:var(--r-lg);background:var(--panel)}
+.card{display:flex;align-items:center;gap:16px;padding:16px 18px;flex-wrap:wrap}
+.card .t{flex:1;min-width:220px}
+.card h3{margin:0;font-size:14px;font-weight:600}
+.card p{margin:2px 0 0;font-size:12px;color:var(--text-3)}
+.plan{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;margin-top:10px;font-size:12px}
+.plan dt{font-family:var(--mono);color:var(--text-3);font-size:11px;padding-top:1px}
+.plan dd{margin:0;color:var(--text-2);min-width:0;overflow-wrap:anywhere}
+.plan dd.none{color:var(--text-3)}
+.plan a{color:var(--accent-hi);text-decoration:none}
+.plan a:hover{text-decoration:underline}
+.btn{height:30px;padding:0 12px;border-radius:var(--r-sm);border:1px solid var(--hair-strong);background:var(--panel-3);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--text-4)}
+.btn svg{width:13px;height:13px}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.solid:hover{background:var(--accent-2)}
+.btn.violet{background:transparent;border-color:var(--accent-line);color:var(--accent-hi)}
+.btn.violet:hover{background:var(--accent-soft)}
+.btn.sm{height:26px;padding:0 9px;font-size:12px}
+.btn[disabled]{opacity:.45;cursor:default}
+
+/* notes list, shared by the card and the rail */
+.notes-h{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 18px;border-bottom:1px solid var(--hair-soft)}
+.notes-h h3{margin:0;font-size:14px;font-weight:600}
+.notes-h .sub{font-size:12px;color:var(--text-3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list{list-style:none;margin:0;padding:4px 0}
+.item{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-height:42px;padding:6px 12px 6px 18px}
+.item + .item{border-top:1px solid var(--hair-soft)}
+.item:hover,.item:focus-within{background:var(--panel-3)}
+.item.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{from{background:var(--drive-soft)}}
+.shot{width:40px;height:26px;border-radius:4px;border:1px solid var(--hair-strong);background:linear-gradient(135deg,#e9edf3,#cfd6e2);position:relative;overflow:hidden;padding:0;flex:none}
+.shot::before{content:"";position:absolute;left:5px;right:9px;top:7px;height:3px;border-radius:2px;background:#7c6cf6}
+.shot::after{content:"";position:absolute;left:5px;right:16px;top:14px;height:3px;border-radius:2px;background:#9aa4b4}
+.noshot{width:40px;display:grid;place-items:center}
+.noshot i{width:5px;height:5px;border-radius:50%;background:var(--accent-line)}
+.txt{min-width:0;font-size:13.5px;color:var(--text);overflow-wrap:anywhere}
+.src{display:inline-flex;align-items:center;gap:5px;margin-top:2px;font-family:var(--mono);font-size:10.5px;color:var(--drive)}
+.src svg{width:10px;height:10px}
+.src-line{display:block}
+.when{font-family:var(--mono);font-size:11px;color:var(--text-3);padding-right:6px;font-variant-numeric:tabular-nums}
+.empty{padding:14px 18px;font-size:12.5px;color:var(--text-3)}
+.convs{padding:14px 18px;font-size:12.5px;color:var(--text-3)}
+.convs .ct{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;margin-bottom:8px}
+.convs .c{padding:6px 0;border-top:1px solid var(--hair-soft);color:var(--text-2)}
+
+/* ---- drive view ---- */
+.drive{display:none;flex:1;min-height:0;grid-template-columns:minmax(0,1fr) 300px}
+.app.driving .drive{display:grid}
+.app.driving .rest{display:none}
+.app.driving.show-rest .drive{display:none}
+.app.driving.show-rest .rest{display:block}
+.stagecol{display:flex;flex-direction:column;gap:10px;padding:14px 16px;min-width:0;min-height:0}
+.dhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dhead .what{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+.dhead h3{margin:0;font-size:14px;font-weight:600;white-space:nowrap}
+.dhead h3 code{font-size:13px;color:var(--drive);background:var(--drive-soft);border:1px solid var(--drive-line);border-radius:4px;padding:0 5px}
+.dhead .path{font-family:var(--mono);font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dhead .sp{flex:1}
+.seg{display:none;border:1px solid var(--hair-strong);border-radius:var(--r-sm);overflow:hidden}
+.app.chatlive .seg{display:inline-flex}
+.seg button{border:0;background:transparent;height:26px;padding:0 10px;font-size:12px;color:var(--text-3);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.seg button + button{border-left:1px solid var(--hair-strong)}
+.seg button[aria-pressed="true"]{background:var(--panel-3);color:var(--text)}
+.seg i{width:6px;height:6px;border-radius:50%}
+.seg .c i{background:var(--ok)}
+.seg .d i{background:var(--drive)}
+.stage{position:relative;flex:1;min-height:0;border:1px solid var(--hair);border-radius:var(--r-md);background:#000;overflow:hidden;display:flex;flex-direction:column}
+.tools{position:absolute;top:8px;left:8px;display:flex;gap:4px;padding:4px;border:1px solid var(--hair);border-radius:var(--r-md);background:rgba(14,17,23,.92);z-index:3}
+.tools a{display:inline-flex;align-items:center;height:26px;padding:0 9px;border:1px solid var(--hair);border-radius:var(--r-sm);font-family:var(--mono);font-size:11.5px;color:var(--text-2);text-decoration:none}
+.tools a:hover{border-color:var(--hair-strong);color:var(--text)}
+.btn[aria-pressed="true"]{border-color:var(--danger);color:var(--danger)}
+.shade{position:absolute;inset:0;z-index:4;cursor:crosshair;background:rgba(9,11,16,.15);display:none;touch-action:none}
+.stage.selecting .shade{display:block}
+.marquee{position:absolute;border:2px solid var(--danger);background:rgba(244,89,78,.15);display:none}
+.grabbed{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;align-items:flex-end;gap:10px;padding:12px;background:rgba(14,17,23,.96);border-top:1px solid var(--hair)}
+.stage.has-shot .grabbed{display:flex}
+.grabbed .pv{width:96px;height:56px;border-radius:4px;border:1px solid var(--hair);background:linear-gradient(135deg,#e9edf3,#cfd6e2);position:relative;flex:none;overflow:hidden}
+.grabbed .pv::before{content:"";position:absolute;left:10px;right:20px;top:14px;height:5px;border-radius:3px;background:#7c6cf6}
+.grabbed .pv::after{content:"";position:absolute;left:10px;right:34px;top:28px;height:5px;border-radius:3px;background:#9aa4b4}
+.grabbed textarea{flex:1;min-width:0;height:56px;resize:none;border:1px solid var(--hair);border-radius:var(--r-sm);background:var(--inset);color:var(--text);font-family:var(--mono);font-size:12.5px;padding:7px 10px}
+.grabbed textarea:focus{border-color:var(--accent-line);outline:none}
+.grabbed textarea::placeholder{color:var(--text-4)}
+.grabbed .bt{display:flex;flex-direction:column;gap:6px}
+.dfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;border:1px solid var(--drive-line);background:var(--drive-soft);color:var(--drive);font-family:var(--mono);font-size:11px}
+.mono3{font-family:var(--mono);font-size:11px;color:var(--text-3)}
+.out{display:none;height:130px;border:1px solid var(--hair);border-radius:var(--r-md);background:var(--inset);font-family:var(--mono);font-size:11.5px;color:var(--text-2);padding:10px 12px;overflow:auto;white-space:pre}
+.stagecol.show-out .out{display:block}
+
+/* the fake app inside the frame */
+.fake{flex:1;min-height:0;background:#f6f7fa;color:#1d2330;font-family:var(--sans);display:grid;grid-template-columns:150px minmax(0,1fr);overflow:hidden}
+.fake nav{background:#fff;border-right:1px solid #e3e7ee;padding:52px 12px 12px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.fake nav b{font-size:13px;margin-bottom:10px;color:#4b3fd8}
+.fake nav span{padding:5px 8px;border-radius:5px;color:#5a6477}
+.fake nav span.on{background:#eeecff;color:#3a2fc0;font-weight:600}
+.fake section{padding:52px 20px 16px;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:hidden}
+.fake h4{margin:0;font-size:16px}
+.fake .sub{font-size:11.5px;color:#6b7486;margin-top:-6px}
+.entry{background:#fff;border:1px solid #e3e7ee;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.entry .top{display:flex;gap:8px;align-items:center;font-size:12.5px;font-weight:600}
+.entry .top em{font-style:normal;font-weight:500;font-size:10.5px;color:#fff;background:#7c6cf6;border-radius:999px;padding:0 7px;white-space:nowrap}
+.entry .top em.w{background:#d7a94a}
+.entry p{margin:0;font-size:11.5px;color:#5a6477}
+.fake .digest{display:flex;gap:10px;align-items:center;border:1px dashed #c9cfda;border-radius:8px;padding:9px 12px;font-size:11.5px;color:#6b7486}
+.fake .digest button{margin-left:auto;background:#4b3fd8;color:#fff;border:0;border-radius:6px;padding:0 10px;height:24px;font-size:11px;width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* notes rail */
+.nrail{border-left:1px solid var(--hair);background:var(--panel-2);display:flex;flex-direction:column;min-height:0}
+.nrail .notes-h{padding:12px 12px 12px 14px}
+.nrail .scroll{flex:1;overflow-y:auto;min-height:0}
+.nrail .grp{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--text-3);padding:10px 14px 4px}
+.nrail .item{padding:6px 10px 6px 14px;gap:10px}
+.nrail .shot,.nrail .noshot{width:32px}
+.nrail .txt{font-size:13px}
+.compose{border-top:1px solid var(--hair);padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--panel)}
+.compose input{height:32px;border:1px solid var(--hair);border-radius:var(--r-sm);background:var(--inset);color:var(--text);font:inherit;font-size:13px;padding:0 10px;outline:none}
+.compose input:focus{border-color:var(--accent-line)}
+.compose input::placeholder{color:var(--text-4)}
+.compose .hint{font-size:11px;color:var(--text-3);display:flex;gap:10px}
+
+/* chat stand-in */
+.chatview{display:none;flex:1;min-height:0;flex-direction:column;padding:14px 16px;gap:10px}
+.app.driving.chatview-on .drive{display:none}
+.app.driving.chatview-on .chatview{display:flex}
+.term{flex:1;border:1px solid var(--hair);border-radius:var(--r-md);background:var(--inset);font-family:var(--mono);font-size:12px;color:var(--text-2);padding:12px 14px;white-space:pre-wrap}
+.term b{color:var(--accent-hi);font-weight:500}
+
+.toast{position:absolute;right:16px;bottom:16px;background:var(--panel-3);border:1px solid var(--hair-strong);border-radius:var(--r-md);padding:8px 12px;font-size:12.5px;color:var(--text-2);box-shadow:var(--shadow-menu);opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s;pointer-events:none;max-width:360px;z-index:30}
+.toast.on{opacity:1;transform:none}
+
+/* callouts */
+.pin{position:absolute;width:20px;height:20px;border-radius:50%;background:var(--needs);color:#1a1405;font-size:11px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 3px rgba(215,169,74,.18);z-index:8;pointer-events:none}
+.notes-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cn{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;padding:14px;border:1px solid var(--hair);border-radius:var(--r-md);background:var(--panel)}
+.cn .n{width:20px;height:20px;border-radius:50%;background:var(--needs);color:#1a1405;font-size:11px;font-weight:700;display:grid;place-items:center}
+.cn h3{margin:0 0 4px;font-size:13.5px;font-weight:600}
+.cn p{margin:0;font-size:12.5px;color:var(--text-2)}
+.cn .ask{display:block;margin-top:6px;font-size:12px;color:var(--text-3)}
+.cn .ask::before{content:"Open: ";color:var(--needs);font-weight:600}
+@media (max-width:980px){.drive{grid-template-columns:minmax(0,1fr)}.nrail{border-left:0;border-top:1px solid var(--hair);max-height:260px}.app{height:auto;min-height:720px}}
+@media (max-width:860px){.body{grid-template-columns:1fr}.rail{display:none}.search{display:none}.notes-grid{grid-template-columns:1fr}.fake{grid-template-columns:1fr}.fake nav{display:none}}
+@media (max-width:520px){.crumbs .hide-sm{display:none}.col{padding:20px 12px}.stagecol{padding:12px}.stage{min-height:340px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="page">
+  <header class="intro">
+    <span class="eyebrow">Prototype · project-level test drive</span>
+    <h1>Driving main from the project page, with notes landing in the project inbox</h1>
+    <p>A working mock-up in runcastle's own tokens. The project page gets a Test drive card. Starting it hands the page body to the drive: the app on the left, the project's notes on the right. Stop takes you back to the Notes card, where everything you jotted is waiting to be triaged.</p>
+    <div class="try"><span><b>Try:</b> Test drive</span><span>Select area, then drag over the app</span><span>type in the rail's box</span><span>Stop drive</span><label><input type="checkbox" id="chatToggle"> a project chat is also open</label></div>
+  </header>
+
+  <div class="app" id="app">
+    <div class="titlebar">
+      <span class="brand"><i aria-hidden="true"></i>runcastle</span>
+      <span class="crumbs"><span class="sep">/</span><span class="hide-sm">journal-app</span><span class="sep hide-sm">/</span><span class="here" id="crumbHere">Project</span></span>
+      <span class="drivepill" id="drivePill"><i></i>driving main</span>
+      <span class="tb-sp"></span>
+      <span class="search"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><span>Search or jump to…</span><kbd>Ctrl+K</kbd></span>
+      <button class="iconbtn" aria-label="Jot a note (Ctrl+J)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M10.8 2.7a1.6 1.6 0 0 1 2.3 2.3L6 12.1l-3 .8.8-3z"/><path d="M9.6 3.9l2.4 2.4"/></svg></button>
+      <button class="iconbtn" aria-label="Theme"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5"/></svg></button>
+    </div>
+
+    <div class="body">
+      <nav class="rail" aria-label="Features">
+        <div class="rrow proj" id="projRow" style="cursor:pointer"><span class="grow">journal-app</span><span class="count" id="railCount">2</span></div>
+        <div class="lab">Needs you</div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Weekly digest email</span></div>
+        <div class="rrow"><span class="dot"></span><span class="grow">Entry tags</span></div>
+        <div class="lab">Shipped</div>
+        <div class="rrow"><span class="grow">Mood colours</span></div>
+        <div class="rrow"><span class="grow">Search entries</span></div>
+        <div class="rrow"><span class="grow">Streak counter</span></div>
+      </nav>
+
+      <main class="main">
+        <!-- resting project page -->
+        <div class="rest" id="rest">
+          <div class="col">
+            <div class="head">
+              <div class="row"><span class="tag">Project</span><h2>journal-app</h2></div>
+              <p>Chats run on <code>runcastle/project</code> and land on <code>main</code>.</p>
+            </div>
+
+            <section class="panel card">
+              <div class="t"><h3>Talk it through</h3><p>Bring a raw idea; the chat checks it against what's built and cuts it into features.</p></div>
+              <button class="btn solid" id="newChat">New chat</button>
+            </section>
+
+            <section class="panel card" id="driveCard" style="position:relative">
+              <span class="pin" style="top:-9px;left:-9px">1</span>
+              <div class="t">
+                <h3 id="driveCardTitle">Test drive</h3>
+                <p id="driveCardSub">Run everything that has shipped and jot what you notice. Notes land below.</p>
+                <dl class="plan">
+                  <dt>branch</dt><dd><code>main</code> — your checkout, as it is. No branch switch.</dd>
+                  <dt>setup</dt><dd><code>bun run drive:setup</code></dd>
+                  <dt>dev</dt><dd><code>bun run dev</code></dd>
+                  <dt>stop</dt><dd class="none">nothing set · <a href="#" onclick="return false">Settings</a></dd>
+                </dl>
+              </div>
+              <button class="btn" id="startDrive"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg>Test drive</button>
+            </section>
+
+            <section class="panel" id="notesCard" aria-label="Notes" style="position:relative">
+              <span class="pin" style="top:-9px;left:-9px">4</span>
+              <div class="notes-h">
+                <h3>Notes</h3><span class="count" id="cardCount">2</span>
+                <span class="sub">Grouped, questioned and routed in a triage chat.</span>
+                <button class="btn violet" id="triageBtn">Triage 2</button>
+              </div>
+              <ul class="list" id="cardList"></ul>
+            </section>
+
+            <section class="panel convs">
+              <div class="ct">Conversations</div>
+              <div class="c">Cut the weekly digest into features · yesterday</div>
+              <div class="c">Is realtime collab worth it? · 3 days ago</div>
+            </section>
+          </div>
+        </div>
+
+        <!-- drive takes the body -->
+        <div class="drive" id="drive">
+          <div class="stagecol" id="stagecol">
+            <div class="dhead" style="position:relative">
+              <span class="pin" style="top:-8px;left:-12px">2</span>
+              <div class="what"><h3>Driving <code>main</code></h3><span class="path">C:\Users\you\Projects\journal-app · setup ran · dev server up</span></div>
+              <span class="sp"></span>
+              <span class="seg" role="group" aria-label="Show">
+                <button class="c" data-view="chat" aria-pressed="false"><i></i>Chat</button>
+                <button class="d" data-view="drive" aria-pressed="true"><i></i>Drive</button>
+              </span>
+              <button class="btn sm" id="backToPage">Project page</button>
+              <button class="btn sm" id="stopDrive"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Stop drive</button>
+            </div>
+
+            <div class="stage" id="stage">
+              <div class="tools">
+                <button class="btn sm" id="selectBtn" aria-pressed="false">Select area</button>
+                <button class="btn sm" id="reloadBtn">Reload</button>
+                <a href="#" onclick="return false">Open app ↗</a>
+              </div>
+              <div class="fake" id="fake">
+                <nav><b>Journal</b><span class="on">Today</span><span>Entries</span><span>Search</span><span>Settings</span></nav>
+                <section>
+                  <h4>Thursday, 24 September</h4>
+                  <div class="sub">3 entries · 12-day streak</div>
+                  <div class="entry"><div class="top">Morning pages <em>calm</em></div><p>Slept badly, but the walk helped. Want to try the new digest.</p></div>
+                  <div class="entry"><div class="top">Standup notes <em class="w">tense</em></div><p>Release slipped again; ask about the migration window.</p></div>
+                  <div class="digest">Weekly digest preview is ready<button>Send me the weekly digest now</button></div>
+                </section>
+              </div>
+              <div class="shade" id="shade"><div class="marquee" id="marquee"></div></div>
+              <div class="grabbed">
+                <div class="pv" aria-hidden="true"></div>
+                <textarea id="shotText" placeholder="What's wrong here? (optional — the picture is the note)" aria-label="What's wrong here?"></textarea>
+                <div class="bt"><button class="btn solid sm" id="saveShot">Save note</button><button class="btn sm" id="discardShot">Discard</button></div>
+              </div>
+            </div>
+
+            <div class="dfoot">
+              <span class="chip">dev server</span>
+              <span class="mono3">main</span>
+              <span class="mono3">http://localhost:5173</span>
+              <span style="flex:1"></span>
+              <button class="btn sm" id="outBtn">Show output</button>
+            </div>
+            <div class="out">$ bun run dev
+  VITE v6.2.0  ready in 412 ms
+  ➜  Local:   http://localhost:5173/
+  ➜  press h + enter to show help</div>
+          </div>
+
+          <aside class="nrail" aria-label="Project notes" style="position:relative">
+            <span class="pin" style="top:6px;left:-10px">3</span>
+            <div class="notes-h"><h3>Notes</h3><span class="count" id="railHeadCount">2</span><span class="sub">to journal-app's inbox</span></div>
+            <div class="scroll">
+              <div class="grp" id="grpThis">This drive</div>
+              <ul class="list" id="thisList"></ul>
+              <div class="grp">Already open</div>
+              <ul class="list" id="olderList"></ul>
+            </div>
+            <div class="compose">
+              <input id="railInput" autocomplete="off" placeholder="What did you just notice?" aria-label="New note">
+              <div class="hint"><span><kbd>↵</kbd> save</span><span>paste a screenshot</span><span><kbd>Ctrl J</kbd> works too</span></div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="chatview" id="chatview">
+          <div class="dhead"><div class="what"><h3>Project chat</h3><span class="path">Cut the weekly digest into features</span></div><span class="sp"></span>
+            <span class="seg" role="group" aria-label="Show" style="display:inline-flex">
+              <button class="c" data-view="chat" aria-pressed="true"><i></i>Chat</button>
+              <button class="d" data-view="drive" aria-pressed="false"><i></i>Drive</button>
+            </span>
+          </div>
+          <div class="term"><b>●</b> Two of your open notes look like the same problem: the digest button's label. Want me to treat them as one theme?
+
+<b>&gt;</b> </div>
+        </div>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+  </div>
+
+  <section class="notes-grid" aria-label="What this proposes">
+    <div class="cn"><span class="n">1</span><div><h3>A Test drive card on the project page</h3><p>It sits between New chat and Notes, as a secondary button, because New chat stays the page's one solid button. The card says what a drive will do before you click: which branch your checkout is on, and which setup, dev and stop commands will run. Anything not set shows as "nothing set", with a link to Settings.</p><span class="ask">if another drive already holds the slot, the button is disabled and names that drive, like the feature page does.</span></div></div>
+    <div class="cn"><span class="n">2</span><div><h3>The drive takes over the page body, like a live chat</h3><p>The header names the branch and repo path, so you can see when your checkout isn't on main. The stage is the feature drive's own: the app in a frame, Select area, Reload, Open app ↗, the dev-server strip and its output. Stop drive ends it. Project page steps back to the resting page while the drive keeps running, and a pill in the titlebar shows it is still live.</p></div></div>
+    <div class="cn"><span class="n">3</span><div><h3>The right rail is the project inbox, live</h3><p>Every note from the drive is an ordinary project note. That covers the drag-select capture, the rail's box, and <kbd>Ctrl J</kbd>. Notes from this drive are listed first. Notes that were already open sit below them, so you can see if something is already reported. Each drive note carries a small "drive · main" tag.</p><span class="ask">what exactly a note records about its drive (decision 5).</span></div></div>
+    <div class="cn"><span class="n">4</span><div><h3>Stop, and the notes are waiting on the Notes card</h3><p>The resting page's Notes card shows the drive notes with their tag and screenshots. Triage picks them up the same way it picks up any note. Nothing else happens when the drive ends. There's no summary and no prompt, because the inbox is the exit.</p></div></div>
+    <div class="cn"><span class="n">+</span><div><h3>A chat and a drive at the same time</h3><p>Tick "a project chat is also open" above, then start a drive. A Chat | Drive switch appears in the drive header. Both keep running, and the switch only changes which one fills the body.</p><span class="ask">coexist with a switch (shown here), or refuse to start one while the other is live.</span></div></div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var app=document.getElementById('app');
+  var stage=document.getElementById('stage');
+  var shade=document.getElementById('shade');
+  var marquee=document.getElementById('marquee');
+  var toastEl=document.getElementById('toast');
+  var toastTimer=null, uid=10, anchor=null;
+
+  var notes=[
+    {id:1,text:'streak counter resets at midnight UTC, not local time',min:180,shot:false,drive:false},
+    {id:2,text:'search results page has no empty state',min:1440,shot:false,drive:false}
+  ];
+  var DRIVE_ICON='<svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg>';
+  function when(m){return m<1?'now':m<60?m+'m':m<1440?Math.round(m/60)+'h':Math.round(m/1440)+'d'}
+  function esc(s){return s.replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function row(n){
+    var pic=n.shot?'<span class="shot" aria-hidden="true"></span>':'<span class="noshot" aria-hidden="true"><i></i></span>';
+    var tag=n.drive?'<span class="src-line"><span class="src">'+DRIVE_ICON+'drive · main</span></span>':'';
+    return '<li class="item'+(n.fresh?' fresh':'')+'">'+pic+'<span class="txt">'+esc(n.text)+tag+'</span><span class="when">'+when(n.min)+'</span></li>';
+  }
+  function render(){
+    var c=notes.length;
+    ['railCount','cardCount','railHeadCount'].forEach(function(id){var el=document.getElementById(id);el.textContent=c;el.hidden=c===0});
+    document.getElementById('triageBtn').textContent='Triage '+c;
+    document.getElementById('cardList').innerHTML=notes.map(row).join('');
+    var mine=notes.filter(function(n){return n.drive&&n.thisDrive});
+    var older=notes.filter(function(n){return !(n.drive&&n.thisDrive)});
+    document.getElementById('thisList').innerHTML=mine.length?mine.map(row).join(''):'<li class="empty">Nothing yet. Select an area of the app, or type below.</li>';
+    document.getElementById('olderList').innerHTML=older.length?older.map(row).join(''):'<li class="empty">No other open notes.</li>';
+    notes.forEach(function(n){n.fresh=false});
+  }
+  function toast(msg){toastEl.textContent=msg;toastEl.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(function(){toastEl.classList.remove('on')},2600)}
+  function addNote(text,shot){
+    notes.unshift({id:++uid,text:text,min:0,shot:shot,drive:true,thisDrive:true,fresh:true});
+    render();
+  }
+
+  // start / stop
+  document.getElementById('startDrive').onclick=function(){
+    if(app.classList.contains('show-rest')){app.classList.remove('show-rest');document.getElementById('crumbHere').textContent='Test drive';return}
+    app.classList.add('driving');app.classList.remove('show-rest','chatview-on');
+    document.getElementById('crumbHere').textContent='Test drive';
+    setSeg('drive');
+    toast('Setup ran · dev server up at localhost:5173');
+  };
+  document.getElementById('stopDrive').onclick=function(){
+    app.classList.remove('driving','show-rest','chatview-on');
+    document.getElementById('crumbHere').textContent='Project';
+    stage.classList.remove('selecting','has-shot');
+    var n=notes.filter(function(x){return x.thisDrive}).length;
+    notes.forEach(function(x){x.thisDrive=false});
+    render();
+    toast(n?'Drive stopped. '+n+' note'+(n>1?'s':'')+' from it are in the inbox.':'Drive stopped.');
+    document.getElementById('notesCard').scrollIntoView({behavior:'smooth',block:'nearest'});
+  };
+  document.getElementById('backToPage').onclick=function(){app.classList.add('show-rest');document.getElementById('crumbHere').textContent='Project'};
+  document.getElementById('drivePill').style.cursor='pointer';
+  document.getElementById('drivePill').onclick=function(){app.classList.remove('show-rest');document.getElementById('crumbHere').textContent='Test drive'};
+  // on the resting page while a drive runs, the card becomes the way back
+  var observer=new MutationObserver(function(){
+    var live=app.classList.contains('driving');
+    document.getElementById('driveCardTitle').textContent=live?'Test drive · running':'Test drive';
+    var b=document.getElementById('startDrive');
+    b.innerHTML=live?'Return to drive':'<svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5z"/></svg>Test drive';
+  });
+  observer.observe(app,{attributes:true,attributeFilter:['class']});
+
+  // chat / drive switch
+  function setSeg(v){
+    app.classList.toggle('chatview-on',v==='chat');
+    document.querySelectorAll('.seg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.view===v))});
+  }
+  document.querySelectorAll('.seg button').forEach(function(b){b.onclick=function(){setSeg(b.dataset.view)}});
+  document.getElementById('chatToggle').onchange=function(e){app.classList.toggle('chatlive',e.target.checked);if(!e.target.checked)setSeg('drive')};
+  document.getElementById('newChat').onclick=function(){toast('Opens the project chat (unchanged).')};
+  document.getElementById('triageBtn').onclick=function(){toast('Opens a fresh project chat briefed to triage these '+notes.length+' notes.')};
+
+  // select area → drag → note
+  var selectBtn=document.getElementById('selectBtn');
+  selectBtn.onclick=function(){
+    var on=!stage.classList.contains('selecting');
+    stage.classList.toggle('selecting',on);selectBtn.setAttribute('aria-pressed',String(on));
+    selectBtn.textContent=on?'Drag a region':'Select area';
+  };
+  function pt(e){var b=shade.getBoundingClientRect();return{x:e.clientX-b.left,y:e.clientY-b.top}}
+  shade.addEventListener('pointerdown',function(e){anchor=pt(e);shade.setPointerCapture(e.pointerId);marquee.style.display='block';place(anchor,anchor)});
+  shade.addEventListener('pointermove',function(e){if(anchor)place(anchor,pt(e))});
+  shade.addEventListener('pointerup',function(e){
+    if(!anchor)return;var p=pt(e),w=Math.abs(p.x-anchor.x),h=Math.abs(p.y-anchor.y);anchor=null;
+    marquee.style.display='none';stage.classList.remove('selecting');selectBtn.setAttribute('aria-pressed','false');selectBtn.textContent='Select area';
+    if(w>8&&h>8){stage.classList.add('has-shot');var t=document.getElementById('shotText');t.value='';t.focus()}
+  });
+  function place(a,b){marquee.style.left=Math.min(a.x,b.x)+'px';marquee.style.top=Math.min(a.y,b.y)+'px';marquee.style.width=Math.abs(a.x-b.x)+'px';marquee.style.height=Math.abs(a.y-b.y)+'px'}
+  function saveShot(){
+    var t=document.getElementById('shotText').value.trim()||'Screenshot from the test drive';
+    addNote(t,true);stage.classList.remove('has-shot');
+  }
+  document.getElementById('saveShot').onclick=saveShot;
+  document.getElementById('discardShot').onclick=function(){stage.classList.remove('has-shot')};
+  document.getElementById('shotText').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();saveShot()}});
+  document.getElementById('reloadBtn').onclick=function(){var f=document.getElementById('fake');f.style.opacity=.3;setTimeout(function(){f.style.opacity=1},180)};
+  document.getElementById('outBtn').onclick=function(){var c=document.getElementById('stagecol');var on=c.classList.toggle('show-out');this.textContent=on?'Hide output':'Show output'};
+
+  // rail composer
+  var ri=document.getElementById('railInput');
+  ri.addEventListener('keydown',function(e){if(e.key==='Enter'){var v=ri.value.trim();if(!v)return;e.preventDefault();addNote(v,false);ri.value=''}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'){stage.classList.remove('selecting','has-shot');selectBtn.setAttribute('aria-pressed','false');selectBtn.textContent='Select area'}});
+
+  render();
+})();
+</script>
