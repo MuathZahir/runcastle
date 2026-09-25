@@ -177,6 +177,27 @@ export async function createFeature(
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)
 
+  emitFeatureCreated(ctx, feature, cut)
+
+  // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
+  // commit until Start, so parked scribbles never land on the current branch.
+  if (!cut) return feature
+
+  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: input.brief })
+
+  return feature
+}
+
+/**
+ * The birth event every creation door emits — `cut` is the branch it cut, or
+ * null for a draft, which cuts nothing until Start.
+ */
+function emitFeatureCreated(
+  ctx: AppCtx,
+  feature: Feature,
+  cut: { branchReady: boolean; baseBranch: string } | null,
+): void {
+  const { slug, branch } = feature
   emit(ctx, feature.id, {
     type: 'feature.created',
     message: !cut
@@ -192,14 +213,6 @@ export async function createFeature(
       draft: !cut,
     },
   })
-
-  // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
-  // commit until Start, so parked scribbles never land on the current branch.
-  if (!cut) return feature
-
-  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: input.brief })
-
-  return feature
 }
 
 /**
@@ -437,21 +450,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
     .get()
   const feature = rowToFeature(inserted)
 
-  emit(ctx, feature.id, {
-    type: 'feature.created',
-    message: !cut
-      ? `feature.created (draft — ${branch} not cut yet)`
-      : cut.branchReady
-        ? `feature.created (${branch} ← ${cut.baseBranch})`
-        : 'feature.created (branch pending)',
-    data: {
-      slug,
-      branch,
-      baseBranch: cut?.baseBranch,
-      branchReady: cut?.branchReady ?? false,
-      draft: !cut,
-    },
-  })
+  emitFeatureCreated(ctx, feature, cut)
 
   if (cut) await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief })
 
