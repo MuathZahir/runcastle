@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useRef, type CSSProperties } from 'react'
 import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { turnDisplay } from '../lib/conversation-title'
@@ -84,13 +84,20 @@ export function TranscriptBubbles({
   className?: string
 }) {
   const Agent = runtime === 'codex' ? IconCodex : IconClaude
+  // What was already there on the first render: only its first 8 turns rise
+  // in (staggered); the rest simply are there. After that, only turns that
+  // arrive later animate — a long transcript never rises in all at once.
+  const initial = useRef<number | null>(null)
+  if (initial.current === null && turns.length > 0) initial.current = turns.length
+  const settled = initial.current ?? 0
   return (
     <div className={className}>
       {turns.map((turn, i) => {
         const shown = turnDisplay(turn.text)
         if (shown.kind === 'skip') return null
         const stagger = i < 8 ? ({ '--i': i } as CSSProperties) : undefined
-        const enter = cx('animate-rise-in', i < 8 && '[animation-delay:calc(var(--i)*20ms)]')
+        const enter =
+          i < 8 ? cx('animate-rise-in', '[animation-delay:calc(var(--i)*20ms)]') : i >= settled ? 'animate-rise-in' : undefined
         if (shown.kind === 'command' || shown.kind === 'output') {
           return (
             <div

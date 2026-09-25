@@ -477,24 +477,9 @@ export function ReviewBody({
             // Always offered while the page can act (decision 6): asking for
             // another review pass is never about what the last one did.
             {...(agenticReviewControl ? { agenticReview: agenticReviewControl } : {})}
-            // A drive already at the wheel is the stage's to stop, and a
-            // history view starts nothing at all.
-            {...(readonly || driveUp
-              ? {}
-              : {
-                  testDrive: {
-                    onStart: () =>
-                      startDrive.mutate({
-                        featureId: feature.id,
-                        action: 'start',
-                      }),
-                    ...(startDrive.isPending
-                      ? { blocked: 'starting…' }
-                      : slotHolder
-                        ? { blocked: slotHeldReason(slotHolder.holderLabel) }
-                        : {}),
-                  },
-                })}
+            // Test drive is not offered here: the next-step bar above carries
+            // Start / Stop test drive on every review state, and the same act
+            // twice on one screen is one too many (DESIGN.md: say it once).
           />
         }
 

@@ -247,26 +247,37 @@ function ProjectStage({
   }
 }
 
+/** What fills the project page's body: the resting overview, a live chat, a live drive. */
+export type ProjectView = 'overview' | 'chat' | 'drive'
+
 /**
- * Which of a live chat and a live drive fills the body (decision 4) — two view
- * Tabs in the topbar. Both keep running; this only chooses what is in front.
+ * The project page's view tabs, shown in every topbar of the page while a chat
+ * or a drive is live — so the overview (chats, New chat, Test drive) is never
+ * more than one labelled click away from either, and back again.
  */
-export function ChatDriveSwitch({
-  front,
+export function ProjectViewSwitch({
+  value,
+  chat,
+  drive,
   onPick,
 }: {
-  front: 'chat' | 'drive'
-  onPick: (front: 'chat' | 'drive') => void
+  value: ProjectView
+  /** A chat is live — offer its tab. */
+  chat: boolean
+  /** A drive is live — offer its tab. */
+  drive: boolean
+  onPick: (view: ProjectView) => void
 }) {
   return (
-    <Tabs
-      label="Show"
+    <Tabs<ProjectView>
+      label="Project views"
       size="sm"
-      value={front}
+      value={value}
       onChange={onPick}
       items={[
-        { id: 'chat', label: 'Chat', icon: <IconMessage /> },
-        { id: 'drive', label: 'Drive', icon: <IconPlay /> },
+        { id: 'overview', label: 'Overview', icon: <IconFolder /> },
+        ...(chat ? [{ id: 'chat' as const, label: 'Live chat', icon: <IconMessage /> }] : []),
+        ...(drive ? [{ id: 'drive' as const, label: 'Drive', icon: <IconPlay /> }] : []),
       ]}
     />
   )

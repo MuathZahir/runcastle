@@ -1,6 +1,6 @@
 import type { ModelEntry, Ticket } from '@runcastle/core'
 import type { FeatureFull } from '../../../lib/api'
-import { groupByLap } from '../../../lib/feature-ui'
+import { groupByLap, lapTicketCount, ticketCountText } from '../../../lib/feature-ui'
 import { EmptyState, LapSections, List, MetaLine } from '../../../ui'
 import { IconCube } from '../../../icons'
 import { DocsMenu } from '../../DocsMenu'
@@ -10,7 +10,7 @@ import type { TicketPatch } from './TicketEditor'
 
 export function ticketLedgerMeta(tickets: readonly Ticket[], lap: number): string {
   const rows = tickets.filter((ticket) => ticket.lap === lap && ticket.status !== 'cancelled')
-  const parts = [`${rows.filter((ticket) => ticket.status === 'done').length}/${rows.length} done`, `lap ${lap}`]
+  const parts = [ticketCountText(lapTicketCount(tickets, lap)), `Lap ${lap}`]
   const failed = rows.filter((ticket) => ticket.status === 'failed').length
   const burning = rows.filter((ticket) => ticket.status === 'burning').length
   if (failed) parts.push(`${failed} failed`)
@@ -87,14 +87,15 @@ export function TicketLedger({
           />
         ))}
       {tickets.length > 0 && (
-        <div className="-mx-3 min-h-0 overflow-y-auto">
+        <div className="min-h-0 overflow-y-auto">
           <LapSections
             groups={groupByLap(tickets, currentLap)}
             currentLap={currentLap}
             headClassName="px-3"
-            meta={(group) =>
-              `${group.rows.filter((ticket) => ticket.status === 'done').length}/${group.rows.filter((ticket) => ticket.status !== 'cancelled').length} done`
-            }
+            meta={(group) => {
+              const { done, total } = lapTicketCount(group.rows.map((ticket) => ({ ...ticket, landedLap: ticket.lap })), group.lap)
+              return `${done} of ${total} done`
+            }}
           >
             {(rows) => (
               <List divided>

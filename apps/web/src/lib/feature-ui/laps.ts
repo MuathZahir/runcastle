@@ -84,7 +84,13 @@ export function lapAccount(
 export function lapAccountLine(account: LapAccount | null): string | null {
   if (account?.source !== 'review') return null
   const [first] = account.prose.trim().split('\n')
-  return first?.trim() || null
+  const line = first?.trim()
+  if (!line) return null
+  // The line is read under its own "Lap N" heading, beside a meta line that
+  // already states the counts and the mode — so only "what landed" is said
+  // here: the "Lap N:" prefix and the trailing " · counts · mode" go.
+  const sentence = line.replace(/^Lap \d+\s*[:—–-]\s*/i, '').split(' · ')[0]?.trim() || line
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1)
 }
 
 // --- the review agent's structured findings ---------------------------------
@@ -268,3 +274,24 @@ export function burnLabel(
  * charted yet. One implementation so the rail's read and the next-step bar's fog
  * read resolve the SAME `docs.read` query key and share a single fetch.
  */
+
+/**
+ * The one ticket count every surface states (meta line, Tickets tab, ledger
+ * header, the review/shipped property list): this lap's implementation
+ * tickets, not cancelled. The review ticket is the review step — the
+ * property list's Review row speaks for it — so it is never counted as work.
+ */
+export function lapTicketCount(
+  tickets: readonly { kind?: TicketKind; status: string; lap: number; landedLap?: number }[],
+  lap: number,
+): { done: number; total: number } {
+  const rows = tickets.filter(
+    (ticket) => ticket.kind !== 'review' && ticket.status !== 'cancelled' && (ticket.landedLap ?? ticket.lap) === lap,
+  )
+  return { done: rows.filter((ticket) => ticket.status === 'done').length, total: rows.length }
+}
+
+/** "1 of 1 ticket done", "2 of 3 tickets done" — pluralised on the total. */
+export function ticketCountText({ done, total }: { done: number; total: number }): string {
+  return `${done} of ${total} ${total === 1 ? 'ticket' : 'tickets'} done`
+}

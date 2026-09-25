@@ -252,7 +252,8 @@ export function capLane(group: TriageGroup, expanded: boolean): CappedLane {
   }
   return {
     visible: expanded ? group.features : group.features.slice(0, SHIPPED_LANE_CAP),
-    expanderLabel: expanded ? 'Show fewer' : `Show all (${group.features.length})`,
+    // The lane label above already states the total.
+    expanderLabel: expanded ? 'Show fewer' : 'Show all',
   }
 }
 

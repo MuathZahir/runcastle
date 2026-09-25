@@ -96,8 +96,8 @@ describe('TicketRow', () => {
 })
 
 describe('TicketLedger', () => {
-  it('counts only non-cancelled tickets in the current lap', () => {
-    expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })], 2)).toBe('0/1 done · lap 2')
+  it('counts only non-cancelled implementation tickets in the current lap', () => {
+    expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })], 2)).toBe('0 of 1 ticket done · Lap 2')
   })
 
   it('offers one bulk model control when pending tickets exist', () => {

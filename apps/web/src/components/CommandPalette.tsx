@@ -356,7 +356,8 @@ export function CommandPalette(props: CommandPaletteProps) {
           />
         </div>
         <div role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {group('Features')}
+          {/* A group with nothing in it says nothing — not an empty heading. */}
+          {filteredFeatures.length > 0 && group('Features')}
           {filteredFeatures.map((f, i) =>
             item(
               i,
@@ -371,11 +372,7 @@ export function CommandPalette(props: CommandPaletteProps) {
               f.title,
             ),
           )}
-          {filteredFeatures.length === 0 && q !== '' && (
-            <div className="px-2 py-1.5 text-xs text-text-tertiary">No features match</div>
-          )}
-
-          {group('Projects')}
+          {filteredProjects.length > 0 && group('Projects')}
           {filteredProjects.map((p, j) =>
             item(
               featuresEnd + j,
@@ -387,7 +384,7 @@ export function CommandPalette(props: CommandPaletteProps) {
             ),
           )}
 
-          {group('Actions')}
+          {actions.length > 0 && group('Actions')}
           {actions.map((action, j) =>
             item(
               projectsEnd + j,

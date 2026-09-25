@@ -108,7 +108,7 @@ describe('the lap trail', () => {
     expect(html).toContain('>Verified<')
     expect(html).toContain('drive mode')
     expect(html).toContain('Unverified')
-    expect(html).toContain('reviewed ')
+    expect(html).toContain('Reviewed ')
   })
 
   it('names the mode a verified lap ran in, gates included', () => {
@@ -243,7 +243,7 @@ describe('the lap trail', () => {
   it('opens on the current lap even before its own review has run', () => {
     const html = render({ passes: [pass({ lap: 1 })], currentLap: 2, tickets: [ticket()] })
     expect(html.indexOf('Lap 2')).toBeLessThan(html.indexOf('Lap 1'))
-    expect(html).toContain('not reviewed yet')
+    expect(html).toContain('Not reviewed yet')
   })
 
   /** Nothing reviewed and nothing burned: no band at all rather than an empty box. */

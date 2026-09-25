@@ -78,7 +78,7 @@ export function sessionBranchState(
 }
 
 /** Which surface owns the workspace body. */
-export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature' | 'empty'
+export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature'
 
 /**
  * The workspace body's one selector. The Draft overlay owns the body outright;
@@ -105,7 +105,9 @@ export function workspaceView(state: {
   if (state.preparing) return 'prepare'
   if (state.projectSelected) return 'project'
   if (state.selectedFeatureId) return 'feature'
-  return state.featureCount === 0 && !state.prepared && !state.empty ? 'prepare' : 'empty'
+  // Nothing selected is the project home itself — never a "pick a feature"
+  // page with nothing on it (the bare `/p/<id>` address lands here).
+  return state.featureCount === 0 && !state.prepared && !state.empty ? 'prepare' : 'project'
 }
 
 /**

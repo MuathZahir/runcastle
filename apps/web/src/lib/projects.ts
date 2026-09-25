@@ -1,5 +1,6 @@
 import type { FeatureListItem, Project } from './api'
 import type { AppLocation } from './routes'
+import { needsMe } from './feature-ui/sidebar'
 
 /**
  * Multi-project navigation + portfolio derivations (issue #45).
@@ -111,17 +112,12 @@ export function replacementLanding(landing: Landing, projects: Project[]): Landi
 }
 
 /**
- * Whether a feature is waiting on a human. Mirrors `needsMe` in feature-ui as a
- * boolean; kept inline (not imported) so this module has no runtime deps and the
- * portfolio derivations stay unit-testable in the workspace's node test env.
+ * Whether a feature is waiting on a human — the sidebar's own "Needs you"
+ * rule ({@link needsMe}), so a portfolio row and the project's rail can never
+ * disagree about how many features are waiting.
  */
 function featureNeedsYou(f: FeatureListItem): boolean {
-  if (f.status === 'shipped') return false
-  if (f.activeRun) return false
-  if (f.ticketCounts.failed > 0) return true
-  if (f.phase === 'planning') return true
-  if (f.phase === 'review') return true
-  return false
+  return needsMe(f) !== null
 }
 
 /** Coarse health lens for a portfolio card, most-urgent first. */

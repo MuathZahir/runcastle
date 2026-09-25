@@ -22,14 +22,15 @@ describe('the lap account at one line', () => {
   const prose =
     'Lap 2: the review page opens on state and one action · 3 defects found, 2 fixed in-run · Gates mode\n\nThe rest is the long account, and it is not this line.'
 
-  it('takes the digest’s first line and nothing after it', () => {
-    expect(lapAccountLine({ source: 'review', prose })).toBe(
-      'Lap 2: the review page opens on state and one action · 3 defects found, 2 fixed in-run · Gates mode',
-    )
+  // The line sits under its own "Lap N" heading, beside a meta line with the
+  // counts and the mode: only what landed is said again.
+  it('takes the digest’s first line, without its lap prefix, counts or mode', () => {
+    expect(lapAccountLine({ source: 'review', prose })).toBe('The review page opens on state and one action')
   })
 
   it('reads a one-line digest as the whole line', () => {
-    expect(lapAccountLine({ source: 'review', prose: 'Lap 1: it landed.' })).toBe('Lap 1: it landed.')
+    expect(lapAccountLine({ source: 'review', prose: 'Lap 1: it landed.' })).toBe('It landed.')
+    expect(lapAccountLine({ source: 'review', prose: 'Everything landed.' })).toBe('Everything landed.')
   })
 
   // Several burners each saying what they did is not one sentence about the lap,

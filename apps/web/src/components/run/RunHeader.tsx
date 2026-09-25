@@ -62,6 +62,15 @@ export function RunHeader({
 }) {
   const [confirming, setConfirming] = useState(false)
 
+  // "N of M landed" already says the counts: the headline adds only what it
+  // does not — failures, stops, waivers, review fixes, a retry, a verdict.
+  const showsLanded = !!landed && landed.total > 0
+  const extra = showsLanded
+    ? headline
+        .split(' · ')
+        .filter((part) => !/^All \d+ tickets? landed$/.test(part) && !/^(Burned|Burning) \d+ tickets?$/.test(part) && !/^\d+ done$/.test(part))
+        .join(', ')
+    : headline
   return (
     <header className="mb-4 flex flex-col gap-1.5">
       <div className="flex min-h-7 items-center gap-2">
@@ -97,7 +106,7 @@ export function RunHeader({
             landed && landed.total > 0
               ? { icon: <IconCube />, strong: `${landed.done} of ${landed.total}`, text: 'landed' }
               : null,
-            { text: headline },
+            extra ? { text: extra } : null,
           ]}
         />
       </div>

@@ -25,12 +25,13 @@ describe('useWorkspace — pane preferences', () => {
     expect(localStorage.getItem('runcastle.artifact.collapsed')).toBe('1')
   })
 
-  it('defaults Details closed only during ideation through tickets', () => {
+  it('defaults Details closed in every phase until the human opens it', () => {
     expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
     expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
     expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
-    expect(inspectorCollapsedForPhase(null, 'building')).toBe(false)
-    expect(inspectorCollapsedForPhase(null, 'review')).toBe(false)
+    expect(inspectorCollapsedForPhase(null, 'building')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'review')).toBe(true)
+    expect(inspectorCollapsedForPhase(null, 'shipped')).toBe(true)
     expect(inspectorCollapsedForPhase(true, 'review')).toBe(true)
     expect(inspectorCollapsedForPhase(false, 'planning')).toBe(false)
   })

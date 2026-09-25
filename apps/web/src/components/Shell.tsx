@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useProjectNav } from '../lib/use-project-nav'
 import { ProjectShell } from './ProjectShell'
 import { PortfolioHome } from './PortfolioHome'
@@ -6,7 +7,7 @@ import { FirstRunWizard } from './first-run/FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
 import { SetupCheckBanner } from './SetupCheckBanner'
 import { Frame, FrameProvider } from './Frame'
-import { Spinner } from '../ui'
+import { Dialog, Loading, Page } from '../ui'
 
 /**
  * The runcastle app root (multi-project #45). Two levels: a portfolio *home*
@@ -25,17 +26,21 @@ export function Shell() {
   const nav = useProjectNav()
 
   let content
+  let overlay: ReactNode = null
 
   // First load in flight. The list alone is not enough to place the user: until
   // the doctor answers too, showing anything risks showing onboarding to someone
   // who is past it. A doctor that FAILS has answered as far as this gate is
   // concerned — a broken probe never holds the project list.
   if (nav.loading || nav.projects === undefined) {
+    // The frame is up at once, the one loading line where the page will be —
+    // the same place every surface says it is still loading.
     content = (
-      <div className="flex h-full animate-fade-in items-center justify-center gap-2 bg-canvas text-sm text-text-tertiary">
-        <Spinner />
-        Loading projects…
-      </div>
+      <Frame>
+        <Page>
+          <Loading>Loading projects…</Loading>
+        </Page>
+      </Frame>
     )
   } else if (nav.view === 'setup') {
     // The host still owes us a git identity or a coding agent: the full
@@ -46,6 +51,22 @@ export function Shell() {
           <FirstRunWizard onOpened={nav.enterProject} onCancel={nav.cancelOpen} />
         </div>
       </Frame>
+    )
+  } else if (nav.view === 'open' && nav.projects.length > 0) {
+    // With somewhere to come back to, opening a project is a dialog over the
+    // page it was asked for from — the portfolio, or the project the switcher
+    // sits in — which stays mounted underneath, exactly as it was.
+    // `content` stays in the same slot and type as it is without the dialog,
+    // so opening it never remounts the page behind.
+    content = nav.currentProjectId ? (
+      <ProjectShell key={nav.currentProjectId} projectId={nav.currentProjectId} nav={nav} />
+    ) : (
+      <PortfolioHome nav={nav} />
+    )
+    overlay = (
+      <Dialog open onClose={nav.cancelOpen} size="md" label="Open a project">
+        <OpenProject variant="dialog" firstRun={false} onOpened={nav.enterProject} onCancel={nav.cancelOpen} />
+      </Dialog>
     )
   } else if (nav.view === 'open') {
     // Setup is done, so this is the plain open screen — with nothing open there
@@ -76,7 +97,10 @@ export function Shell() {
         </>
       }
     >
-      <div className="h-full bg-canvas">{content}</div>
+      <div className="h-full bg-canvas">
+        {content}
+        {overlay}
+      </div>
     </FrameProvider>
   )
 }

@@ -4,8 +4,8 @@ import { useEventLog } from '../lib/events'
 import { awaitingCheckIn, sessionActive, sessionNotReady } from '../lib/feature-ui'
 import { sessionAgentName } from '../lib/vocabulary'
 import type { FeatureFull } from '../lib/api'
-import { StatusLabel, cx } from '../ui'
-import { IconAlert } from '../icons'
+import { EmptyState, StatusLabel, cx } from '../ui'
+import { IconAlert, IconTerminal } from '../icons'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -31,6 +31,7 @@ export function SessionPanel({
   full,
   className,
   right,
+  fill = false,
 }: {
   featureId: string
   sessions: Session[]
@@ -40,6 +41,12 @@ export function SessionPanel({
   className?: string
   /** Extra controls owned by the embedding surface, before End session. */
   right?: ReactNode
+  /**
+   * The panel owns a pane of its own (planning's split): an ended session
+   * still fills it — the status line over a quiet empty state — rather than
+   * leaving a blank column beside the artifact.
+   */
+  fill?: boolean
 }) {
   const session = pickPanelSession(sessions)
   if (!session) return null
@@ -63,6 +70,19 @@ export function SessionPanel({
     )
   }
 
+  if (fill)
+    return (
+      <section aria-label="Session" className={cx('flex min-h-0 flex-1 flex-col', className)}>
+        <SessionStrip session={session} full={full} />
+        <div className="mt-1 flex min-h-0 flex-1 items-center justify-center rounded-md bg-surface-inset">
+          <EmptyState
+            icon={<IconTerminal />}
+            title="The session has ended"
+            hint="Pick it back up from the next step above — the conversation is still on disk."
+          />
+        </div>
+      </section>
+    )
   return <SessionStrip session={session} full={full} className="mb-6" />
 }
 

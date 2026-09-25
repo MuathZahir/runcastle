@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, NavItem, SectionLabel, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Kbd, Loading, NavItem, SectionLabel, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
@@ -32,7 +32,7 @@ import {
   IconBellOff,
   IconCube,
   IconDoc,
-  IconHome,
+  IconFolder,
   IconMessage,
   IconMoon,
   IconPencil,
@@ -255,7 +255,7 @@ export function Sidebar(props: SidebarProps) {
             lane. It carries the open-note count (project-notes decisions #10)
             and a live dot while the project conversation is up. */}
         <NavItem
-          icon={<IconHome />}
+          icon={<IconFolder />}
           label="Project"
           active={view === 'project'}
           onClick={onSelectProject}
@@ -290,7 +290,7 @@ export function Sidebar(props: SidebarProps) {
 
       <div className="-mx-2 mt-3 min-h-0 flex-1 overflow-y-auto px-2">
         {list.isLoading && (
-          <div className="px-2.5 py-2 text-xs text-text-tertiary">Loading features…</div>
+          <Loading className="px-2.5 py-2 text-xs">Loading features…</Loading>
         )}
         {list.data && list.data.length === 0 && (
           <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
@@ -324,7 +324,8 @@ export function Sidebar(props: SidebarProps) {
         {archivedCount > 0 && (
           <NavItem
             tone="quiet"
-            label={`${showArchived ? 'Hide' : 'Show'} archived (${archivedCount})`}
+            label={showArchived ? 'Hide archived' : 'Show archived'}
+            meta={archivedCount}
             onClick={toggleArchived}
           />
         )}
@@ -539,9 +540,11 @@ function apiOrigin(): string {
 }
 
 /** The frame's one health reading: the server, and the stream from it. */
-export type FrameHealth = 'ok' | 'reconnecting' | 'down'
+export type FrameHealth = 'connecting' | 'ok' | 'reconnecting' | 'down'
 
 const HEALTH: Record<FrameHealth, { tone: StatusTone; word: string }> = {
+  // Before the first answer nothing is known — never "down" on a cold load.
+  connecting: { tone: 'neutral', word: 'Connecting' },
   ok: { tone: 'success', word: 'Server' },
   reconnecting: { tone: 'warning', word: 'Reconnecting' },
   down: { tone: 'danger', word: 'Server down' },
@@ -586,6 +589,8 @@ export function SidebarFootChrome({
   const healthTip =
     health === 'ok'
       ? `Server ok — live updates streaming from ${origin}/api`
+      : health === 'connecting'
+        ? `Connecting to the runcastle API at ${origin}/api`
       : health === 'reconnecting'
         ? 'Live updates paused — reconnecting, and polling meanwhile'
         : `The runcastle API at ${origin}/api is not answering`
@@ -595,13 +600,13 @@ export function SidebarFootChrome({
       {rows}
       <div className="flex h-8 items-center gap-3 pl-2.5 text-xs text-text-tertiary">
         <Tooltip label={healthTip}>
-          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm" data-health={health}>
+          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm whitespace-nowrap" data-health={health}>
             <StatusDot tone={h.tone} />
             {h.word}
           </span>
         </Tooltip>
         <Tooltip label={`Agent sessions run sandboxed via ${sandbox}`}>
-          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm">
+          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm whitespace-nowrap">
             <IconCube size={14} className="text-icon" />
             {sandbox}
           </span>
@@ -735,7 +740,9 @@ function SidebarFoot({
 
   return (
     <SidebarFootChrome
-      health={!healthy ? 'down' : live === 'live' ? 'ok' : 'reconnecting'}
+      health={
+        list.isError ? 'down' : !healthy ? 'connecting' : live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'
+      }
       origin={apiOrigin()}
       sandbox={SANDBOX_MODE}
       notify={notify.supported ? { ...notifyState, onToggle: notify.toggle } : null}

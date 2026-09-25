@@ -139,12 +139,19 @@ describe('ChatPanel', () => {
 describe('AsideLayout (the chat dock)', () => {
   const body = createElement('div', { id: 'phase-body' }, 'the phase body')
 
-  it('renders the body and nothing else while the chat is away', () => {
-    const html = renderToStaticMarkup(
-      createElement(AsideLayout, { aside: false, children: body }),
+  // The page column is the same element open or closed, so toggling the
+  // aside never remounts the page (no replayed entrance, no scroll reset).
+  it('renders the body in the same column, and no aside, while the chat is away', () => {
+    const closed = renderToStaticMarkup(createElement(AsideLayout, { aside: false, children: body }))
+    const open = renderToStaticMarkup(
+      createElement(AsideLayout, { aside: createElement('aside', null, 'chat'), children: body }),
     )
 
-    expect(html).toBe('<div id="phase-body">the phase body</div>')
+    expect(closed).toContain('<div id="phase-body">the phase body</div>')
+    expect(closed).not.toContain('<aside')
+    // Everything up to and including the body is identical in both states.
+    const upToBody = (html: string) => html.slice(0, html.indexOf('</div>') + '</div>'.length)
+    expect(upToBody(open)).toBe(upToBody(closed))
   })
 
   it('puts the panel beside the body, with the body still in it', () => {

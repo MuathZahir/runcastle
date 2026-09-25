@@ -325,15 +325,24 @@ describe('a live chat beside a live drive', () => {
     expect(shown(drive)).toBe(true)
     expect(shown(chat)).toBe(false)
 
-    fireEvent.click(within(drive).getByRole('tab', { name: 'Chat' }))
+    fireEvent.click(within(drive).getByRole('tab', { name: 'Live chat' }))
     expect(shown(chat)).toBe(true)
     expect(testDrive).not.toHaveBeenCalled()
+
+    // ...and the overview (chats, New chat, Test drive) is one tab away from
+    // either, without ending anything.
+    fireEvent.click(within(chat).getByRole('tab', { name: 'Overview' }))
+    expect(shown(chat)).toBe(false)
+    expect(shown(drive)).toBe(false)
+    expect(screen.getAllByRole('tab', { name: 'Live chat' }).length).toBeGreaterThan(0)
   })
 
-  it('offers no switch with only a drive live', () => {
+  it('offers Overview and Drive, but no chat tab, with only a drive live', () => {
     slot = LIVE
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    expect(screen.queryByRole('tablist', { name: 'Show' })).toBeNull()
+    const drive = document.querySelector<HTMLElement>('[data-project-drive]')!
+    expect(within(drive).getByRole('tab', { name: 'Overview' })).toBeTruthy()
+    expect(within(drive).queryByRole('tab', { name: 'Live chat' })).toBeNull()
   })
 })

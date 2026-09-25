@@ -186,8 +186,9 @@ describe('CheckDetails', () => {
     )
     expect(html).toContain('<details')
     expect(html).not.toContain('open=""')
-    expect(html).toContain('Checks')
-    expect(html).toMatch(/\d of \d passed/)
+    expect(html).toContain('Check details')
+    // The count is the Checks property row's — not repeated on the disclosure.
+    expect(html).not.toMatch(/\d of \d passed/)
   })
 })
 

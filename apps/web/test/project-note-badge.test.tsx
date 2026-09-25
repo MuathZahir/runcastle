@@ -58,7 +58,7 @@ function rail() {
       <Sidebar
         projectId="project-1"
         nav={nav}
-        view="empty"
+        view="feature"
         selectedFeatureId={null}
         talk={{ state: 'none' } as never}
         onSelect={() => {}}

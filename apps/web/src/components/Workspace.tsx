@@ -12,6 +12,7 @@ import {
   AsideLayout,
   Button,
   DimLine,
+  Loading,
   IconButton,
   Page,
   PageSection,
@@ -37,6 +38,7 @@ import {
   effectivePhase,
   freshness,
   isReadonlyView,
+  lapTicketCount,
   latestRun,
   mapDocPath,
   mergeSummary,
@@ -49,6 +51,7 @@ import {
   specDocPath,
   stampedReview,
   testDriveTaken,
+  ticketCountText,
   unresolvedMergeConflict,
   unverifiedLap,
   verificationState,
@@ -514,7 +517,7 @@ export function Workspace({
       <section className={FRAME}>
         <PageTopbar />
         <Page>
-          <DimLine>Loading feature…</DimLine>
+          <Loading>Loading feature…</Loading>
         </Page>
       </section>
     )
@@ -859,16 +862,20 @@ export function Workspace({
     setView('overview')
     onViewPhase(p)
   }
-  const liveTickets = full.tickets.filter((t) => t.lap === feature.lap && t.status !== 'cancelled')
-  const doneTickets = liveTickets.filter((t) => t.status === 'done').length
+  // The one count every surface states (implementation tickets of this lap) —
+  // see `lapTicketCount`.
+  const ticketCount = lapTicketCount(full.tickets, feature.lap)
 
   // Live planning holds a terminal beside its artifact, so it fills the panel
   // and each pane scrolls itself; every other body is a document in the page
   // column, the header scrolling away with it. The data-heavy ones (the run's
   // lanes, the review's evidence, the ledger) take the wide column.
   const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly
-  // Per phase, not per view: switching tabs must not move the title.
-  const wide = !isDraft && (bodyPhase === 'building' || bodyPhase === 'review')
+  // Per phase, not per view: switching tabs must not move the title. Every
+  // working phase (planning's panes included) shares the wide column; the
+  // shipped record and a draft read as documents.
+  const wide = !isDraft && bodyPhase !== 'shipped'
+
   // Rises in once per navigation — feature, pinned phase, view — never on a refetch.
   const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}:${view}`
 
@@ -887,7 +894,10 @@ export function Workspace({
       : shipped
         ? { tone: 'success', text: `Merged ${relTimeAgo(shipped)}` }
         : { text: `Started ${relTimeAgo(feature.createdAt)}` },
-    liveTickets.length > 0 && { text: `${doneTickets} of ${liveTickets.length} tickets done` },
+    // Said once per page: planning's ledger has no count line of its own, so
+    // the meta carries it; the run header (build) and the property list
+    // (review, shipped) state it everywhere after.
+    ticketCount.total > 0 && bodyPhase === 'planning' && { text: ticketCountText(ticketCount) },
     feature.status === 'archived' && { tone: 'neutral', text: 'Archived' },
     feature.lap > 1 && { text: `Lap ${feature.lap}`, title: lapExplainer(feature.lap) },
   ]
@@ -941,6 +951,9 @@ export function Workspace({
       busy={busy}
       onAction={runAction}
       hideChat
+      // Merge is reachable from every state (decision 3) but it is review's
+      // step: before that it waits in the row's "More" menu.
+      {...(bodyPhase === 'planning' || bodyPhase === 'building' ? { demote: ['merge'] as const } : {})}
       draftBranch={
         isDraft
           ? {
@@ -1014,6 +1027,9 @@ export function Workspace({
       {/* The one aside sits beside the whole page — topbar included — so its
           own 44px header lines up with the topbar rather than stacking under it. */}
       <AsideLayout
+        // Floating over a narrow panel, the aside starts under the topbar so
+        // the tabs, Chat, "…" and the aside's own toggle stay reachable.
+        asideClassName="@max-4xl:top-(--topbar-h)"
         aside={
           aside === null ? null : aside === 'chat' ? (
             <ChatPanel
@@ -1048,7 +1064,7 @@ export function Workspace({
                     id: 'tickets',
                     label: 'Tickets',
                     icon: <IconCube />,
-                    count: liveTickets.length || full.tickets.length,
+                    ...(ticketCount.total > 0 ? { count: ticketCount.total } : {}),
                   },
                 ]}
               />
@@ -1085,13 +1101,13 @@ export function Workspace({
           }
         />
         {fill ? (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="shrink-0 px-8 pt-7 pb-5">{header}</div>
+          // The same column, padding and entrance as `Page width="wide"`, so
+          // the title never moves between planning and any other phase or tab.
+          <div key={routeKey} className="mx-auto flex min-h-0 w-full max-w-(--content-wide) min-w-0 flex-1 flex-col px-8 pt-12 animate-rise-in">
+            <div className="shrink-0 pb-5">{header}</div>
             {/* Each pane scrolls itself (decisions 6, 11), so the body stops
                 being the scroll container here. */}
-            <div key={routeKey} className="flex min-h-0 min-w-0 flex-1 px-8 pb-6 animate-rise-in">
-              {body}
-            </div>
+            <div className="flex min-h-0 min-w-0 flex-1 pb-6">{body}</div>
           </div>
         ) : (
           <Page width={wide ? 'wide' : 'default'} routeKey={routeKey}>

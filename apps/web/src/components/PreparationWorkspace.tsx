@@ -17,6 +17,7 @@ import {
   Aside,
   AsideLayout,
   LINK,
+  Loading,
   StatusDot,
   StatusLabel,
   cx,
@@ -198,10 +199,7 @@ export function PreparationWorkspace({
       ) : (
         <Page routeKey={`prepare-${projectId}`}>
           {prep.isLoading && (
-            <div className="flex items-center gap-2 text-sm text-text-tertiary">
-              <StatusDot tone="neutral" />
-              Loading preparation…
-            </div>
+            <Loading>Loading preparation…</Loading>
           )}
           {prep.error && (
             <EmptyState
@@ -334,7 +332,7 @@ export function PrepCallToAction({
 
       {pending.length > 0 && (
         <PageSection title="To establish">
-          <List divided label="To establish" className="-mx-3">
+          <List divided label="To establish">
             {pending.map((k, i) => (
               <ListRow
                 key={k}

@@ -55,13 +55,17 @@ export function LiveChat({
         tabs={switcher}
         actions={
           <>
-            <div className="mr-2 hidden items-center gap-4 text-xs text-text-tertiary md:flex">
+            <div className="mr-2 hidden min-w-0 items-center gap-4 text-xs whitespace-nowrap text-text-tertiary md:flex">
               <StatusLabel tone={tone}>{label}</StatusLabel>
-              <span className="inline-flex items-center gap-1.5">
-                <IconArrowRight size={14} className="text-icon" />
-                lands on <span className="font-mono">{branch ?? '…'}</span>
-              </span>
-              <span className="font-mono" title={sid}>
+              {/* Said once the branch is known — a literal "…" read as a
+                  truncated name. */}
+              {branch && (
+                <span className="inline-flex items-center gap-1.5">
+                  <IconArrowRight size={14} className="text-icon" />
+                  lands on <span className="font-mono">{branch}</span>
+                </span>
+              )}
+              <span className="hidden font-mono xl:inline" title={sid}>
                 {sid.slice(0, 8)}
               </span>
             </div>

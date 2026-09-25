@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { Aside, DimLine, Tabs } from '../../ui'
+import { Aside, DimLine, Loading, Tabs } from '../../ui'
 import { IconActivity, IconDoc } from '../../icons'
 import { Activity } from './Activity'
 import { Knowledge } from './Knowledge'
@@ -47,7 +47,7 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
       bodyClassName="px-4 py-4"
     >
       {full.isLoading ? (
-        <DimLine>Loading…</DimLine>
+        <Loading>Loading…</Loading>
       ) : !full.data ? (
         // Hard error only when there was NEVER data — a refetch failure after
         // data exists (server restart) keeps the last-good panel rendered; the

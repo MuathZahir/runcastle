@@ -4,8 +4,8 @@ import { isAbsolutePath, pathPlaceholder } from '../lib/platform'
 import { repoOpenFailure, type RepoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
 import type { ReactNode } from 'react'
-import { IconArrowLeft, IconArrowRight, IconBranch, IconFolder, LogoMark } from '../icons'
-import { Button, FailureNote, TextField } from '../ui'
+import { IconArrowLeft, IconArrowRight, IconBranch, IconFolder, IconSearch, LogoMark } from '../icons'
+import { Button, DialogBody, DialogHeader, FailureNote, TextField, cx } from '../ui'
 import { DirectoryPicker } from './DirectoryPicker'
 import { SetupFrame, StepHeading } from './first-run/StepLayout'
 
@@ -26,12 +26,19 @@ import { SetupFrame, StepHeading } from './first-run/StepLayout'
 export function OpenProject({
   firstRun,
   rail,
+  variant = 'screen',
   onOpened,
   onCancel,
 }: {
   firstRun: boolean
   /** The wizard's step rail, when this is setup's last step. */
   rail?: ReactNode
+  /**
+   * `dialog` — the body of the Open a project dialog, over the page it was
+   * opened from (the portfolio, the switcher). `screen` is the whole-window
+   * step a fresh install and the first-run wizard use, with nowhere behind it.
+   */
+  variant?: 'screen' | 'dialog'
   onOpened: (projectId: string) => void
   onCancel: () => void
 }) {
@@ -130,34 +137,10 @@ export function OpenProject({
     submit(path)
   }
 
-  return (
-    <SetupFrame
-      rail={rail}
-      stepKey="project"
-      onKeyDown={(event) => {
-        // The picker restores focus to Browse when it closes. Keep Escape as a
-        // screen-level way back from there (and from every other control), but
-        // let the open dialog consume its own first Escape.
-        if (event.key === 'Escape' && !firstRun && !picking) onCancel()
-      }}
-    >
-      {/*
-       * The locator says where you are, the heading says what you are doing
-       * (decision 1) — so it never repeats the heading's own words back at you,
-       * which is all "Open a project" over "Open a project" was. Inside the
-       * wizard the rail already says where you are.
-       */}
-      {!rail && (
-        <div className="mb-3 flex items-center gap-2 text-xs text-text-tertiary">
-          <LogoMark size={14} />
-          {firstRun ? 'Welcome to runcastle' : 'Your projects'}
-        </div>
-      )}
-      <StepHeading title={firstRun ? 'Open your first project' : 'Open a project'}>
-        Point runcastle at a local git repository — every feature runs its pipeline against it.
-      </StepHeading>
-
-      <div className="mt-8 flex items-center gap-2">
+  // The path row, its failure or hint — the same in both variants.
+  const form = (
+    <>
+      <div className={cx('flex items-center gap-2', variant === 'screen' && 'mt-8')}>
         <TextField
           id="open-repo-path"
           size="lg"
@@ -176,7 +159,7 @@ export function OpenProject({
             if (e.key === 'Enter') submit()
           }}
         />
-        <Button size="lg" onClick={browse} disabled={busy}>
+        <Button size="lg" icon={<IconSearch />} onClick={browse} disabled={busy}>
           Browse…
         </Button>
         <Button
@@ -221,6 +204,58 @@ export function OpenProject({
         </p>
       )}
 
+    </>
+  )
+  const picker = (
+    <>
+      {picking && (
+        <DirectoryPicker initialPath={repoPath} onPick={onPick} onCancel={() => setPicking(false)} />
+      )}
+    </>
+  )
+
+  if (variant === 'dialog')
+    return (
+      <>
+        <DialogHeader
+          title="Open a project"
+          description="Point runcastle at a local git repository — every feature runs its pipeline against it."
+          onClose={busy ? undefined : onCancel}
+        />
+        <DialogBody className="pt-1">{form}</DialogBody>
+        {picker}
+      </>
+    )
+
+  return (
+    <SetupFrame
+      rail={rail}
+      stepKey="project"
+      onKeyDown={(event) => {
+        // The picker restores focus to Browse when it closes. Keep Escape as a
+        // screen-level way back from there (and from every other control), but
+        // let the open dialog consume its own first Escape.
+        if (event.key === 'Escape' && !firstRun && !picking) onCancel()
+      }}
+    >
+      {/*
+       * The locator says where you are, the heading says what you are doing
+       * (decision 1) — so it never repeats the heading's own words back at you,
+       * which is all "Open a project" over "Open a project" was. Inside the
+       * wizard the rail already says where you are.
+       */}
+      {!rail && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-text-tertiary">
+          <LogoMark size={14} />
+          {firstRun ? 'Welcome to runcastle' : 'Your projects'}
+        </div>
+      )}
+      <StepHeading title={firstRun ? 'Open your first project' : 'Open a project'}>
+        Point runcastle at a local git repository — every feature runs its pipeline against it.
+      </StepHeading>
+
+      {form}
+
       {!firstRun && (
         <footer className="mt-10 flex items-center border-t border-border-subtle pt-5">
           <Button variant="ghost" icon={<IconArrowLeft />} onClick={onCancel} disabled={busy}>
@@ -229,9 +264,7 @@ export function OpenProject({
         </footer>
       )}
 
-      {picking && (
-        <DirectoryPicker initialPath={repoPath} onPick={onPick} onCancel={() => setPicking(false)} />
-      )}
+      {picker}
     </SetupFrame>
   )
 }

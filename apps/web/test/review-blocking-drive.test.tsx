@@ -134,18 +134,24 @@ function page(): { rerender: () => void } {
   return { rerender: () => rerender(ui()) }
 }
 
-const testDrive = (): HTMLButtonElement =>
-  screen.getByRole('button', { name: 'Test drive' }) as HTMLButtonElement
+/**
+ * The Test drive control itself — and its "… is running — stop it first"
+ * refusal — is the next-step bar's (feature-ui.test covers the resolver's
+ * `disabled` reason for each holder). The body never repeats the control; what
+ * it owns is the line naming the holder, and the one click that stops a project
+ * drive.
+ */
+const noDuplicateControl = () => expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
 
 describe('a project drive holding the slot', () => {
-  it('names it on the disabled Test drive control', () => {
+  it('names it on the page, beside the facts', () => {
     state.drive = PROJECT_DRIVE
     page()
-    expect(testDrive().disabled).toBe(true)
-    expect(testDrive().title).toBe('A project drive of main is running — stop it first')
+    expect(screen.getByText('A project drive of main is running')).toBeTruthy()
+    noDuplicateControl()
   })
 
-  it('stops it from the inline line, and Test drive comes back', () => {
+  it('stops it from the inline line, and the line goes', () => {
     state.drive = PROJECT_DRIVE
     const { rerender } = page()
     expect(screen.getByText('A project drive of main is running')).toBeTruthy()
@@ -154,23 +160,22 @@ describe('a project drive holding the slot', () => {
     expect(state.stopProjectDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'stop' })
 
     rerender()
-    expect(testDrive().disabled).toBe(false)
     expect(screen.queryByRole('button', { name: 'Stop it' })).toBeNull()
   })
 })
 
 describe('any other drive holding the slot', () => {
-  it('names a preparation dry-run, with no Stop it line', () => {
+  it('offers no Stop it line for a preparation dry-run', () => {
     state.drive = drive({ dryRun: true, holderLabel: 'a preparation dry-run' })
     page()
-    expect(testDrive().title).toBe('A preparation dry-run is running — stop it first')
     expect(screen.queryByRole('button', { name: 'Stop it' })).toBeNull()
+    noDuplicateControl()
   })
 
-  it("names another feature's drive", () => {
+  it("offers no Stop it line for another feature's drive", () => {
     state.drive = drive({ featureId: 'feat_2' })
     page()
-    expect(testDrive().title).toBe('A test drive of feature/x is running — stop it first')
     expect(screen.queryByRole('button', { name: 'Stop it' })).toBeNull()
+    noDuplicateControl()
   })
 })

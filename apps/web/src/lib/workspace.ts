@@ -29,12 +29,17 @@ const ARTIFACT_KEY = 'runcastle.artifact.collapsed'
 const CHATPANEL_KEY = 'runcastle.chatpanel.open'
 const GUIDANCE_KEY = 'runcastle.guidance'
 
+/**
+ * Whether the details aside starts collapsed. It is closed by default in every
+ * phase (DESIGN.md: an aside is opened on demand) — only the human's own toggle,
+ * remembered as `preference`, opens it by default. `phase` is kept in the
+ * signature so a caller never has to know the rule stopped depending on it.
+ */
 export function inspectorCollapsedForPhase(
   preference: boolean | null,
-  phase: Phase | undefined,
+  _phase?: Phase | undefined,
 ): boolean {
-  if (preference !== null) return preference
-  return phase === 'planning'
+  return preference ?? true
 }
 
 /** Per-project selected-feature key so switching projects never restores a
@@ -264,7 +269,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     viewedPhase,
     creating,
     preparing,
-    inspectorCollapsed: inspectorPreference ?? false,
+    inspectorCollapsed: inspectorPreference ?? true,
     inspectorPreference,
     mapRailCollapsed,
     artifactPaneCollapsed,

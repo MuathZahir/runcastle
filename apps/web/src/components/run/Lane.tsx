@@ -242,35 +242,41 @@ export function Lane({
           </span>
         </button>
 
-        {sha &&
-          (onCopySha ? (
-            <Tooltip label="Copy commit SHA">
-              <button
-                type="button"
-                className={cx(
-                  TRAILING,
-                  'hidden cursor-pointer rounded-sm px-1 font-mono transition-colors duration-(--dur-1) hover:bg-surface-selected hover:text-text @xl:inline',
-                )}
-                onClick={() => onCopySha(sha)}
-              >
+        {/* Fixed trailing columns, each rendered even when empty, so the SHA,
+            model and time line up down the lane list whatever a row lacks. */}
+        <span className="hidden w-16 shrink-0 @xl:inline-flex">
+          {sha &&
+            (onCopySha ? (
+              <Tooltip label="Copy commit SHA">
+                <button
+                  type="button"
+                  className={cx(
+                    TRAILING,
+                    'cursor-pointer rounded-sm px-1 font-mono transition-colors duration-(--dur-1) hover:bg-surface-selected hover:text-text',
+                  )}
+                  onClick={() => onCopySha(sha)}
+                >
+                  {shortSha(sha)}
+                </button>
+              </Tooltip>
+            ) : (
+              <span className={cx(TRAILING, 'px-1 font-mono')} title={sha}>
                 {shortSha(sha)}
-              </button>
-            </Tooltip>
-          ) : (
-            <span className={cx(TRAILING, 'hidden font-mono @xl:inline')} title={sha}>
-              {shortSha(sha)}
+              </span>
+            ))}
+        </span>
+        <span className="hidden w-44 shrink-0 @2xl:inline-flex">
+          {model && Runtime && (
+            <span
+              className={cx(TRAILING, 'inline-flex max-w-full items-center gap-1.5 font-mono')}
+              title={`Burns on ${model.id} (${model.runtimeLabel})`}
+            >
+              <Runtime size={12} className="shrink-0 text-icon" />
+              <span className="truncate">{model.id}</span>
             </span>
-          ))}
-        {model && Runtime && (
-          <span
-            className={cx(TRAILING, 'hidden max-w-40 items-center gap-1.5 font-mono @2xl:inline-flex')}
-            title={`Burns on ${model.id} (${model.runtimeLabel})`}
-          >
-            <Runtime size={12} className="shrink-0 text-icon" />
-            <span className="truncate">{model.id}</span>
-          </span>
-        )}
-        {time && <span className={cx(TRAILING, 'hidden w-14 text-right @md:block')}>{time}</span>}
+          )}
+        </span>
+        <span className={cx(TRAILING, 'hidden w-14 text-right @md:block')}>{time}</span>
         {/* Keyed on the state, so a lane that changes status cross-fades its
             word — and one that merely re-renders on a poll does not. */}
         <span key={state} className="flex shrink-0 animate-fade-in @md:w-28">

@@ -88,11 +88,13 @@ describe('command palette on an empty query', () => {
     expect(html).toContain('Actions')
   })
 
-  it('labels the groups even when a group has nothing in it', () => {
+  // A heading over nothing is noise: a group with no rows is not labelled.
+  it('labels only the groups that have something in them', () => {
     const html = palette([])
 
-    expect(html).toContain('Features')
-    expect(html).toContain('Projects')
+    expect(html).not.toContain('>Features<')
+    expect(html).toContain('>Projects<')
+    expect(html).toContain('>Actions<')
   })
 
   /**

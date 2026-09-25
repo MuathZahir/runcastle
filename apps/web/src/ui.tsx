@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
 import type { LapGroup } from './lib/feature-ui'
 import { IconChevronDown, IconChevronRight, IconX } from './icons'
-import { Button, IconButton } from './ui/button'
+import { Button, IconButton, Spinner } from './ui/button'
 import {
   Combobox,
   ComboboxContent,
@@ -70,6 +70,26 @@ export type { Crumb } from './ui/page'
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <SectionLabel>{children}</SectionLabel>
+}
+
+/**
+ * The app's one loading state: a quiet spinner and a word, in `text-tertiary`,
+ * where the content will appear. It waits 300ms before fading in, so a fast
+ * load shows nothing at all rather than a flash of "Loading…".
+ */
+export function Loading({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      role="status"
+      className={cx(
+        'flex items-center gap-2 text-sm text-text-tertiary animate-fade-in [animation-delay:300ms]',
+        className,
+      )}
+    >
+      <Spinner size="sm" />
+      {children}
+    </div>
+  )
 }
 
 /** One quiet line — an inline empty or error state for a tight spot, in `text-xs text-tertiary`. */

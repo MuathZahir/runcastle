@@ -68,8 +68,8 @@ function lapMeta(entry: TrailEntry): MetaItem[] {
   const { found, fixed, carried } = entry.defects
   const items: (MetaItem | null)[] = [
     entry.completedAt !== null
-      ? { text: `reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
-      : { text: 'not reviewed yet' },
+      ? { text: `Reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
+      : { text: 'Not reviewed yet' },
     outcomeItem(entry.outcome),
     entry.burned > 0 ? { text: `${plural(entry.burned, 'ticket')} burned` } : null,
     found > 0
@@ -250,7 +250,7 @@ export function ReviewTrail({
               <Disclosure
                 key={entry.lap}
                 title={`Lap ${entry.lap}`}
-                aside={outcome?.strong ?? (entry.completedAt !== null ? `reviewed ${relTimeAgo(entry.completedAt)}` : undefined)}
+                aside={outcome?.strong ?? (entry.completedAt !== null ? `Reviewed ${relTimeAgo(entry.completedAt)}` : undefined)}
               >
                 {body(entry)}
               </Disclosure>

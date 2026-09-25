@@ -41,7 +41,7 @@ export function GrillBody({ full, effective, chatDocked = false, mapRailCollapse
       )}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {sessions.length > 0 ? (
-          <SessionPanel featureId={full.feature.id} sessions={sessions} full={full} />
+          <SessionPanel featureId={full.feature.id} sessions={sessions} full={full} fill />
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-surface-inset">
             {sessions.length < full.sessions.length ? (

@@ -44,7 +44,7 @@ describe('workspaceView', () => {
   })
 
   it('falls back to the project home with neither selected', () => {
-    expect(workspaceView(state())).toBe('empty')
+    expect(workspaceView(state())).toBe('project')
   })
 
   it('lets a creation form own the body outright', () => {
@@ -64,12 +64,12 @@ describe('workspaceView', () => {
   })
 
   it('uses the ordinary empty home when a featureless project has nothing to prepare', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: true }))).toBe('empty')
+    expect(workspaceView(state({ featureCount: 0, prepared: false, empty: true }))).toBe('project')
   })
 
   it('reads as the ordinary home once either half of that stops holding', () => {
-    expect(workspaceView(state({ featureCount: 0, prepared: true }))).toBe('empty')
-    expect(workspaceView(state({ featureCount: 3, prepared: false }))).toBe('empty')
+    expect(workspaceView(state({ featureCount: 0, prepared: true }))).toBe('project')
+    expect(workspaceView(state({ featureCount: 3, prepared: false }))).toBe('project')
   })
 
   // Opening it deliberately (the rail's nudge, ⌘K) beats every automatic rule
@@ -195,7 +195,6 @@ describe('showsInspector', () => {
   it('is the feature workspace only', () => {
     expect(showsInspector('feature', false)).toBe(true)
     expect(showsInspector('project', false)).toBe(false)
-    expect(showsInspector('empty', false)).toBe(false)
     expect(showsInspector('create', false)).toBe(false)
     expect(showsInspector('prepare', false)).toBe(false)
   })

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
-import { DimLine, SegmentedControl, Spinner } from '../../ui'
+import { DimLine, Loading, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
 import { SettingGroup, SettingLine, SettingSection } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
@@ -32,9 +32,7 @@ export function GeneralPage({ globals, filter, highlightField }: SettingsPagePro
     return (
       <>
         {appearance}
-        <div className="mt-9 flex items-center gap-2 text-sm text-text-tertiary">
-          <Spinner /> Loading settings…
-        </div>
+        <Loading className="mt-9">Loading settings…</Loading>
       </>
     )
   if (globals.error)

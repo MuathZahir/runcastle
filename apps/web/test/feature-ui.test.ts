@@ -3578,7 +3578,7 @@ describe('capLane', () => {
   })
 
   it('offers Show all with the lane’s true total while collapsed', () => {
-    expect(capLane(lane('shipped', 12), false).expanderLabel).toBe('Show all (12)')
+    expect(capLane(lane('shipped', 12), false).expanderLabel).toBe('Show all')
   })
 
   it('shows every row and offers Show fewer once expanded', () => {

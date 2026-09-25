@@ -76,9 +76,7 @@ export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkPr
           along.
         </p>
       ) : (
-        <div className="-mx-3">
-          <WorkList featureId={featureId} rows={rows} readonly={readonly} currentLap={lap} {...rest} />
-        </div>
+        <WorkList featureId={featureId} rows={rows} readonly={readonly} currentLap={lap} {...rest} />
       )}
       {!readonly && (
         <div className="mt-2">

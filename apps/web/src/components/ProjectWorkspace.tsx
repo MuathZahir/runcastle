@@ -16,7 +16,7 @@ import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
 import { TranscriptPane } from './project/TranscriptPane'
 import { LiveChat } from './project/LiveChat'
-import { ChatDriveSwitch, ProjectDriveView } from './project/ProjectDriveView'
+import { ProjectDriveView, ProjectViewSwitch, type ProjectView } from './project/ProjectDriveView'
 import { TestDriveCard } from './project/TestDriveCard'
 import { projectDriveCard } from '../lib/project-drive'
 import { useProjectDrive } from '../lib/use-project-drive'
@@ -154,9 +154,26 @@ export function ProjectWorkspace({
   const resting = reading !== null || showList || (!session && !(drive && front === 'drive'))
   const driveInFront = Boolean(drive) && !resting && (front === 'drive' || !session)
   const chatInFront = Boolean(session) && !resting && !driveInFront
+  // While a chat or a drive is live, every topbar of this page carries the
+  // same view tabs, so the overview — chats, New chat, Test drive — is one
+  // labelled click away from either, and they from it.
+  const pickView = (view: ProjectView): void => {
+    if (view === 'overview') {
+      setViewing(null)
+      toRestingPage()
+    } else if (view === 'chat') {
+      setViewing(null)
+      showChat()
+    } else showDrive()
+  }
   const switcher =
-    session && drive ? (
-      <ChatDriveSwitch front={driveInFront ? 'drive' : 'chat'} onPick={setFront} />
+    session || drive ? (
+      <ProjectViewSwitch
+        value={driveInFront ? 'drive' : chatInFront ? 'chat' : 'overview'}
+        chat={Boolean(session)}
+        drive={Boolean(drive)}
+        onPick={pickView}
+      />
     ) : undefined
   // Reopening leaves the read-only pane behind: what comes back is the terminal,
   // and closing that should land on the list, not on the transcript of the
@@ -197,18 +214,9 @@ export function ProjectWorkspace({
           <>
             <PageTopbar
               crumbs={[{ label: projectName, icon: <IconFolder /> }]}
+              tabs={switcher}
               actions={
                 <>
-                  {session && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      icon={<StatusDot tone="live" />}
-                      onClick={showChat}
-                    >
-                      Live chat
-                    </Button>
-                  )}
                   {hasNotes && (
                     <IconButton
                       label="Notes"
@@ -252,7 +260,7 @@ export function ProjectWorkspace({
                   title={projectName}
                   meta={[
                     { icon: <IconBranch />, text: PROJECT_BRANCH, mono: true, title: 'the branch project chats run on' },
-                    { icon: <IconArrowRight />, text: `lands on ${landing.value ?? '…'}` },
+                    landing.value ? { icon: <IconArrowRight />, text: `lands on ${landing.value}` } : null,
                   ]}
                 />
                 <div className="mt-8">

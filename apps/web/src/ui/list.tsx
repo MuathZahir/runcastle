@@ -170,11 +170,13 @@ export function NavItem({
         'group/nav relative flex min-w-0 shrink-0 items-center rounded-md',
         'transition-colors duration-(--dur-1) ease-app',
         quiet ? 'h-7' : 'h-(--row-h)',
+        // Hover is half the selected fill: on the canvas the two tokens are
+        // close enough that a lingering pointer read as a second selection.
         active
           ? 'bg-surface-selected text-text'
           : quiet
-            ? 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
-            : 'text-text-secondary hover:bg-surface-hover hover:text-text',
+            ? 'text-text-tertiary hover:bg-surface-hover/50 hover:text-text-secondary'
+            : 'text-text-secondary hover:bg-surface-hover/50 hover:text-text',
         className,
       )}
     >

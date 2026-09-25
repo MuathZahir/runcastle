@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconDoc, IconFolder, IconMessage, LogoMark } from '../icons'
-import { Button, EmptyState, Page, PageTopbar } from '../ui'
 import { trpc } from '../trpc'
 import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
@@ -277,14 +275,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           }}
         />
       </ErrorBoundary>
-    ) : (
-      <EmptyWorkspace
-        projectName={nav.currentProject?.name ?? 'This project'}
-        onOpenProject={selectProject}
-        onNewChat={newChat}
-        onDraft={ws.startDraft}
-      />
-    )
+    ) : null
 
   const shell = (
     <>
@@ -363,49 +354,3 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   return <OpenSettingsProvider open={ws.openSettings}>{shell}</OpenSettingsProvider>
 }
 
-/**
- * The project with nothing selected — the bare `/p/<id>` address, where a
- * project lands when nothing is in motion. An empty repository sees it even
- * before preparation; an unprepared repository with code gives the panel to
- * preparation instead.
- *
- * It says the two intake doors again (decisions.md #12), where a project with
- * nothing selected is looking for them. Exported for the copy sweep
- * (`intake-copy`), which reads the words this screen says about them.
- */
-export function EmptyWorkspace({
-  projectName,
-  onOpenProject,
-  onNewChat,
-  onDraft,
-}: {
-  projectName: string
-  onOpenProject?: () => void
-  onNewChat: () => void
-  onDraft: () => void
-}) {
-  return (
-    <section className="flex min-h-0 flex-col">
-      <PageTopbar
-        crumbs={[{ label: projectName, icon: <IconFolder />, onClick: onOpenProject }, { label: 'Features' }]}
-      />
-      <Page routeKey="empty">
-        <EmptyState
-          icon={<LogoMark size={20} />}
-          title="Pick a feature, or start one"
-          hint="New is the door for both features and quick changes: a conversation that can read a screenshot, check what already shipped, and emit burn-ready tickets. Draft writes an idea down now, to work out later."
-          action={
-            <div className="flex items-center gap-2">
-              <Button variant="primary" icon={<IconMessage />} onClick={onNewChat}>
-                New chat
-              </Button>
-              <Button icon={<IconDoc />} onClick={onDraft}>
-                Draft
-              </Button>
-            </div>
-          }
-        />
-      </Page>
-    </section>
-  )
-}

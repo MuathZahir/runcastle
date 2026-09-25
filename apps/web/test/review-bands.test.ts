@@ -255,8 +255,9 @@ describe('the review page’s arrival bands', () => {
     const html = openWork()
     // The bands that are there.
     expect(html).toContain('>Checks<')
-    expect(html).toContain('Test drive</button>')
-    expect(html).toContain('Lap 1: DLQ spill retention landed')
+    // Test drive is the next-step bar's (it is not repeated beside the facts).
+    expect(html).not.toContain('Test drive</button>')
+    expect(html).toContain('DLQ spill retention landed')
     expect(html).toContain('the repaired read path is never called')
     expect(html).toContain('the spilled-at column shows raw epoch millis')
     expect(html).toContain('Full account')
@@ -269,8 +270,8 @@ describe('the review page’s arrival bands', () => {
   /** Decision 8: the lap account is ONE line — the rest of the digest is not here. */
   it('lifts the digest’s first line out and leaves the account behind the disclosure', () => {
     const html = openWork()
-    expect(html).toContain('Lap 1: DLQ spill retention landed · 1 defect found, 0 fixed in-run')
-    expect(html.indexOf('Lap 1: DLQ spill')).toBeLessThan(html.indexOf('Full account'))
+    expect(html).toContain('DLQ spill retention landed<')
+    expect(html.indexOf('DLQ spill retention landed')).toBeLessThan(html.indexOf('Full account'))
     // The long account renders once, and only inside the disclosure.
     expect(html.indexOf('The cap bounds rows')).toBeGreaterThan(html.indexOf('Full account'))
   })
@@ -308,9 +309,8 @@ describe('the review page’s arrival bands', () => {
   it('mounts the evidence stage for a recording, and for a live drive', () => {
     const walkthrough = render({ recordings: [RECORDING] })
     expect(walkthrough).toContain('id="evidence-stage"')
-    // The state line is the same line it is in every other state — a recording
-    // does not take the way to your own drive away.
-    expect(walkthrough).toContain('Test drive</button>')
+    // The drive door is the next-step bar's, in every state — never repeated here.
+    expect(walkthrough).not.toContain('Test drive</button>')
 
     const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } })
     expect(driving).toContain('id="evidence-stage"')
@@ -326,7 +326,7 @@ describe('the review page’s arrival bands', () => {
   it('leads with the same bands when nothing is open', () => {
     const html = render({})
     expect(html).toContain('Nothing needs attention')
-    expect(html).toContain('Lap 1: DLQ spill retention landed')
+    expect(html).toContain('DLQ spill retention landed')
     expect(html).not.toContain('id="evidence-stage"')
   })
 
@@ -552,7 +552,7 @@ describe('the review page’s arrival bands', () => {
     it('opens on the lap’s account, above the full-account disclosure', () => {
       const html = render({ recordings: [RECORDING] })
       expect(html).toContain('id="lap-trail"')
-      expect(html.indexOf('Lap 1: DLQ spill')).toBeGreaterThan(html.indexOf('id="lap-trail"'))
+      expect(html.indexOf('DLQ spill retention landed')).toBeGreaterThan(html.indexOf('id="lap-trail"'))
       expect(html.indexOf('id="lap-trail"')).toBeLessThan(html.indexOf('Full account'))
     })
 
@@ -659,7 +659,7 @@ describe('the review page as one document', () => {
       'id="open-work"',
       'Carried, still open',
       'id="lap-trail"',
-      'Lap 1: DLQ spill retention landed',
+      'DLQ spill retention landed',
       'How to drive this app',
       'Full account',
     ]

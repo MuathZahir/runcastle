@@ -3,7 +3,7 @@ import type { FeatureFull } from '../../../lib/api'
 import { countDecisions } from '../../../lib/feature-ui'
 import { useFeatureDoc } from '../../../lib/use-feature-doc'
 import { IconDoc, IconPanelLeft } from '../../../icons'
-import { DimLine, EmptyState, IconButton, PageSection, StatusLabel } from '../../../ui'
+import { DimLine, EmptyState, IconButton, Loading, PageSection, StatusLabel } from '../../../ui'
 import { DocsMenu } from '../../DocsMenu'
 import { Markdown } from '../../Markdown'
 
@@ -69,7 +69,7 @@ export function ArtifactPane({
   const title = kind === 'spec' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'
   const prose = (
     <>
-      {doc.loading && <DimLine>Loading…</DimLine>}
+      {doc.loading && <Loading>Loading…</Loading>}
       {doc.failed && <DimLine>Could not read {selectedPath}</DimLine>}
       {content ? (
         <Markdown source={content} size={frozen ? 'base' : 'sm'} />

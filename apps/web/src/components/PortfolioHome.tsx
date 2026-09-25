@@ -87,11 +87,10 @@ function PortfolioSidebar({ nav }: { nav: ProjectNavApi }) {
       </div>
       <div className="mt-2 flex flex-col gap-px">
         <NavItem icon={<IconHome />} label="All projects" meta={nav.projects?.length} active />
-        <NavItem icon={<IconFolder />} label="Open a project…" onClick={nav.showOpen} />
       </div>
       <div className="flex-1" />
       <SidebarFootChrome
-        health={live === 'live' ? 'ok' : 'reconnecting'}
+        health={live === 'live' ? 'ok' : live === 'connecting' ? 'connecting' : 'reconnecting'}
         origin={typeof window === 'undefined' ? 'this machine' : window.location.origin}
         sandbox={SANDBOX_MODE}
         notify={null}

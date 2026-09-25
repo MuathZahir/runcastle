@@ -166,9 +166,9 @@ export function StatusStrip({
  */
 export function CheckDetails({ checks }: { checks: readonly CheckRow[] }) {
   if (checks.length === 0) return null
-  const passed = checks.filter((row) => row.tone === 'ok').length
+  // The count is the Checks property's, above — said once. This is its detail.
   return (
-    <Disclosure title="Checks" icon={<IconList />} aside={`${passed} of ${checks.length} passed`}>
+    <Disclosure title="Check details" icon={<IconList />}>
       {checks.map((row) => (
         <CheckLine key={row.key} row={row} />
       ))}

@@ -86,7 +86,7 @@ export function ConversationList({
       ) : shown.length === 0 ? (
         <EmptyState compact icon={<IconSearch />} title="No chat matches" hint={`Nothing titled “${query.trim()}”.`} />
       ) : (
-        <List label="Chats" className="-mx-3">
+        <List label="Chats">
           {shown.map(({ c, title }, i) => {
             const live = c.status !== 'ended'
             return (

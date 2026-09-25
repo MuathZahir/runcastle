@@ -73,6 +73,7 @@ export function NextStepBar({
   onAction,
   draftBranch,
   hideChat = false,
+  demote,
 }: {
   ns: NextStep
   guidance: boolean
@@ -86,6 +87,12 @@ export function NextStepBar({
     onPick: (branch: string) => void
   }
   hideChat?: boolean
+  /**
+   * Secondaries that are reachable here but not this state's real next step
+   * (Merge & ship before review): they go straight to the "More" menu, with
+   * the same gate — a disabled one is disabled there too.
+   */
+  demote?: readonly ActionKind[]
 }) {
   const secondary = hideChat ? ns.secondary.filter((a) => a.kind !== 'chat') : ns.secondary
   // Disabled actions, in button order, each with the reason it cannot fire.
@@ -95,8 +102,13 @@ export function NextStepBar({
   const hasActions = !!ns.primary || secondary.length > 0
   // At most two secondaries beside the primary (DESIGN.md §Page anatomy 4);
   // the rest stay one click away in a "More" menu rather than disappearing.
-  const shown = secondary.length > 2 ? secondary.slice(0, 2) : secondary
-  const overflow = secondary.length > 2 ? secondary.slice(2) : []
+  const inline = secondary.filter((a) => !demote?.includes(a.kind))
+  const demoted = secondary.filter((a) => demote?.includes(a.kind))
+  const shown = inline.length > 2 ? inline.slice(0, 2) : inline
+  const overflow = [...(inline.length > 2 ? inline.slice(2) : []), ...demoted]
+  // A demoted action's refusal is said in its menu item's title, not under
+  // the row — the row does not show that button.
+  const refusedShown = refused.filter((a) => !demote?.includes(a.kind) || a === ns.primary)
   if (!hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
 
   const lead = ns.title ?? (guidance ? undefined : ns.desc)
@@ -137,7 +149,7 @@ export function NextStepBar({
           </div>
         )}
         {ns.note && (
-          <p className="mt-1.5 mb-0 text-xs text-text-tertiary" role="note">
+          <p className="mt-1.5 mb-0 text-xs text-text-tertiary first-letter:uppercase" role="note">
             {ns.note}
           </p>
         )}
@@ -146,7 +158,9 @@ export function NextStepBar({
       {hasActions && (
         // The group shrinks and wraps; the buttons inside it never do — a
         // group sized to its widest row ran the primary off the page.
-        <div className="flex min-w-0 flex-col items-end gap-1.5">
+        // `ml-auto`: wrapped under a long sentence, the group still sits on
+        // the right, the primary last — the same place on every phase.
+        <div className="ml-auto flex min-w-0 flex-col items-end gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             {shown.map((a, i) => (
               <Button
@@ -207,7 +221,7 @@ export function NextStepBar({
           {/* Why a button is dead, where the eye is — beneath it — and, when
               the refusal has a way out (decision 20), the one click that
               takes it, so "Stop the test drive first" is not a dead end. */}
-          {refused.map((a) => (
+          {refusedShown.map((a) => (
             <div
               key={a.kind}
               className={cx(

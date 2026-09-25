@@ -670,7 +670,10 @@ describe('primitive gaps closed by the consistency pass', () => {
 
   it('lays an aside beside the page, and floats it in a narrow panel', () => {
     const body = createElement('main', null, 'page')
-    expect(html(createElement(AsideLayout, { aside: null, children: body }))).toBe('<main>page</main>')
+    // Closed, the page keeps its column (so opening an aside never remounts it).
+    const closed = html(createElement(AsideLayout, { aside: null, children: body }))
+    expect(closed).toContain('<main>page</main>')
+    expect(closed).not.toContain('@max-4xl:absolute')
     const out = html(createElement(AsideLayout, { aside: createElement('aside', null, 'a'), children: body }))
     expect(out).toContain('@container')
     expect(out).toContain('@max-4xl:absolute')
