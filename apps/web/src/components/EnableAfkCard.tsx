@@ -237,9 +237,9 @@ function imageReady(probe: Probe): boolean {
 
 /**
  * How long the checklist waits for `setup.doctor` before it admits the wait and
- * offers a way out. The probes shell out to the container runtime and neither
- * they nor the query have a timeout, so on a machine where Docker Desktop is
- * still starting — an ordinary Windows state — the report can be minutes away.
+ * offers a way out. The probes shell out to the container runtime, and on a
+ * machine where Docker Desktop is still starting — an ordinary Windows state —
+ * each can run until the server's per-command timeout gives up on it.
  * Long enough that the second or two a healthy machine takes never shows it.
  */
 const SLOW_DOCTOR_MS = 10_000

@@ -16,4 +16,17 @@ describe('createSystemExec (real spawn)', () => {
     expect(out.ok).toBe(false)
     expect(out.code).toBeNull()
   })
+
+  // A wedged Docker daemon leaves `docker info` blocked forever; unbounded, the
+  // doctor query waiting on it never returned and held the app on its loader.
+  it('gives up on a command that never answers: present, not healthy, timed out', async () => {
+    const bounded = createSystemExec({ timeoutMs: 500 })
+    const started = Date.now()
+    const out = await bounded('node', ['-e', 'setTimeout(() => {}, 30000)'])
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(out.ok).toBe(true)
+    expect(out.code).toBeNull()
+    expect(out.timedOut).toBe(true)
+    expect(out.stderr).toMatch(/timed out after/)
+  })
 })

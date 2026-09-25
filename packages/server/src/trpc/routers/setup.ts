@@ -46,6 +46,13 @@ import { resolveSpawnTarget } from '../../util/resolve-executable'
 import { publicProcedure, router } from '../context'
 
 /**
+ * Per-command bound on the doctor's probes. A healthy `docker info` answers in
+ * a second or two; one that is still waiting at this point is not coming back
+ * soon, and the app's landing is held on this report until it returns.
+ */
+const DOCTOR_PROBE_TIMEOUT_MS = 10_000
+
+/**
  * First-run wizard + Enable-AFK card backend (issue #50, SPEC §F). Drives the
  * one blocking wizard step (git identity → git config) and the AFK card's
  * non-blocking setup: a live prerequisite report, the OS-specific runtime
@@ -81,7 +88,9 @@ export const setupRouter = router({
         .map((p) => p.model)
       const project = input?.projectId ? requireProjectById(ctx, input.projectId) : null
       return runDoctor({
-        exec: createSystemExec(),
+        // The app's first screen waits on this report, so each probe gets a short
+        // leash: a daemon that has not answered in this long is reported as down.
+        exec: createSystemExec({ timeoutMs: DOCTOR_PROBE_TIMEOUT_MS }),
         burnerDockerfile: burnerDockerfilePath(),
         // Read the data-dir `.env` fresh on every query: the AFK card writes the
         // token there through `afkToken` while the server runs, so a probe that
