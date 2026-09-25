@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { RunStatus } from '@runcastle/core'
 import { Button, MetaLine, RunStatusChip } from '../../ui'
 import { IconArrowLeft, IconClock, IconCube, IconStop } from '../../icons'
+import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { ConfirmDialog } from './ConfirmDialog'
 import { RunPicker } from './RunPicker'
 import type { RunOption } from './RunPicker'
@@ -25,6 +26,7 @@ export function RunHeader({
   headline,
   elapsed,
   status,
+  summary,
   landed,
   burning,
   busy,
@@ -39,6 +41,11 @@ export function RunHeader({
   headline: string
   elapsed: string
   status?: RunStatus
+  /**
+   * The run's recorded one-liner, said beside a Failed chip — a run that died
+   * in preflight otherwise reads "Failed · 9s · 0 of 2 landed" and nothing else.
+   */
+  summary?: string
   /** Tickets done out of the lanes shown. */
   landed?: { done: number; total: number }
   /** Lanes with a live agent — the blast radius Cancel run states. */
@@ -107,6 +114,9 @@ export function RunHeader({
               ? { icon: <IconCube />, strong: `${landed.done} of ${landed.total}`, text: 'landed' }
               : null,
             extra ? { text: extra } : null,
+            status === 'failed' && summary
+              ? { text: <MessageWithSettingsLink text={summary} /> }
+              : null,
           ]}
         />
       </div>

@@ -346,6 +346,7 @@ export function RunBody({
           run.data ? fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now()) : ''
         }
         status={run.data?.status}
+        summary={run.data?.summary}
         landed={{ done: tickets.filter((t) => t.status === 'done').length, total: tickets.length }}
         burning={burning}
         busy={busy}

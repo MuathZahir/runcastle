@@ -411,6 +411,16 @@ describe('RunHeader', () => {
     expect(html).not.toContain('Cancel run')
   })
 
+  it('says a failed run’s recorded reason beside Failed, and only for a failure', () => {
+    const summary = 'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282'
+    const header = (status: 'failed' | 'cancelled') =>
+      renderToStaticMarkup(
+        createElement(RunHeader, { headline: 'Burned 2 tickets', elapsed: '9s', burning: 0, status, summary }),
+      )
+    expect(header('failed')).toContain(summary)
+    expect(header('cancelled')).not.toContain(summary)
+  })
+
   it('drops the cancel control when nothing is running', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, { headline: 'Burning 1 ticket · 1 done', elapsed: '1m', burning: 0 }),
