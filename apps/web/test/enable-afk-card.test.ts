@@ -159,7 +159,7 @@ describe('EnableAfkCard image action', () => {
   // image — however badly it is needed — is a ghost like everything else.
   it('offers Build image as a secondary action when the image is missing', () => {
     const html = renderAction('missing')
-    expect(html).not.toContain('bg-accent')
+    expect(html).not.toContain('data-variant="primary"')
     expect(html).toContain('Build image')
   })
 
@@ -376,9 +376,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
   it('shows exactly one solid button — the token this whole list exists for', () => {
     const { container } = open()
 
-    const solid = [...container.querySelectorAll('button')].filter((b) =>
-      b.className.includes('bg-accent'),
-    )
+    const solid = [...container.querySelectorAll('button[data-variant="primary"]')]
     expect(solid.map((b) => b.textContent)).toEqual(['Save & verify'])
   })
 

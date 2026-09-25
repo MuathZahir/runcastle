@@ -34,6 +34,13 @@ const tagBefore = (html: string, label: string): string => {
   return html.slice(html.lastIndexOf('<', text), text + 1)
 }
 
+/** The opening `<button …>` tag whose text or accessible name is `label`. */
+const buttonTag = (html: string, label: string): string => {
+  const at = Math.max(html.indexOf(`aria-label="${label}"`), html.indexOf(`>${label}<`))
+  const start = html.lastIndexOf('<button', at)
+  return html.slice(start, html.indexOf('>', start) + 1)
+}
+
 const conversation = (over: Partial<ProjectConversation> = {}): ProjectConversation => ({
   id: 'sess_1',
   title: 'Read the audit handoff and turn it into features',
@@ -58,7 +65,17 @@ describe('NewChatCard', () => {
     expect(html).toContain('New chat')
   })
 
-  it('keeps the heading and copy on the 8px card rhythm', () => {
+  it('is a quiet row, not a bordered card', () => {
+    const html = render()
+    expect(html).not.toContain('rounded-lg border')
+    expect(html).toContain('bg-surface-hover')
+  })
+
+  it('makes New chat the one primary', () => {
+    expect(buttonTag(render(), 'New chat')).toContain('data-variant="primary"')
+  })
+
+  it('keeps the heading and copy free of UA margins', () => {
     const html = render()
     expect(tagBefore(html, 'Talk it through')).toContain('m-0')
     expect(tagBefore(html, 'Bring a raw idea;')).toContain('m-0')
@@ -77,13 +94,13 @@ describe('NewChatCard', () => {
   // The one error state (decisions.md #3): the stored pick is gone, so the
   // launch would refuse server-side. It is refused here instead, in place.
   it('blocks New chat while the landing branch is gone', () => {
-    expect(tagBefore(render({ missing: true, value: 'release/1.2' }), 'New chat')).toContain(
+    expect(buttonTag(render({ missing: true, value: 'release/1.2' }), 'New chat')).toContain(
       'disabled=""',
     )
   })
 
   it('leaves New chat live while a usable branch is chosen', () => {
-    expect(tagBefore(render(), 'New chat')).not.toContain('disabled=""')
+    expect(buttonTag(render(), 'New chat')).not.toContain('disabled=""')
   })
 })
 
@@ -108,7 +125,33 @@ describe('ConversationList', () => {
 
   // Reopening is the deliberate act; the row's own job is to open the transcript.
   it('keeps Reopen out of the way until the row is hovered or focused', () => {
-    expect(render([conversation()])).toContain('opacity-0 group-hover:opacity-100')
+    const html = render([conversation()])
+    expect(html).toContain('opacity-0')
+    expect(html).toContain('group-hover/row:opacity-100')
+    expect(html).toContain('group-focus-within/row:opacity-100')
+  })
+
+  // Titles are the first thing typed: pasted markup and escapes are not a name.
+  it('cleans raw pasted markup out of a title, and names an empty one', () => {
+    const html = render([
+      conversation({ id: 'a', title: '<pasted_content id="8dcd"> ## Problem: the image is stale' }),
+      conversation({ id: 'b', title: 'Untitled' }),
+    ])
+    expect(html).toContain('>Problem: the image is stale<')
+    expect(html).not.toContain('pasted_content')
+    expect(html).toContain('>Untitled chat<')
+  })
+
+  it('pages a long history behind Show more, and offers a filter', () => {
+    const many = Array.from({ length: 14 }, (_, i) =>
+      conversation({ id: `s${i}`, title: `Chat number ${i}` }),
+    )
+    const html = render(many)
+    expect(html).toContain('Chat number 9')
+    expect(html).not.toContain('Chat number 10')
+    expect(html).toContain('Show 4 more')
+    expect(html).toContain('aria-label="Filter chats"')
+    expect(render([conversation()])).not.toContain('Filter chats')
   })
 
   it('marks a conversation that is still open', () => {
@@ -118,16 +161,17 @@ describe('ConversationList', () => {
   })
 
   it('offers no Reopen on a conversation the agent never picked up', () => {
-    expect(tagBefore(render([conversation({ resumable: false })]), 'Reopen')).toContain(
+    expect(buttonTag(render([conversation({ resumable: false })]), 'Reopen')).toContain(
       'disabled=""',
     )
   })
 
-  // One dim line, not a designed blank area: the door is directly above it.
-  it('says an empty project has no conversations in one line', () => {
+  // An EmptyState, never a box: a title and one hint pointing at the door above.
+  it('says an empty project has no chats yet', () => {
     const html = render([])
-    expect(html).toContain('No conversations yet.')
-    expect(html).not.toContain('the first one starts above')
+    expect(html).toContain('No chats yet')
+    expect(html).toContain('A new chat starts from the row above.')
+    expect(html).not.toContain('border')
   })
 
   it('shows nothing at all while the list is still in flight', () => {
@@ -148,9 +192,11 @@ describe('TranscriptPane', () => {
   )
 
   it('carries the way out, the name, the date and the way in', () => {
-    expect(html).toContain('← Conversations')
+    // the way out is the parent crumb: the project
+    expect(html).toContain('aria-label="Breadcrumb"')
+    expect(html).toMatch(/<button[^>]*>.*Project<\/span><\/button>/)
     expect(html).toContain('Read the audit handoff and turn it into features')
-    expect(html).toContain('3h')
+    expect(html).toContain('Started 3h ago')
     expect(html).toContain('Reopen')
   })
 

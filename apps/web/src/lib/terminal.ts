@@ -241,3 +241,131 @@ export class TerminalClient {
     }
   }
 }
+
+// --- the terminal's colours ---------------------------------------------------
+
+/** The subset of xterm's `ITheme` the embedded terminal sets. */
+export interface TerminalTheme {
+  background: string
+  foreground: string
+  cursor: string
+  cursorAccent: string
+  selectionBackground: string
+  selectionInactiveBackground: string
+  black: string
+  red: string
+  green: string
+  yellow: string
+  blue: string
+  magenta: string
+  cyan: string
+  white: string
+  brightBlack: string
+  brightRed: string
+  brightGreen: string
+  brightYellow: string
+  brightBlue: string
+  brightMagenta: string
+  brightCyan: string
+  brightWhite: string
+}
+
+type Resolved = 'dark' | 'light'
+
+/**
+ * The design-system tokens the terminal wears, and what each falls back to
+ * where no stylesheet is loaded (tests, a detached document). The fallbacks are
+ * `theme.css`'s own values, restated only so a missing sheet never paints the
+ * terminal black-on-black.
+ */
+const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
+  dark: {
+    '--color-surface-inset': '#0d0d0f',
+    '--color-text': '#ededef',
+    '--color-accent': '#4f8ef7',
+    '--color-accent-subtle': '#16213a',
+    '--color-surface-selected': '#222226',
+    '--color-danger': '#f06363',
+    '--color-success': '#46b67a',
+    '--color-warning': '#e2a53b',
+    '--color-accent-text': '#7aaafa',
+  },
+  light: {
+    '--color-surface-inset': '#f7f7f8',
+    '--color-text': '#18181b',
+    '--color-accent': '#2f6fe4',
+    '--color-accent-subtle': '#ecf2fe',
+    '--color-surface-selected': '#eaeaed',
+    '--color-danger': '#c42828',
+    '--color-success': '#1e8e53',
+    '--color-warning': '#a86a06',
+    '--color-accent-text': '#2463d6',
+  },
+}
+
+/**
+ * The ANSI colours the tokens have no name for, tuned per theme so an agent's
+ * dim text, diffs and prompts stay readable on the inset ground: on light, the
+ * "white" slots are dark greys (a CLI that prints white-on-default would
+ * otherwise vanish) and every hue is deep enough for 4.5:1.
+ */
+const ANSI_EXTRA: Record<Resolved, Pick<TerminalTheme, 'black' | 'magenta' | 'cyan' | 'white' | 'brightBlack' | 'brightRed' | 'brightGreen' | 'brightYellow' | 'brightMagenta' | 'brightCyan' | 'brightWhite'>> = {
+  dark: {
+    black: '#2a2a2f',
+    magenta: '#c68af0',
+    cyan: '#56c2d6',
+    white: '#d4d4d8',
+    brightBlack: '#6b6b74',
+    brightRed: '#ff8a8a',
+    brightGreen: '#72d49c',
+    brightYellow: '#f2c46e',
+    brightMagenta: '#d9a9f7',
+    brightCyan: '#86dbe8',
+    brightWhite: '#fafafa',
+  },
+  light: {
+    black: '#18181b',
+    magenta: '#9337be',
+    cyan: '#0e7488',
+    white: '#52525b',
+    brightBlack: '#71717a',
+    brightRed: '#d63a3a',
+    brightGreen: '#1f9a5a',
+    brightYellow: '#b57308',
+    brightMagenta: '#a64ccf',
+    brightCyan: '#128399',
+    brightWhite: '#27272a',
+  },
+}
+
+/** A token's live value on `<html>`, or its fallback. */
+function tokenReader(resolved: Resolved): (name: string) => string {
+  const style =
+    typeof document === 'undefined' ? null : getComputedStyle(document.documentElement)
+  return (name) => style?.getPropertyValue(name).trim() || TOKEN_FALLBACK[resolved][name] || ''
+}
+
+/**
+ * The xterm palette for the painted theme, derived from the design tokens:
+ * ground `surface-inset`, ink `text`, cursor `accent`, selection
+ * `accent-subtle`, and the four status hues as red/green/yellow/blue. Read at
+ * call time, so calling it again after `<html data-theme>` flips re-themes a
+ * live terminal.
+ */
+export function terminalTheme(resolved: Resolved, read = tokenReader(resolved)): TerminalTheme {
+  const ground = read('--color-surface-inset')
+  return {
+    background: ground,
+    foreground: read('--color-text'),
+    cursor: read('--color-accent'),
+    cursorAccent: ground,
+    selectionBackground: read('--color-accent-subtle'),
+    selectionInactiveBackground: read('--color-surface-selected'),
+    red: read('--color-danger'),
+    green: read('--color-success'),
+    yellow: read('--color-warning'),
+    blue: read('--color-accent'),
+    brightBlue: read('--color-accent-text'),
+    ...ANSI_EXTRA[resolved],
+  }
+}

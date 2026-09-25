@@ -13,11 +13,11 @@ import { clampRailWidth, readRailWidth, useRailWidth, type RailWidth, type RailW
  */
 
 /** Narrow enough that the rail is still a rail; the prototype's lower clamp. */
-export const SIDEBAR_MIN_W = 240
+export const SIDEBAR_MIN_W = 220
 /** Wide enough for a long title on two lines, before the rail eats the body. */
 export const SIDEBAR_MAX_W = 420
 /** The prototype's approved default (decision 14), up from the old 252. */
-export const SIDEBAR_DEFAULT_W = 300
+export const SIDEBAR_DEFAULT_W = 248
 
 const SIDEBAR: RailWidthSpec = {
   key: 'runcastle.sidebar.w',

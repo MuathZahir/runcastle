@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react'
 const HIGHLIGHT_MS = 1500
 
 /** The outline a flashing row wears. */
-export const HIGHLIGHT_RING = 'rounded-sm outline-2 outline-offset-2 outline-accent'
+export const HIGHLIGHT_RING = 'rounded-md outline-2 outline-offset-4 outline-accent'
 
 export function useHighlight<T extends HTMLElement>(active: boolean | undefined) {
   const ref = useRef<T>(null)

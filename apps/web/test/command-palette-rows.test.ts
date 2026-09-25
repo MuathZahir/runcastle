@@ -68,13 +68,14 @@ function palette(features: FeatureListItem[] = [], selectedFeatureId: string | n
   )
 }
 
-/** The six rows that are not a feature or a project. */
+/** The rows that are not a feature or a project. */
 const ACTIONS = [
   'Project chat',
   'New note',
   'Preparation',
   'Settings',
-  'All projects (home)',
+  'Toggle theme',
+  'All projects',
   'Open a project…',
 ]
 
@@ -113,18 +114,41 @@ describe('command palette on an empty query', () => {
 })
 
 describe('command palette feature rows', () => {
-  it('names the phase and marks the one already open', () => {
+  it('leads with the phase glyph, names the phase and marks the one already open', () => {
     const html = palette([listItem()], 'feat_1')
 
     expect(html).toContain('Flow redesign: project shell and navigation')
-    expect(html).toContain('build') // PHASE_LABELS.implementation
-    expect(html).toContain('open')
+    expect(html).toContain('data-phase="building"')
+    expect(html).toContain('>Build<') // PHASE_NAME.building
+    expect(html).toContain('>Current<')
   })
 
-  it('marks nothing as open when the palette is opened off a feature', () => {
+  it('marks nothing as current when the palette is opened off a feature', () => {
     const html = palette([listItem()], null)
 
-    expect(html).not.toContain('>open<')
+    expect(html).not.toContain('>Current<')
+  })
+
+  it('offers the sidebar and details toggles only where the shell wires them', () => {
+    expect(palette()).not.toContain('Toggle sidebar')
+    const html = renderToStaticMarkup(
+      createElement(CommandPalette, {
+        open: true,
+        onClose: () => undefined,
+        features: [],
+        selectedFeatureId: null,
+        onSelect: () => undefined,
+        onOpenSettings: () => undefined,
+        onOpenPreparation: () => undefined,
+        onOpenProjectChat: () => undefined,
+        onOpenNote: () => undefined,
+        onToggleSidebar: () => undefined,
+        onToggleDetails: () => undefined,
+        nav,
+      }),
+    )
+    expect(html).toContain('Toggle sidebar')
+    expect(html).toContain('Toggle details panel')
   })
 
   it('gives the title the readable treatment it has in the rail', () => {

@@ -2,17 +2,18 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { readyRuntimes, RUNTIME_LOGIN, type RuntimeReadiness } from '../../lib/first-run'
 import { useToast } from '../../lib/toast'
-import { Button, DimLine } from '../../ui'
-import { Checklist, ChecklistRow, RowTerminal } from '../EnableAfkCard'
+import { IconArrowRight, IconTerminal } from '../../icons'
+import { Button } from '../../ui'
+import { Checklist, ChecklistRow, CommandLine, RowTerminal } from '../EnableAfkCard'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
- * Both providers as peers (decision 6). Each card says what was detected, offers
+ * Both providers as peers (decision 6). Each row says what was detected, offers
  * that runtime's own sign-in, and states what it unlocks; the operator auths
  * whichever they have or want. The step continues once ONE runtime can open a
  * session — that is the invariant the pipeline actually needs.
  *
- * The rows are the Enable-AFK card's own checklist primitives: the two surfaces
+ * The rows are the Enable-AFK checklist's own primitives: the two surfaces
  * genuinely do render the same row, and the Settings flow owns the shared
  * component (decision 9).
  */
@@ -29,35 +30,40 @@ export function RuntimesStep({
   return (
     <>
       <StepHeading title="Connect a coding agent">
-        runcastle drives whichever agent you have — sign in to one or both. Sessions run on the
-        agent the model you pick belongs to, so the ones you connect here are the ones you can
-        choose from later.
+        runcastle drives whichever agent you have — sign in to one or both. The ones you connect
+        here are the ones whose models you can pick later.
       </StepHeading>
 
-      <div className="mt-7">
+      <div className="mt-8">
         <Checklist>
           {runtimes.map((r) => (
-            <RuntimeCard key={r.runtime} runtime={r} />
+            <RuntimeRow key={r.runtime} runtime={r} />
           ))}
         </Checklist>
       </div>
 
-      <StepActions onBack={onBack}>
-        <Button variant="solid" onClick={onNext} disabled={ready.length === 0}>
+      <StepActions
+        onBack={onBack}
+        note={
+          ready.length === 0 &&
+          'Connect at least one agent to continue — runcastle has nothing to run without one.'
+        }
+      >
+        <Button
+          variant="primary"
+          icon={<IconArrowRight />}
+          onClick={onNext}
+          disabled={ready.length === 0}
+        >
           Continue
         </Button>
       </StepActions>
-      {ready.length === 0 && (
-        <DimLine>
-          Connect at least one agent to continue — runcastle has nothing to run without one.
-        </DimLine>
-      )}
     </>
   )
 }
 
 /** One provider row: detected state, its sign-in flow, and what AFK adds. */
-function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
+function RuntimeRow({ runtime }: { runtime: RuntimeReadiness }) {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -67,11 +73,12 @@ function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
   })
   const login = RUNTIME_LOGIN[runtime.runtime]
 
-  const state = runtime.talkReady ? 'ready' : runtime.installed ? 'sign in' : 'not installed'
+  const status = runtime.talkReady ? 'Ready' : runtime.installed ? 'Not signed in' : 'Not installed'
 
   return (
     <ChecklistRow
-      label={`${runtime.label} — ${state}`}
+      label={runtime.label}
+      status={status}
       detail={runtime.detail}
       ok={runtime.talkReady}
       below={
@@ -88,32 +95,27 @@ function RuntimeCard({ runtime }: { runtime: RuntimeReadiness }) {
       }
     >
       {runtime.installFix && (
-        <>
-          <code className="max-w-full truncate rounded-sm border border-hairline bg-panel-inset px-2 py-1 font-mono text-xs text-accent-hi">
-            {runtime.installFix}
-          </code>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              void navigator.clipboard?.writeText(runtime.installFix ?? '')
-              toast.push('copied', 'info')
-            }}
-          >
-            Copy
-          </Button>
-        </>
+        <CommandLine
+          command={runtime.installFix}
+          onCopy={() => {
+            void navigator.clipboard?.writeText(runtime.installFix ?? '')
+            toast.push('copied', 'info')
+          }}
+        />
       )}
+      {/* Secondary, not primary: the step's one primary is Continue. */}
       {runtime.installed && !runtime.talkReady && !sessionId && (
         <Button
-          variant="solid"
-          disabled={start.isPending}
+          size="sm"
+          icon={<IconTerminal />}
+          loading={start.isPending}
           onClick={() => start.mutate({ kind: login.kind })}
         >
-          {start.isPending ? 'Starting…' : `Run ${login.command}`}
+          Run {login.command}
         </Button>
       )}
       {runtime.talkReady && !runtime.afkReady && (
-        <span className="basis-full text-right text-xs text-text-3">
+        <span className="basis-full text-right text-xs text-text-tertiary">
           Signed in for sessions you watch. Unattended burns on {runtime.label} also need its key —
           the next step sets that up.
         </span>

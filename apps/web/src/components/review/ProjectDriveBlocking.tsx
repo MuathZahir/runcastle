@@ -2,6 +2,8 @@ import { trpc } from '../../trpc'
 import { holderSentence } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
 import { Button } from '../../ui'
+import { IconStop } from '../../icons'
+import { Notice } from './Notice'
 
 /**
  * A project drive holding the one drive slot, as a quiet line under the
@@ -29,16 +31,21 @@ export function ProjectDriveBlocking({
   })
 
   return (
-    <p className="m-0 flex items-center gap-2 text-sm text-text-2" role="status">
-      <span>{holderSentence(holderLabel)} is running</span>
-      <span aria-hidden="true">·</span>
-      <Button
-        size="xs"
-        disabled={stop.isPending}
-        onClick={() => stop.mutate({ projectId, action: 'stop' })}
-      >
-        {stop.isPending ? 'Stopping…' : 'Stop it'}
-      </Button>
-    </p>
+    <Notice
+      tone="quiet"
+      role="status"
+      title={`${holderSentence(holderLabel)} is running`}
+      actions={
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<IconStop />}
+          disabled={stop.isPending}
+          onClick={() => stop.mutate({ projectId, action: 'stop' })}
+        >
+          {stop.isPending ? 'Stopping…' : 'Stop it'}
+        </Button>
+      }
+    />
   )
 }

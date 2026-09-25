@@ -1,10 +1,13 @@
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
+import { IconStop } from '../icons'
+import { DANGER_GHOST } from './run/actions'
 
 /**
  * One-click End-session control shown wherever a live/launching session strip
- * renders (grill body, tickets body). Confirm-free on purpose: ending is
+ * renders (grill body, tickets body): a ghost in `danger`, with the stop glyph.
+ * Confirm-free on purpose: ending is
  * recoverable — a session can always be relaunched — and after a server
  * restart this button is the only way out of a "live" row over a dead PTY, so
  * it must work even when the terminal is blank.
@@ -36,9 +39,11 @@ export function EndSessionButton({
 
   return (
     <Button
-      type="button"
-      className="h-7 px-2 text-xs"
-      disabled={end.isPending}
+      variant="ghost"
+      size="sm"
+      icon={<IconStop />}
+      loading={end.isPending}
+      className={DANGER_GHOST}
       title="end this session — recoverable, you can relaunch it"
       onClick={() => end.mutate({ sessionId })}
     >

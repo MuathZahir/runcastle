@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react'
-import { Button, SectionTitle } from '../../ui'
+import { Button, Disclosure, StatusLabel } from '../../ui'
+import { IconRefresh, IconStop, IconTerminal } from '../../icons'
 import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
 import { DRIVE_INSTRUCTIONS_SCOPE_NOTE } from '../../lib/settings'
 import { useToast } from '../../lib/toast'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
+import { Markdown } from '../Markdown'
 import { TerminalView } from '../TerminalView'
 
 /**
@@ -38,17 +40,18 @@ export function DriveInstructions({ text }: { text?: string | null }) {
   if (!instructions) return null
 
   return (
-    <section className="flex flex-col gap-1 rounded-md border border-hairline bg-panel px-3 py-2">
-      <div className="flex items-center gap-2">
-        <SectionTitle>How to drive this app</SectionTitle>
-        <span className="flex-1" />
+    <Disclosure
+      title="How to drive this app"
+      icon={<IconTerminal />}
+      aside={
         <SettingsLink location={{ page: 'project', field: 'driveInstructions' }}>
           Edit in settings
         </SettingsLink>
-      </div>
-      <p className="m-0 text-sm whitespace-pre-wrap text-text-2">{instructions}</p>
-      <p className="m-0 text-xs text-text-3">{DRIVE_INSTRUCTIONS_SCOPE_NOTE}</p>
-    </section>
+      }
+    >
+      <Markdown source={instructions} />
+      <p className="m-0 mt-2 text-xs text-text-tertiary">{DRIVE_INSTRUCTIONS_SCOPE_NOTE}</p>
+    </Disclosure>
   )
 }
 
@@ -72,7 +75,8 @@ export function StopDrive({ featureId, label }: { featureId: string; label: stri
   return (
     <Button
       className="self-start"
-      disabled={stop.isPending}
+      icon={<IconStop />}
+      loading={stop.isPending}
       onClick={() => stop.mutate({ featureId, action: 'stop' })}
     >
       {label}
@@ -126,8 +130,8 @@ export function DriveSetupFailed({
         <div className="flex items-center gap-2">
           {failure.canFix && (
             <Button
-              variant="solid"
-              disabled={fix.isPending}
+              icon={<IconRefresh />}
+              loading={fix.isPending}
               onClick={() => fix.mutate({ featureId })}
             >
               Fix drive
@@ -156,20 +160,19 @@ export function DriveFailureReport({
   children?: ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <SectionTitle>Drive setup failed</SectionTitle>
-        <div className="text-sm text-text-2">{explanation}</div>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <StatusLabel tone="danger" size="sm" strong>
+          Drive setup failed
+        </StatusLabel>
+        <div className="text-sm text-pretty text-text-secondary">{explanation}</div>
       </div>
       {failure.output && (
-        <details>
-          <summary className="cursor-pointer text-sm text-text-3">
-            What the command printed
-          </summary>
-          <pre className="mt-2 max-h-55 overflow-auto rounded-sm bg-danger/9 px-3 py-2.5 font-mono text-xs whitespace-pre-wrap text-text-2">
+        <Disclosure title="What the command printed" icon={<IconTerminal />}>
+          <pre className="m-0 max-h-55 overflow-auto rounded-md bg-surface-inset px-3 py-2.5 font-mono text-xs whitespace-pre-wrap text-text-secondary">
             {failure.output}
           </pre>
-        </details>
+        </Disclosure>
       )}
       {children}
     </div>
@@ -202,22 +205,20 @@ export function DriveFooter({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {drive?.devPaneId && (
-          <span className="inline-flex h-6 items-center rounded-pill border border-accent-line bg-accent-soft px-2 font-mono text-xs text-drive">
-            dev server
-          </span>
-        )}
-        <span className="font-mono text-xs text-text-3">{branch}</span>
+      <div className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary">
+        {drive?.devPaneId && <StatusLabel tone="live">Dev server</StatusLabel>}
+        <span className="truncate font-mono">{branch}</span>
         {open && (
-          <span className="font-mono text-xs text-text-3">
+          <span className="truncate font-mono">
             {open.state === 'ready' ? open.url : openAppWaitingLabel(open)}
           </span>
         )}
         <span className="flex-1" />
         {drive?.devPaneId && (
           <Button
-            className="h-6 px-2 text-xs"
+            size="sm"
+            variant="ghost"
+            icon={<IconTerminal />}
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
           >
@@ -227,7 +228,7 @@ export function DriveFooter({
       </div>
 
       {expanded && drive?.devPaneId && (
-        <div className="relative h-105 min-h-65 overflow-hidden rounded-md border border-hairline bg-bg">
+        <div className="relative h-105 min-h-65 overflow-hidden rounded-md bg-surface-inset animate-rise-in">
           <ErrorBoundary label="dev terminal">
             <TerminalView sessionId={drive.devPaneId} />
           </ErrorBoundary>

@@ -109,7 +109,7 @@ describe('NoteComposer', () => {
     // what they are about to attach.
     await screen.findByAltText('the picture this note will carry')
 
-    fireEvent.click(button(/^Add$/))
+    fireEvent.click(button(/^Add note$/))
 
     await waitFor(() => expect(uploadScreenshot).toHaveBeenCalled())
     // Note first, PNG second, keyed by the note the server just minted.
@@ -127,7 +127,7 @@ describe('NoteComposer', () => {
     fireEvent.change(text, { target: { value: 'the chip is the wrong colour' } })
     pasteImage(text, JPEG)
     await screen.findByAltText('the picture this note will carry')
-    fireEvent.click(button(/^Add$/))
+    fireEvent.click(button(/^Add note$/))
 
     await waitFor(() => expect(uploadScreenshot).toHaveBeenCalled())
     expect(toPngBlob).toHaveBeenCalledWith(JPEG)
@@ -155,7 +155,7 @@ describe('NoteComposer', () => {
 
   it('does not save an empty note, and does not upload without a note', () => {
     render(<NoteComposer featureId="ftr_1" />)
-    expect((button(/^Add$/) as HTMLButtonElement).disabled).toBe(true)
+    expect((button(/^Add note$/) as HTMLButtonElement).disabled).toBe(true)
     fireEvent.keyDown(field(/what did you just see/i), { key: 'Enter' })
     expect(addNote).not.toHaveBeenCalled()
   })

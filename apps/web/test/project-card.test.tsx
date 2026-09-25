@@ -78,10 +78,10 @@ describe('ProjectCard', () => {
 
     const face = screen.getByTitle('Open runcastle')
     expect(face.textContent).toContain('runcastle')
-    expect(face.textContent).toContain('3')
-    expect(face.textContent).toContain('features')
-    expect(face.textContent).toContain('needs you')
-    expect(face.textContent).toContain('Needs you')
+    expect(face.textContent).toContain('3features')
+    expect(face.textContent).toContain('1needs you')
+    // Facts are text, not a status word: no uppercase health label any more.
+    expect(face.textContent).not.toContain('Needs you')
 
     // The path truncates from its left, where a repo path is least interesting;
     // the name truncates the usual way rather than widening the card.
@@ -106,7 +106,15 @@ describe('ProjectCard', () => {
     expect(face.className).toContain('cursor-pointer')
   })
 
-  it('offers Rename and Remove from list without being hovered', () => {
+  it('leaves out the facts that are zero', () => {
+    card({ needsYou: 0, activeRuns: 0, health: 'steady' })
+
+    const face = screen.getByTitle('Open runcastle')
+    expect(face.textContent).not.toContain('needs you')
+    expect(face.textContent).not.toContain('running')
+  })
+
+  it('offers Rename and Remove from list from its row menu', () => {
     card()
     openMenu(screen.getByRole('button', { name: 'runcastle actions' }))
 

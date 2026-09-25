@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AFK_BURN_EXPLAINER } from '../../lib/vocabulary'
+import { IconArrowRight, IconFlame } from '../../icons'
 import { Button } from '../../ui'
 import { EnableAfkCard } from '../EnableAfkCard'
 import { StepActions, StepHeading } from './StepLayout'
@@ -12,12 +13,12 @@ import { StepActions, StepHeading } from './StepLayout'
  * (findings F13/F16), with two buttons that both meant continue.
  *
  * Now it is a heading, one explainer line, and two answers. `Set up now` reveals
- * the card in place and takes both buttons away with it: the card's own
- * `Set up later` is then the step's single continue affordance, which is what
- * stops the pair from reappearing.
+ * the checklist in place and takes both buttons away with it: the checklist's
+ * own `Set up later` is then the step's single continue affordance, which is
+ * what stops the pair from reappearing.
  *
- * The card itself is untouched — it belongs to Settings, which renders the same
- * component with `onDismiss` omitted.
+ * The checklist itself belongs to Settings, which renders the same component
+ * with `onDismiss` omitted.
  */
 export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   const [settingUp, setSettingUp] = useState(false)
@@ -26,24 +27,24 @@ export function AfkStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
     <>
       <StepHeading title="Run burns unattended?">{AFK_BURN_EXPLAINER}</StepHeading>
 
+      {settingUp && (
+        <div className="mt-8 animate-rise-in">
+          <EnableAfkCard onDismiss={onNext} />
+        </div>
+      )}
+
       <StepActions onBack={onBack}>
         {!settingUp && (
           <>
-            <Button variant="ghost" onClick={() => setSettingUp(true)}>
+            <Button variant="ghost" icon={<IconFlame />} onClick={() => setSettingUp(true)}>
               Set up now
             </Button>
-            <Button variant="solid" onClick={onNext}>
+            <Button variant="primary" icon={<IconArrowRight />} onClick={onNext}>
               Skip for now
             </Button>
           </>
         )}
       </StepActions>
-
-      {settingUp && (
-        <div className="mt-6">
-          <EnableAfkCard onDismiss={onNext} />
-        </div>
-      )}
     </>
   )
 }

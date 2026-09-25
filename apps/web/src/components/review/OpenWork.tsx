@@ -1,5 +1,6 @@
-import { useRef } from 'react'
-import { EmptyState, SectionTitle } from '../../ui'
+import { useRef, type RefObject } from 'react'
+import { EmptyState } from '../../ui'
+import { IconInbox } from '../../icons'
 import { NoteComposer } from './NoteComposer'
 import { WorkList, type WorkRow } from './WorkList'
 
@@ -26,17 +27,7 @@ import { WorkList, type WorkRow } from './WorkList'
  * after decision 1 redrew the defect boundary, what is left in that bucket is
  * inert by construction and lives in the same disclosure (decision 2).
  */
-export function OpenWork({
-  featureId,
-  lap,
-  rows,
-  readonly,
-  onStage,
-  onSeek,
-  onViewLane,
-  highlight,
-  scrollTo,
-}: {
+export interface OpenWorkProps {
   featureId: string
   /** The feature's current lap — which group the lap sections open on. */
   lap: number
@@ -52,32 +43,77 @@ export function OpenWork({
   highlight?: readonly string[]
   /** A row to bring into view — the other direction of the same jump. */
   scrollTo?: string | null
-}) {
-  // A defect the burn is fixing still needs watching but is not the human's
-  // problem, so the tally says both rather than calling it open.
+}
+
+/** "2 open · 1 being fixed" — a defect the burn is fixing still needs watching but is not the human's problem. */
+export function openTally(rows: readonly WorkRow[]): string {
   const beingFixed = rows.filter((r) => r.item.kind === 'defect' && r.item.fixTicket).length
   const tally = [`${rows.length - beingFixed} open`]
   if (beingFixed > 0) tally.push(`${beingFixed} being fixed`)
-  // The rail's own scroller, handed to the list so a spotlit row is brought into
-  // view by scrolling THIS box — the page behind it no longer scrolls at all.
-  const scroller = useRef<HTMLDivElement>(null)
+  return tally.join(' · ')
+}
+
+/**
+ * The page's section form (DESIGN.md: no permanent right rail). It appears only
+ * when there is something: rows under a "Needs attention" heading, and — on the
+ * live page — the composer under them. With nothing open, a live page keeps
+ * only the composer under a quiet "Notes" heading, and a history view renders
+ * nothing at all.
+ */
+export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkProps) {
+  if (rows.length === 0 && readonly) return null
+  const empty = rows.length === 0
 
   return (
-    <section id="open-work" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-none items-baseline gap-3 border-b border-hairline-soft px-4 py-3">
-        <SectionTitle>What still needs attention</SectionTitle>
-        <span className="font-mono text-xs text-text-3">{tally.join(' · ')}</span>
+    <section id="open-work" className="flex flex-col gap-2">
+      <div className="flex min-h-7 items-baseline gap-3">
+        <h2 className="m-0 text-lg font-semibold text-text">{empty ? 'Notes' : 'Needs attention'}</h2>
+        {!empty && <span className="text-xs text-text-tertiary tabular-nums">{openTally(rows)}</span>}
       </div>
+      {empty ? (
+        <p className="m-0 text-sm text-text-tertiary">
+          Nothing needs attention. Write down what you see while you drive — a pasted screenshot rides
+          along.
+        </p>
+      ) : (
+        <div className="-mx-3">
+          <WorkList featureId={featureId} rows={rows} readonly={readonly} currentLap={lap} {...rest} />
+        </div>
+      )}
+      {!readonly && (
+        <div className="mt-2">
+          <NoteComposer featureId={featureId} />
+        </div>
+      )}
+    </section>
+  )
+}
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+/**
+ * The aside form: the same rows in a scroller of their own with the composer
+ * pinned under them, so writing a note never moves the list and reading the
+ * list never moves the stage. What {@link NotesRail} puts in the one aside.
+ */
+export function OpenWorkPane({
+  featureId,
+  lap,
+  rows,
+  readonly,
+  scroller,
+  ...rest
+}: OpenWorkProps & { scroller: RefObject<HTMLDivElement | null> }) {
+  return (
+    <>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
         {rows.length === 0 ? (
           <EmptyState
             compact
+            icon={<IconInbox />}
             title="Nothing needs attention"
             hint={
               readonly
                 ? 'Nothing was left open when this feature shipped.'
-                : 'The review found nothing open and you have written no notes. Take a test drive and write what you see.'
+                : 'The review found nothing open and you have written no notes. Write what you see.'
             }
           />
         ) : (
@@ -86,21 +122,21 @@ export function OpenWork({
             rows={rows}
             readonly={readonly}
             currentLap={lap}
-            onStage={onStage}
-            onSeek={onSeek}
-            onViewLane={onViewLane}
-            highlight={highlight}
-            scrollTo={scrollTo}
             scroller={scroller}
+            {...rest}
           />
         )}
       </div>
-
       {!readonly && (
-        <div className="flex-none border-t border-hairline px-4 py-3">
+        <div className="shrink-0 border-t border-border-subtle p-3">
           <NoteComposer featureId={featureId} />
         </div>
       )}
-    </section>
+    </>
   )
+}
+
+/** The rail's own scroller, owned by whoever frames the pane. */
+export function usePaneScroller(): RefObject<HTMLDivElement | null> {
+  return useRef<HTMLDivElement>(null)
 }

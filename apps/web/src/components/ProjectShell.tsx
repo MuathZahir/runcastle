@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
-import { LogoMark } from '../icons'
+import { IconDoc, IconFolder, IconMessage, LogoMark } from '../icons'
+import { Button, EmptyState, Page, PageTopbar } from '../ui'
 import { trpc } from '../trpc'
 import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
@@ -18,12 +18,9 @@ import {
   type AppLocation,
 } from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
-import { useSidebarWidth } from '../lib/sidebar-width'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { Titlebar } from './Titlebar'
-import { Sidebar } from './Sidebar'
-import { Inspector } from './inspector/Inspector'
-import { StatusBar } from './StatusBar'
+import { Sidebar, SidebarRail } from './Sidebar'
+import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
@@ -36,9 +33,10 @@ import { SettingsDialog } from './settings/SettingsDialog'
 
 /**
  * The runcastle IDE shell for a single project (app-redesign, multi-project #45).
- * A title bar, a triage features rail, a single workspace bound to the selected
- * feature (or the new-feature form), the inspector rail, and a status bar. ⌘K
- * opens the command palette. Everything here is scoped to `projectId`; the outer
+ * The frame (DESIGN.md §Frame): the project sidebar on the canvas, and the
+ * content panel holding one view — the selected feature (with its details
+ * panel), the project home, preparation or the draft form. ⌘K opens the
+ * command palette, ⌘B collapses the sidebar. Everything here is scoped to `projectId`; the outer
  * shell picks which project (or the portfolio home) is showing. The active test
  * drive (at most one globally) is shell state, shared by the workspace and status
  * bar.
@@ -89,10 +87,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     setDriveRequest((request) => request + 1)
   }
   const consumeDriveRequest = () => setDriveRequest(0)
-  // The rail's width is a screen preference, kept globally (decision 10). It
-  // lives here rather than in the rail because the frame's grid is what reads
-  // it — the rail only reports what a drag measured.
-  const sidebar = useSidebarWidth()
+  // The frame's sidebar state is app-wide (Frame.tsx); the palette toggles it.
+  const frame = useFrame()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   // The project conversation, polled once here and read by the pinned rail row,
   // the project workspace and both "talk it through" doors.
@@ -219,123 +215,109 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   )
   const showInspector = showsInspector(view, inspectorCollapsed)
 
-  const shell = (
-    // The frame's grid, migrated off `styles.css` (apps/web/STYLE.md). The rail
-    // width is read from `--sidebar-w` so the resizable rail can drive it
-    // without this file knowing how wide it is.
-    <div
-      className="grid h-full grid-rows-[44px_1fr_28px]"
-      style={{ '--sidebar-w': `${sidebar.width}px` } as CSSProperties}
-    >
-      <Titlebar
-        nav={nav}
-        view={view}
-        featureTitle={selectedFeature?.title ?? null}
-        onOpenCmdk={() => ws.setCmdk(true)}
-        onOpenNote={jot}
-        noteOpen={capturing}
-        onOpenSettings={() => ws.openSettings()}
-        onGoToProjectHome={() => ws.select(null)}
-        onToggleInspector={() => ws.toggleInspector(inspectorCollapsed)}
-        inspectorCollapsed={inspectorCollapsed}
-        drivingBranch={projectDrive?.branch ?? null}
-        onOpenDrive={openDrive}
-      />
+  const detailsToggle = view === 'feature' ? () => ws.toggleInspector(inspectorCollapsed) : undefined
 
-      {/* The inspector column exists only where the Inspector does — a third
-          column on a chat or preparation view was a dead ~300px strip, because
-          the old rule hid the content and kept the track (decision 5). */}
-      <div
-        className={`grid min-h-0 ${
-          showInspector
-            ? 'grid-cols-[var(--sidebar-w)_1fr_var(--inspector-w)]'
-            : 'grid-cols-[var(--sidebar-w)_1fr]'
-        }`}
-      >
-        <Sidebar
-          projectId={projectId}
-          selectedFeatureId={ws.selectedFeatureId}
-          projectSelected={ws.projectSelected}
-          width={sidebar.width}
-          talk={talk}
-          onSelect={ws.select}
-          onSelectProject={ws.selectProject}
-          onNewChat={newChat}
-          onDraft={ws.startDraft}
-          onOpenPreparation={ws.startPreparation}
-          onResize={sidebar.setWidth}
-        />
-
-        {view === 'create' ? (
-          <section className="workspace">
-            <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={ws.select} />
-          </section>
-        ) : view === 'prepare' ? (
-          // `onClose` only when there is somewhere to go back to: the automatic
-          // call-to-action IS the project home, so a Back button there would
-          // dead-end on the screen it just left.
-          <PreparationWorkspace
-            projectId={projectId}
-            {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
-          />
-        ) : view === 'project' ? (
-          <ProjectWorkspace
-            projectId={projectId}
-            talk={talk}
-            newChatRequest={newChatRequest}
-            onConsumeNewChatRequest={() => setNewChatRequest(0)}
-            inboxRequest={inboxRequest}
-            onConsumeInboxRequest={consumeInboxRequest}
-            empty={empty}
-            onOpenPreparation={ws.startPreparation}
-            driveRequest={driveRequest}
-            onConsumeDriveRequest={consumeDriveRequest}
-          />
-        ) : view === 'feature' && selectedFeatureId ? (
-          // The feature view is the app's one unbounded render surface — it
-          // renders whatever a feature's row, tickets and sessions say. Contain
-          // it (findings F19): a crash in here keeps the rail, the other
-          // features and every other project alive. Keyed by feature so
-          // selecting a different one resets the boundary instead of leaving
-          // the crash face up.
-          <ErrorBoundary
-            key={`ws-${selectedFeatureId}`}
-            label="feature view"
-            fallback={(error) => <FeatureCrash featureId={selectedFeatureId} error={error} />}
-          >
-            <Workspace
-              featureId={selectedFeatureId}
-              viewedPhase={ws.viewedPhase}
-              onViewPhase={ws.viewPhase}
-              guidance={ws.guidance}
-              mapRailCollapsed={ws.mapRailCollapsed}
-              onToggleMapRail={ws.toggleMapRail}
-              artifactPaneCollapsed={ws.artifactPaneCollapsed}
-              onToggleArtifactPane={ws.toggleArtifactPane}
-              chatPanelOpen={ws.chatPanelOpen}
-              onToggleChatPanel={ws.toggleChatPanel}
-              driving={driving}
-              onDriveChange={setDriving}
-            />
-          </ErrorBoundary>
-        ) : (
-          <section className="workspace">
-            <EmptyWorkspace onNewChat={newChat} onDraft={ws.startDraft} />
-          </section>
-        )}
-
-        {showInspector && ws.selectedFeatureId && (
-          <Inspector key={`insp-${ws.selectedFeatureId}`} featureId={ws.selectedFeatureId} />
-        )}
-      </div>
-
-      <StatusBar
+  const body =
+    view === 'create' ? (
+      <section className="workspace">
+        <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={ws.select} />
+      </section>
+    ) : view === 'prepare' ? (
+      // `onClose` only when there is somewhere to go back to: the automatic
+      // call-to-action IS the project home, so a Back button there would
+      // dead-end on the screen it just left.
+      <PreparationWorkspace
         projectId={projectId}
-        view={view}
-        activeFeatureId={ws.selectedFeatureId}
-        driving={driving}
-        onDriveChange={setDriving}
+        {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
       />
+    ) : view === 'project' ? (
+      <ProjectWorkspace
+        projectId={projectId}
+        talk={talk}
+        newChatRequest={newChatRequest}
+        onConsumeNewChatRequest={() => setNewChatRequest(0)}
+        inboxRequest={inboxRequest}
+        onConsumeInboxRequest={consumeInboxRequest}
+        empty={empty}
+        onOpenPreparation={ws.startPreparation}
+        driveRequest={driveRequest}
+        onConsumeDriveRequest={consumeDriveRequest}
+      />
+    ) : view === 'feature' && selectedFeatureId ? (
+      // The feature view is the app's one unbounded render surface — it
+      // renders whatever a feature's row, tickets and sessions say. Contain it
+      // (findings F19): a crash in here keeps the sidebar, the other features
+      // and every other project alive. Keyed by feature so selecting a
+      // different one resets the boundary instead of leaving the crash face up.
+      <ErrorBoundary
+        key={`ws-${selectedFeatureId}`}
+        label="feature view"
+        fallback={(error) => <FeatureCrash featureId={selectedFeatureId} error={error} />}
+      >
+        <Workspace
+          featureId={selectedFeatureId}
+          viewedPhase={ws.viewedPhase}
+          onViewPhase={ws.viewPhase}
+          guidance={ws.guidance}
+          mapRailCollapsed={ws.mapRailCollapsed}
+          onToggleMapRail={ws.toggleMapRail}
+          artifactPaneCollapsed={ws.artifactPaneCollapsed}
+          onToggleArtifactPane={ws.toggleArtifactPane}
+          chatPanelOpen={ws.chatPanelOpen}
+          onToggleChatPanel={ws.toggleChatPanel}
+          driving={driving}
+          onDriveChange={setDriving}
+          detailsOpen={showInspector}
+          onToggleDetails={() => ws.toggleInspector(inspectorCollapsed)}
+          // Same exit as the sidebar's delete: drop the stale selection, land
+          // on the project home.
+          onDeleted={() => {
+            ws.select(null)
+            ws.selectProject()
+          }}
+        />
+      </ErrorBoundary>
+    ) : (
+      <EmptyWorkspace
+        projectName={nav.currentProject?.name ?? 'This project'}
+        onOpenProject={selectProject}
+        onNewChat={newChat}
+        onDraft={ws.startDraft}
+      />
+    )
+
+  const shell = (
+    <>
+      <Frame
+        sidebar={
+          <Sidebar
+            projectId={projectId}
+            nav={nav}
+            view={view}
+            selectedFeatureId={ws.selectedFeatureId}
+            talk={talk}
+            onSelect={ws.select}
+            onSelectProject={ws.selectProject}
+            onNewChat={newChat}
+            onDraft={ws.startDraft}
+            onOpenPreparation={ws.startPreparation}
+            onOpenNote={jot}
+            onOpenCmdk={() => setCmdk(true)}
+            onOpenSettings={() => ws.openSettings()}
+            projectDriveBranch={projectDrive?.branch ?? null}
+            onOpenProjectDrive={openDrive}
+            driving={driving}
+            onDriveChange={setDriving}
+          />
+        }
+        rail={<SidebarRail onOpenCmdk={() => setCmdk(true)} onNewChat={newChat} />}
+      >
+        {/* The view fills the panel. The feature's details panel is not
+            mounted here: the feature page owns its one aside slot (chat or
+            details), and `detailsOpen` / `onToggleDetails` above keep the
+            palette command and the page's toggle one switch. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">{body}</div>
+      </Frame>
 
       <CommandPalette
         open={ws.cmdkOpen}
@@ -346,9 +328,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onOpenSettings={() => ws.openSettings()}
         onOpenPreparation={ws.startPreparation}
         // The palette navigates, it never launches: this opens the project
-        // workspace, where the conversation list decides new-versus-resume.
+        // home, where the conversation list decides new-versus-resume.
         onOpenProjectChat={ws.selectProject}
         onOpenNote={jot}
+        onToggleSidebar={frame.toggleSidebar}
+        onToggleDetails={detailsToggle}
         nav={nav}
       />
 
@@ -371,7 +355,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           onClose={ws.closeSettings}
         />
       )}
-    </div>
+    </>
   )
 
   // Anything under the shell — a ticket's error, a burn lane — can turn a
@@ -380,45 +364,48 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 }
 
 /**
- * The project home — the screen you land on with no feature selected. An empty
- * repository sees it even before preparation; an unprepared repository with
- * code gives the body to preparation instead.
+ * The project with nothing selected — the bare `/p/<id>` address, where a
+ * project lands when nothing is in motion. An empty repository sees it even
+ * before preparation; an unprepared repository with code gives the panel to
+ * preparation instead.
  *
- * Exported for the copy sweep alone (`intake-copy`), which reads the words this
- * screen says about the two doors — the shell around it needs no mocking to
- * render them.
+ * It says the two intake doors again (decisions.md #12), where a project with
+ * nothing selected is looking for them. Exported for the copy sweep
+ * (`intake-copy`), which reads the words this screen says about them.
  */
 export function EmptyWorkspace({
+  projectName,
+  onOpenProject,
   onNewChat,
   onDraft,
 }: {
+  projectName: string
+  onOpenProject?: () => void
   onNewChat: () => void
   onDraft: () => void
 }) {
   return (
-    <div className="ws-empty">
-      <div className="ws-empty-inner">
-        <div className="ws-empty-logo">
-          <LogoMark size={44} variant="outline" />
-        </div>
-        <div className="ws-empty-title">Select a feature to begin</div>
-        <div className="ws-empty-sub">Or start one — every feature moves through the same guided pipeline.</div>
-        {/* The rail head's two doors, said again where a project with nothing
-            selected is looking for them (decisions.md #12). */}
-        <div className="ws-empty-actions">
-          <button className="btn btn-ghost" onClick={onNewChat}>
-            New chat
-          </button>
-          <button className="btn btn-ghost" onClick={onDraft}>
-            Draft
-          </button>
-        </div>
-        <div className="ws-empty-hint">
-          New is the door for both features and quick changes: a conversation that can read a
-          screenshot, check what already shipped, and emit burn-ready tickets. Draft writes an idea
-          down now, to work out later.
-        </div>
-      </div>
-    </div>
+    <section className="flex min-h-0 flex-col">
+      <PageTopbar
+        crumbs={[{ label: projectName, icon: <IconFolder />, onClick: onOpenProject }, { label: 'Features' }]}
+      />
+      <Page routeKey="empty">
+        <EmptyState
+          icon={<LogoMark size={20} />}
+          title="Pick a feature, or start one"
+          hint="New is the door for both features and quick changes: a conversation that can read a screenshot, check what already shipped, and emit burn-ready tickets. Draft writes an idea down now, to work out later."
+          action={
+            <div className="flex items-center gap-2">
+              <Button variant="primary" icon={<IconMessage />} onClick={onNewChat}>
+                New chat
+              </Button>
+              <Button icon={<IconDoc />} onClick={onDraft}>
+                Draft
+              </Button>
+            </div>
+          }
+        />
+      </Page>
+    </section>
   )
 }

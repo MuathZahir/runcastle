@@ -63,9 +63,9 @@ export function RailResizeHandle({
       aria-orientation="vertical"
       aria-label={label}
       title="Drag to resize"
-      className={`absolute top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-accent-line ${
+      className={`absolute top-0 z-10 h-full w-1.5 cursor-col-resize transition-colors duration-(--dur-1) ease-app hover:bg-border-strong ${
         side === 'left' ? '-right-[3px]' : '-left-[3px]'
-      } ${dragging ? 'bg-accent-line' : ''}`}
+      } ${dragging ? 'bg-border-strong' : ''}`}
       onMouseDown={(e) => {
         e.preventDefault()
         origin.current = { x: e.clientX, width }

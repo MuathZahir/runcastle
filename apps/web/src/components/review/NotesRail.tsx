@@ -1,41 +1,45 @@
-import type { ComponentProps, CSSProperties } from 'react'
-import { clampNotesRailWidth, useNotesRailWidth } from '../../lib/notes-rail-width'
-import { RailResizeHandle } from '../RailResizeHandle'
-import { OpenWork } from './OpenWork'
+import { Aside } from '../../ui'
+import { OpenWorkPane, openTally, usePaneScroller, type OpenWorkProps } from './OpenWork'
 
 /**
- * The review page's notes rail (decision 2): the open work — the review agent's
- * defects and the human's notes — beside the stage, at all times.
+ * The review's notes as the ONE aside (DESIGN.md: one right-hand aside, opened
+ * on demand, never a permanent empty rail).
  *
- * It used to be a band below the stage (decision 18 of
- * `flow-redesign-build-review-and-ship`), which put it below the fold: every
- * note written or triaged during a drive scrolled the stage out of view, the
- * exact failure decision 21(e) forbade for the walkthrough player. So the rail
- * is permanent — no collapse toggle and no breakpoints, since a sometimes-absent
- * rail re-creates the "where are my notes" problem the move is answering.
+ * The review body mounts it beside the evidence stage while the stage has the
+ * window (expanded), which is when notes must stay beside the stage — reaching a
+ * note never scrolls the stage away (decision 2). In the ordinary page flow the
+ * same rows are a section of the body ({@link OpenWork}) instead, and the rail
+ * is not mounted at all.
  *
- * This is the frame only: the width, the hairline and the drag. What is inside
- * it is {@link OpenWork}, unchanged in anatomy — the rows moved, they did not
- * change (decision 23).
+ * A shell that wants the notes in its own aside slot mounts this with the same
+ * props the body passes plus `onClose`; it is self-contained (its own scroller,
+ * the composer pinned under the rows).
  */
-export function NotesRail(props: ComponentProps<typeof OpenWork>) {
-  const { width, setWidth } = useNotesRailWidth()
+export function NotesRail({
+  onClose,
+  className,
+  ...props
+}: OpenWorkProps & {
+  /** Close the aside (in the expanded stage: collapse back to the page). */
+  onClose: () => void
+  className?: string
+}) {
+  const scroller = usePaneScroller()
+  const tally = props.rows.length > 0 ? openTally(props.rows) : null
 
   return (
-    <aside
-      className="relative flex min-h-0 w-(--notes-rail-w) flex-none flex-col border-l border-hairline bg-panel-2"
-      // The token declares the default; a drag overrides it here, so the width
-      // is one value read one way whether or not anybody has ever dragged.
-      style={{ '--notes-rail-w': `${width}px` } as CSSProperties}
+    <Aside
+      title={
+        <span className="flex items-baseline gap-2">
+          Needs attention
+          {tally && <span className="text-xs font-normal text-text-tertiary tabular-nums">{tally}</span>}
+        </span>
+      }
+      onClose={onClose}
+      className={className}
+      bodyClassName="flex flex-col"
     >
-      <RailResizeHandle
-        width={width}
-        side="right"
-        label="Resize the notes rail"
-        clamp={clampNotesRailWidth}
-        onResize={setWidth}
-      />
-      <OpenWork {...props} />
-    </aside>
+      <OpenWorkPane {...props} scroller={scroller} />
+    </Aside>
   )
 }

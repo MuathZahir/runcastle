@@ -38,16 +38,15 @@ describe('the Draft door', () => {
 })
 
 /**
- * The card is an intro, a stack of fields, and a footer under a divider, and it
- * keeps one vertical rhythm throughout. Nothing here lays anything out
- * (happy-dom gives every box 0×0), so what is asserted is the contract that
- * produces the spacing: the steps are compared to each other, not to the
- * literal numbers, which is the whole of what "even" means here.
+ * The card is the Dialog parts — a header, the fields, a footer under a
+ * divider — so its rhythm is theirs. What is ours: the fields keep one step
+ * between them, and the footer has as much room under its divider as the
+ * header has above its title.
  */
 describe('the rhythm of the draft card', () => {
   afterEach(cleanup)
 
-  /** The numeric step of a spacing utility on `element` — `mt-6` → 6. */
+  /** The numeric step of a spacing utility on `element` — `gap-4` → 4. */
   const step = (element: Element, prefix: string): number => {
     const name = [...element.classList].find((candidate) => candidate.startsWith(`${prefix}-`))
     return Number(name?.slice(prefix.length + 1))
@@ -62,17 +61,29 @@ describe('the rhythm of the draft card', () => {
     return {
       // The Title label's Field, and the stack that Field sits in.
       fields: container.querySelector('label')!.parentElement!.parentElement!,
-      footer: container.querySelector('[class*="border-t"]')!,
+      footer: container.querySelector('[class~="border-t"]')!,
     }
   }
 
-  it('opens the fields on the step it puts between them', () => {
+  it('puts one step between every field', () => {
     const { fields } = card()
-    expect(step(fields, 'mt')).toBe(step(fields, 'gap'))
+    expect(step(fields, 'gap')).toBe(4)
   })
 
-  it('gives the footer as much room under the divider as above it', () => {
+  it('gives the footer a divider and room under it', () => {
     const { footer } = card()
-    expect(step(footer, 'pt')).toBe(step(footer, 'mt'))
+    expect(footer.className).toContain('border-border-subtle')
+    expect(footer.classList.contains('pt-4')).toBe(true)
+  })
+
+  it('has one primary, and it is Park draft', () => {
+    const { container } = render(<ParkDraftMode
+      title="x" slug="x" oneLiner="" notes="" duplicate={null} busy={false} ready
+      onTitleChange={() => {}} onOneLinerChange={() => {}} onNotesChange={() => {}}
+      onSubmit={() => {}} onCancel={() => {}}
+    />)
+    const primaries = container.querySelectorAll('[data-variant="primary"]')
+    expect(primaries).toHaveLength(1)
+    expect(primaries[0]!.textContent).toContain('Park draft')
   })
 })

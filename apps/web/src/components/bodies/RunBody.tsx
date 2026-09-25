@@ -19,8 +19,8 @@ import {
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER, STOP_TIMEOUT } from '../../lib/vocabulary'
-import { EmptyState } from '../../ui'
-import { IconTerminal } from '../../icons'
+import { Disclosure, EmptyState } from '../../ui'
+import { IconDoc, IconFlame } from '../../icons'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
 import { SessionPanel } from '../SessionPanel'
@@ -173,13 +173,11 @@ export function RunBody({
 
   if (!runId && !live) {
     return (
-      <div className="surface">
-        <EmptyState
-          icon={<IconTerminal size={16} />}
-          title="No run yet"
-          hint={`${BURN_EXPLAINER} Every ticket gets its own lane here.`}
-        />
-      </div>
+      <EmptyState
+        icon={<IconFlame />}
+        title="No run yet"
+        hint={`${BURN_EXPLAINER} Every ticket gets its own lane here.`}
+      />
     )
   }
 
@@ -210,7 +208,7 @@ export function RunBody({
       },
     )
 
-  const lane = (ticket: Ticket) => {
+  const lane = (ticket: Ticket, index: number) => {
     const fact = facts.get(ticket.id)
     const duration = durations.get(ticket.id)
     const conflict = ticket.status === 'failed' ? ticket.conflictFiles : undefined
@@ -221,6 +219,7 @@ export function RunBody({
         featureBranch={featureBranch}
         readonly={frozen}
         expanded={expanded.has(ticket.id)}
+        index={index}
         onToggle={() => toggle(ticket.id)}
         hadOutput={fact?.hadOutput}
         elapsed={fact ? fmtDuration(fact.startedAt, Date.now()) : undefined}
@@ -319,6 +318,7 @@ export function RunBody({
           <LaneTranscript
             ticketId={ticket.id}
             bootEvents={runEvents.filter((e) => e.ticketId === ticket.id)}
+            runtime={laneModel(ticket)?.runtime}
             poll={!record}
           />
         </ErrorBoundary>
@@ -327,13 +327,13 @@ export function RunBody({
   }
 
   return (
-    <div>
+    <div className="flex flex-col">
       {/* A read-only retrospective view is history: it must not offer to reopen
           a conversation from a phase the feature has already left (F10.6). */}
       <SessionPanel
         featureId={featureId}
         sessions={bodySessions(sessions, chatDocked)}
-        className="tickets-session"
+        className="mb-10 h-[clamp(320px,calc(100dvh-360px),960px)]"
       />
 
       <RunHeader
@@ -346,6 +346,7 @@ export function RunBody({
           run.data ? fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now()) : ''
         }
         status={run.data?.status}
+        landed={{ done: tickets.filter((t) => t.status === 'done').length, total: tickets.length }}
         burning={burning}
         busy={busy}
         cancelling={cancelRun.isPending}
@@ -373,7 +374,7 @@ export function RunBody({
 
       {tickets.length === 0 ? (
         <EmptyState
-          icon={<IconTerminal size={16} />}
+          icon={<IconFlame />}
           title="No ticket lanes"
           hint="This run has nothing to burn — a session breaks the work into tickets, and they appear here as lanes."
         />
@@ -381,8 +382,10 @@ export function RunBody({
         <RunLanes tickets={tickets} currentLap={lap} lane={lane} />
       )}
 
-      <RunTimeline events={runEvents} />
-      {run.data?.digest && <RunDigest digest={run.data.digest} />}
+      <div className="mt-8 flex flex-col">
+        <RunTimeline events={runEvents} />
+        {run.data?.digest && <RunDigest digest={run.data.digest} />}
+      </div>
     </div>
   )
 }
@@ -395,13 +398,8 @@ export function RunBody({
  */
 function RunDigest({ digest }: { digest: string }) {
   return (
-    <details className="mt-3 rounded-md border border-hairline bg-panel-2">
-      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold tracking-[0.07em] text-text-3 uppercase [&::-webkit-details-marker]:hidden">
-        What this run produced
-      </summary>
-      <div className="border-t border-hairline-soft px-3 py-2">
-        <Markdown source={digest} />
-      </div>
-    </details>
+    <Disclosure title="What this run produced" icon={<IconDoc />}>
+      <Markdown source={digest} />
+    </Disclosure>
   )
 }

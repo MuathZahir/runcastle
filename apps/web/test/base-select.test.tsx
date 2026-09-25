@@ -89,7 +89,7 @@ describe('BaseSelect', () => {
   it('says a checkout with no usable base has to be answered, and blocks nothing else', () => {
     render(<Harness branches={BRANCHES} initial="" />)
 
-    expect(screen.getByLabelText('Base').textContent).toContain('choose a branch…')
+    expect(screen.getByLabelText('Base').textContent).toContain('Choose a branch…')
     expect(screen.getByText(/not a branch a feature can fork from/)).toBeTruthy()
   })
 
@@ -99,10 +99,10 @@ describe('BaseSelect', () => {
 
     // The trigger says "choose a branch…"; the list holds branches only, so the
     // state a form blocks on cannot be re-entered by picking it back.
-    expect(screen.queryByRole('option', { name: /choose a branch/ })).toBeNull()
+    expect(screen.queryByRole('option', { name: /choose a branch/i })).toBeNull()
     fireEvent.click(screen.getByRole('option', { name: 'develop' }))
     open()
-    expect(screen.queryByRole('option', { name: /choose a branch/ })).toBeNull()
+    expect(screen.queryByRole('option', { name: /choose a branch/i })).toBeNull()
   })
 
   it('refuses to open while the list is still in flight, and says which state that is', () => {
@@ -110,7 +110,7 @@ describe('BaseSelect', () => {
 
     const trigger = screen.getByLabelText('Base') as HTMLButtonElement
     expect(trigger.disabled).toBe(true)
-    expect(trigger.textContent).toContain('loading…')
+    expect(trigger.textContent).toContain('Loading…')
   })
 
   it('refuses to open a repo with no branches at all', () => {

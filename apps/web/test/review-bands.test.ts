@@ -189,13 +189,15 @@ const DENIED: EventRow = {
   data: { code: 'dirty', dirtyFiles: ['src/App.tsx'] },
 }
 
-/** The `solid` variant's own class run (`ui.tsx`), which no other variant has. */
-const SOLID = 'border-accent bg-accent font-semibold'
-/** Every `solid` button on the page, by its label. */
-const solidButtons = (html: string): string[] =>
-  [...html.matchAll(/<button[^>]*>[^<]*/g)]
-    .filter((m) => m[0].includes(SOLID))
-    .map((m) => m[0].slice(m[0].indexOf('>') + 1).trim())
+/** Every button of a variant on the page, by its label (icons stripped). */
+const buttonsOf = (html: string, variant: string): string[] =>
+  [...html.matchAll(/<button[^>]*data-variant="([a-z]+)"[^>]*>(.*?)<\/button>/g)]
+    .filter((m) => m[1] === variant)
+    .map((m) => m[2]!.replace(/<[^>]+>/g, '').trim())
+/** The primary is the next-step bar's (DESIGN.md: one per view) — never a body band's. */
+const primaryButtons = (html: string): string[] => buttonsOf(html, 'primary')
+/** The hairline button a notice's action takes. */
+const secondaryButtons = (html: string): string[] => buttonsOf(html, 'secondary')
 
 /** The feature as each prototype state has it, plus what the queries answer. */
 function render(
@@ -252,12 +254,12 @@ describe('the review page’s arrival bands', () => {
   it('opens on state and open work — no stage, no placeholder, no terminal', () => {
     const html = openWork()
     // The bands that are there.
-    expect(html).toContain('checks passed')
-    expect(html).toContain('>Test drive<')
+    expect(html).toContain('>Checks<')
+    expect(html).toContain('Test drive</button>')
     expect(html).toContain('Lap 1: DLQ spill retention landed')
     expect(html).toContain('the repaired read path is never called')
     expect(html).toContain('the spilled-at column shows raw epoch millis')
-    expect(html).toContain('Full account —')
+    expect(html).toContain('Full account')
     // And the ones that are not.
     expect(html).not.toContain('id="evidence-stage"')
     expect(html).not.toContain('No walkthrough yet')
@@ -276,7 +278,7 @@ describe('the review page’s arrival bands', () => {
   /** Decisions 2 and 8: an observation is one line in the disclosure and nothing else. */
   it('keeps observations inside the disclosure, with no count on arrival', () => {
     const html = openWork()
-    expect(html).toContain('Observations (1)')
+    expect(html).toMatch(/Observations<\/span><span[^>]*>1</)
     expect(html.indexOf('the verify gate could not run')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html).not.toContain('1 observation ·')
     expect(html).not.toContain('defects found ·')
@@ -291,7 +293,7 @@ describe('the review page’s arrival bands', () => {
       openDefects: [DEFECT],
     })
     expect(html).toContain('Chat session still live from lap 1')
-    expect(html).toContain('>Open<')
+    expect(html).toContain('Open</button>')
     expect(html).toContain('End session')
     // The line replaces the panel — no terminal renders on this page at all.
     expect(html).not.toContain('grill-term')
@@ -308,12 +310,12 @@ describe('the review page’s arrival bands', () => {
     expect(walkthrough).toContain('id="evidence-stage"')
     // The state line is the same line it is in every other state — a recording
     // does not take the way to your own drive away.
-    expect(walkthrough).toContain('>Test drive<')
+    expect(walkthrough).toContain('Test drive</button>')
 
     const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } })
     expect(driving).toContain('id="evidence-stage"')
     // ...except while a drive is up, which the stage itself is there to stop.
-    expect(driving).not.toContain('>Test drive<')
+    expect(driving).not.toContain('Test drive</button>')
     // A drive of some OTHER feature is not this page's evidence.
     expect(
       render({ drive: { featureId: 'feat_9', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/other' } }),
@@ -331,7 +333,7 @@ describe('the review page’s arrival bands', () => {
   /** Decision 8: the work already dealt with is in the disclosure, not on arrival. */
   it('files handled work into the disclosure and names it in the summary', () => {
     const html = render({ notes: [{ ...NOTE, id: 'note_9', status: 'done', text: 'already handled' }] })
-    expect(html).toContain('Full account — digest · carried')
+    expect(html).toMatch(/Full account<\/span><span[^>]*>digest · carried</)
     expect(html).toContain('Carried, quick-fixed and handled')
     expect(html.indexOf('already handled')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html).toContain('Nothing needs attention')
@@ -372,13 +374,13 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
     // The human's two verbs, and only the human's.
     expect(html).toContain('>Reopen<')
-    // The rail's tally still counts one defect, not two.
+    // The open work's tally still counts one defect, not two.
     expect(html).toContain('1 open')
-    // In the main column the band sits between the lap's account and the
-    // disclosure; the open work it used to follow is the rail now (decision 2).
+    // The band sits between the open work and the laps: the next lap's agenda
+    // before the history it came out of.
     const carriedAt = html.indexOf('Carried, still open')
-    expect(carriedAt).toBeGreaterThan(html.indexOf('Lap 1: DLQ spill'))
-    expect(carriedAt).toBeLessThan(html.indexOf('Full account'))
+    expect(carriedAt).toBeGreaterThan(html.indexOf('id="open-work"'))
+    expect(carriedAt).toBeLessThan(html.indexOf('id="lap-trail"'))
   })
 
   // A disclosure that opens on emptiness is worse than no disclosure.
@@ -446,7 +448,7 @@ describe('the review page’s arrival bands', () => {
   it('offers no live control on a readonly view', () => {
     const html = render({ sessions: [LIVE_CHAT], readonly: true })
     expect(html).not.toContain('session still live')
-    expect(html).not.toContain('>Test drive<')
+    expect(html).not.toContain('Test drive</button>')
   })
 
   /**
@@ -477,44 +479,49 @@ describe('the review page’s arrival bands', () => {
     it('leads the page with "nothing verified this lap", above the stage', () => {
       const html = arrival()
       expect(html).toContain('Nothing verified this lap')
-      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('checks passed'))
+      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('>Checks<'))
     })
 
     /** Runcastle's own words — the agent's prose stays in the Full account. */
     it('states the templated line and the declared reason, never the agent’s prose', () => {
       const html = arrival()
-      const banner = html.slice(0, html.indexOf('checks passed'))
+      const banner = html.slice(0, html.indexOf('>Checks<'))
       expect(banner).toContain('Lap 1 · drive mode · DRIVE FAILED · nothing verified')
       expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
     })
 
     /** Decision 5: the banner's action slot favours another review pass. */
     it('offers the Agentic review mint as the banner’s action', () => {
-      const banner = arrival().slice(0, arrival().indexOf('checks passed'))
+      const banner = arrival().slice(0, arrival().indexOf('>Checks<'))
       expect(banner).toContain('Agentic review')
     })
 
     /**
-     * STYLE.md: exactly one `solid` button is visible per view. Both alerts can
-     * be up at once — a pass denied its drive over a dirty tree that then leaves
-     * no parseable declaration block lands unverified while the denial is still
-     * showing — and both mints are the same verb, so only the loud banner's is
-     * the page's primary and the denial's steps down to ghost.
+     * DESIGN.md: one primary per view, and it is the next-step bar's — no band
+     * in the body claims one. Both notices can be up at once — a pass denied its
+     * drive over a dirty tree that then leaves no parseable declaration block
+     * lands unverified while the denial is still showing — and both mints are
+     * the same verb, so only the loud notice's keeps its hairline and the
+     * denial's steps down to ghost.
      */
-    it('keeps one solid mint when the denied-drive banner is up beside it', () => {
+    it('keeps one hairline mint when the denied-drive notice is up beside it', () => {
       const html = arrival({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('Nothing verified this lap')
-      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
-      // And it is this banner's: the denial above it carries no solid at all.
-      expect(solidButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
+      expect(primaryButtons(html)).toEqual([])
+      const notices = html.slice(0, html.indexOf('>Checks<'))
+      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      // And it is this notice's: the denial above it steps down.
+      expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
     })
 
-    /** With no unverified lap the denial's mint is the alert band's primary. */
-    it('leaves the denied-drive banner its solid mint when nothing is unverified', () => {
+    /** With no unverified lap the denial's mint keeps its hairline. */
+    it('leaves the denied-drive notice its hairline mint when nothing is unverified', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
-      expect(solidButtons(html).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      const notices = html.slice(0, html.indexOf('>Checks<'))
+      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      expect(primaryButtons(html)).toEqual([])
     })
 
     it('says nothing when the lap’s pass verified something', () => {
@@ -542,15 +549,15 @@ describe('the review page’s arrival bands', () => {
    * from the same per-pass feed the stage plays from.
    */
   describe('the lap trail band', () => {
-    it('mounts below the account, above the full-account disclosure', () => {
+    it('opens on the lap’s account, above the full-account disclosure', () => {
       const html = render({ recordings: [RECORDING] })
       expect(html).toContain('id="lap-trail"')
-      expect(html.indexOf('id="lap-trail"')).toBeGreaterThan(html.indexOf('Lap 1: DLQ spill'))
+      expect(html.indexOf('Lap 1: DLQ spill')).toBeGreaterThan(html.indexOf('id="lap-trail"'))
       expect(html.indexOf('id="lap-trail"')).toBeLessThan(html.indexOf('Full account'))
     })
 
-    it('is not there at all before any review pass has run', () => {
-      expect(render({})).not.toContain('id="lap-trail"')
+    it('is not there at all before anything was reviewed or burned', () => {
+      expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('id="lap-trail"')
     })
   })
 
@@ -576,7 +583,7 @@ describe('the review page’s arrival bands', () => {
         render({ recordings: [RECORDING] }),
         render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } }),
       ]) {
-        expect.soft(html).toContain('>Agentic review<')
+        expect.soft(html).toContain('Agentic review</button>')
       }
     })
 
@@ -592,71 +599,51 @@ describe('the review page’s arrival bands', () => {
 })
 
 /**
- * The two panes (decision 2, revising decision 18's band order): a main column
- * of bands, and the notes rail beside it at all times.
- *
- * The complaint the rail answers is a layout one — the open-work band sat below
- * the fold, so annotating during a drive scrolled the stage out of view — and
- * the seam that can answer it is this one: which pane each band renders into.
- * Tier 1, for the same reason the matrix above is: what is measured is
- * `ReviewBody`'s own composition rather than a second copy assembled here.
+ * One document, no permanent rail (DESIGN.md: one aside, opened on demand;
+ * "What still needs attention" only when there is something). The open work is
+ * a section of the page — rows under a heading, with the composer — and the
+ * notes become the one aside only while the stage has the window (see
+ * `stage-expand.test.tsx`).
  */
-describe('the review page’s two panes', () => {
-  /** The markup either side of the rail, which is the page's last element. */
-  function panes(html: string): { column: string; rail: string } {
-    const at = html.indexOf('<aside')
-    expect(at).toBeGreaterThan(-1)
-    return { column: html.slice(0, at), rail: html.slice(at) }
-  }
-
-  it('renders the open work and the note composer in the rail, not below the stage', () => {
-    const { column, rail } = panes(openWork())
-
-    expect(rail).toContain('id="open-work"')
-    expect(rail).toContain('What still needs attention')
-    expect(rail).toContain('the spilled-at column shows raw epoch millis')
-    expect(rail).toContain('the repaired read path is never called')
-    // The composer rides in the rail with the rows it writes.
-    expect(rail).toContain('what did you just see?')
-
-    // And none of it is left in the column.
-    expect(column).not.toContain('id="open-work"')
-    expect(column).not.toContain('What still needs attention')
-    expect(column).not.toContain('what did you just see?')
-  })
-
-  /** Decision 2: no collapse toggle and no breakpoints — the rail is always there. */
-  it('keeps the rail whatever the page is holding', () => {
-    const states = {
-      'nothing open': render({}),
-      'a walkthrough': render({ recordings: [RECORDING] }),
-      history: render({ readonly: true, notes: [NOTE] }),
+describe('the review page as one document', () => {
+  it('renders no aside at all in the page flow', () => {
+    for (const html of [openWork(), render({}), render({ recordings: [RECORDING] })]) {
+      expect.soft(html).not.toContain('<aside')
+      expect.soft(html).not.toContain('w-(--notes-rail-w)')
     }
-    for (const [state, html] of Object.entries(states)) {
-      expect.soft(panes(html).rail, state).toContain('id="open-work"')
-      expect.soft(panes(html).rail, state).toContain('w-(--notes-rail-w)')
-    }
-    // History still has no live control in it, the composer included (33a).
-    expect(states.history).not.toContain('what did you just see?')
   })
 
-  /** The rail's width is one token, dragged through the machinery every rail uses. */
-  it('sizes the rail off --notes-rail-w, at the default until a drag says otherwise', () => {
-    const { rail } = panes(openWork())
-    expect(rail).toContain('w-(--notes-rail-w)')
-    expect(rail).toContain('--notes-rail-w:360px')
-    expect(rail).toContain('Resize the notes rail')
+  it('makes the open work a section with its rows and the composer', () => {
+    const html = openWork()
+    expect(html).toContain('id="open-work"')
+    expect(html).toMatch(/<h2[^>]*>Needs attention<\/h2>/)
+    expect(html).toContain('the spilled-at column shows raw epoch millis')
+    expect(html).toContain('the repaired read path is never called')
+    expect(html).toContain('what did you just see?')
   })
 
-  /** Neither pane may move the other — the whole point of the layout. */
-  it('gives each pane a scroller of its own', () => {
-    const { column, rail } = panes(openWork())
-    expect(column).toContain('overflow-y-auto')
-    expect(rail).toContain('overflow-y-auto')
+  /** Nothing open: the heading steps down, and a live page keeps only the composer. */
+  it('keeps no "needs attention" heading when nothing needs any', () => {
+    const html = render({})
+    expect(html).not.toMatch(/<h2[^>]*>Needs attention<\/h2>/)
+    expect(html).toContain('what did you just see?')
   })
 
-  /** Everything decision 18 put in the column is still in it, in its order. */
-  it('preserves the main column’s band order', () => {
+  /** History with nothing left open has nothing to say here at all (33a). */
+  it('renders no open-work section on an empty history view', () => {
+    const html = render({ readonly: true })
+    expect(html).not.toContain('id="open-work"')
+    expect(html).not.toContain('what did you just see?')
+  })
+
+  it('keeps the rows but drops the composer on a history view', () => {
+    const html = render({ readonly: true, notes: [NOTE] })
+    expect(html).toContain('id="open-work"')
+    expect(html).not.toContain('what did you just see?')
+  })
+
+  /** The page, top to bottom: notices, state, stage, open work, carried, laps, the closed text. */
+  it('keeps its band order', () => {
     const html = render({
       sessions: [LIVE_CHAT],
       recordings: [RECORDING],
@@ -667,17 +654,22 @@ describe('the review page’s two panes', () => {
     })
     const bands = [
       'Chat session still live from lap 1',
+      '>Checks<',
       'id="evidence-stage"',
-      'checks passed',
-      'How to drive this app',
-      'Lap 1: DLQ spill retention landed',
+      'id="open-work"',
       'Carried, still open',
       'id="lap-trail"',
+      'Lap 1: DLQ spill retention landed',
+      'How to drive this app',
       'Full account',
     ]
-    const at = bands.map((band) => panes(html).column.indexOf(band))
+    const at = bands.map((band) => html.indexOf(band))
     expect(at.filter((i) => i < 0)).toEqual([])
     expect(at).toEqual([...at].sort((a, b) => a - b))
+  })
+
+  it('draws no bordered card around a band', () => {
+    expect(openWork()).not.toContain('rounded-lg border')
   })
 })
 
@@ -702,10 +694,13 @@ describe('the review page’s drive instructions', () => {
     // The standing permission is scoped by prose the field cannot displace
     // (decision 7) — it is read here by a human about to act on it.
     expect(html).toContain('Applies inside the app under test only')
-    // Read-only: the value renders as prose that keeps its line breaks, never
-    // as a control — the one place it is edited is the settings field.
+    // Read-only, and read once: rendered prose inside a closed disclosure,
+    // never a control — the one place it is edited is the settings field.
     expect(html).toContain('Edit in settings')
-    expect(html).toContain('<p class="m-0 text-sm whitespace-pre-wrap text-text-2">Drive the')
+    const at = html.indexOf('How to drive this app')
+    const details = html.lastIndexOf('<details', at)
+    expect(details).toBeGreaterThan(-1)
+    expect(html.slice(details, at)).not.toContain('open=""')
   })
 
   it('is not there at all for a project that has recorded none', () => {

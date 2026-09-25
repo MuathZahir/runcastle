@@ -39,7 +39,8 @@ const laneRow = (over: Partial<LaneRow> = {}): LaneRow => ({
 })
 
 describe('RunPicker', () => {
-  it('counts the feature runs and names each by age, state, lap and lane count', () => {
+  // The rows themselves live in a portalled list; `run-picker.test.tsx` opens it.
+  it('names the run on screen and counts the feature runs on its trigger', () => {
     const html = renderToStaticMarkup(
       createElement(RunPicker, {
         runs: [
@@ -52,19 +53,19 @@ describe('RunPicker', () => {
         onPick: () => {},
       }),
     )
-    expect(html).toContain('3 runs')
-    expect(html).toContain('Lap 2 · 1 lane')
-    expect(html).toContain('Lap 1 · 2 lanes')
-    expect(html).toContain('failed')
-    expect(html).toContain('cancelled')
-    expect(html).toContain('latest')
+    expect(html).toContain('Latest · 3 runs')
+    expect(html).toContain('aria-label="Run history"')
   })
 
-  it('renders nothing at all until the feature has burned once', () => {
-    const html = renderToStaticMarkup(
+  it('renders nothing until there is a second run to pick', () => {
+    const none = renderToStaticMarkup(
       createElement(RunPicker, { runs: [], selectedId: null, latestId: null, onPick: () => {} }),
     )
-    expect(html).toBe('')
+    expect(none).toBe('')
+    const one = renderToStaticMarkup(
+      createElement(RunPicker, { runs: [run({ id: 'r1' })], selectedId: 'r1', latestId: 'r1', onPick: () => {} }),
+    )
+    expect(one).toBe('')
   })
 })
 
@@ -89,7 +90,7 @@ describe('RunHeader in record mode', () => {
     const html = record()
     expect(html).toContain('Past run')
     expect(html).toContain('Back to latest')
-    expect(html).toContain('succeeded')
+    expect(html).toContain('Succeeded')
     expect(html).not.toContain('Cancel run')
   })
 
@@ -152,7 +153,7 @@ describe('a record lane', () => {
         createElement(LaneDigest, { digest: '## What was done\n\nSplit the pane in two.' }),
       ),
     )
-    expect(html).toContain('failed')
+    expect(html).toContain('Failed')
     expect(html).toContain('3m 20s')
     // The verdict still explains the failure; nothing offers to act on it.
     expect(html).toContain('none did')

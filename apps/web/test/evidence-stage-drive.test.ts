@@ -85,7 +85,7 @@ const asChromium = (): void => {
 describe('the stage while the drive is starting', () => {
   it('says the dev server is coming up rather than showing an empty frame', () => {
     const html = render({ driveState: 'starting', drive: { branch: 'feature/x' } })
-    expect(html).toContain('starting the dev server…')
+    expect(html).toContain('Starting the dev server')
     expect(html).not.toContain('walkthrough.webm')
   })
 
@@ -101,22 +101,22 @@ describe('the stage while the dev server is serving', () => {
     expect(html).toContain('<iframe')
     expect(html).toContain('src="http://localhost:5173"')
     expect(html).toContain('sandbox="allow-scripts allow-same-origin allow-forms allow-popups"')
-    expect(html).toContain('>Open app ↗<')
-    expect(html).toContain('>Reload<')
+    expect(html).toContain('aria-label="Open app"')
+    expect(html).toContain('aria-label="Reload"')
   })
 
   it('offers Select area on a browser that can capture its own tab', () => {
     asChromium()
     const html = render({ driveState: 'serving', drive: SERVING })
-    expect(html).toContain('>Select area<')
+    expect(html).toContain('aria-label="Select area"')
     expect(html).not.toContain('paste a screenshot into a note instead')
   })
 
   it('falls back to Open app and the paste hint where the tab cannot be captured', () => {
     const html = render({ driveState: 'serving', drive: SERVING })
-    expect(html).not.toContain('>Select area<')
+    expect(html).not.toContain('aria-label="Select area"')
     expect(html).toContain('paste a screenshot into a note instead')
-    expect(html).toContain('>Open app ↗<')
+    expect(html).toContain('aria-label="Open app"')
   })
 
   /** Decision 33a: a history view shows the app and writes nothing. */
@@ -124,12 +124,12 @@ describe('the stage while the dev server is serving', () => {
     asChromium()
     const html = render({ driveState: 'serving', drive: SERVING, readonly: true })
     expect(html).toContain('<iframe')
-    expect(html).not.toContain('>Select area<')
+    expect(html).not.toContain('aria-label="Select area"')
   })
 
   it('footers the dev-server chip, the branch and its output', () => {
     const html = render({ driveState: 'serving', drive: SERVING })
-    expect(html).toContain('dev server')
+    expect(html).toMatch(/dev server/i)
     expect(html).toContain('feature/x')
     expect(html).toContain('Show output')
   })
@@ -140,7 +140,7 @@ describe('the stage over a bare checkout', () => {
 
   it('says nothing started, points at the setting, and offers the stop', () => {
     const html = render(bare)
-    expect(html).toContain('Branch checked out — nothing started.')
+    expect(html).toContain('Branch checked out — nothing started')
     expect(html).toContain('This project has no dev command')
     expect(html).toContain('Set one in Settings')
     expect(html).toContain('>Stop test drive<')
@@ -163,7 +163,7 @@ describe('the stage over a failed setup', () => {
     expect(html).toContain('Drive setup failed')
     expect(html).toContain('bun setup')
     expect(html).toContain('exited 3')
-    expect(html).toContain('<details>')
+    expect(html).toContain('<details')
     expect(html).toContain('port 5432 in use')
   })
 
@@ -180,7 +180,7 @@ describe('the stage while the review agent drives', () => {
   it('shows the app under a banner naming whose hands are on it', () => {
     const html = render(agent)
     expect(html).toContain('<iframe')
-    expect(html).toContain('review agent driving — notes land below as it finds things')
+    expect(html).toContain('Review agent driving — notes land as it finds things')
   })
 
   it('offers the purpose-blind stop, so the human can take the wheel back', () => {
@@ -189,7 +189,7 @@ describe('the stage while the review agent drives', () => {
 
   it('says so plainly when the agent’s drive printed no address to show', () => {
     const html = render({ ...agent, drive: { branch: 'feature/x' } })
-    expect(html).toContain('review agent driving')
+    expect(html).toMatch(/review agent driving/i)
     expect(html).toContain('there is nothing to show here')
   })
 })

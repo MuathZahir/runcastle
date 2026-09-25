@@ -112,14 +112,14 @@ describe('FirstRunWizard', () => {
 
   it('shows the rail from the first setup step on', () => {
     open([identity('unset')])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     expect(screen.getByRole('heading', { name: 'Set your git identity' })).toBeTruthy()
     expect(rail()?.textContent).toContain('Coding agents')
   })
 
   it('goes back to the intro from the first step it showed', () => {
     open([identity('unset')])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Back')
     expect(screen.getByRole('heading', { name: /driven through a pipeline/ })).toBeTruthy()
   })
@@ -128,7 +128,7 @@ describe('FirstRunWizard', () => {
   // would ask for an identity git already has.
   it('never walks back onto an identity the host already had', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     expect(screen.getByRole('heading', { name: 'Connect a coding agent' })).toBeTruthy()
     expect(rail()?.textContent).toContain('Git identity')
 
@@ -138,7 +138,7 @@ describe('FirstRunWizard', () => {
 
   it('goes back a step from the middle of setup', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Continue')
     expect(screen.getByRole('heading', { name: 'Run burns unattended?' })).toBeTruthy()
 
@@ -148,7 +148,7 @@ describe('FirstRunWizard', () => {
 
   it('asks about unattended burns instead of showing their settings card', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Continue')
 
     expect(screen.getByText(/An AFK burn is a burn you walk away from/)).toBeTruthy()
@@ -158,7 +158,7 @@ describe('FirstRunWizard', () => {
 
   it('reveals the settings card in place, and takes the two answers away with it', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Continue')
     click('Set up now')
 
@@ -173,7 +173,7 @@ describe('FirstRunWizard', () => {
 
   it('skips AFK setup into the first-project screen, seeding the ready runtimes', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Continue')
     click('Skip for now')
 
@@ -184,7 +184,7 @@ describe('FirstRunWizard', () => {
 
   it('leaves through the card the same way', () => {
     open([identity('ok'), ...codexSignedIn])
-    click('Set up runcastle →')
+    click('Set up runcastle')
     click('Continue')
     click('Set up now')
     click('Set up later')
@@ -207,7 +207,7 @@ describe('FirstRunWizard', () => {
       cleanup()
     }
     // Intro → identity, then intro → runtimes → AFK on a host that has one.
-    walk([identity('unset')], ['Set up runcastle →'])
-    walk([identity('ok'), ...codexSignedIn], ['Set up runcastle →', 'Continue'])
+    walk([identity('unset')], ['Set up runcastle'])
+    walk([identity('ok'), ...codexSignedIn], ['Set up runcastle', 'Continue'])
   })
 })

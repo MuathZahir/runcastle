@@ -1,50 +1,69 @@
 import type { ReactNode } from 'react'
-import { Button } from '../../ui'
+import { IconArrowRight, IconClock, IconFolder, IconMessage, IconRefresh } from '../../icons'
+import { Button, Page, PageHeader, PageTopbar } from '../../ui'
 import type { ProjectConversation } from '../../lib/api'
-import { relTime } from '../../lib/format'
+import { conversationTitle } from '../../lib/conversation-title'
+import { relTimeAgo } from '../../lib/format'
 
 /**
- * One past conversation, read back (decisions.md #11) — the way out of it and
- * the way back into it, over whatever renders the turns.
+ * One past conversation, read back (decisions.md #11): the topbar's crumbs are
+ * the way out of it (project › chat), its one action the way back into it, and
+ * the body is the transcript at reading width.
  *
  * The transcript itself is the child rather than a `sessionId` this pane
- * fetches from: the header is the whole of this component's behaviour, and
+ * fetches from: the frame is the whole of this component's behaviour, and
  * composing keeps it a plain render seam.
  */
 export function TranscriptPane({
   conversation,
+  projectName = 'Project',
   onBack,
   onReopen,
   reopening,
   children,
 }: {
   conversation: ProjectConversation
+  /** The parent crumb — clicking it is the way back to the project page. */
+  projectName?: string
   onBack: () => void
   onReopen: () => void
   reopening: boolean
   children: ReactNode
 }) {
+  const title = conversationTitle(conversation.title)
+  const live = conversation.status !== 'ended'
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <Button className="border-transparent text-text-2" onClick={onBack}>
-          ← Conversations
-        </Button>
-        <span className="truncate text-lg font-semibold text-text">{conversation.title}</span>
-        {conversation.createdAt !== null && (
-          <span className="shrink-0 font-mono text-sm text-text-3">
-            {relTime(conversation.createdAt)}
-          </span>
-        )}
-        <Button
-          className="ml-auto"
-          disabled={reopening || !conversation.resumable}
-          onClick={onReopen}
-        >
-          {reopening ? 'Opening…' : conversation.status === 'ended' ? 'Reopen' : 'Open'}
-        </Button>
-      </div>
-      {children}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageTopbar
+        crumbs={[
+          { label: projectName, icon: <IconFolder />, onClick: onBack },
+          { label: title, icon: <IconMessage /> },
+        ]}
+        actions={
+          <Button
+            icon={live ? <IconArrowRight /> : <IconRefresh />}
+            loading={reopening}
+            disabled={reopening || !conversation.resumable}
+            title={conversation.resumable ? undefined : 'this one never got started'}
+            onClick={onReopen}
+          >
+            {live ? 'Open' : 'Reopen'}
+          </Button>
+        }
+      />
+      <Page routeKey={`transcript-${conversation.id}`}>
+        <PageHeader
+          title={title}
+          meta={[
+            conversation.createdAt !== null && {
+              icon: <IconClock />,
+              text: `Started ${relTimeAgo(conversation.createdAt)}`,
+            },
+            live && { tone: 'live', text: 'Open now' },
+          ]}
+        />
+        <div className="mt-8">{children}</div>
+      </Page>
     </div>
   )
 }

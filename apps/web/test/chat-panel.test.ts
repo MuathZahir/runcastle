@@ -74,11 +74,12 @@ describe('ChatPanel', () => {
     const html = panel([session()])
 
     expect(html).toContain('Chat')
-    expect(html).toContain('one transcript · resumed')
-    expect(html).toContain('aria-label="Collapse the chat"')
+    expect(html).toContain('One transcript, resumed')
+    expect(html).toContain('aria-label="Close"')
     expect(html).toContain('aria-label="Feature chat"')
-    // Docked at the width the prototype settled on, never the body's.
-    expect(html).toContain('w-(--chat-panel-w)')
+    // The page's one aside: the shared primitive, sliding in.
+    expect(html).toContain('w-(--aside-w)')
+    expect(html).toContain('animate-slide-in-right')
   })
 
   it('gives a live chat its terminal — the transcript and the composer are one surface', () => {

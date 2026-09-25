@@ -128,7 +128,8 @@ describe('OpenProject', () => {
     const { container } = open()
     expect(screen.getByRole('heading', { name: 'Open a project' })).toBeTruthy()
     expect(screen.getByText(/Point runcastle at a local git repository/)).toBeTruthy()
-    const row = screen.getByRole('textbox', { name: 'Repository path' }).parentElement
+    // The field (its own wrapper), then Browse… and the one primary beside it.
+    const row = screen.getByRole('textbox', { name: 'Repository path' }).parentElement?.parentElement
     expect(row?.textContent).toBe('Browse…Open')
     // Legacy rules are unlayered and beat utilities, so a leftover class name
     // would silently override the new styling (apps/web/STYLE.md).
@@ -198,7 +199,7 @@ describe('OpenProject', () => {
 
     const primaries = screen
       .getAllByRole('button')
-      .filter((button) => button.className.includes('bg-accent'))
+      .filter((button) => button.dataset.variant === 'primary')
     expect(primaries.map((button) => button.textContent)).toEqual(['Open'])
   })
 

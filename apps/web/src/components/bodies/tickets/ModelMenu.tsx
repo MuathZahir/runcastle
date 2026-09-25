@@ -53,16 +53,16 @@ export function ModelMenu({
   const name = label ?? 'Ticket model'
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex min-w-0 flex-col items-end gap-1">
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
           aria-label={name}
           disabled={disabled}
-          className="h-7 rounded-pill border border-hairline bg-transparent px-2 font-mono text-xs text-text-2 hover:border-hairline-strong hover:text-text disabled:opacity-40"
+          className="h-(--control-sm) max-w-64 rounded-md border-0 bg-transparent px-1.5 font-mono text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text disabled:text-text-disabled aria-expanded:bg-surface-selected aria-expanded:text-text"
         >
           <SelectValue>{triggerText}</SelectValue>
         </SelectTrigger>
-        <SelectContent aria-label={name} className="min-w-64 text-xs">
+        <SelectContent aria-label={name} className="min-w-64 font-mono text-xs">
           <SelectItem value="">default (project model)</SelectItem>
           {modelOptionGroups(roster).map((group) => (
             <SelectGroup key={group.runtime}>
@@ -80,7 +80,7 @@ export function ModelMenu({
         </SelectContent>
       </Select>
       {reviewMismatch && (
-        <span className="text-xs text-warn">
+        <span className="text-xs text-warning">
           Implementer-only model — not recommended for review tickets
         </span>
       )}

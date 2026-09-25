@@ -1,18 +1,22 @@
 import type { EventRow } from '@runcastle/core'
 import { eventLevel, eventWarns } from '../../lib/activity'
 import { fmtTime } from '../../lib/format'
-import { DimLine } from '../../ui'
+import { DimLine, Disclosure, StatusDot, cx } from '../../ui'
+import type { StatusTone } from '../../ui'
+import { IconActivity } from '../../icons'
 
-const LEVEL_TONE: Record<string, string> = {
-  error: 'text-danger',
-  ok: 'text-ok',
-  active: 'text-ph-implementation',
-  info: 'text-accent-hi',
+/** An event's level as a 6px dot — colour confirms, the words say it. */
+const LEVEL_TONE: Record<string, StatusTone> = {
+  error: 'danger',
+  ok: 'success',
+  active: 'neutral',
+  info: 'neutral',
 }
 
 /**
  * The run's coarse timeline — run start, the docs digest, per-ticket landmarks,
- * the run summary — collapsed under the lanes (decision #13d).
+ * the run summary — collapsed under the lanes (decision #13d): a quiet vertical
+ * list of time, dot, message, and the event's type in mono at the end.
  *
  * It used to be a tab co-equal with the agent transcript, which put the
  * debugging record beside the work it describes and made the human choose
@@ -23,32 +27,42 @@ export function RunTimeline({ events }: { events: readonly EventRow[] }) {
   // A warning in the record opens the record. It is collapsed because most of
   // what is in here only matters when something needs explaining — and an event
   // that carries a warning IS something needing explaining, which no human ever
-  // read while it sat behind a closed panel.
+  // read while it sat behind a closed panel. Keyed on it, so a warning that
+  // arrives mid-run opens the panel too (the disclosure's `open` is initial).
   const warned = events.some(eventWarns)
   return (
-    <details open={warned} className="mt-6 rounded-md border border-hairline bg-panel-2">
-      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold tracking-[0.07em] text-text-3 uppercase [&::-webkit-details-marker]:hidden">
-        Run timeline · {events.length}
-      </summary>
-      <div className="max-h-96 overflow-y-auto border-t border-hairline-soft px-3 py-2 font-mono text-xs leading-relaxed">
-        {events.length === 0 && <DimLine>waiting for events…</DimLine>}
-        {events.map((e) => (
-          <div key={e.id} className="flex gap-2.5">
-            <span className="w-11 shrink-0 text-text-4">{fmtTime(e.ts)}</span>
-            <span className={`w-30 shrink-0 truncate ${LEVEL_TONE[eventLevel(e)] ?? 'text-text-2'}`}>
-              {e.type}
-            </span>
-            {/* One line each, so the record stays scannable — except a row
-                carrying a warning, which wraps: it is the only kind whose text
-                is worth more than the density it costs. */}
-            <span
-              className={`min-w-0 flex-1 ${eventWarns(e) ? 'break-words text-warn' : 'truncate text-text-2'}`}
-            >
-              {e.message}
-            </span>
-          </div>
-        ))}
-      </div>
-    </details>
+    <Disclosure
+      key={warned ? 'warned' : 'quiet'}
+      defaultOpen={warned}
+      title="Run timeline"
+      icon={<IconActivity />}
+      aside={<span className="tabular-nums">{events.length}</span>}
+    >
+      {events.length === 0 && <DimLine>Waiting for events…</DimLine>}
+      <ol className="@container m-0 flex max-h-96 list-none flex-col overflow-y-auto p-0">
+        {events.map((e) => {
+          const warns = eventWarns(e)
+          return (
+            <li key={e.id} className="flex min-h-7 items-start gap-3 py-1 text-sm">
+              <span className="w-20 shrink-0 pt-px text-xs whitespace-nowrap text-text-tertiary tabular-nums">{fmtTime(e.ts)}</span>
+              <span className="inline-flex h-5 w-2 shrink-0 items-center justify-center">
+                <StatusDot tone={warns ? 'warning' : (LEVEL_TONE[eventLevel(e)] ?? 'neutral')} />
+              </span>
+              {/* One line each, so the record stays scannable — except a row
+                  carrying a warning, which wraps: it is the only kind whose text
+                  is worth more than the density it costs. */}
+              <span
+                className={cx('min-w-0 flex-1', warns ? 'break-words text-warning' : 'truncate text-text-secondary')}
+              >
+                {e.message}
+              </span>
+              <span className="hidden w-40 shrink-0 truncate pt-px text-right font-mono text-xs text-text-tertiary @xl:block">
+                {e.type}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </Disclosure>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
-import { Button, Dialog, EmptyState, LapSections } from '../../ui'
+import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, EmptyState, LapSections } from '../../ui'
+import { IconCheck, IconInbox, IconX } from '../../icons'
 import { groupByLap, triageExits, triageFooter } from '../../lib/feature-ui'
 import { Lightbox } from './Lightbox'
 import { NoteRow, itemId, itemLap, type NoteItem } from './NoteRow'
@@ -173,41 +174,45 @@ export function TriagePanel({
 
   return (
     <>
-      <div className="flex flex-col gap-6 p-6">
-        <div className="flex flex-col gap-2">
-          <h2 className="m-0 text-lg text-text">Iterate — what goes where</h2>
-          <p className="m-0 text-sm text-pretty text-text-2">
-            Tick the rows that are quick fixes — each becomes a ticket on this lap. Everything
-            you leave goes into lap {nextLap}’s conversation together.
-          </p>
-        </div>
-
+      <DialogHeader
+        title="Iterate — what goes where"
+        description={`Tick the rows that are quick fixes — each becomes a ticket on this lap. Everything you leave goes into lap ${nextLap}’s conversation together.`}
+        onClose={onClose}
+      />
+      <DialogBody className="flex flex-col gap-3">
         {rows.length === 0 ? (
           <EmptyState
             compact
+            icon={<IconInbox />}
             title="Nothing open to triage"
             hint={`Lap ${nextLap} starts empty-handed.`}
           />
         ) : (
           <>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button
-                className="px-2"
+                size="sm"
+                variant="ghost"
+                icon={<IconCheck />}
                 disabled={busy}
                 onClick={() => setQuickFix(new Set(rows.map((row) => itemId(row.item))))}
               >
                 Mark all as quick fixes
               </Button>
-              <Button className="px-2" disabled={busy} onClick={() => setQuickFix(new Set())}>
+              <Button size="sm" variant="ghost" icon={<IconX />} disabled={busy} onClick={() => setQuickFix(new Set())}>
                 Clear
               </Button>
+              <span className="ml-auto text-xs text-text-tertiary tabular-nums">
+                {minted.length} of {rows.length} ticked
+              </span>
             </div>
 
-            <div className="flex max-h-[46vh] flex-col overflow-y-auto">
+            <div className="-mx-2 flex max-h-[46vh] flex-col overflow-y-auto">
               <LapSections
                 groups={groupByLap(rows, lap)}
                 currentLap={lap}
                 meta={(group) => `${group.rows.length} open`}
+                headClassName="px-2"
               >
                 {(group) =>
                   group.map((row) => (
@@ -221,11 +226,11 @@ export function TriagePanel({
                       highlighted={arrivedWhileOpen(row.item, openedAt)}
                       onOpenImage={setPicture}
                       controls={
-                        <span className="flex items-center gap-2">
-                          <label className="flex items-center gap-1.5 font-mono text-xs text-text-3">
+                        <>
+                          <label className="flex h-(--control-sm) cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text">
                             <input
                               type="checkbox"
-                              className="size-3.5 accent-accent"
+                              className="size-3.5 cursor-pointer accent-accent"
                               checked={picked(row)}
                               disabled={busy}
                               onChange={() => toggle(itemId(row.item))}
@@ -233,13 +238,14 @@ export function TriagePanel({
                             Quick fix
                           </label>
                           <Button
-                            className="px-2"
+                            size="sm"
+                            variant="ghost"
                             disabled={busy}
                             onClick={() => setConfirming(row.item)}
                           >
                             Dismiss
                           </Button>
-                        </span>
+                        </>
                       }
                     />
                   ))
@@ -248,28 +254,26 @@ export function TriagePanel({
             </div>
           </>
         )}
+      </DialogBody>
 
-        {footer && <div className="font-mono text-xs text-text-2">{footer}</div>}
-
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" disabled={busy} onClick={onClose}>
-            Cancel
+      <DialogFooter start={footer ? <span className="text-text-secondary">{footer}</span> : undefined}>
+        <Button variant="ghost" disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        {/* In render order, the one primary last. Nothing here is refused for a
+            live session any more (decision 4): the lap road's own label says
+            the session will be ended, and the commit ends it. */}
+        {exits.map((exit, i) => (
+          <Button
+            key={exit.label}
+            variant={i === exits.length - 1 ? 'primary' : 'secondary'}
+            disabled={busy}
+            onClick={() => commit(exit.carry)}
+          >
+            {exit.label}
           </Button>
-          {/* In render order, the primary last. Nothing here is refused for a
-              live session any more (decision 4): the lap road's own label says
-              the session will be ended, and the commit ends it. */}
-          {exits.map((exit) => (
-            <Button
-              key={exit.label}
-              variant="solid"
-              disabled={busy}
-              onClick={() => commit(exit.carry)}
-            >
-              {exit.label}
-            </Button>
-          ))}
-        </div>
-      </div>
+        ))}
+      </DialogFooter>
 
       <Lightbox url={picture} onClose={() => setPicture(null)} />
       {/* Dismissing is decided here and committed with everything else, so the
@@ -280,22 +284,18 @@ export function TriagePanel({
         size="sm"
         label={confirming ? DISMISS_PROMPT[confirming.kind] : 'Dismiss'}
       >
-        <div className="flex flex-col gap-4 p-4">
-          <div className="flex flex-col gap-1.5">
-            <p className="m-0 text-base text-text">
-              {confirming ? DISMISS_PROMPT[confirming.kind] : ''}
-            </p>
-            <p className="m-0 text-sm text-text-3">
-              It leaves the list now and goes for good when you commit this step.
-            </p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setConfirming(null)}>Keep it</Button>
-            <Button variant="danger" onClick={dismiss}>
-              Dismiss
-            </Button>
-          </div>
-        </div>
+        <DialogHeader
+          title={confirming ? DISMISS_PROMPT[confirming.kind] : ''}
+          description="It leaves the list now and goes for good when you commit this step."
+        />
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirming(null)}>
+            Keep it
+          </Button>
+          <Button variant="danger" onClick={dismiss}>
+            Dismiss
+          </Button>
+        </DialogFooter>
       </Dialog>
     </>
   )

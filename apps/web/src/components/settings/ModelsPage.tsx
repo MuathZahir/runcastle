@@ -14,9 +14,12 @@ import {
   type ModelOptionGroup,
 } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
-import { Button, DimLine } from '../../ui'
-import { Select, SelectContent, SelectTrigger, SelectValue } from '../../ui/select'
-import { ModelOptions, Refusal, RosterTable, SaveMark } from './RosterTable'
+import { Button, cx, DimLine } from '../../ui'
+import { SELECT_FIELD, Select, SelectContent, SelectTrigger, SelectValue } from '../../ui/select'
+import { IconRefresh } from '../../icons'
+import { useHighlight } from './highlight'
+import { ModelOptions, Refusal, RosterTable, RuntimeIcon } from './RosterTable'
+import { SELECT_TRUNCATE, SaveMark, SettingLine, SettingSection } from './SettingRow'
 import { StepTable } from './StepTable'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -29,11 +32,11 @@ import { showsSetting, type SettingsPageProps } from './types'
  * invisible: a use-case note could only be typed into the "Custom…" branch of a
  * dropdown, and a curated model could not be annotated at all. Here, annotating
  * any model is typing in its note cell, and the default is stated twice — the
- * card at the top and the roster's Default column — because a reader should not
+ * row at the top and the roster's Default column — because a reader should not
  * have to read a note to find out what "default" means.
  */
 
-/** How long "Saved ✓" stays up after a commit, as on the shared setting row. */
+/** How long "Saved" stays up after a commit, as on the shared setting row. */
 const SAVED_MS = 1400
 
 /** The default card's feedback slot; its key is the setting it writes. */
@@ -119,8 +122,8 @@ function useSettingWrites(): SettingWrites {
 export function ModelsPage({ globals, scoped, filter, highlightField }: SettingsPageProps) {
   const writes = useSettingWrites()
 
-  if (globals.isLoading) return <DimLine>loading…</DimLine>
-  if (globals.error) return <DimLine>could not load settings: {globals.error.message}</DimLine>
+  if (globals.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (globals.error) return <DimLine>Could not load settings: {globals.error.message}</DimLine>
   if (!globals.data) return null
 
   const view = globals.data
@@ -133,23 +136,30 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
   const stepLabels = new Map<ModelStep, string>(steps.map((s) => [s.step, s.label]))
 
   return (
-    <div className="flex flex-col gap-5.5">
+    <>
       {showsSetting(filter, 'model') && (
-        <DefaultModelCard
-          value={defaultModel}
-          groups={groups}
-          writes={writes}
-          highlight={highlightField === 'model'}
-        />
+        // No heading of its own: the row's label already says it all.
+        <div className="-mt-3.5">
+          <DefaultModelRow
+            value={defaultModel}
+            groups={groups}
+            writes={writes}
+            highlight={highlightField === 'model'}
+          />
+        </div>
       )}
       {roster.some((row) => showsSetting(filter, row.id)) && (
-        <section className="flex flex-col gap-2.5">
-          <GroupHeading>Roster</GroupHeading>
-          <p className="text-sm text-text-3">
-            A model with a <b className="font-medium text-text-2">use-case note</b> is offered to
-            the tickets agent, which may pick it per ticket; models without a note are never picked
-            automatically.
-          </p>
+        <SettingSection
+          title="Roster"
+          action={<RefreshModels />}
+          description={
+            <>
+              A model with a <span className="text-text-secondary">use-case note</span> is offered
+              to the tickets agent, which may pick it per ticket; models without a note are never
+              picked automatically.
+            </>
+          }
+        >
           <DiscoveryStatus view={view} />
           <RosterTable
             rows={roster}
@@ -158,11 +168,13 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
             filter={filter}
             writes={writes}
           />
-        </section>
+        </SettingSection>
       )}
       {steps.some((step) => showsSetting(filter, stepModelKey(step.step))) && (
-        <section className="flex flex-col gap-2.5">
-          <GroupHeading>Per step</GroupHeading>
+        <SettingSection
+          title="Per step"
+          description="Every step runs the default unless it names a model of its own."
+        >
           <StepTable
             rows={steps}
             groups={groups}
@@ -171,66 +183,74 @@ export function ModelsPage({ globals, scoped, filter, highlightField }: Settings
             filter={filter}
             writes={writes}
           />
-        </section>
+        </SettingSection>
       )}
-    </div>
-  )
-}
-
-/** The 11px uppercase heading over a section, with its hairline to the edge. */
-function GroupHeading({ children }: { children: string }) {
-  return (
-    <h3 className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
-      {children}
-      <span className="h-px flex-1 bg-hairline-soft" />
-    </h3>
+    </>
   )
 }
 
 /**
  * Where the discovered models came from: one line per source — how many and how
- * long ago, or why it failed — and the Refresh that re-asks both now, for the
- * "a model just shipped" moment (decision 3). A failed source is quiet: it keeps
- * its last good models, so its line is information, not an error to act on.
+ * long ago, or why it failed. A failed source is quiet: it keeps its last good
+ * models, so its line is information, not an error to act on.
  */
 function DiscoveryStatus({ view }: { view: SettingsView }) {
+  return (
+    <ul
+      aria-label="Model discovery"
+      className="m-0 mt-1.5 flex list-none flex-wrap gap-x-5 gap-y-1 p-0 text-xs"
+    >
+      {discoveryStatusLines(view).map((line) => (
+        <li
+          key={line.runtime}
+          className={cx(
+            'inline-flex items-center gap-1.5',
+            line.failed ? 'text-warning' : 'text-text-tertiary',
+          )}
+        >
+          <RuntimeIcon runtime={line.runtime} />
+          {line.text}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * Re-asks both sources now, for the "a model just shipped" moment (decision 3).
+ * Sits on the Roster heading, the one thing it changes.
+ */
+function RefreshModels() {
   const utils = trpc.useUtils()
   const refresh = trpc.settings.refreshModels.useMutation({
     onSuccess: () => void utils.settings.get.invalidate(),
   })
-
   return (
-    <div className="flex items-start justify-between gap-3">
-      <ul aria-label="Model discovery" className="flex flex-col gap-0.5 text-sm">
-        {discoveryStatusLines(view).map((line) => (
-          <li key={line.runtime} className={line.failed ? 'text-warn' : 'text-text-3'}>
-            {line.text}
-          </li>
-        ))}
-        {refresh.error && (
-          <li role="alert" className="text-danger">
-            Refresh failed: {refresh.error.message}
-          </li>
-        )}
-      </ul>
+    <>
+      {refresh.error && (
+        <span role="alert" className="text-xs text-danger">
+          Refresh failed: {refresh.error.message}
+        </span>
+      )}
       <Button
-        size="xs"
-        className="shrink-0"
-        disabled={refresh.isPending}
+        variant="ghost"
+        size="sm"
+        icon={<IconRefresh />}
+        loading={refresh.isPending}
         onClick={() => refresh.mutate()}
       >
         {refresh.isPending ? 'Refreshing…' : 'Refresh'}
       </Button>
-    </div>
+    </>
   )
 }
 
 /**
  * What the default model is, in the one place a reader looks first. It is stated
- * again as the roster's Default column, and the two are the same value: changing
- * either writes `model` and the other follows.
+ * again in the roster, and the two are the same value: changing either writes
+ * `model` and the other follows.
  */
-function DefaultModelCard({
+function DefaultModelRow({
   value,
   groups,
   writes,
@@ -241,41 +261,26 @@ function DefaultModelCard({
   writes: SettingWrites
   highlight: boolean
 }) {
-  const card = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (highlight) card.current?.scrollIntoView?.({ block: 'center' })
-  }, [highlight])
-
+  const { ref, flash } = useHighlight<HTMLDivElement>(highlight)
   return (
-    <div
-      ref={card}
-      className={`grid grid-cols-[auto_1fr] items-center gap-x-4.5 gap-y-1 rounded-md border border-accent-line bg-accent-soft p-3 ${
-        highlight ? 'outline-2 outline-offset-2 outline-accent' : ''
-      }`}
-    >
-      <label htmlFor="settings-default-model" className="text-base font-semibold text-text">
-        Default model
-      </label>
-      <div className="flex items-center gap-2">
+    <SettingLine
+      rowRef={ref}
+      flash={flash}
+      label="Default model"
+      htmlFor="settings-default-model"
+      description="Runs every step that has no model of its own below — and every project that has not set one."
+      aside={writes.saved === DEFAULT_CELL && <SaveMark />}
+      control={
         <Select value={value} onValueChange={(next) => writes.save(DEFAULT_CELL, 'model', next)}>
-          <SelectTrigger
-            id="settings-default-model"
-            className="h-(--control-h) max-w-85 min-w-0 flex-1 rounded-sm border border-accent-line bg-panel-inset px-2.5 font-mono text-sm text-text"
-          >
+          <SelectTrigger id="settings-default-model" className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full')}>
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="text-sm">
+          <SelectContent>
             <ModelOptions groups={groups} />
           </SelectContent>
         </Select>
-        {writes.saved === DEFAULT_CELL && <SaveMark />}
-      </div>
-      <p className="col-span-2 text-sm text-text-2">
-        Runs every step that has no model of its own below — and every project that has not set
-        one.
-      </p>
-      <Refusal writes={writes} cell={DEFAULT_CELL} className="col-span-2" />
-    </div>
+      }
+      below={<Refusal writes={writes} cell={DEFAULT_CELL} className="" />}
+    />
   )
 }
-

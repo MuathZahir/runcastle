@@ -14,15 +14,15 @@ import { showsSetting, type SettingsPageProps } from './types'
  * image)" pointer in the app lands on a row of that checklist.
  */
 export function BurnsPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
-  if (globals.isLoading) return <DimLine>loading…</DimLine>
-  if (globals.error) return <DimLine>could not load settings: {globals.error.message}</DimLine>
+  if (globals.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (globals.error) return <DimLine>Could not load settings: {globals.error.message}</DimLine>
   if (!globals.data) return null
 
   // The checklist hides its own rows; the heading goes when none is left.
   const anyPrerequisite = BURN_PREREQUISITES.some((p) => showsSetting(filter, p.field))
 
   return (
-    <div className="flex flex-col gap-5.5">
+    <>
       {anyPrerequisite && (
         <SettingSection title="Prerequisites for unattended burns">
           <EnableAfkCard projectId={projectId} filter={filter} highlightField={highlightField} />
@@ -34,6 +34,6 @@ export function BurnsPage({ globals, projectId, filter, highlightField }: Settin
         filter={filter}
         highlightField={highlightField}
       />
-    </div>
+    </>
   )
 }

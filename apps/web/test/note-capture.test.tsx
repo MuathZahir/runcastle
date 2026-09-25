@@ -233,7 +233,7 @@ describe('NoteCapture', () => {
 
     expect(screen.getByRole('dialog').className).toContain('max-w-[560px]')
     expect(scrim().className).toContain('pt-[12vh]')
-    expect(scrim().className).toContain('bg-[rgba(4,6,10,0.28)]')
+    expect(scrim().className).toContain('bg-scrim/40')
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
   })
 

@@ -1,6 +1,8 @@
 import { useEffect, useState, type RefObject } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
-import { Button, LapSections } from '../../ui'
+import { Button, IconButton, LapSections } from '../../ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
+import { IconCheck, IconMore, IconPencil, IconTrash, IconUndo, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import { groupByLap } from '../../lib/feature-ui'
@@ -197,10 +199,16 @@ export function WorkList({
   // walks every scrollable ancestor: the whole point of the rail is that
   // reaching a note never moves the stage.
   useEffect(() => {
-    const box = scroller?.current
-    if (!scrollTo || !box) return
+    if (!scrollTo) return
     const row = document.getElementById(rowElementId(scrollTo))
     if (!row) return
+    const box = scroller?.current
+    // In the page's own flow (no box of its own), the nearest edge is enough —
+    // the row comes into view without yanking the page to its middle.
+    if (!box) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      return
+    }
     const rowBox = row.getBoundingClientRect()
     const boxBox = box.getBoundingClientRect()
     box.scrollBy({
@@ -236,7 +244,13 @@ export function WorkList({
     if (item.kind === 'defect') {
       const findingId = item.finding.id
       const wave = (
-        <Button className="px-2" disabled={dismiss.isPending} onClick={() => dismiss.mutate({ findingId })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<IconX />}
+          disabled={dismiss.isPending}
+          onClick={() => dismiss.mutate({ findingId })}
+        >
           Dismiss
         </Button>
       )
@@ -244,16 +258,18 @@ export function WorkList({
       // pile, or waved away for good. Nothing about it is the burn's any more.
       if (item.finding.status === 'carried') {
         return (
-          <span className="flex items-center gap-2">
+          <>
             <Button
-              className="px-2"
+              size="sm"
+              variant="ghost"
+              icon={<IconUndo />}
               disabled={reopenFinding.isPending}
               onClick={() => reopenFinding.mutate({ findingId })}
             >
               Reopen
             </Button>
             {wave}
-          </span>
+          </>
         )
       }
       // Only a defect the server still calls open is the human's to wave away;
@@ -268,35 +284,45 @@ export function WorkList({
     if (note.status === 'promoted') return undefined
     if (note.status === 'carried') {
       return (
-        <Button className="px-2" disabled={busy} onClick={() => reopen.mutate({ noteId: note.id })}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<IconUndo />}
+          disabled={busy}
+          onClick={() => reopen.mutate({ noteId: note.id })}
+        >
           Reopen
         </Button>
       )
     }
     if (editing === note.id) return undefined
+    const done = note.status === 'done'
     return (
-      <span className="flex items-center gap-2">
-        <label className="flex items-center gap-1.5 font-mono text-xs text-text-3">
-          <input
-            type="checkbox"
-            className="size-3.5 accent-accent"
-            checked={note.status === 'done'}
-            disabled={busy}
-            onChange={() => toggle.mutate({ noteId: note.id })}
-          />
-          done
-        </label>
+      <>
+        <IconButton
+          size="sm"
+          label={done ? 'Mark not done' : 'Mark done'}
+          icon={<IconCheck />}
+          active={done}
+          disabled={busy}
+          onClick={() => toggle.mutate({ noteId: note.id })}
+        />
         {note.status === 'open' && (
-          <>
-            <Button className="px-2" onClick={() => setEditing(note.id)}>
-              Edit
-            </Button>
-            <Button className="px-2" onClick={() => setDeleting(note)}>
-              Delete
-            </Button>
-          </>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton size="sm" label="Note actions" icon={<IconMore />} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem icon={<IconPencil />} onSelect={() => setEditing(note.id)}>
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem tone="danger" icon={<IconTrash />} onSelect={() => setDeleting(note)}>
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-      </span>
+      </>
     )
   }
 

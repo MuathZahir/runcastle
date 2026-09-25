@@ -153,7 +153,7 @@ describe('EvidenceStage', () => {
       drive: { branch: 'feature/x', devPaneId: 'pane_1', devUrl: 'http://localhost:5173', devReady: true },
     })
     expect(html).not.toContain('<video')
-    expect(html).toContain('dev server')
+    expect(html).toMatch(/dev server/i)
   })
 
   /** Decision 20: a drive problem about the stage renders IN the stage. */
@@ -196,18 +196,18 @@ describe('EvidenceStage expanded', () => {
 
   it('offers one expand control, naming the key that does the same thing', () => {
     const html = render()
-    expect(html).toContain('>Expand <kbd')
-    expect(html).toContain('>F</kbd>')
+    // An IconButton: its name is the verb, and F rides in its tooltip.
+    expect(html).toContain('aria-label="Expand"')
     expect(html).toContain('aria-pressed="false"')
     // And the same single control while the drive is what is on the stage.
-    expect(render(SERVING).match(/>Expand <kbd/g)).toHaveLength(1)
+    expect(render(SERVING).match(/aria-label="Expand"/g)).toHaveLength(1)
   })
 
   it('says what the control now does, and that the stage is expanded', () => {
     const html = expanded()
-    expect(html).toContain('>Collapse <kbd')
+    expect(html).toContain('aria-label="Collapse"')
     expect(html).toContain('aria-pressed="true"')
-    expect(html).not.toContain('>Expand <kbd')
+    expect(html).not.toContain('aria-label="Expand"')
   })
 
   /**
@@ -232,7 +232,7 @@ describe('EvidenceStage expanded', () => {
   /** A page with nowhere to expand into (the shipped record) offers no expand. */
   it('offers no expand at all when the page hands it none', () => {
     const html = render({ expand: undefined })
-    expect(html).not.toContain('>Expand <kbd')
+    expect(html).not.toContain('aria-label="Expand"')
     expect(html).toContain('aspect-video')
   })
 })

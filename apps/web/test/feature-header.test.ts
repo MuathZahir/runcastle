@@ -46,6 +46,7 @@ function header(over: Partial<FeatureFull['feature']> = {}, isDraft = false): st
         isDraft,
         steps: STEPS,
         onViewPhase: () => undefined,
+        facts: isDraft ? [{ phase: 'draft', text: 'Parked 2d ago' }] : [{ text: 'Started 2d ago' }],
       }),
     ),
   )
@@ -60,52 +61,31 @@ function classesAround(html: string, marker: string): string[] {
 }
 
 describe('the feature header', () => {
-  it('gives the title the leftover room and ellipsizes it there', () => {
+  it('states the title once, as the page heading, and lets it wrap', () => {
     const html = header()
-
-    const title = classesAround(html, LONG_TITLE)
-    expect(title).toContain('flex-1')
-    expect(title).toContain('truncate')
-    // The spacer that used to push the branch chip right is gone: a title that
-    // claims the middle does that itself, and the spacer only ever competed
-    // with it for the room.
-    expect(html).not.toContain('ws-title-spacer')
-    // Truncated, but never lost — the whole title is still one hover away.
-    expect(html).toContain(`title="${LONG_TITLE}"`)
+    expect(html).toContain(`<h1 class="m-0 min-w-0 flex-1 text-xl font-semibold text-pretty text-text">${LONG_TITLE}</h1>`)
+    // The retired header chrome is gone with its legacy rules.
+    expect(html).not.toContain('ws-head')
+    expect(html).not.toContain('ws-title')
   })
 
-  it('lets the branch chip ellipsize rather than leave the window', () => {
+  it('lets the branch ellipsize rather than leave the window, and copies it on click', () => {
     const html = header()
 
     expect(classesAround(html, LONG_BRANCH)).toContain('truncate')
     expect(classesAround(html, 'Copy branch name')).toContain('min-w-0')
+    expect(classesAround(html, 'Copy branch name')).toContain('font-mono')
   })
 
-  it('keeps the phase tag whole while the row shrinks around it', () => {
-    expect(classesAround(header({}, true), 'draft')).toContain('shrink-0')
+  it('says a draft is a draft in the meta line, with no branch to copy', () => {
+    const html = header({}, true)
+    expect(html).toContain('data-phase="draft"')
+    expect(html).not.toContain('Copy branch name')
   })
 
-  it('sits the phase tag on the title baseline rather than centred beside it', () => {
-    const row = /<div class="ws-head"><div class="([^"]*)"/.exec(header())?.[1]?.split(' ') ?? []
-
-    expect(row).toContain('items-baseline')
-    // Centring is what made a 12px mono tag ride above a 17px title, and the
-    // legacy `.ws-title-row` rule that centres it is unlayered — so it beats
-    // the utility beside it (apps/web/STYLE.md) and has to be taken off, not
-    // overridden.
-    expect(row).not.toContain('ws-title-row')
-    // The chip leads with an icon, so its own baseline is the icon's edge and
-    // not its text: it keeps the centring the rest of the row gave up.
-    expect(classesAround(header(), 'Copy branch name')).toContain('self-center')
-  })
-
-  it('starts the stepper on the same left edge as the title above it', () => {
-    // A pill carries its own padding — the hover fill needs it — so the first
-    // step's dot would otherwise begin a nudge inside the header's text column.
-    // The row is pulled back by exactly that padding.
-    const stepper = /<div class="([^"]*)"><button/.exec(header())?.[1]?.split(' ') ?? []
-
-    expect(stepper).toContain('-ml-2.5')
+  it('pulls the stepper back by one step’s padding so it starts on the title’s edge', () => {
+    const stepper = /<nav aria-label="Pipeline" class="([^"]*)"/.exec(header())?.[1]?.split(' ') ?? []
+    expect(stepper).toContain('-ml-2')
   })
 
   it('states the pipeline for a started feature and not for a draft', () => {
@@ -144,10 +124,10 @@ describe('the next-step bar under it', () => {
       }),
     )
 
-  it('lets the actions wrap inside the bar rather than leave it', () => {
+  it('lets the actions wrap inside the row rather than leave it', () => {
     // The buttons keep their own widths (decision 30e); the group around them
-    // is what yields, so a crowded bar wraps onto a second row instead of
-    // running the primary action off the right edge of the workspace.
+    // is what yields, so a crowded row wraps onto a second line instead of
+    // running the primary action off the right edge of the page.
     const actions = /<div class="([^"]*)"><button/.exec(bar())?.[1]?.split(' ') ?? []
     expect(actions).toContain('min-w-0')
     expect(actions).toContain('flex-wrap')

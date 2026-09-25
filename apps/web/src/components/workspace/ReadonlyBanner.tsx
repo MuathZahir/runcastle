@@ -1,11 +1,12 @@
 import type { Phase } from '@runcastle/core'
-import { PHASE_LABELS } from '../../lib/feature-ui'
+import { PHASE_NAME, IconArrowLeft } from '../../icons'
+import { Button } from '../../ui'
 
 /**
- * What the next-step bar is replaced by while an earlier phase is pinned
- * (decision 10). A pinned phase is a frozen record, so the banner does not
- * describe what to do — it names the phase, states in one line what that phase
- * produced, and offers the one way back.
+ * What the next-step row becomes while an earlier phase is pinned (decision
+ * 10). The stepper already marks the step being viewed, so this is no badge and
+ * no band: one quiet line saying what that phase produced, and the one way
+ * back as a ghost button.
  */
 export function ReadonlyBanner({
   phase,
@@ -20,19 +21,14 @@ export function ReadonlyBanner({
   onBack: () => void
 }) {
   return (
-    <div className="flex min-h-14 flex-wrap items-center gap-3 border-b border-hairline bg-panel-2 px-6 py-3">
-      <span className="rounded-sm border border-hairline px-1.5 py-0.5 font-mono text-[10.5px] tracking-wider text-text-3 uppercase">
-        READ-ONLY
-      </span>
-      <span className="font-semibold text-text capitalize">{PHASE_LABELS[phase]}</span>
-      {facts && <span className="min-w-0 truncate text-sm text-text-3">· {facts}</span>}
-      <button
-        type="button"
-        className="ml-auto bg-transparent p-0 text-sm text-accent-hi hover:text-accent-2"
-        onClick={onBack}
-      >
-        Back to {PHASE_LABELS[livePhase]} →
-      </button>
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 animate-fade-in" role="status">
+      <p className="m-0 min-w-0 flex-1 basis-60 text-sm text-text-secondary">
+        <span className="font-medium text-text">Viewing {PHASE_NAME[phase].toLowerCase()}</span>
+        {facts ? <span className="text-text-tertiary"> — {facts}</span> : null}
+      </p>
+      <Button variant="ghost" icon={<IconArrowLeft />} onClick={onBack}>
+        Back to {PHASE_NAME[livePhase].toLowerCase()}
+      </Button>
     </div>
   )
 }

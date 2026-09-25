@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { EventRow } from '@runcastle/core'
+import type { AgentRuntime, EventRow } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { RouterOutputs } from '../../lib/api'
 import { useLivePoll } from '../../lib/live'
 import { transcriptBlocks } from '../../lib/feature-ui/run'
+import type { TranscriptBlock } from '../../lib/feature-ui/run'
 import { fmtTime } from '../../lib/format'
-import { DimLine } from '../../ui'
+import { agentName } from '../../lib/vocabulary'
+import { Button, DimLine, StatusLabel } from '../../ui'
+import { IconCheck, IconChevronDown, IconChevronRight, IconClaude, IconCodex } from '../../icons'
+import { Markdown } from '../Markdown'
 
 type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
+
+const RUNTIME_ICON: Record<AgentRuntime, typeof IconClaude> = {
+  'claude-code': IconClaude,
+  codex: IconCodex,
+}
 
 /**
  * One lane's agent transcript, inside the lane's own expansion (decision #10) —
@@ -15,10 +24,12 @@ type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
  * pinned to one ticket beside every ticket's lane made the human hold which
  * lane they were reading in their head.
  *
- * Rendered agent-style: assistant prose as `⏺` blocks, tool calls as `●` lines,
- * an activity footer while the agent is live. Polls the server's in-memory
- * transcript (`run.agentTranscript`) at 1s with a chunk-index cursor, so each
- * poll only downloads what's new.
+ * Read like a chat: the agent named once at the top with its runtime's glyph,
+ * its prose as Markdown at reading size, each tool call one quiet line that
+ * opens to its full arguments. Blocks rise in as they arrive; ones already on
+ * screen never re-animate (they keep their key as the stream appends). Polls
+ * the server's in-memory transcript (`run.agentTranscript`) at 1s with a
+ * chunk-index cursor, so each poll only downloads what's new.
  *
  * Two hygiene rules apply on the way out (decision #13). The burner's wire
  * protocol is swallowed: `<promise>COMPLETE</promise>` was the agent's last
@@ -32,11 +43,14 @@ type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
 export function LaneTranscript({
   ticketId,
   bootEvents,
+  runtime,
   poll = true,
 }: {
   ticketId: string
   /** This lane's own events, narrating the container while the agent is silent. */
   bootEvents: readonly EventRow[]
+  /** Who is speaking — the runtime the lane burns on. */
+  runtime?: AgentRuntime
   /**
    * Off on a run record: the transcript of a finished run either is in memory
    * or never will be, and a second-by-second poll for output that cannot arrive
@@ -63,73 +77,113 @@ export function LaneTranscript({
     setFollowing(atBottom)
   }
 
+  const Speaker = runtime ? RUNTIME_ICON[runtime] : null
+  const speaking = blocks.length > 0 || live
+
   return (
     <div
-      className="max-h-120 overflow-y-auto p-4 font-mono text-sm leading-relaxed"
+      className="relative max-h-120 overflow-y-auto rounded-md bg-surface-inset px-4 py-3"
       ref={scrollRef}
       onScroll={onScroll}
     >
-      {trimmed && <div className="pb-2 text-center text-xs text-text-4">… earlier output trimmed …</div>}
-      {blocks.length === 0 && !live && (
+      {trimmed && <div className="pb-2 text-center text-xs text-text-tertiary">Earlier output trimmed</div>}
+      {!speaking && (
         <DimLine>
-          no agent output captured — transcripts are held in server memory for the current burn;
+          No agent output captured — transcripts are held in server memory for the current burn;
           older runs keep only the event timeline.
         </DimLine>
+      )}
+      {speaking && (
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+          {Speaker && <Speaker size={14} className="shrink-0 text-icon" />}
+          {runtime ? agentName(runtime) : 'Agent'}
+        </div>
       )}
       {/* The container takes 15–20s to come up, and "waiting for the agent's
           first output…" over a blank pane read as a hung lane. Its own boot
           narrative is what is actually happening (decision #10). */}
       {blocks.length === 0 && live && <BootNarrative events={bootEvents} />}
-      {blocks.map((b, i) =>
-        b.kind === 'text' ? (
-          <div key={i} className="mb-2.5 flex items-start gap-2">
-            <span className="shrink-0 text-text-2">⏺</span>
-            <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-text">{b.text}</span>
-          </div>
-        ) : (
-          <div key={i} className="mb-1.5 flex items-start gap-2">
-            <span className="shrink-0 text-ok">●</span>
-            <span className="min-w-0 flex-1 truncate">
-              <span className="font-semibold text-text">{b.name}</span>
-              {b.args && <span className="text-text-3">({b.args})</span>}
-            </span>
-          </div>
-        ),
+      {blocks.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          {blocks.map((b, i) => (
+            <TranscriptLine key={i} block={b} />
+          ))}
+        </div>
       )}
       {completed && (
-        <div className="mt-1 flex items-center gap-2 text-xs text-text-3">
-          <span className="text-ok">✓</span>
-          agent reported complete
+        <div className="mt-2">
+          <StatusLabel tone="success" icon={<IconCheck />}>
+            Agent reported complete
+          </StatusLabel>
         </div>
       )}
       {live && (
-        <div className="mt-1 flex items-center gap-2 text-ph-implementation">
-          <span className="inline-block animate-[spin_1.2s_linear_infinite]">✳</span>
-          <span className="text-xs text-text-3">Burning…</span>
-          <span className="animate-[pulse_1.1s_ease-in-out_infinite] text-text-2">▍</span>
+        <div className="mt-2">
+          <StatusLabel tone="live">Burning…</StatusLabel>
         </div>
       )}
       {!following && (
-        <button
-          className="sticky bottom-1.5 ml-auto block cursor-pointer rounded-pill border border-accent bg-panel-2 px-2.5 text-xs text-accent-hi"
-          onClick={() => setFollowing(true)}
-        >
-          Follow ⇣
-        </button>
+        <div className="pointer-events-none sticky bottom-0 flex justify-end">
+          <Button
+            size="sm"
+            icon={<IconChevronDown />}
+            className="pointer-events-auto bg-surface-raised! shadow-popover animate-fade-in"
+            onClick={() => setFollowing(true)}
+          >
+            Follow
+          </Button>
+        </div>
       )}
     </div>
   )
 }
 
+/**
+ * One block of the stream. Prose is Markdown at reading size (`text-base`); a
+ * tool call is a one-line disclosure — its name, then its arguments in quiet
+ * mono — that opens to the arguments wrapped in full.
+ */
+function TranscriptLine({ block }: { block: TranscriptBlock }) {
+  if (block.kind === 'text') {
+    return (
+      <div className="py-1 animate-rise-in">
+        {/* `!`: the renderer states its own 13px secondary face, and a
+            transcript is prose to read, not UI chrome. */}
+        <Markdown source={block.text} className="text-base! text-text!" />
+      </div>
+    )
+  }
+  return (
+    <details data-disclosure="" className="group/tool animate-rise-in">
+      <summary
+        className="flex h-6 min-w-0 cursor-pointer list-none items-center gap-1.5 text-xs select-none [&::-webkit-details-marker]:hidden"
+        title={block.args || undefined}
+      >
+        <IconChevronRight
+          size={12}
+          className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/tool:rotate-90"
+        />
+        <span className="shrink-0 font-medium text-text-secondary">{block.name}</span>
+        {block.args && <span className="min-w-0 truncate font-mono text-text-tertiary">{block.args}</span>}
+      </summary>
+      {block.args && (
+        <pre className="m-0 mt-0.5 mb-1 ml-4.5 font-mono text-xs break-words whitespace-pre-wrap text-text-tertiary">
+          {block.args}
+        </pre>
+      )}
+    </details>
+  )
+}
+
 /** What the container is doing while the agent has not spoken yet. */
 function BootNarrative({ events }: { events: readonly EventRow[] }) {
-  if (events.length === 0) return <DimLine>starting the container…</DimLine>
+  if (events.length === 0) return <DimLine>Starting the container…</DimLine>
   return (
     <div className="flex flex-col gap-1">
       {events.map((e) => (
-        <div key={e.id} className="flex gap-2.5 text-xs text-text-3">
-          <span className="shrink-0 text-text-4">{fmtTime(e.ts)}</span>
-          <span className="min-w-0 flex-1 break-words">{e.message}</span>
+        <div key={e.id} className="flex gap-3 text-xs animate-rise-in">
+          <span className="shrink-0 text-text-tertiary tabular-nums">{fmtTime(e.ts)}</span>
+          <span className="min-w-0 flex-1 break-words text-text-secondary">{e.message}</span>
         </div>
       ))}
     </div>

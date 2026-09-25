@@ -66,9 +66,9 @@ describe('the all-green beat headline', () => {
       { seq: 2, status: 'done' },
       { seq: 3, status: 'done', kind: 'review' },
     ]
-    expect(runHeadline(landed, { status: 'succeeded' })).toBe('All 3 tickets landed ✓')
+    expect(runHeadline(landed, { status: 'succeeded' })).toBe('All 3 tickets landed')
     expect(runHeadline([{ seq: 1, status: 'done' }], { status: 'succeeded' })).toBe(
-      'All 1 ticket landed ✓',
+      'All 1 ticket landed',
     )
   })
 

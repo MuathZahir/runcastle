@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ProjectNote } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { FeatureListItem } from '../../lib/api'
@@ -6,20 +6,21 @@ import { relTime } from '../../lib/format'
 import { useLivePoll } from '../../lib/live'
 import { pathFor } from '../../lib/routes'
 import { useToast } from '../../lib/toast'
-import { IconCheck, IconChevronRight, IconPencil, IconTrash, IconUndo } from '../../icons'
-import { BARE_BUTTON, Button, NoteThumbnail } from '../../ui'
+import { IconCheck, IconInbox, IconPencil, IconSparkle, IconTrash, IconUndo } from '../../icons'
+import { Button, Disclosure, EmptyState, IconButton, NoteThumbnail, TEXT_INPUT } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
-import { DriveTag, NoteRow } from './NoteRow'
+import { DriveTag, NoteDot, NoteRow } from './NoteRow'
 
 /**
  * The project's note inbox (decisions.md #10, presentation #17) — the pile, and
  * the door that triages it.
  *
  * Notes are never cards in the rail: a jotted observation is not a third kind of
- * thing beside drafts and features, it is raw material. So the inbox is a card
- * on the project workspace's resting page, read right before triage starts and
- * in the same place triage starts from — a separate route would split one job
- * across two screens.
+ * thing beside drafts and features, it is raw material. So the inbox is the
+ * project page's one aside (DESIGN.md: one aside, opened on demand), read right
+ * before triage starts and in the same place triage starts from — a separate
+ * route would split one job across two screens. This component is the aside's
+ * body; the page owns the Aside frame and its toggle.
  *
  * What the card offers is deliberately short of creating work (the Quick form's
  * lesson, `replace-the-quick-door-with-a-draft-door`): edit, delete, dismiss and
@@ -100,86 +101,81 @@ export function NotesCard({
     if (draft.trim() && !edit.isPending) edit.mutate({ noteId, text: draft })
   }
 
+  const lead = (note: ProjectNote) =>
+    note.screenshotUrl ? (
+      <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={setPicture} />
+    ) : (
+      <NoteDot />
+    )
+
   return (
-    <section ref={section} aria-label="Notes" className="rounded-lg border border-hairline bg-panel">
-      <div className="flex items-center gap-2.5 border-b border-hairline-soft py-3 pr-3 pl-4.5">
-        <h3 className="m-0 text-base font-semibold text-text">Notes</h3>
-        {open.length > 0 && (
-          <span
-            className="inline-grid h-4.5 min-w-4.5 place-items-center rounded-pill border border-accent-line bg-accent-soft px-1.5 text-xs font-semibold text-accent-hi tabular-nums"
-            title={`${open.length} open`}
-          >
-            {open.length}
-          </span>
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm text-text-3">
+    <section ref={section} aria-label="Notes" className="flex flex-col">
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+        <span className="min-w-0 flex-1 text-xs text-pretty text-text-tertiary">
           Grouped, questioned and routed in a triage chat.
         </span>
         <Button
-          variant="accent"
+          size="sm"
+          icon={<IconSparkle />}
           className="shrink-0"
+          loading={triaging}
           disabled={open.length === 0 || triaging}
           title={open.length === 0 ? 'nothing is open to triage' : undefined}
           onClick={onTriage}
         >
-          {triaging ? 'Opening…' : `Triage ${open.length}`}
+          {`Triage ${open.length}`}
         </Button>
       </div>
 
-      <ul className={LIST}>
-        {open.length === 0 ? (
-          <li className="px-4.5 py-3 text-sm text-text-3">
-            Nothing open — every note has been triaged.
-          </li>
-        ) : (
-          open.map((note) => (
+      {open.length === 0 ? (
+        <EmptyState
+          compact
+          icon={<IconInbox />}
+          title="Inbox clear"
+          hint="Every note has been triaged."
+        />
+      ) : (
+        <ul className={LIST}>
+          {open.map((note) => (
             <NoteRow
               key={note.id}
-              lead={
-                note.screenshotUrl ? (
-                  <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={setPicture} />
-                ) : (
-                  <span className="grid w-10 place-items-center" aria-hidden>
-                    <i className="size-1.25 rounded-pill bg-accent-line" />
-                  </span>
-                )
-              }
+              lead={lead(note)}
               when={relTime(note.createdAt)}
               actions={
                 <>
-                  <RowAction
+                  <IconButton
+                    size="sm"
                     label="Edit"
+                    icon={<IconPencil />}
                     onClick={() => {
                       setEditing(note.id)
                       setDraft(note.text)
                     }}
-                  >
-                    <IconPencil size={14} />
-                  </RowAction>
+                  />
                   {/* Waving a note away without opening a chat for it — the
                       same triage the session does, with outcome "dismissed". */}
-                  <RowAction
+                  <IconButton
+                    size="sm"
                     label="Dismiss"
+                    icon={<IconCheck />}
                     disabled={busy}
                     onClick={() => dismiss.mutate({ noteId: note.id })}
-                  >
-                    <IconCheck size={14} />
-                  </RowAction>
-                  <RowAction
+                  />
+                  <IconButton
+                    size="sm"
                     label="Delete"
-                    tone="danger"
+                    icon={<IconTrash />}
+                    className="enabled:hover:text-danger"
                     disabled={busy}
                     onClick={() => remove.mutate({ noteId: note.id })}
-                  >
-                    <IconTrash size={14} />
-                  </RowAction>
+                  />
                 </>
               }
             >
               {editing === note.id ? (
                 <input
                   aria-label="edit this note"
-                  className={NOTE_INPUT}
+                  className={TEXT_INPUT}
                   value={draft}
                   autoFocus
                   onChange={(e) => setDraft(e.target.value)}
@@ -200,45 +196,32 @@ export function NotesCard({
                 </>
               )}
             </NoteRow>
-          ))
-        )}
-      </ul>
+          ))}
+        </ul>
+      )}
 
       {triaged.length > 0 && (
-        <details className="group/tri border-t border-hairline-soft">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4.5 py-2.5 text-sm text-text-3 hover:text-text-2 [&::-webkit-details-marker]:hidden">
-            <IconChevronRight
-              size={12}
-              className="transition-transform duration-(--dur-1) group-open/tri:rotate-90"
-            />
-            {triaged.length} triaged
-          </summary>
-          <ul className={LIST}>
+        <Disclosure title={`${triaged.length} triaged`} className="mx-4 mt-2">
+          <ul className="m-0 flex list-none flex-col p-0">
             {triaged.map((note) => (
               <NoteRow
                 key={note.id}
-                lead={
-                  note.screenshotUrl ? (
-                    <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={setPicture} />
-                  ) : (
-                    <span className="w-10" aria-hidden />
-                  )
-                }
+                lead={note.screenshotUrl ? lead(note) : null}
                 actions={
-                  <RowAction
+                  <IconButton
+                    size="sm"
                     label="Reopen"
+                    icon={<IconUndo />}
                     disabled={busy}
                     onClick={() => reopen.mutate({ noteId: note.id })}
-                  >
-                    <IconUndo size={14} />
-                  </RowAction>
+                  />
                 }
               >
-                <span className="text-text-3">{note.text}</span>
+                <span className="text-text-secondary">{note.text}</span>
                 <DriveTag note={note} />
                 {/* Where it went, as the record rather than as a control — a
                     triaged note is frozen, so this outlives every action. */}
-                <span className="mt-px flex flex-wrap items-baseline gap-x-2 text-sm text-text-3">
+                <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-text-tertiary">
                   <span>{note.outcome}</span>
                   <FeatureLink
                     projectId={projectId}
@@ -248,7 +231,7 @@ export function NotesCard({
               </NoteRow>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       )}
       <Lightbox url={picture} onClose={() => setPicture(null)} />
     </section>
@@ -256,57 +239,11 @@ export function NotesCard({
 }
 
 /** No preflight (apps/web/STYLE.md): a list states its own reset. */
-const LIST = 'm-0 list-none py-1 pl-0'
-
-const NOTE_INPUT =
-  'h-7 w-full min-w-0 rounded-sm border border-accent-line bg-panel-inset px-2 ' +
-  'text-base text-text focus:outline-none'
+const LIST = 'm-0 flex list-none flex-col px-1 py-1'
 
 /** Newest first — the pile is read from the top, where the last thing you saw is. */
 function byNewest(notes: ProjectNote[]): ProjectNote[] {
   return [...notes].sort((a, b) => b.createdAt - a.createdAt)
-}
-
-type RowActionTone = 'plain' | 'danger'
-
-// Delete names its danger only under the pointer: repeated down a list at rest,
-// a red control per row shouts over the notes themselves. The row is already
-// the unnamed `group`, so the button's own hover is the named `group/act`.
-const ROW_ACTION_HOVER: Record<RowActionTone, string> = {
-  plain: 'group-hover/act:text-text',
-  danger: 'group-hover/act:text-danger',
-}
-
-/**
- * A row's verb as an icon. The label is both its name and its tooltip. The
- * tone sits on a span inside: the unlayered `button { color: inherit }` beats a
- * `text-*` utility written on the button itself (apps/web/STYLE.md).
- */
-function RowAction({
-  label,
-  tone = 'plain',
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  tone?: RowActionTone
-  disabled?: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={`${BARE_BUTTON} group/act grid size-6.5 cursor-pointer place-items-center rounded-sm p-0 hover:bg-hairline disabled:cursor-not-allowed disabled:opacity-40`}
-    >
-      <span className={`flex text-text-3 ${ROW_ACTION_HOVER[tone]}`}>{children}</span>
-    </button>
-  )
 }
 
 /**
@@ -324,7 +261,7 @@ function FeatureLink({
   if (!feature) return null
   return (
     <a
-      className="text-accent-hi underline decoration-dotted"
+      className="text-accent-text underline decoration-dotted underline-offset-2 hover:text-accent"
       href={pathFor({ kind: 'feature', projectId, featureSlug: feature.slug })}
     >
       {feature.title}

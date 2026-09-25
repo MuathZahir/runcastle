@@ -50,7 +50,7 @@ const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
 const { LiveSessionAlert } = await import('../src/components/review/LiveSessionAlert')
 const { OpenWork } = await import('../src/components/review/OpenWork')
-const { StatusStrip } = await import('../src/components/review/StatusStrip')
+const { LapStory, StatusStrip } = await import('../src/components/review/StatusStrip')
 const { WorkList, partitionWork } = await import('../src/components/review/WorkList')
 
 const RECORDING: ReviewArtifacts = {
@@ -145,12 +145,16 @@ function bands(readonly: boolean): ReactNode[] {
       tickets: [],
       checks: reviewChecks({ tickets: [], commitCount: 2 }),
       runState: 'succeeded',
-      lap: lapChip([], { lap: 2, lapSessionRan: true }),
-      laterLaps: 'A settings pane for the roster.',
-      readonly,
       // The one live control the state line carries — a history view is handed
       // none, exactly as the orchestrator omits it there.
       ...(readonly ? {} : { testDrive: { onStart: () => undefined } }),
+    }),
+    createElement(LapStory, {
+      key: 'story',
+      lap: lapChip([], { lap: 2, lapSessionRan: true }),
+      laterLaps: 'A settings pane for the roster.',
+      currentLap: 2,
+      readonly,
     }),
     createElement(OpenWork, {
       key: 'work',
@@ -177,17 +181,18 @@ function bands(readonly: boolean): ReactNode[] {
 const render = (readonly: boolean): string =>
   renderToStaticMarkup(createElement('div', null, bands(readonly)))
 
-/** Every live control the resting review page offers, by the words on it. */
+/** Every live control the resting review page offers, by its words or its name. */
 const LIVE_CONTROLS = [
-  'Resolve with agent',
-  'Annotate',
-  'Test drive',
-  'End session',
-  'Open',
-  'Dismiss',
-  'Add',
-  'Edit',
-  'Delete',
+  'Resolve with agent</button>',
+  'Annotate</button>',
+  'Test drive</button>',
+  'End session</button>',
+  'Open</button>',
+  'Dismiss</button>',
+  'Add note</button>',
+  // A note's own verbs: Done, and Edit/Delete behind its "…" menu.
+  'aria-label="Mark done"',
+  'aria-label="Note actions"',
 ]
 
 /** The stage while a drive of this feature is up — its own set of controls. */
@@ -209,12 +214,12 @@ const drivingStage = (readonly: boolean, driveState: DriveState = 'setup-failed'
 describe('the review bands under readonly', () => {
   it('offers every one of those controls while the feature is still being worked on', () => {
     const html = render(false)
-    for (const control of LIVE_CONTROLS) expect(html, control).toContain(`>${control}<`)
+    for (const control of LIVE_CONTROLS) expect(html, control).toContain(control)
   })
 
   it('offers none of them when the page is history', () => {
     const html = render(true)
-    for (const control of LIVE_CONTROLS) expect(html, control).not.toContain(`>${control}<`)
+    for (const control of LIVE_CONTROLS) expect(html, control).not.toContain(control)
   })
 
   /**

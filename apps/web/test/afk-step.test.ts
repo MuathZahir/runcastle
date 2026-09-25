@@ -35,7 +35,7 @@ describe('AfkStep', () => {
     const html = render()
     expect(html).not.toContain('Continue to your first project')
     const skip = html.slice(html.lastIndexOf('<button', html.indexOf('Skip for now')))
-    expect(skip).toContain('bg-accent')
+    expect(skip).toContain('data-variant="primary"')
   })
 
   it('can go back, and carries no retired class names', () => {

@@ -9,9 +9,9 @@ import { imageOnClipboard, toPngBlob } from '../../lib/reviews'
 import { shortcut } from '../../lib/platform'
 import { useToast } from '../../lib/toast'
 import { IconX } from '../../icons'
-import { Kbd, NoteThumbnail } from '../../ui'
+import { Aside, IconButton, Kbd, NoteThumbnail, SectionLabel, TextField } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
-import { DriveTag, NoteRow } from './NoteRow'
+import { DriveTag, NoteDot, NoteRow } from './NoteRow'
 
 /**
  * The project's notes inbox beside a project drive, live
@@ -26,10 +26,13 @@ import { DriveTag, NoteRow } from './NoteRow'
 export function ProjectNotesRail({
   projectId,
   startedAt,
+  onClose,
 }: {
   projectId: string
   /** When the live drive started — the "this drive" boundary. */
   startedAt: number | undefined
+  /** Fold the aside away; the drive's topbar toggle brings it back. */
+  onClose: () => void
 }) {
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const [picture, setPicture] = useState<string | null>(null)
@@ -37,77 +40,69 @@ export function ProjectNotesRail({
   const count = thisDrive.length + alreadyOpen.length
 
   return (
-    <aside
-      aria-label="Project notes"
-      className="flex min-h-0 w-[320px] shrink-0 flex-col border-l border-hairline bg-panel-2"
-    >
-      <div className="flex items-center gap-2.5 py-3 pr-3 pl-3.5">
-        <h3 className="m-0 text-base font-semibold text-text">Notes</h3>
-        {count > 0 && (
-          <span
-            className="inline-grid h-4.5 min-w-4.5 place-items-center rounded-pill border border-accent-line bg-accent-soft px-1.5 text-xs font-semibold text-accent-hi tabular-nums"
-            title={`${count} open`}
-          >
-            {count}
+    <Aside
+      title="Notes"
+      actions={
+        count > 0 ? (
+          <span className="pr-1 text-xs text-text-tertiary tabular-nums" title={`${count} open`}>
+            {count} open
           </span>
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm text-text-3">to the project’s inbox</span>
-      </div>
+        ) : undefined
+      }
+      onClose={onClose}
+      bodyClassName="flex flex-col"
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <Group title="This drive">
+            {thisDrive.length === 0 ? (
+              <EmptyRow>Nothing yet. Select an area of the app, or type below.</EmptyRow>
+            ) : (
+              thisDrive.map((note) => <RailNote key={note.id} note={note} onOpen={setPicture} />)
+            )}
+          </Group>
+          <Group title="Already open">
+            {alreadyOpen.length === 0 ? (
+              <EmptyRow>No other open notes.</EmptyRow>
+            ) : (
+              alreadyOpen.map((note) => <RailNote key={note.id} note={note} onOpen={setPicture} />)
+            )}
+          </Group>
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <Group title="This drive">
-          {thisDrive.length === 0 ? (
-            <EmptyRow>Nothing yet. Select an area of the app, or type below.</EmptyRow>
-          ) : (
-            thisDrive.map((note) => <RailNote key={note.id} note={note} onOpen={setPicture} />)
-          )}
-        </Group>
-        <Group title="Already open">
-          {alreadyOpen.length === 0 ? (
-            <EmptyRow>No other open notes.</EmptyRow>
-          ) : (
-            alreadyOpen.map((note) => <RailNote key={note.id} note={note} onOpen={setPicture} />)
-          )}
-        </Group>
+        <RailComposer projectId={projectId} />
       </div>
-
-      <RailComposer projectId={projectId} />
       <Lightbox url={picture} onClose={() => setPicture(null)} />
-    </aside>
+    </Aside>
   )
 }
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section aria-label={title}>
-      <h4 className="m-0 px-3.5 pt-2.5 pb-1 text-xs font-semibold tracking-[0.1em] text-text-3 uppercase">
-        {title}
-      </h4>
-      <ul className="m-0 list-none py-1 pl-0">{children}</ul>
+    <section aria-label={title} className="pt-2">
+      <SectionLabel className="px-4">{title}</SectionLabel>
+      <ul className="m-0 flex list-none flex-col px-1 py-0">{children}</ul>
     </section>
   )
 }
 
 function EmptyRow({ children }: { children: ReactNode }) {
-  return <li className="px-3.5 py-1.5 text-sm text-text-3">{children}</li>
+  return <li className="px-3 py-1.5 text-sm text-text-tertiary">{children}</li>
 }
 
 function RailNote({ note, onOpen }: { note: ProjectNote; onOpen: (url: string) => void }) {
   return (
     <NoteRow
-      className="py-1.5 pr-2.5 pl-3.5"
       lead={
         note.screenshotUrl ? (
           <NoteThumbnail size="sm" url={note.screenshotUrl} onOpen={onOpen} />
         ) : (
-          <span className="grid w-10 place-items-center" aria-hidden>
-            <i className="size-1.25 rounded-pill bg-accent-line" />
-          </span>
+          <NoteDot />
         )
       }
       when={relTime(note.createdAt)}
     >
-      <span className="text-sm text-text">{note.text}</span>
+      <span className="text-text">{note.text}</span>
       <DriveTag note={note} />
     </NoteRow>
   )
@@ -167,13 +162,9 @@ function RailComposer({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div
-      className="flex flex-col gap-1.5 border-t border-hairline bg-panel p-2.5"
-      onPaste={onPaste}
-    >
-      <input
+    <div className="flex flex-col gap-2 border-t border-border-subtle p-3" onPaste={onPaste}>
+      <TextField
         ref={inputRef}
-        className="h-8 min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 font-sans text-sm text-text outline-none placeholder:text-text-4 focus:border-accent-line"
         autoComplete="off"
         aria-label="New note"
         placeholder="What did you just notice?"
@@ -186,35 +177,30 @@ function RailComposer({ projectId }: { projectId: string }) {
           void submit()
         }}
       />
-      <div className="flex flex-wrap items-center gap-2.5 text-xs text-text-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-text-tertiary">
         {staged ? (
-          <span className="inline-flex h-5 items-center gap-1.5 rounded-sm border border-hairline-strong bg-panel-3 pr-0.5 pl-0.5 text-text-2">
+          <span className="inline-flex h-6 items-center gap-1.5 rounded-md bg-surface-hover pr-0.5 pl-1 text-text-secondary animate-pop-in">
             <img
               src={staged.preview}
               alt="the picture this note will carry"
-              className="h-4 w-6 rounded-[3px] bg-black object-cover"
+              className="h-4 w-6 rounded-sm bg-surface-inset object-cover"
             />
             Screenshot
-            <button
-              type="button"
-              className="flex size-4 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 hover:bg-hairline"
-              aria-label="remove the picture"
-              title="Remove the picture"
+            <IconButton
+              size="sm"
+              label="Remove the picture"
+              icon={<IconX />}
               onClick={() => setStaged(null)}
-            >
-              <span className="flex items-center text-text-3">
-                <IconX size={10} />
-              </span>
-            </button>
+            />
           </span>
         ) : (
-          <span>paste a screenshot</span>
+          <span>Paste a screenshot</span>
         )}
-        <span className="flex items-center gap-1">
+        <span className="ml-auto flex items-center gap-1">
           <Kbd>↵</Kbd> save
         </span>
         <span className="flex items-center gap-1">
-          <Kbd>{shortcut('J')}</Kbd> works too
+          <Kbd>{shortcut('J')}</Kbd> anywhere
         </span>
       </div>
     </div>

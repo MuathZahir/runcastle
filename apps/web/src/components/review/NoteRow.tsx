@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
-import { FindingSeverityChip, NoteAuthorChip, NoteThumbnail } from '../../ui'
+import { cx, FindingSeverityChip, NoteAuthorChip, NoteThumbnail } from '../../ui'
+import { IconChevronRight } from '../../icons'
 import { findingOpenReason, headline } from '../../lib/feature-ui'
 import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
@@ -56,20 +57,28 @@ export function rowElementId(id: string): string {
   return `work-${id}`
 }
 
-/** What a defect wrote, one click away — the walls decision 5(4) demoted. */
+/**
+ * What a defect wrote, one click away — the walls decision 5(4) demoted. A
+ * compact text-level disclosure (the `Disclosure` primitive's 40px row is for
+ * page sections, not for a line under a row's title).
+ */
 function FindingDetail({ finding }: { finding: ReviewFinding }) {
   const { head, rest } = headline(finding.detail)
   const location = finding.location.trim()
   return (
-    <details className="min-w-0">
-      <summary className="cursor-pointer list-none text-sm text-text-3 underline decoration-dotted">
-        {head}
+    <details className="group/detail min-w-0" data-disclosure="">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-sm text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:text-text-secondary [&::-webkit-details-marker]:hidden">
+        <IconChevronRight
+          size={12}
+          className="mt-1 shrink-0 transition-transform duration-(--dur-2) ease-app group-open/detail:rotate-90"
+        />
+        <span className="min-w-0">{head}</span>
       </summary>
-      <div className="mt-1.5 flex flex-col gap-1 text-sm leading-relaxed text-text-2">
+      <div className="mt-1.5 flex flex-col gap-1 pl-4 text-sm text-text-secondary">
         {rest && <p className="m-0 text-pretty">{rest}</p>}
-        {location && <div className="font-mono text-xs text-text-3">{location}</div>}
-        <div className="font-mono text-xs text-text-3">{finding.citation}</div>
-        {finding.reproStep && <div className="font-mono text-xs text-text-3">{finding.reproStep}</div>}
+        {location && <div className="font-mono text-xs text-text-tertiary">{location}</div>}
+        <div className="font-mono text-xs text-text-tertiary">{finding.citation}</div>
+        {finding.reproStep && <div className="font-mono text-xs text-text-tertiary">{finding.reproStep}</div>}
       </div>
     </details>
   )
@@ -82,13 +91,10 @@ function FindingDetail({ finding }: { finding: ReviewFinding }) {
  * interpolated — Tailwind's scanner cannot see a built class name (STYLE.md).
  */
 const EVIDENCE_TONE: Record<FindingStanding['evidence'], string> = {
-  carried: 'text-text-3',
-  attested: 'text-warn',
-  verified: 'text-ok',
+  carried: 'text-text-tertiary',
+  attested: 'text-warning',
+  verified: 'text-success',
 }
-
-const LAP_BADGE =
-  'inline-flex h-5 shrink-0 items-center rounded-pill border border-hairline px-2 font-mono text-xs text-text-3'
 
 export function NoteRow({
   item,
@@ -126,7 +132,7 @@ export function NoteRow({
   // the record and so survives `readonly`, which drops every action (decision 33a).
   const standing =
     note?.status === 'promoted'
-      ? `→ ${item.kind === 'note' && item.ticket ? `#${item.ticket.seq} ${item.ticket.title}` : 'quick-fixed into a ticket'}`
+      ? `Promoted to ${item.kind === 'note' && item.ticket ? `#${item.ticket.seq} ${item.ticket.title}` : 'a ticket'}`
       : note?.status === 'carried'
         ? `carried into lap ${note.carriedLap}`
         : null
@@ -150,19 +156,36 @@ export function NoteRow({
   return (
     <div
       id={rowElementId(itemId(item))}
-      className={`flex gap-3 border-t border-hairline-soft py-3 transition-colors duration-(--dur-2) ease-app first:border-t-0 ${
-        highlighted ? 'bg-accent-soft' : ''
-      }`}
+      data-list-row=""
+      className={cx(
+        'group/row flex gap-3 rounded-md px-3 py-3 animate-rise-in',
+        'transition-colors duration-(--dur-2) ease-app',
+        highlighted ? 'bg-accent-subtle' : 'hover:bg-surface-hover',
+      )}
     >
       <NoteThumbnail url={note?.screenshotUrl} onOpen={onOpenImage} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex flex-wrap items-center gap-2">
+        {editor ?? (
+          <p
+            className={cx(
+              'm-0 text-sm text-pretty whitespace-pre-wrap',
+              note?.status === 'done' ? 'text-text-tertiary line-through' : 'text-text',
+            )}
+          >
+            {text}
+          </p>
+        )}
+
+        <div className="flex min-h-4 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
+          {finding && <FindingSeverityChip severity={finding.severity} />}
+          {note && <NoteAuthorChip author={note.author} />}
+          {showLap && <span>Lap {itemLap(item)}</span>}
           {moment !== undefined &&
             (mode === 'live-seek' ? (
               <button
                 type="button"
-                className="border-0 bg-transparent p-0 font-mono text-xs text-text-3 hover:text-accent"
+                className="cursor-pointer rounded-sm font-mono tabular-nums text-text-tertiary transition-colors duration-(--dur-1) hover:text-accent-text"
                 title="jump the walkthrough to this moment"
                 onClick={() => onSeek?.(moment)}
               >
@@ -172,59 +195,31 @@ export function NoteRow({
               // The recording this was drawn on is not the one on the stage, so
               // the moment is a label and the picture is the evidence
               // (decision 22).
-              <span className="font-mono text-xs text-text-3">
-                {fmtClock(moment)} · earlier walkthrough
-              </span>
+              <span className="font-mono tabular-nums">{fmtClock(moment)} · earlier walkthrough</span>
             ))}
-
-          {finding && <FindingSeverityChip severity={finding.severity} />}
-          {note && <NoteAuthorChip author={note.author} />}
-          {showLap && <span className={LAP_BADGE}>Lap {itemLap(item)}</span>}
-
-          <span className="flex-1" />
-          {!readonly && controls}
+          {why && <span className="text-warning">{why}</span>}
+          {standing && <span>{standing}</span>}
+          {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
+          {fixing &&
+            (readonly || !onViewLane ? (
+              <span className="text-phase-implementation">fixed in the burn by #{fixing.seq}</span>
+            ) : (
+              <button
+                type="button"
+                className="cursor-pointer text-phase-implementation underline decoration-dotted underline-offset-2 hover:text-text"
+                onClick={() => onViewLane(fixing.id)}
+              >
+                being fixed in the running burn · lane #{fixing.seq}
+              </button>
+            ))}
         </div>
 
-        {editor ?? (
-          <p
-            className={`m-0 text-sm text-pretty whitespace-pre-wrap ${
-              note?.status === 'done' ? 'text-text-3 line-through' : 'text-text'
-            }`}
-          >
-            {text}
-          </p>
-        )}
-
-        {why && <div className="font-mono text-xs text-warn">{why}</div>}
-        {standing && <div className="font-mono text-xs text-text-3">{standing}</div>}
-        {disposition && (
-          <div className="flex flex-col gap-1">
-            <div className={`font-mono text-xs ${EVIDENCE_TONE[disposition.evidence]}`}>
-              {disposition.text}
-            </div>
-            {disposition.note && (
-              <p className="m-0 text-sm text-pretty text-text-2">{disposition.note}</p>
-            )}
-          </div>
-        )}
-
-        {fixing &&
-          (readonly || !onViewLane ? (
-            <div className="font-mono text-xs text-ph-implementation">
-              fixed in the burn by #{fixing.seq}
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="self-start border-0 bg-transparent p-0 font-mono text-xs text-ph-implementation underline decoration-dotted"
-              onClick={() => onViewLane(fixing.id)}
-            >
-              being fixed in the running burn · lane #{fixing.seq}
-            </button>
-          ))}
+        {disposition?.note && <p className="m-0 text-sm text-pretty text-text-secondary">{disposition.note}</p>}
 
         {finding && <FindingDetail finding={finding} />}
       </div>
+
+      {!readonly && controls && <div className="-my-0.5 flex shrink-0 items-start gap-1">{controls}</div>}
     </div>
   )
 }

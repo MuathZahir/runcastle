@@ -31,7 +31,7 @@ describe('SessionPanel — the session the ended strip speaks for', () => {
       session({ id: 'sess_new', createdAt: now - 60_000, endedAt: now - 2_000 }),
     ])
     expect(html).toContain('Chat session')
-    expect(html).toContain('ended just now')
+    expect(html).toContain('Ended just now')
     expect(html).not.toContain('Converge session')
     expect(html).not.toContain('17m')
   })

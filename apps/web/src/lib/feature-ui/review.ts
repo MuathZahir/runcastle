@@ -279,6 +279,139 @@ export function statusChips(input: {
   ]
 }
 
+/**
+ * One fact of the review/shipped status, as a property row (DESIGN.md: facts
+ * are text, not boxes). `value` is the word, `sub` the quiet note after it, and
+ * `tone` the dot beside it — `idle` draws no dot at all, so absence stays quiet.
+ * `detail` is the longer sentence a caveat opens on (the value's tooltip).
+ */
+export interface StatusProperty {
+  key: 'review' | 'checks' | 'drive' | 'walkthrough' | 'tickets' | 'laps' | 'run'
+  label: string
+  value: string
+  sub?: string
+  tone: CheckTone
+  detail?: string
+}
+
+/**
+ * The same figures {@link statusChips} carried as pills, said as a property
+ * list: Review · Checks · Test drive · Tickets · Laps (· Burn on the live page).
+ * Words, not glyph soup — "2 of 3 passed", "Not run", "this build".
+ */
+export function statusProperties(input: {
+  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
+  currentLap: number
+  landedSince: number
+  tickets: readonly { kind?: TicketKind; status: string; lap?: number; landedLap?: number }[]
+  checks: { passed: number; total: number }
+  /** The burn's status; omitted on the shipped record, where it is history. */
+  runState?: string
+  verification?: { state: 'running' | 'failed'; reason?: string }
+  /**
+   * The lap the branch was last test-driven in (null: never), or undefined on
+   * the live page, which reads `driving` instead.
+   */
+  driveLap?: number | null
+  /** A drive of this feature is up right now (the live page). */
+  driving?: boolean
+  /** No recording exists — the shipped record's "not run" says why. */
+  noWalkthrough?: boolean
+  unverifiedKeys?: readonly string[]
+  shipped?: boolean
+}): StatusProperty[] {
+  const out: StatusProperty[] = []
+  const v = input.verification
+  if (v?.state === 'running') {
+    out.push({ key: 'review', label: 'Review', value: 'Verification running', sub: 'the evidence below predates it', tone: 'warn' })
+  } else if (v?.state === 'failed') {
+    const reason = v.reason?.trim()
+    out.push({ key: 'review', label: 'Review', value: 'Verification could not run', ...(reason ? { sub: reason } : {}), tone: 'warn' })
+  } else if (!input.artifact) {
+    out.push({ key: 'review', label: 'Review', value: 'Not reviewed yet', tone: 'idle' })
+  } else if (input.landedSince === 0) {
+    out.push({ key: 'review', label: 'Review', value: 'Reviewed', sub: 'this build', tone: 'ok' })
+  } else {
+    const laps = input.currentLap - input.artifact.lap
+    const age = laps > 0 ? `${laps} ${laps === 1 ? 'lap' : 'laps'} ago` : 'earlier this lap'
+    out.push({
+      key: 'review',
+      label: 'Review',
+      value: `Reviewed ${age}`,
+      sub: `${input.landedSince} ticket${input.landedSince === 1 ? '' : 's'} landed since`,
+      tone: 'warn',
+    })
+  }
+
+  const { passed, total } = input.checks
+  out.push({
+    key: 'checks',
+    label: 'Checks',
+    value: `${passed} of ${total} passed`,
+    tone: total > 0 && passed === total ? 'ok' : 'warn',
+  })
+
+  const unverified = input.unverifiedKeys ?? []
+  const caveat =
+    unverified.length > 0
+      ? {
+          sub: `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`,
+          detail: unverifiedWarning([...unverified]),
+        }
+      : {}
+  if (input.driveLap !== undefined) {
+    out.push(
+      input.driveLap === null
+        ? {
+            key: 'drive',
+            label: 'Test drive',
+            value: 'Not run',
+            ...(input.noWalkthrough ? { sub: 'the review reported without driving' } : {}),
+            tone: 'idle',
+          }
+        : { key: 'drive', label: 'Test drive', value: 'Taken', sub: `lap ${input.driveLap}`, tone: 'ok' },
+    )
+    // Driven by hand but never recorded: the missing walkthrough is its own
+    // quiet fact (the undriven case already says it on the drive row).
+    if (input.driveLap !== null && input.noWalkthrough) {
+      out.push({ key: 'walkthrough', label: 'Walkthrough', value: 'None recorded', tone: 'idle' })
+    }
+  } else if (input.driving !== undefined || unverified.length > 0) {
+    out.push({
+      key: 'drive',
+      label: 'Test drive',
+      value: input.driving ? 'Running' : 'Not running',
+      ...caveat,
+      tone: unverified.length > 0 ? 'warn' : input.driving ? 'ok' : 'idle',
+    })
+  }
+
+  const implementation = input.tickets.filter(
+    (t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap,
+  )
+  const landed = implementation.filter((t) => t.status === 'done').length
+  const waived = implementation.filter((t) => t.status === 'cancelled').length
+  out.push({
+    key: 'tickets',
+    label: 'Tickets',
+    value: `${landed} of ${implementation.length} landed`,
+    ...(waived > 0 ? { sub: `${waived} waived` } : {}),
+    tone: waived > 0 ? 'warn' : 'idle',
+  })
+  out.push({ key: 'laps', label: 'Laps', value: String(input.currentLap), tone: 'idle' })
+
+  if (!input.shipped && input.runState !== undefined) {
+    const run = input.runState
+    out.push({
+      key: 'run',
+      label: 'Burn',
+      value: run === 'no run recorded' ? 'None recorded' : run.charAt(0).toUpperCase() + run.slice(1),
+      tone: run === 'succeeded' ? 'ok' : run === 'failed' ? 'danger' : run === 'no run recorded' ? 'idle' : 'warn',
+    })
+  }
+  return out
+}
+
 /** A drive as the review surfaces read it — only whose it is matters here. */
 export function reviewRow(outcome: ReviewOutcome): CheckRow | null {
   const key = 'review agent'

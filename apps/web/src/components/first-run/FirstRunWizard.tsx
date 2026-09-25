@@ -9,13 +9,13 @@ import {
   wizardSteps,
   type WizardScreen,
 } from '../../lib/first-run'
-import { DimLine } from '../../ui'
-import { LogoMark } from '../../icons'
+import { Spinner } from '../../ui'
 import { OpenProject } from '../OpenProject'
 import { AfkStep } from './AfkStep'
 import { IdentityStep } from './IdentityStep'
 import { IntroStep } from './IntroStep'
 import { RuntimesStep } from './RuntimesStep'
+import { SetupFrame } from './StepLayout'
 import { WizardRail } from './WizardRail'
 
 /**
@@ -30,7 +30,8 @@ import { WizardRail } from './WizardRail'
  * step after the intro can go Back (decision 4). It terminates in "Open your
  * first project", straight into the pipeline UI.
  *
- * This file owns sequencing and the frame; each step is its own file beside it.
+ * This file owns sequencing; the frame is `SetupFrame` and each step is its own
+ * file beside it.
  */
 export function FirstRunWizard({
   onOpened,
@@ -46,6 +47,13 @@ export function FirstRunWizard({
   const identity = doctor.data?.results.find((r) => r.id === 'git-identity')
   const runtimes = runtimeReadiness(doctor.data?.results ?? [])
   const [screen, setScreen] = useState<WizardScreen>('intro')
+  // Which way the last move went, so a step slides in going forward and rises
+  // in place going back — motion that agrees with the rail.
+  const [direction, setDirection] = useState<'forward' | 'back'>('forward')
+  const go = (next: WizardScreen, dir: 'forward' | 'back') => {
+    setDirection(dir)
+    setScreen(next)
+  }
 
   // Onboarding's last act: the global default and smoke models come from the
   // pair of a runtime the operator actually authed, so a Codex-only install
@@ -53,67 +61,58 @@ export function FirstRunWizard({
   const seed = trpc.setup.seedModelDefaults.useMutation()
   const finish = () => {
     seed.mutate({ runtimes: readyRuntimes(runtimes) })
-    setScreen('project')
+    go('project', 'forward')
   }
 
   if (doctor.isLoading) {
     return (
-      <Frame>
-        <DimLine>preparing setup…</DimLine>
-      </Frame>
+      <SetupFrame>
+        <div className="flex items-center justify-center gap-2 text-sm text-text-tertiary">
+          <Spinner /> Preparing setup…
+        </div>
+      </SetupFrame>
     )
   }
 
   if (screen === 'project') {
-    return <OpenProject firstRun onOpened={onOpened} onCancel={onCancel} />
+    return (
+      <OpenProject
+        firstRun
+        rail={<WizardRail steps={wizardSteps('project', identity)} />}
+        onOpened={onOpened}
+        onCancel={onCancel}
+      />
+    )
   }
 
   if (screen === 'intro') {
     return (
-      <Frame>
-        <IntroStep onNext={() => setScreen(firstSetupStep(identity))} />
-      </Frame>
+      <SetupFrame stepKey="intro" direction={direction}>
+        <IntroStep onNext={() => go(firstSetupStep(identity), 'forward')} />
+      </SetupFrame>
     )
   }
 
   const onNext = () => {
     const next = nextSetupStep(screen)
     if (next === 'project' || next === undefined) finish()
-    else setScreen(next)
+    else go(next, 'forward')
   }
   // No earlier step means the first step this host was shown, so Back from there
   // is Back to the intro.
-  const onBack = () => setScreen(prevSetupStep(screen, identity) ?? 'intro')
+  const onBack = () => go(prevSetupStep(screen, identity) ?? 'intro', 'back')
 
   return (
-    <Frame>
-      <WizardRail steps={wizardSteps(screen, identity)} />
-      <div className="mt-6">
-        {screen === 'identity' && <IdentityStep onBack={onBack} onNext={onNext} />}
-        {screen === 'runtimes' && (
-          <RuntimesStep runtimes={runtimes} onBack={onBack} onNext={onNext} />
-        )}
-        {screen === 'afk' && <AfkStep onBack={onBack} onNext={onNext} />}
-      </div>
-    </Frame>
-  )
-}
-
-/**
- * The column every wizard screen sits in — the same one {@link OpenProject}
- * uses, so the last step of the wizard and the screen it hands over to do not
- * jump.
- */
-function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex h-full items-center justify-center px-6 py-10">
-      <div className="w-full max-w-[560px]">
-        {/* inverse treatment (logo spec): accent tile, ink mark */}
-        <div className="mb-6 flex size-9 items-center justify-center rounded-md bg-accent">
-          <LogoMark size={22} variant="ink" />
-        </div>
-        {children}
-      </div>
-    </div>
+    <SetupFrame
+      rail={<WizardRail steps={wizardSteps(screen, identity)} />}
+      stepKey={screen}
+      direction={direction}
+    >
+      {screen === 'identity' && <IdentityStep onBack={onBack} onNext={onNext} />}
+      {screen === 'runtimes' && (
+        <RuntimesStep runtimes={runtimes} onBack={onBack} onNext={onNext} />
+      )}
+      {screen === 'afk' && <AfkStep onBack={onBack} onNext={onNext} />}
+    </SetupFrame>
   )
 }

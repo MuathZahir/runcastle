@@ -23,9 +23,11 @@ describe('draft creation surfaces', () => {
       createElement(DraftBody, { full: draft('## Scope\n\n**Builds** only.') }),
     )
 
-    expect(html).toContain('PARKED')
-    expect(html).toContain('Slack alerts')
+    // The title and "parked" are the page header's now (said once); the body
+    // is the one-liner and the notes.
+    expect(html).not.toContain('PARKED')
     expect(html).toContain('Tell the team when a burn fails.')
+    expect(html).toContain('>Notes</h2>')
     expect(html).toContain('>Scope</h2>')
     expect(html).toContain('>Builds</strong> only.')
     expect(html).not.toContain('Advanced')
@@ -62,10 +64,11 @@ describe('draft creation surfaces', () => {
     )
 
     expect(html).toContain('from …')
-    expect(html).toContain('border-warn text-warn')
+    // The picker and the caption beneath the dead Start both say it in warning.
+    expect(html).toContain('border-transparent text-warning')
     expect(html).toContain('title="pick a branch first"')
-    expect(html).toContain('>pick a branch first<')
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Start<\/button>/)
+    expect(html).toMatch(/text-warning"><span>pick a branch first<\/span>/)
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-variant="primary"[^>]*>.*Start<\/button>/)
   })
 
   it('renders one dim note and action hints without legacy next-step classes', () => {

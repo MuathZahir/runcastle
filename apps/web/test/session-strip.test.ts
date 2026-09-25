@@ -13,13 +13,13 @@ describe('SessionStrip', () => {
   it('names a live ideation session and hides its short id in visible text', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session() }))
     expect(html).toContain('Chat session')
-    expect(html).toContain('live')
+    expect(html).toContain('Live')
     expect(html).toContain('title="sess_abcdefghijk"')
     expect(html).not.toContain('abcdefgh</span>')
   })
 
   it('uses starting language for a launching session', () => {
-    expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'launching' }) }))).toContain('starting…')
+    expect(renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'launching' }) }))).toContain('Starting…')
   })
 
   it.each([
@@ -31,19 +31,19 @@ describe('SessionStrip', () => {
 
   it('renders an ended session as one quiet line with no resume action', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000, endedAt: Date.now() - 7_200_000 }) }))
-    expect(html).toContain('ended 2h ago')
+    expect(html).toContain('Ended 2h ago')
     expect(html).not.toContain('Resume')
   })
 
   it('ages the ended line from when the session stopped, not from when it started', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 7_200_000, endedAt: Date.now() - 1_000 }) }))
-    expect(html).toContain('ended just now')
+    expect(html).toContain('Ended just now')
     expect(html).not.toContain('2h')
   })
 
   it('says only "ended" for a session that stopped before endings were recorded', () => {
     const html = renderToStaticMarkup(createElement(SessionStrip, { session: session({ status: 'ended', createdAt: Date.now() - 1_020_000, endedAt: undefined }) }))
-    expect(html).toContain('ended')
+    expect(html).toContain('Ended')
     expect(html).not.toContain('ago')
     expect(html).not.toContain('17m')
   })

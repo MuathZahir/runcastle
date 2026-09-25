@@ -55,10 +55,12 @@ describe('live project chat', () => {
       </LiveChat>,
     )
 
-    expect(screen.getByRole('button', { name: '← Conversations' })).toBeTruthy()
-    expect(screen.getByText('Untitled')).toBeTruthy()
-    expect(screen.getByText('live')).toBeTruthy()
-    expect(screen.getByText('→ main')).toBeTruthy()
+    // the way back is the parent crumb; the chat is the current one, its
+    // server placeholder title read as a name
+    expect(screen.getByRole('button', { name: 'Project' })).toBeTruthy()
+    expect(screen.getByText('Untitled chat').closest('[aria-current="page"]')).toBeTruthy()
+    expect(screen.getByText('Live')).toBeTruthy()
+    expect(screen.getByText('main').parentElement?.textContent).toBe('lands on main')
     expect(screen.getByText('f5b41d9e')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'End session' })).toBeTruthy()
   })
@@ -101,7 +103,7 @@ describe('live project chat', () => {
     }
     render(<Harness />)
 
-    fireEvent.click(screen.getByRole('button', { name: '← Conversations' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Project' }))
     const open = screen.getByRole('button', { name: 'Open' })
     const terminal = screen.getByTestId('terminal')
     expect(terminal).toBeTruthy()
@@ -130,7 +132,7 @@ describe('live project chat', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Untitled' }))
+    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
     expect(viewed).toBe(openConversation)
   })
 

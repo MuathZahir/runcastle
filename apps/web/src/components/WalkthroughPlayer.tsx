@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { fmtClock } from '@runcastle/core'
-import { Button } from '../ui'
+import { Button, IconButton, Spinner } from '../ui'
+import { IconPencil, IconPlay, IconRefresh } from '../icons'
+import { IconPause } from './review/stage-icons'
 import { trpc } from '../trpc'
 import { uploadScreenshot } from '../lib/reviews'
 import { fmtBytes } from '../lib/format'
@@ -331,14 +333,15 @@ export function WalkthroughPlayer({
     // (decision 23e): annotating never pushes the frame off the top of the page,
     // and expanding grows the frame with the bar still under it. The unit takes
     // the height the stage gives it, which is the whole overlay while expanded.
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    // It fades in on mount, so a recording swapped for another cross-fades
+    // rather than cutting (the stage keys the player on the recording).
+    <div className="flex min-h-0 flex-1 flex-col gap-2 animate-fade-in">
       <div className={frameClassName}>
         <video
           ref={videoRef}
-          // Letterboxed inside the stage: black behind the frame reads as film
-          // rather than as a gap in the page. It takes the frame's height
-          // whether that height is a 16:9 box or the expanded overlay's fill.
-          className="min-h-0 w-full flex-1 object-contain"
+          // Letterboxed inside the stage's inset ground. It takes the frame's
+          // height whether that height is a 16:9 box or the expanded fill.
+          className="min-h-0 w-full flex-1 cursor-pointer object-contain"
           src={url}
           preload="metadata"
           aria-label={passKind === 'verification' ? 'verification walkthrough' : 'review walkthrough'}
@@ -363,20 +366,23 @@ export function WalkthroughPlayer({
         />
 
         {phase === 'loading' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg/55">
-            <span
-              className="h-6 w-6 animate-spin rounded-pill border-2 border-hairline border-t-accent"
-              aria-hidden="true"
-            />
-            <span className="text-sm text-text-2">{hint}</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface-inset/70 animate-fade-in">
+            <Spinner />
+            <span className="text-sm text-text-secondary">{hint}</span>
           </div>
         )}
 
         {phase === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg/85 px-4 text-center" role="alert">
-            <span className="text-base text-text">This recording can’t be played (file may be corrupt)</span>
-            <code className="max-w-full truncate font-mono text-xs text-text-3">{url}</code>
-            <Button onClick={retry}>Retry</Button>
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-surface-inset px-6 text-center animate-fade-in"
+            role="alert"
+          >
+            <span className="text-base font-medium text-text">This recording can’t be played</span>
+            <span className="text-sm text-text-tertiary">The file may be corrupt.</span>
+            <code className="max-w-full truncate font-mono text-xs text-text-tertiary">{url}</code>
+            <Button className="mt-2" icon={<IconRefresh />} onClick={retry}>
+              Retry
+            </Button>
           </div>
         )}
 
@@ -390,18 +396,19 @@ export function WalkthroughPlayer({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button
-          className="w-11 px-0 font-mono"
+      <div className="flex h-(--control-lg) items-center gap-3">
+        <IconButton
+          label={playing ? 'pause' : 'play'}
+          kbd="K"
+          icon={playing ? <IconPause /> : <IconPlay />}
           disabled={annotating || phase !== 'ready'}
-          aria-label={playing ? 'pause' : 'play'}
           onClick={togglePlay}
-        >
-          {playing ? '❚❚' : '▶'}
-        </Button>
+        />
+
+        <span className="shrink-0 font-mono text-xs text-text-secondary tabular-nums">{fmtClock(at)}</span>
 
         <div
-          className="relative flex-1"
+          className="relative flex h-full flex-1 items-center"
           onMouseMove={(e) => {
             const box = e.currentTarget.getBoundingClientRect()
             if (box.width <= 0 || span <= 0) return
@@ -424,7 +431,7 @@ export function WalkthroughPlayer({
           />
           {hover !== null && (
             <span
-              className="pointer-events-none absolute -top-6 -translate-x-1/2 rounded-sm border border-hairline bg-panel px-1.5 font-mono text-xs text-text-2"
+              className="pointer-events-none absolute -top-5 -translate-x-1/2 rounded-sm bg-surface-raised px-1.5 font-mono text-xs text-text-secondary tabular-nums shadow-popover"
               style={{ left: `${Math.min(100, Math.max(0, (hover / (span || 1)) * 100))}%` }}
             >
               {fmtClock(hover)}
@@ -435,9 +442,14 @@ export function WalkthroughPlayer({
               <button
                 key={marker.at}
                 type="button"
-                className="absolute -top-1.5 h-4 w-4 -translate-x-1/2 rounded-pill border-0 bg-danger text-xs leading-4 text-accent-ink"
+                className={
+                  marker.noteIds.length > 1
+                    ? 'absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-accent text-xs leading-none text-on-primary transition-transform duration-(--dur-1) ease-app hover:scale-110'
+                    : 'absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-accent ring-2 ring-surface transition-transform duration-(--dur-1) ease-app hover:scale-125'
+                }
                 style={{ left: `${Math.min(100, (marker.at / span) * 100)}%` }}
                 aria-label={`${marker.noteIds.length} note${marker.noteIds.length > 1 ? 's' : ''} at ${fmtClock(marker.at)}`}
+                title={`${marker.noteIds.length} note${marker.noteIds.length > 1 ? 's' : ''} at ${fmtClock(marker.at)}`}
                 onClick={() => {
                   jumpTo(marker.at)
                   onMarkerClick?.(marker.noteIds)
@@ -448,19 +460,24 @@ export function WalkthroughPlayer({
             ))}
         </div>
 
-        <span className="font-mono text-xs text-text-3">
-          {fmtClock(at)} / {fmtClock(span)}
-        </span>
+        <span className="shrink-0 font-mono text-xs text-text-tertiary tabular-nums">{fmtClock(span)}</span>
 
         <Button
-          className="px-2 font-mono"
+          size="sm"
+          variant="ghost"
+          className="font-mono tabular-nums"
           aria-label={`playback speed ${speed}×`}
+          title="Playback speed (< and >)"
           onClick={() => applySpeed(cycleSpeed(speed, 1))}
         >
           {speed}×
         </Button>
 
-        {!readonly && !annotating && <Button onClick={startAnnotating}>Annotate</Button>}
+        {!readonly && !annotating && (
+          <Button size="sm" icon={<IconPencil />} onClick={startAnnotating}>
+            Annotate
+          </Button>
+        )}
       </div>
     </div>
   )

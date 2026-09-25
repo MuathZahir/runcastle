@@ -1,12 +1,15 @@
+import type { RefObject } from 'react'
 import { trpc } from '../trpc'
 import { humanizeTimestamps } from '../lib/format'
-import { BARE_BUTTON, Dialog, DimLine } from '../ui'
+import { IconDoc, IconX } from '../icons'
+import { Dialog, DimLine, IconButton } from '../ui'
 import { Markdown } from './Markdown'
-import type { RefObject } from 'react'
 
 /**
- * Read-only doc peek overlay (UI-SPEC §2 Knowledge). Renders a doc as formatted
- * markdown; Esc closes. No editing — knowledge is agent-authored.
+ * Read-only doc peek (UI-SPEC §2 Knowledge): a clean reading surface. A quiet
+ * header — the doc's title and its path in mono — then the doc as prose at the
+ * reading measure, the only part that scrolls. Esc closes. No editing —
+ * knowledge is agent-authored.
  */
 export function DocPeek({
   featureId,
@@ -27,30 +30,35 @@ export function DocPeek({
     <Dialog
       open
       onClose={onClose}
-      label={title}
+      labelledBy="doc-peek-title"
       size="lg"
       returnFocusRef={returnFocusRef}
-      backdropClassName="animate-backdrop-in backdrop-blur-[2px]"
       // A doc is as long as it is: the panel takes the height it can and the
       // body below the head is the only part that scrolls.
-      className="flex max-h-[82vh] animate-overlay-in flex-col overflow-hidden"
+      className="flex max-h-[84vh] flex-col overflow-hidden"
     >
-      <div className="flex items-center justify-between border-b border-hairline px-3.5 py-2.5">
-        <span className="font-mono text-sm text-text-2">{relPath}</span>
-        <button
-          className={`${BARE_BUTTON} cursor-pointer text-sm text-text-3 hover:text-text`}
-          onClick={onClose}
-          aria-label="Close (Esc)"
-        >
-          ✕
-        </button>
+      <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
+        <IconDoc size={16} className="shrink-0 text-icon" />
+        <h2 id="doc-peek-title" className="m-0 min-w-0 truncate text-sm font-medium text-text">
+          {title || relPath.split(/[\\/]/).pop()}
+        </h2>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-tertiary" title={relPath}>
+          {relPath}
+        </span>
+        <IconButton label="Close" size="sm" icon={<IconX />} onClick={onClose} />
       </div>
-      <div className="overflow-auto px-4.5 py-3.5">
-        {query.isLoading && <DimLine>loading {title}…</DimLine>}
-        {query.error && <DimLine>could not read {relPath}: {query.error.message}</DimLine>}
-        {/* Agents stamp docs the way a program does ("Created:
-            2026-07-14T14:58:23.231Z"); nobody reads milliseconds (F10.9). */}
-        {query.data && <Markdown source={humanizeTimestamps(query.data.content)} />}
+      <div className="min-h-0 overflow-y-auto px-10 pt-8 pb-12">
+        <div className="mx-auto max-w-[680px]">
+          {query.isLoading && <DimLine>Loading {title}…</DimLine>}
+          {query.error && (
+            <DimLine>
+              Could not read {relPath}: {query.error.message}
+            </DimLine>
+          )}
+          {/* Agents stamp docs the way a program does ("Created:
+              2026-07-14T14:58:23.231Z"); nobody reads milliseconds (F10.9). */}
+          {query.data && <Markdown source={humanizeTimestamps(query.data.content)} size="base" />}
+        </div>
       </div>
     </Dialog>
   )

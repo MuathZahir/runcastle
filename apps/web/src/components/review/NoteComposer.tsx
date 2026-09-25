@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react'
 import type { TestNote } from '@runcastle/core'
-import { Button, Dialog } from '../../ui'
+import { Button, Dialog, DialogFooter, DialogHeader, IconButton, Kbd, TextArea } from '../../ui'
+import { IconPlus, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import { imageOnClipboard, toPngBlob, uploadScreenshot } from '../../lib/reviews'
 import { saveAnnotatedNote } from '../../lib/walkthrough'
 import { useToast } from '../../lib/toast'
+import { IconImage } from './stage-icons'
 
 /**
  * Writing a note, and changing one (decisions 7a, 24d, 25d–g).
@@ -76,15 +78,15 @@ function useStagedImage(): {
 /** The preview of a staged picture, with the one control it needs. */
 function StagedPreview({ preview, onDrop }: { preview: string; onDrop: () => void }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="relative w-fit animate-rise-in">
       <img
         src={preview}
         alt="the picture this note will carry"
-        className="h-[54px] w-24 rounded-sm border border-hairline bg-black object-cover"
+        className="block h-[54px] w-24 rounded-md bg-surface-inset object-cover"
       />
-      <Button className="px-2" onClick={onDrop}>
-        Remove picture
-      </Button>
+      <span className="absolute -top-2 -right-2 rounded-md bg-surface-raised shadow-popover">
+        <IconButton size="sm" label="Remove picture" icon={<IconX />} onClick={onDrop} />
+      </span>
     </div>
   )
 }
@@ -107,25 +109,31 @@ function AttachButton({ onPick }: { onPick: (image: Blob) => void }) {
           e.target.value = ''
         }}
       />
-      <Button className="px-2" onClick={() => input.current?.click()}>
-        Attach image
-      </Button>
+      <IconButton size="sm" label="Attach image" icon={<IconImage />} onClick={() => input.current?.click()} />
     </>
   )
 }
 
-const NOTE_TEXTAREA =
-  'min-h-16 w-full resize-y rounded-md border border-hairline bg-panel-inset px-3 py-2 ' +
-  'font-mono text-sm text-text placeholder:text-text-4 focus:border-accent-line focus:outline-none'
-
 /**
- * The capture box: what did you just see, and a picture of it.
+ * The capture box: what did you just see, and a picture of it — a calm field,
+ * an attach control, and one "Add note".
  *
  * Deliberately not gated on an active drive — observations do not stop when the
  * dev server does, and the "one more thing" typed right after Stop would be lost
  * if the box only existed while a drive was live.
  */
-export function NoteComposer({ featureId }: { featureId: string }) {
+export function NoteComposer({
+  featureId,
+  primary = false,
+}: {
+  featureId: string
+  /**
+   * Whether "Add note" is the view's primary — only where nothing else on
+   * screen holds it (the expanded stage's aside); on the page the next-step bar
+   * does, and this steps down to secondary.
+   */
+  primary?: boolean
+}) {
   const utils = trpc.useUtils()
   const toast = useToast()
   const [text, setText] = useState('')
@@ -176,10 +184,11 @@ export function NoteComposer({ featureId }: { featureId: string }) {
 
   return (
     <div className="flex flex-col gap-2" onPaste={onPaste}>
-      <textarea
+      <TextArea
+        rows={2}
         aria-label="what did you just see?"
-        className={NOTE_TEXTAREA}
-        placeholder="What did you just see? Paste a screenshot straight in. (Enter saves, Shift+Enter for a new line)"
+        className="min-h-16"
+        placeholder="What did you just see? Paste a screenshot straight in."
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -190,10 +199,21 @@ export function NoteComposer({ featureId }: { featureId: string }) {
       />
       {staged && <StagedPreview preview={staged.preview} onDrop={drop} />}
       <div className="flex items-center gap-2">
-        <Button variant="solid" disabled={!text.trim() || saving} onClick={() => void submit()}>
-          {saving ? 'Adding…' : 'Add'}
-        </Button>
         <AttachButton onPick={take} />
+        <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-xs text-text-tertiary">
+          <Kbd>Shift</Kbd>
+          <Kbd>Enter</Kbd>
+          <span className="truncate">for a new line</span>
+        </span>
+        <Button
+          size="sm"
+          variant={primary ? 'primary' : 'secondary'}
+          icon={<IconPlus />}
+          disabled={!text.trim() || saving}
+          onClick={() => void submit()}
+        >
+          {saving ? 'Adding…' : 'Add note'}
+        </Button>
       </div>
 
       <ReplaceImageDialog
@@ -266,9 +286,10 @@ export function NoteEditor({ note, onDone }: { note: TestNote; onDone: () => voi
         take(image)
       }}
     >
-      <textarea
+      <TextArea
+        rows={2}
         aria-label="edit this note"
-        className={NOTE_TEXTAREA}
+        className="min-h-16"
         value={text}
         autoFocus
         onChange={(e) => setText(e.target.value)}
@@ -284,19 +305,15 @@ export function NoteEditor({ note, onDone }: { note: TestNote; onDone: () => voi
         }}
       />
       <div className="flex items-center gap-2">
-        <Button
-          variant="solid"
-          className="px-2"
-          disabled={!text.trim() || edit.isPending}
-          onClick={save}
-        >
-          Save
-        </Button>
-        <Button className="px-2" onClick={onDone}>
+        <AttachButton onPick={take} />
+        {attaching && <span className="text-xs text-text-tertiary">Attaching…</span>}
+        <span className="flex-1" />
+        <Button size="sm" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
-        <AttachButton onPick={take} />
-        {attaching && <span className="font-mono text-xs text-text-3">attaching…</span>}
+        <Button size="sm" disabled={!text.trim() || edit.isPending} onClick={save}>
+          Save
+        </Button>
       </div>
 
       <ReplaceImageDialog
@@ -324,18 +341,18 @@ function ReplaceImageDialog({
 }) {
   return (
     <Dialog open={open} onClose={onKeep} size="sm" label="Replace this note’s picture?">
-      <div className="flex flex-col gap-4 p-4">
-        <p className="m-0 text-base text-text">Replace this note’s picture?</p>
-        <p className="m-0 text-sm text-text-3">
-          A note carries one picture. Keep both by writing a second note.
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button onClick={onKeep}>Keep the old one</Button>
-          <Button variant="danger" onClick={onReplace}>
-            Replace
-          </Button>
-        </div>
-      </div>
+      <DialogHeader
+        title="Replace this note’s picture?"
+        description="A note carries one picture. Keep both by writing a second note."
+      />
+      <DialogFooter>
+        <Button variant="ghost" onClick={onKeep}>
+          Keep the old one
+        </Button>
+        <Button variant="danger" onClick={onReplace}>
+          Replace
+        </Button>
+      </DialogFooter>
     </Dialog>
   )
 }
@@ -361,19 +378,19 @@ export function DeleteNoteDialog({ note, onClose }: { note: TestNote | null; onC
 
   return (
     <Dialog open={!!note} onClose={onClose} size="sm" label="Delete this note and its picture?">
-      <div className="flex flex-col gap-4 p-4">
-        <p className="m-0 text-base text-text">Delete this note and its picture?</p>
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Keep it</Button>
-          <Button
-            variant="danger"
-            disabled={remove.isPending}
-            onClick={() => note && remove.mutate({ noteId: note.id })}
-          >
-            Delete
-          </Button>
-        </div>
-      </div>
+      <DialogHeader title="Delete this note and its picture?" description="There is no undo." />
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>
+          Keep it
+        </Button>
+        <Button
+          variant="danger"
+          disabled={remove.isPending}
+          onClick={() => note && remove.mutate({ noteId: note.id })}
+        >
+          Delete
+        </Button>
+      </DialogFooter>
     </Dialog>
   )
 }

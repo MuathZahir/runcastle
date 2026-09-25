@@ -6,10 +6,12 @@ import { ToastProvider } from '../src/lib/toast'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
 
 /**
- * The portfolio home (decision 7): the grid, and the one way off it into a new
- * project. The per-project `feature.list` queries and the cards' mutations are
+ * The portfolio home (decision 7): the project list, and the one way off it
+ * into a new project. The per-project `feature.list` queries and the cards' mutations are
  * stubbed — what is asserted here is the shape of the surface, not the wire.
  */
+
+vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
 
 vi.mock('../src/trpc', () => ({
   trpc: {
@@ -49,14 +51,15 @@ describe('PortfolioHome', () => {
   })
   afterEach(cleanup)
 
-  it('counts the projects in its heading and gives each one a card', () => {
+  it('titles the page once, counts the projects beneath, and gives each one a row', () => {
     render(
       <ToastProvider>
         <PortfolioHome nav={nav} />
       </ToastProvider>,
     )
 
-    expect(screen.getByRole('heading').textContent).toBe('Projects (2)')
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Projects')
+    expect(document.body.textContent).toContain('2projects open')
     expect(screen.getByTitle('Open runcastle')).toBeTruthy()
     expect(screen.getByTitle('Open sandcastle')).toBeTruthy()
 
@@ -64,35 +67,30 @@ describe('PortfolioHome', () => {
     expect(nav.enterProject).toHaveBeenCalledWith('p2')
   })
 
-  it('offers exactly one way to open a project — the card at the end of the grid', () => {
+  it('makes Open a project the page’s one primary', () => {
     render(
       <ToastProvider>
         <PortfolioHome nav={nav} />
       </ToastProvider>,
     )
 
-    const opens = screen
-      .getAllByRole('button')
-      .filter((el) => el.textContent?.startsWith('Open a project'))
-    expect(opens).toHaveLength(1)
+    const primaries = document.querySelectorAll('[data-variant="primary"]')
+    expect(primaries).toHaveLength(1)
+    expect(primaries[0].textContent).toBe('Open a project')
 
-    fireEvent.click(opens[0])
+    fireEvent.click(primaries[0])
     expect(nav.showOpen).toHaveBeenCalled()
   })
 
-  // Same missing reset as the card face: without a background of its own the
-  // dashed card is a grey panel with a white-on-white title.
-  it('leaves the dashed card transparent rather than the user agent’s grey', () => {
+  it('sits in the frame beside a minimal sidebar', () => {
     render(
       <ToastProvider>
         <PortfolioHome nav={nav} />
       </ToastProvider>,
     )
 
-    const open = screen
-      .getAllByRole('button')
-      .find((el) => el.textContent?.startsWith('Open a project'))
-    expect(open?.className).toContain('bg-transparent')
-    expect(open?.className).toContain('cursor-pointer')
+    const sidebar = screen.getByRole('navigation', { name: 'Projects' })
+    expect(sidebar.textContent).toContain('All projects')
+    expect(screen.getByRole('main')).toBeTruthy()
   })
 })

@@ -203,7 +203,7 @@ describe('Dialog', () => {
     }
 
     render(<DeleteHarness />)
-    const actions = screen.getByRole('button', { name: 'feature actions' })
+    const actions = screen.getByRole('button', { name: 'Feature actions' })
     openMenu(actions)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
 

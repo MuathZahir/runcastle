@@ -37,13 +37,14 @@ describe('MARKDOWN_CLASSES', () => {
     expect(MARKDOWN_CLASSES.root).toContain('[&>*:last-child]:mb-0')
   })
 
-  it('gives a task list no marker where an ordinary list keeps one', () => {
+  it('gives a task list no marker where an ordinary list keeps a visible one', () => {
     expect(MARKDOWN_CLASSES.taskList).toContain('list-none')
-    expect(MARKDOWN_CLASSES.list).not.toContain('list-none')
+    expect(MARKDOWN_CLASSES.list).toContain('list-disc')
+    expect(MARKDOWN_CLASSES.orderedList).toContain('list-decimal')
   })
 
   it('resets the inline code chrome inside a fenced block', () => {
-    expect(MARKDOWN_CLASSES.code).toContain('bg-panel-inset')
+    expect(MARKDOWN_CLASSES.code).toContain('bg-surface-inset')
     expect(MARKDOWN_CLASSES.pre).toContain('[&>code]:bg-transparent')
     expect(MARKDOWN_CLASSES.pre).toContain('[&>code]:border-0')
   })

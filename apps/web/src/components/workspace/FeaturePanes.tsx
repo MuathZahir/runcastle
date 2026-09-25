@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Button, DimLine } from '../../ui'
+import { Button, Page, PageHeader, PageTopbar } from '../../ui'
+import { IconAlert, IconCopy } from '../../icons'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
 import { copyText } from './copy-text'
@@ -21,22 +22,31 @@ export function BrokenFeaturePane({
 }) {
   const toast = useToast()
   return (
-    <>
-      <div className="ws-banner is-broken" role="alert">
-        <span className="ws-banner-tag">{tag}</span>
-        <span>{children}</span>
+    <div className="flex flex-col gap-3 rounded-md bg-danger-subtle px-4 py-3" role="alert">
+      <div className="flex items-center gap-2 text-sm font-medium text-danger">
+        <IconAlert size={16} className="shrink-0" />
+        {tag}
       </div>
-      <div className="ws-body">
-        <div className="ws-body-inner">
-          <div className="broken-detail">
-            <DimLine>{details}</DimLine>
-            <Button variant="ghost" size="xs" onClick={() => copyText(details, toast)}>
-              Copy details
-            </Button>
-          </div>
-        </div>
+      <p className="m-0 text-sm text-text-secondary">{children}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs text-text-tertiary" title={details}>
+          {details}
+        </code>
+        <Button variant="ghost" size="sm" icon={<IconCopy />} onClick={() => copyText(details, toast)}>
+          Copy details
+        </Button>
       </div>
-    </>
+    </div>
+  )
+}
+
+/** The frame both broken panes sit in: the panel's topbar, then a page. */
+function BrokenFrame({ crumb, children }: { crumb: string; children: ReactNode }) {
+  return (
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+      <PageTopbar crumbs={[{ label: crumb, icon: <IconAlert /> }]} />
+      <Page>{children}</Page>
+    </section>
   )
 }
 
@@ -45,19 +55,16 @@ export function BrokenFeaturePane({
  * error boundary ProjectShell mounts around it (findings F19). Containment is
  * the point: the sidebar, the other features and every other project keep
  * working, and this pane carries the feature id + the error so the crash is
- * reportable rather than mysterious. No title row: a crash this deep means the
+ * reportable rather than mysterious. No title: a crash this deep means the
  * feature's own data is not trustworthy enough to render.
  */
 export function FeatureCrash({ featureId, error }: { featureId: string; error: Error }) {
   return (
-    <section className="workspace">
-      <BrokenFeaturePane
-        tag="BROKEN"
-        details={`feature ${featureId} — ${error.name}: ${error.message}`}
-      >
+    <BrokenFrame crumb="Feature">
+      <BrokenFeaturePane tag="Broken" details={`feature ${featureId} — ${error.name}: ${error.message}`}>
         This feature couldn't be rendered. Everything else still works.
       </BrokenFeaturePane>
-    </section>
+    </BrokenFrame>
   )
 }
 
@@ -70,20 +77,17 @@ export function FeatureCrash({ featureId, error }: { featureId: string; error: E
  */
 export function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature'] }) {
   return (
-    <section className="workspace">
-      <div className="ws-head">
-        <div className="ws-title-row">
-          <span className="font-mono text-sm font-semibold lowercase">unknown</span>
-          <span className="ws-title">{feature.title}</span>
-        </div>
+    <BrokenFrame crumb={feature.title}>
+      <PageHeader title={feature.title} meta={[{ text: 'Unknown phase' }]} />
+      <div className="mt-8">
+        <BrokenFeaturePane
+          tag="Unrecognized phase"
+          details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
+        >
+          This feature's phase is <strong className="font-mono font-medium text-text">{feature.phase}</strong>,
+          which this version of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
+        </BrokenFeaturePane>
       </div>
-      <BrokenFeaturePane
-        tag="UNRECOGNIZED"
-        details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
-      >
-        This feature's phase is <strong className="font-mono">{feature.phase}</strong>, which this version
-        of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
-      </BrokenFeaturePane>
-    </section>
+    </BrokenFrame>
   )
 }

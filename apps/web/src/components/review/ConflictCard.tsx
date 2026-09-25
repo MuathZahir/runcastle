@@ -1,4 +1,6 @@
-import { Button, SectionTitle } from '../../ui'
+import { Button } from '../../ui'
+import { IconGitMerge } from '../../icons'
+import { Notice } from './Notice'
 import { ONE_TERMINAL_WARNING, type MergeConflictState } from '../../lib/feature-ui'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
 import { useResolveConflict } from '../../lib/use-resolve-conflict'
@@ -45,49 +47,48 @@ export function ConflictCard({
   if (readonly) return null
 
   return (
-    <div className="rounded-lg border border-danger/45 bg-panel p-4" role="alert">
-      <div className="flex items-baseline justify-between gap-3">
-        <SectionTitle>Merge conflict</SectionTitle>
-        {/* When, because a red panel with no date reads as "right now" — the
-            audit found one that was fifteen days stale (findings F8). */}
-        <span className="font-mono text-xs text-text-3" title={fmtDateTime(conflict.at)}>
-          recorded {relTimeAgo(conflict.at)}
-        </span>
-      </div>
-      <p className="mt-2 mb-0 text-sm leading-relaxed text-text-2">
-        Merging <code className="font-mono">{conflict.base}</code> into{' '}
-        <code className="font-mono">{branch}</code> hit conflicts. An agent can merge the base into
-        this branch in the talk worktree, resolve with full spec context, and commit — then retry
-        Merge &amp; ship.
+    <Notice
+      tone="danger"
+      title="Merge conflict"
+      // When, because a red notice with no date reads as "right now" — the
+      // audit found one that was fifteen days stale (findings F8).
+      meta={<span title={fmtDateTime(conflict.at)}>recorded {relTimeAgo(conflict.at)}</span>}
+      // Secondary, never primary: the next-step bar above already carries this
+      // same act as the page's one primary.
+      actions={
+        <Button size="sm" icon={<IconGitMerge />} disabled={busy} onClick={onResolve}>
+          {liveSessionId ? 'End session & resolve' : 'Resolve with agent'}
+        </Button>
+      }
+    >
+      <p className="m-0">
+        Merging <code className="font-mono text-xs">{conflict.base}</code> into{' '}
+        <code className="font-mono text-xs">{branch}</code> hit conflicts. An agent can merge the
+        base into this branch in the talk worktree, resolve with full spec context, and commit —
+        then retry Merge &amp; ship.
       </p>
       {conflict.files.length > 0 && (
-        <ul className="mt-3 flex list-none flex-col gap-1 p-0">
+        <ul className="m-0 mt-2 flex list-none flex-col gap-0.5 p-0">
           {conflict.files.map((f) => (
-            <li
-              key={f}
-              className="rounded-sm bg-danger/9 px-2 py-0.5 font-mono text-xs text-danger"
-            >
+            <li key={f} className="truncate font-mono text-xs text-danger" title={f}>
               {f}
             </li>
           ))}
         </ul>
       )}
-      {/* The resolve came and went and the card is still here (decision 30d).
-          Detection is best-effort by design — teardown outranks it — so the card
-          says what it can see rather than standing unchanged, which reads as the
-          button having done nothing. Retry stays on the next-step bar. */}
+      {/* The resolve came and went and the notice is still here (decision
+          30d). Detection is best-effort by design — teardown outranks it — so
+          it says what it can see rather than standing unchanged, which reads as
+          the button having done nothing. Retry stays on the next-step bar. */}
       {resolveEnded && (
-        <p className="mt-3 mb-0 rounded-sm border border-warn/45 bg-warn/8 px-3 py-2 text-sm leading-relaxed text-warn">
+        <p className="m-0 mt-2 text-warning">
           The resolve session ended but the merge hasn’t landed — resolve by hand or retry.
         </p>
       )}
-      <Button variant="solid" className="mt-4" disabled={busy} onClick={onResolve}>
-        {liveSessionId ? 'End session & resolve' : 'Resolve with agent'}
-      </Button>
       {/* What the compound costs, said before the click — the honesty that
           replaces the button hiding itself. */}
-      {liveSessionId && <div className="mt-2 text-xs leading-normal text-text-3">{ONE_TERMINAL_WARNING}</div>}
-    </div>
+      {liveSessionId && <p className="m-0 mt-2 text-xs text-text-tertiary">{ONE_TERMINAL_WARNING}</p>}
+    </Notice>
   )
 }
 

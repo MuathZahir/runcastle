@@ -1,88 +1,93 @@
 import { Fragment } from 'react'
 import type { Phase } from '@runcastle/core'
 import type { PipelineStep } from '../../lib/feature-ui'
-import { lapExplainer } from '../../lib/vocabulary'
+import { PHASE_NAME, PhaseIcon } from '../../icons'
+import { cx } from '../../ui'
 
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
+/**
+ * The glyph a step wears. One `PhaseIcon` per step whose `phase` prop changes
+ * with the step's state, so an advance is SEEN: the mounted glyph sweeps its
+ * fill from the dashed ring to its own fraction, and from there to the check.
+ *
+ * - done — the shipped check, in its own (success) hue.
+ * - current — the step's own glyph in `text` (shipped keeps its check hue:
+ *   a finished pipeline is all checks).
+ * - upcoming — the dashed ring, in `text-tertiary`.
+ */
+function StepGlyph({ step }: { step: PipelineStep }) {
+  if (step.state === 'done') return <PhaseIcon phase="shipped" size={14} label="" />
+  if (step.state === 'current')
+    return (
+      <PhaseIcon
+        phase={step.phase}
+        size={14}
+        label=""
+        className={step.phase === 'shipped' ? undefined : 'text-text'}
+      />
+    )
+  return <PhaseIcon phase="draft" size={14} label="" className="text-text-tertiary" />
 }
 
-/** The step's own colour and weight — what it says about where the work is. */
-const STEP_STATE: Record<PipelineStep['state'], string> = {
-  done: 'text-text-2',
-  current: 'font-semibold text-text',
-  upcoming: 'text-text-4',
+const STEP_TEXT: Record<PipelineStep['state'], string> = {
+  done: 'text-text-secondary',
+  current: 'font-medium text-text',
+  upcoming: 'text-text-tertiary',
 }
 
-/** The dot, which is the part that carries "current" loudest. */
-const DOT_STATE: Record<PipelineStep['state'], string> = {
-  done: 'opacity-100',
-  current:
-    'bg-accent opacity-100 shadow-[0_0_0_3px_rgba(124,108,246,0.2)] animate-[dotGlow_2.4s_ease-in-out_infinite]',
-  upcoming: 'opacity-50',
-}
-
+/**
+ * The feature's pipeline as a compact inline stepper under the title
+ * (DESIGN.md §PhaseStepper): 24px steps, 12px hairline separators. A past step
+ * is a button that pins it read-only; the step being viewed in that pin takes
+ * `surface-selected` — the stepper itself says what you are looking at, so no
+ * badge or band repeats it.
+ *
+ * The row is pulled left by one step's padding so the first glyph starts on
+ * the title's left edge; it wraps rather than overflowing a narrow column.
+ */
 export function PipelineStepper({
   steps,
-  lap,
   onView,
+  readonly = false,
 }: {
   steps: PipelineStep[]
-  lap: number
   onView: (phase: Phase) => void
+  /** An earlier step is pinned: its `isViewed` step takes the selected fill. */
+  readonly?: boolean
 }) {
   return (
-    // Six pills and their connectors do not fit a narrow workspace column, and
-    // a pill cannot shrink below the phase it names — so the row wraps onto a
-    // second line rather than running off the right edge of the header.
-    //
-    // The row is pulled left by one pill's worth of padding so the first step
-    // begins on the header title's left edge rather than a nudge inside it.
-    // The padding stays on the pill — it is what the hover fill needs — and the
-    // pull is on the row so every wrapped line starts on that same edge.
-    <div className="mt-4 -ml-2.5 flex flex-wrap items-center gap-y-1.5">
-      {steps.map((s, i) => (
-        <Fragment key={s.phase}>
-          <button
-            className={cx(
-              'inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-pill border border-transparent px-2.5 text-sm lowercase',
-              'transition-[background-color,color,border-color] duration-(--dur-1)',
-              STEP_STATE[s.state],
-              s.isViewed && 'border-hairline bg-panel',
-              s.isViewed && s.state === 'current' && 'border-accent-line',
-              s.clickable
-                ? 'cursor-pointer hover:bg-panel hover:text-text active:scale-[0.97]'
-                : 'cursor-default',
-            )}
-            title={s.tip}
-            disabled={!s.clickable}
-            onClick={() => s.clickable && onView(s.phase)}
-          >
-            <span
+    <nav aria-label="Pipeline" className="-ml-2 flex flex-wrap items-center gap-x-0.5 gap-y-1">
+      {steps.map((s, i) => {
+        const pinned = readonly && s.isViewed
+        return (
+          <Fragment key={s.phase}>
+            <button
+              type="button"
               className={cx(
-                'size-2 shrink-0 rounded-pill bg-current transition-[opacity,box-shadow] duration-(--dur-2)',
-                DOT_STATE[s.state],
+                'inline-flex h-(--control-sm) shrink-0 items-center gap-1.5 rounded-md px-2 text-xs',
+                'transition-colors duration-(--dur-1) ease-app',
+                STEP_TEXT[s.state],
+                pinned && 'bg-surface-selected text-text',
+                s.clickable && !pinned
+                  ? 'cursor-pointer hover:bg-surface-hover hover:text-text'
+                  : s.clickable
+                    ? 'cursor-pointer'
+                    : 'cursor-default',
               )}
-            />
-            <span>{s.label}</span>
-          </button>
-          {i < steps.length - 1 && (
-            <span
-              className={`h-px w-4 shrink-0 transition-colors duration-(--dur-2) ${s.state === 'done' ? 'bg-text-4' : 'bg-hairline'}`}
-            />
-          )}
-        </Fragment>
-      ))}
-      {/* A feature merged on lap 1 looks exactly like the old linear flow
-          (ADR-0010 §4) — the chip only appears once Iterate has looped. */}
-      {lap > 1 && (
-        <span
-          className="ml-3 shrink-0 rounded-sm border border-hairline px-1.5 py-px font-mono text-[10px] tracking-wider text-text-3"
-          title={lapExplainer(lap)}
-        >
-          Lap {lap}
-        </span>
-      )}
-    </div>
+              title={s.tip}
+              aria-current={s.state === 'current' ? 'step' : undefined}
+              aria-pressed={s.clickable ? pinned : undefined}
+              disabled={!s.clickable}
+              onClick={() => s.clickable && onView(s.phase)}
+            >
+              <StepGlyph step={s} />
+              <span>{PHASE_NAME[s.phase]}</span>
+            </button>
+            {i < steps.length - 1 && (
+              <span aria-hidden="true" className="mx-0.5 h-px w-3 shrink-0 bg-border-strong" />
+            )}
+          </Fragment>
+        )
+      })}
+    </nav>
   )
 }

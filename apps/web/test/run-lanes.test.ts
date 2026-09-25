@@ -121,7 +121,7 @@ describe('Lane', () => {
       onRetryFresh: () => {},
       onWaive: () => {},
     })
-    expect(html).toContain('stopped')
+    expect(html).toContain('Stopped')
     expect(html).not.toContain('text-danger')
     expect(html).toContain('Retry')
     expect(html).toContain('Retry fresh')
@@ -151,7 +151,7 @@ describe('Lane', () => {
       hadOutput: false,
       expanded: true,
     })
-    expect(html).toContain('launch failed')
+    expect(html).toContain('Launch failed')
     expect(html).toContain('The agent sandbox never started.')
     expect(html).toContain('A long Windows path may have prevented the sandbox mount.')
     expect(html).toContain('<details')
@@ -160,7 +160,7 @@ describe('Lane', () => {
 
   it('mutes a waived lane and stops offering it work', () => {
     const html = laneHtml({ ticket: row({ seq: 5, status: 'cancelled' }), onRetry: () => {} })
-    expect(html).toContain('set aside')
+    expect(html).toContain('Set aside')
     expect(html).not.toContain('Waive')
     expect(html).not.toContain('Retry fresh')
   })
@@ -171,7 +171,8 @@ describe('Lane', () => {
       elapsed: '2m 04s',
       onStop: () => {},
     })
-    expect(html).toContain('animate-')
+    expect(html).toContain('animate-breathe')
+    expect(html).toContain('Burning')
     expect(html).toContain('2m 04s')
     expect(html).toContain('Stop ticket')
   })
@@ -224,10 +225,10 @@ describe('Lane', () => {
 
   it('badges the review lane, the verification pass and the runtime the lane burns on', () => {
     const review = laneHtml({ ticket: row({ seq: 2, kind: 'review' }) })
-    expect(review).toContain('review')
+    expect(review).toContain('Review')
 
     const verify = laneHtml({ ticket: row({ seq: 3, kind: 'review', passKind: 'verification' }) })
-    expect(verify).toContain('verification')
+    expect(verify).toContain('Verification')
 
     const codex = laneHtml({
       ticket: row({ seq: 1 }),

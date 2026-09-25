@@ -91,22 +91,30 @@ const TWO_LAPS = {
 }
 
 describe('the lap trail', () => {
-  it('renders one entry per lap, newest first, with no disclosure to open', () => {
+  it('heads the newest lap as a section and folds earlier laps into closed disclosures', () => {
     const html = render(TWO_LAPS)
     expect(html.indexOf('Lap 3')).toBeLessThan(html.indexOf('Lap 2'))
-    expect(html).toContain('2 laps · newest first')
-    expect(html).not.toContain('<details')
+    expect(html).toMatch(/<h2[^>]*>Lap 3<\/h2>/)
+    expect(html.match(/<details/g)).toHaveLength(1)
+    expect(html).not.toContain('open=""')
+  })
+
+  it('draws no bordered card around a lap', () => {
+    expect(render(TWO_LAPS)).not.toContain('rounded-lg border')
   })
 
   it('stamps each entry with its outcome chip and when the lap was reviewed', () => {
     const html = render(TWO_LAPS)
-    expect(html).toContain('Verified · drive')
+    expect(html).toContain('>Verified<')
+    expect(html).toContain('drive mode')
     expect(html).toContain('Unverified')
     expect(html).toContain('reviewed ')
   })
 
   it('names the mode a verified lap ran in, gates included', () => {
-    expect(render({ passes: [pass({ reviewMode: 'gates' })] })).toContain('Verified · gates')
+    const html = render({ passes: [pass({ reviewMode: 'gates' })] })
+    expect(html).toContain('>Verified<')
+    expect(html).toContain('gates mode')
   })
 
   /** Decision 5: the runcastle-filled template, never the agent's own prose. */
@@ -155,7 +163,8 @@ describe('the lap trail', () => {
       onViewRun: () => undefined,
     })
     expect(html).toContain('2 tickets burned')
-    expect(html).toContain('<button')
+    // Each burned ticket is a row that goes to the run view.
+    expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>).)*#1 · review the lap/)
   })
 
   /** The state the page is most often read in: a review reported a defect and
@@ -190,8 +199,8 @@ describe('the lap trail', () => {
       ],
       tickets: [ticket({ id: 'tkt_a' }), ticket({ id: 'tkt_b', seq: 7 })],
     })
-    expect(html).toContain('#4 · review · drive mode · verified')
-    expect(html).toContain('#7 · verification · gates mode · verified')
+    expect(html).toContain('#4 · Review — drive mode, verified')
+    expect(html).toContain('#7 · Verification — gates mode, verified')
     // Only the pass that left a recording offers one.
     expect(html.match(/>Recording</g)).toHaveLength(1)
   })
@@ -211,7 +220,8 @@ describe('the lap trail', () => {
       ],
       notes: [note(), note()],
     })
-    expect(html).toContain('3 defects found · 1 fixed · 1 carried · 2 test notes')
+    expect(html).toContain('3 defects found, 1 fixed, 1 carried')
+    expect(html).toContain('2 test notes')
     expect(html).not.toContain('observation')
   })
 
@@ -223,8 +233,9 @@ describe('the lap trail', () => {
       notes: [note({ lap: 3 })],
     })
     const lap3 = html.slice(html.indexOf('Lap 3'), html.indexOf('Lap 2'))
-    expect(lap3).toContain('0 defects found · 0 fixed · 0 carried · 1 test note')
-    expect(html.slice(html.indexOf('Lap 2'))).toContain('2 defects found · 1 fixed')
+    expect(lap3).not.toContain('defects found')
+    expect(lap3).toContain('1 test note')
+    expect(html.slice(html.indexOf('Lap 2'))).toContain('2 defects found, 1 fixed')
   })
 
   /** The current lap is an entry before it has been reviewed — a lap that has
@@ -232,11 +243,22 @@ describe('the lap trail', () => {
   it('opens on the current lap even before its own review has run', () => {
     const html = render({ passes: [pass({ lap: 1 })], currentLap: 2, tickets: [ticket()] })
     expect(html.indexOf('Lap 2')).toBeLessThan(html.indexOf('Lap 1'))
-    expect(html).toContain('2 laps')
+    expect(html).toContain('not reviewed yet')
   })
 
-  /** Nothing has ever been reviewed: no band at all rather than an empty box. */
-  it('renders nothing when this feature has run no review pass', () => {
-    expect(render({ passes: [] })).toBe('')
+  /** Nothing reviewed and nothing burned: no band at all rather than an empty box. */
+  it('renders nothing when this feature has run no review pass and burned nothing', () => {
+    expect(render({ passes: [], tickets: [] })).toBe('')
+  })
+
+  /** A shipped feature whose review never recorded a pass still tells its lap. */
+  it('still tells a lap that burned tickets but recorded no pass', () => {
+    const html = render({ passes: [], tickets: [ticket({ id: 'imp_1', seq: 1, kind: 'implementation', title: 'filter by mood' })] })
+    expect(html).toContain('Lap 1')
+    expect(html).toContain('#1 · filter by mood')
+  })
+
+  it('opens the lap with its account, when the review wrote one', () => {
+    expect(render({ account: 'Lap 1: the filter landed.' })).toContain('Lap 1: the filter landed.')
   })
 })

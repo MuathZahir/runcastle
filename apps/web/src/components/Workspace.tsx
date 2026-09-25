@@ -1,11 +1,27 @@
 import { useState } from 'react'
+import type { RefObject } from 'react'
 import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
-import { STOP_TIMEOUT } from '../lib/vocabulary'
-import { Button, DimLine } from '../ui'
+import { STOP_TIMEOUT, lapExplainer } from '../lib/vocabulary'
+import { relTimeAgo } from '../lib/format'
+import { pathFor } from '../lib/routes'
+import {
+  Button,
+  DimLine,
+  IconButton,
+  Page,
+  PageSection,
+  PageTopbar,
+  StatusDot,
+  StatusLabel,
+  Tabs,
+  cx,
+  type MetaItem,
+} from '../ui'
+import { IconCube, IconHome, IconMessage, IconPanelRight, IconX, PhaseIcon } from '../icons'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
 import { effectiveStepModel } from '../lib/settings'
@@ -15,7 +31,6 @@ import {
   burnInterruption,
   burnLap,
   burnSummary,
-  bodySessions,
   defaultBaseBranch,
   deferredScope,
   effectivePhase,
@@ -26,10 +41,10 @@ import {
   mergeSummary,
   nextStep,
   pendingTickets,
-  PHASE_LABELS,
   phaseFacts,
   phaseSummary,
   pipelineSteps,
+  shippedAt,
   specDocPath,
   stampedReview,
   testDriveTaken,
@@ -45,17 +60,21 @@ import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
 import { BurnFeatureDialog } from './BurnFeatureDialog'
+import { DeleteFeatureDialog } from './DeleteFeatureDialog'
+import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
-import { PinnedBody } from './bodies/PinnedBody'
+import { PinnedBody, PinnedTickets } from './bodies/PinnedBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
+import { Inspector } from './inspector/Inspector'
 import { ChatDock, ChatPanel } from './workspace/ChatPanel'
-import { FeatureCrash, UnrecognizedPhase } from './workspace/FeaturePanes'
+import { copyText } from './workspace/copy-text'
+import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { NextStepBar } from './workspace/NextStepBar'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
@@ -63,12 +82,43 @@ import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
 
+/** The views a feature page switches between with its topbar Tabs. */
+type FeatureView = 'overview' | 'tickets'
+
+/** The page's root: a column filling the content panel. */
+const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
+
+const DETAILS_KEY = 'runcastle.feature.details'
+
+function readSession(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeSession(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    // storage may be unavailable (private mode) — the choice still holds in-session
+  }
+}
+
 /**
- * The pipeline-first workspace (app-redesign). A selected feature fills the
- * center: a header, a clickable horizontal pipeline stepper, a single guided
- * next-step bar (one solid action), and the body for the phase currently in
- * view. Clicking an earlier step pins a read-only view of that phase; the
- * next-step bar is replaced by a read-only banner until you snap back to live.
+ * The feature page — the page every feature lives on (DESIGN.md §Frame, §Page
+ * anatomy), rendered inside the shell's content panel:
+ *
+ *   PageTopbar — phase glyph + title · view Tabs · Chat · "…" · details toggle
+ *   the page — title once, a meta line, the pipeline stepper, the next-step
+ *              row (one primary), then the body for the phase in view
+ *   one Aside — the feature chat or the details, never both
+ *
+ * Clicking an earlier step pins a read-only view of that phase; the next-step
+ * row becomes one quiet line and a way back. A body that holds a terminal
+ * (live planning, review) fills the panel and scrolls itself; every other body
+ * is a document in the centred page column.
  */
 export function Workspace({
   featureId,
@@ -83,6 +133,9 @@ export function Workspace({
   onToggleChatPanel,
   driving,
   onDriveChange,
+  onDeleted,
+  detailsOpen: detailsOpenProp,
+  onToggleDetails,
 }: {
   featureId: string
   viewedPhase: Phase | null
@@ -96,6 +149,18 @@ export function Workspace({
   onToggleChatPanel: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
+  /**
+   * The feature was deleted from this page's own menu: leave it. Without one,
+   * the page's menu offers no Delete (the sidebar's still does).
+   */
+  onDeleted?: () => void
+  /**
+   * The details aside, when the shell holds it (so its palette command and
+   * the page's toggle are one switch). Omitted, the page holds it itself,
+   * remembered for the browser session.
+   */
+  detailsOpen?: boolean
+  onToggleDetails?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -408,12 +473,48 @@ export function Workspace({
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
+  // The page's views of this feature (Overview · Tickets), stamped with the
+  // feature it was chosen on — this component is not remounted between
+  // features, so an unstamped choice would follow the user to the next one.
+  const [viewPick, setViewPick] = useState<{ featureId: string; view: FeatureView } | null>(null)
+  // The details aside (knowledge + activity). It shares the page's one aside
+  // slot with the chat: opening one closes the other (DESIGN.md principle 1).
+  // Remembered for the browser session — the chat's own choice is the shell's.
+  const [ownDetailsOpen, setOwnDetailsOpen] = useState(() => readSession(DETAILS_KEY) === '1')
+  const detailsControlled = detailsOpenProp !== undefined
+  const detailsOpen = detailsControlled ? detailsOpenProp : ownDetailsOpen
+  const setDetailsOpen = (open: boolean) => {
+    if (detailsControlled) {
+      if (open !== detailsOpenProp) onToggleDetails?.()
+      return
+    }
+    setOwnDetailsOpen(open)
+    writeSession(DETAILS_KEY, open ? '1' : '0')
+  }
+  const [deleteOpener, setDeleteOpener] = useState<RefObject<HTMLButtonElement | null> | null>(null)
+  const archive = trpc.feature.archive.useMutation({
+    onSuccess: () => {
+      invalidate()
+      toast.push('feature archived', 'success')
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  const del = trpc.feature.delete.useMutation({
+    onSuccess: () => {
+      void utils.feature.list.invalidate()
+      setDeleteOpener(null)
+      onDeleted?.()
+    },
+    onError: (e) => toast.push(e.message),
+  })
+
   if (q.isLoading) {
     return (
-      <section className="workspace">
-        <div className="ws-body">
-          <DimLine>loading feature…</DimLine>
-        </div>
+      <section className={FRAME}>
+        <PageTopbar />
+        <Page>
+          <DimLine>Loading feature…</DimLine>
+        </Page>
       </section>
     )
   }
@@ -421,15 +522,16 @@ export function Workspace({
   // refetch fails AFTER data exists (server restart mid-session), TanStack Query
   // keeps the last-good `data` alongside `error` — keep rendering it so the
   // embedded terminal stays MOUNTED (its own reconnect strip + scrollback replay
-  // depend on surviving the outage) and show a slim banner instead. The 1.5s
-  // refetchInterval keeps polling through the error, so the banner self-clears
-  // the moment the server is back.
+  // depend on surviving the outage) and show a quiet offline word instead. The
+  // 1.5s refetchInterval keeps polling through the error, so it self-clears the
+  // moment the server is back.
   if (!q.data) {
     return (
-      <section className="workspace">
-        <div className="ws-body">
-          <DimLine>could not load feature{q.error ? `: ${q.error.message}` : ''}</DimLine>
-        </div>
+      <section className={FRAME}>
+        <PageTopbar />
+        <Page>
+          <DimLine>Could not load the feature{q.error ? `: ${q.error.message}` : ''}</DimLine>
+        </Page>
       </section>
     )
   }
@@ -448,7 +550,6 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  const twoPane = !isDraft && (effective === 'planning' || effective === 'review')
   // What each finished phase produced (decision 10) — one derivation, read by
   // the stepper's done-step tooltips and by the read-only banner, so the two can
   // never tell a different story about the same phase.
@@ -599,6 +700,8 @@ export function Workspace({
    */
   const toggleChat = () => {
     if (!chatPanelOpen && !liveChat) openChat()
+    // One aside at a time: the chat coming in sends the details away.
+    if (!chatPanelOpen) setDetailsOpen(false)
     onToggleChatPanel()
   }
 
@@ -741,64 +844,262 @@ export function Workspace({
     )
   }
 
+  // ---- the frame (DESIGN.md §Frame, §Page anatomy) ----
+
+  // The page's views of the feature. Tickets is a view only where it is not
+  // already the body (the ledger before the first burn IS the overview).
+  const ticketsIsBody = bodyPhase === 'building' && !run
+  const hasTicketsView = !isDraft && full.tickets.length > 0 && !ticketsIsBody
+  const view: FeatureView =
+    hasTicketsView && viewPick?.featureId === featureId ? viewPick.view : 'overview'
+  const setView = (v: FeatureView) => setViewPick({ featureId, view: v })
+  // Pinning a phase is a different overview; it always lands on it.
+  const viewPhase = (p: Phase | null) => {
+    setView('overview')
+    onViewPhase(p)
+  }
+  const liveTickets = full.tickets.filter((t) => t.lap === feature.lap && t.status !== 'cancelled')
+  const doneTickets = liveTickets.filter((t) => t.status === 'done').length
+
+  // Live planning holds a terminal beside its artifact, so it fills the panel
+  // and each pane scrolls itself; every other body is a document in the page
+  // column, the header scrolling away with it. The data-heavy ones (the run's
+  // lanes, the review's evidence, the ledger) take the wide column.
+  const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly
+  // Per phase, not per view: switching tabs must not move the title.
+  const wide = !isDraft && (bodyPhase === 'building' || bodyPhase === 'review')
+  // Rises in once per navigation — feature, pinned phase, view — never on a refetch.
+  const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}:${view}`
+
+  // One aside at a time: the chat or the details, never both.
+  const aside: 'chat' | 'details' | null = chatPanelOpen ? 'chat' : detailsOpen ? 'details' : null
+  const toggleDetails = () => {
+    if (aside === 'details') return setDetailsOpen(false)
+    if (chatPanelOpen) onToggleChatPanel()
+    setDetailsOpen(true)
+  }
+
+  const shipped = feature.status === 'shipped' ? shippedAt([...events]) : null
+  const factList: Array<MetaItem | false> = [
+    isDraft
+      ? { phase: 'draft', text: `Parked ${relTimeAgo(feature.createdAt)}` }
+      : shipped
+        ? { tone: 'success', text: `Merged ${relTimeAgo(shipped)}` }
+        : { text: `Started ${relTimeAgo(feature.createdAt)}` },
+    liveTickets.length > 0 && { text: `${doneTickets} of ${liveTickets.length} tickets done` },
+    feature.status === 'archived' && { tone: 'neutral', text: 'Archived' },
+    feature.lap > 1 && { text: `Lap ${feature.lap}`, title: lapExplainer(feature.lap) },
+  ]
+  const facts = factList.filter((f): f is MetaItem => !!f)
+
+  const menuActions: FeatureAction[] = [
+    {
+      key: 'copy-link',
+      label: 'Copy link',
+      onSelect: () =>
+        copyText(
+          window.location.origin +
+            pathFor({ kind: 'feature', projectId: feature.projectId, featureSlug: feature.slug }),
+          toast,
+        ),
+    },
+    ...(!isDraft && feature.branch
+      ? [{ key: 'copy-branch', label: 'Copy branch name', onSelect: () => copyText(feature.branch, toast) }]
+      : []),
+    // A draft is never offered Archive (decision 8) — it is refused server-side.
+    ...(feature.status === 'archived'
+      ? [{ key: 'unarchive', label: 'Unarchive', onSelect: () => unarchive.mutate({ featureId }) }]
+      : feature.status !== 'draft'
+        ? [{ key: 'archive', label: 'Archive', onSelect: () => archive.mutate({ featureId }) }]
+        : []),
+    // Delete is non-shipped only, and only where the page can leave the
+    // feature it just deleted (the shell's `onDeleted`).
+    ...(onDeleted && feature.status !== 'shipped'
+      ? [
+          {
+            key: 'delete',
+            label: 'Delete…',
+            danger: true,
+            onSelect: (ref: RefObject<HTMLButtonElement | null>) => setDeleteOpener(ref),
+          },
+        ]
+      : []),
+  ]
+
+  const nextRow = readonly ? (
+    <ReadonlyBanner
+      phase={effective}
+      livePhase={feature.phase}
+      facts={phaseFacts({ phase: effective, full, events, decisions })}
+      onBack={() => viewPhase(null)}
+    />
+  ) : (
+    <NextStepBar
+      ns={ns}
+      guidance={guidance}
+      busy={busy}
+      onAction={runAction}
+      hideChat
+      draftBranch={
+        isDraft
+          ? {
+              branches: branchesQ.data?.branches,
+              value: effectiveDraftBase || null,
+              detected: branchesQ.data?.detected,
+              missing: draftBaseMissing === 'unpicked',
+              onPick: (base) => setDraftPick({ featureId, base }),
+            }
+          : undefined
+      }
+    />
+  )
+
+  const header = (
+    <FeatureHeader
+      feature={feature}
+      isDraft={isDraft}
+      steps={steps}
+      readonly={readonly}
+      facts={facts}
+      onViewPhase={viewPhase}
+    >
+      {resumeFailed.message && (
+        <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">Resume failed.</span> {resumeFailed.message}
+          </span>
+          <IconButton label="Dismiss" size="sm" icon={<IconX />} onClick={resumeFailed.dismiss} />
+        </div>
+      )}
+      {nextRow}
+    </FeatureHeader>
+  )
+
+  const body =
+    view === 'tickets' ? (
+      <PageSection title="Tickets">
+        <PinnedTickets full={full} />
+      </PageSection>
+    ) : isDraft ? (
+      // Status wins over phase here (decision 9): a draft is created at
+      // `ideation`, and the grill body would offer a terminal on a feature
+      // that has no branch to open one against.
+      <DraftBody full={full} />
+    ) : (
+      <PhaseBody
+        effective={bodyPhase}
+        full={full}
+        events={events}
+        driving={driving}
+        conflict={conflict}
+        runId={run?.id ?? null}
+        readonly={readonly}
+        chatDocked={chatPanelOpen}
+        mapRailCollapsed={mapRailCollapsed}
+        onToggleMapRail={onToggleMapRail}
+        onViewPhase={viewPhase}
+        artifactPaneCollapsed={artifactPaneCollapsed}
+        onToggleArtifactPane={onToggleArtifactPane}
+      />
+    )
+
   return (
     // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
     // render surface, and anything that does escape its column must not become
-    // the frame's scrollable overflow. The app frame is `overflow: hidden`, which
-    // hides a scrollbar without removing the scroll — so one focus or
-    // `scrollIntoView` reaching for an escaped element scrolls the WHOLE app,
-    // and the header ends up cut off at the top or the left of the window with
-    // no way to bring it back. `clip` refuses the scroll instead of hiding it,
-    // and unlike `hidden` it creates no scroll container, so the body below
-    // keeps scrolling itself and the bar's branch menu still opens over it.
-    <section className="workspace overflow-clip">
-      <FeatureHeader
-        feature={feature}
-        isDraft={isDraft}
-        steps={steps}
-        onViewPhase={onViewPhase}
-      />
-
-      {readonly ? (
-        <ReadonlyBanner
-          phase={effective}
-          livePhase={feature.phase}
-          facts={phaseFacts({ phase: effective, full, events, decisions })}
-          onBack={() => onViewPhase(null)}
-        />
-      ) : (
-        <NextStepBar
-          ns={ns}
-          guidance={guidance}
-          busy={busy}
-          onAction={runAction}
-          draftBranch={
-            isDraft
-              ? {
-                  branches: branchesQ.data?.branches,
-                  value: effectiveDraftBase || null,
-                  detected: branchesQ.data?.detected,
-                  missing: draftBaseMissing === 'unpicked',
-                  onPick: (base) => setDraftPick({ featureId, base }),
-                }
-              : undefined
+    // the frame's scrollable overflow. `clip` refuses the scroll instead of
+    // hiding it, and creates no scroll container, so the page below keeps
+    // scrolling itself and the next step's branch menu still opens over it.
+    <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
+      {/* The one aside sits beside the whole page — topbar included — so its
+          own 44px header lines up with the topbar rather than stacking under it. */}
+      <ChatDock
+        open={aside !== null}
+        panel={
+          aside === 'chat' ? (
+            <ChatPanel
+              featureId={featureId}
+              sessions={full.sessions}
+              busy={launch.isPending}
+              onOpenChat={openChat}
+              onCollapse={onToggleChatPanel}
+            />
+          ) : (
+            <Inspector featureId={featureId} onClose={() => setDetailsOpen(false)} />
+          )
+        }
+      >
+        <PageTopbar
+          crumbs={[
+            {
+              label: feature.title,
+              icon: <PhaseIcon phase={isDraft ? 'draft' : feature.phase} size={14} label="" />,
+            },
+          ]}
+          tabs={
+            hasTicketsView ? (
+              <Tabs<FeatureView>
+                label="Feature views"
+                size="sm"
+                value={view}
+                onChange={setView}
+                items={[
+                  { id: 'overview', label: 'Overview', icon: <IconHome /> },
+                  {
+                    id: 'tickets',
+                    label: 'Tickets',
+                    icon: <IconCube />,
+                    count: liveTickets.length || full.tickets.length,
+                  },
+                ]}
+              />
+            ) : undefined
+          }
+          actions={
+            <>
+              {offline && (
+                <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
+                  Offline, retrying
+                </StatusLabel>
+              )}
+              {!isDraft && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<IconMessage />}
+                  aria-pressed={aside === 'chat'}
+                  onClick={toggleChat}
+                  disabled={launch.isPending}
+                >
+                  Chat
+                  {liveChat && <StatusDot tone="live" label="Chat session live" />}
+                </Button>
+              )}
+              <FeatureActionsMenu actions={menuActions} size="md" />
+              <IconButton
+                label={aside === 'details' ? 'Hide details' : 'Show details'}
+                icon={<IconPanelRight />}
+                active={aside === 'details'}
+                onClick={toggleDetails}
+              />
+            </>
           }
         />
-      )}
-
-      {offline && (
-        <div className="ws-banner is-offline" role="status">
-          <span className="ws-banner-tag">OFFLINE</span>
-          <span>server unreachable — retrying…</span>
-        </div>
-      )}
-
-      {resumeFailed.message && (
-        <div className="ws-banner" role="alert" onClick={resumeFailed.dismiss} title="dismiss">
-          <span className="ws-banner-tag">RESUME FAILED</span>
-          <span>{resumeFailed.message}</span>
-        </div>
-      )}
+        {fill ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="shrink-0 px-8 pt-7 pb-5">{header}</div>
+            {/* Each pane scrolls itself (decisions 6, 11), so the body stops
+                being the scroll container here. */}
+            <div key={routeKey} className="flex min-h-0 min-w-0 flex-1 px-8 pb-6 animate-rise-in">
+              {body}
+            </div>
+          </div>
+        ) : (
+          <Page width={wide ? 'wide' : 'default'} routeKey={routeKey}>
+            {header}
+            <div className="mt-10">{body}</div>
+          </Page>
+        )}
+      </ChatDock>
 
       {confirmBurn && (
         <BurnFeatureDialog
@@ -855,6 +1156,17 @@ export function Workspace({
         />
       )}
 
+      {deleteOpener && (
+        <DeleteFeatureDialog
+          title={feature.title}
+          slug={feature.slug}
+          busy={del.isPending}
+          onConfirm={() => del.mutate({ featureId })}
+          onCancel={() => setDeleteOpener(null)}
+          returnFocusRef={deleteOpener}
+        />
+      )}
+
       {/* The one door forward from review (decision 21): every open note and
           defect in front of the human at the moment they choose. */}
       {triaging !== null && (
@@ -871,57 +1183,6 @@ export function Workspace({
           onClose={() => setTriaging(null)}
         />
       )}
-
-      {/* Ideation, spec, tickets and review fill the body rather than scroll it
-          (decisions 6, 11): each pane scrolls itself, so for them the body stops
-          being the scroll container and stops centering on --content-max.
-          Review joined them for its notes rail, which has to stay put while the
-          main column moves. */}
-      {/* The chat is docked beside all of that, in every state (decision 16) —
-          the body keeps doing its phase job at its own width, and away, the dock
-          renders the body and nothing else. */}
-      <ChatDock
-        open={chatPanelOpen}
-        panel={
-          <ChatPanel
-            featureId={featureId}
-            sessions={full.sessions}
-            busy={launch.isPending}
-            onOpenChat={openChat}
-            onCollapse={onToggleChatPanel}
-          />
-        }
-      >
-        <div className={twoPane ? 'flex min-h-0 flex-1 overflow-hidden' : 'ws-body'}>
-          <div
-            className={twoPane ? 'flex min-h-0 min-w-0 flex-1' : 'ws-body-inner'}
-            key={isDraft ? 'draft' : bodyPhase}
-          >
-            {/* Status wins over phase here (decision 9): a draft is created at
-                `ideation`, and the grill body would offer a terminal on a feature
-                that has no branch to open one against. */}
-            {isDraft ? (
-              <DraftBody full={full} />
-            ) : (
-              <PhaseBody
-                effective={bodyPhase}
-                full={full}
-                events={events}
-                driving={driving}
-                conflict={conflict}
-                runId={run?.id ?? null}
-                readonly={readonly}
-                chatDocked={chatPanelOpen}
-                mapRailCollapsed={mapRailCollapsed}
-                onToggleMapRail={onToggleMapRail}
-                onViewPhase={onViewPhase}
-                artifactPaneCollapsed={artifactPaneCollapsed}
-                onToggleArtifactPane={onToggleArtifactPane}
-              />
-            )}
-          </div>
-        </div>
-      </ChatDock>
     </section>
   )
 }

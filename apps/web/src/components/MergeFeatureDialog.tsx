@@ -1,4 +1,5 @@
-import { Button, CheckLine, Dialog, SectionTitle } from '../ui'
+import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, SectionLabel } from '../ui'
+import { IconAlert, IconGitMerge, IconRefresh } from '../icons'
 import type { MergeSummary } from '../lib/feature-ui'
 
 /**
@@ -44,12 +45,15 @@ export function MergeFeatureDialog({
   onResolve?: () => void
   onCancel: () => void
 }) {
+  // Over a standing conflict the footer carries three buttons, which the
+  // small panel cannot hold on one line.
+  const conflicted = !!summary.conflictRow && !!onResolve
   return (
     <Dialog
       open
       onClose={onCancel}
-      label={`Merge and ship ${branch}`}
-      size="sm"
+      labelledBy="merge-feature-title"
+      size={conflicted ? 'md' : 'sm'}
       className="flex max-h-[82vh] flex-col overflow-hidden"
     >
       <MergeConfirmation
@@ -64,6 +68,29 @@ export function MergeFeatureDialog({
         onCancel={onCancel}
       />
     </Dialog>
+  )
+}
+
+/**
+ * What a confirmation is shipping over, one line each: a warning glyph and the
+ * sentence. No tinted box — the glyph carries the tone (DESIGN.md: status is a
+ * glyph and a word). Shared by the Burn and Merge confirmations, which teach
+ * one pattern for both clicks.
+ */
+export function ConfirmWarnings({ warnings }: { warnings: readonly string[] }) {
+  if (warnings.length === 0) return null
+  return (
+    <ul
+      aria-label="Warnings"
+      className="m-0 flex list-none flex-col gap-2 p-0 text-sm text-text-secondary [&>li]:relative [&>li]:pl-6"
+    >
+      {warnings.map((w) => (
+        <li key={w}>
+          <IconAlert size={16} className="absolute top-0.5 left-0 text-warning" />
+          {w}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -98,87 +125,72 @@ export function MergeConfirmation({
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-        <span className="text-sm font-semibold text-text">Merge &amp; ship</span>
-        <button
-          className="cursor-pointer border-0 bg-transparent p-1 text-base text-text-3 hover:text-text"
-          onClick={onCancel}
-          aria-label="Close (Esc)"
-        >
-          ✕
-        </button>
-      </div>
+      <DialogHeader
+        id="merge-feature-title"
+        title="Merge & ship"
+        onClose={onCancel}
+        description={
+          <>
+            Merge <span className="font-medium text-text">{title}</span> from{' '}
+            <code className="font-mono text-xs">{branch}</code>
+            {base ? (
+              <>
+                {' '}
+                into <code className="font-mono text-xs">{base}</code>
+              </>
+            ) : null}
+            ? This ships the feature.
+          </>
+        }
+      />
 
-      <div className="flex flex-col gap-6 overflow-y-auto p-4">
-        <p className="m-0 text-base leading-relaxed text-text-2">
-          Merge <strong className="font-semibold text-text">{title}</strong> from{' '}
-          <code className="font-mono">{branch}</code>
-          {base ? (
-            <>
-              {' '}
-              into <code className="font-mono">{base}</code>
-            </>
-          ) : null}
-          ? This ships the feature.
-        </p>
-
-        <div>
-          <SectionTitle>What lands</SectionTitle>
+      <DialogBody className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+        <section>
+          <SectionLabel>What lands</SectionLabel>
           {/* The loudest thing in the dialog, above the green rows rather than
               instead of them: the human still sees what lands IF it lands. */}
           {summary.conflictRow && (
-            <p
-              className="mt-2 mb-0 rounded-sm border border-danger/45 bg-danger/8 px-3 py-2 text-sm leading-relaxed text-danger"
-              role="alert"
-            >
+            <p className="mt-1 mb-2 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
               {summary.conflictRow}
             </p>
           )}
           {summary.rows.map((row) => (
             <CheckLine key={row.key} row={row} />
           ))}
-        </div>
+        </section>
 
-        {summary.warnings.length > 0 && (
-          <ul className="m-0 list-disc rounded-sm border border-warn/40 bg-warn/7 py-2.5 pr-3 pl-6 text-sm leading-relaxed text-warn">
-            {summary.warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        )}
+        <ConfirmWarnings warnings={summary.warnings} />
 
         {/* The last moment to say what the button does (decision 31c). */}
-        <p className="m-0 text-sm leading-relaxed text-text-3">{summary.next}</p>
+        <p className="m-0 text-sm text-text-tertiary">{summary.next}</p>
+        {/* Said before the click, because a retry over a conflict is a real
+            choice rather than a mistake to be locked out of. */}
+        {conflicted && (
+          <p className="m-0 text-sm text-text-tertiary">
+            Nothing here is disabled — if you resolved it by hand, retry lands it.
+          </p>
+        )}
+      </DialogBody>
 
-        <div className="flex flex-col gap-2">
-          {/* Said before the click, because a retry over a conflict is a real
-              choice rather than a mistake to be locked out of. */}
-          {conflicted && (
-            <p className="m-0 text-sm leading-relaxed text-text-3">
-              Nothing here is disabled — if you resolved it by hand, retry lands it.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="ghost" onClick={onCancel} disabled={busy}>
-              Cancel
+      <DialogFooter className="border-t border-border-subtle pt-4">
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        {conflicted ? (
+          <>
+            <Button variant="secondary" icon={<IconRefresh />} onClick={onConfirm} disabled={busy}>
+              {busy ? 'Merging…' : 'Retry merge anyway'}
             </Button>
-            {conflicted ? (
-              <>
-                <Button onClick={onConfirm} disabled={busy}>
-                  {busy ? 'Merging…' : 'Retry merge anyway'}
-                </Button>
-                <Button variant="solid" onClick={onResolve} disabled={resolving}>
-                  Resolve the merge conflict
-                </Button>
-              </>
-            ) : (
-              <Button variant="solid" onClick={onConfirm} disabled={busy}>
-                {busy ? 'Merging…' : 'Merge & ship'}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+            <Button variant="primary" icon={<IconAlert />} onClick={onResolve} disabled={resolving}>
+              Resolve the merge conflict
+            </Button>
+          </>
+        ) : (
+          <Button variant="primary" icon={<IconGitMerge />} onClick={onConfirm} disabled={busy}>
+            {busy ? 'Merging…' : 'Merge & ship'}
+          </Button>
+        )}
+      </DialogFooter>
     </>
   )
 }

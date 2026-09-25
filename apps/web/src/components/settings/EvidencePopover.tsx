@@ -59,12 +59,12 @@ export function EvidencePopover({
   return (
     <div
       ref={cardRef}
-      className="absolute top-6.5 left-0 z-10 max-h-65 w-105 overflow-auto rounded-md border border-hairline-strong bg-panel-3 px-3 py-2.5 shadow-overlay"
+      className="absolute top-7 left-0 z-10 max-h-72 w-105 overflow-auto rounded-lg bg-surface-raised px-3.5 py-3 shadow-popover animate-pop-in"
     >
-      <h4 className="mb-1.5 text-xs font-semibold tracking-[0.06em] text-text-3 uppercase">
+      <h4 className="m-0 mb-2 text-xs font-medium text-text-tertiary">
         Evidence · {HOW_ESTABLISHED[source]}
       </h4>
-      <pre className="font-mono text-sm leading-normal whitespace-pre-wrap text-text-2">
+      <pre className="m-0 font-mono text-xs leading-[18px] whitespace-pre-wrap text-text-secondary">
         {evidence}
       </pre>
     </div>

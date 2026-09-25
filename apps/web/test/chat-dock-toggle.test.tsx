@@ -104,7 +104,7 @@ describe('the Chat door toggles the docked panel', () => {
     fireEvent.click(screen.getByRole('button', { name: chatDoorLabel('review') }))
     expect(localStorage.getItem('runcastle.chatpanel.open')).toBe('1')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse the chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByLabelText('Feature chat')).toBeNull()
     expect(localStorage.getItem('runcastle.chatpanel.open')).toBe('0')
   })

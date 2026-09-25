@@ -4,6 +4,8 @@ import { useEventLog } from '../lib/events'
 import { awaitingCheckIn, sessionActive, sessionNotReady } from '../lib/feature-ui'
 import { sessionAgentName } from '../lib/vocabulary'
 import type { FeatureFull } from '../lib/api'
+import { StatusLabel, cx } from '../ui'
+import { IconAlert } from '../icons'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
@@ -44,19 +46,24 @@ export function SessionPanel({
 
   if (sessionActive(session)) {
     return (
-      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-hairline bg-panel-2${className ? ` ${className}` : ''}`}>
+      <section aria-label="Session" className={cx('flex min-h-0 flex-1 flex-col animate-fade-in', className)}>
         <SessionStrip session={session} full={full} right={<>{right}<EndSessionButton featureId={featureId} sessionId={session.id} /></>} />
         <SessionNotices featureId={featureId} session={session} />
-        <div className="min-h-0 flex-1" id="session-terminal">
+        {/* The terminal is the inset ground: code-shaped, sunk one step below
+            the page, one hairline and the controls' radius around it. */}
+        <div
+          className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-surface-inset"
+          id="session-terminal"
+        >
           <ErrorBoundary label="terminal">
             <TerminalView sessionId={session.id} />
           </ErrorBoundary>
         </div>
-      </div>
+      </section>
     )
   }
 
-  return <SessionStrip session={session} full={full} />
+  return <SessionStrip session={session} full={full} className="mb-6" />
 }
 
 /**
@@ -92,9 +99,9 @@ function CheckInHint({ session, events }: { session: Session; events: EventRow[]
   const now = useNow(CHECK_IN_TICK_MS)
   if (!awaitingCheckIn(session, events, now)) return null
   return (
-    <div className="border-b border-hairline px-3 py-1.5 text-xs text-text-3">
-      agent hasn’t checked in yet
-    </div>
+    <p className="m-0 pb-1.5 text-xs text-text-tertiary animate-fade-in">
+      The agent hasn’t checked in yet.
+    </p>
   )
 }
 
@@ -121,18 +128,18 @@ function NotReadyBanner({ session, notReady }: { session: Session; notReady: boo
   if (!notReady) return null
 
   return (
-    <div className="border-b border-warn/35 bg-warn/8 px-3 py-2 text-sm text-warn">
-      This terminal has not reported ready — {sessionAgentName(session)} has not started on its
-      briefing. Answer anything waiting in it (a trust or login prompt).
+    <div className="flex items-start gap-1.5 pb-2 text-sm text-text-secondary animate-fade-in" role="status">
+      <StatusLabel tone="warning" icon={<IconAlert />} size="sm" strong className="shrink-0">
+        Not ready
+      </StatusLabel>
+      <span className="min-w-0">
+        — {sessionAgentName(session)} has not started on its briefing. Answer anything waiting in the
+        terminal (a trust or login prompt).
+      </span>
     </div>
   )
 }
 
-/**
- * The strip's done label: a check and one line of text in place of the live dot
- * (decision #9). The map-complete case deliberately points at the next-step bar
- * rather than growing a second Converge button.
- */
 /**
  * The session a body should render: a live/launching one, else simply the most
  * recent.

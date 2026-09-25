@@ -6,7 +6,7 @@ import type { ProjectNavApi } from '../src/lib/use-project-nav'
 import { openMenu } from './floating'
 
 /**
- * The titlebar switcher (decision 8). It takes nothing but the navigation API,
+ * The sidebar head's switcher (decision 8). It takes nothing but the navigation API,
  * so it needs no tRPC stub — only a DOM, for the rows the menu drops and the
  * second line that tells two projects with the same name apart. Dismissal is
  * the `DropdownMenu` primitive's now, and is tested there.
@@ -90,24 +90,38 @@ describe('ProjectSwitcher', () => {
     expect(trigger.className).toContain('border-transparent')
   })
 
-  it('drops its rows at the app body scale, not the menu default', () => {
-    // 11px is reserved for the uppercase micro-labels (STYLE.md); a project row
-    // reads at the 14px the rest of the interface does.
+  it('drops its rows at the UI default, each with its icon', () => {
+    // DESIGN.md: menus read at 13px like every row in the interface.
     showMenu()
 
     for (const item of screen.getAllByRole('menuitem')) {
-      expect(item.className).toContain('text-base')
+      expect(item.className).toContain('text-sm')
+      expect(item.querySelector('svg')).toBeTruthy()
     }
-    // Stated on the row, and not on the surface: the surface already carries the
-    // primitive's own `text-xs`, which Tailwind emits last, so a size passed
-    // down beside it would lose. The family is safe there — `font-sans` sorts
-    // after `font-mono`.
-    const menu = screen.getByRole('menu')
-    expect(menu.className).toContain('font-sans')
-    expect(menu.className).not.toContain('text-base')
   })
 
-  it('truncates a long project name rather than widening the titlebar', () => {
+  it('leaves the folder off a row whose name already says it', () => {
+    render(
+      <ProjectSwitcher
+        nav={navApi({
+          projects: [{ id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle' }],
+          currentProjectId: 'p9',
+          currentProject: { id: 'p9', name: 'sandcastle', repoPath: '/home/you/code/sandcastle' },
+        })}
+      />,
+    )
+    openMenu(screen.getByRole('button', { name: /sandcastle/ }))
+
+    expect(screen.getAllByRole('menuitem')[0].textContent).toBe('sandcastle')
+  })
+
+  it('names the app when no project is open', () => {
+    render(<ProjectSwitcher nav={navApi({ currentProjectId: null, currentProject: undefined })} />)
+
+    expect(screen.getByRole('button', { name: /switch project/ }).textContent).toBe('runcastle')
+  })
+
+  it('truncates a long project name rather than widening the sidebar head', () => {
     const long = { id: 'p3', name: 'a-project-name-long-enough-to-swallow-the-row', repoPath: '/r' }
     render(<ProjectSwitcher nav={navApi({ currentProjectId: 'p3', currentProject: long })} />)
 

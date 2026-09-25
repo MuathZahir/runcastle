@@ -2,96 +2,65 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { DimLine } from '../../ui'
+import { Aside, DimLine, Tabs } from '../../ui'
+import { IconActivity, IconDoc } from '../../icons'
 import { Activity } from './Activity'
 import { Knowledge } from './Knowledge'
 
-type Tab = 'details' | 'activity'
+type Tab = 'knowledge' | 'activity'
 
-/** The rail's own frame, so every state (loading, error, loaded) sits in it. */
-const RAIL = 'flex min-h-0 flex-col overflow-hidden border-l border-hairline bg-panel-2'
+const TABS = [
+  { id: 'knowledge' as const, label: 'Knowledge', icon: <IconDoc /> },
+  { id: 'activity' as const, label: 'Activity', icon: <IconActivity /> },
+]
 
 /**
- * Right rail for the pipeline-first shell, tabbed so the working surface stays
- * calm: Details (current gate + knowledge docs) is the default; the raw event
- * feed lives behind the Activity tab instead of scrolling permanently beside
- * the workspace.
+ * The feature's details, as the page's one right-hand aside (DESIGN.md
+ * principle 1): Knowledge — the docs the sessions write — and Activity — the
+ * event feed — switched by Tabs in the aside's own header. It shares the slot
+ * with the feature chat: opening one closes the other, and neither is a
+ * permanent rail.
  *
  * Feature-scoped for real (decision 5): every panel in here is about one
- * feature, so on chat, preparation, create and empty views the shell drops the
- * whole grid column rather than mounting this and hiding its content — the old
- * arrangement left a dead ~300px strip beside those bodies.
+ * feature, so nothing renders it outside a feature view — and it is the
+ * feature page that mounts it, in its own aside slot, with `onClose`. Mounted
+ * without one (the retired shell-level rail), it renders nothing, so a
+ * second details panel can never stand beside the page's own.
  */
-export function Inspector({ featureId }: { featureId: string }) {
-  const [tab, setTab] = useState<Tab>('details')
+export function Inspector({ featureId, onClose }: { featureId: string; onClose?: () => void }) {
+  if (!onClose) return null
+  return <InspectorAside featureId={featureId} onClose={onClose} />
+}
+
+function InspectorAside({ featureId, onClose }: { featureId: string; onClose: () => void }) {
+  const [tab, setTab] = useState<Tab>('knowledge')
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   // One feed for both tabs, mounted here rather than inside Activity so
   // switching tabs doesn't re-accumulate it.
   const events = useEventLog(featureId)
 
-  if (full.isLoading)
-    return (
-      <aside className={RAIL}>
-        <DimLine>loading…</DimLine>
-      </aside>
-    )
-  // Hard error only when there was NEVER data — a refetch failure after data
-  // exists (server restart) keeps the last-good rail rendered instead of
-  // blanking it; the workspace's OFFLINE banner covers the outage story.
-  if (!full.data)
-    return (
-      <aside className={RAIL}>
-        <DimLine>{full.error?.message ?? 'could not load inspector'}</DimLine>
-      </aside>
-    )
-
   return (
-    <aside className={RAIL}>
-      <div className="flex shrink-0 items-center gap-0.5 px-4 pt-3" role="tablist">
-        <InspectorTab label="Details" tab="details" active={tab} onSelect={setTab} />
-        <InspectorTab label="Activity" tab="activity" active={tab} onSelect={setTab} />
-      </div>
-
-      <div
-        key={tab}
-        className="flex min-h-0 flex-1 animate-[fadeUp_var(--dur-2)_var(--ease-out-app)] flex-col gap-6 overflow-y-auto px-4 py-5"
-      >
-        {tab === 'details' ? (
-          <>
-            <Knowledge featureId={featureId} docs={full.data.docs} />
-          </>
-        ) : (
-          <Activity events={events} />
-        )}
-      </div>
-    </aside>
-  )
-}
-
-function InspectorTab({
-  label,
-  tab,
-  active,
-  onSelect,
-}: {
-  label: string
-  tab: Tab
-  active: Tab
-  onSelect: (tab: Tab) => void
-}) {
-  const on = tab === active
-  return (
-    // No preflight (apps/web/STYLE.md): the tab states its own face and size
-    // rather than inheriting the UA button's 13.33px Arial.
-    <button
-      role="tab"
-      aria-selected={on}
-      className={`cursor-pointer border-0 border-b-2 bg-transparent px-3 py-1.5 font-sans text-sm font-medium ${
-        on ? 'border-b-accent text-text' : 'border-b-transparent text-text-3 hover:text-text-2'
-      }`}
-      onClick={() => onSelect(tab)}
+    <Aside
+      title={<Tabs items={TABS} value={tab} onChange={setTab} size="sm" label="Details" />}
+      onClose={onClose}
+      bodyClassName="px-4 py-4"
     >
-      {label}
-    </button>
+      {full.isLoading ? (
+        <DimLine>Loading…</DimLine>
+      ) : !full.data ? (
+        // Hard error only when there was NEVER data — a refetch failure after
+        // data exists (server restart) keeps the last-good panel rendered; the
+        // page's offline line covers the outage story.
+        <DimLine>{full.error?.message ?? 'Could not load the details'}</DimLine>
+      ) : (
+        <div key={tab} role="tabpanel" aria-label={tab === 'knowledge' ? 'Knowledge' : 'Activity'} className="animate-fade-in">
+          {tab === 'knowledge' ? (
+            <Knowledge featureId={featureId} docs={full.data.docs} />
+          ) : (
+            <Activity events={events} />
+          )}
+        </div>
+      )}
+    </Aside>
   )
 }

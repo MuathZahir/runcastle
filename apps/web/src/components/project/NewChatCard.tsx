@@ -1,15 +1,18 @@
+import { IconMessage, IconPlus, IconRefresh, IconSparkle } from '../../icons'
 import { BranchMenu, Button } from '../../ui'
 import type { SessionBranchApi } from '../../lib/use-session-branch'
+import { ActionRow } from './ActionRow'
 
 /**
  * The one door out of the resting project workspace (decisions.md #6).
  *
- * One heading, one line, one solid button — the card used to carry a paragraph
- * explaining what the chat would do with the idea, and the chat's own greeting
- * says that better on arrival. What is left is the door and the one argument it
- * takes: where this chat's work lands, chosen here because here is where it
- * applies (decisions.md #3). A stored pick whose branch is gone is the one
- * thing that stops a launch, and it says so on the menu rather than in a note.
+ * One title, one line, the page's one primary button — the row used to carry a
+ * paragraph explaining what the chat would do with the idea, and the chat's own
+ * greeting says that better on arrival. What is left is the door and the one
+ * argument it takes: where this chat's work lands, chosen here because here is
+ * where it applies (decisions.md #3). A stored pick whose branch is gone is the
+ * one thing that stops a launch, and it says so on the menu rather than in a
+ * note.
  */
 export function NewChatCard({
   landing,
@@ -23,27 +26,12 @@ export function NewChatCard({
   openSession?: { onOpen: () => void; onReplace: () => void }
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-hairline bg-panel px-6 py-5">
-      {openSession && (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-md border border-hairline bg-panel-2 px-4 py-3"
-        >
-          <span className="mr-auto text-sm text-text-2">A chat is already open.</span>
-          <Button onClick={openSession.onOpen}>Open it</Button>
-          <Button variant="solid" disabled={starting} onClick={openSession.onReplace}>
-            {starting ? 'Opening…' : 'End it and start new'}
-          </Button>
-        </div>
-      )}
-      <div className="flex items-center gap-6">
-        <div className="flex flex-1 flex-col gap-2">
-          <h2 className="m-0 text-lg font-semibold text-text">Talk it through</h2>
-          <p className="m-0 max-w-[46ch] text-sm text-text-2">
-            Bring a raw idea; the chat checks it against what’s built and cuts it into features.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    <ActionRow
+      icon={<IconSparkle />}
+      title="Talk it through"
+      hint="Bring a raw idea; the chat checks it against what’s built and cuts it into features."
+      actions={
+        <>
           <BranchMenu
             prefix="landing on"
             value={landing.value}
@@ -54,7 +42,9 @@ export function NewChatCard({
             onPick={landing.pick}
           />
           <Button
-            variant="solid"
+            variant="primary"
+            icon={<IconPlus />}
+            loading={starting}
             disabled={starting || landing.missing}
             title={
               landing.missing
@@ -63,10 +53,34 @@ export function NewChatCard({
             }
             onClick={onStart}
           >
-            {starting ? 'Opening…' : 'New chat'}
+            New chat
+          </Button>
+        </>
+      }
+      caption={landing.missing ? 'The landing branch is gone — pick another.' : undefined}
+    >
+      {openSession && (
+        // One live chat per project: the choice is made here, in place, rather
+        // than in a dialog. A line, not a box — the row is the frame.
+        <div
+          role="status"
+          className="mt-3 ml-12 flex flex-wrap items-center gap-2 animate-rise-in"
+        >
+          <span className="mr-auto text-sm text-text-secondary">A chat is already open.</span>
+          <Button variant="ghost" size="sm" icon={<IconMessage />} onClick={openSession.onOpen}>
+            Open it
+          </Button>
+          <Button
+            size="sm"
+            icon={<IconRefresh />}
+            loading={starting}
+            disabled={starting}
+            onClick={openSession.onReplace}
+          >
+            End it and start new
           </Button>
         </div>
-      </div>
-    </div>
+      )}
+    </ActionRow>
   )
 }

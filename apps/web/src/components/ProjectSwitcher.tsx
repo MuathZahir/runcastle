@@ -1,6 +1,6 @@
 import { repoFolderName } from '../lib/projects'
 import type { ProjectNavApi } from '../lib/use-project-nav'
-import { IconCheck, IconChevronDown } from '../icons'
+import { IconCheck, IconChevronDown, IconFolder, IconHome, IconPlus, LogoMark } from '../icons'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,105 +11,87 @@ import {
 } from '../ui/dropdown-menu'
 
 /**
- * The breadcrumb's middle level (decision 11). Click the project name to drop a
- * menu of every open project (fast in-project switching that never disturbs
- * background runs), plus "All projects" (the portfolio home) and "Open a
- * project…". The command palette carries the same project mode for keyboarding.
+ * The sidebar's head (DESIGN.md §Frame): the neutral mark, the current
+ * project's name and a chevron — a menu of every open project (switching never
+ * disturbs background runs), then "All projects" (the portfolio home) and
+ * "Open a project…". The command palette carries the same project rows for
+ * keyboarding.
  *
- * `min-w-0` runs all the way down to the name, or the flex default of
- * min-content wins and the ellipsis never engages (findings F20).
+ * A project row carries its repo folder underneath when it tells the row apart
+ * (the onboarding flow's decision 8): two projects can share a name — a fork
+ * and its original routinely do — and the folder is then the only thing that
+ * tells them apart. Where the folder is just the name again, it is left off.
  *
- * Each project row carries its repo folder underneath (the onboarding flow's
- * decision 8): two projects can share a name — a fork and its original
- * routinely do — and the folder is the only thing on the row that tells them
- * apart.
+ * On the portfolio home there is no current project, and the trigger names the
+ * app instead.
  */
 
 /*
- * The trigger states a background AND a border on purpose. There is no Tailwind
- * preflight while the legacy sheet lives (STYLE.md: "do not assume a reset:
- * style what you render"), so a `<button>` that names neither keeps the
- * user-agent `buttonface` — a light grey slab under this theme's near-white
- * text — and its outset border. It wants a border of its own to fade in on
- * hover, so it names a transparent one. The rows are the menu primitive's, and
- * are not buttons at all.
+ * The trigger states a background AND a border: there is no preflight
+ * (STYLE.md), so a `<button>` that names neither keeps the user agent's grey
+ * slab and outset border. `min-w-0` runs all the way down to the name, or the
+ * flex default of min-content wins and the ellipsis never engages (findings F20).
  */
 const TRIGGER =
-  'inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md border border-transparent px-1.5 ' +
-  'bg-transparent transition-[border-color,background-color] duration-(--dur-1) ease-app ' +
-  'hover:border-hairline hover:bg-panel-3'
+  'group flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md border border-transparent bg-transparent pr-1.5 pl-2 ' +
+  'text-text transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover aria-expanded:bg-surface-selected'
 
-/*
- * A project row reads at the app's 14px body scale. 11px is reserved for the
- * uppercase micro-labels (STYLE.md), and a menu that drops at it reads as a
- * different design system from the breadcrumb it hangs off.
- *
- * The size is stated here, on the row, rather than passed down to the menu
- * surface: the surface carries `DropdownMenuContent`'s own `text-xs` — the mono
- * 11px the docs menu wants — and Tailwind emits `text-xs` after `text-base`
- * whatever the class attribute says, so a size beside it silently loses. On the
- * row it is the row's own declaration and no ordering enters into it. Only the
- * family travels down (`font-sans` does sort after `font-mono`).
- *
- * The repo folder under each name keeps the 11px mono step of its own.
- */
-const ROW = 'text-base'
+/** A menu row reads at the UI default, like every other menu in the app. */
+const ROW = 'text-sm'
 
 export function ProjectSwitcher({ nav }: { nav: ProjectNavApi }) {
   const projects = nav.projects ?? []
+  const name = nav.currentProject?.name ?? 'runcastle'
 
   return (
-    <div className="inline-flex min-w-0">
-      <DropdownMenu>
-        <DropdownMenuTrigger className={TRIGGER} title="Switch project">
-          {/* Truncated before it can push the search box off the row (findings
-              F20) — the title carries the whole name, so nothing is unreadable,
-              only unshown. */}
-          <span
-            className="max-w-56 min-w-0 truncate text-sm text-text-2"
-            title={nav.currentProject?.name}
-          >
-            {nav.currentProject?.name ?? '…'}
-          </span>
-          <span className="inline-flex items-center text-text-4">
-            <IconChevronDown size={11} />
-          </span>
-        </DropdownMenuTrigger>
+    <DropdownMenu>
+      <DropdownMenuTrigger className={TRIGGER} aria-label={`${name} — switch project`}>
+        <LogoMark size={16} className="shrink-0" />
+        {/* Truncated before it can push the row's buttons off (findings F20) —
+            the title carries the whole name. */}
+        <span className="max-w-56 min-w-0 truncate text-sm font-semibold" title={name}>
+          {name}
+        </span>
+        <IconChevronDown
+          size={14}
+          className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-aria-expanded:rotate-180"
+        />
+      </DropdownMenuTrigger>
 
-        <DropdownMenuContent className="min-w-60 font-sans">
-          <DropdownMenuLabel>Projects</DropdownMenuLabel>
-          {projects.map((p) => {
-            const current = p.id === nav.currentProjectId
-            return (
-              <DropdownMenuItem
-                key={p.id}
-                className={ROW}
-                aria-current={current ? 'true' : undefined}
-                onSelect={() => nav.enterProject(p.id)}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className={`block truncate ${current ? 'text-text' : ''}`}>{p.name}</span>
-                  <span className="block truncate font-mono text-xs text-text-4">
-                    {repoFolderName(p.repoPath)}
-                  </span>
-                </span>
-                {current && (
-                  <span className="inline-flex items-center text-accent-hi">
-                    <IconCheck size={11} />
-                  </span>
+      <DropdownMenuContent className="w-64">
+        <DropdownMenuLabel>Projects</DropdownMenuLabel>
+        {projects.map((p) => {
+          const current = p.id === nav.currentProjectId
+          const folder = repoFolderName(p.repoPath)
+          // The folder says nothing a row's name has not already said, unless
+          // the name is shared or the folder is called something else.
+          const showFolder = folder !== p.name || projects.some((o) => o.id !== p.id && o.name === p.name)
+          return (
+            <DropdownMenuItem
+              key={p.id}
+              className={ROW}
+              icon={<IconFolder />}
+              aria-current={current ? 'true' : undefined}
+              onSelect={() => nav.enterProject(p.id)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{p.name}</span>
+                {showFolder && (
+                  <span className="block truncate font-mono text-xs text-text-tertiary">{folder}</span>
                 )}
-              </DropdownMenuItem>
-            )
-          })}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className={ROW} onSelect={() => nav.goHome()}>
-            <span className="min-w-0 flex-1 truncate">All projects</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem className={ROW} onSelect={() => nav.showOpen()}>
-            <span className="min-w-0 flex-1 truncate">Open a project…</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+              </span>
+              {current && <IconCheck size={14} className="text-text" />}
+            </DropdownMenuItem>
+          )
+        })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className={ROW} icon={<IconHome />} onSelect={() => nav.goHome()}>
+          <span className="min-w-0 flex-1 truncate">All projects</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem className={ROW} icon={<IconPlus />} onSelect={() => nav.showOpen()}>
+          <span className="min-w-0 flex-1 truncate">Open a project…</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

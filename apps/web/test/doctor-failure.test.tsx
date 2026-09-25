@@ -89,7 +89,7 @@ describe('Shell with a failing setup doctor', () => {
     renderShell()
 
     expect(screen.queryByText('loading projects…')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Projects (2)' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Projects', level: 1 })).toBeTruthy()
     expect(screen.getByTitle('Open runcastle')).toBeTruthy()
   })
 
@@ -101,7 +101,7 @@ describe('Shell with a failing setup doctor', () => {
     expect(screen.getByText('ENOENT: no such file or directory, spawn git')).toBeTruthy()
     // Non-blocking: the projects are still on screen behind it, and nothing
     // about it is a dialog to get past.
-    expect(screen.getByRole('heading', { name: 'Projects (2)' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Projects', level: 1 })).toBeTruthy()
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -124,6 +124,6 @@ describe('Shell with a failing setup doctor', () => {
     renderShell()
 
     expect(screen.queryByText('Setup checks could not run')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Projects (2)' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Projects', level: 1 })).toBeTruthy()
   })
 })

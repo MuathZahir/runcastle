@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { IconChevronRight } from '../icons'
-import { BARE_BUTTON } from '../ui'
+import { IconChevronRight, IconPencil } from '../icons'
+import { BARE_BUTTON, TEXT_INPUT } from '../ui'
 
 /** One clickable segment of the current path, as the server spelled it. */
 export interface Crumb {
@@ -66,7 +66,7 @@ export function PathCrumbs({
   if (editing) {
     return (
       <input
-        className="h-8 min-w-0 flex-1 rounded-md border border-hairline bg-panel-inset px-2.5 font-mono text-sm text-text outline-none focus:border-accent"
+        className={`${TEXT_INPUT} flex-1 font-mono text-xs`}
         aria-label="Path"
         spellCheck={false}
         autoComplete="off"
@@ -104,28 +104,28 @@ export function PathCrumbs({
       {elided && (
         <>
           <CrumbButton crumb={crumbs[0]} onNavigate={onNavigate} />
-          <IconChevronRight size={11} />
+          <IconChevronRight size={12} className="shrink-0 text-text-disabled" />
           {/* The segments between are still readable, just not clickable — a
               title is cheaper than a menu nobody would open twice. */}
-          <span className="shrink-0 px-1 text-sm text-text-4" title={crumbs[crumbs.length - 1].path}>
+          <span className="shrink-0 px-1 text-sm text-text-tertiary" title={crumbs[crumbs.length - 1].path}>
             …
           </span>
         </>
       )}
       {shown.map((crumb, i) => (
         <span key={crumb.path} className="flex shrink-0 items-center gap-0.5">
-          {(i > 0 || elided) && <IconChevronRight size={11} />}
+          {(i > 0 || elided) && <IconChevronRight size={12} className="shrink-0 text-text-disabled" />}
           <CrumbButton crumb={crumb} onNavigate={onNavigate} />
         </span>
       ))}
       <button
         type="button"
-        className={`${BARE_BUTTON} ml-1 shrink-0 rounded-sm px-1 text-sm text-text-4 hover:text-text`}
+        className={`${BARE_BUTTON} ml-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-icon transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text`}
         aria-label="Edit path"
         title="Edit path"
         onClick={() => setDraft(value)}
       >
-        ✎
+        <IconPencil size={14} />
       </button>
     </div>
   )
@@ -135,7 +135,7 @@ function CrumbButton({ crumb, onNavigate }: { crumb: Crumb; onNavigate: (path: s
   return (
     <button
       type="button"
-      className={`${BARE_BUTTON} shrink-0 rounded-sm px-1 py-0.5 font-mono text-sm text-text-2 hover:bg-panel-inset hover:text-text`}
+      className={`${BARE_BUTTON} shrink-0 rounded-sm px-1 py-0.5 cursor-pointer font-mono text-xs text-text-secondary transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text`}
       // Navigating is not "click the empty area", so it must not also open the
       // editor the strip around it opens.
       onClick={(e) => {

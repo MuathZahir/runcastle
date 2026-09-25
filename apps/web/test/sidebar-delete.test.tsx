@@ -9,8 +9,11 @@ const deleteMutation = vi.hoisted(() => ({
 
 vi.mock('../src/trpc', () => ({
   trpc: {
-    useUtils: () => ({ feature: { list: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ feature: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } } }),
+    useQueries: () => [],
+    events: { listByProject: { useQuery: () => ({ data: undefined }) } },
     feature: {
+      testDrive: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       list: { useQuery: () => ({ data: [], isLoading: false }) },
       archive: { useMutation: () => ({ mutate: vi.fn() }) },
       unarchive: { useMutation: () => ({ mutate: vi.fn() }) },
@@ -31,6 +34,21 @@ vi.mock('../src/trpc', () => ({
 
 import { Sidebar } from '../src/components/Sidebar'
 import { ToastProvider } from '../src/lib/toast'
+import type { ProjectNavApi } from '../src/lib/use-project-nav'
+
+const nav: ProjectNavApi = {
+  projects: [{ id: 'project-1', name: 'Project', repoPath: '/repo' }],
+  loading: false,
+  doctorError: null,
+  recheckDoctor: vi.fn(),
+  view: 'project',
+  currentProjectId: 'project-1',
+  currentProject: { id: 'project-1', name: 'Project', repoPath: '/repo' },
+  goHome: vi.fn(),
+  enterProject: vi.fn(),
+  showOpen: vi.fn(),
+  cancelOpen: vi.fn(),
+}
 
 describe('Sidebar delete navigation', () => {
   afterEach(cleanup)
@@ -43,16 +61,15 @@ describe('Sidebar delete navigation', () => {
       <ToastProvider>
         <Sidebar
           projectId="project-1"
+          nav={nav}
+          view="feature"
           selectedFeatureId="feat_deleted"
-          projectSelected={false}
-          width={300}
           talk={{ state: 'none' } as never}
           onSelect={onSelect}
           onSelectProject={onSelectProject}
           onNewChat={() => {}}
           onDraft={() => {}}
           onOpenPreparation={() => {}}
-          onResize={() => {}}
         />
       </ToastProvider>,
     )

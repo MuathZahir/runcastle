@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
-import { Button, Field, TEXT_INPUT } from '../../ui'
+import { IconArrowRight } from '../../icons'
+import { Button, Field, TextField } from '../../ui'
 import { StepActions, StepHeading } from './StepLayout'
 
 /**
@@ -26,20 +28,20 @@ export function IdentityStep({ onBack, onNext }: { onBack: () => void; onNext: (
 
   const valid = name.trim() !== '' && email.includes('@')
   const submit = () => valid && write.mutate({ name: name.trim(), email: email.trim() })
-  const onKeyDown = (e: React.KeyboardEvent) => e.key === 'Enter' && submit()
+  const onKeyDown = (e: KeyboardEvent) => e.key === 'Enter' && submit()
 
   return (
     <>
       <StepHeading title="Set your git identity">
         runcastle commits documentation and merges on your behalf, so it needs a name and email.
-        This writes to <code className="font-mono text-text">git config --global</code>.
+        This writes to <code className="font-mono text-sm text-text">git config --global</code>.
       </StepHeading>
 
-      <div className="mt-7 flex flex-col gap-4">
+      <div className="mt-8 flex max-w-sm flex-col gap-4">
         <Field label="Name">
-          <input
+          <TextField
             id="wiz-name"
-            className={TEXT_INPUT}
+            size="lg"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ada Lovelace"
@@ -49,9 +51,10 @@ export function IdentityStep({ onBack, onNext }: { onBack: () => void; onNext: (
           />
         </Field>
         <Field label="Email">
-          <input
+          <TextField
             id="wiz-email"
-            className={TEXT_INPUT}
+            size="lg"
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ada@example.com"
@@ -62,8 +65,14 @@ export function IdentityStep({ onBack, onNext }: { onBack: () => void; onNext: (
       </div>
 
       <StepActions onBack={onBack}>
-        <Button variant="solid" onClick={submit} disabled={!valid || write.isPending}>
-          {write.isPending ? 'Saving…' : 'Continue'}
+        <Button
+          variant="primary"
+          icon={<IconArrowRight />}
+          loading={write.isPending}
+          onClick={submit}
+          disabled={!valid}
+        >
+          Continue
         </Button>
       </StepActions>
     </>

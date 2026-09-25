@@ -1,12 +1,23 @@
 import type { ReactNode } from 'react'
 import type { ProjectSession } from '../../lib/api'
+import { conversationTitle, sentenceCase } from '../../lib/conversation-title'
 import { sessionStatusLabel } from '../../lib/feature-ui'
-import { Button, SessionStatusDot } from '../../ui'
+import { IconArrowRight, IconFolder, IconMessage } from '../../icons'
+import { PageTopbar, StatusLabel } from '../../ui'
+import type { StatusTone } from '../../ui'
 
-/** The live project conversation: one compact strip over the terminal. */
+/**
+ * The live project conversation: the topbar says where you are (project › chat)
+ * and what state the session is in, the terminal owns everything under it.
+ *
+ * The chat IS the terminal — Claude Code's own prompt is the composer — so the
+ * body is the terminal on `surface-inset`, edge to edge, with nothing competing
+ * with it. Ending the session is the topbar's last action.
+ */
 export function LiveChat({
   session,
   title,
+  projectName = 'Project',
   branch,
   hidden,
   onBack,
@@ -16,45 +27,49 @@ export function LiveChat({
 }: {
   session: NonNullable<ProjectSession>
   title: string
+  /** The parent crumb — clicking it steps back to the project page. */
+  projectName?: string
   branch: string | null
   hidden: boolean
   onBack: () => void
   endControl: ReactNode
-  /** The Chat | Drive switch, when a project drive shares the body. */
+  /** The Chat | Drive tabs, when a project drive shares the body. */
   switcher?: ReactNode
   children: ReactNode
 }) {
+  const label = sentenceCase(sessionStatusLabel(session))
+  const tone: StatusTone =
+    session.status === 'live' ? 'live' : session.status === 'launching' ? 'accent' : 'neutral'
+  const sid = session.ccSessionId ?? session.id
   return (
     <div
       className={hidden ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}
       data-live-chat
       aria-hidden={hidden}
     >
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b border-hairline-soft bg-panel px-4">
-        <Button className="border-transparent text-text-2" onClick={onBack}>
-          ← Conversations
-        </Button>
-        <span className="max-w-[36ch] truncate rounded-pill border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-xs text-accent-hi">
-          {title}
-        </span>
-        <span className="flex items-center gap-2 text-sm text-text-3">
-          <SessionStatusDot status={session.status} />
-          {sessionStatusLabel(session)}
-        </span>
-        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-xs text-text-2">
-          → {branch ?? '…'}
-        </span>
-        <span className="flex-1" />
-        {switcher}
-        <span
-          className="font-mono text-xs text-text-3"
-          title={session.ccSessionId ?? session.id}
-        >
-          {(session.ccSessionId ?? session.id).slice(0, 8)}
-        </span>
-        {endControl}
-      </div>
-      <div className="min-h-0 flex-1 bg-panel-inset">{children}</div>
+      <PageTopbar
+        crumbs={[
+          { label: projectName, icon: <IconFolder />, onClick: onBack },
+          { label: conversationTitle(title), icon: <IconMessage /> },
+        ]}
+        tabs={switcher}
+        actions={
+          <>
+            <div className="mr-2 hidden items-center gap-4 text-xs text-text-tertiary md:flex">
+              <StatusLabel tone={tone}>{label}</StatusLabel>
+              <span className="inline-flex items-center gap-1.5">
+                <IconArrowRight size={14} className="text-icon" />
+                lands on <span className="font-mono">{branch ?? '…'}</span>
+              </span>
+              <span className="font-mono" title={sid}>
+                {sid.slice(0, 8)}
+              </span>
+            </div>
+            {endControl}
+          </>
+        }
+      />
+      <div className="min-h-0 flex-1 bg-surface-inset animate-fade-in">{children}</div>
     </div>
   )
 }

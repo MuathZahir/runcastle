@@ -11,8 +11,9 @@ import {
   type ModelOptionGroup,
   type RosterRow,
 } from '../../lib/settings'
-import { Button } from '../../ui'
+import { Button, cx, IconButton, StatusLabel, TextField } from '../../ui'
 import {
+  SELECT_FIELD,
   Select,
   SelectContent,
   SelectGroup,
@@ -21,9 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../ui/select'
-import { IconX } from '../../icons'
-import { BARE_BUTTON, PLAIN_BUTTON } from './button'
+import { IconCheck, IconClaude, IconCodex, IconPlus, IconTrash } from '../../icons'
 import type { SettingWrites } from './ModelsPage'
+import { SELECT_TRUNCATE, SaveMark } from './SettingRow'
 import { showsSetting, type FilterState } from './types'
 
 /**
@@ -35,25 +36,33 @@ import { showsSetting, type FilterState } from './types'
  * for per-ticket model choice, which is why it is a first-class column rather
  * than something reachable only through a dropdown's "Custom…" branch.
  *
- * The runtime chip and the save mark live here rather than in a module of their
- * own: the roster is where a model's runtime is declared, and the per-step table
- * is the only other reader.
+ * A clean data table: a sentence-case header row, 40px rows divided by
+ * `border-subtle`, the provider's glyph before each model, status as a
+ * `StatusLabel`, and the row actions (make default, remove) revealed on hover.
+ *
+ * The runtime icon lives here rather than in a module of its own: the roster is
+ * where a model's runtime is declared, and the per-step table is the only other
+ * reader.
  */
 
-/** Fits the 940px dialog's page column without a horizontal scrollbar. */
-const COLUMNS = 'grid grid-cols-[168px_86px_minmax(140px,1fr)_118px_92px_24px] items-center gap-2'
+/** The roster's columns: model · use-case note · used for · default · row actions. */
+const COLUMNS =
+  'grid grid-cols-[minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,0.8fr)_88px_24px] items-center gap-3'
+
+/** A column heading row: 12px tertiary, sentence case, no fill. */
+export const TABLE_HEAD =
+  'min-h-8 border-b border-border-subtle px-2 text-xs font-medium text-text-tertiary'
 
 /**
- * A row's feedback slot: one row, one place its "Saved ✓" or its refusal
+ * A row's feedback slot: one row, one place its "Saved" or its refusal
  * appears, whichever of the row's controls issued the write.
  */
 const rowCell = (id: string) => `models:${id}`
 const ADD_CELL = 'models:new'
 
-/** The add row's controls, which are ordinary 32px fields rather than cells. */
-const ADD_FIELD =
-  'h-(--control-h) min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm ' +
-  'text-text placeholder:text-text-4 hover:border-hairline-strong'
+/** Hover-revealed, like every row action: never visible at rest. */
+export const REVEAL =
+  'opacity-0 transition-opacity duration-(--dur-1) group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100'
 
 export function RosterTable({
   rows,
@@ -80,52 +89,46 @@ export function RosterTable({
   const hidden = showAll || filtering ? 0 : hiddenRosterCount(rows)
 
   return (
-    <>
-      <div className="overflow-hidden rounded-md border border-hairline">
-        <div
-          className={`${COLUMNS} min-h-7.5 bg-panel-2 px-2.5 text-xs font-semibold tracking-[0.06em] text-text-3 uppercase`}
-        >
-          <span>Model</span>
-          <span>Runtime</span>
-          <span>Use-case note</span>
-          <span>Used for</span>
-          <span>Default</span>
-          <span />
-        </div>
-        {shown.map((row) => (
-          <ModelRow
-            key={row.id}
-            row={row}
-            stepLabels={stepLabels}
-            customModels={customModels}
-            writes={writes}
-          />
-        ))}
-        {!filtering && <AddModelRow customModels={customModels} writes={writes} />}
+    <div className="mt-3">
+      <div className={cx(COLUMNS, TABLE_HEAD)}>
+        <span>Model</span>
+        <span>Use-case note</span>
+        <span>Used for</span>
+        <span>Default</span>
+        <span />
       </div>
+      {shown.map((row, i) => (
+        <ModelRow
+          key={row.id}
+          index={i}
+          row={row}
+          stepLabels={stepLabels}
+          customModels={customModels}
+          writes={writes}
+        />
+      ))}
       {hidden > 0 && (
-        <p className="text-sm text-text-3">
-          {hidden} more {hidden === 1 ? 'model' : 'models'} not shown:{' '}
-          <button
-            type="button"
-            className={`${BARE_BUTTON} text-accent-hi hover:underline`}
-            onClick={() => setShowAll(true)}
-          >
-            show all
-          </button>
-        </p>
+        <div className="flex min-h-10 items-center gap-2 border-b border-border-subtle px-2 text-xs text-text-tertiary">
+          {hidden} more {hidden === 1 ? 'model' : 'models'} nobody uses
+          <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+            Show all
+          </Button>
+        </div>
       )}
-    </>
+      {!filtering && <AddModelRow customModels={customModels} writes={writes} />}
+    </div>
   )
 }
 
 function ModelRow({
   row,
+  index,
   stepLabels,
   customModels,
   writes,
 }: {
   row: RosterRow
+  index: number
   stepLabels: ReadonlyMap<ModelStep, string>
   customModels: ModelEntry[]
   writes: SettingWrites
@@ -162,58 +165,71 @@ function ModelRow({
     )
   }
 
+  // The first rows of the initial render rise in with a 20ms stagger (DESIGN.md
+  // §Motion). Keyed rows keep their element across refetches, so it runs once.
+  const staggered = index < 8
   return (
-    <div className="group border-t border-hairline-soft">
-      <div className={`${COLUMNS} min-h-10 px-2.5 py-1.5 text-sm`}>
-        <span className="flex min-w-0 items-center gap-1.5">
+    <div
+      className={cx(
+        'group border-b border-border-subtle transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover',
+        staggered && 'animate-rise-in',
+      )}
+      style={staggered ? { animationDelay: `${index * 20}ms` } : undefined}
+    >
+      <div className={cx(COLUMNS, 'min-h-10 px-2 text-sm')}>
+        <span className="flex min-w-0 items-center gap-2">
+          <RuntimeIcon runtime={row.runtime} />
           <span
-            className={`truncate font-mono ${row.isDefault ? 'text-accent-hi' : 'text-text'}`}
+            className="truncate text-text"
             title={row.displayName ? `${row.displayName} — ${row.id}` : row.id}
           >
             {row.id}
           </span>
           {row.isNew && (
-            <span className="shrink-0 rounded-pill border border-ok/35 bg-ok/10 px-1.5 text-xs font-semibold tracking-[0.06em] text-ok uppercase">
+            <StatusLabel tone="accent" className="shrink-0">
               New
-            </span>
+            </StatusLabel>
           )}
         </span>
-        <RuntimeChip runtime={row.runtime} />
         <div className="flex min-w-0 items-center gap-1.5">
           <NoteCell row={row} onCommit={saveNote} />
           {writes.saved === cell && <SaveMark />}
         </div>
-        <span className="text-xs leading-tight text-text-3">
+        <span className="truncate text-xs text-text-tertiary" title={usedFor || undefined}>
           {/* "Default" leads: every step with no model of its own is on it. */}
-          {row.isDefault && <span className="text-text-2">Default</span>}
-          {row.isDefault && usedFor !== '' && ' · '}
+          {row.isDefault && <span className="text-text-secondary">Default</span>}
+          {row.isDefault && usedFor !== '' && ', '}
           {usedFor !== '' ? usedFor : row.isDefault ? '' : '—'}
         </span>
         {row.isDefault ? (
-          <span className="justify-self-start rounded-pill border border-accent-line bg-accent-soft px-2 py-0.5 text-xs font-semibold tracking-[0.06em] text-accent-hi uppercase">
-            Default
+          <span data-default-mark="" className="inline-flex">
+            <StatusLabel strong icon={<IconCheck />}>
+              Default
+            </StatusLabel>
           </span>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             aria-label={`Make ${row.id} the default`}
-            // Attributed to this row, not to the card at the top of the page:
-            // a refusal belongs where the click was.
+            // Attributed to this row, not to the row at the top of the page: a
+            // refusal belongs where the click was.
             onClick={() => writes.save(cell, 'model', row.id)}
-            className={`${PLAIN_BUTTON} justify-self-start rounded-pill border border-transparent px-2 py-0.5 text-xs whitespace-nowrap text-text-3 opacity-0 group-hover:border-hairline group-hover:opacity-100 hover:border-accent-line hover:text-accent-hi focus-visible:opacity-100`}
+            className={cx('-ml-2 justify-self-start', REVEAL)}
           >
             Make default
-          </button>
+          </Button>
         )}
-        {row.custom && (
-          <button
-            type="button"
-            aria-label={`Remove ${row.id}`}
+        {row.custom ? (
+          <IconButton
+            label={`Remove ${row.id}`}
+            size="sm"
+            icon={<IconTrash />}
             onClick={remove}
-            className={`${BARE_BUTTON} grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-danger`}
-          >
-            <IconX size={12} />
-          </button>
+            className={cx('enabled:hover:text-danger', REVEAL)}
+          />
+        ) : (
+          <span />
         )}
       </div>
       <ProviderNotice row={row} />
@@ -230,7 +246,7 @@ function ModelRow({
 function ProviderNotice({ row }: { row: RosterRow }) {
   if (!row.noLongerOffered && !row.retirement) return null
   return (
-    <p className="flex flex-wrap gap-x-3 px-2.5 pb-1.5 text-sm text-warn">
+    <p className="m-0 flex flex-wrap gap-x-4 pr-2 pb-2.5 pl-8 text-xs text-warning">
       {row.noLongerOffered && (
         <span>no longer offered by {DISCOVERY_SOURCE_LABEL[row.noLongerOffered]}</span>
       )}
@@ -244,8 +260,9 @@ function ProviderNotice({ row }: { row: RosterRow }) {
 }
 
 /**
- * The note, edited in place. Committed when it is left, as everything on this
- * surface is; Enter is the same as leaving it.
+ * The note, edited in place. It reads as text until it is hovered or focused,
+ * and is committed when it is left, as everything on this surface is; Enter is
+ * the same as leaving it.
  */
 function NoteCell({ row, onCommit }: { row: RosterRow; onCommit: (note: string) => void }) {
   const [draft, setDraft] = useState(row.note)
@@ -257,10 +274,12 @@ function NoteCell({ row, onCommit }: { row: RosterRow; onCommit: (note: string) 
       aria-label={`Note for ${row.id}`}
       // The default's example is what a note is FOR; every other row's is what
       // typing one buys you.
-      placeholder={
-        row.isDefault ? 'e.g. UI/UX work, design-heavy tickets' : 'Add a note to offer it per ticket'
-      }
-      className="h-6.5 min-w-0 flex-1 rounded-sm border border-transparent bg-transparent px-2 text-sm text-text placeholder:text-text-4 placeholder:italic hover:border-hairline hover:bg-panel-inset focus:border-accent-line focus:bg-panel-inset"
+      placeholder={row.isDefault ? 'e.g. UI/UX work, design-heavy tickets' : 'Add a note'}
+      className={cx(
+        '-ml-2 h-7 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm text-text',
+        'transition-colors duration-(--dur-1) ease-app placeholder:text-text-disabled',
+        'hover:border-border focus:border-accent focus:bg-surface-inset',
+      )}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft.trim() !== row.note.trim() && onCommit(draft)}
@@ -304,24 +323,26 @@ function AddModelRow({
   }
 
   return (
-    <div className="border-t border-hairline-soft bg-panel-2">
+    <div className="pt-3">
       {/* Its own columns rather than the table's: this row is three controls and
           a button, and none of them is the column above it. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_150px_minmax(0,1.2fr)_auto] items-center gap-2 px-2.5 py-1.5">
-        <input
-          type="text"
+      <div className="grid grid-cols-[minmax(0,1fr)_132px_minmax(0,1.2fr)_auto] items-center gap-2">
+        <TextField
+          mono
           aria-label="New model id"
-          placeholder="model id, e.g. claude-opus-5[1m]"
-          className={`${ADD_FIELD} font-mono`}
+          placeholder="Model id, e.g. claude-opus-5[1m]"
           value={id}
           onChange={(e) => setId(e.target.value)}
           onKeyDown={onEnter}
         />
         <Select value={runtime} onValueChange={setRuntime}>
-          <SelectTrigger aria-label="Runtime (required)" className={ADD_FIELD}>
+          <SelectTrigger
+            aria-label="Runtime (required)"
+            className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full', runtime === '' && 'text-text-tertiary')}
+          >
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="font-sans text-sm">
+          <SelectContent>
             <SelectItem value="">Runs on…</SelectItem>
             {AGENT_RUNTIMES.map((r) => (
               <SelectItem key={r} value={r}>
@@ -330,29 +351,27 @@ function AddModelRow({
             ))}
           </SelectContent>
         </Select>
-        <input
-          type="text"
+        <TextField
           aria-label="New model note"
-          placeholder="use-case note (optional)"
-          className={ADD_FIELD}
+          placeholder="Use-case note (optional)"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={onEnter}
         />
-        <Button type="button" onClick={add}>
+        <Button icon={<IconPlus />} onClick={add}>
           Add model
         </Button>
       </div>
-      <Refusal writes={writes} cell={ADD_CELL} />
+      <Refusal writes={writes} cell={ADD_CELL} className="pt-1.5" />
     </div>
   )
 }
 
-/** Why a write was refused, under the row — or the card — that asked for it. */
+/** Why a write was refused, under the row — or the control — that asked for it. */
 export function Refusal({
   writes,
   cell,
-  className = 'px-2.5 pb-1.5',
+  className = 'pr-2 pb-2.5 pl-8',
 }: {
   writes: SettingWrites
   cell: string
@@ -360,28 +379,27 @@ export function Refusal({
 }) {
   if (writes.error?.cell !== cell) return null
   return (
-    <p role="alert" className={`text-sm text-danger ${className}`}>
+    <p role="alert" className={cx('m-0 text-xs text-danger', className)}>
       {writes.error.message}
     </p>
   )
 }
 
 /**
- * Which CLI a model launches. Two token-adjacent tints, no new tokens: the
- * runtime is a property of the model, not a status, so it is not on the status
- * palette.
+ * Which CLI a model launches, as that provider's glyph. A property of the
+ * model, not a status, so it is a neutral icon rather than a coloured chip; the
+ * runtime's name is its accessible name and its tooltip.
  */
-const RUNTIME_CHIP: Record<AgentRuntime, string> = {
-  'claude-code': 'border-accent-line bg-accent-soft text-accent-hi',
-  codex: 'border-ok/35 bg-ok/10 text-ok',
-}
-
-export function RuntimeChip({ runtime }: { runtime: AgentRuntime }) {
+export function RuntimeIcon({ runtime }: { runtime: AgentRuntime }) {
+  const Glyph = runtime === 'codex' ? IconCodex : IconClaude
   return (
     <span
-      className={`inline-flex h-5 w-fit items-center rounded-pill border px-2 font-mono text-xs whitespace-nowrap ${RUNTIME_CHIP[runtime]}`}
+      role="img"
+      aria-label={RUNTIME_LABEL[runtime]}
+      title={RUNTIME_LABEL[runtime]}
+      className="inline-flex size-4 shrink-0 items-center justify-center text-icon"
     >
-      {RUNTIME_LABEL[runtime]}
+      <Glyph size={14} />
     </span>
   )
 }
@@ -402,9 +420,4 @@ export function ModelOptions({ groups }: { groups: ModelOptionGroup[] }) {
       ))}
     </>
   )
-}
-
-/** The brief "it landed" beside a control, as on the shared setting row. */
-export function SaveMark() {
-  return <span className="shrink-0 text-xs text-ok">Saved ✓</span>
 }

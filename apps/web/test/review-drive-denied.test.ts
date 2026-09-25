@@ -145,10 +145,13 @@ describe('ReviewDriveDeniedCard', () => {
     expect(render({ readonly: true })).toBe('')
   })
 
-  /** The review did not fail — it fell back — so this is amber, not the
-   *  conflict card's red. */
+  /** The review did not fail — it fell back — so this is the accent notice
+   *  with an amber glyph, not the conflict notice's red ground. */
   it('reads as a warning rather than a failure', () => {
-    expect(render()).toContain('border-warn/45')
+    const html = render()
+    expect(html).toContain('bg-accent-subtle')
+    expect(html).toContain('text-warning')
+    expect(html).not.toContain('bg-danger-subtle')
   })
 
   it('falls back to the server’s sentence when the event carried no file list', () => {
@@ -190,12 +193,14 @@ describe('ReviewDriveDeniedCard', () => {
     expect(html).toContain('Dismiss')
   })
 
-  /** STYLE.md's one-solid-button rule: the mint keeps its action and loses only
-   *  its weight when another banner on the page is carrying the same one. */
+  /** One primary per view, and it is the next-step bar's: the mint is a
+   *  hairline button at most, and steps down to ghost when another notice on
+   *  the page is carrying the same verb. */
   it('steps its mint down to ghost when it is not the page’s primary', () => {
     const ghost = render({ primary: false })
     expect(ghost).toContain('Agentic review')
-    expect(ghost).not.toContain('bg-accent')
-    expect(render()).toContain('bg-accent')
+    expect(ghost).toContain('data-variant="ghost"')
+    expect(render()).toContain('data-variant="secondary"')
+    expect(render()).not.toContain('data-variant="primary"')
   })
 })

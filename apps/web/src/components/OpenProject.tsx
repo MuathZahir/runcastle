@@ -3,9 +3,11 @@ import { trpc } from '../trpc'
 import { isAbsolutePath, pathPlaceholder } from '../lib/platform'
 import { repoOpenFailure, type RepoOpenFailure } from '../lib/projects'
 import { useToast } from '../lib/toast'
-import { LogoMark } from '../icons'
-import { Button, FailureNote, TEXT_INPUT } from '../ui'
+import type { ReactNode } from 'react'
+import { IconArrowLeft, IconArrowRight, IconBranch, IconFolder, LogoMark } from '../icons'
+import { Button, FailureNote, TextField } from '../ui'
 import { DirectoryPicker } from './DirectoryPicker'
+import { SetupFrame, StepHeading } from './first-run/StepLayout'
 
 /**
  * The open-a-project flow (issue #45). One repo path in; the server validates it
@@ -23,10 +25,13 @@ import { DirectoryPicker } from './DirectoryPicker'
  */
 export function OpenProject({
   firstRun,
+  rail,
   onOpened,
   onCancel,
 }: {
   firstRun: boolean
+  /** The wizard's step rail, when this is setup's last step. */
+  rail?: ReactNode
   onOpened: (projectId: string) => void
   onCancel: () => void
 }) {
@@ -126,8 +131,9 @@ export function OpenProject({
   }
 
   return (
-    <div
-      className="flex h-full items-center justify-center px-6 py-10"
+    <SetupFrame
+      rail={rail}
+      stepKey="project"
       onKeyDown={(event) => {
         // The picker restores focus to Browse when it closes. Keep Escape as a
         // screen-level way back from there (and from every other control), but
@@ -135,94 +141,97 @@ export function OpenProject({
         if (event.key === 'Escape' && !firstRun && !picking) onCancel()
       }}
     >
-      <div className="w-full max-w-[560px]">
-        {/* inverse treatment (logo spec): accent tile, ink mark */}
-        <div className="mb-6 flex size-9 items-center justify-center rounded-md bg-accent">
-          <LogoMark size={22} variant="ink" />
-        </div>
-        {/*
-         * The kicker says where you are, the heading says what you are doing
-         * (decision 1) — so it never repeats the heading's own words back at
-         * you in caps, which is all "Open a project" over "Open a project" was.
-         */}
-        <div className="text-xs font-semibold tracking-[0.09em] text-accent-hi uppercase">
+      {/*
+       * The locator says where you are, the heading says what you are doing
+       * (decision 1) — so it never repeats the heading's own words back at you,
+       * which is all "Open a project" over "Open a project" was. Inside the
+       * wizard the rail already says where you are.
+       */}
+      {!rail && (
+        <div className="mb-3 flex items-center gap-2 text-xs text-text-tertiary">
+          <LogoMark size={14} />
           {firstRun ? 'Welcome to runcastle' : 'Your projects'}
         </div>
-        <h1 className="mt-2 text-xl font-semibold text-text">
-          {firstRun ? 'Open your first project' : 'Open a project'}
-        </h1>
-        <p className="mt-2 text-base text-text-2">
-          Point runcastle at a local git repository — every feature runs its pipeline against it.
-        </p>
+      )}
+      <StepHeading title={firstRun ? 'Open your first project' : 'Open a project'}>
+        Point runcastle at a local git repository — every feature runs its pipeline against it.
+      </StepHeading>
 
-        <div className="mt-7 flex items-center gap-2">
-          <input
-            id="open-repo-path"
-            className={`${TEXT_INPUT} flex-1`}
-            value={repoPath}
-            onChange={(e) => setRepoPath(e.target.value)}
-            placeholder={pathPlaceholder()}
-            aria-label="Repository path"
-            autoFocus
-            spellCheck={false}
-            aria-invalid={!!failure}
-            aria-describedby={failure ? 'open-repo-error' : undefined}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submit()
-            }}
-          />
-          <Button variant="ghost" onClick={browse} disabled={busy}>
-            Browse…
-          </Button>
-          <Button
-            variant="solid"
-            onClick={() => submit()}
-            disabled={busy || repoPath.trim() === ''}
-          >
-            {open.isPending ? 'Opening…' : 'Open'}
-          </Button>
-        </div>
-
-        {failure ? (
-          <div className="mt-3">
-            <FailureNote
-              {...failure}
-              id="open-repo-error"
-              action={
-                failure.offer === 'init-repo' ? (
-                  // Ghost, like every other action that sits inside a row: Open
-                  // is this view's one `solid` button (apps/web/STYLE.md), and a
-                  // second one beside it would be two primaries competing.
-                  <Button
-                    size="xs"
-                    onClick={() => initRepo.mutate({ repoPath: attempted })}
-                    disabled={busy}
-                  >
-                    {initRepo.isPending ? 'Initializing…' : 'Initialize repository'}
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-text-3">
-            Paste an absolute path, or browse for one. The default branch is detected when the
-            project opens.
-          </p>
-        )}
-
-        {!firstRun && (
-          <div className="mt-8">
-            <Button variant="ghost" onClick={onCancel} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
-        )}
+      <div className="mt-8 flex items-center gap-2">
+        <TextField
+          id="open-repo-path"
+          size="lg"
+          mono
+          icon={<IconFolder />}
+          className="flex-1"
+          value={repoPath}
+          onChange={(e) => setRepoPath(e.target.value)}
+          placeholder={pathPlaceholder()}
+          aria-label="Repository path"
+          autoFocus
+          spellCheck={false}
+          invalid={!!failure}
+          aria-describedby={failure ? 'open-repo-error' : 'open-repo-hint'}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit()
+          }}
+        />
+        <Button size="lg" onClick={browse} disabled={busy}>
+          Browse…
+        </Button>
+        <Button
+          variant="primary"
+          size="lg"
+          icon={<IconArrowRight />}
+          loading={open.isPending}
+          onClick={() => submit()}
+          disabled={busy || repoPath.trim() === ''}
+        >
+          Open
+        </Button>
       </div>
+
+      {failure ? (
+        <div className="mt-3 animate-rise-in">
+          <FailureNote
+            {...failure}
+            id="open-repo-error"
+            action={
+              failure.offer === 'init-repo' ? (
+                // Secondary, like every other action that sits inside a note:
+                // Open is this view's one primary (apps/web/DESIGN.md), and a
+                // second one beside it would be two primaries competing.
+                <Button
+                  size="sm"
+                  icon={<IconBranch />}
+                  loading={initRepo.isPending}
+                  onClick={() => initRepo.mutate({ repoPath: attempted })}
+                  disabled={busy}
+                >
+                  Initialize repository
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
+      ) : (
+        <p id="open-repo-hint" className="mt-2.5 mb-0 text-xs text-text-tertiary">
+          Paste an absolute path, or browse for one. The default branch is detected when the
+          project opens.
+        </p>
+      )}
+
+      {!firstRun && (
+        <footer className="mt-10 flex items-center border-t border-border-subtle pt-5">
+          <Button variant="ghost" icon={<IconArrowLeft />} onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+        </footer>
+      )}
 
       {picking && (
         <DirectoryPicker initialPath={repoPath} onPick={onPick} onCancel={() => setPicking(false)} />
       )}
-    </div>
+    </SetupFrame>
   )
 }

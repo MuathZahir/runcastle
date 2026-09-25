@@ -86,13 +86,13 @@ describe('BurnFeatureDialog', () => {
   describe('the warnings box', () => {
     it('shows nothing at all when the server computed no warnings', () => {
       const html = render()
-      expect(html).not.toContain('border-warn')
+      expect(html).not.toContain('aria-label="Warnings"')
     })
 
     it('renders each warning the query returned', () => {
       for (const warning of [NO_REVIEW_TICKET, UNDISPOSITIONED, NO_SPEC]) {
         const html = render({ summary: summary({ warnings: [warning] }) })
-        expect(html).toContain('border-warn')
+        expect(html).toContain('aria-label="Warnings"')
         expect(html).toContain(warning.slice(0, 40))
       }
     })

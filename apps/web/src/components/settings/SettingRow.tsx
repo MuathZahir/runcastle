@@ -1,7 +1,6 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import { trpc } from '../../trpc'
-import { BARE_BUTTON, PLAIN_BUTTON } from './button'
 import { HIGHLIGHT_RING, useHighlight } from './highlight'
 import {
   FIELD_ENV_VAR,
@@ -10,8 +9,10 @@ import {
   type SettingRow as Row,
   type SourceChip as SourceChipKind,
 } from '../../lib/settings'
-import { Field } from '../../ui'
+import { Button, cx, StatusDot, TextArea, TextField } from '../../ui'
+import type { StatusTone } from '../../ui'
 import {
+  SELECT_FIELD,
   Select,
   SelectContent,
   SelectGroup,
@@ -20,48 +21,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../ui/select'
-import { IconLock } from '../../icons'
+import { IconCheck, IconLock } from '../../icons'
 import { showsSetting, type FilterState } from './types'
 
 /**
  * One settings field, and the group it sits in — the shape every page of the
  * dialog is made of (flow-redesign-settings, decisions 5 / 7 / 8).
  *
- * The text policy lives here: a row shows its label, a placeholder with an
- * example value, and at most one short help line. The full explanation is
- * behind the ⓘ, provenance is a chip, and the evidence behind that chip is a
- * popover the project page opens — never a paragraph under the control.
+ * A row is two columns, Linear-style: the label (13px medium) with its
+ * explanation beneath it in `text-xs text-tertiary` on the left, the control on
+ * the right. Rows are divided by `border-subtle` and nothing else — no boxes.
+ * A multi-line control (commands, drive instructions) needs the width, so its
+ * row stacks: the label and description over a full-width control.
+ *
+ * Provenance is a quiet status label under the control, and the evidence behind
+ * it is a popover the project page opens — never a paragraph under the control.
  */
 
-/** How long "Saved ✓" stays up after a commit lands. */
+/**
+ * Truncates the selected value inside a `SelectTrigger`. `SelectValue`'s own
+ * `truncate` does not reach the span Radix renders, so a long option ("Inherit
+ * mine — my servers alongside runcastle's") wrapped the trigger onto two lines.
+ */
+export const SELECT_TRUNCATE = '[&>span:first-child]:min-w-0 [&>span:first-child]:truncate'
+
+/** How long "Saved" stays up after a commit lands. */
 const SAVED_MS = 1400
 
-/** Join the parts that are present. Falsy branches drop out. */
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
-}
-
-const CHIP =
-  'inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-pill border px-2 text-xs'
-
-/** An action that reads as prose rather than as a button — "Use global". */
-const LINK =
-  `${BARE_BUTTON} cursor-pointer text-xs whitespace-nowrap text-accent-hi underline ` +
-  'decoration-accent-line underline-offset-2 hover:decoration-accent-hi'
-
-const CONTROL =
-  'h-(--control-h) w-full min-w-0 rounded-sm border border-hairline bg-panel-inset px-2.5 ' +
-  'text-text placeholder:text-text-4 hover:border-hairline-strong ' +
-  'disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-text-3'
-
 /**
- * The 11px uppercase heading over a group of rows, with the hairline that runs
- * out to the edge of the page. Not the `SectionTitle` primitive: that one still
- * carries the `section-title` legacy hook, and an unlayered `styles.css` rule
- * would beat every utility beside it.
- *
- * A group whose rows are all filtered out renders nothing at all — a heading
- * over an empty space reads as a section with nothing in it.
+ * A group of rows under its heading. A group whose rows are all filtered out
+ * renders nothing at all — a heading over an empty space reads as a section
+ * with nothing in it.
  */
 export function SettingGroup({
   title,
@@ -86,40 +76,120 @@ export function SettingGroup({
   if (visible.length === 0) return null
   return (
     <SettingSection title={title}>
-      <div>
-        {visible.map((row) => (
-          <SettingRow
-            key={row.key}
-            row={row}
-            projectId={projectId}
-            highlight={highlightField === row.key}
-            // A finding with nothing behind it leaves the chip a plain chip —
-            // a button that opens an empty card is worse than no button.
-            {...(onOpenEvidence && row.provenanceChip?.evidence
-              ? { onOpenEvidence: () => onOpenEvidence(row.key) }
-              : {})}
-            {...(evidence ? { evidence: evidence(row) } : {})}
-          />
-        ))}
-      </div>
+      {visible.map((row) => (
+        <SettingRow
+          key={row.key}
+          row={row}
+          projectId={projectId}
+          highlight={highlightField === row.key}
+          // A finding with nothing behind it leaves the chip a plain label —
+          // a button that opens an empty card is worse than no button.
+          {...(onOpenEvidence && row.provenanceChip?.evidence
+            ? { onOpenEvidence: () => onOpenEvidence(row.key) }
+            : {})}
+          {...(evidence ? { evidence: evidence(row) } : {})}
+        />
+      ))}
     </SettingSection>
   )
 }
 
 /**
- * A titled section of a page. Exported because not every group is a list of
- * setting rows — the Burns page opens with the prerequisites checklist, which
- * has to wear the same heading as the fields under it.
+ * A titled group on a page: a 12px medium sentence-case heading, then its rows.
+ * Exported because not every group is a list of setting rows — the Burns page
+ * opens with the prerequisites checklist, and Models with its tables.
  */
-export function SettingSection({ title, children }: { title: string; children: ReactNode }) {
+export function SettingSection({
+  title,
+  action,
+  description,
+  children,
+}: {
+  title: string
+  /** One trailing control on the heading's line (a Refresh). */
+  action?: ReactNode
+  /** One line under the heading, for a group whose rows need a preamble. */
+  description?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <section className="flex flex-col gap-2.5">
-      <h3 className="flex items-center gap-2 text-xs font-semibold tracking-[0.08em] text-text-3 uppercase">
-        {title}
-        <span className="h-px flex-1 bg-hairline-soft" />
-      </h3>
-      {children}
+    <section className="mt-9 first:mt-0">
+      <div className="flex min-h-7 items-center gap-3 border-b border-border-subtle pb-2">
+        <h3 className="m-0 min-w-0 flex-1 text-sm font-medium text-text">{title}</h3>
+        {action && <div className="flex shrink-0 items-center gap-1">{action}</div>}
+      </div>
+      {description && (
+        <div className="mt-2.5 text-xs text-pretty text-text-tertiary">{description}</div>
+      )}
+      <div>{children}</div>
     </section>
+  )
+}
+
+/**
+ * The frame of one row: label and description on the left, the control on the
+ * right (or beneath, `stacked`). Shared by the field rows, the Models page's
+ * default model and General's theme, so every row on every page lines up.
+ *
+ * The root keeps `border-b`: it is the divider between rows, and a deep link's
+ * flash (`outline-accent`) lands on it.
+ */
+export function SettingLine({
+  label,
+  htmlFor,
+  description,
+  descriptionId,
+  aside,
+  control,
+  below,
+  stacked = false,
+  flash = false,
+  rowRef,
+}: {
+  label: ReactNode
+  /** The control's id, so the label names it. */
+  htmlFor?: string
+  description?: ReactNode
+  descriptionId?: string
+  /** Beside the label: the quiet "Saved" mark. */
+  aside?: ReactNode
+  control: ReactNode
+  /** Under the control: help, provenance, errors. */
+  below?: ReactNode
+  stacked?: boolean
+  flash?: boolean
+  rowRef?: Ref<HTMLDivElement>
+}) {
+  return (
+    <div
+      ref={rowRef}
+      className={cx(
+        'border-b border-border-subtle py-4 last:border-b-0',
+        'transition-[outline-color] duration-(--dur-3) ease-app',
+        stacked
+          ? 'flex flex-col gap-2.5'
+          : 'grid grid-cols-[minmax(0,1fr)_minmax(0,300px)] items-start gap-x-8 gap-y-1.5',
+        flash && HIGHLIGHT_RING,
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5 pt-1">
+        <div className="flex min-h-5 items-center gap-2">
+          <label htmlFor={htmlFor} className="text-sm font-medium text-text">
+            {label}
+          </label>
+          {aside}
+        </div>
+        {description && (
+          <p id={descriptionId} className="m-0 text-xs text-pretty text-text-tertiary">
+            {description}
+          </p>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        {control}
+        {below}
+      </div>
+    </div>
   )
 }
 
@@ -149,7 +219,7 @@ export function SettingRow({
   /** Why this field's last commit was refused; cleared by the next edit. */
   const [invalid, setInvalid] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  /** Set once this field has been changed — serverPort's amber restart line. */
+  /** Set once this field has been changed — serverPort's restart line. */
   const [restart, setRestart] = useState(false)
   const { ref: rowRef, flash } = useHighlight<HTMLDivElement>(highlight)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -214,84 +284,127 @@ export function SettingRow({
   // Two controls sharing one id made every `htmlFor` resolve to the global one,
   // so the per-project fields had no accessible name at all (findings F17.7).
   const controlId = `set-${projectId ? 'project' : 'global'}-${row.key}`
+  const helpId = `${controlId}-help`
+  const errorId = `${controlId}-error`
+  const descriptionId = `${controlId}-about`
+  const describedBy =
+    cx(descriptionId, row.shortHelp ? helpId : null, invalid ? errorId : null) || undefined
 
+  const hasMeta = row.sourceChip || row.clearable || row.provenanceChip
   return (
-    <div
-      ref={rowRef}
-      className={cx(
-        'border-b border-hairline-soft py-2 last:border-b-0',
-        flash && HIGHLIGHT_RING,
-      )}
-    >
-      <Field
-        htmlFor={controlId}
-        // The label takes column one; the control, its help and its error stack
-        // down column two.
-        layout="grid grid-cols-[210px_1fr] items-start gap-x-4 gap-y-1.5 [&>*+*]:col-start-2"
-        label={row.label}
-        labelAside={
-          <>
-            {row.tooltip && <InfoTip about={row.label} text={row.tooltip} />}
-            {saved && <span className="text-xs text-ok">Saved ✓</span>}
-          </>
-        }
-        help={row.shortHelp}
-        error={invalid}
-      >
+    <SettingLine
+      rowRef={rowRef}
+      flash={flash}
+      stacked={row.control === 'textarea'}
+      label={row.label}
+      htmlFor={controlId}
+      description={row.tooltip || undefined}
+      descriptionId={descriptionId}
+      aside={saved && <SaveMark />}
+      control={
         <RowControl
+          id={controlId}
+          describedBy={describedBy}
           row={row}
           draft={draft}
           disabled={update.isPending}
-          restart={restart}
           onDraft={edit}
           onCommit={save}
           onRevert={() => setDraft(committed)}
-          onClear={clear}
-          onOpenEvidence={onOpenEvidence}
-          evidence={evidence}
         />
-      </Field>
-    </div>
+      }
+      below={
+        <>
+          {row.shortHelp && (
+            <div id={helpId} className="text-xs text-text-tertiary">
+              {row.shortHelp}
+            </div>
+          )}
+          {hasMeta && (
+            <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1">
+              {row.sourceChip && (
+                <SourceChip kind={row.sourceChip} envVar={FIELD_ENV_VAR[row.key]} />
+              )}
+              {row.sourceChip === 'project' && (
+                <Button variant="ghost" size="sm" onClick={clear} className="-ml-1.5">
+                  Use global
+                </Button>
+              )}
+              {/* The machine-wide twin of "Use global": a set global value has
+                  no chip to hang a link off, and blanking the control commits ''
+                  rather than removing anything — so without this the way back to
+                  the default was unreachable from the UI that recommends it. */}
+              {row.clearable && (
+                <Button variant="ghost" size="sm" onClick={clear} className="-ml-1.5">
+                  Clear
+                </Button>
+              )}
+              {row.provenanceChip && (
+                <div className="relative flex min-w-0">
+                  <ProvenanceChip chip={row.provenanceChip} onOpenEvidence={onOpenEvidence} />
+                  {evidence}
+                </div>
+              )}
+              {row.stale && (
+                // Says where the refresh lives, because for a long time it said
+                // "re-prepare to refresh it" while offering no way to and
+                // nothing on screen mentioning one.
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs text-warning"
+                  title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
+                >
+                  <StatusDot tone="warning" />
+                  Stale
+                </span>
+              )}
+            </div>
+          )}
+          {restart && <div className="text-xs text-warning">Restart the server to apply</div>}
+          {invalid && (
+            <div id={errorId} role="alert" className="text-xs text-danger">
+              {invalid}
+            </div>
+          )}
+        </>
+      }
+    />
+  )
+}
+
+/** The brief "it landed" beside a label or a cell: a check and a word, fading in. */
+export function SaveMark() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-text-tertiary animate-fade-in">
+      <IconCheck size={12} className="text-success" />
+      Saved
+    </span>
   )
 }
 
 /**
- * The control cell: the control itself, the chips that say where its value came
- * from, and the restart line. Cloned by {@link Field} with the `id` and
- * `aria-describedby` it forwards to the control — which is why this is a
- * component and not a bare `<div>` at the call site.
+ * The control itself. Every editable value on this surface is an identifier, a
+ * command or a number, so the control is mono unless it is a list of choices.
  */
 function RowControl({
   id,
-  'aria-describedby': describedBy,
+  describedBy,
   row,
   draft,
   disabled,
-  restart,
   onDraft,
   onCommit,
   onRevert,
-  onClear,
-  onOpenEvidence,
-  evidence,
 }: {
-  id?: string
-  'aria-describedby'?: string
+  id: string
+  describedBy?: string
   row: Row
   draft: string
   disabled: boolean
-  restart: boolean
   onDraft: (value: string) => void
   onCommit: (value: string) => void
   onRevert: () => void
-  onClear: () => void
-  onOpenEvidence?: () => void
-  evidence?: ReactNode
 }) {
-  // Every editable value on this surface is an identifier, a command or a
-  // number, so the control is mono unless it is a list of choices.
   const wiring = { id, 'aria-describedby': describedBy, disabled }
-  const mono = row.control === 'select' ? '' : 'font-mono text-sm'
   const revertKey = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'Escape') return
     onRevert()
@@ -301,196 +414,144 @@ function RowControl({
     if (e.key === 'Enter') e.currentTarget.blur()
     revertKey(e)
   }
+  const unit = row.unit ? (
+    <span className="min-w-0 text-xs text-pretty text-text-tertiary">{row.unit}</span>
+  ) : undefined
 
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex min-w-0 items-center gap-2">
-        {row.readOnly ? (
-          // Locked, not read-only text: the old surface rendered the value as
-          // mono prose with a sentence under it, which read as a value rather
-          // than as something this app cannot change (decision 11).
-          <input
-            {...wiring}
-            disabled
-            readOnly
-            className={cx(CONTROL, mono, row.control === 'number' && 'w-24 tabular-nums')}
-            value={row.optionLabels[row.value] ?? row.value}
-          />
-        ) : row.control === 'select' ? (
-          <Select
-            value={draft}
-            onValueChange={(next) => {
-              onDraft(next)
-              onCommit(next)
-            }}
-          >
-            <SelectTrigger {...wiring} className={cx(CONTROL, 'max-w-90')}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="font-sans text-sm">
-              {/* An unset project field leads with what it inherits, so the first
-                  choice states the effective value rather than looking empty. */}
-              {row.ghostValue && (
-                <SelectItem value="">
-                  Use global ({row.optionLabels[row.ghostValue] ?? row.ghostValue})
-                </SelectItem>
-              )}
-              {row.modelGroups.length > 0
-                ? row.modelGroups.map((group) => (
-                    <SelectGroup key={group.runtime}>
-                      <SelectLabel>{group.label}</SelectLabel>
-                      {group.entries.map((entry) => (
-                        <SelectItem key={entry.id} value={entry.id} title={entry.note}>
-                          {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))
-                : row.options.map((opt) => (
-                    // The stored value is a config identifier ("noSandbox",
-                    // "inherit"); the dropdown reads out what it means.
-                    <SelectItem key={opt} value={opt}>
-                      {row.optionLabels[opt] ?? opt}
+  if (row.readOnly) {
+    // Locked, not read-only text: the old surface rendered the value as mono
+    // prose with a sentence under it, which read as a value rather than as
+    // something this app cannot change (decision 11).
+    return (
+      <TextField
+        {...wiring}
+        disabled
+        readOnly
+        mono={row.control !== 'select'}
+        icon={<IconLock />}
+        className="w-full"
+        inputClassName={row.control === 'number' ? 'tabular-nums' : undefined}
+        value={row.optionLabels[row.value] ?? row.value}
+      />
+    )
+  }
+
+  if (row.control === 'select') {
+    return (
+      <Select
+        value={draft}
+        onValueChange={(next) => {
+          onDraft(next)
+          onCommit(next)
+        }}
+      >
+        <SelectTrigger {...wiring} className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full')}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {/* An unset project field leads with what it inherits, so the first
+              choice states the effective value rather than looking empty. */}
+          {row.ghostValue && (
+            <SelectItem value="">
+              Use global ({row.optionLabels[row.ghostValue] ?? row.ghostValue})
+            </SelectItem>
+          )}
+          {row.modelGroups.length > 0
+            ? row.modelGroups.map((group) => (
+                <SelectGroup key={group.runtime}>
+                  <SelectLabel>{group.label}</SelectLabel>
+                  {group.entries.map((entry) => (
+                    <SelectItem key={entry.id} value={entry.id} title={entry.note}>
+                      {entry.note ? `${entry.id} — ${entry.note}` : entry.id}
                     </SelectItem>
                   ))}
-            </SelectContent>
-          </Select>
-        ) : row.control === 'textarea' ? (
-          // Multi-line values (verify commands, known failures) — an <input>
-          // silently drops the newlines that give them their meaning.
-          <textarea
-            {...wiring}
-            rows={2}
-            className={cx(CONTROL, mono, 'h-auto min-h-16 resize-y py-2 leading-normal')}
-            placeholder={row.ghostValue ?? row.placeholder}
-            value={draft}
-            onChange={(e) => onDraft(e.target.value)}
-            onBlur={(e) => onCommit(e.target.value)}
-            // No Enter-to-commit: here it is a newline, which is the point.
-            onKeyDown={revertKey}
-          />
-        ) : (
-          <input
-            {...wiring}
-            type={row.control === 'number' ? 'number' : 'text'}
-            className={cx(CONTROL, mono, row.control === 'number' && 'w-24 tabular-nums')}
-            placeholder={row.ghostValue ?? row.placeholder}
-            value={draft}
-            onChange={(e) => onDraft(e.target.value)}
-            onBlur={(e) => onCommit(e.target.value)}
-            onKeyDown={commitKeys}
-          />
-        )}
-        {row.unit && <span className="text-sm whitespace-nowrap text-text-3">{row.unit}</span>}
-        {row.sourceChip && (
-          <div
-            className={cx(
-              'flex shrink-0 items-center gap-2',
-              // Beside a two-line control the chip and its link stack at the top
-              // rather than floating halfway down the textarea.
-              row.control === 'textarea' && 'flex-col items-start gap-1.5 self-start pt-1.5',
-            )}
-          >
-            <SourceChip kind={row.sourceChip} envVar={FIELD_ENV_VAR[row.key]} />
-            {row.sourceChip === 'project' && (
-              <button type="button" onClick={onClear} className={LINK}>
-                Use global
-              </button>
-            )}
-          </div>
-        )}
-        {/* The machine-wide twin of "Use global": a set global value has no
-            chip to hang a link off, and blanking the control commits '' rather
-            than removing anything — so without this the way back to the default
-            was unreachable from the UI that recommends it. */}
-        {row.clearable && (
-          <button type="button" onClick={onClear} className={cx(LINK, 'shrink-0')}>
-            Clear
-          </button>
-        )}
-      </div>
-      {row.provenanceChip && (
-        <div className="flex items-center gap-1.5">
-          <div className="relative flex">
-            <ProvenanceChip chip={row.provenanceChip} onOpenEvidence={onOpenEvidence} />
-            {evidence}
-          </div>
-          {row.stale && (
-            // Says where the refresh lives, because for a long time it said
-            // "re-prepare to refresh it" while offering no way to and nothing on
-            // screen mentioning one.
-            <span
-              className={cx(CHIP, 'border-warn/45 bg-panel-2 text-warn')}
-              title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
-            >
-              Stale
-            </span>
-          )}
-        </div>
-      )}
-      {restart && <div className="text-sm text-warn">Restart the server to apply</div>}
+                </SelectGroup>
+              ))
+            : row.options.map((opt) => (
+                // The stored value is a config identifier ("noSandbox",
+                // "inherit"); the dropdown reads out what it means.
+                <SelectItem key={opt} value={opt}>
+                  {row.optionLabels[opt] ?? opt}
+                </SelectItem>
+              ))}
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (row.control === 'textarea') {
+    // Multi-line values (verify commands, known failures) — an <input>
+    // silently drops the newlines that give them their meaning.
+    return (
+      <TextArea
+        {...wiring}
+        mono
+        rows={3}
+        placeholder={row.ghostValue ?? row.placeholder}
+        value={draft}
+        onChange={(e) => onDraft(e.target.value)}
+        onBlur={(e) => onCommit(e.target.value)}
+        // No Enter-to-commit: here it is a newline, which is the point.
+        onKeyDown={revertKey}
+      />
+    )
+  }
+
+  const field = (
+    <TextField
+      {...wiring}
+      type={row.control === 'number' ? 'number' : 'text'}
+      mono
+      className={row.control === 'number' ? 'w-24 shrink-0' : 'w-full'}
+      inputClassName={row.control === 'number' ? 'tabular-nums' : undefined}
+      placeholder={row.ghostValue ?? row.placeholder}
+      value={draft}
+      onChange={(e) => onDraft(e.target.value)}
+      onBlur={(e) => onCommit(e.target.value)}
+      onKeyDown={commitKeys}
+    />
+  )
+  // A number's unit ("tickets at once · default on this machine: 3") is a
+  // sentence, not a suffix — beside the field rather than squeezed into it.
+  if (!unit) return field
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {field}
+      {unit}
     </div>
   )
 }
 
-/**
- * The full explanation, on demand. A `<label>` may not contain another
- * labelable element, so this is the label's sibling rather than its child, and
- * the tooltip is a positioned sibling of the button rather than a library.
- */
-function InfoTip({ about, text }: { about: string; text: string }) {
-  const tipId = useId()
-  return (
-    <span className="relative inline-flex">
-      <button
-        type="button"
-        aria-label={`About ${about}`}
-        aria-describedby={tipId}
-        className={`${PLAIN_BUTTON} peer grid size-4 cursor-default place-items-center rounded-pill border border-hairline-strong text-[10px] text-text-3 hover:border-accent-line hover:text-accent-hi`}
-      >
-        i
-      </button>
-      <span
-        id={tipId}
-        role="tooltip"
-        className="pointer-events-none invisible absolute top-5.5 left-0 z-10 w-75 rounded-md border border-hairline-strong bg-panel-3 px-2.5 py-2 text-sm leading-normal font-normal text-text-2 shadow-overlay peer-hover:visible peer-focus-visible:visible"
-      >
-        {text}
-      </span>
-    </span>
-  )
-}
-
-const SOURCE_CHIP: Record<SourceChipKind, { text: string; className: string }> = {
-  global: { text: 'Global', className: 'border-hairline bg-panel-2 text-text-2' },
-  project: { text: 'This project', className: 'border-accent-line bg-accent-soft text-accent-hi' },
-  env: { text: 'Env', className: 'border-hairline bg-panel-2 text-text-3' },
-}
-
 /** Where the value on screen came from — the whole of the override signal. */
+const SOURCE_MARK: Record<SourceChipKind, { text: string; tone: StatusTone; word: string }> = {
+  global: { text: 'Global', tone: 'neutral', word: 'text-text-tertiary' },
+  project: { text: 'This project', tone: 'accent', word: 'text-text-secondary' },
+  env: { text: 'Env', tone: 'neutral', word: 'text-text-tertiary' },
+}
+
 function SourceChip({ kind, envVar }: { kind: SourceChipKind; envVar?: string }) {
-  const chip = SOURCE_CHIP[kind]
+  const mark = SOURCE_MARK[kind]
   return (
     <span
-      className={cx(CHIP, chip.className)}
+      className={cx('inline-flex shrink-0 items-center gap-1.5 text-xs', mark.word)}
       {...(kind === 'env' && envVar ? { title: `Set by ${envVar}` } : {})}
     >
-      {kind === 'env' && <IconLock size={10} />}
-      {chip.text}
+      {kind === 'env' ? <IconLock size={12} className="text-icon" /> : <StatusDot tone={mark.tone} />}
+      <span>{mark.text}</span>
     </span>
   )
 }
 
-const PROVENANCE_DOT: Record<ProvenanceChipData['tone'], string> = {
-  ok: 'bg-ok',
-  muted: 'bg-text-4',
-  warn: 'bg-warn',
+const PROVENANCE_TONE: Record<ProvenanceChipData['tone'], StatusTone> = {
+  ok: 'success',
+  muted: 'neutral',
+  warn: 'warning',
 }
 
 /**
  * Who established a prepared value, in one line. The evidence behind it runs to
  * thousands of words and is never inline (decision 5) — `onOpenEvidence` is
- * what turns the chip into the button that reveals it.
+ * what turns the label into the button that reveals it.
  */
 function ProvenanceChip({
   chip,
@@ -499,23 +560,24 @@ function ProvenanceChip({
   chip: ProvenanceChipData
   onOpenEvidence?: (() => void) | undefined
 }) {
-  const tone = chip.tone === 'warn' ? 'border-warn/45 text-warn' : 'border-hairline text-text-2'
   const body = (
     <>
-      <span className={cx('size-1.5 shrink-0 rounded-pill', PROVENANCE_DOT[chip.tone])} />
-      {chip.text}
+      <StatusDot tone={PROVENANCE_TONE[chip.tone]} />
+      <span className="truncate">{chip.text}</span>
     </>
   )
-  if (!onOpenEvidence) return <span className={cx(CHIP, 'bg-panel-2', tone)}>{body}</span>
+  const word = chip.tone === 'warn' ? 'text-warning' : 'text-text-secondary'
+  if (!onOpenEvidence)
+    return <span className={cx('inline-flex min-w-0 items-center gap-1.5 text-xs', word)}>{body}</span>
   return (
     <button
       type="button"
       onClick={onOpenEvidence}
       className={cx(
-        PLAIN_BUTTON,
-        CHIP,
-        'bg-panel-2 hover:border-hairline-strong hover:text-text',
-        tone,
+        '-mx-1.5 inline-flex h-6 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-xs',
+        'underline decoration-border-strong decoration-dotted underline-offset-4',
+        'transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text',
+        word,
       )}
     >
       {body}

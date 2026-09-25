@@ -10,11 +10,10 @@ import {
   type SettingsPage,
 } from '../../lib/settings'
 import type { SettingsView } from '../../lib/api'
-import { Dialog } from '../../ui'
-import { IconX } from '../../icons'
-import { BARE_BUTTON } from './button'
+import { Dialog, EmptyState, IconButton } from '../../ui'
+import { IconSearch, IconX } from '../../icons'
 import { SETTINGS_PAGES, SettingsRail } from './SettingsRail'
-import { GeneralPage } from './GeneralPage'
+import { GeneralPage, THEME_FIELD } from './GeneralPage'
 import { ModelsPage } from './ModelsPage'
 import { BurnsPage } from './BurnsPage'
 import { ProjectPage } from './ProjectPage'
@@ -33,10 +32,10 @@ import type { FilterState, SettingsPageProps } from './types'
 
 /** What the header says over each page, under the page's own name. */
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
-  general: 'Machine-wide.',
-  models: 'Machine-wide — the roster, the default, and which model runs each step.',
-  burns: 'Machine-wide — unattended runs.',
-  project: 'Global values show as ghost text.',
+  general: 'How runcastle looks, where its server listens, and how sessions are sandboxed.',
+  models: 'The default model, the roster this machine offers, and which model runs each step.',
+  burns: 'What an unattended run needs before it starts, and how hard it tries once it does.',
+  project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',
 }
 
 const PAGE_BODY: Record<SettingsPage, (props: SettingsPageProps) => ReactNode> = {
@@ -93,7 +92,7 @@ export function SettingsDialog({
   return (
     <Dialog open onClose={onClose} size="xl" label="Settings" className="overflow-hidden">
       <div
-        className="grid h-[min(700px,80vh)] grid-cols-[184px_1fr]"
+        className="relative grid h-[min(720px,84vh)] grid-cols-[208px_minmax(0,1fr)]"
         onKeyDown={onKeyDown}
       >
         <SettingsRail
@@ -104,44 +103,49 @@ export function SettingsDialog({
           onFilter={setQuery}
           onSelect={setPage}
         />
-        {/* Both halves of one chain, and neither works without the other:
-            `minmax(0,1fr)` on the body row so the body scrolls rather than
-            stretching the dialog, and `min-h-0` here because a grid item's
+        {/* Both halves of one chain, and neither works without the other: the
+            body is the one scroller, and `min-h-0` here because a grid item's
             automatic minimum size is its content — without it this section's
-            minimum is the whole page's height, the row above grows to match,
-            the body is handed exactly the height it asked for and so never
-            scrolls, and the panel's `overflow-hidden` cuts off the rest. */}
-        <section className="grid min-h-0 min-w-0 grid-rows-[48px_minmax(0,1fr)]">
-          <header className="flex min-w-0 items-center gap-2.5 border-b border-hairline pr-3 pl-5.5">
-            <h2 className="text-lg font-semibold">{title}</h2>
-            <span className="truncate text-sm text-text-3">{PAGE_SUBTITLE[page]}</span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close (Esc)"
-              className={`${BARE_BUTTON} ml-auto grid size-7 shrink-0 place-items-center rounded-sm text-text-3 hover:bg-panel-3 hover:text-text`}
-            >
-              <IconX size={14} />
-            </button>
-          </header>
-          <div className="min-h-0 overflow-x-hidden overflow-y-auto px-5.5 pt-4.5 pb-7">
-            <Page
-              globals={globals}
-              scoped={scoped}
-              projectId={projectId}
-              filter={filter}
-              // Only on the page the link named: nothing else asked to be found.
-              {...(page === location.page && location.field
-                ? { highlightField: location.field }
-                : {})}
-            />
-            {nothingMatches && (
-              <p className="py-10 text-center text-sm text-text-3">
-                Nothing matches. Try “model”, “verify” or “image”.
-              </p>
-            )}
+            minimum is the whole page's height, the body is handed exactly the
+            height it asked for and so never scrolls, and the panel's
+            `overflow-hidden` cuts off the rest. */}
+        <section className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] bg-surface">
+          <div className="min-h-0 overflow-x-hidden overflow-y-auto px-8 pt-9 pb-12">
+            {/* Keyed on the page, so switching pages cross-fades and rises once
+                — never on a refetch or a keystroke in the filter. */}
+            <div key={page} className="animate-rise-in">
+              <header className="mb-8">
+                <h2 className="m-0 text-lg font-semibold text-text">{title}</h2>
+                <p className="mt-1 mb-0 text-sm text-text-tertiary">{PAGE_SUBTITLE[page]}</p>
+              </header>
+              <div>
+                <Page
+                globals={globals}
+                scoped={scoped}
+                projectId={projectId}
+                filter={filter}
+                // Only on the page the link named: nothing else asked to be found.
+                {...(page === location.page && location.field
+                  ? { highlightField: location.field }
+                  : {})}
+                />
+              </div>
+              {nothingMatches && (
+                <EmptyState
+                  compact
+                  icon={<IconSearch />}
+                  title="Nothing matches"
+                  hint="Try “model”, “verify” or “image”."
+                />
+              )}
+            </div>
           </div>
         </section>
+        {/* Positioned by a wrapper: the button's own `relative` would beat an
+            `absolute` passed beside it, and it would drop into the grid. */}
+        <div className="absolute top-3 right-3">
+          <IconButton label="Close" kbd="Esc" size="sm" icon={<IconX />} onClick={onClose} />
+        </div>
       </div>
     </Dialog>
   )
@@ -156,6 +160,13 @@ export function SettingsDialog({
  * instead: its rows have no setting key behind them and come from the doctor's
  * shape, not from the view.
  */
+/** The theme row lives in the browser, not in `settings.get`, so it names itself. */
+const THEME_SEARCH: SearchableSetting = {
+  id: THEME_FIELD,
+  page: 'general',
+  terms: ['Theme', 'Appearance', 'Dark', 'Light', 'System'],
+}
+
 function searchableSettings(
   globals: SettingsView | undefined,
   scoped: SettingsView | undefined,
@@ -169,5 +180,5 @@ function searchableSettings(
     page: 'burns' as const,
     terms: [p.label, ...p.terms],
   }))
-  return [...rows, ...prerequisites]
+  return [THEME_SEARCH, ...rows, ...prerequisites]
 }

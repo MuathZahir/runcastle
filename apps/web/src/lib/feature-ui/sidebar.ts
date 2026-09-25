@@ -89,13 +89,13 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
 }
 
 /**
- * A feature's ticket progress for the row's second line, or null when it has no
- * tickets. Null rather than "0/0 done": a figure about nothing costs the line
- * width that the slug and the pipeline map need.
+ * A feature's ticket progress as the row's trailing meta ("3/7"), or null when
+ * it has no tickets. A tight row writes counts as fractions (DESIGN.md
+ * §Content); null rather than "0/0", because a figure about nothing is noise.
  */
 export function ticketProgress(f: FeatureListItem): string | null {
   const { total, done } = f.ticketCounts
-  return total > 0 ? `${done}/${total} done` : null
+  return total > 0 ? `${done}/${total}` : null
 }
 
 /** Sidebar sort: needs-me first, then active, then parked drafts, then shipped

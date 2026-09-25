@@ -1,24 +1,22 @@
 import { useEffect, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import { trpc } from '../trpc'
 import { pathPlaceholder } from '../lib/platform'
 import { browseFailure, pickerStartDir, type RepoOpenFailure } from '../lib/projects'
-import { IconBranch, IconFolder, IconX } from '../icons'
-import { BARE_BUTTON, Button, Dialog, DimLine, FailureNote } from '../ui'
+import { IconBranch, IconChevronUp, IconFolder, IconHome } from '../icons'
+import {
+  Button,
+  Dialog,
+  DialogFooter,
+  DialogHeader,
+  EmptyState,
+  FailureNote,
+  IconButton,
+  NavItem,
+  SectionLabel,
+  Spinner,
+} from '../ui'
 import { PathCrumbs } from './PathCrumbs'
-
-/**
- * The roots rail's rows. Their background is written into each tone rather than
- * once into the base: two `bg-*` utilities on one element collide, and which
- * one wins is the order Tailwind emits them in, not the order they are written.
- */
-const RAIL_ROW =
-  'flex items-center gap-2 rounded-md border-0 px-2 py-1.5 text-left text-sm ' +
-  'hover:bg-panel-inset hover:text-text'
-
-/** One folder in the listing. */
-const ENTRY_ROW =
-  `${BARE_BUTTON} flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ` +
-  'hover:bg-panel-inset hover:text-text'
 
 /**
  * Repo picker for the open-a-project flow — the alternative to hand-pasting an
@@ -113,36 +111,50 @@ export function DirectoryPicker({
     setDir(settlingTo)
   }, [settling, settlingTo, dir, typed, failureMessage])
 
+  /**
+   * ↑/↓ walk the listing (and the roots) by focus; Enter opens the focused
+   * folder, which is the row's own click. Home/End jump to either end.
+   */
+  const onListKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End']
+    if (!keys.includes(event.key)) return
+    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-dir-row] button')]
+    if (rows.length === 0) return
+    event.preventDefault()
+    const at = rows.indexOf(document.activeElement as HTMLElement)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? rows.length - 1
+          : event.key === 'ArrowDown'
+            ? Math.min(rows.length - 1, at + 1)
+            : Math.max(0, at === -1 ? 0 : at - 1)
+    rows[next]?.focus()
+  }
+
   return (
     <Dialog
       open
       onClose={onCancel}
       size="lg"
-      label="Choose a repository"
-      className="flex h-[66vh] flex-col overflow-hidden"
+      labelledBy="dir-picker-title"
+      className="flex h-[min(620px,76vh)] flex-col overflow-hidden"
     >
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 py-3">
-        <span className="text-base font-semibold text-text">Choose a repository</span>
-        <button
-          className={`${BARE_BUTTON} rounded-sm p-0.5 text-text-3 hover:text-text`}
-          onClick={onCancel}
-          aria-label="Close (Esc)"
-        >
-          <IconX size={14} />
-        </button>
-      </div>
+      <DialogHeader
+        id="dir-picker-title"
+        title="Choose a repository"
+        description="Browse this machine for a git repository to open."
+        onClose={onCancel}
+      />
 
-      <div className="flex shrink-0 items-center gap-2 border-b border-hairline px-4 py-2.5">
-        <Button
-          variant="ghost"
-          className="shrink-0 px-2.5"
+      <div className="flex shrink-0 items-center gap-2 border-y border-border px-3 py-2">
+        <IconButton
+          label="Up one level"
+          icon={<IconChevronUp />}
           onClick={() => data?.parent && navigate(data.parent)}
           disabled={!data?.parent}
-          aria-label="Up one level"
-          title="Up one level"
-        >
-          ↑
-        </Button>
+        />
         <PathCrumbs
           crumbs={data?.crumbs ?? []}
           value={typed ?? current ?? ''}
@@ -150,10 +162,10 @@ export function DirectoryPicker({
           onEnterPath={enterPath}
           placeholder={pathPlaceholder()}
         />
-        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-text-3 select-none">
+        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-secondary select-none hover:bg-surface-hover hover:text-text">
           <input
             type="checkbox"
-            className="accent-accent"
+            className="size-3.5 accent-(--color-accent)"
             checked={showHidden}
             onChange={(e) => setShowHidden(e.target.checked)}
           />
@@ -162,7 +174,7 @@ export function DirectoryPicker({
       </div>
 
       {refusal && (
-        <div className="shrink-0 border-b border-hairline px-4 py-2.5">
+        <div className="shrink-0 border-b border-border px-4 py-3">
           <FailureNote
             message={refusal.message}
             path={refusal.path}
@@ -174,92 +186,113 @@ export function DirectoryPicker({
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-40 shrink-0 flex-col gap-px overflow-y-auto border-r border-hairline p-2">
+        <div
+          className="flex w-44 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2"
+          onKeyDown={onListKey}
+        >
+          <SectionLabel className="px-2.5">Locations</SectionLabel>
           {(roots.data ?? []).map((root) => (
-            <button
-              key={root.path}
-              className={
-                RAIL_ROW +
-                (current === root.path ? ' bg-accent-soft text-text' : ' bg-transparent text-text-3')
-              }
-              onClick={() => navigate(root.path)}
-              title={root.path}
-            >
-              <IconFolder size={13} />
-              <span className="truncate font-mono">{root.label}</span>
-            </button>
+            <div key={root.path} data-dir-row="">
+              <NavItem
+                label={<span className="font-mono text-xs">{root.label}</span>}
+                title={root.path}
+                icon={root.label === '~' ? <IconHome /> : <IconFolder />}
+                active={current === root.path}
+                onClick={() => navigate(root.path)}
+              />
+            </div>
           ))}
         </div>
 
-        <div className="min-w-0 flex-1 overflow-y-auto p-2">
+        <div className="min-w-0 flex-1 overflow-y-auto p-2" onKeyDown={onListKey}>
           {/* Mid walk-up the failing directory is one render from being
               replaced, so the pane must not flash a failure that is already
               being answered. */}
           {settling || browse.isLoading ? (
-            <DimLine>Loading…</DimLine>
+            <div className="flex items-center gap-2 px-2.5 py-2 text-sm text-text-tertiary">
+              <Spinner /> Loading…
+            </div>
           ) : browse.isError ? (
-            <FailureNote {...browseFailure(browse.error.message)} />
+            <div className="p-2">
+              <FailureNote {...browseFailure(browse.error.message)} />
+            </div>
           ) : (data?.entries.length ?? 0) === 0 ? (
-            <DimLine>
-              No subfolders here
-              {showHidden ? '' : ' (hidden folders, junctions and node_modules are filtered)'}.
-            </DimLine>
+            <EmptyState
+              compact
+              icon={<IconFolder />}
+              title="No subfolders here"
+              hint={
+                showHidden ? undefined : 'Hidden folders, junctions and node_modules are filtered.'
+              }
+            />
           ) : (
-            (data?.entries ?? []).map((entry) => (
-              <button
-                key={entry.path}
-                className={ENTRY_ROW + (entry.isRepo ? ' text-text' : ' text-text-2')}
-                onClick={() => navigate(entry.path)}
-                // A repo is usually the destination, so let a double-click
-                // both enter and commit it in one gesture.
-                onDoubleClick={() => entry.isRepo && onPick(entry.path)}
-                title={entry.path}
-              >
-                <IconFolder size={13} />
-                <span className="min-w-0 flex-1 truncate font-mono">{entry.name}</span>
-                {entry.isSymlink && <span className="shrink-0 text-xs text-text-4">link</span>}
-                {entry.isRepo && (
-                  <span className="flex shrink-0 items-center gap-1 text-xs tracking-[0.04em] text-accent-hi uppercase">
-                    <IconBranch size={11} /> git
-                  </span>
-                )}
-              </button>
-            ))
+            // Keyed on the folder, so a navigation's listing rises in once and
+            // a refetch of the same folder does not.
+            <div key={current} className="flex flex-col gap-0.5 animate-rise-in" role="list">
+              {(data?.entries ?? []).map((entry) => (
+                <div
+                  key={entry.path}
+                  role="listitem"
+                  data-dir-row=""
+                  // A repo is usually the destination, so let a double-click
+                  // both enter and commit it in one gesture.
+                  onDoubleClick={() => entry.isRepo && onPick(entry.path)}
+                >
+                  <NavItem
+                    label={entry.name}
+                    title={entry.path}
+                    icon={entry.isRepo ? <IconBranch /> : <IconFolder />}
+                    onClick={() => navigate(entry.path)}
+                    className={entry.isRepo ? 'text-text' : undefined}
+                    meta={
+                      entry.isRepo ? (
+                        <span className="text-text-secondary">git</span>
+                      ) : entry.isSymlink ? (
+                        'link'
+                      ) : undefined
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           )}
-          {data?.truncated && <DimLine>Listing truncated — this folder is very large.</DimLine>}
+          {data?.truncated && (
+            <p className="m-0 px-2.5 py-2 text-xs text-text-tertiary">
+              Listing truncated — this folder is very large.
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3 border-t border-hairline px-4 py-3">
-        {/* A long path is truncated at its *start* — the tail (the folder you
-            picked) is the part worth reading. `dir="rtl"` moves the ellipsis to
-            the left; <bdi> isolates the path so bidi reordering cannot move
-            direction-neutral characters around to the wrong end. */}
-        <div
-          className="min-w-0 flex-1 truncate text-left font-mono text-sm text-text-3"
-          dir="rtl"
-          title={current}
+      <DialogFooter
+        className="border-t border-border pt-3 pb-3"
+        start={
+          // A long path is truncated at its *start* — the tail (the folder you
+          // picked) is the part worth reading. `dir="rtl"` moves the ellipsis to
+          // the left; <bdi> isolates the path so bidi reordering cannot move
+          // direction-neutral characters around to the wrong end.
+          <div className="min-w-0 truncate text-left font-mono text-xs" dir="rtl" title={current}>
+            <bdi>{current ?? '—'}</bdi>
+          </div>
+        }
+      >
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        {/* Enabled even when `.git` was not spotted: the server's git check is
+            the authority (bare repos and worktrees do not look like a plain
+            checkout), and its error message is the better teacher. A directory
+            that would not even list is another matter — that is the garbage the
+            primary button used to happily submit. */}
+        <Button
+          variant="primary"
+          icon={<IconFolder />}
+          onClick={() => current && onPick(current)}
+          disabled={!current || browse.isError}
         >
-          <bdi>{current ?? '—'}</bdi>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          {/* Enabled even when `.git` was not spotted: the server's git check
-              is the authority (bare repos and worktrees do not look like a
-              plain checkout), and its error message is the better teacher. A
-              directory that would not even list is another matter — that is the
-              garbage the primary button used to happily submit. */}
-          <Button
-            variant="solid"
-            onClick={() => current && onPick(current)}
-            disabled={!current || browse.isError}
-          >
-            Open this folder
-          </Button>
-        </div>
-      </div>
+          Open this folder
+        </Button>
+      </DialogFooter>
     </Dialog>
   )
 }

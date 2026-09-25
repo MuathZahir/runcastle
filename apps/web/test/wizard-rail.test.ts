@@ -24,17 +24,19 @@ describe('WizardRail', () => {
     }
   })
 
-  it('paints the current step in the accent and leaves the rest behind it', () => {
+  it('marks the current step, and the ones behind and ahead of it', () => {
     const html = render('runtimes', unset)
-    expect(html).toContain('text-accent-hi')
-    expect(html).toContain('text-text-2')
-    expect(html).toContain('text-text-4')
+    expect(html).toMatch(/data-state="current"[^>]*aria-current="step"[^>]*class="[^"]*bg-surface-selected/)
+    expect(html).toContain('data-state="done"')
+    expect(html).toContain('data-state="todo"')
+    // One current step, and it is the one showing.
+    expect(html.match(/aria-current="step"/g)).toHaveLength(1)
   })
 
   it('says what a step the host passed for us actually found', () => {
     const html = render('afk', ok)
     expect(html).toContain('detected from git config: Ada Lovelace')
-    expect(html).toContain('text-ok')
+    expect(html).toContain('data-state="passed"')
   })
 
   // The detail line is the passed row's whole point — a rail that only went

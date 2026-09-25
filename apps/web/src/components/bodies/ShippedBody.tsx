@@ -5,39 +5,44 @@ import { useEventLog } from '../../lib/events'
 import {
   bodySessions,
   deferredScope,
+  findingCountsLine,
+  lapAccount,
+  lapAccountLine,
   lapChip,
   lastTestDriveLap,
   latestRun,
   outcomeDocPath,
   reviewChecks,
   sessionActive,
-  shippedAt,
   shippedChatSessions,
   specDocPath,
   stampedReview,
 } from '../../lib/feature-ui'
 import { relTimeAgo } from '../../lib/format'
 import { useReviewArtifacts } from '../../lib/reviews'
-import { IconBranch, IconCheck } from '../../icons'
-import { Button, DimLine, SectionTitle } from '../../ui'
-import { EvidenceStage, NO_WALKTHROUGH_RECORDED } from '../review/EvidenceStage'
-import { StatusStrip } from '../review/StatusStrip'
+import { IconDoc, IconMessage } from '../../icons'
+import { Button, Disclosure, List, ListRow } from '../../ui'
+import { DriveInstructions } from '../review/drive-parts'
+import { EvidenceStage } from '../review/EvidenceStage'
+import { FullAccounts } from '../review/FullAccounts'
+import { ReviewTrail } from '../review/ReviewTrail'
+import { CheckDetails, LapStory, StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { DocPeek } from '../DocPeek'
 import { SessionPanel } from '../SessionPanel'
 
 /**
  * The shipped phase body: the record of a feature that landed (decisions 32c and
- * 33). A calm confirmation, then the evidence — the final walkthrough on a
- * read-only stage, the strip's account of what shipped — then every question
- * anyone ever asked about it.
+ * 33), under the feature page's header — which already says, once, that it
+ * shipped and when (DESIGN.md principle 5). So there is no second header band
+ * and no centred hero here: the facts as a property list, the final
+ * walkthrough if one was recorded, the lap as a heading, a paragraph and its
+ * tickets, every question anyone asked about it, and the long text closed.
  *
  * Nothing here acts. `readonly` is passed to the bands the review page shares
  * with this one, which is what keeps a history view from offering to launch an
- * agent (decision 33a); the stage plays with Annotate gone, and the strip states
- * what WAS done ("test drive taken · lap 2") rather than instructing anyone to
- * do it. The "merged when" reads `relTimeAgo`, which is why the hero no longer
- * says "merged now ago" (decision 30c).
+ * agent (decision 33a); the stage plays with Annotate gone, and the facts state
+ * what WAS done ("Taken · lap 2") rather than instructing anyone to do it.
  */
 export function ShippedBody({
   full,
@@ -49,7 +54,6 @@ export function ShippedBody({
 }) {
   const { feature, tickets, runs } = full
   const events = useEventLog(feature.id)
-  const merged = shippedAt(events)
   const [peekingOutcome, setPeekingOutcome] = useState(false)
   const outcomeRelPath = outcomeDocPath(full)
 
@@ -62,90 +66,110 @@ export function ShippedBody({
   // Shipped is terminal, so none of these reads polls: the SSE feed invalidates
   // their keys, and nothing on this page changes without one.
   const findings = trpc.findings.listByFeature.useQuery({ featureId: feature.id })
+  const notes = trpc.notes.list.useQuery({ featureId: feature.id })
   const specRelPath = specDocPath(full)
   const specQ = trpc.docs.read.useQuery(
     { featureId: feature.id, relPath: specRelPath ?? 'spec.md' },
     { enabled: !!specRelPath },
   )
+  const projects = trpc.project.list.useQuery()
+  const project = projects.data?.find((p) => p.id === feature.projectId)
 
   const chats = shippedChatSessions(full.sessions)
+  const liveChats = bodySessions(chats.filter(sessionActive), chatDocked)
   const run = latestRun(runs)
+  // The commit row is dropped on purpose: it counts what the branch is ahead
+  // of its base, which is zero once the branch has landed. The scale of what
+  // shipped lives in the outcome doc.
+  const checks = reviewChecks({
+    tickets,
+    run,
+    findings: findings.data?.findings.length,
+  }).filter((row) => row.key !== 'changes')
+  const account = lapAccount(tickets, feature.lap)
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
+  const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
+  const [staged, setStaged] = useState<string | null>(null)
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="mx-auto mt-9 max-w-140 animate-[fadeUp_var(--dur-3)_ease-out] text-center">
-        <div className="mx-auto flex size-10 animate-[popIn_var(--dur-3)_ease-out] items-center justify-center rounded-pill border border-ok/45 text-ok">
-          <IconCheck size={17} />
-        </div>
-        <div className="mt-3.5 text-lg font-semibold">Shipped to main</div>
-        <div className="mt-1.5 inline-flex items-center gap-1.5 font-mono text-sm text-text-2">
-          <IconBranch size={12} />
-          {feature.branch}
-          {merged === null ? '' : ` · merged ${relTimeAgo(merged)}`}
-        </div>
-        <div className="mt-2.5 text-sm leading-relaxed text-text-3">
-          The branch is merged and the pipeline is complete. The full history lives in the Activity
-          tab.
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+        <div className="min-w-0 flex-1">
+          <StatusStrip
+            artifact={stamped}
+            currentLap={feature.lap}
+            landedSince={stamped?.landedSince ?? 0}
+            tickets={tickets}
+            checks={checks}
+            runState={run?.status ?? 'no run recorded'}
+            shipped
+            driveLap={lastTestDriveLap(events)}
+            noWalkthrough={recordings.length === 0}
+          />
         </div>
         {/* The synthesized account the merge wrote to the base branch — the
             permanent record, one click from the feature it is about. */}
         {outcomeRelPath && (
-          <Button className="mt-4" onClick={() => setPeekingOutcome(true)}>
-            Read the outcome doc
+          <Button variant="ghost" icon={<IconDoc />} onClick={() => setPeekingOutcome(true)}>
+            Outcome doc
           </Button>
         )}
       </div>
 
-      {recordings.length === 0 ? (
-        // Nothing was recorded and nothing on this page can ever record one, so
-        // the stage would be a screen of empty box between the hero and the
-        // strip. The fact is one line, and everything below moves up.
-        <DimLine>{NO_WALKTHROUGH_RECORDED}</DimLine>
-      ) : (
-        <EvidenceStage
-          featureId={feature.id}
-          branch={feature.branch}
-          recordings={recordings}
-          // No open-work band on this page, so no marker on the scrub bar has a
-          // row to jump to; the recording plays as the record it is.
-          notes={[]}
-          readonly
-          driveState="idle"
-          dryRun={false}
-          failure={null}
-        />
+      {/* Nothing recorded and nothing here can ever record one, so there is
+          no stage at all — the Test drive row above already says why. */}
+      {recordings.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="m-0 text-lg font-semibold text-text">Walkthrough</h2>
+          <EvidenceStage
+            featureId={feature.id}
+            branch={feature.branch}
+            recordings={recordings}
+            picked={staged}
+            // No open-work band on this page, so no marker on the scrub bar has
+            // a row to jump to; the recording plays as the record it is.
+            notes={[]}
+            readonly
+            driveState="idle"
+            dryRun={false}
+            failure={null}
+          />
+        </section>
       )}
 
-      <StatusStrip
-        artifact={stamped}
-        currentLap={feature.lap}
-        landedSince={stamped?.landedSince ?? 0}
+      <ReviewTrail
+        passes={rows}
         tickets={tickets}
-        // The commit row is dropped on purpose: it counts what the branch is
-        // ahead of its base, which is zero once the branch has landed. The scale
-        // of what shipped lives in the outcome doc.
-        checks={reviewChecks({
-          tickets,
-          run,
-          findings: findings.data?.findings.length,
-        }).filter((row) => row.key !== 'changes')}
-        runState={run?.status ?? 'no run recorded'}
-        lap={lapChip(tickets, { lap: feature.lap, lapSessionRan: true })}
-        laterLaps={deferredScope(specQ.data?.content)}
-        readonly
-        shipped
-        driveLap={lastTestDriveLap(events)}
+        findings={findings.data?.findings ?? []}
+        notes={notes.data ?? []}
+        currentLap={feature.lap}
+        account={accountLine}
+        staged={recordings.length > 0 ? staged : null}
+        onStage={setStaged}
       />
 
       {/* A live chat terminal is the one thing on this page that is not history,
-          so it keeps the panel; every ended conversation is a row below. */}
-      <SessionPanel
-        featureId={feature.id}
-        sessions={bodySessions(chats.filter(sessionActive), chatDocked)}
-        className="shipped-session"
-      />
+          so it keeps the panel; every ended conversation is a row below. In
+          the page's flow the wrapper is what gives the terminal its height. */}
+      {liveChats.length > 0 && (
+        <div className="flex h-[clamp(300px,calc(100dvh-420px),1200px)] flex-col">
+          <SessionPanel featureId={feature.id} sessions={liveChats} />
+        </div>
+      )}
 
       <QaHistory sessions={chats} />
+
+      <div className="flex flex-col [&>*:last-child]:border-b [&>*:last-child]:border-border-subtle">
+        <DriveInstructions text={project?.driveInstructions} />
+        <FullAccounts account={account} tickets={tickets} observations={observations} />
+        <CheckDetails checks={checks} />
+        <LapStory
+          lap={lapChip(tickets, { lap: feature.lap, lapSessionRan: true })}
+          laterLaps={deferredScope(specQ.data?.content)}
+          currentLap={feature.lap}
+          readonly
+        />
+      </div>
 
       {peekingOutcome && outcomeRelPath && (
         <DocPeek
@@ -172,52 +196,48 @@ function QaHistory({ sessions }: { sessions: FeatureFull['sessions'] }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <SectionTitle>Questions asked</SectionTitle>
-      <ul className="flex list-none flex-col gap-2 p-0">
-        {sessions.map((session) => (
-          <li key={session.id}>
-            <QaRow session={session} />
-          </li>
-        ))}
-      </ul>
+      <h2 className="m-0 text-lg font-semibold text-text">Questions asked</h2>
+      <List divided label="Questions asked">
+        {sessions.map((session, i) => {
+          const when = session.createdAt === undefined ? undefined : relTimeAgo(session.createdAt)
+          // Nothing to open: the row IS the record, so it is a statement rather
+          // than a control that refuses to do anything (decisions #10).
+          if (session.transcriptMissing) {
+            return (
+              <ListRow
+                key={session.id}
+                index={i}
+                leading={<IconMessage />}
+                title={<span className="text-text-tertiary">Session opened, nothing recorded</span>}
+                meta={when}
+              />
+            )
+          }
+          return <QaRow key={session.id} title={session.title ?? 'Conversation'} when={when} sessionId={session.id} />
+        })}
+      </List>
     </section>
   )
 }
 
-function QaRow({ session }: { session: FeatureFull['sessions'][number] }) {
-  const [open, setOpen] = useState(false)
-  const when = session.createdAt === undefined ? null : relTimeAgo(session.createdAt)
-
-  // Nothing to open: the row IS the record, so it is a statement rather than a
-  // control that refuses to do anything (decisions #10 — no disabled affordances).
-  if (session.transcriptMissing) {
-    return (
-      <div className="flex items-center gap-3 rounded-md border border-hairline bg-panel px-3 py-2.5">
-        <span className="flex-1 text-base text-text-3">session opened · nothing recorded</span>
-        {when && <span className="font-mono text-xs text-text-3">{when}</span>}
-      </div>
-    )
-  }
-
+/**
+ * One conversation, its transcript one click away. The transcript mounts only
+ * once the row is opened — a shipped feature can carry many conversations, and
+ * each transcript is a read of its own.
+ */
+function QaRow({ title, when, sessionId }: { title: string; when?: string; sessionId: string }) {
+  const [opened, setOpened] = useState(false)
   return (
-    <div className="rounded-md border border-hairline bg-panel">
-      <button
-        type="button"
-        className="flex w-full cursor-pointer items-center gap-3 border-0 bg-transparent px-3 py-2.5 text-left"
-        aria-expanded={open}
-        onClick={() => setOpen((was) => !was)}
+    <div data-list-row="" className="px-3">
+      <Disclosure
+        bare
+        icon={<IconMessage />}
+        title={<span className="font-normal text-text">{title}</span>}
+        aside={when}
+        onToggle={(open) => open && setOpened(true)}
       >
-        <span className="flex-1 text-base text-text">{session.title ?? 'Conversation'}</span>
-        {when && <span className="font-mono text-xs text-text-3">{when}</span>}
-        <span className="font-mono text-xs text-text-3" aria-hidden="true">
-          {open ? '▾' : '▸'}
-        </span>
-      </button>
-      {open && (
-        <div className="border-t border-hairline p-3">
-          <ConversationTranscript sessionId={session.id} />
-        </div>
-      )}
+        {opened && <ConversationTranscript sessionId={sessionId} />}
+      </Disclosure>
     </div>
   )
 }

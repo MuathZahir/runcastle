@@ -11,7 +11,7 @@ import { openMenu } from './floating'
  */
 
 const actions = [
-  { key: 'copy', label: 'Copy link', onSelect: () => {} },
+  { key: 'copy-link', label: 'Copy link', onSelect: () => {} },
   { key: 'delete', label: 'Delete…', danger: true, onSelect: () => {} },
 ]
 
@@ -20,7 +20,7 @@ describe('FeatureActionsMenu', () => {
 
   it('states its type size on the items, so they read at the sans size the rows around them do', () => {
     render(<FeatureActionsMenu actions={actions} />)
-    openMenu(screen.getByRole('button', { name: 'feature actions' }))
+    openMenu(screen.getByRole('button', { name: 'Feature actions' }))
 
     // Tailwind emits `text-xs` after every other size, so the surface's own
     // default is the later declaration however the class attribute is written
@@ -30,5 +30,15 @@ describe('FeatureActionsMenu', () => {
     for (const { label } of actions) {
       expect(screen.getByRole('menuitem', { name: label }).className).toContain('text-sm')
     }
+  })
+
+  it('gives every item an icon and sorts the destructive ones last, behind a rule', () => {
+    render(<FeatureActionsMenu actions={[actions[1]!, actions[0]!]} />)
+    openMenu(screen.getByRole('button', { name: 'Feature actions' }))
+
+    const items = screen.getAllByRole('menuitem')
+    expect(items.map((item) => item.textContent)).toEqual(['Copy link', 'Delete…'])
+    for (const item of items) expect(item.querySelector('svg')).toBeTruthy()
+    expect(screen.getByRole('separator')).toBeTruthy()
   })
 })

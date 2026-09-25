@@ -51,22 +51,53 @@ describe('the next-step bar’s count line', () => {
 
   it('gives the defects the danger tone and the notes the neutral one', () => {
     const html = bar({ counts: openWork })
-    expect(html).toContain('text-danger')
-    expect(html).toContain('bg-text-4')
+    expect(html).toContain('bg-danger')
+    expect(html).toContain('bg-icon')
   })
 
   it('renders the all-clear as one green pill that says it itself', () => {
     const html = bar({ counts: { pills: [{ label: 'Nothing open', tone: 'clear' }] } })
     expect(html).toContain('Nothing open')
-    expect(html).toContain('text-ok')
+    expect(html).toContain('bg-success')
   })
 
   // A bar with no title is the open-work state (decision 3): the count line is
   // the whole of what it has to say, and an empty heading must not stand in for it.
   it('leaves out the title and the paragraph when the resolver sends neither', () => {
     const html = bar({ counts: openWork }, true)
-    expect(html).not.toContain('text-lg font-semibold')
-    expect(html).not.toContain('max-w-[68ch]')
+    expect(html).not.toContain('font-medium text-text')
+    expect(html).not.toContain('<p class="m-0 text-pretty">')
+  })
+
+  it('renders nothing when there is nothing to do and nothing happening', () => {
+    expect(bar({ primary: undefined, secondary: [{ label: 'Chat', kind: 'chat' }], title: 'Shipped to main' })).toContain('Chat')
+    expect(
+      renderToStaticMarkup(
+        createElement(NextStepBar, {
+          ns: { kick: 'SHIPPED', title: 'Shipped to main', secondary: [{ label: 'Chat', kind: 'chat' }], busy: false },
+          guidance: true,
+          busy: false,
+          hideChat: true,
+          onAction: () => undefined,
+        }),
+      ),
+    ).toBe('')
+  })
+
+  it('keeps two secondaries beside the primary and the rest behind More', () => {
+    const html = bar({
+      primary: { label: 'Resolve the merge conflict', kind: 'resolveConflict' },
+      secondary: [
+        { label: 'Merge & ship', kind: 'merge' },
+        { label: 'Start test drive', kind: 'testDriveStart' },
+        { label: 'Iterate', kind: 'endSessionAndIterate' },
+      ],
+    })
+    expect(html).toContain('Merge &amp; ship')
+    expect(html).toContain('Start test drive')
+    expect(html).toContain('aria-label="More actions"')
+    // The overflow item is in the closed menu, not on the row.
+    expect(html).not.toContain('>Iterate</button>')
   })
 
   it('still gates the explanatory paragraph on guidance where one exists', () => {

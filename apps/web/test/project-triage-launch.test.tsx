@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 import type { ProjectSession } from '../src/lib/api'
@@ -146,14 +146,23 @@ describe('the project workspace at rest', () => {
     ...over,
   })
 
-  it('puts the Notes card between the New chat card and the conversation list', () => {
+  /** The inbox is the page's one aside, open while something waits in it. */
+  it('opens the Notes aside beside the page while a note is open, and folds it on request', () => {
     render(<ProjectWorkspace projectId="proj_1" talk={talk()} />)
 
-    const order = ['Talk it through', 'Notes', 'Conversations'].map((text) =>
-      screen.getByText(text).compareDocumentPosition(screen.getByText('Notes')),
-    )
-    // FOLLOWING(4) from the heading above it, PRECEDING(2) from the one below
-    expect(order).toEqual([Node.DOCUMENT_POSITION_FOLLOWING, 0, Node.DOCUMENT_POSITION_PRECEDING])
+    const aside = screen.getByRole('complementary', { name: 'Notes' })
+    expect(within(aside).getByRole('region', { name: 'Notes' })).toBeTruthy()
+    // the page comes first, the aside beside it
+    expect(
+      screen.getByText('Talk it through').compareDocumentPosition(aside),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+    const toggle = screen.getByRole('button', { name: 'Notes · 1 open' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(toggle)
+    expect(screen.queryByRole('complementary', { name: 'Notes' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Notes · 1 open' }))
+    expect(screen.getByRole('complementary', { name: 'Notes' })).toBeTruthy()
   })
 
   it('triages straight away when no chat is open', () => {
@@ -170,7 +179,7 @@ describe('the project workspace at rest', () => {
     render(<ProjectWorkspace projectId="proj_1" talk={api} />)
 
     // the live conversation owns the body; the inbox is a step back from it
-    fireEvent.click(screen.getByRole('button', { name: '← Conversations' }))
+    fireEvent.click(screen.getByRole('button', { name: 'acme' }))
     fireEvent.click(screen.getByRole('button', { name: 'Triage 1' }))
     expect(api.triage).not.toHaveBeenCalled()
     expect(screen.getByRole('status').textContent).toContain('A chat is already open.')

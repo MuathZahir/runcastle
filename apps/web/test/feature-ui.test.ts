@@ -3551,7 +3551,7 @@ describe.skip('turn-aware feature states', () => {
 describe('ticketProgress', () => {
   it('reads done over total', () => {
     const counts = { total: 5, pending: 2, burning: 0, done: 3, failed: 0, cancelled: 0 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5 done')
+    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5')
   })
 
   it('is null when the feature has no tickets', () => {

@@ -1,3 +1,5 @@
+import { Disclosure } from '../../ui'
+import { IconDoc } from '../../icons'
 import { Markdown } from '../Markdown'
 
 /**
@@ -11,13 +13,8 @@ import { Markdown } from '../Markdown'
 export function LaneDigest({ digest }: { digest?: string }) {
   if (!digest?.trim()) return null
   return (
-    <details className="border-b border-hairline-soft">
-      <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold tracking-[0.07em] text-text-3 uppercase [&::-webkit-details-marker]:hidden">
-        What this ticket produced
-      </summary>
-      <div className="border-t border-hairline-soft px-3 py-2">
-        <Markdown source={digest} />
-      </div>
-    </details>
+    <Disclosure bare title="What this ticket produced" icon={<IconDoc />}>
+      <Markdown source={digest} />
+    </Disclosure>
   )
 }

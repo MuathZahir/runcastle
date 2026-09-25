@@ -141,6 +141,23 @@ describe('the marker-to-note spotlight', () => {
     }
   })
 
+  it('is the one aside: the Aside primitive, titled and closable', () => {
+    render(
+      <NotesRail
+        featureId="ftr_1"
+        lap={1}
+        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+        readonly={false}
+        onStage={null}
+        onClose={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('complementary')).toBeTruthy()
+    expect(screen.getByText('Needs attention')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
+    expect(screen.getByLabelText(/what did you just see/i)).toBeTruthy()
+  })
+
   it('scrolls the rail’s own scroller, and never an ancestor of the stage', () => {
     render(
       <NotesRail
@@ -151,6 +168,7 @@ describe('the marker-to-note spotlight', () => {
         onStage={null}
         highlight={[NOTE.id]}
         scrollTo={NOTE.id}
+        onClose={() => undefined}
       />,
     )
 
@@ -174,6 +192,7 @@ describe('the marker-to-note spotlight', () => {
         readonly={false}
         onStage={null}
         scrollTo={null}
+        onClose={() => undefined}
       />,
     )
 

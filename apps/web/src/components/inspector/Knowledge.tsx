@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { DocSummary } from '../../lib/api'
 import { IconDoc } from '../../icons'
+import { EmptyState, List, ListRow } from '../../ui'
 import { DocPeek } from '../DocPeek'
 
 function basename(relPath: string): string {
@@ -10,37 +11,32 @@ function basename(relPath: string): string {
 /** The docs the sessions write, each opening in a read-only peek. */
 export function Knowledge({ featureId, docs }: { featureId: string; docs: DocSummary[] }) {
   const [peek, setPeek] = useState<{ relPath: string; title: string } | null>(null)
-  const peekOpenerRef = useRef<HTMLButtonElement>(null)
+  const peekOpenerRef = useRef<HTMLElement | null>(null)
   return (
-    <section className="flex flex-col gap-2">
-      <div className="text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">Knowledge</div>
+    <section aria-label="Knowledge">
       {docs.length === 0 ? (
-        <div className="text-sm leading-relaxed text-pretty text-text-3">
-          Docs the sessions write — decisions, the spec, the map — collect here.
-        </div>
+        <EmptyState
+          compact
+          icon={<IconDoc />}
+          title="No docs yet"
+          hint="Docs the sessions write — decisions, the spec, the map — collect here."
+        />
       ) : (
-        // No preflight (apps/web/STYLE.md): the list states its own reset.
-        <ul className="m-0 list-none p-0">
-          {docs.map((d) => (
-            <li key={d.relPath}>
-              <button
-                className="flex w-full cursor-pointer items-center gap-2 rounded-sm border-0 bg-transparent px-2 py-2 text-left font-sans text-sm hover:bg-panel-3"
-                onClick={(event) => {
-                  peekOpenerRef.current = event.currentTarget
-                  setPeek({ relPath: d.relPath, title: d.title })
-                }}
-              >
-                <span className="flex shrink-0 items-center text-text-4">
-                  <IconDoc size={13} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-text">{d.title}</span>
-                <span className="shrink-0 font-mono text-xs text-text-3">
-                  {basename(d.relPath)}
-                </span>
-              </button>
-            </li>
+        <List label="Feature docs" className="-mx-2">
+          {docs.map((d, i) => (
+            <ListRow
+              key={d.relPath}
+              index={i}
+              leading={<IconDoc />}
+              title={d.title || basename(d.relPath)}
+              meta={<span className="font-mono">{basename(d.relPath)}</span>}
+              onClick={(event) => {
+                peekOpenerRef.current = event.currentTarget
+                setPeek({ relPath: d.relPath, title: d.title })
+              }}
+            />
           ))}
-        </ul>
+        </List>
       )}
       {peek && (
         <DocPeek

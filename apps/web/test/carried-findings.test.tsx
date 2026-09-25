@@ -97,7 +97,7 @@ describe('the carried findings band', () => {
     expect(screen.getByText('lap 2 is rebuilding the toast host')).toBeTruthy()
     // Out of the open count, and saying so — the inflated "N still open" is what
     // carrying a defect exists to stop.
-    expect(screen.getByText('2 carried · not counted as open')).toBeTruthy()
+    expect(screen.getByText('2 carried, not counted as open')).toBeTruthy()
   })
 
   it('hands a parked defect back to the open pile, and refreshes the findings', () => {

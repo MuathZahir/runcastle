@@ -3,7 +3,7 @@ import { trpc } from '../trpc'
 import { imageOnClipboard, toPngBlob } from '../lib/reviews'
 import { uploadProjectNoteScreenshot } from '../lib/project-notes'
 import { useToast } from '../lib/toast'
-import { Dialog, Kbd } from '../ui'
+import { cx, Dialog, IconButton, Kbd } from '../ui'
 import { IconCheck, IconPencil, IconX } from '../icons'
 
 /**
@@ -54,6 +54,9 @@ export interface NoteCaptureProps {
 /** A text-coloured link inside a `<button>`: the unlayered `button { color:
  *  inherit }` beats a colour written on the button, so it goes on a span. */
 const LINK_BUTTON = 'cursor-pointer rounded-sm border-0 bg-transparent p-0'
+
+/** The palette's one-line row height (the command palette's input row). */
+const LINE = 'flex h-13 items-center gap-3 px-4'
 
 export function NoteCapture({
   projectId,
@@ -211,11 +214,11 @@ export function NoteCapture({
       initialFocusRef={inputRef}
     >
       {saved ? (
-        <div className="flex h-13 items-center gap-2.5 px-3.5 text-base" role="status">
-          <span className="flex shrink-0 items-center text-ok">
+        <div className={cx(LINE, 'text-sm animate-fade-in')} role="status">
+          <span className="flex shrink-0 items-center text-success">
             <IconCheck size={16} />
           </span>
-          <span className="min-w-0 flex-1 truncate text-text-2">
+          <span className="min-w-0 flex-1 truncate text-text-secondary">
             Noted in <span className="font-medium text-text">{projectName}</span>
             {openCount.data !== undefined && <> · {openCount.data} open</>}
           </span>
@@ -224,20 +227,20 @@ export function NoteCapture({
             onClick={readInbox}
             title="Read the pile on the project workspace"
           >
-            <span className="text-sm text-accent-hi hover:underline">View</span>
+            <span className="text-sm text-accent-text hover:underline">View</span>
           </button>
         </div>
       ) : (
         <div onPaste={onPaste}>
-          <div className="flex h-13 items-center gap-2.5 px-3.5">
-            <span className="flex shrink-0 items-center text-accent-hi">
+          <div className={cx(LINE, 'border-b border-border-subtle')}>
+            <span className="flex shrink-0 items-center text-icon">
               <IconPencil size={16} />
             </span>
             <input
               ref={inputRef}
               // `font-sans` because there is no preflight: an `<input>` keeps the
               // UA's own face and size unless it is told otherwise.
-              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-lg text-text outline-none placeholder:text-text-4"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base text-text outline-none placeholder:text-text-tertiary"
               autoComplete="off"
               aria-label="what did you just notice?"
               placeholder="What did you just notice?"
@@ -251,32 +254,23 @@ export function NoteCapture({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-hairline-soft bg-panel-2 px-3.5 py-2 text-sm text-text-3">
+          <div className="flex flex-wrap items-center gap-4 px-4 py-2 text-xs text-text-tertiary">
             {staged ? (
-              <span className="inline-flex h-6 items-center gap-1.5 rounded-sm border border-hairline-strong bg-panel-3 pr-1 pl-0.5 text-text-2">
+              <span className="inline-flex items-center gap-2 text-text-secondary animate-fade-in">
                 <img
                   src={staged.preview}
                   alt="the picture this note will carry"
-                  className="h-4.5 w-7 rounded-[3px] bg-black object-cover"
+                  className="h-5 w-8 rounded-sm bg-surface-inset object-cover"
                 />
                 Screenshot
-                <button
-                  className="flex size-4.5 cursor-pointer items-center justify-center rounded-[4px] border-0 bg-transparent p-0 hover:bg-hairline"
-                  aria-label="remove the picture"
-                  title="Remove the picture"
-                  onClick={drop}
-                >
-                  <span className="flex items-center text-text-3">
-                    <IconX size={10} />
-                  </span>
-                </button>
+                <IconButton size="sm" label="Remove the picture" icon={<IconX />} onClick={drop} />
               </span>
             ) : (
               <span>Paste a screenshot</span>
             )}
             <span className="flex-1" />
             <span>
-              to <span className="font-medium text-text-2">{projectName}</span>
+              to <span className="font-medium text-text-secondary">{projectName}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <Kbd>↵</Kbd> save

@@ -6,7 +6,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { fmtClock } from '@runcastle/core'
-import { Button, Dialog, Kbd } from '../../ui'
+import type { ReactNode } from 'react'
+import { Button, Dialog, DialogFooter, DialogHeader, IconButton, TextArea } from '../../ui'
+import { IconTrash, IconUndo } from '../../icons'
+import { IconArrowTool, IconPen, IconRect, IconRedo } from './stage-icons'
 import {
   beginShape,
   canSave,
@@ -72,11 +75,14 @@ function reduce(state: AnnotationState, action: Action): AnnotationState {
   }
 }
 
-const TOOLS: { tool: Tool; label: string; key: string }[] = [
-  { tool: 'pen', label: 'Pen', key: 'P' },
-  { tool: 'arrow', label: 'Arrow', key: 'A' },
-  { tool: 'rect', label: 'Rect', key: 'R' },
+const TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode }[] = [
+  { tool: 'pen', label: 'Pen', key: 'P', icon: <IconPen /> },
+  { tool: 'arrow', label: 'Arrow', key: 'A', icon: <IconArrowTool /> },
+  { tool: 'rect', label: 'Rect', key: 'R', icon: <IconRect /> },
 ]
+
+/** The floating toolbar's ground: a raised surface, as anything that floats is. */
+const FLOAT = 'pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover'
 
 /** The tool a bare letter selects, so the overlay's keys live in one place. */
 const TOOL_KEYS: Record<string, Tool> = { p: 'pen', a: 'arrow', r: 'rect' }
@@ -228,51 +234,60 @@ export function AnnotationOverlay({
         onPointerCancel={endShape}
       />
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-2">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-hairline bg-panel/90 p-1">
-          {/* The selected tool is marked with the accent, not with `solid`:
-              exactly one solid button is visible per view (apps/web/STYLE.md)
-              and here that is Save. */}
-          {TOOLS.map(({ tool, label, key }) => (
-            <Button
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3 animate-fade-in">
+        <div className={FLOAT}>
+          {/* The selected tool is its pressed state, not a coloured fill. */}
+          {TOOLS.map(({ tool, label, key, icon }) => (
+            <IconButton
               key={tool}
-              aria-pressed={state.tool === tool}
-              className={
-                state.tool === tool ? 'border-accent-line bg-accent-soft px-2 text-accent' : 'px-2'
-              }
+              label={label}
+              kbd={key}
+              icon={icon}
+              active={state.tool === tool}
+              tooltipSide="bottom"
               onClick={() => dispatch({ kind: 'tool', tool })}
-            >
-              {label} <Kbd>{key}</Kbd>
-            </Button>
+            />
           ))}
+          <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+          <IconButton
+            label="Undo"
+            icon={<IconUndo />}
+            tooltipSide="bottom"
+            disabled={state.shapes.length === 0}
+            onClick={() => dispatch({ kind: 'undo' })}
+          />
+          <IconButton
+            label="Redo"
+            icon={<IconRedo />}
+            tooltipSide="bottom"
+            disabled={state.redo.length === 0}
+            onClick={() => dispatch({ kind: 'redo' })}
+          />
+          <IconButton
+            label="Clear"
+            icon={<IconTrash />}
+            tooltipSide="bottom"
+            disabled={state.shapes.length === 0}
+            onClick={() => dispatch({ kind: 'clear' })}
+          />
         </div>
-        <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-hairline bg-panel/90 p-1">
-          <Button className="px-2" disabled={state.shapes.length === 0} onClick={() => dispatch({ kind: 'undo' })}>
-            Undo
-          </Button>
-          <Button className="px-2" disabled={state.redo.length === 0} onClick={() => dispatch({ kind: 'redo' })}>
-            Redo
-          </Button>
-          <Button className="px-2" disabled={state.shapes.length === 0} onClick={() => dispatch({ kind: 'clear' })}>
-            Clear
-          </Button>
-        </div>
-        <span className="pointer-events-none rounded-md bg-panel/90 px-2 py-1 font-mono text-xs text-text-3">
+        <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 font-mono text-xs text-text-secondary tabular-nums shadow-popover">
           {fmtClock(timestamp)}
         </span>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-panel/90 p-3">
+      <div className="absolute inset-x-3 bottom-3 flex flex-col gap-2 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
         {failed && (
-          <p className="text-sm text-danger" role="alert">
+          <p className="m-0 px-1 text-sm text-danger" role="alert">
             {failed}
           </p>
         )}
         <div className="flex items-end gap-2">
-          <textarea
+          <TextArea
+            rows={2}
             aria-label="what’s wrong in this frame?"
-            className="h-16 min-w-0 flex-1 resize-none rounded-md border border-hairline bg-panel-inset px-3 py-2 font-mono text-sm text-text placeholder:text-text-4 focus:border-accent-line focus:outline-none"
-            placeholder="What’s wrong in this frame? (optional — a drawing alone saves)"
+            className="min-w-0 flex-1 resize-none"
+            placeholder="What’s wrong in this frame? A drawing alone saves too."
             value={state.text}
             autoFocus
             onChange={(e) => dispatch({ kind: 'text', text: e.target.value })}
@@ -282,10 +297,12 @@ export function AnnotationOverlay({
               void save()
             }}
           />
-          <Button variant="solid" disabled={!canSave(state) || busy} onClick={() => void save()}>
+          <Button variant="ghost" onClick={dismiss}>
+            Cancel
+          </Button>
+          <Button variant="primary" loading={busy} disabled={!canSave(state)} onClick={() => void save()}>
             {busy ? 'Saving…' : 'Save note'}
           </Button>
-          <Button onClick={dismiss}>Cancel</Button>
         </div>
       </div>
 
@@ -295,15 +312,15 @@ export function AnnotationOverlay({
         size="sm"
         label="Discard this annotation?"
       >
-        <div className="flex flex-col gap-4 p-4">
-          <p className="text-base text-text">Discard this annotation?</p>
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setConfirming(false)}>Keep editing</Button>
-            <Button variant="danger" onClick={onCancel}>
-              Discard
-            </Button>
-          </div>
-        </div>
+        <DialogHeader title="Discard this annotation?" description="The drawing and the words go with it." />
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirming(false)}>
+            Keep editing
+          </Button>
+          <Button variant="danger" onClick={onCancel}>
+            Discard
+          </Button>
+        </DialogFooter>
       </Dialog>
     </div>
   )

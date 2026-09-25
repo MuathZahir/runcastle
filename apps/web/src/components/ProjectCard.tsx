@@ -1,58 +1,36 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
-import type { ProjectHealth, ProjectStats } from '../lib/projects'
+import type { ProjectStats } from '../lib/projects'
 import type { Project } from '../lib/api'
-import { Button, Spinner } from '../ui'
+import { Button, cx, MetaLine, TEXT_INPUT } from '../ui'
+import { IconFolder, IconTrash } from '../icons'
 import { FeatureActionsMenu } from './FeatureActionsMenu'
 
 /**
- * One project on the portfolio home (decision 7): name, repo path, the three
- * stats and the health label, with the whole face a button into the project.
+ * One project on the portfolio home (decision 7): a row with the project's
+ * name, its repo path, and a line of facts — features, runs in flight, what
+ * needs you — with the whole face a button into the project.
  *
- * Its two actions used to be a pair of small buttons that only appeared on
- * hover — undiscoverable, and one of them said "Close", which reads like a
- * delete of the repo itself and was a single irreversible click (findings
- * F17.8). They now live behind an always-visible `⋯` menu, and removal asks on
- * the card, in a sentence that says what it does not do.
+ * Its two actions (Rename, Remove from list) sit behind the row's "…", revealed
+ * on hover or focus like every row menu (DESIGN.md). "Close" used to read like
+ * a delete of the repo itself and was one irreversible click (findings F17.8):
+ * removal asks, on the row, in a sentence that says what it does not do.
  */
 
-const HEALTH_LABEL: Record<ProjectHealth, string> = {
-  attention: 'Needs you',
-  working: 'Agent working',
-  steady: 'Steady',
-  empty: 'No features yet',
-}
-
-/** Whole literal classes per health, so Tailwind's scanner can see them. */
-const HEALTH_DOT: Record<ProjectHealth, string> = {
-  attention: 'bg-needs',
-  working: 'bg-ph-implementation animate-pulse',
-  steady: 'bg-ok',
-  empty: 'bg-text-4',
-}
-
-/** The card's inner surface — the same box whether it is a button or not. */
-const FACE = 'flex flex-1 flex-col gap-1.5 p-4 text-left'
+/** The row's inner surface — the same box whether it is a button or not. */
+const FACE = 'flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left'
 
 /**
- * The face when it *is* the button into the project. The app ships no CSS reset
- * while the legacy sheet is alive (STYLE.md: "do not assume a reset: style what
- * you render"), so without these three the whole card body paints in the user
- * agent's `buttonface` grey, behind the dark theme's near-white text, inside a
- * 2px outset border. `.pc-main` used to say exactly this in the stylesheet.
+ * The face when it *is* the button into the project. There is no preflight
+ * (STYLE.md), so a button that names no background or border paints in the user
+ * agent's `buttonface` grey inside a 2px outset border.
  */
-const FACE_BUTTON = `${FACE} cursor-pointer border-0 bg-transparent`
+const FACE_BUTTON = `${FACE} cursor-pointer rounded-md border-0 bg-transparent`
 
-const CARD =
-  'relative flex flex-col rounded-lg border border-hairline bg-panel ' +
-  'transition-[border-color] duration-(--dur-2) ease-app hover:border-hairline-strong'
-
-const RENAME_INPUT =
-  'h-6 min-w-0 flex-1 rounded-sm border border-accent-line bg-panel-inset px-1.5 ' +
-  'text-base text-text focus:outline-none'
+const RENAME_INPUT = `${TEXT_INPUT} h-7 flex-1 font-medium`
 
 /** The reason removal is refused while the project still has a run going. */
 const IN_FLIGHT_REASON = 'A run is in flight — it has to finish before this project can go.'
@@ -62,11 +40,14 @@ export function ProjectCard({
   stats,
   loading,
   onOpen,
+  index,
 }: {
   project: Project
   stats: ProjectStats
   loading: boolean
   onOpen: () => void
+  /** Position on first render — the first rows rise in with a short stagger. */
+  index?: number
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -136,35 +117,44 @@ export function ProjectCard({
             onBlur={submitRename}
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate text-lg font-semibold text-text">
-            {project.name}
-          </span>
+          <span className="min-w-0 truncate text-sm font-medium text-text">{project.name}</span>
         )
       }
     />
   )
 
+  const staggered = index !== undefined && index < 8
   return (
-    <div className={CARD}>
+    <div
+      data-list-row=""
+      style={staggered ? ({ '--i': index } as CSSProperties) : undefined}
+      className={cx(
+        'group/row relative flex min-w-0 items-center rounded-md transition-colors duration-(--dur-1) ease-app',
+        !confirming && !renaming && 'hover:bg-surface-hover',
+        staggered && 'animate-rise-in [animation-delay:calc(var(--i)*20ms)]',
+      )}
+    >
       {confirming ? (
-        <div className={FACE}>
-          <p className="text-base text-text-2">
-            Remove <span className="font-semibold text-text">{project.name}</span>? The repo on disk
+        <div className={cx(FACE, 'flex-wrap animate-fade-in')}>
+          <p className="m-0 min-w-0 flex-1 text-sm text-text-secondary">
+            Remove <span className="font-medium text-text">{project.name}</span>? The repo on disk
             is untouched.
+            {runsInFlight && <span className="block text-xs text-text-tertiary">{IN_FLIGHT_REASON}</span>}
           </p>
-          <div className="mt-auto flex gap-2 pt-3">
-            <Button variant="ghost" onClick={() => setConfirming(false)}>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
               Cancel
             </Button>
             <Button
+              size="sm"
               variant="danger"
+              icon={<IconTrash />}
               disabled={runsInFlight || close.isPending}
               onClick={() => close.mutate({ projectId: project.id })}
             >
               {close.isPending ? 'Removing…' : 'Remove'}
             </Button>
           </div>
-          {runsInFlight && <p className="pt-2 text-sm text-text-3">{IN_FLIGHT_REASON}</p>}
         </div>
       ) : renaming ? (
         <div className={FACE}>{face}</div>
@@ -174,8 +164,8 @@ export function ProjectCard({
         </button>
       )}
 
-      {!confirming && (
-        <div className="absolute top-2 right-2 z-10">
+      {!confirming && !renaming && (
+        <div className="absolute top-1/2 right-2 z-10 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-[[aria-expanded=true]]:opacity-100">
           <FeatureActionsMenu
             label={`${project.name} actions`}
             actions={[
@@ -202,7 +192,7 @@ export function ProjectCard({
 }
 
 /**
- * What a card says about its project. Split out because it is rendered inside a
+ * What a row says about its project. Split out because it is rendered inside a
  * button (the whole face opens the project) and, while the name is being
  * edited, inside a plain div — a text input nested in a button is neither valid
  * nor clickable.
@@ -218,65 +208,34 @@ function CardFace({
   loading: boolean
   name: ReactNode
 }) {
-  const runsInFlight = stats.activeRuns > 0
   return (
     <>
-      {/* right padding clears the ⋯ menu floating over this corner */}
-      <div className="flex min-w-0 items-center gap-2 pr-7">
-        {name}
-        <span
-          className={`size-2 shrink-0 rounded-pill ${HEALTH_DOT[stats.health]}`}
-          title={HEALTH_LABEL[stats.health]}
-        />
-      </div>
-      {/* `dir="rtl"` truncates from the left — where a repo path is least
-          interesting — and <bdi> keeps the path itself left-to-right inside it. */}
-      <div
-        className="truncate text-left font-mono text-xs text-text-4"
-        dir="rtl"
-        title={project.repoPath}
-      >
-        <bdi>{project.repoPath}</bdi>
-      </div>
-
-      <div className="mt-2.5 flex gap-4">
-        <Stat n={stats.total} label={stats.total === 1 ? 'feature' : 'features'} />
-        <Stat
-          n={stats.activeRuns}
-          label="running"
-          tone={runsInFlight ? 'text-ph-implementation' : undefined}
-          spin={runsInFlight}
-        />
-        <Stat
-          n={stats.needsYou}
-          label="needs you"
-          tone={stats.needsYou > 0 ? 'text-needs' : undefined}
-        />
-      </div>
-      <div className="mt-3 text-xs tracking-[0.06em] text-text-4 uppercase">
-        {loading ? 'loading…' : HEALTH_LABEL[stats.health]}
-      </div>
+      <span className="inline-flex size-4 shrink-0 items-center justify-center self-start pt-0.5 text-icon">
+        <IconFolder />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex min-w-0 items-center">{name}</span>
+        {/* `dir="rtl"` truncates from the left — where a repo path is least
+            interesting — and <bdi> keeps the path itself left-to-right. */}
+        <span className="truncate text-left font-mono text-xs text-text-tertiary" dir="rtl" title={project.repoPath}>
+          <bdi>{project.repoPath}</bdi>
+        </span>
+      </span>
+      {/* Right padding clears the "…" that appears over this end on hover. */}
+      <span className="shrink-0 pr-8">
+        {loading ? (
+          <span className="text-xs text-text-tertiary">Loading…</span>
+        ) : (
+          <MetaLine
+            className="flex-nowrap"
+            items={[
+              { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },
+              stats.activeRuns > 0 && { tone: 'live', strong: stats.activeRuns, text: 'running' },
+              stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: 'needs you' },
+            ]}
+          />
+        )}
+      </span>
     </>
-  )
-}
-
-function Stat({
-  n,
-  label,
-  tone,
-  spin,
-}: {
-  n: number
-  label: string
-  /** A whole literal text colour class, or the default emphasis. */
-  tone?: string
-  spin?: boolean
-}) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5 text-text-3">
-      {spin && <Spinner className="self-center" />}
-      <span className={`font-mono text-lg ${tone ?? 'text-text'}`}>{n}</span>
-      <span className="text-xs">{label}</span>
-    </span>
   )
 }

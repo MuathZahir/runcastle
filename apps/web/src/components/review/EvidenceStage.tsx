@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
-import { Button, Kbd } from '../../ui'
+import { IconButton, StatusLabel } from '../../ui'
+import { IconCollapse, IconExpand } from './stage-icons'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
 import type { ReviewArtifacts } from '../../lib/reviews'
 import { useStageExpandKeys, type StageExpand } from '../../lib/stage-expand'
@@ -49,17 +50,6 @@ export interface StageDrive {
   devReadyTimedOut?: boolean
 }
 
-/**
- * What the shipped record says when the review reported without ever driving.
- *
- * It says it *instead of* mounting the stage: a page where no drive can ever
- * start has nothing to put in a 16:9 box, so the sentence is the whole band
- * there. Review omits the band outright in that state (decision 6) — it has the
- * open work to lead with, which a shipped record does not.
- */
-export const NO_WALKTHROUGH_RECORDED =
-  'No walkthrough was recorded for this feature — the review reported without driving.'
-
 /** Which side of the swap is showing, from the server's one drive-state value. */
 function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive' {
   return driveView(state).stageKind === 'player' && hasRecording ? 'player' : 'drive'
@@ -81,8 +71,8 @@ function stageShows(state: DriveState, hasRecording: boolean): 'player' | 'drive
  */
 function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
   const size = expanded ? 'min-h-0 flex-1' : 'aspect-video max-h-[calc(100vh-320px)]'
-  const skin = content === 'screen' ? 'overflow-hidden bg-black' : 'overflow-auto bg-panel-2 p-4'
-  return `relative flex w-full flex-col rounded-md border border-hairline ${size} ${skin}`
+  const skin = content === 'screen' ? 'overflow-hidden' : 'overflow-auto p-6'
+  return `relative flex w-full flex-col rounded-md bg-surface-inset ${size} ${skin}`
 }
 
 /**
@@ -212,14 +202,14 @@ export function EvidenceStage({
     // never moves the playhead off screen (decision 25b). It fills the height it
     // is given, which is the whole overlay while expanded and nothing in
     // particular while the column is scrolling past it.
-    <section id="evidence-stage" className="flex min-h-0 flex-1 flex-col gap-2">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <section id="evidence-stage" className="flex min-h-0 flex-1 flex-col gap-3">
+      <header className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-2">
         {/* Only a recording has an identity to state. With none, the stage is a
             drive — it is mounted for no other reason (decision 6) — and the
             drive says what it is doing in the card below. */}
         {onStage && (
           <span
-            className="font-mono text-sm text-text-2"
+            className="min-w-0 truncate text-sm text-text-secondary"
             title={
               onStage.passKind === 'verification'
                 ? 'the fix count is derived from what landed between the two passes'
@@ -234,13 +224,14 @@ export function EvidenceStage({
             control for both sides of the swap, saying the key that does the
             same thing from wherever the eye is. */}
         {expand && (
-          <Button
-            className="ml-auto px-2"
-            aria-pressed={expanded}
+          <IconButton
+            className="ml-auto"
+            label={expanded ? 'Collapse' : 'Expand'}
+            kbd="F"
+            icon={expanded ? <IconCollapse /> : <IconExpand />}
+            active={expanded}
             onClick={() => expand.set(!expanded)}
-          >
-            {expanded ? 'Collapse' : 'Expand'} <Kbd>F</Kbd>
-          </Button>
+          />
         )}
       </header>
 
@@ -311,7 +302,7 @@ function DriveStage({
   if (driveState === 'idle') {
     if (dryRun) {
       return (
-        <div className="text-sm text-text-2">
+        <div className="text-sm text-text-secondary">
           A preparation dry-run is holding the drive — it is proving this project’s drive commands
           on your machine. Stop it from Preparation, and this branch can take the wheel.
         </div>
@@ -320,16 +311,16 @@ function DriveStage({
     if (hasRecording) {
       // A recording exists but the stage is showing this: the drive stopped and
       // the player is one render away. Nothing to say beyond the branch.
-      return <div className="font-mono text-sm text-text-3">{branch}</div>
+      return <div className="font-mono text-xs text-text-tertiary">{branch}</div>
     }
     // Idle, no recording, and the stage is mounted anyway: a drive this browser
     // started is on its way up and the server's state has not caught up yet
     // (decision 6 mounts the stage for nothing else). The placeholder box that
     // used to live here — a 16:9 card holding one apologetic sentence — is gone.
     return (
-      <div className="text-sm text-text-2">
-        Starting the test drive — the branch is being checked out.
-      </div>
+      <StatusLabel spinning size="sm">
+        Starting the test drive — the branch is being checked out
+      </StatusLabel>
     )
   }
 
@@ -342,12 +333,13 @@ function DriveStage({
     case 'starting':
       return (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="size-2 animate-pulse rounded-pill bg-drive" />
-            <span className="text-sm font-semibold text-drive">starting the dev server…</span>
-            <span className="font-mono text-xs text-text-2">{drive?.branch ?? branch}</span>
+          <div className="flex items-center gap-3">
+            <StatusLabel spinning size="sm" strong>
+              Starting the dev server
+            </StatusLabel>
+            <span className="truncate font-mono text-xs text-text-tertiary">{drive?.branch ?? branch}</span>
           </div>
-          <div className="text-sm text-text-2">
+          <div className="text-sm text-text-secondary">
             The branch is checked out and the project’s dev command is running. The app appears here
             as soon as it answers — its output is under the stage.
           </div>
@@ -361,7 +353,7 @@ function DriveStage({
       return failure ? (
         <DriveSetupFailed featureId={featureId} failure={failure} readonly={readonly} />
       ) : (
-        <div className="text-sm text-text-2">
+        <div className="text-sm text-text-secondary">
           The drive’s setup command failed — its output is in the timeline.
         </div>
       )
@@ -370,10 +362,10 @@ function DriveStage({
     case 'bare':
       return (
         <div className="flex flex-col gap-3">
-          <div className="text-sm font-semibold text-text">
-            Branch checked out — nothing started.
-          </div>
-          <div className="text-sm text-text-2">
+          <StatusLabel tone="neutral" size="sm" strong>
+            Branch checked out — nothing started
+          </StatusLabel>
+          <div className="text-sm text-text-secondary">
             {readonly ? (
               'This project had no dev command, so the drive checked the branch out and started nothing.'
             ) : (
@@ -400,13 +392,14 @@ function DriveStage({
           {drive?.devUrl ? (
             <DrivePanel featureId={featureId} url={drive.devUrl} agentDriving readonly={readonly} />
           ) : (
-            <div className="flex flex-col gap-3 p-4">
-              <div className="flex items-center gap-2.5">
-                <span className="size-2 animate-pulse rounded-pill bg-drive" />
-                <span className="text-sm font-semibold text-drive">review agent driving</span>
-                <span className="font-mono text-xs text-text-2">{drive?.branch ?? branch}</span>
+            <div className="flex flex-col gap-3 p-6">
+              <div className="flex items-center gap-3">
+                <StatusLabel tone="live" size="sm" strong>
+                  Review agent driving
+                </StatusLabel>
+                <span className="truncate font-mono text-xs text-text-tertiary">{drive?.branch ?? branch}</span>
               </div>
-              <div className="text-sm text-text-2">
+              <div className="text-sm text-text-secondary">
                 Notes land below as it finds things. No dev server answered, so there is nothing to
                 show here.
               </div>
@@ -424,7 +417,7 @@ function DriveStage({
       return drive?.devUrl ? (
         <DrivePanel featureId={featureId} url={drive.devUrl} readonly={readonly} />
       ) : (
-        <div className="p-4 text-sm text-text-2">
+        <div className="p-6 text-sm text-text-secondary">
           The dev server is up but has not printed an address yet — its output is under the stage.
         </div>
       )

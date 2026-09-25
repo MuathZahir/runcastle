@@ -24,36 +24,43 @@ export const MARKDOWN_POLICY = {
  *
  * Exported for the same reason {@link MARKDOWN_POLICY} is: what is ours here is
  * the styling decision, and a plain record is something a test can hold. The
- * spacing is the flow's rhythm read down a column of prose — 12px above a
- * heading, 8px under a block, 2px between list items.
+ * rhythm is prose read down a column: headings open a gap above them and hug
+ * what they head, blocks sit 10px apart, list items 4px. Sizes are relative to
+ * the root's (`text-sm` 13/20 in dense surfaces, `text-base` 14/22 for prose —
+ * see {@link Markdown}'s `size`), so one list covers both.
  */
 export const MARKDOWN_CLASSES = {
   /** Self-sufficient on purpose: it states its own face and white-space so it
       reads the same inside a mono, `pre-wrap` container as it does anywhere. */
-  root: 'font-sans text-sm whitespace-normal text-text-2 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
-  h1: 'mt-3 mb-1.5 text-base leading-tight font-semibold tracking-[-0.01em] text-text',
-  h2: 'mt-3 mb-1.5 text-sm leading-tight font-semibold text-text',
-  h3: 'mt-3 mb-1.5 text-sm leading-tight font-semibold text-text-2',
-  p: 'mb-2',
-  list: 'mb-2 pl-4',
+  root: 'font-sans whitespace-normal text-pretty text-text-secondary [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+  h1: 'mt-6 mb-2 text-[1.3em] leading-tight font-semibold tracking-tight text-text',
+  h2: 'mt-6 mb-2 text-[1.12em] leading-snug font-semibold text-text',
+  h3: 'mt-5 mb-1.5 text-[1em] font-semibold text-text',
+  h4: 'mt-4 mb-1 text-[1em] font-medium text-text',
+  p: 'mt-0 mb-2.5',
+  list: 'mt-0 mb-2.5 list-disc pl-5',
+  orderedList: 'mt-0 mb-2.5 list-decimal pl-5',
   /** remark-gfm tags the list itself; the marker is the checkbox. */
-  taskList: 'mb-2 list-none pl-0.5',
-  li: 'mb-0.5 marker:text-text-4',
-  checkbox: 'mr-1.5 align-[-1px] accent-accent',
+  taskList: 'mt-0 mb-2.5 list-none pl-0.5',
+  li: 'mb-1 pl-0.5 marker:text-text-tertiary [&>ol]:mt-1 [&>ol]:mb-0 [&>p]:mb-1 [&>ul]:mt-1 [&>ul]:mb-0',
+  checkbox: 'mr-2 align-[-1px] accent-accent',
   strong: 'font-semibold text-text',
-  em: 'text-text-2',
-  a: 'border-b border-accent-line text-accent-hi no-underline',
-  code: 'rounded-[3px] border border-hairline-soft bg-panel-inset px-1 py-px font-mono text-xs text-accent-hi',
+  em: 'italic',
+  a: 'text-accent-text underline decoration-accent/40 underline-offset-2 transition-colors duration-(--dur-1) hover:decoration-accent',
+  code: 'rounded-sm bg-surface-inset px-1 py-px font-mono text-[0.88em]',
   /** A fenced block resets the inline code chrome on the `<code>` inside it. */
   pre:
-    'mb-2 overflow-x-auto rounded-sm border border-hairline-soft bg-panel-inset px-2.5 py-2 ' +
-    '[&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-text-2',
-  blockquote: 'mb-2 border-l-2 border-accent-line pl-2.5 text-text-3',
-  table: 'mb-2 w-full border-collapse text-xs',
-  th: 'border border-hairline bg-panel px-1.5 py-1 text-left font-semibold text-text-2',
-  td: 'border border-hairline px-1.5 py-1 text-left',
-  hr: 'my-2.5 border-0 border-t border-hairline',
+    'mt-0 mb-3 overflow-x-auto rounded-md bg-surface-inset px-3 py-2.5 font-mono text-xs leading-[18px] ' +
+    '[&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em] [&>code]:text-text-secondary [&>code]:border-0',
+  blockquote: 'mx-0 mt-0 mb-2.5 border-l-2 border-border-strong pl-3 text-text-tertiary',
+  table: 'mt-0 mb-3 w-full border-collapse text-[0.93em]',
+  th: 'border-b border-border px-2 py-1.5 text-left font-medium text-text-tertiary first:pl-0',
+  td: 'border-b border-border-subtle px-2 py-1.5 text-left align-top first:pl-0',
+  hr: 'my-5 border-0 border-t border-border-subtle',
 } as const
+
+/** The root's type size: `sm` (13/20) for dense surfaces, `base` (14/22) for reading. */
+const MARKDOWN_SIZE = { sm: 'text-sm', base: 'text-base' } as const
 
 /** remark-gfm marks a task list with this class and nothing else does. */
 const TASK_LIST = 'contains-task-list'
@@ -62,6 +69,7 @@ const COMPONENTS: Components = {
   h1: ({ node: _n, ...p }) => <h1 className={MARKDOWN_CLASSES.h1} {...p} />,
   h2: ({ node: _n, ...p }) => <h2 className={MARKDOWN_CLASSES.h2} {...p} />,
   h3: ({ node: _n, ...p }) => <h3 className={MARKDOWN_CLASSES.h3} {...p} />,
+  h4: ({ node: _n, ...p }) => <h4 className={MARKDOWN_CLASSES.h4} {...p} />,
   p: ({ node: _n, ...p }) => <p className={MARKDOWN_CLASSES.p} {...p} />,
   ul: ({ node: _n, className, ...p }) => (
     <ul
@@ -71,7 +79,7 @@ const COMPONENTS: Components = {
   ),
   ol: ({ node: _n, className, ...p }) => (
     <ol
-      className={className?.includes(TASK_LIST) ? MARKDOWN_CLASSES.taskList : MARKDOWN_CLASSES.list}
+      className={className?.includes(TASK_LIST) ? MARKDOWN_CLASSES.taskList : MARKDOWN_CLASSES.orderedList}
       {...p}
     />
   ),
@@ -94,13 +102,23 @@ const COMPONENTS: Components = {
 }
 
 /**
- * The one renderer for every agent-authored prose surface (doc peek, the map's
- * section bodies, ticket goal/context). Every element it emits is styled by
- * {@link MARKDOWN_CLASSES} at this component, in theme utilities.
+ * The one renderer for every agent-authored prose surface (doc peek, specs,
+ * the map's section bodies, ticket goal/context). Every element it emits is
+ * styled by {@link MARKDOWN_CLASSES} at this component, in theme utilities.
+ * `size` — `sm` (default) for dense surfaces, `base` for a page of prose.
  */
-export function Markdown({ source, className }: { source: string; className?: string }) {
+export function Markdown({
+  source,
+  className,
+  size = 'sm',
+}: {
+  source: string
+  className?: string
+  size?: keyof typeof MARKDOWN_SIZE
+}) {
+  const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]}`
   return (
-    <div className={className ? `${MARKDOWN_CLASSES.root} ${className}` : MARKDOWN_CLASSES.root}>
+    <div className={className ? `${root} ${className}` : root}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
         {source}
       </ReactMarkdown>

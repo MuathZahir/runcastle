@@ -33,7 +33,7 @@ export function GrillBody({ full, effective, chatDocked = false, mapRailCollapse
   // holding nothing.
   const sessions = bodySessions(full.sessions, chatDocked)
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 gap-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 gap-6">
       {full.feature.mapped && effective === 'planning' ? (
         <MapRail full={full} relPath={mapDocPath(full)} collapsed={mapRailCollapsed} onToggle={onToggleMapRail} />
       ) : (
@@ -43,11 +43,11 @@ export function GrillBody({ full, effective, chatDocked = false, mapRailCollapse
         {sessions.length > 0 ? (
           <SessionPanel featureId={full.feature.id} sessions={sessions} full={full} />
         ) : (
-          <div className="flex min-h-0 flex-1 rounded-lg border border-hairline bg-panel-2">
+          <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-surface-inset">
             {sessions.length < full.sessions.length ? (
-              <EmptyState icon={<IconTerminal size={16} />} title="The chat is docked" hint="The conversation is in the panel on the right — collapse it to bring the terminal back here." />
+              <EmptyState icon={<IconTerminal />} title="The chat is in the aside" hint="The conversation is open on the right — close it to bring the terminal back here." />
             ) : (
-              <EmptyState icon={<IconTerminal size={16} />} title="No session yet" hint="Start a session from the bar above — you and the agent shape the idea here before any code is written." />
+              <EmptyState icon={<IconTerminal />} title="No session yet" hint="Start a session from the next step above — you and the agent shape the idea here before any code is written." />
             )}
           </div>
         )}

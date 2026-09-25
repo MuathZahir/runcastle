@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ReviewFinding, TicketKind } from '@runcastle/core'
-import { SectionTitle } from '../../ui'
+import { Disclosure, SectionLabel } from '../../ui'
+import { IconDoc } from '../../icons'
 import { headline, type LapAccount } from '../../lib/feature-ui'
 import { Markdown } from '../Markdown'
 
@@ -63,70 +64,69 @@ export function FullAccounts({
   ].filter((part): part is string => part !== null)
 
   return (
-    <details id="full-accounts" className="rounded-lg border border-hairline bg-panel">
-      <summary className="cursor-pointer list-none px-4 py-3 text-sm text-text-2">
-        Full account — {summary.join(' · ')}
-      </summary>
-      <div className="flex flex-col gap-6 border-t border-hairline-soft px-4 py-4">
-        {account && <LapAccountBlock account={account} />}
+    <div id="full-accounts">
+      <Disclosure title="Full account" icon={<IconDoc />} aside={summary.join(' · ')}>
+        <div className="flex flex-col gap-6 pt-1">
+          {account && <LapAccountBlock account={account} />}
 
-        {digests.length > 0 && (
-          <section>
-            <SectionTitle>Ticket digests</SectionTitle>
-            <div className="mt-3 flex flex-col gap-4">
-              {digests.map((ticket) => (
-                <div key={ticket.seq} className="border-t border-hairline-soft pt-4 first:border-t-0 first:pt-0">
-                  <div className="font-mono text-xs text-text-2">
-                    #{ticket.seq} {ticket.title} · lap {ticket.lap}
-                    {ticket.kind === 'review'
-                      ? ticket.passKind === 'verification'
-                        ? ' · verification pass'
-                        : ' · review pass'
-                      : ''}
+          {digests.length > 0 && (
+            <section>
+              <SectionLabel>Ticket digests</SectionLabel>
+              <div className="mt-2 flex flex-col gap-5">
+                {digests.map((ticket) => (
+                  <div key={ticket.seq}>
+                    <div className="text-sm font-medium text-text">
+                      #{ticket.seq} {ticket.title}
+                      <span className="ml-2 font-normal text-text-tertiary">
+                        lap {ticket.lap}
+                        {ticket.kind === 'review'
+                          ? ticket.passKind === 'verification'
+                            ? ' · verification pass'
+                            : ' · review pass'
+                          : ''}
+                      </span>
+                    </div>
+                    <Markdown source={ticket.digest!.trim()} className="mt-2" />
                   </div>
-                  <Markdown source={ticket.digest!.trim()} className="mt-2" />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                ))}
+              </div>
+            </section>
+          )}
 
-        {carried && (
-          <section>
-            <SectionTitle>Carried, quick-fixed and handled</SectionTitle>
-            <div className="mt-3">{carried}</div>
-          </section>
-        )}
+          {carried && (
+            <section>
+              <SectionLabel>Carried, quick-fixed and handled</SectionLabel>
+              <div className="mt-2">{carried}</div>
+            </section>
+          )}
 
-        {observations.length > 0 && (
-          <section>
-            <SectionTitle>Observations ({observations.length})</SectionTitle>
-            <ul className="m-0 mt-3 flex list-none flex-col gap-1.5 p-0">
-              {observations.map((finding) => (
-                <li key={finding.id} className="flex flex-col">
-                  <span className="text-sm text-text-2">{finding.title}</span>
-                  <Observation detail={finding.detail} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
-    </details>
+          {observations.length > 0 && (
+            <section>
+              <SectionLabel count={observations.length}>Observations</SectionLabel>
+              <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+                {observations.map((finding) => (
+                  <li key={finding.id} className="flex flex-col gap-0.5">
+                    <span className="text-sm text-text">{finding.title}</span>
+                    <Observation detail={finding.detail} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      </Disclosure>
+    </div>
   )
 }
 
 /** What an observation says: its first line, and the rest only if there is one. */
 function Observation({ detail }: { detail: string }) {
   const { head, rest } = headline(detail)
-  if (!rest) return <span className="text-sm text-text-3">{head}</span>
+  if (!rest) return <span className="text-sm text-text-tertiary">{head}</span>
   return (
-    <details className="min-w-0">
-      <summary className="cursor-pointer list-none text-sm text-text-3 underline decoration-dotted">
-        {head}
-      </summary>
-      <p className="m-0 mt-1.5 text-sm leading-relaxed text-pretty text-text-2">{rest}</p>
-    </details>
+    <Disclosure bare title={<span className="font-normal text-text-tertiary">{head}</span>}>
+      <p className="m-0 text-sm text-pretty text-text-secondary">{rest}</p>
+    </Disclosure>
   )
 }
 
@@ -142,18 +142,18 @@ function Observation({ detail }: { detail: string }) {
 function LapAccountBlock({ account }: { account: LapAccount }) {
   return (
     <section>
-      <SectionTitle>What landed this lap</SectionTitle>
+      <SectionLabel>What landed this lap</SectionLabel>
       {account.source === 'review' ? (
-        <Markdown source={account.prose} className="mt-3" />
+        <Markdown source={account.prose} className="mt-2" />
       ) : (
         <>
-          <div className="mt-3 text-sm text-text-3">
+          <div className="mt-2 text-sm text-text-tertiary">
             No review summary this lap — below is each burner’s own account of the ticket it ran.
           </div>
           <div className="mt-3 flex flex-col gap-4">
             {account.entries.map((entry) => (
               <div key={entry.seq}>
-                <div className="font-mono text-xs text-text-2">
+                <div className="text-sm font-medium text-text">
                   #{entry.seq} {entry.title}
                 </div>
                 <Markdown source={entry.digest} className="mt-2" />

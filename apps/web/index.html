@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>runcastle</title>
+    <script>
+      // Paint the stored theme before first paint (mirrors src/lib/theme.ts:
+      // key runcastle.theme; dark | light | system; dark by default).
+      ;(function () {
+        var t = 'dark'
+        try {
+          var p = localStorage.getItem('runcastle.theme')
+          if (p === 'light' || p === 'dark') t = p
+          else if (p === 'system' && matchMedia('(prefers-color-scheme: light)').matches) t = 'light'
+        } catch (e) {}
+        document.documentElement.dataset.theme = t
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

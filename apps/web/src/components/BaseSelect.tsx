@@ -33,9 +33,9 @@ import {
 /** The closed control, wearing what the legacy `.nf-base-select` rule drew. */
 const TRIGGER =
   'inline-flex h-(--control-h) min-w-56 max-w-full cursor-pointer items-center justify-between ' +
-  'gap-1.5 rounded-md border border-hairline bg-panel-inset px-2 font-mono text-sm text-text ' +
-  'transition-[border-color] duration-(--dur-1) ease-app ' +
-  'disabled:cursor-default disabled:opacity-50'
+  'gap-1.5 rounded-md border border-border bg-surface-inset px-2.5 font-mono text-xs text-text ' +
+  'transition-[border-color] duration-(--dur-1) ease-app enabled:hover:border-border-strong ' +
+  'aria-expanded:border-accent disabled:cursor-default disabled:text-text-disabled'
 
 export function BaseSelect({
   id,
@@ -75,21 +75,21 @@ export function BaseSelect({
   )
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2.5">
-      <label className="text-base text-text" htmlFor={id}>
+    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <label className="text-sm font-medium text-text-secondary" htmlFor={id}>
         {label}
       </label>
       <Combobox>
         <ComboboxTrigger id={id} className={TRIGGER} disabled={!branches || noBranches}>
           <span className="truncate">
-            {value === '' ? (branches ? 'choose a branch…' : 'loading…') : value}
+            {value === '' ? (branches ? 'Choose a branch…' : 'Loading…') : value}
           </span>
-          <IconChevronDown size={11} className="shrink-0 text-text-4" />
+          <IconChevronDown size={12} className="shrink-0 text-icon" />
         </ComboboxTrigger>
-        <ComboboxContent className="font-mono text-sm">
+        <ComboboxContent className="font-mono text-xs">
           <ComboboxInput placeholder="Find a branch…" />
           <ComboboxList label={label}>
-            <ComboboxEmpty>no branch matches</ComboboxEmpty>
+            <ComboboxEmpty>No branch matches</ComboboxEmpty>
             {local.map((b) => row(b, b === branches?.current ? ' (current)' : ''))}
             {remote.length > 0 && (
               <ComboboxGroup heading="Remote (creates a local branch)">
@@ -99,7 +99,7 @@ export function BaseSelect({
           </ComboboxList>
         </ComboboxContent>
       </Combobox>
-      <span className="text-sm text-text-3">
+      <span className={mustPick ? 'text-xs text-warning' : 'text-xs text-text-tertiary'}>
         {mustPick
           ? 'This project’s checkout is not a branch a feature can fork from — say where to cut from.'
           : hint}

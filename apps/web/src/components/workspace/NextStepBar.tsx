@@ -1,25 +1,78 @@
-import { BranchMenu, Button } from '../../ui'
+import type { ReactNode } from 'react'
+import { BranchMenu, Button, IconButton, Spinner, StatusDot, StatusLabel, cx } from '../../ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
+import type { StatusTone } from '../../ui'
 import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feature-ui'
+import {
+  IconAlert,
+  IconArchive,
+  IconArrowRight,
+  IconFlame,
+  IconGitMerge,
+  IconMessage,
+  IconMore,
+  IconPlay,
+  IconRefresh,
+  IconSparkle,
+  IconStop,
+  IconTerminal,
+} from '../../icons'
 
-// A tone is a whole literal class, never an interpolated colour name — the
-// content scanner cannot see `border-${tone}` (STYLE.md).
-const PILL_TONE: Record<CountPill['tone'], string> = {
-  danger: 'border-danger/30 text-danger',
-  note: 'border-hairline text-text-2',
-  clear: 'border-ok/30 text-ok',
-}
-const PILL_DOT: Record<CountPill['tone'], string> = {
-  danger: 'bg-danger',
-  note: 'bg-text-4',
-  clear: 'bg-ok',
+/** Every action leads with an icon (DESIGN.md principle 7) — one per kind. */
+const ACTION_ICON: Record<ActionKind, ReactNode> = {
+  startDraft: <IconPlay />,
+  chat: <IconMessage />,
+  converge: <IconSparkle />,
+  workNext: <IconArrowRight />,
+  resumeConverge: <IconRefresh />,
+  burn: <IconFlame />,
+  cancelRun: <IconStop />,
+  testDriveStart: <IconPlay />,
+  testDriveStop: <IconStop />,
+  stopDriveAndIterate: <IconStop />,
+  fixDrive: <IconTerminal />,
+  merge: <IconGitMerge />,
+  resolveConflict: <IconAlert />,
+  iterate: <IconRefresh />,
+  endSessionAndIterate: <IconRefresh />,
+  unarchive: <IconArchive />,
 }
 
+// A tone is a whole literal, never an interpolated colour name (STYLE.md).
+const COUNT_TONE: Record<CountPill['tone'], StatusTone> = {
+  danger: 'danger',
+  note: 'neutral',
+  clear: 'success',
+}
+
+/** The sentence ends in a full stop before the guidance that follows it. */
+function sentence(text: string): string {
+  return /[.!?…:]$/.test(text) ? text : `${text}.`
+}
+
+/**
+ * The next-step row under the stepper (DESIGN.md §Page anatomy 4): no band, no
+ * border, no background. Left, one sentence in `text-secondary` — what is
+ * happening, or what you should do (the resolver's title, then its guidance
+ * when guidance is on). Right, the ONE primary and at most the secondaries the
+ * resolver chose. A disabled action says why as a caption beneath the buttons,
+ * and when there is a way out of that reason (decision 20) the caption carries
+ * the one click that takes it.
+ *
+ * `hideChat` drops the constant Chat door from the secondaries when the page's
+ * topbar already carries it — the same action, said once. A Chat the resolver
+ * promoted to the primary stays: there, talking IS the next step.
+ *
+ * With nothing to do and nothing happening (a shipped feature), it renders
+ * nothing — the stepper already says where the feature is.
+ */
 export function NextStepBar({
   ns,
   guidance,
   busy,
   onAction,
   draftBranch,
+  hideChat = false,
 }: {
   ns: NextStep
   guidance: boolean
@@ -32,71 +85,74 @@ export function NextStepBar({
     missing: boolean
     onPick: (branch: string) => void
   }
+  hideChat?: boolean
 }) {
-  // Disabled actions that carry a way out of their own reason.
-  const escapes = [ns.primary, ...ns.secondary].filter(
-    (a): a is NextAction & { disabled: string; escape: NextAction } => !!a?.disabled && !!a.escape,
+  const secondary = hideChat ? ns.secondary.filter((a) => a.kind !== 'chat') : ns.secondary
+  // Disabled actions, in button order, each with the reason it cannot fire.
+  const refused = [...secondary, ns.primary].filter(
+    (a): a is NextAction & { disabled: string } => !!a?.disabled,
   )
+  const hasActions = !!ns.primary || secondary.length > 0
+  // At most two secondaries beside the primary (DESIGN.md §Page anatomy 4);
+  // the rest stay one click away in a "More" menu rather than disappearing.
+  const shown = secondary.length > 2 ? secondary.slice(0, 2) : secondary
+  const overflow = secondary.length > 2 ? secondary.slice(2) : []
+  if (!hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
+
+  const lead = ns.title ?? (guidance ? undefined : ns.desc)
+  const guide = guidance && ns.desc && ns.desc !== lead ? ns.desc : undefined
 
   return (
-    // `flex-wrap` + the copy column's `basis-[26rem]` are decision 30e: the
-    // conflict state mounts the most buttons of any bar, the action buttons
-    // never shrink, and without a floor the kick/title/desc collapsed to one
-    // word per line in the state that most needs reading. Wide bars are
-    // unchanged; a crowded one wraps the actions to their own row instead.
+    // Keyed on what it says, so a change of state cross-fades rather than
+    // snapping — and a refetch that says the same thing does not.
     <div
-      className={`flex min-h-24 flex-wrap items-center gap-6 border-b bg-panel-2 px-6 py-4 ${ns.alert ? 'border-warn' : 'border-hairline'}`}
+      key={`${ns.title ?? ''}|${ns.primary?.kind ?? ''}`}
+      className="flex flex-wrap items-start gap-x-6 gap-y-3 animate-fade-in"
       role={ns.alert ? 'alert' : undefined}
     >
-      {ns.busy && <span className="size-4 animate-spin rounded-pill border-2 border-hairline-strong border-t-accent" />}
-      <div className="min-w-0 flex-1 basis-[26rem]">
-        <div className="font-mono text-xs uppercase tracking-[0.12em] text-text-3">{ns.kick}</div>
-        {ns.title && <div className="mt-1 text-lg font-semibold text-text">{ns.title}</div>}
-        {/* The count line is the ONE thing here that guidance cannot hide
-            (decision 3): the primary follows the count, so a bar that hid it
+      <div className="min-w-0 flex-1 basis-80 text-sm text-text-secondary">
+        {(lead || guide) && (
+          <p className="m-0 text-pretty">
+            {ns.busy ? (
+              <Spinner size="sm" className="mr-2 inline-block align-[-2px]" />
+            ) : ns.alert ? (
+              <StatusDot tone="warning" className="mr-2 align-middle" />
+            ) : null}
+            {lead && <span className="font-medium text-text">{guide ? sentence(lead) : lead}</span>}
+            {lead && guide && ' '}
+            {guide}
+          </p>
+        )}
+        {/* The count line is the ONE thing here guidance cannot hide
+            (decision 3): the primary follows the count, so a row that hid it
             would be a button whose reason is nowhere on the page. */}
         {ns.counts && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-text-2">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             {ns.counts.pills.map((pill) => (
-              <span
-                key={pill.label}
-                className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-0.5 font-mono text-sm ${PILL_TONE[pill.tone]}`}
-              >
-                <span className={`size-1.5 rounded-pill ${PILL_DOT[pill.tone]}`} />
+              <StatusLabel key={pill.label} tone={COUNT_TONE[pill.tone]} size="sm">
                 {pill.label}
-              </span>
+              </StatusLabel>
             ))}
-            {ns.counts.trailing && <span>{ns.counts.trailing}</span>}
+            {ns.counts.trailing && <span className="text-sm text-text-tertiary">{ns.counts.trailing}</span>}
           </div>
         )}
-        {guidance && ns.desc && <div className="mt-1 max-w-[68ch] text-sm text-text-2">{ns.desc}</div>}
-        {ns.note && <div className="mt-2 text-sm text-text-3" role="note">{ns.note}</div>}
-        {/* A refusal with a way out of it (decision 20). The tooltip on the dead
-            button says why; this says why WHERE THE EYE IS and puts the one
-            click that clears it beside the sentence, so "Stop the test drive
-            first" stops being a dead end. */}
-        {escapes.map((a) => (
-          <div key={a.kind} className="mt-2 flex flex-wrap items-center gap-2 text-sm text-text-3">
-            <span>{a.disabled}</span>
-            <Button size="xs" onClick={() => onAction(a.escape.kind)} disabled={busy}>
-              {a.escape.label}
-            </Button>
-          </div>
-        ))}
+        {ns.note && (
+          <p className="mt-1.5 mb-0 text-xs text-text-tertiary" role="note">
+            {ns.note}
+          </p>
+        )}
       </div>
-      {/* The group shrinks and wraps; the buttons inside it do not. A group
-          that refused to shrink was sized to its widest possible row — a long
-          branch in the picker beside a secondary and the primary — and ran off
-          the right edge of the workspace, which the frame's hidden overflow
-          then clipped away with no scrollbar to reach it. */}
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            {/* `a.disabled` is the reason the server would refuse this action in
-                the current state — shown as the tooltip beside the dead button,
-                so the user reads why instead of hunting for a vanished verb. */}
-            {ns.secondary.map((a, i) => (
+
+      {hasActions && (
+        // The group shrinks and wraps; the buttons inside it never do — a
+        // group sized to its widest row ran the primary off the page.
+        <div className="flex min-w-0 flex-col items-end gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {shown.map((a, i) => (
               <Button
                 key={i}
                 variant="ghost"
+                icon={ACTION_ICON[a.kind]}
                 disabled={busy || !!a.disabled}
                 title={a.disabled ?? a.hint}
                 onClick={() => onAction(a.kind, a.waypointId)}
@@ -104,6 +160,26 @@ export function NextStepBar({
                 {a.label}
               </Button>
             ))}
+            {overflow.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <IconButton label="More actions" icon={<IconMore />} disabled={busy} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {overflow.map((a) => (
+                    <DropdownMenuItem
+                      key={a.kind}
+                      icon={ACTION_ICON[a.kind]}
+                      disabled={!!a.disabled}
+                      title={a.disabled ?? a.hint}
+                      onSelect={() => onAction(a.kind, a.waypointId)}
+                    >
+                      {a.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {ns.primary && (
               <>
                 {draftBranch && (
@@ -117,19 +193,46 @@ export function NextStepBar({
                   />
                 )}
                 <Button
-                  variant={ns.primary.danger ? 'danger' : 'solid'}
+                  variant={ns.primary.danger ? 'danger' : 'primary'}
+                  icon={ACTION_ICON[ns.primary.kind]}
                   disabled={busy || !!ns.primary.disabled}
-                  title={ns.primary.disabled}
+                  title={ns.primary.disabled ?? ns.primary.hint}
                   onClick={() => onAction(ns.primary!.kind, ns.primary!.waypointId)}
                 >
                   {busy ? 'Working…' : ns.primary.label}
                 </Button>
-                {draftBranch && ns.primary.disabled === 'pick a branch first' && (
-                  <span className="text-sm text-warn">pick a branch first</span>
-                )}
               </>
             )}
-      </div>
+          </div>
+          {/* Why a button is dead, where the eye is — beneath it — and, when
+              the refusal has a way out (decision 20), the one click that
+              takes it, so "Stop the test drive first" is not a dead end. */}
+          {refused.map((a) => (
+            <div
+              key={a.kind}
+              className={cx(
+                'flex flex-wrap items-center justify-end gap-2 text-right text-xs',
+                draftBranch && a.kind === 'startDraft' && draftBranch.missing
+                  ? 'text-warning'
+                  : 'text-text-tertiary',
+              )}
+            >
+              <span>{a.disabled}</span>
+              {a.escape && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={ACTION_ICON[a.escape.kind]}
+                  onClick={() => onAction(a.escape!.kind)}
+                  disabled={busy}
+                >
+                  {a.escape.label}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -215,3 +215,26 @@ export interface FindingLike {
   /** When a dry run last proved this value; drive-loop keys only (decision 10). */
   verifiedAt?: number
 }
+
+/**
+ * Who a finding's value came from, as the one word its row shows and the
+ * sentence its tooltip spells out.
+ *
+ * The distinction that matters is which of these a later conversation may
+ * replace. Only `yours` is locked; `verified` was established with you present
+ * but stays improvable, and `built` is the image build's own write.
+ * `proposed`/`measured` are the retired headless run's — kept because its rows
+ * outlive it, and a host-only key it never executed must not now read as if
+ * someone watched it run.
+ */
+export function findingSource(f: { key: string; source: string }): { label: string; title: string } {
+  if (f.source === 'human')
+    return { label: 'Yours', title: 'You set this by hand — preparation will never overwrite it' }
+  if (f.source === 'build')
+    return { label: 'Built', title: "Built by runcastle from this repo's own Dockerfile" }
+  if (f.source === 'session')
+    return { label: 'Verified', title: 'Established in a conversation on your own machine' }
+  return HOST_ONLY_PREPARED.has(f.key)
+    ? { label: 'Proposed', title: 'Read from config by an older automatic run, not executed' }
+    : { label: 'Measured', title: 'Measured by an older automatic run, in a sandbox' }
+}

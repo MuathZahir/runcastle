@@ -38,8 +38,8 @@ export function ProjectPage({ scoped, projectId, filter, highlightField }: Setti
   /** The one row whose evidence is open — never two at once. */
   const [openEvidence, setOpenEvidence] = useState<string | null>(null)
 
-  if (scoped.isLoading) return <DimLine>loading…</DimLine>
-  if (scoped.error) return <DimLine>could not load settings: {scoped.error.message}</DimLine>
+  if (scoped.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (scoped.error) return <DimLine>Could not load settings: {scoped.error.message}</DimLine>
   if (!scoped.data) return null
 
   const findings = prep.data?.findings ?? []
@@ -59,7 +59,7 @@ export function ProjectPage({ scoped, projectId, filter, highlightField }: Setti
   }
 
   return (
-    <div className="flex flex-col gap-5.5">
+    <>
       {GROUPS.map(({ group, title }) => (
         <SettingGroup
           key={group}
@@ -72,6 +72,6 @@ export function ProjectPage({ scoped, projectId, filter, highlightField }: Setti
           evidence={evidence}
         />
       ))}
-    </div>
+    </>
   )
 }

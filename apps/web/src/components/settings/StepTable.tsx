@@ -1,10 +1,11 @@
 import { Fragment } from 'react'
 import { stepModelKey, type ModelOptionGroup, type StepGroup, type StepRow } from '../../lib/settings'
-import { IconX } from '../../icons'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
-import { BARE_BUTTON } from './button'
+import { IconUndo } from '../../icons'
+import { cx, IconButton, StatusDot } from '../../ui'
+import { SELECT_FIELD, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 import type { SettingWrites } from './ModelsPage'
-import { ModelOptions, Refusal, RuntimeChip, SaveMark } from './RosterTable'
+import { ModelOptions, REVEAL, Refusal, RuntimeIcon, TABLE_HEAD } from './RosterTable'
+import { SaveMark } from './SettingRow'
 import { showsSetting, type FilterState } from './types'
 
 /**
@@ -17,9 +18,11 @@ import { showsSetting, type FilterState } from './types'
  * sitting in front of, an unattended run is one you are paying for while away.
  */
 const GROUPS: readonly { group: StepGroup; title: string; caption: string }[] = [
-  { group: 'sessions', title: 'Sessions', caption: 'interactive — you are in the terminal' },
-  { group: 'unattended', title: 'Unattended', caption: 'burns and scripted runs' },
+  { group: 'sessions', title: 'Sessions', caption: 'Interactive — you are in the terminal' },
+  { group: 'unattended', title: 'Unattended', caption: 'Burns and scripted runs' },
 ]
+
+const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_260px_24px] items-center gap-3'
 
 export function StepTable({
   rows,
@@ -41,38 +44,41 @@ export function StepTable({
   return (
     <>
       {projectModel && (
-        <p className="text-sm text-warn">
-          This project runs everything on <span className="font-mono">{projectModel}</span> — these
-          apply to other projects.
+        <p className="m-0 mt-3 flex items-center gap-2 text-xs text-text-secondary">
+          <StatusDot tone="warning" />
+          <span>
+            This project runs everything on <span className="font-mono">{projectModel}</span> —
+            these apply to other projects.
+          </span>
         </p>
       )}
-      <div className="overflow-hidden rounded-md border border-hairline">
-        {GROUPS.map(({ group, title, caption }) => {
-          const shown = rows.filter(
-            (row) => row.group === group && showsSetting(filter, stepModelKey(row.step)),
-          )
-          if (shown.length === 0) return null
-          return (
-            <Fragment key={group}>
-              <div className="flex min-h-7.5 items-center gap-2 border-t border-hairline-soft bg-panel-2 px-3 text-xs font-semibold tracking-[0.06em] text-text-3 uppercase first:border-t-0">
+      {GROUPS.map(({ group, title, caption }) => {
+        const shown = rows.filter(
+          (row) => row.group === group && showsSetting(filter, stepModelKey(row.step)),
+        )
+        if (shown.length === 0) return null
+        return (
+          <Fragment key={group}>
+            <div className={cx(COLUMNS, TABLE_HEAD, 'mt-4')}>
+              <span>
                 {title}
-                <span className="ml-auto text-xs font-medium tracking-normal text-text-4 normal-case">
-                  {caption}
-                </span>
-              </div>
-              {shown.map((row) => (
-                <StepModelRow
-                  key={row.step}
-                  row={row}
-                  groups={groups}
-                  defaultModel={defaultModel}
-                  writes={writes}
-                />
-              ))}
-            </Fragment>
-          )
-        })}
-      </div>
+                <span className="ml-2 font-normal text-text-disabled">{caption}</span>
+              </span>
+              <span>Model</span>
+              <span />
+            </div>
+            {shown.map((row) => (
+              <StepModelRow
+                key={row.step}
+                row={row}
+                groups={groups}
+                defaultModel={defaultModel}
+                writes={writes}
+              />
+            ))}
+          </Fragment>
+        )
+      })}
     </>
   )
 }
@@ -92,52 +98,52 @@ function StepModelRow({
   const set = row.value !== null
 
   return (
-    <div className="border-t border-hairline-soft">
-      <div className="grid min-h-11 grid-cols-[1fr_250px_84px_24px] items-center gap-3 px-3 py-1.5">
-        <span className="text-base font-medium text-text">
-          {row.label}
-          <small className="block text-xs leading-tight font-normal text-text-3">
+    <div className="group border-b border-border-subtle transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover">
+      <div className={cx(COLUMNS, 'min-h-12 px-2 py-1.5')}>
+        <span className="flex min-w-0 flex-col">
+          <span className="flex items-center gap-2 text-sm text-text">
+            {row.label}
+            {writes.saved === key && <SaveMark />}
+          </span>
+          <span className="truncate text-xs text-text-tertiary" title={row.description}>
             {row.description}
-          </small>
+          </span>
         </span>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Select
-            value={row.value ?? ''}
-            onValueChange={(next) => writes.save(key, key, next === '' ? null : next)}
+        <Select
+          value={row.value ?? ''}
+          onValueChange={(next) => writes.save(key, key, next === '' ? null : next)}
+        >
+          <SelectTrigger
+            // The old per-step comboboxes had no accessible name at all
+            // (findings F17.7): eleven controls reading out as "combo box".
+            aria-label={`Model for ${row.label}`}
+            className={cx(SELECT_FIELD, 'w-full', !set && 'text-text-tertiary')}
           >
-            <SelectTrigger
-              // The old per-step comboboxes had no accessible name at all
-              // (findings F17.7): eleven controls reading out as "combo box".
-              aria-label={`Model for ${row.label}`}
-              className={`h-(--control-h) min-w-0 flex-1 rounded-sm border border-hairline bg-panel-inset px-2.5 text-sm hover:border-hairline-strong ${
-                set ? 'font-mono text-text' : 'text-text-3'
-              }`}
-            >
+            {/* What it will actually launch, which is a property of the model
+                that wins — never inferred from the id. */}
+            <span className="flex min-w-0 items-center gap-2 [&>span:last-child]:truncate">
+              <RuntimeIcon runtime={row.effectiveRuntime} />
               <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="text-sm">
-              <SelectItem value="">Default ({defaultModel})</SelectItem>
-              <ModelOptions groups={groups} />
-            </SelectContent>
-          </Select>
-          {writes.saved === key && <SaveMark />}
-        </div>
-        {/* What it will actually launch, which is a property of the model that
-            wins — never inferred from the id. */}
-        <RuntimeChip runtime={row.effectiveRuntime} />
-        {set && (
-          <button
-            type="button"
-            aria-label={`Reset ${row.label} to default`}
-            title="Use the default"
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Default ({defaultModel})</SelectItem>
+            <ModelOptions groups={groups} />
+          </SelectContent>
+        </Select>
+        {set ? (
+          <IconButton
+            label={`Reset ${row.label} to default`}
+            size="sm"
+            icon={<IconUndo />}
             onClick={() => writes.save(key, key, null)}
-            className={`${BARE_BUTTON} grid size-6 place-items-center rounded-sm text-text-4 hover:bg-panel-3 hover:text-text`}
-          >
-            <IconX size={12} />
-          </button>
+            className={REVEAL}
+          />
+        ) : (
+          <span />
         )}
       </div>
-      <Refusal writes={writes} cell={key} />
+      <Refusal writes={writes} cell={key} className="px-2 pb-2.5" />
     </div>
   )
 }

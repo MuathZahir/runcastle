@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { Button, Dialog, Field } from '../ui'
+import { IconTrash } from '../icons'
+import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, Field, TextField } from '../ui'
 
 /**
  * Destructive confirmation for `feature.delete` (decision #8). Delete is
  * permanent and irreversible — it tears down processes, the worktree, branches,
- * and every DB row — so the primary action stays disabled until the user types
- * the feature slug exactly, echoing the title so the wrong feature is not nuked
- * by a reflex click. Peek-overlay styling matches SettingsOverlay / DocPeek;
- * Escape and a backdrop click cancel.
+ * and every DB row — so the confirm stays disabled until the user types the
+ * feature slug exactly, echoing the title so the wrong feature is not nuked by
+ * a reflex click. Escape and a backdrop click cancel.
  */
 export function DeleteFeatureDialog({
   title,
@@ -29,35 +29,23 @@ export function DeleteFeatureDialog({
   const armed = typed.trim() === slug
 
   return (
-    <Dialog
-      open
-      onClose={onCancel}
-      returnFocusRef={returnFocusRef}
-      label={`Delete feature ${slug}`}
-      size="sm"
-    >
-      <div className="flex flex-col gap-6 p-6">
-        <div className="flex flex-col gap-2 text-base leading-relaxed text-text-2">
-          <p className="m-0">
-            Permanently delete <strong className="font-semibold text-text">{title}</strong>? Its
-            worktree, branches, running agent and all runcastle data go with it; committed docs
-            stay in git history.
-          </p>
-          <strong className="font-semibold text-text">This cannot be undone.</strong>
-        </div>
+    <Dialog open onClose={onCancel} returnFocusRef={returnFocusRef} labelledBy="delete-feature-title" size="sm">
+      <DialogHeader id="delete-feature-title" title="Delete feature" onClose={onCancel} />
+      <DialogBody className="flex flex-col gap-5">
+        <p className="m-0 text-sm text-pretty text-text-secondary">
+          Permanently delete <strong className="font-medium text-text">{title}</strong>? Its worktree,
+          branches, running agent and all runcastle data go with it; committed docs stay in git history.{' '}
+          <strong className="font-medium text-text">This cannot be undone.</strong>
+        </p>
         <Field
           label={
             <>
-              Type{' '}
-              <code className="rounded-sm bg-panel-inset px-1.5 py-0.5 font-mono text-text">
-                {slug}
-              </code>{' '}
-              to confirm
+              Type <code className="font-mono text-xs text-text">{slug}</code> to confirm
             </>
           }
         >
-          <input
-            className="h-(--control-h) rounded-md border border-hairline-strong bg-panel-inset px-3 font-mono text-base text-text outline-none placeholder:text-text-4 focus:border-danger"
+          <TextField
+            mono
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
             autoFocus
@@ -66,15 +54,15 @@ export function DeleteFeatureDialog({
             placeholder={slug}
           />
         </Field>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={!armed || busy}>
-            {busy ? 'Deleting…' : 'Delete feature'}
-          </Button>
-        </div>
-      </div>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="danger" icon={<IconTrash />} onClick={onConfirm} disabled={!armed || busy}>
+          {busy ? 'Deleting…' : 'Delete feature'}
+        </Button>
+      </DialogFooter>
     </Dialog>
   )
 }

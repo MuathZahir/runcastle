@@ -1,7 +1,19 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { driveFailure, driveView } from '../../lib/feature-ui'
 import type { SlotDrive } from '../../lib/use-project-drive'
-import { Button } from '../../ui'
+import {
+  IconAlert,
+  IconClock,
+  IconFolder,
+  IconMessage,
+  IconPanelRight,
+  IconPlay,
+  IconShield,
+  IconStop,
+  IconTerminal,
+  IconUser,
+} from '../../icons'
+import { Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
 import { DrivePanel } from '../review/DrivePanel'
 import { DriveFailureReport, DriveFooter } from '../review/drive-parts'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
@@ -9,9 +21,9 @@ import { ProjectNotesRail } from './ProjectNotesRail'
 
 /**
  * A project drive, owning the workspace body the way a live chat does
- * (project-level-test-drive decision 4): the checkout's app on the left under a
- * header that names what is being driven, the project's notes inbox on the
- * right.
+ * (project-level-test-drive decision 4): a topbar (project › Test drive, Stop,
+ * the notes toggle), the checkout's app under a header that names what is being
+ * driven, and the project's notes inbox as the one aside on the right.
  *
  * The stage is composed from the feature drive's parts rather than its
  * `EvidenceStage`, which is bound to a feature's recordings and test notes; the
@@ -19,6 +31,7 @@ import { ProjectNotesRail } from './ProjectNotesRail'
  */
 export function ProjectDriveView({
   projectId,
+  projectName = 'Project',
   repoPath,
   drive,
   hidden,
@@ -29,6 +42,8 @@ export function ProjectDriveView({
   switcher,
 }: {
   projectId: string
+  /** The parent crumb — clicking it steps back to the project page. */
+  projectName?: string
   repoPath: string | undefined
   drive: SlotDrive
   hidden: boolean
@@ -37,56 +52,89 @@ export function ProjectDriveView({
   onStop: () => void
   stopping: boolean
   onOpenPreparation: () => void
-  /** The Chat | Drive switch, when a live chat shares the body. */
+  /** The Chat | Drive tabs, when a live chat shares the body. */
   switcher?: ReactNode
 }) {
+  // The notes aside is the point of driving, so it starts open; the topbar
+  // toggle folds it away for a wider stage.
+  const [notesOpen, setNotesOpen] = useState(true)
+  const stage = driveView(drive.state).stageKind
+  const state =
+    stage === 'failed' ? (
+      <StatusLabel tone="danger">Setup failed</StatusLabel>
+    ) : stage === 'starting' ? (
+      <StatusLabel spinning>Starting</StatusLabel>
+    ) : (
+      <StatusLabel tone="live">Running</StatusLabel>
+    )
   const stop = (
-    <Button disabled={stopping} onClick={onStop}>
-      {stopping ? 'Stopping…' : 'Stop drive'}
+    <Button icon={<IconStop />} loading={stopping} disabled={stopping} onClick={onStop}>
+      Stop drive
     </Button>
   )
+  const where = `${repoPath ?? ''}${drive.commit ? ` @ ${drive.commit}` : ''}`
 
   return (
     <div
-      className={hidden ? 'hidden' : 'flex min-h-0 flex-1'}
+      className={hidden ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}
       aria-hidden={hidden}
       data-project-drive
     >
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {/* The branch is named up front because the checkout is driven as it is
-            (decision 3): a checkout sitting somewhere other than main is seen
-            here, before any note is taken. */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <h2 className="m-0 shrink-0 text-base font-semibold text-text">
-              Driving{' '}
-              <code className="rounded-sm border border-accent-line bg-accent-soft px-1.5 font-mono text-sm text-drive">
-                {drive.branch}
-              </code>
-            </h2>
-            <span
-              className="min-w-0 truncate font-mono text-xs text-text-3"
-              title={drive.commit ? `${repoPath ?? ''} @ ${drive.commit}` : repoPath}
-            >
-              {repoPath}
-              {drive.commit && ` @ ${drive.commit}`}
-            </span>
-          </div>
-          {switcher}
-          <Button onClick={onProjectPage}>Project page</Button>
-          {stop}
+      <PageTopbar
+        crumbs={[
+          { label: projectName, icon: <IconFolder />, onClick: onProjectPage },
+          { label: 'Test drive', icon: <IconPlay /> },
+        ]}
+        tabs={switcher}
+        actions={
+          <>
+            {stop}
+            <IconButton
+              label={notesOpen ? 'Hide notes' : 'Show notes'}
+              icon={<IconPanelRight />}
+              active={notesOpen}
+              onClick={() => setNotesOpen((open) => !open)}
+            />
+          </>
+        }
+      />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4 animate-fade-in">
+          {/* The branch is named up front because the checkout is driven as it
+              is (decision 3): a checkout sitting somewhere other than main is
+              seen here, before any note is taken. */}
+          <header className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="m-0 text-lg font-semibold text-text">
+                Driving <span className="font-mono text-base font-medium">{drive.branch}</span>
+              </h2>
+              {state}
+            </div>
+            <MetaLine
+              items={[
+                { icon: <IconFolder />, mono: true, text: where, title: where },
+                { icon: <IconUser />, mono: true, text: 'project-drive', title: 'the identity this drive runs as' },
+              ]}
+            />
+          </header>
+
+          <ProjectStage
+            projectId={projectId}
+            drive={drive}
+            stop={stop}
+            onOpenPreparation={onOpenPreparation}
+          />
+          <DriveFooter branch={drive.branch} drive={drive} />
         </div>
 
-        <ProjectStage
-          projectId={projectId}
-          drive={drive}
-          stop={stop}
-          onOpenPreparation={onOpenPreparation}
-        />
-        <DriveFooter branch={drive.branch} drive={drive} />
+        {notesOpen && (
+          <ProjectNotesRail
+            projectId={projectId}
+            startedAt={drive.startedAt}
+            onClose={() => setNotesOpen(false)}
+          />
+        )}
       </div>
-
-      <ProjectNotesRail projectId={projectId} startedAt={drive.startedAt} />
     </div>
   )
 }
@@ -108,52 +156,57 @@ function ProjectStage({
   switch (driveView(drive.state).stageKind) {
     // Preparation, not Fix drive: that opens an agent scoped to a feature, and
     // preparation is where a project's drive commands are repaired and proven
-    // (decision 7). The drive stays up, so the notes rail keeps working.
+    // (decision 7). The drive stays up, so the notes aside keeps working.
     case 'failed':
       return failure ? (
-        <StageBox>
+        <StageFrame>
           <DriveFailureReport
             failure={failure}
             explanation={
               <>
                 Your checkout is as it was, but{' '}
-                <code className="font-mono">{failure.command}</code> {failure.outcome} — so
+                <code className="font-mono text-xs">{failure.command}</code> {failure.outcome} — so
                 whatever it was meant to bring up is probably not running. Preparation is where this
                 project’s drive commands are repaired and proven.
               </>
             }
           >
             <div className="flex items-center gap-2">
-              <Button variant="solid" onClick={onOpenPreparation}>
+              <Button variant="primary" icon={<IconShield />} onClick={onOpenPreparation}>
                 Open preparation
               </Button>
               {stop}
             </div>
           </DriveFailureReport>
-        </StageBox>
+        </StageFrame>
       ) : (
-        <StageBox>
-          <div className="text-sm text-text-2">
-            The drive’s setup command failed — its output is in the timeline.
-          </div>
-        </StageBox>
+        <StageFrame>
+          <EmptyState
+            icon={<IconAlert />}
+            title="The drive’s setup command failed"
+            hint="Its output is in the timeline."
+          />
+        </StageFrame>
       )
 
     // Nothing was meant to start, so nothing is claimed to have (findings F22).
     case 'bare':
       return (
-        <StageBox>
-          <div className="flex flex-col gap-3">
-            <div className="text-sm font-semibold text-text">Setup ran — nothing started.</div>
-            <div className="text-sm text-text-2">
-              This project has no dev command ·{' '}
-              <SettingsLink location={{ page: 'project', field: 'devCommand' }}>
-                Set one in Settings
-              </SettingsLink>{' '}
-              and the next drive boots the app right here.
-            </div>
-          </div>
-        </StageBox>
+        <StageFrame>
+          <EmptyState
+            icon={<IconTerminal />}
+            title="Setup ran — nothing started."
+            hint={
+              <>
+                This project has no dev command ·{' '}
+                <SettingsLink location={{ page: 'project', field: 'devCommand' }}>
+                  Set one in Settings
+                </SettingsLink>{' '}
+                and the next drive boots the app right here.
+              </>
+            }
+          />
+        </StageFrame>
       )
 
     case 'panel':
@@ -166,35 +219,35 @@ function ProjectStage({
         )
       }
       return (
-        <StageBox>
-          <div className="text-sm text-text-2">
-            The dev server is up but has not printed an address yet — its output is under the
-            stage.
-          </div>
-        </StageBox>
+        <StageFrame>
+          <EmptyState
+            icon={<IconClock />}
+            title="Waiting for an address"
+            hint="The dev server is up but has not printed an address yet — its output is under the stage."
+          />
+        </StageFrame>
       )
 
     default:
       return (
-        <StageBox>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="size-2 animate-pulse rounded-pill bg-drive" />
-              <span className="text-sm font-semibold text-drive">starting the dev server…</span>
-            </div>
-            <div className="text-sm text-text-2">
+        <StageFrame>
+          <div className="flex flex-col items-center gap-2 text-center">
+            <StatusLabel tone="live" size="sm" strong>
+              Starting the dev server…
+            </StatusLabel>
+            <p className="m-0 max-w-[52ch] text-sm text-pretty text-text-tertiary">
               Your checkout is driven as it is and the project’s dev command is running. The app
               appears here as soon as it answers — its output is under the stage.
-            </div>
+            </p>
           </div>
-        </StageBox>
+        </StageFrame>
       )
   }
 }
 
 /**
- * Which of a live chat and a live drive fills the body (decision 4). Both keep
- * running; this only chooses what is in front.
+ * Which of a live chat and a live drive fills the body (decision 4) — two view
+ * Tabs in the topbar. Both keep running; this only chooses what is in front.
  */
 export function ChatDriveSwitch({
   front,
@@ -203,37 +256,27 @@ export function ChatDriveSwitch({
   front: 'chat' | 'drive'
   onPick: (front: 'chat' | 'drive') => void
 }) {
-  const option = (value: 'chat' | 'drive', label: string, dot: string) => (
-    <button
-      type="button"
-      aria-pressed={front === value}
-      onClick={() => onPick(value)}
-      // The background is stated once per state, not over BARE_BUTTON's own:
-      // two utilities for one property are a coin flip without tailwind-merge.
-      className={`inline-flex h-6.5 cursor-pointer items-center gap-1.5 border-0 px-2.5 ${
-        front === value ? 'bg-panel-3' : 'bg-transparent hover:bg-panel-2'
-      }`}
-    >
-      <i className={`size-1.5 rounded-pill ${dot}`} />
-      <span className={`text-sm ${front === value ? 'text-text' : 'text-text-3'}`}>{label}</span>
-    </button>
-  )
   return (
-    <span
-      role="group"
-      aria-label="Show"
-      className="inline-flex shrink-0 divide-x divide-hairline-strong overflow-hidden rounded-sm border border-hairline-strong"
-    >
-      {option('chat', 'Chat', 'bg-ok')}
-      {option('drive', 'Drive', 'bg-drive')}
-    </span>
+    <Tabs
+      label="Show"
+      size="sm"
+      value={front}
+      onChange={onPick}
+      items={[
+        { id: 'chat', label: 'Chat', icon: <IconMessage /> },
+        { id: 'drive', label: 'Drive', icon: <IconPlay /> },
+      ]}
+    />
   )
 }
 
-/** The stage's frame when it is not showing the app. */
-function StageBox({ children }: { children: ReactNode }) {
+/**
+ * The stage's ground when it is not showing the app: the inset surface the app
+ * will fill, not a bordered card.
+ */
+function StageFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-65 flex-1 flex-col justify-center rounded-md border border-hairline bg-panel p-5">
+    <div className="flex min-h-65 flex-1 flex-col justify-center rounded-md bg-surface-inset p-6">
       {children}
     </div>
   )

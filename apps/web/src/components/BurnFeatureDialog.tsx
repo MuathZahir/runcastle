@@ -1,4 +1,6 @@
-import { Button, CheckLine, Dialog, SectionTitle } from '../ui'
+import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, SectionLabel, Spinner } from '../ui'
+import { IconFlame } from '../icons'
+import { ConfirmWarnings } from './MergeFeatureDialog'
 import type { BurnSummary } from '../lib/feature-ui'
 
 /**
@@ -35,7 +37,7 @@ export function BurnFeatureDialog({
     <Dialog
       open
       onClose={onCancel}
-      label={`Burn the tickets on ${branch}`}
+      labelledBy="burn-feature-title"
       size="sm"
       className="flex max-h-[82vh] flex-col overflow-hidden"
     >
@@ -78,56 +80,49 @@ export function BurnConfirmation({
 }) {
   return (
     <>
-      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-        <span className="text-sm font-semibold text-text">Burn tickets</span>
-        <button
-          className="cursor-pointer border-0 bg-transparent p-1 text-base text-text-3 hover:text-text"
-          onClick={onCancel}
-          aria-label="Close (Esc)"
-        >
-          ✕
-        </button>
-      </div>
+      <DialogHeader
+        id="burn-feature-title"
+        title="Burn tickets"
+        onClose={onCancel}
+        description={
+          <>
+            Burn <span className="font-medium text-text">{title}</span> on{' '}
+            <code className="font-mono text-xs">{branch}</code>? Each ticket runs as its own sandboxed agent.
+          </>
+        }
+      />
 
-      <div className="flex flex-col gap-6 overflow-y-auto p-4">
-        <p className="m-0 text-base leading-relaxed text-text-2">
-          Burn <strong className="font-semibold text-text">{title}</strong> on{' '}
-          <code className="font-mono">{branch}</code>? Each ticket runs as its own sandboxed agent.
-        </p>
-
-        <div>
-          <SectionTitle>What burns</SectionTitle>
+      <DialogBody className="flex min-h-0 flex-col gap-5 overflow-y-auto">
+        <section>
+          <SectionLabel>What burns</SectionLabel>
           {summary.rows.map((row) => (
             <CheckLine key={row.key} row={row} />
           ))}
-        </div>
+        </section>
 
-        {summary.warnings.length > 0 && (
-          <ul className="m-0 list-disc rounded-sm border border-warn/40 bg-warn/7 py-2.5 pr-3 pl-6 text-sm leading-relaxed text-warn">
-            {summary.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        )}
+        <ConfirmWarnings warnings={summary.warnings} />
 
         {/* Said rather than waited for: a dialog that withheld its button until
             the warnings landed would be disabling by another name. */}
         {warningsPending && (
-          <p className="m-0 text-sm leading-relaxed text-text-3">Still checking for warnings…</p>
+          <p className="m-0 flex items-center gap-2 text-sm text-text-tertiary">
+            <Spinner size="sm" />
+            Still checking for warnings…
+          </p>
         )}
 
         {/* The last moment to say what the button does. */}
-        <p className="m-0 text-sm leading-relaxed text-text-3">{summary.next}</p>
+        <p className="m-0 text-sm text-text-tertiary">{summary.next}</p>
+      </DialogBody>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="solid" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Burning…' : 'Burn'}
-          </Button>
-        </div>
-      </div>
+      <DialogFooter className="border-t border-border-subtle pt-4">
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" icon={<IconFlame />} onClick={onConfirm} disabled={busy}>
+          {busy ? 'Burning…' : 'Burn'}
+        </Button>
+      </DialogFooter>
     </>
   )
 }

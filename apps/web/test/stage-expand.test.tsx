@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
@@ -167,7 +167,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function page(): { root: HTMLElement; rerender: () => void } {
+function page(): { root: { readonly className: string }; rerender: () => void } {
   const feature = full({ id: 'feat_1', phase: 'review' })
   const body = (): React.ReactElement => (
     <ReviewBody
@@ -179,7 +179,14 @@ function page(): { root: HTMLElement; rerender: () => void } {
   )
   const view = render(body())
   return {
-    root: view.container.firstElementChild as HTMLElement,
+    // The expanded overlay portals to <body> (the page column's transform would
+    // otherwise pin `fixed` to the column), so "the root" is whatever element
+    // holds the window: the overlay while expanded, the page otherwise.
+    root: {
+      get className(): string {
+        return (document.querySelector('[data-stage-overlay]') ?? view.container.firstElementChild)!.className
+      },
+    },
     // The queries answer differently on the next render — how a drive starting
     // or stopping reaches this page.
     rerender: () => view.rerender(body()),
@@ -190,7 +197,7 @@ const expandControl = (): HTMLElement => screen.getByRole('button', { name: /^Ex
 const key = (k: string): void => void fireEvent.keyDown(document.body, { key: k })
 
 /** The bands the expand puts away, one phrase each. */
-const BANDS = ['checks passed', 'How to drive this app', 'Carried, still open', 'Full account']
+const BANDS = ['^Burn$', 'How to drive this app', 'Carried, still open', 'Full account']
 
 describe('the review page expanded', () => {
   it('leaves the stage and the rail, and puts every other band away', () => {
@@ -199,14 +206,21 @@ describe('the review page expanded', () => {
 
     fireEvent.click(expandControl())
 
-    // The overlay is a plain fixed layer over the workspace — not the native
-    // Fullscreen API, which would take the rail with it.
+    // The overlay is a plain fixed layer over the window — not the native
+    // Fullscreen API, which would take the rail with it — and it lives on
+    // <body>, out of reach of any transformed ancestor.
     expect(root.className).toContain('fixed inset-0')
-    expect(document.getElementById('evidence-stage')).toBeTruthy()
-    expect(screen.getByText('What still needs attention')).toBeTruthy()
-    expect(screen.getByLabelText(/what did you just see/i)).toBeTruthy()
-    expect(screen.getByText(NOTE.text)).toBeTruthy()
-    for (const band of BANDS) expect.soft(screen.queryByText(new RegExp(band))).toBeNull()
+    const overlay = document.querySelector('[data-stage-overlay]') as HTMLElement
+    expect(overlay.parentElement).toBe(document.body)
+    const inOverlay = within(overlay)
+    expect(overlay.querySelector('#evidence-stage')).toBeTruthy()
+    // The notes are the one aside beside the stage.
+    expect(inOverlay.getByRole('complementary').textContent).toContain('Needs attention')
+    expect(inOverlay.getByLabelText(/what did you just see/i)).toBeTruthy()
+    expect(inOverlay.getByText(NOTE.text)).toBeTruthy()
+    for (const band of BANDS) expect.soft(inOverlay.queryByText(new RegExp(band))).toBeNull()
+    // The page stays mounted under it, so collapsing lands where it was.
+    expect(screen.getAllByText(/How to drive this app/).length).toBe(1)
   })
 
   /** Expanding is for working: the tools the human annotates with come along. */

@@ -3,20 +3,54 @@ import { trpc } from '../trpc'
 import { openApp, openAppWaitingLabel, sessionStatusLabel, type OpenApp } from '../lib/feature-ui'
 import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
-import { Button, DimLine, SessionStatusDot } from '../ui'
-import { LogoMark } from '../icons'
 import {
-  HOST_ONLY_PREPARED,
+  Button,
+  Disclosure,
+  EmptyState,
+  IconButton,
+  List,
+  ListRow,
+  Page,
+  PageHeader,
+  PageSection,
+  PageTopbar,
+  Aside,
+  StatusDot,
+  StatusLabel,
+  cx,
+} from '../ui'
+import type { MetaItem } from '../ui'
+import {
+  IconAlert,
+  IconCheck,
+  IconClock,
+  IconDot,
+  IconExternalLink,
+  IconFolder,
+  IconPanelRight,
+  IconPlay,
+  IconPlus,
+  IconRefresh,
+  IconShield,
+  IconStop,
+} from '../icons'
+import {
   PREPARED_LABEL,
   describeFinding,
+  findingSource,
   isStale,
+  isVerifiable,
   relativeAge,
-  verificationBadge,
 } from '../lib/prep-findings'
 import type { PrepView, ProjectFinding } from '../lib/api'
+import { sentenceCase } from '../lib/conversation-title'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
 import { TerminalView } from './TerminalView'
+
+/** What preparation is, in the one sentence every state of the page leads with. */
+const WHAT_IT_DOES =
+  'Repo facts an agent establishes once — how to install, how to verify, what is already red — so no burn agent re-derives them per ticket.'
 
 /**
  * The preparation workspace — the whole body, not a card in an overlay.
@@ -33,6 +67,10 @@ import { TerminalView } from './TerminalView'
  * questions that block preparation — how this dev server starts, which database
  * a drive should point at — are answered by asking, and this session can
  * actually RUN the answers, which a sandbox never could.
+ *
+ * Two layouts: at rest it is a page (what preparation does, the one primary,
+ * what is established); while the conversation is open the terminal owns the
+ * body and what is established moves into the one aside.
  */
 export function PreparationWorkspace({
   projectId,
@@ -73,78 +111,103 @@ export function PreparationWorkspace({
     onError: (e) => toast.push(e.message),
   })
 
+  const [asideOpen, setAsideOpen] = useState(false)
+
   const view = prep.data as PrepView | undefined
   const session = sessionQ.data ?? null
   const findings = view?.findings ?? []
   const pending = view?.pendingKeys ?? []
   const staleCount = findings.filter(isStale).length
+  const sid = session ? (session.ccSessionId ?? session.id) : ''
 
   return (
-    <section className="workspace">
-      <div className="ws-head">
-        <div className="ws-title-row">
-          <span className="inline-flex h-[18px] items-center rounded-pill border border-accent-line bg-accent-soft px-2 text-[9.5px] font-bold tracking-[0.09em] text-accent-hi">
-            PREPARE
-          </span>
-          <span className="ws-title">{project?.name ?? 'This project'}</span>
-          <span className="ws-title-spacer" />
-          {onClose && (
-            <button className="settings-clear" onClick={onClose}>
-              Back
-            </button>
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <PageTopbar
+        crumbs={[
+          {
+            label: project?.name ?? 'This project',
+            icon: <IconFolder />,
+            ...(onClose ? { onClick: onClose } : {}),
+          },
+          { label: 'Preparation', icon: <IconShield /> },
+        ]}
+        actions={
+          session ? (
+            <>
+              <div className="mr-2 hidden items-center gap-4 text-xs text-text-tertiary md:flex">
+                <StatusLabel tone={session.status === 'live' ? 'live' : 'accent'}>
+                  {sentenceCase(sessionStatusLabel(session))}
+                </StatusLabel>
+                <span className="font-mono" title={sid}>
+                  {sid.slice(0, 8)}
+                </span>
+              </div>
+              <EndSessionButton
+                sessionId={session.id}
+                onEnded={() => {
+                  void utils.project.prepSession.invalidate()
+                  void utils.project.prep.invalidate()
+                }}
+              />
+              {findings.length > 0 && (
+                <IconButton
+                  label={asideOpen ? 'Hide what is established' : 'Show what is established'}
+                  icon={<IconPanelRight />}
+                  active={asideOpen}
+                  onClick={() => setAsideOpen((open) => !open)}
+                />
+              )}
+            </>
+          ) : undefined
+        }
+      />
+
+      {/* Above everything, session or not: what is up on this machine right
+          now. A prep session that dies mid-run leaves a dev server and a temp
+          database behind, and the teardown half has to be reachable without it
+          (decision 9). */}
+      {view?.dryRun && (
+        <DryRunRow
+          open={openApp(view.dryRun)}
+          stopping={stopDryRun.isPending}
+          onStop={() => stopDryRun.mutate({ projectId })}
+        />
+      )}
+
+      {session ? (
+        <div className="flex min-h-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1 bg-surface-inset animate-fade-in">
+            <ErrorBoundary label="terminal">
+              <TerminalView sessionId={session.id} />
+            </ErrorBoundary>
+          </div>
+          {/* While a conversation is open the call-to-action is gone, so what
+              it carries stands on its own in the aside. */}
+          {asideOpen && findings.length > 0 && (
+            <Aside title="Established" onClose={() => setAsideOpen(false)} bodyClassName="px-4 py-3">
+              <PrepEvidence findings={findings} staleCount={staleCount} compact />
+            </Aside>
           )}
         </div>
-        <div className="mt-2 text-sm leading-6 text-text-3">
-          Repo facts an agent establishes once — how to install, how to verify, what is already
-          red — so no burn agent re-derives them per ticket.
-        </div>
-      </div>
-
-      <div className="ws-body">
-        <div className="ws-body-inner flex flex-col gap-[18px]">
-          {prep.isLoading && <DimLine>loading…</DimLine>}
-          {prep.error && <DimLine>could not load preparation: {prep.error.message}</DimLine>}
-
-          {/* Above everything, session or not: what is up on this machine right
-              now. A prep session that dies mid-run leaves a dev server and a temp
-              database behind, and the teardown half has to be reachable without
-              it (decision 9). */}
-          {view?.dryRun && (
-            <DryRunRow
-              open={openApp(view.dryRun)}
-              stopping={stopDryRun.isPending}
-              onStop={() => stopDryRun.mutate({ projectId })}
+      ) : (
+        <Page routeKey={`prepare-${projectId}`}>
+          {prep.isLoading && (
+            <div className="flex items-center gap-2 text-sm text-text-tertiary">
+              <StatusDot tone="neutral" />
+              Loading preparation…
+            </div>
+          )}
+          {prep.error && (
+            <EmptyState
+              icon={<IconAlert />}
+              title="Could not load preparation"
+              hint={prep.error.message}
             />
           )}
-
-          {session ? (
-            <div className="grill-panel">
-              <div className="grill-strip">
-                <span className="grill-kind">prepare</span>
-                <SessionStatusDot status={session.status} />
-                <span className="grill-live-label">{sessionStatusLabel(session)}</span>
-                <span className="grill-strip-spacer" />
-                <span className="grill-sid" title={session.ccSessionId ?? session.id}>
-                  {(session.ccSessionId ?? session.id).slice(0, 8)}
-                </span>
-                <EndSessionButton
-                  sessionId={session.id}
-                  onEnded={() => {
-                    void utils.project.prepSession.invalidate()
-                    void utils.project.prep.invalidate()
-                  }}
-                />
-              </div>
-              <div className="grill-term h-[clamp(300px,calc(100dvh-420px),1200px)]">
-                <ErrorBoundary label="terminal">
-                  <TerminalView sessionId={session.id} />
-                </ErrorBoundary>
-              </div>
-            </div>
-          ) : view ? (
-            // Only once the view has answered: `prepared` decides between two
-            // headings that say opposite things, and guessing one flashes the
-            // wrong sentence on every first paint.
+          {/* Only once the view has answered: `prepared` decides between two
+              headings that say opposite things, and guessing one flashes the
+              wrong sentence on every first paint. */}
+          {view && (
             <PrepCallToAction
               prepared={view.prepared}
               preparedAt={view.preparedAt}
@@ -155,13 +218,9 @@ export function PreparationWorkspace({
               onStart={() => talk.mutate({ projectId })}
               onStartFresh={() => talk.mutate({ projectId, fresh: true })}
             />
-          ) : null}
-
-          {/* While a conversation is open the call-to-action is gone, so what it
-              carries has to stand on its own under the terminal. */}
-          {session && <PrepEvidence findings={findings} staleCount={staleCount} />}
-        </div>
-      </div>
+          )}
+        </Page>
+      )}
     </section>
   )
 }
@@ -175,6 +234,9 @@ export function PreparationWorkspace({
  * `prepared` is monotonic, so the screen used to congratulate the human by
  * removing every mention of preparation from the app, leaving a settings tooltip
  * that said "re-prepare to refresh it" and no way to.
+ *
+ * Laid out as a page (DESIGN.md §Page anatomy): the title once, a meta line of
+ * facts, one sentence, the one primary; then the sections.
  */
 export function PrepCallToAction({
   prepared,
@@ -196,94 +258,128 @@ export function PrepCallToAction({
   onStartFresh: () => void
 }) {
   const anyEstablished = findings.length > 0
+  const meta: Array<MetaItem | false> = [
+    prepared && {
+      icon: <IconClock />,
+      text:
+        preparedAt !== null
+          ? `Prepared ${relativeAge(preparedAt)}`
+          : 'No preparation conversation on record',
+    },
+    !prepared && pending.length > 0 && { strong: pending.length, text: 'to establish' },
+    anyEstablished && { strong: findings.length, text: 'established' },
+    staleCount > 0 && { tone: 'warning', strong: staleCount, text: 'stale' },
+  ]
 
   if (prepared)
     return (
-      <div className="flex flex-col items-center gap-3 py-7 pt-10 text-center">
-        <div className="flex opacity-85">
-          <LogoMark size={44} variant="outline" />
-        </div>
-        <div className="text-lg font-medium text-text">Re-prepare this project</div>
-        <div className="max-w-[52ch] text-sm leading-6 text-text-3">
-          {preparedAt !== null
-            ? `Prepared ${relativeAge(preparedAt)}. `
-            : 'No preparation conversation on record — every field already had a value. '}
-          Repo facts drift; re-preparing measures them again with you there.
-        </div>
-        {staleCount > 0 && <StaleWarning count={staleCount} />}
-        <div className="flex items-center gap-2">
-          <Button variant="solid" disabled={starting} onClick={onStart}>
-            {starting ? 'Opening…' : 'Resume'}
-          </Button>
-          <Button disabled={starting} onClick={onStartFresh}>
-            Start fresh
-          </Button>
-        </div>
-        <div className="max-w-[52ch] text-sm leading-6 text-text-3">
-          Resume continues your last preparation conversation; Start fresh opens one that has never
-          seen it — values you typed by hand are never overwritten.
-        </div>
-        {findings.length > 0 && <EstablishedFrame findings={findings} />}
-      </div>
+      <>
+        <PageHeader title="Re-prepare this project" meta={meta}>
+          <p className="m-0 max-w-[60ch] text-base text-pretty text-text-secondary">
+            {preparedAt === null && 'Every field already had a value. '}
+            {WHAT_IT_DOES} Repo facts drift; re-preparing measures them again with you there.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              icon={<IconRefresh />}
+              loading={starting}
+              disabled={starting}
+              onClick={onStart}
+            >
+              Resume
+            </Button>
+            <Button icon={<IconPlus />} disabled={starting} onClick={onStartFresh}>
+              Start fresh
+            </Button>
+          </div>
+          <p className="mt-2 mb-0 max-w-[60ch] text-xs text-pretty text-text-tertiary">
+            Resume continues your last preparation conversation; Start fresh opens one that has
+            never seen it — values you typed by hand are never overwritten.
+          </p>
+        </PageHeader>
+        <PrepEvidence findings={findings} staleCount={staleCount} />
+      </>
     )
 
   return (
-    <div className="flex flex-col items-center gap-3 py-7 pt-10 text-center">
-      <div className="flex opacity-85">
-        <LogoMark size={44} variant="outline" />
-      </div>
-      <div className="text-lg font-medium text-text">
-        {anyEstablished ? 'Finish preparing this project' : 'Prepare this project first'}
-      </div>
-      <div className="max-w-[52ch] text-sm leading-6 text-text-3">
-        Opens a terminal session here with an agent in your own checkout — it runs this repo's
-        commands, records the answers, and asks you the ones only you know.
-      </div>
+    <>
+      <PageHeader
+        title={anyEstablished ? 'Finish preparing this project' : 'Prepare this project first'}
+        meta={meta}
+      >
+        <p className="m-0 max-w-[60ch] text-base text-pretty text-text-secondary">{WHAT_IT_DOES}</p>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Button
+            variant="primary"
+            icon={<IconPlay />}
+            loading={starting}
+            disabled={starting}
+            onClick={onStart}
+          >
+            Start preparation
+          </Button>
+        </div>
+        <p className="mt-2 mb-0 max-w-[60ch] text-xs text-pretty text-text-tertiary">
+          Opens a terminal session here with an agent in your own checkout — it runs this repo's
+          commands, records the answers, and asks you the ones only you know.
+        </p>
+      </PageHeader>
 
       {pending.length > 0 && (
-        <ul className="m-0 flex max-w-[56ch] list-none flex-wrap justify-center gap-1.5 p-0 [&_li]:rounded-pill [&_li]:border [&_li]:border-hairline [&_li]:bg-panel-3 [&_li]:px-2 [&_li]:py-[3px] [&_li]:text-xs [&_li]:text-text-3">
-          {pending.map((k) => (
-            <li key={k}>{PREPARED_LABEL[k] ?? k}</li>
-          ))}
-        </ul>
+        <PageSection title="To establish">
+          <List divided label="To establish" className="-mx-3">
+            {pending.map((k, i) => (
+              <ListRow
+                key={k}
+                index={i}
+                leading={<IconDot />}
+                title={PREPARED_LABEL[k] ?? k}
+                meta="Not yet"
+              />
+            ))}
+          </List>
+        </PageSection>
       )}
-
-      <Button variant="solid" disabled={starting} onClick={onStart}>
-        {starting ? 'Opening…' : 'Start preparation'}
-      </Button>
       <PrepEvidence findings={findings} staleCount={staleCount} />
-    </div>
-  )
-}
-
-/**
- * What preparation has to show for itself, in the one order that reads: why to
- * act, then what is already there. Rendered under the terminal while a
- * conversation is open and under the button while there is still a job to do;
- * the prepared call-to-action places those concerns separately around its actions.
- */
-function PrepEvidence({
-  findings,
-  staleCount,
-}: {
-  findings: readonly ProjectFinding[]
-  staleCount: number
-}) {
-  return (
-    <>
-      {staleCount > 0 && <StaleWarning count={staleCount} />}
-      {findings.length > 0 && <EstablishedFrame findings={findings} />}
     </>
   )
 }
 
 /**
+ * What preparation has to show for itself, in the one order that reads: why to
+ * act, then what is already there. On the page it is an "Established" section;
+ * in the session's aside (`compact`) the same content without the heading.
+ */
+function PrepEvidence({
+  findings,
+  staleCount,
+  compact = false,
+}: {
+  findings: readonly ProjectFinding[]
+  staleCount: number
+  compact?: boolean
+}) {
+  if (findings.length === 0) return null
+  const body = (
+    <>
+      {staleCount > 0 && <StaleWarning count={staleCount} />}
+      <EstablishedFrame findings={findings} />
+    </>
+  )
+  return compact ? body : <PageSection title="Established">{body}</PageSection>
+}
+
+/**
  * The preparation dry run, while it holds the drive slot (decision 9). It is a
  * real drive on the human's machine — services up, a temp database created — so
- * the row says so and offers the teardown, which is the half a dead prep session
- * never runs. The sniffed URL is shown when there is one: it is the same
+ * the strip says so and offers the teardown, which is the half a dead prep
+ * session never runs. The sniffed URL is shown when there is one: it is the same
  * evidence `devCommand`'s stamp is made of. It is a LINK only once the server
  * has watched it answer, exactly as the feature drive's pane behaves.
+ *
+ * A strip under the topbar, not a tinted callout: a breathing dot, the words,
+ * the address, and Stop.
  */
 function DryRunRow({
   open,
@@ -295,24 +391,126 @@ function DryRunRow({
   onStop: () => void
 }) {
   return (
-    <div className="flex items-center gap-[9px] rounded-md border border-drive/35 bg-drive/10 px-[11px] py-2">
-      <span className="drive-pulse" />
-      <span className="text-sm font-semibold text-drive">Preparation dry-run in progress</span>
+    <div className="flex h-10 shrink-0 items-center gap-3 border-b border-border-subtle px-4 animate-fade-in">
+      <StatusLabel tone="live" size="sm" strong>
+        Preparation dry run in progress
+      </StatusLabel>
       {open &&
         (open.state === 'ready' ? (
-          <a className="font-mono text-sm text-text-2" href={open.url} target="_blank" rel="noreferrer">
+          <a
+            className="inline-flex min-w-0 items-center gap-1 truncate font-mono text-xs text-accent-text no-underline hover:underline"
+            href={open.url}
+            target="_blank"
+            rel="noreferrer"
+          >
             {open.url}
+            <IconExternalLink size={12} className="shrink-0" />
           </a>
         ) : (
-          <span className="font-mono text-sm text-text-3">
+          <span className="min-w-0 truncate font-mono text-xs text-text-tertiary">
             {openAppWaitingLabel(open)}
           </span>
         ))}
       <span className="flex-1" />
-      <Button className="btn-xs" disabled={stopping} onClick={onStop}>
-        {stopping ? 'Stopping…' : 'Stop'}
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={<IconStop />}
+        loading={stopping}
+        disabled={stopping}
+        onClick={onStop}
+      >
+        Stop
       </Button>
     </div>
+  )
+}
+
+/** Why a re-prepare is worth the interruption: the baseline has gone off. A line, not a box. */
+function StaleWarning({ count }: { count: number }) {
+  return (
+    <div className="mb-4 flex max-w-[64ch] items-start gap-2 text-sm text-pretty text-text-secondary">
+      <IconAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+      <span>
+        {count} finding{count === 1 ? ' has' : 's have'} not been re-measured in a long time. A
+        stale test baseline is worse than none — agents trust it and file their own breakage under
+        “already red on main”.
+      </span>
+    </div>
+  )
+}
+
+/**
+ * What preparation established, with the provenance that says whether to trust
+ * it: one row per finding — its name, who established it, whether a dry run has
+ * proven it, whether it has gone stale — and the evidence folded beneath it.
+ */
+export function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
+  return (
+    <div className="flex flex-col [&>details:last-child]:border-b [&>details:last-child]:border-border-subtle">
+      {findings.map((f) => (
+        <FindingRow key={f.key} finding={f} label={PREPARED_LABEL[f.key] ?? f.key} />
+      ))}
+    </div>
+  )
+}
+
+function FindingRow({
+  finding: f,
+  label,
+}: {
+  finding: ProjectFinding
+  label: string
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const source = findingSource(f)
+  const stale = isStale(f)
+  return (
+    <Disclosure
+      title={label}
+      className="animate-rise-in"
+      aside={
+        <span className="flex items-center gap-4">
+          {stale && <StatusLabel tone="warning">Stale</StatusLabel>}
+          <DryRunStamp finding={f} />
+          {/* Provenance is a fact, not a verdict: a neutral dot. Colour is kept
+              for what needs acting on (stale, unproven) and what is proven. */}
+          <StatusLabel title={source.title}>
+            {source.label}
+          </StatusLabel>
+        </span>
+      }
+    >
+      <div className="flex flex-col gap-2">
+        <div className={cx('text-xs', stale ? 'text-warning' : 'text-text-tertiary')}>
+          {describeFinding(f)}
+        </div>
+        {f.evidence && (
+          <>
+            <div className="rounded-md border border-border-subtle bg-surface-inset px-3 py-2">
+              <div
+                className={cx(
+                  'font-mono text-xs leading-[1.5] break-words whitespace-pre-wrap text-text-secondary',
+                  !expanded && 'line-clamp-3',
+                )}
+              >
+                {f.evidence}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-2 self-start"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Collapse' : 'Show full'} evidence for ${label}`}
+            >
+              {expanded ? 'Show less' : 'Show full evidence'}
+            </Button>
+          </>
+        )}
+      </div>
+    </Disclosure>
   )
 }
 
@@ -322,117 +520,23 @@ function DryRunRow({
  * and a host drive never touches the sandbox keys, so silence is the honest
  * report (decision 10).
  */
-function VerificationBadge({ finding }: { finding: ProjectFinding }) {
-  const badge = verificationBadge(finding)
-  if (!badge) return null
+function DryRunStamp({ finding }: { finding: ProjectFinding }) {
+  if (!isVerifiable(finding.key)) return null
   const proven = finding.verifiedAt !== undefined
-  return (
-    <span
-      className={`settings-badge${proven ? ' is-verified' : ' is-unverified'}`}
-      title={
-        proven
-          ? 'A preparation dry run ran this value on the real drive machinery and it worked'
-          : 'No dry run has ever proven this value — a drive that depends on it may fall over'
-      }
+  return proven ? (
+    <StatusLabel
+      tone="success"
+      icon={<IconCheck size={14} />}
+      title="A preparation dry run ran this value on the real drive machinery and it worked"
     >
-      {badge}
-    </span>
-  )
-}
-
-/** Why a re-prepare is worth the interruption: the baseline has gone off. */
-function StaleWarning({ count }: { count: number }) {
-  return (
-    <div className="w-full max-w-[62ch] rounded-md border border-drive/35 bg-drive/10 px-[9px] py-[7px] text-left text-sm leading-5 text-text-2">
-      {count} finding{count === 1 ? ' has' : 's have'} not been re-measured in a long time. A stale
-      test baseline is worse than none — agents trust it and file their own breakage under “already
-      red on main”.
-    </div>
-  )
-}
-
-/** What preparation established, with the provenance that says whether to trust it. */
-export function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
-  return (
-    <div className="w-full max-w-[62ch] rounded-lg border border-hairline bg-panel-2 px-4 py-3.5 text-left">
-      <div className="mb-2 text-xs font-bold tracking-[0.09em] text-text-3 uppercase">
-        Established
-      </div>
-      <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
-        {findings.map((f) => {
-          const label = PREPARED_LABEL[f.key] ?? f.key
-          return <FindingRow key={f.key} finding={f} label={label} />
-        })}
-      </ul>
-    </div>
-  )
-}
-
-function FindingRow({ finding: f, label }: { finding: ProjectFinding; label: string }) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <li className="flex flex-col gap-1">
-      <div className="flex items-baseline gap-[7px]">
-        <span className="text-sm text-text">{label}</span>
-              {/* The distinction that matters is which of these a later
-                  conversation may replace. Only `yours` is locked; `verified`
-                  was established with you present but stays improvable, and
-                  `built` is the image build's own write. `proposed`/`measured`
-                  are the retired headless run's — kept because its rows outlive
-                  it, and a host-only key it never executed must not now read as
-                  if someone watched it run. */}
-              <span
-                className={`settings-badge${f.source === 'human' ? '' : ' is-override'}`}
-                title={
-                  f.source === 'human'
-                    ? 'You set this by hand — preparation will never overwrite it'
-                    : f.source === 'build'
-                      ? "Built by runcastle from this repo's own Dockerfile"
-                      : f.source === 'session'
-                        ? 'Established in a conversation on your own machine'
-                        : HOST_ONLY_PREPARED.has(f.key)
-                          ? 'Read from config by an older automatic run, not executed'
-                          : 'Measured by an older automatic run, in a sandbox'
-                }
-              >
-                {f.source === 'human'
-                  ? 'yours'
-                  : f.source === 'build'
-                    ? 'built'
-                    : f.source === 'session'
-                      ? 'verified'
-                      : HOST_ONLY_PREPARED.has(f.key)
-                        ? 'proposed'
-                        : 'measured'}
-              </span>
-              {/* The dry-run stamp, on the three keys a host drive can actually
-                  prove (decision 10). Every other key shows nothing here —
-                  absence of proof, not failure, and a badge reading "unverified"
-                  on a key no dry run will ever touch would say the opposite. */}
-              <VerificationBadge finding={f} />
-      </div>
-      <div className={`text-xs ${isStale(f) ? 'text-drive' : 'text-text-4'}`}>
-        {describeFinding(f)}
-      </div>
-      {f.evidence && (
-        <>
-          <div className="rounded-r-md border-l-2 border-accent-line bg-panel-inset px-[7px] py-[5px]">
-            <div
-              className={`whitespace-pre-wrap break-words font-mono text-xs leading-[1.45] text-text-3 ${expanded ? '' : 'line-clamp-3'}`}
-            >
-              {f.evidence}
-            </div>
-          </div>
-          <button
-            className="self-start border-0 bg-transparent p-0 text-xs text-accent-hi hover:text-accent"
-            onClick={() => setExpanded((value) => !value)}
-            aria-expanded={expanded}
-            aria-label={`${expanded ? 'Collapse' : 'Show full'} evidence for ${label}`}
-          >
-            {expanded ? 'Show less' : 'Show full evidence'}
-          </button>
-        </>
-      )}
-    </li>
+      Proven {relativeAge(finding.verifiedAt!)}
+    </StatusLabel>
+  ) : (
+    <StatusLabel
+      tone="warning"
+      title="No dry run has ever proven this value — a drive that depends on it may fall over"
+    >
+      Unproven
+    </StatusLabel>
   )
 }

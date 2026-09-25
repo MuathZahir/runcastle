@@ -173,24 +173,26 @@ function mount(api: ProjectTalkApi = talk(), props: { onOpenPreparation?: () => 
 }
 
 describe('the Test drive card', () => {
-  it('sits between New chat and Notes and states the plan before any click', () => {
+  it('sits under New chat and keeps the plan in a closed Drive setup disclosure', () => {
     mount()
     const card = screen.getByRole('region', { name: 'Test drive' })
     const talkHeading = screen.getByText('Talk it through')
-    const notesCard = screen.getByRole('region', { name: 'Notes' })
     expect(talkHeading.compareDocumentPosition(card)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
-    expect(card.compareDocumentPosition(notesCard)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
-    const text = card.textContent ?? ''
-    expect(text).toContain('main — your checkout, as it is.')
+    // read once, then known: collapsed until asked for
+    const setup = within(card).getByText('Drive setup').closest('details')
+    expect(setup?.open).toBe(false)
+    const text = setup?.textContent ?? ''
+    expect(text).toContain('main')
+    expect(text).toContain('your checkout, as it is — no branch switch')
     expect(text).toContain('project-drive')
     expect(text).toContain('bun run drive:setup')
     expect(text).toContain('bun run dev')
     // the unset stop command, with the way to set it
-    expect(text).toContain('nothing set')
-    // secondary: New chat stays the page's one solid button
+    expect(text).toContain('Nothing set')
+    // secondary: New chat stays the page's one primary
     const button = within(card).getByRole('button', { name: 'Test drive' })
-    expect(button.className).not.toContain('bg-accent ')
+    expect(button.getAttribute('data-variant')).toBe('secondary')
   })
 
   it('opens preparation when neither a setup nor a dev command is set', () => {
@@ -224,8 +226,8 @@ describe('driving from the project page', () => {
     expect(shown(header)).toBe(true)
     expect(screen.getByText('/home/you/journal-app @ 1882e87')).toBeTruthy()
     expect(screen.getByTitle('the app on this branch')).toBeTruthy()
-    expect(screen.getByText('dev server')).toBeTruthy()
-    const rail = screen.getByRole('complementary', { name: 'Project notes' })
+    expect(screen.getByText(/^dev server$/i)).toBeTruthy()
+    const rail = screen.getByRole('complementary', { name: 'Notes' })
     expect(within(rail).getByText('already reported')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop drive' }))
@@ -249,10 +251,11 @@ describe('driving from the project page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
     expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Project page' }))
+    // the way back is the drive topbar's parent crumb: the project
+    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
     rerender()
     expect(restShown()).toBe(true)
-    expect(screen.getByRole('region', { name: 'Test drive' }).textContent).toContain('running')
+    expect(screen.getByRole('region', { name: 'Test drive' }).textContent).toContain('Running')
     expect(testDrive).not.toHaveBeenCalled()
   })
 
@@ -264,7 +267,7 @@ describe('driving from the project page', () => {
     ]
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    const rail = screen.getByRole('complementary', { name: 'Project notes' })
+    const rail = screen.getByRole('complementary', { name: 'Notes' })
     const thisDrive = within(rail).getByRole('region', { name: 'This drive' })
     const older = within(rail).getByRole('region', { name: 'Already open' })
     expect(within(thisDrive).getByText('streak resets at UTC')).toBeTruthy()
@@ -317,11 +320,12 @@ describe('a live chat beside a live drive', () => {
     expect(shown(chat)).toBe(true)
     expect(shown(drive)).toBe(false)
 
-    fireEvent.click(within(chat).getByRole('button', { name: 'Drive' }))
+    // view Tabs in each topbar
+    fireEvent.click(within(chat).getByRole('tab', { name: 'Drive' }))
     expect(shown(drive)).toBe(true)
     expect(shown(chat)).toBe(false)
 
-    fireEvent.click(within(drive).getByRole('button', { name: 'Chat' }))
+    fireEvent.click(within(drive).getByRole('tab', { name: 'Chat' }))
     expect(shown(chat)).toBe(true)
     expect(testDrive).not.toHaveBeenCalled()
   })
@@ -330,6 +334,6 @@ describe('a live chat beside a live drive', () => {
     slot = LIVE
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
-    expect(screen.queryByRole('group', { name: 'Show' })).toBeNull()
+    expect(screen.queryByRole('tablist', { name: 'Show' })).toBeNull()
   })
 })

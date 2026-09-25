@@ -2,8 +2,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
-import { TerminalClient, type TerminalStatus } from '../lib/terminal'
+import { TerminalClient, terminalTheme, type TerminalStatus } from '../lib/terminal'
 import { mapTerminalKey } from '../lib/terminal-keys'
+import { useTheme } from '../lib/theme'
+import { cx } from '../ui'
 
 /**
  * Embedded terminal view (UI-SPEC §5). Renders a live Claude Code session over
@@ -11,9 +13,11 @@ import { mapTerminalKey } from '../lib/terminal-keys'
  * Props are pinned (`{ sessionId, wsBase? }`) — W2 mounts this via
  * `components/TerminalView` and must not depend on anything else.
  *
- * Self-styled via inline styles (no external CSS class dependency) so it renders
- * correctly regardless of the surrounding shell stylesheet W2 owns. The terminal
- * background is #0A0C0F to match the app bg exactly (reads as native, not iframe).
+ * It sits on the `surface-inset` ground and its palette is the design tokens'
+ * ({@link terminalTheme}): ink `text`, cursor `accent`, selection
+ * `accent-subtle`, the status hues as ANSI red/green/yellow/blue — re-read and
+ * re-applied whenever the painted theme flips, so the terminal follows dark and
+ * light live. Set in Geist Mono, the app's code face.
  */
 export interface TerminalViewProps {
   sessionId: string
@@ -26,32 +30,38 @@ export interface TerminalViewProps {
   onEnded?: () => void
 }
 
-const THEME = {
-  background: '#07080b', // --panel-inset: terminal sits in the deepest layer
-  foreground: '#C9D1D9',
-  cursor: '#7c6cf6', // --accent
-  cursorAccent: '#07080b',
-  selectionBackground: 'rgba(124,108,246,0.25)',
-}
+const FONT = '"Geist Mono Variable", "Cascadia Code", Consolas, monospace'
 
 export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<TerminalStatus>('connecting')
   const endedRef = useRef(onEnded)
   endedRef.current = onEnded
+  const { resolved } = useTheme()
+  const resolvedRef = useRef(resolved)
+  resolvedRef.current = resolved
+  const termRef = useRef<Terminal | null>(null)
+
+  // The palette follows the painted theme without tearing the session down.
+  useEffect(() => {
+    const term = termRef.current
+    if (term) term.options.theme = terminalTheme(resolved)
+  }, [resolved])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const term = new Terminal({
-      theme: THEME,
-      fontFamily: '"JetBrains Mono Variable", "Cascadia Code", Consolas, monospace',
+      theme: terminalTheme(resolvedRef.current),
+      fontFamily: FONT,
       fontSize: 12.5,
+      lineHeight: 1.2,
       cursorBlink: true,
       allowProposedApi: true,
       scrollback: 5000,
     })
+    termRef.current = term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(container)
@@ -65,6 +75,20 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
     }
     doFit()
     const raf = requestAnimationFrame(doFit)
+
+    // xterm measures its cell once, at open. If Geist Mono was still loading
+    // then, it measured the fallback face — re-set the family once the font is
+    // in, so the grid is re-measured on the face it actually draws.
+    let disposed = false
+    const monoReady = typeof document !== 'undefined' && document.fonts?.check?.(`12px ${FONT}`)
+    if (!monoReady) {
+      void document.fonts?.load(`12px ${FONT}`).then(() => {
+        if (disposed) return
+        term.options.fontFamily = 'monospace'
+        term.options.fontFamily = FONT
+        doFit()
+      })
+    }
 
     let client: TerminalClient
     client = new TerminalClient({
@@ -106,6 +130,8 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
     ro.observe(container)
 
     return () => {
+      disposed = true
+      termRef.current = null
       cancelAnimationFrame(raf)
       ro.disconnect()
       dataSub.dispose()
@@ -120,41 +146,32 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
   // the "your keystrokes are being dropped" notice).
   const strip: { text: string; tone: 'dim' | 'down' } | null =
     status === 'connecting'
-      ? { text: 'connecting…', tone: 'dim' }
+      ? { text: 'Connecting…', tone: 'dim' }
       : status === 'reconnecting'
-        ? { text: 'disconnected — reconnecting… keystrokes are dropped until the stream is back', tone: 'down' }
+        ? { text: 'Disconnected — reconnecting… keystrokes are dropped until the stream is back', tone: 'down' }
         : status === 'ended'
-          ? { text: 'session stream ended — relaunch or end the session above', tone: 'dim' }
+          ? { text: 'Session stream ended — relaunch or end the session above', tone: 'dim' }
           : null
 
   return (
     <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        background: '#07080b',
-        overflow: 'hidden',
-        boxSizing: 'border-box',
-        padding: '8px 2px 6px 10px',
-      }}
+      className={cx(
+        'relative box-border h-full w-full overflow-hidden bg-surface-inset pt-2 pr-0.5 pb-1.5 pl-2.5',
+        // xterm.css paints its viewport black (and, unlayered, beats a plain
+        // utility); the ground is ours, so the viewport lets it through.
+        '[&_.xterm-viewport]:bg-transparent!',
+      )}
     >
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} data-session-id={sessionId} />
+      <div ref={containerRef} className="h-full w-full" data-session-id={sessionId} />
       {strip && (
         <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            fontFamily: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
-            fontSize: 11,
-            padding: '4px 10px',
-            pointerEvents: 'none',
-            color: strip.tone === 'down' ? '#F4594E' : '#8B949E',
-            background: strip.tone === 'down' ? 'rgba(244,89,78,0.10)' : 'rgba(14,17,22,0.85)',
-            borderBottom: `1px solid ${strip.tone === 'down' ? 'rgba(244,89,78,0.4)' : '#1A2028'}`,
-          }}
+          role="status"
+          className={cx(
+            'pointer-events-none absolute inset-x-0 top-0 px-2.5 py-1 text-xs animate-fade-in',
+            strip.tone === 'down'
+              ? 'bg-danger-subtle text-danger'
+              : 'border-b border-border-subtle bg-surface-inset text-text-tertiary',
+          )}
         >
           {strip.text}
         </div>

@@ -1,5 +1,7 @@
 import type { Phase } from '@runcastle/core'
 import { Button, SessionStatusDot } from '../../ui'
+import { IconArrowRight } from '../../icons'
+import { Notice } from './Notice'
 import type { LiveSessionLine } from '../../lib/feature-ui'
 import { EndSessionButton } from '../EndSessionButton'
 
@@ -35,19 +37,21 @@ export function LiveSessionAlert({
   const { phase } = line
 
   return (
-    <div
-      className="flex items-center gap-2.5 rounded-md border border-hairline border-l-2 border-l-accent-line bg-panel-2 px-3 py-2 text-sm text-text-2"
+    <Notice
+      tone="quiet"
       role="status"
-    >
-      <SessionStatusDot status="live" />
-      <span>{line.text}</span>
-      <span className="flex-1" />
-      {phase && onOpen && (
-        <Button className="h-7 px-2 text-xs" onClick={() => onOpen(phase)}>
-          Open
-        </Button>
-      )}
-      <EndSessionButton featureId={featureId} sessionId={line.sessionId} />
-    </div>
+      icon={<SessionStatusDot status="live" />}
+      title={line.text}
+      actions={
+        <>
+          {phase && onOpen && (
+            <Button size="sm" variant="ghost" icon={<IconArrowRight />} onClick={() => onOpen(phase)}>
+              Open
+            </Button>
+          )}
+          <EndSessionButton featureId={featureId} sessionId={line.sessionId} />
+        </>
+      }
+    />
   )
 }

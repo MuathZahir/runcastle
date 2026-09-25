@@ -1,4 +1,6 @@
-import { Button, SectionTitle } from '../../ui'
+import { Button } from '../../ui'
+import { IconShield } from '../../icons'
+import { Notice } from './Notice'
 import type { UnverifiedLap } from '../../lib/feature-ui'
 
 /**
@@ -31,33 +33,32 @@ export function NothingVerifiedAlert({
   agenticReview: { onStart: () => void; blocked?: string } | null
 }) {
   return (
-    <div className="rounded-lg border border-warn/45 bg-panel p-4" role="alert">
-      <div className="flex items-baseline justify-between gap-3">
-        <SectionTitle>Nothing verified this lap</SectionTitle>
-        <span className="font-mono text-xs text-text-3">lap {lap}</span>
-      </div>
-      <p className="mt-2 mb-0 text-sm leading-relaxed text-text-2">
-        The review pass ran and produced no evidence, so nothing on this branch has been checked
-        this lap. Nothing is blocked — run another review, or drive it yourself, before you ship.
-      </p>
-      {outcome.line && (
-        <p className="mt-3 mb-0 font-mono text-xs break-words text-warn">{outcome.line}</p>
-      )}
-      {outcome.reason && (
-        <p className="mt-2 mb-0 font-mono text-xs break-words text-text-3">{outcome.reason}</p>
-      )}
-      {agenticReview && (
-        <div className="mt-4">
+    <Notice
+      tone="accent"
+      title="Nothing verified this lap"
+      meta={`lap ${lap}`}
+      actions={
+        agenticReview && (
           <Button
-            variant="solid"
+            size="sm"
+            icon={<IconShield />}
             disabled={!!agenticReview.blocked}
             {...(agenticReview.blocked ? { title: agenticReview.blocked } : {})}
             onClick={agenticReview.onStart}
           >
             Agentic review
           </Button>
-        </div>
+        )
+      }
+    >
+      <p className="m-0">
+        The review pass ran and produced no evidence, so nothing on this branch has been checked
+        this lap. Nothing is blocked — run another review, or drive it yourself, before you ship.
+      </p>
+      {outcome.line && <p className="m-0 mt-1.5 break-words text-text">{outcome.line}</p>}
+      {outcome.reason && (
+        <p className="m-0 mt-1 font-mono text-xs break-words text-text-tertiary">{outcome.reason}</p>
       )}
-    </div>
+    </Notice>
   )
 }

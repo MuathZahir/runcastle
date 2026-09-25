@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SettingField, SettingsView } from '../src/lib/api'
 import type { SettingsLocation } from '../src/lib/settings'
@@ -111,7 +113,7 @@ const projectFields: SettingField[] = [
 ]
 
 /** The class that fixes the panel's height — where the scroll chain starts. */
-const FRAME_HEIGHT = 'h-[min(700px,80vh)]'
+const FRAME_HEIGHT = 'h-[min(720px,84vh)]'
 
 const classes = (el: Element) => (el.getAttribute('class') ?? '').split(/\s+/)
 
@@ -235,7 +237,7 @@ describe('SettingsDialog', () => {
     expect(bodies.size).toBe(1)
   })
 
-  it('renders General as four named fields, each with its explanation on demand', () => {
+  it('renders General as four named fields, each with its explanation beneath its label', () => {
     open()
 
     expect(screen.getByLabelText('Server port')).toBeTruthy()
@@ -243,11 +245,13 @@ describe('SettingsDialog', () => {
     expect(screen.getByLabelText('Sandbox image')).toBeTruthy()
     expect(screen.getByLabelText('MCP servers in sessions')).toBeTruthy()
 
-    // The full explanation is behind the ⓘ, never a paragraph under the field.
-    expect(screen.getByRole('button', { name: 'About Sandbox image' })).toBeTruthy()
-    expect(
-      screen.getByText(/The Docker image sessions and burns are sandboxed in/),
-    ).toBeTruthy()
+    // The explanation is the row's description: one quiet line under the
+    // label, and the control's accessible description — no hover to find it.
+    const about = screen.getByText(/The Docker image sessions and burns are sandboxed in/)
+    expect(about.className).toContain('text-text-tertiary')
+    expect(screen.getByLabelText('Sandbox image').getAttribute('aria-describedby')).toContain(
+      about.id,
+    )
     // …and the placeholder carries the example value instead.
     expect(screen.getByLabelText('Sandbox image').getAttribute('placeholder')).toBe(
       'sandcastle:runcastle',
@@ -272,7 +276,7 @@ describe('SettingsDialog', () => {
     fireEvent.blur(image)
 
     expect(server.updates).toEqual([{ key: 'sandboxImage', value: 'sandcastle:mine' }])
-    expect(screen.getByText('Saved ✓')).toBeTruthy()
+    expect(screen.getByText('Saved')).toBeTruthy()
   })
 
   // The doctor's image row prescribes "Clear the machine-wide sandbox image
@@ -320,7 +324,7 @@ describe('SettingsDialog', () => {
 
     expect(screen.getByRole('alert').textContent).toBe('sandboxImage must be a tag')
     expect(image.value).toBe('')
-    expect(screen.queryByText('Saved ✓')).toBeNull()
+    expect(screen.queryByText('Saved')).toBeNull()
 
     // It stays until the next edit — which is the answer to it.
     fireEvent.change(image, { target: { value: 'sandcastle:mine' } })
@@ -405,37 +409,37 @@ describe('SettingsDialog', () => {
 
   /**
    * `theme.css` imports Tailwind without preflight on purpose, so a `<button>`
-   * that names neither keeps Chrome's `buttonface` background and 2px outset
-   * border: a light-grey pill with near-invisible text on this dark theme. That
-   * is what the rail's pages, every ⓘ and the close ✕ rendered as, and no test
-   * caught it because a role and a name look the same either way.
+   * that names nothing would keep Chrome's `buttonface` background and 2px
+   * outset border: a light-grey pill with near-invisible text on this dark
+   * theme. That is what the rail's pages, every ⓘ and the close ✕ used to render
+   * as. The dialog's buttons are all primitives now, and the base layer resets
+   * a raw button — so what is asserted is that no button here is left to the
+   * user agent: each is a primitive (it carries its own ground) or sits on the
+   * base reset, and none names a retired class the legacy sheet would restyle.
    */
-  it('paints every button itself rather than leaving the browser to', () => {
-    // A roster and a set step as well, so the Models page's own buttons — the
-    // remove ✕, "Make default", "show all", the step reset — are on screen.
+  it('leaves no button to the browser’s own paint', () => {
     server.globals = view([
       ...globalFields(),
       field({ key: 'model', value: 'claude-opus-5' }),
       field({ key: 'models', value: [{ id: 'my-proxy', runtime: 'codex', note: 'a spare' }] }),
       field({ key: 'stepModels.implement', value: 'my-proxy' }),
     ])
-    // …and a project that set its own model, for that row's "Use global".
     server.scoped = view(
       projectFields.map((f) => (f.key === 'model' ? { ...f, source: 'project' } : f)),
     )
     open()
 
-    const unpainted: string[] = []
+    const theme = readFileSync(join(__dirname, '../src/theme.css'), 'utf8')
+    expect(theme).toMatch(/@layer base\s*{[\s\S]*?\bbutton\s*{[\s\S]*?background:\s*none/)
+
+    const retired: string[] = []
     for (const page of ['General', 'Models', 'Burns', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(page) }))
       for (const button of screen.getAllByRole('button')) {
-        const background = /(?:^| )bg-/.test(button.className)
-        const border = /(?:^| )border(?:-\d+)?(?: |$)/.test(button.className)
-        if (background && border) continue
-        unpainted.push(`${page} / ${button.getAttribute('aria-label') ?? button.textContent}`)
+        if (/(?:^| )(?:btn|chip|settings-)/.test(button.className))
+          retired.push(`${page} / ${button.getAttribute('aria-label') ?? button.textContent}`)
       }
     }
-
-    expect(unpainted).toEqual([])
+    expect(retired).toEqual([])
   })
 })

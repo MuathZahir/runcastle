@@ -1,20 +1,23 @@
-import type { ReactNode } from 'react'
 import type { ProjectDriveCard } from '../../lib/project-drive'
-import { IconPlay } from '../../icons'
-import { Button } from '../../ui'
+import { IconArrowRight, IconPlay, IconShield, IconTerminal } from '../../icons'
+import { Button, Disclosure, PropertyList, StatusLabel } from '../../ui'
+import type { PropertyItem } from '../../ui'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
+import { ActionRow } from './ActionRow'
 
 /** The fixed identity every project drive runs as (decision 8). */
 const PROJECT_DRIVE_SLUG = 'project-drive'
 
 /**
  * The resting page's door to a project drive (project-level-test-drive
- * decisions 4, 7), between New chat and Notes.
+ * decisions 4, 7), under New chat.
  *
- * Before any click it says what a drive will do — the checkout it drives (no
- * branch switch), the identity it runs as, and the three commands, each unset
- * one said as "nothing set" with the way to set it. Its button is secondary:
- * New chat stays the page's one solid button.
+ * A row like New chat's, its button secondary — New chat stays the page's one
+ * primary. What a drive will do — the checkout it drives (no branch switch),
+ * the identity it runs as, and the three commands, each unset one said as
+ * "nothing set" with the way to set it — is read once and then known, so it
+ * lives in a closed "Drive setup" disclosure under the row (DESIGN.md
+ * principle 6), not as a table on every visit.
  */
 export function TestDriveCard({
   card,
@@ -43,90 +46,83 @@ export function TestDriveCard({
   if (card.state === 'hidden') return null
   const running = card.state === 'running'
 
-  return (
-    <section
-      aria-label="Test drive"
-      className="flex flex-wrap items-center gap-6 rounded-lg border border-hairline bg-panel px-6 py-5"
-    >
-      <div className="flex min-w-[240px] flex-1 flex-col gap-2">
-        <h2 className="m-0 text-lg font-semibold text-text">
-          Test drive
-          {running && <span className="font-normal text-drive"> · running</span>}
-        </h2>
-        <p className="m-0 max-w-[56ch] text-sm text-text-2">
-          Run everything that has shipped and jot what you notice. Notes land below.
-        </p>
-        <dl className="m-0 mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-sm">
-          <PlanRow term="branch">
-            <code className="font-mono text-text">{branch ?? '…'}</code> — your checkout, as it is.
-            No branch switch.
-          </PlanRow>
-          <PlanRow term="as">
-            <code className="font-mono text-text">{PROJECT_DRIVE_SLUG}</code>
-          </PlanRow>
-          <CommandRow term="setup" command={setupCommand} field="driveSetupCommand" />
-          <CommandRow term="dev" command={devCommand} field="devCommand" />
-          <CommandRow term="stop" command={stopCommand} field="driveStopCommand" />
-        </dl>
-      </div>
+  const plan: PropertyItem[] = [
+    {
+      label: 'Branch',
+      value: branch ?? '…',
+      mono: true,
+      sub: 'your checkout, as it is — no branch switch',
+    },
+    { label: 'As', value: PROJECT_DRIVE_SLUG, mono: true },
+    command('Setup', setupCommand, 'driveSetupCommand'),
+    command('Dev', devCommand, 'devCommand'),
+    command('Stop', stopCommand, 'driveStopCommand'),
+  ]
 
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        {card.state === 'prepare' ? (
-          <Button onClick={onPrepare}>Prepare drive</Button>
-        ) : running ? (
-          <Button onClick={onReturn}>Return to drive</Button>
-        ) : (
-          <Button
-            className="gap-2"
-            disabled={card.state === 'blocked' || starting}
-            title={card.state === 'blocked' ? card.reason : undefined}
-            onClick={onStart}
-          >
-            <IconPlay size={12} />
-            {starting ? 'Starting…' : 'Test drive'}
-          </Button>
-        )}
-        {card.state === 'blocked' && (
-          <span className="max-w-[28ch] text-right text-xs text-text-3">{card.reason}</span>
-        )}
-        {card.state === 'prepare' && (
-          <span className="max-w-[28ch] text-right text-xs text-text-3">
-            no setup or dev command yet
+  return (
+    <section aria-label="Test drive">
+      <ActionRow
+        icon={<IconPlay />}
+        title="Test drive"
+        status={running ? <StatusLabel tone="live">Running</StatusLabel> : undefined}
+        hint="Run everything that has shipped and jot what you notice. Notes land in the inbox."
+        actions={
+          card.state === 'prepare' ? (
+            <Button icon={<IconShield />} onClick={onPrepare}>
+              Prepare drive
+            </Button>
+          ) : running ? (
+            <Button icon={<IconArrowRight />} onClick={onReturn}>
+              Return to drive
+            </Button>
+          ) : (
+            <Button
+              icon={<IconPlay />}
+              loading={starting}
+              disabled={card.state === 'blocked' || starting}
+              title={card.state === 'blocked' ? card.reason : undefined}
+              onClick={onStart}
+            >
+              Test drive
+            </Button>
+          )
+        }
+        caption={
+          card.state === 'blocked'
+            ? card.reason
+            : card.state === 'prepare'
+              ? 'No setup or dev command yet.'
+              : undefined
+        }
+        rule={false}
+      />
+      <Disclosure
+        title="Drive setup"
+        icon={<IconTerminal />}
+        aside={
+          <span className="font-mono">
+            {PROJECT_DRIVE_SLUG} · {branch ?? '…'}
           </span>
-        )}
-      </div>
+        }
+      >
+        <div className="rounded-md border border-border-subtle bg-surface-inset px-4 py-3">
+          <PropertyList items={plan} className="gap-x-8" />
+        </div>
+      </Disclosure>
     </section>
   )
 }
 
-function PlanRow({ term, children }: { term: string; children: ReactNode }) {
-  return (
-    <>
-      <dt className="pt-px font-mono text-xs text-text-3">{term}</dt>
-      <dd className="m-0 min-w-0 wrap-anywhere text-text-2">{children}</dd>
-    </>
-  )
-}
-
-function CommandRow({
-  term,
-  command,
-  field,
-}: {
-  term: string
-  command: string | undefined
-  field: string
-}) {
-  return (
-    <PlanRow term={term}>
-      {command?.trim() ? (
-        <code className="font-mono text-text">{command}</code>
-      ) : (
-        <span className="text-text-3">
-          nothing set ·{' '}
-          <SettingsLink location={{ page: 'project', field }}>Settings</SettingsLink>
-        </span>
-      )}
-    </PlanRow>
-  )
+/** One command of the drive: the command itself, or "nothing set" and where to set it. */
+function command(label: string, value: string | undefined, field: string): PropertyItem {
+  if (value?.trim()) return { label, value, mono: true }
+  return {
+    label,
+    value: (
+      <span className="font-normal text-text-tertiary">
+        Nothing set ·{' '}
+        <SettingsLink location={{ page: 'project', field }}>Settings</SettingsLink>
+      </span>
+    ),
+  }
 }

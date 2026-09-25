@@ -14,7 +14,18 @@ import type { RouterOutputs } from '../lib/api'
 import { RUNTIME_LOGIN } from '../lib/first-run'
 import { fmtBytes } from '../lib/format'
 import { useToast } from '../lib/toast'
-import { Button } from '../ui'
+import { Button, cx, IconButton, Spinner, StatusDot, StatusLabel, TextField } from '../ui'
+import {
+  IconAlert,
+  IconCheck,
+  IconCopy,
+  IconCube,
+  IconFlame,
+  IconRefresh,
+  IconTerminal,
+  IconTrash,
+  IconUser,
+} from '../icons'
 import { ErrorBoundary } from './ErrorBoundary'
 import { HIGHLIGHT_RING, useHighlight } from './settings/highlight'
 import { showsSetting, type FilterState } from './settings/types'
@@ -113,85 +124,100 @@ export function EnableAfkCard({
     highlight: highlightField === field,
   })
 
+  const allReady = report !== undefined && readiness.count === null
   return (
-    <Checklist>
-      <div className="flex items-center gap-2.5 border-b border-hairline-soft bg-panel-2 px-3 py-2.5 text-sm text-text-2">
-        <span className="min-w-0">
-          {doctor.isLoading ? (
-            checking
-          ) : doctor.error ? (
-            'could not run checks'
-          ) : (
-            <>
-              {readiness.count && <b className="font-semibold text-text">{readiness.count} </b>}
-              {readiness.text}
-            </>
+    <section aria-label="Unattended burn prerequisites" className="flex flex-col">
+      {/* The explanatory head: a glyph, the one line that says how far along the
+          machine is, one line about what the list below is — and, in the
+          wizard, the way past it. No card, no kicker. */}
+      <div className="flex items-start gap-3 pb-3">
+        <span
+          aria-hidden
+          className={cx(
+            'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-hover [&>svg]:size-4',
+            allReady ? 'text-success' : 'text-icon',
           )}
+        >
+          {allReady ? <IconCheck /> : <IconFlame />}
         </span>
-        {report && (
-          <span className="ml-auto flex shrink-0 gap-1" aria-hidden>
-            {gates.map((gate) => (
-              <span
-                key={gate.field}
-                className={cx('h-1.5 w-5.5 rounded-pill', gate.ok ? 'bg-ok' : 'bg-hairline-strong')}
-              />
-            ))}
-          </span>
-        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-h-7 items-center gap-2 text-sm font-medium text-text">
+            {doctor.isLoading ? (
+              <>
+                <Spinner />
+                <span className="font-normal text-text-secondary">{checking}</span>
+              </>
+            ) : doctor.error ? (
+              'Could not run the checks'
+            ) : (
+              <span className="min-w-0">
+                {readiness.count && <span className="tabular-nums">{readiness.count} </span>}
+                {readiness.text}
+              </span>
+            )}
+          </div>
+          {/* The wizard's step heading has just said what an AFK burn is — say
+              it once (DESIGN.md), so this line is Settings' alone. */}
+          {!onDismiss && (
+            <p className="m-0 text-xs text-pretty text-text-tertiary">
+              A burn you walk away from runs its tickets in containers, so it needs what an
+              interactive session never does. Fix any of these now, or leave them for later.
+            </p>
+          )}
+        </div>
         {onDismiss && (
-          <Button variant="ghost" className="ml-auto" onClick={onDismiss}>
+          <Button variant="ghost" className="shrink-0" onClick={onDismiss}>
             Set up later
           </Button>
         )}
       </div>
 
-      <div>
-        {trouble && (
-          // Not a dead end, whichever way the checks went wrong: a probe that
-          // fails and a probe that never answers both land here, and the
-          // commonest reason for either is one the human just fixed elsewhere.
-          // Retrying is worth offering while the call is still out because it
-          // abandons the request in flight — which is what gets an answer out of
-          // a Docker Desktop that has finished starting since.
-          <div className="flex items-center gap-2.5 px-3 py-2.5">
-            <span className="min-w-0 grow text-sm text-warn">{trouble}</span>
-            <Button variant="ghost" onClick={recheck}>
-              Retry
-            </Button>
-          </div>
-        )}
-        {report && (
-          <>
-            <RuntimeRow {...rowProps('container-runtime')} probe={runtime} onRecheck={recheck} />
-            <ImageRow
-              {...rowProps('sandcastle-image')}
-              probe={image}
-              runtimeOk={runtime?.status === 'ok'}
-              projectId={projectId}
-              onDone={recheck}
-            />
-            {credentials.map((row) =>
-              row.kind === 'token' ? (
-                <CredentialRow
-                  key={row.runtime}
-                  {...rowProps(afkCredentialField(row.runtime))}
-                  probe={row.probe}
-                  onDone={recheck}
-                />
-              ) : (
-                <SignInRow
-                  key={row.runtime}
-                  {...rowProps(afkCredentialField(row.runtime))}
-                  row={row}
-                  onDone={recheck}
-                />
-              ),
-            )}
-            {projectId && <ProjectBurnCache {...rowProps('burn-cache')} projectId={projectId} />}
-          </>
-        )}
-      </div>
-    </Checklist>
+      {trouble && (
+        // Not a dead end, whichever way the checks went wrong: a probe that
+        // fails and a probe that never answers both land here, and the
+        // commonest reason for either is one the human just fixed elsewhere.
+        // Retrying is worth offering while the call is still out because it
+        // abandons the request in flight — which is what gets an answer out of
+        // a Docker Desktop that has finished starting since.
+        <div className="flex items-center gap-2.5 py-2 pl-10">
+          <StatusDot tone="warning" />
+          <span className="min-w-0 grow text-xs text-text-secondary">{trouble}</span>
+          <Button variant="ghost" size="sm" icon={<IconRefresh />} onClick={recheck}>
+            Retry
+          </Button>
+        </div>
+      )}
+      {report && (
+        <Checklist>
+          <RuntimeRow {...rowProps('container-runtime')} probe={runtime} onRecheck={recheck} />
+          <ImageRow
+            {...rowProps('sandcastle-image')}
+            probe={image}
+            runtimeOk={runtime?.status === 'ok'}
+            projectId={projectId}
+            onDone={recheck}
+          />
+          {credentials.map((row) =>
+            row.kind === 'token' ? (
+              <CredentialRow
+                key={row.runtime}
+                {...rowProps(afkCredentialField(row.runtime))}
+                probe={row.probe}
+                onDone={recheck}
+              />
+            ) : (
+              <SignInRow
+                key={row.runtime}
+                {...rowProps(afkCredentialField(row.runtime))}
+                row={row}
+                onDone={recheck}
+              />
+            ),
+          )}
+          {projectId && <ProjectBurnCache {...rowProps('burn-cache')} projectId={projectId} />}
+        </Checklist>
+      )}
+    </section>
   )
 }
 
@@ -245,11 +271,6 @@ function useSlowWait(waiting: boolean, attempt: number): boolean {
   return slow
 }
 
-/** Join the parts that are present. Falsy branches drop out. */
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
-}
-
 /** The checklist's rows by field, so a row and its metadata never drift apart. */
 const PREREQUISITE: Record<string, BurnPrerequisite> = Object.fromEntries(
   BURN_PREREQUISITES.map((p) => [p.field, p]),
@@ -267,12 +288,17 @@ interface RowChrome {
 }
 
 /**
- * One checklist row: status dot, label and observed detail, and the row's single
- * action. `below` is the terminal a flow opens, which runs the full width rather
- * than squeezing into the action column.
+ * One checklist row: its number, the label with a status word beside it, the
+ * one line the probe observed, and the row's single action on the right.
+ * `below` is the terminal a flow opens, which runs the full width rather than
+ * squeezing into the action column.
+ *
+ * The number is a CSS counter on the {@link Checklist}, so a row the filter box
+ * hides takes its number with it rather than leaving a gap.
  *
  * Exported for the first-run wizard, whose "Coding agents" step is the same list
- * of one-line verdicts with one action each.
+ * of one-line verdicts with one action each. `status` overrides the default
+ * Ready / Needed word when a row has something more exact to say.
  */
 export function ChecklistRow({
   field,
@@ -281,49 +307,61 @@ export function ChecklistRow({
   highlight = false,
   detail,
   ok,
+  status,
   children,
   below,
 }: Partial<RowChrome> & {
   label: string
   detail: string
   ok: boolean
+  status?: string
   children?: ReactNode
   below?: ReactNode
 }) {
-  const { ref, flash } = useHighlight<HTMLDivElement>(highlight)
+  const { ref, flash } = useHighlight<HTMLLIElement>(highlight)
   if (!visible) return null
   return (
-    <div
+    <li
       ref={ref}
       {...(field ? { 'data-field': field } : {})}
       className={cx(
-        'grid grid-cols-[18px_minmax(160px,1fr)_auto] items-center gap-x-2.5 gap-y-2',
-        'border-t border-hairline-soft px-3 py-2.5 first:border-t-0',
+        'grid grid-cols-[28px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2.5 py-3 [counter-increment:checklist]',
+        'border-t border-border-subtle first:border-t-0',
         flash && HIGHLIGHT_RING,
       )}
     >
       <span
         aria-hidden
-        className={cx(
-          'size-2 justify-self-center rounded-pill',
-          ok ? 'bg-ok' : 'bg-warn ring-3 ring-warn/15',
-        )}
+        className="flex h-5 items-center justify-center text-xs text-text-tertiary tabular-nums before:content-[counter(checklist)]"
       />
       <div className="min-w-0">
-        <div className="text-sm font-medium text-text">{label}</div>
-        <div className="truncate font-mono text-xs text-text-3" title={detail}>
+        <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5">
+          <span className="text-sm font-medium text-text">{label}</span>
+          {ok ? (
+            <StatusLabel tone="success" icon={<IconCheck />}>
+              {status ?? 'Ready'}
+            </StatusLabel>
+          ) : (
+            <StatusLabel tone="warning">{status ?? 'Needed'}</StatusLabel>
+          )}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-xs text-text-tertiary" title={detail}>
           {detail}
         </div>
       </div>
-      <div className="flex max-w-90 flex-wrap items-center justify-end gap-2">{children}</div>
+      <div className="flex max-w-96 flex-wrap items-center justify-end gap-2">{children}</div>
       {below}
-    </div>
+    </li>
   )
 }
 
-/** The bordered list a set of {@link ChecklistRow}s sits in. */
+/** The numbered list a set of {@link ChecklistRow}s sits in. */
 export function Checklist({ children }: { children: ReactNode }) {
-  return <div className="overflow-hidden rounded-md border border-hairline">{children}</div>
+  return (
+    <ol className="m-0 list-none border-t border-border-subtle p-0 [counter-reset:checklist]">
+      {children}
+    </ol>
+  )
 }
 
 /** The terminal a row's flow opened, under it and across the whole row. */
@@ -344,14 +382,14 @@ export function RowTerminal({
 }) {
   return (
     <div className="col-span-full flex flex-col gap-2">
-      <div className="h-70 overflow-hidden rounded-sm border border-hairline">
+      <div className="h-70 overflow-hidden rounded-md border border-border bg-surface-inset animate-rise-in">
         <ErrorBoundary label={label}>
           <TerminalView sessionId={sessionId} onEnded={onEnded} />
         </ErrorBoundary>
       </div>
       {onDone && (
         <div className="flex justify-end">
-          <Button variant="ghost" onClick={onDone}>
+          <Button variant="ghost" size="sm" icon={<IconRefresh />} onClick={onDone}>
             Done — re-check
           </Button>
         </div>
@@ -382,25 +420,20 @@ function RuntimeRow({
     <ChecklistRow {...chrome} detail={probe.detail} ok={ok}>
       {!ok && command && (
         <>
-          <code className="max-w-full truncate rounded-sm border border-hairline bg-panel-inset px-2 py-1 font-mono text-xs text-accent-hi">
-            {command}
-          </code>
-          <Button
-            variant="ghost"
-            onClick={() => {
+          <CommandLine
+            command={command}
+            onCopy={() => {
               void navigator.clipboard?.writeText(command)
               toast.push('copied', 'info')
             }}
-          >
-            Copy
-          </Button>
+          />
         </>
       )}
       {!ok && install?.note && (
-        <span className="basis-full text-right text-xs text-text-3">{install.note}</span>
+        <span className="basis-full text-right text-xs text-text-tertiary">{install.note}</span>
       )}
       {!ok && (
-        <Button variant="ghost" onClick={onRecheck}>
+        <Button variant="ghost" size="sm" icon={<IconRefresh />} onClick={onRecheck}>
           Re-check
         </Button>
       )}
@@ -522,7 +555,7 @@ export function ImageBuildAction({
   // the two ways back into runcastle's hands instead of a button that destroys
   // their image.
   if (probe.status === 'custom') {
-    return <span className="basis-full text-right text-xs text-text-3">{probe.fix}</span>
+    return <span className="basis-full text-right text-xs text-text-tertiary">{probe.fix}</span>
   }
   // The resolver refused, and its reason carries the way out — so the row says
   // it, the way the custom-probe row above says its fix. The probe need not
@@ -530,7 +563,7 @@ export function ImageBuildAction({
   // resolved separately, and a button left disabled over the disagreement is
   // the stuck "resolving…" this row was rewritten for.
   if (target.kind === 'refused') {
-    return <span className="basis-full text-right text-xs text-text-3">{target.reason}</span>
+    return <span className="basis-full text-right text-xs text-text-tertiary">{target.reason}</span>
   }
   // "Build" while there is nothing to rebuild — an image runcastle has never
   // built, whether that is the stock one or the project's own Dockerfile.
@@ -548,7 +581,9 @@ export function ImageBuildAction({
   return (
     <>
       <Button
-        variant="ghost"
+        variant="secondary"
+        size="sm"
+        icon={<IconCube />}
         aria-label={`${verb} image`}
         disabled={!runtimeOk || pending || target.kind !== 'ready'}
         title={
@@ -563,7 +598,7 @@ export function ImageBuildAction({
         {label}
       </Button>
       {target.kind === 'error' && (
-        <span className="basis-full text-right text-xs text-warn">{target.message}</span>
+        <span className="basis-full text-right text-xs text-warning">{target.message}</span>
       )}
     </>
   )
@@ -604,10 +639,10 @@ export function BurnCacheRow({
       ok
       detail={`${status.volumeName} — ${status.sizeBytes === null ? 'empty' : fmtBytes(status.sizeBytes)}`}
     >
-      <Button variant="ghost" disabled={pending} onClick={onClear}>
+      <Button variant="ghost" size="sm" icon={<IconTrash />} disabled={pending} onClick={onClear}>
         {pending ? 'Clearing…' : 'Clear'}
       </Button>
-      {refusal && <span className="basis-full text-right text-xs text-warn">{refusal}</span>}
+      {refusal && <span className="basis-full text-right text-xs text-warning">{refusal}</span>}
     </ChecklistRow>
   )
 }
@@ -697,17 +732,20 @@ function CredentialRow({
       {flow.mint && !sessionId && (
         <Button
           variant="ghost"
+          size="sm"
+          icon={<IconTerminal />}
           onClick={() => flow.mint && start.mutate({ kind: flow.mint.kind })}
           disabled={start.isPending}
         >
           {start.isPending ? 'Starting…' : flow.mint.label}
         </Button>
       )}
-      <input
+      <TextField
         // The label is a heading on the row, not a `<label>`, so the control
         // carries its own accessible name (findings F17.7).
         aria-label={chrome.label}
-        className="h-7 w-48 min-w-0 rounded-sm border border-hairline bg-panel-inset px-2 font-mono text-xs text-text placeholder:text-text-4"
+        mono
+        className="w-52"
         value={tokenText}
         onChange={(e) => setTokenText(e.target.value)}
         placeholder={flow.placeholder}
@@ -716,22 +754,24 @@ function CredentialRow({
       />
       {/* The page's one solid button: the whole checklist exists to get here. */}
       <Button
-        variant="solid"
+        variant="primary"
         disabled={tokenText.trim() === '' || save.isPending}
         onClick={() => save.mutate({ token: tokenText, runtime })}
       >
         {save.isPending ? 'Verifying…' : 'Save & verify'}
       </Button>
       {verdict && (
-        <span
-          className={cx('basis-full text-right text-xs', verdict.valid ? 'text-ok' : 'text-warn')}
-        >
-          {verdict.valid ? '✓ ' : '⚠ '}
-          {verdict.detail}
+        <span className="basis-full text-right text-xs">
+          <StatusLabel
+            tone={verdict.valid ? 'success' : 'warning'}
+            icon={verdict.valid ? <IconCheck /> : <IconAlert />}
+          >
+            {verdict.detail}
+          </StatusLabel>
           {/* The verdict is the *only* feedback this step gives, so a failure
               must carry its own next step — a bare "cannot verify" leaves the
               user with nothing to try but re-pasting the same token. */}
-          {verdict.fix && <span className="block text-text-3">{verdict.fix}</span>}
+          {verdict.fix && <span className="mt-0.5 block text-text-tertiary">{verdict.fix}</span>}
         </span>
       )}
     </ChecklistRow>
@@ -763,7 +803,8 @@ function SignInRow({
     <ChecklistRow
       {...chrome}
       ok={signedIn}
-      detail={signedIn ? `Signed in — ${row.probe.detail}` : row.probe.detail}
+      status={signedIn ? 'Signed in' : 'Not signed in'}
+      detail={row.probe.detail}
       below={
         sessionId && (
           <RowTerminal
@@ -777,22 +818,32 @@ function SignInRow({
         )
       }
     >
-      {signedIn ? (
-        <span className="inline-flex h-5 items-center gap-1.5 rounded-pill border border-hairline bg-panel-2 px-2 text-xs text-text-2">
-          <span className="size-1.5 rounded-pill bg-ok" aria-hidden />
-          Ready
-        </span>
-      ) : (
-        !sessionId && (
+      {!signedIn && !sessionId && (
           <Button
-            variant="ghost"
+            variant="secondary"
+            size="sm"
+            icon={<IconUser />}
             disabled={start.isPending}
             onClick={() => start.mutate({ kind: login.kind })}
           >
             {start.isPending ? 'Starting…' : 'Sign in'}
           </Button>
-        )
       )}
     </ChecklistRow>
+  )
+}
+
+/**
+ * A command to run, as code, with the one action on it. Exported for the
+ * wizard's agents step, whose install hint is the same thing.
+ */
+export function CommandLine({ command, onCopy }: { command: string; onCopy: () => void }) {
+  return (
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-surface-inset py-0.5 pr-0.5 pl-2">
+      <code className="min-w-0 truncate font-mono text-xs text-text-secondary" title={command}>
+        {command}
+      </code>
+      <IconButton label="Copy" size="sm" icon={<IconCopy />} onClick={onCopy} />
+    </span>
   )
 }

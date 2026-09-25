@@ -78,9 +78,10 @@ vi.mock('../src/trpc', () => {
   return {
     trpc: {
       useUtils: () => ({ notes: { list: { invalidate: vi.fn() } }, feature: {}, events: {} }),
-      notes: { add: { useMutation: mutation } },
+      notes: { add: { useMutation: mutation }, list: { useQuery: () => ({ data: [] }) } },
       findings: { listByFeature: { useQuery: () => ({ data: { findings: [] } }) } },
       docs: { read: { useQuery: () => ({ data: undefined }) } },
+      project: { list: { useQuery: () => ({ data: [] }) } },
       feature: { testDrive: { useMutation: mutation }, fixDrive: { useMutation: mutation } },
     },
   }
@@ -145,25 +146,28 @@ const renderUnrecorded = (): string => {
 }
 
 describe('ShippedBody', () => {
-  describe('the hero', () => {
-    /** Decision 30c: `relTime` used to concatenate its own "now" with " ago". */
-    it('says when the branch merged, and never "merged now ago"', () => {
+  describe('the page top', () => {
+    /**
+     * DESIGN.md principle 5: the feature page's header and stepper already say
+     * it shipped and when, so the body restates neither — no second band, no
+     * centred hero.
+     */
+    it('never restates that the feature shipped', () => {
       const html = render()
-      expect(html).toContain('Shipped to main')
-      expect(html).toContain('feature/greetings-pages')
-      expect(html).toContain('merged')
-      expect(html).not.toContain('now ago')
+      expect(html).not.toContain('Shipped to main')
+      expect(html).not.toContain('text-center')
+      expect(html).not.toContain('<h1')
     })
 
     it('links the outcome doc — the permanent record of what shipped', () => {
-      expect(render()).toContain('Read the outcome doc')
+      expect(render()).toContain('Outcome doc')
     })
 
     it('offers no link before the merge has written the doc', () => {
       const html = render({
         docs: [{ relPath: 'docs/features/greetings-pages/spec.md', title: 'planning' }],
       } as unknown as Partial<FeatureFull>)
-      expect(html).not.toContain('Read the outcome doc')
+      expect(html).not.toContain('Outcome doc')
     })
   })
 
@@ -198,9 +202,10 @@ describe('ShippedBody', () => {
      * recording plays in — a screen of dead space between the hero and the
      * chips, on a page where no drive can ever fill it.
      */
-    it('says a walkthrough was never recorded in one line, not a stage', () => {
+    it('says a walkthrough was never recorded as a quiet fact, not a stage', () => {
       const html = renderUnrecorded()
-      expect(html).toContain('No walkthrough was recorded for this feature')
+      expect(html).toContain('>Walkthrough<')
+      expect(html).toContain('None recorded')
       expect(html).not.toContain('aspect-video')
       expect(html).not.toContain('evidence-stage')
     })
@@ -210,19 +215,26 @@ describe('ShippedBody', () => {
     })
   })
 
-  describe('the status strip', () => {
-    it('states what shipped rather than where the feature stands', () => {
-      expect(render()).toContain('Shipped after 2 laps')
+  describe('the facts', () => {
+    it('states them as a property list: review, checks, test drive, tickets, laps', () => {
+      const html = render()
+      expect(html).toContain('<dl')
+      for (const key of ['>Review<', '>Checks<', '>Test drive<', '>Tickets<', '>Laps<']) {
+        expect(html).toContain(key)
+      }
+      expect(html).not.toContain('>Burn<')
     })
 
     /** Decision 33a: the read-only drive line is a statement, never an instruction. */
     it('states the test drive that was taken, and the lap it was taken in', () => {
-      expect(render()).toContain('test drive taken · lap 2')
+      const html = render()
+      expect(html).toContain('Taken')
+      expect(html).toContain('lap 2')
     })
 
     it('says plainly when the branch was never driven', () => {
       const undriven = SHIPPED_FEED.filter((e) => e.type !== 'testdrive.started')
-      expect(render({}, undriven)).toContain('never test-driven')
+      expect(render({}, undriven)).toContain('Not run')
     })
   })
 
@@ -239,7 +251,7 @@ describe('ShippedBody', () => {
       const html = render({
         sessions: [session({ id: 'ses_2', ccSessionId: undefined, title: null, transcriptMissing: true })],
       } as unknown as Partial<FeatureFull>)
-      expect(html).toContain('session opened · nothing recorded')
+      expect(html).toContain('Session opened, nothing recorded')
     })
 
     it('says nothing at all when nobody ever asked', () => {

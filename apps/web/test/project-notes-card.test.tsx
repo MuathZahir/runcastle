@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
 
@@ -100,33 +100,24 @@ describe('the Notes card', () => {
 
     const row = screen.getByText('the crumbs overflow on a long title').closest('li')
     expect(row?.className).toMatch(/(^| )group( |$)/)
+    // ListRow's ground: the hover and the keyboard's focus light the row
+    expect(row?.className).toContain('hover:bg-surface-hover')
     for (const name of ['Edit', 'Dismiss', 'Delete']) {
       const verb = button(name)
-      // an icon, named for assistive tech and the tooltip, not a bordered word
+      // an IconButton: named for assistive tech and the tooltip, not a bordered word
       expect(verb.textContent).toBe('')
-      expect(verb.getAttribute('title')).toBe(name)
+      expect(verb.getAttribute('aria-label')).toBe(name)
       // at rest they are invisible, and the row's hover or keyboard focus shows them
-      const tray = verb.parentElement?.className ?? ''
+      const tray = verb.closest('span.opacity-0')?.className ?? ''
       expect(tray).toContain('opacity-0')
       expect(tray).toContain('group-hover:opacity-100')
       expect(tray).toContain('group-focus-within:opacity-100')
     }
-    // the unlayered `button { color: inherit }` beats a colour on the button, so
-    // none is written there: the tone lives on a span inside, keyed to the
-    // button's own hover — Delete turns red only under the pointer
-    for (const name of ['Edit', 'Dismiss', 'Delete']) {
-      expect(button(name).className).not.toMatch(/(^| )[\w:/-]*text-(text|danger)/)
-      expect(button(name).className).toMatch(/(^| )group\/act( |$)/)
-    }
-    const deleteTone = button('Delete').firstElementChild?.className ?? ''
-    expect(deleteTone).toContain('text-text-3')
-    expect(deleteTone).toContain('group-hover/act:text-danger')
-    expect(deleteTone).not.toMatch(/(^| )text-danger/)
-    expect(button('Edit').firstElementChild?.className).toContain('group-hover/act:text-text')
+    // Delete names its danger only under the pointer
+    expect(button('Delete').className).toContain('enabled:hover:text-danger')
+    expect(button('Delete').className).not.toMatch(/(^| )text-danger/)
     // the time is what the verbs replace
-    expect(screen.getByText('the crumbs overflow on a long title').closest('li')?.innerHTML).toContain(
-      'group-hover:hidden',
-    )
+    expect(row?.innerHTML).toContain('group-hover:hidden')
   })
 
   it('marks a note without a picture with a quiet dot rather than an empty thumbnail', () => {
@@ -197,29 +188,26 @@ describe('the Notes card', () => {
 
     // Reopen is an icon, revealed the same way the open rows' verbs are
     expect(button('Reopen').textContent).toBe('')
-    expect(button('Reopen').parentElement?.className).toContain('group-focus-within:opacity-100')
+    expect(button('Reopen').closest('span.opacity-0')?.className).toContain(
+      'group-focus-within:opacity-100',
+    )
     fireEvent.click(button('Reopen'))
     expect(reopenNote).toHaveBeenCalledWith({ noteId: 'pnote_2' })
   })
 
-  it('heads the card with the open count, one subtitle line and the Triage door', () => {
+  it('heads the inbox with one subtitle line and the Triage door', () => {
     const triage = vi.fn()
     notes.mockReturnValue([note(), note({ id: 'pnote_2', createdAt: 2 })])
     const { container } = card({ onTriage: triage })
 
-    expect(screen.getByRole('heading', { name: 'Notes' })).toBeTruthy()
-    expect(screen.getByTitle('2 open').textContent).toBe('2')
+    expect(screen.getByRole('region', { name: 'Notes' })).toBeTruthy()
     expect(screen.getByText('Grouped, questioned and routed in a triage chat.')).toBeTruthy()
     // the explanatory paragraph is gone
     expect(container.querySelector('p')).toBeNull()
-    // a violet ghost: New chat keeps the page's one solid accent
+    // secondary, with its icon: New chat keeps the page's one primary
     const door = button('Triage 2')
-    expect(door.className).toContain('border-accent-line')
-    expect(door.className).not.toContain('bg-accent ')
-    // the violet label rides inside the button: styles.css's unlayered
-    // `button { color: inherit }` beats a text colour on the button itself
-    expect(door.className).not.toContain('text-accent-hi')
-    expect(within(door).getByText('Triage 2').className).toContain('text-accent-hi')
+    expect(door.getAttribute('data-variant')).toBe('secondary')
+    expect(door.querySelector('svg')).toBeTruthy()
     fireEvent.click(door)
     expect(triage).toHaveBeenCalledTimes(1)
   })
@@ -228,7 +216,8 @@ describe('the Notes card', () => {
     notes.mockReturnValue([note({ status: 'triaged', outcome: 'dismissed' })])
     card()
     expect(button(/^Triage 0$/).hasAttribute('disabled')).toBe(true)
-    expect(screen.queryByTitle('0 open')).toBeNull()
+    // an empty inbox is an EmptyState, not a row
+    expect(screen.getByText('Inbox clear')).toBeTruthy()
   })
 
   /** Capture's View (decisions #16): the prototype scrolls the inbox into view. */

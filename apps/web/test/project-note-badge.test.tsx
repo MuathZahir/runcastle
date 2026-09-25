@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The open-note count on the rail's pinned project row (project-notes
+ * The open-note count on the sidebar's Project row (project-notes
  * decisions #10).
  *
  * The badge belongs to that row because the row IS the door the pile is read and
@@ -17,8 +17,11 @@ const count = vi.hoisted(() => ({ value: 0 }))
 
 vi.mock('../src/trpc', () => ({
   trpc: {
-    useUtils: () => ({ feature: { list: { invalidate: vi.fn() } } }),
+    useUtils: () => ({ feature: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } } }),
+    useQueries: () => [],
+    events: { listByProject: { useQuery: () => ({ data: undefined }) } },
     feature: {
+      testDrive: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
       list: { useQuery: () => ({ data: [], isLoading: false }) },
       archive: { useMutation: () => ({ mutate: vi.fn() }) },
       unarchive: { useMutation: () => ({ mutate: vi.fn() }) },
@@ -33,6 +36,20 @@ vi.mock('../src/trpc', () => ({
 }))
 
 const { Sidebar } = await import('../src/components/Sidebar')
+
+const nav = {
+  projects: [{ id: 'project-1', name: 'runcastle', repoPath: '/repo' }],
+  loading: false,
+  doctorError: null,
+  recheckDoctor: () => {},
+  view: 'project' as const,
+  currentProjectId: 'project-1',
+  currentProject: { id: 'project-1', name: 'runcastle', repoPath: '/repo' },
+  goHome: () => {},
+  enterProject: () => {},
+  showOpen: () => {},
+  cancelOpen: () => {},
+}
 const { ToastProvider } = await import('../src/lib/toast')
 
 function rail() {
@@ -40,22 +57,23 @@ function rail() {
     <ToastProvider>
       <Sidebar
         projectId="project-1"
+        nav={nav}
+        view="empty"
         selectedFeatureId={null}
-        projectSelected={false}
-        width={300}
         talk={{ state: 'none' } as never}
         onSelect={() => {}}
         onSelectProject={() => {}}
         onNewChat={() => {}}
         onDraft={() => {}}
         onOpenPreparation={() => {}}
-        onResize={() => {}}
       />
     </ToastProvider>,
   )
 }
 
-const projectRow = () => screen.getByTitle(/Talk to the project/)
+/** The sidebar's Project row — the project home's door. */
+const projectRow = () =>
+  screen.getAllByRole('button').find((el) => el.textContent?.startsWith('Project'))!
 
 afterEach(() => {
   cleanup()
@@ -68,10 +86,10 @@ describe('the project row’s open-note badge', () => {
 
     rail()
 
-    expect(projectRow().textContent).toContain('4')
+    expect(projectRow().textContent).toBe('Project4')
     expect(screen.getByTitle('4 notes waiting to be triaged')).toBeTruthy()
     // A bare number is not a sentence — the row says what it counts.
-    expect(projectRow().getAttribute('aria-label')).toBe('runcastle — 4 open notes')
+    expect(projectRow().getAttribute('title')).toBe('runcastle — 4 open notes')
   })
 
   it('says "note" of a single one', () => {
@@ -79,13 +97,14 @@ describe('the project row’s open-note badge', () => {
 
     rail()
 
-    expect(projectRow().getAttribute('aria-label')).toBe('runcastle — 1 open note')
+    expect(projectRow().getAttribute('title')).toBe('runcastle — 1 open note')
   })
 
   it('is hidden at zero — an empty inbox is not news', () => {
     rail()
 
     expect(screen.queryByTitle(/waiting to be triaged/)).toBeNull()
-    expect(projectRow().getAttribute('aria-label')).toBeNull()
+    expect(projectRow().textContent).toBe('Project')
+    expect(projectRow().getAttribute('title')).toMatch(/^Talk to the project/)
   })
 })

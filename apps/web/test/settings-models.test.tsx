@@ -135,7 +135,7 @@ describe('Models page', () => {
   })
   afterEach(cleanup)
 
-  it('renders the default card, then the roster, then the per-step table', () => {
+  it('renders the default row, then the roster, then the per-step table', () => {
     open()
 
     const text = screen.getByRole('dialog').textContent ?? ''
@@ -147,25 +147,23 @@ describe('Models page', () => {
     ).toBeTruthy()
   })
 
-  it('states the default in the card and as the roster’s DEFAULT chip', () => {
+  it('states the default in its row and as the roster’s Default mark', () => {
     open()
 
     expect(screen.getByLabelText('Default model').textContent).toContain('claude-opus-5')
-    const chip = within(rowOf('claude-opus-5'))
-      .getAllByText('Default')
-      .find((el) => el.className.includes('rounded-pill'))
-    expect(chip).toBeTruthy()
+    const mark = rowOf('claude-opus-5').querySelector('[data-default-mark]')
+    expect(mark?.textContent).toBe('Default')
     // The default row is the one with nothing to make default.
     expect(screen.queryByRole('button', { name: 'Make claude-opus-5 the default' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Make gpt-5.6-sol the default' })).toBeTruthy()
   })
 
-  it('writes the default model from the card and from a row alike', () => {
+  it('writes the default model from its row and from a roster row alike', () => {
     open()
 
     pickOption(screen.getByLabelText('Default model'), 'claude-sonnet-5')
     expect(lastUpdate()).toEqual({ key: 'model', value: 'claude-sonnet-5' })
-    expect(screen.getByText('Saved ✓')).toBeTruthy()
+    expect(screen.getByText('Saved')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Make gpt-5.6-sol the default' }))
     expect(lastUpdate()).toEqual({ key: 'model', value: 'gpt-5.6-sol' })
@@ -254,7 +252,7 @@ describe('Models page', () => {
     open()
 
     expect(screen.queryByLabelText('Note for claude-sonnet-5')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'show all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show all' }))
 
     expect(screen.getByLabelText('Note for claude-sonnet-5')).toBeTruthy()
   })
@@ -335,13 +333,13 @@ describe('Models page', () => {
 
       expect(within(rowOf('gpt-6-astra')).getByText('New')).toBeTruthy()
       expect(screen.queryByLabelText('Note for gpt-6-luna')).toBeNull()
-      fireEvent.click(screen.getByRole('button', { name: 'show all' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Show all' }))
       expect(screen.getByLabelText('Note for gpt-6-luna')).toBeTruthy()
     })
 
     it('carries the Codex retirement notice on its row', () => {
       open()
-      fireEvent.click(screen.getByRole('button', { name: 'show all' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Show all' }))
 
       const row = within(rowOf('gpt-6-luna'))
       expect(row.getByText('retires 2026-10-14 → gpt-6-astra')).toBeTruthy()

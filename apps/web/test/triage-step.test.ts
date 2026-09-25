@@ -124,8 +124,8 @@ describe('the triage step', () => {
   it('marks a row that arrived while the step was open', () => {
     const fresh = panel({ notes: [note({ id: 'note_1', createdAt: 2000 })], defects: [] })
     const old = panel({ notes: [note({ id: 'note_1', createdAt: 900 })], defects: [] })
-    expect(fresh).toContain('bg-accent-soft')
-    expect(old).not.toContain('bg-accent-soft')
+    expect(fresh).toContain('bg-accent-subtle')
+    expect(old).not.toContain('bg-accent-subtle')
   })
 
   it('opens on the lap road with nothing ticked, and says what it will carry', () => {

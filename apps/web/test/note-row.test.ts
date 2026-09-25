@@ -107,8 +107,8 @@ describe('NoteRow', () => {
   })
 
   it('badges the review agent’s notes and leaves the human’s unbadged', () => {
-    expect(render(note({ author: 'agent' }))).toContain('>agent<')
-    expect(render(note())).not.toContain('>agent<')
+    expect(render(note({ author: 'agent' }))).toContain('>Agent<')
+    expect(render(note())).not.toContain('>Agent<')
   })
 
   it('names the lap only when the list spans more than one', () => {
@@ -119,7 +119,7 @@ describe('NoteRow', () => {
   it('renders a defect in the same anatomy, with its severity and why it is open', () => {
     const html = render({ kind: 'defect', finding: DEFECT })
     expect(html).toContain('the merge dialog is blind to a standing conflict')
-    expect(html).toContain('>high<')
+    expect(html).toContain('>High<')
     expect(html).toContain('over the auto-fix cap')
     // The review's own prose is a disclosure, never the row (decision 5 item 4).
     expect(html).toContain('<details')
@@ -176,7 +176,7 @@ describe('NoteRow', () => {
     })
     expect(attested).toContain('closed by a lap session as addressed')
     expect(attested).toContain('addressed by lap 2’s ticket 7')
-    expect(attested).toContain('text-warn')
+    expect(attested).toContain('text-warning')
 
     const verified = render({
       kind: 'defect',
@@ -184,7 +184,7 @@ describe('NoteRow', () => {
     })
     expect(verified).toContain('fixed by its fix ticket')
     expect(verified).not.toContain('closed by a lap session')
-    expect(verified).toContain('text-ok')
+    expect(verified).toContain('text-success')
   })
 
   it('says nothing about the standing of a defect that is still open', () => {

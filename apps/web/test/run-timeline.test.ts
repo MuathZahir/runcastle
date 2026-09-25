@@ -45,7 +45,7 @@ describe('RunTimeline', () => {
   it('clips an ordinary row to one line, and stays shut over it', () => {
     const markup = html([event({ id: 1 })])
     expect(messageClass(markup, 'docs digest: 2400 bytes')).toContain('truncate')
-    expect(markup).not.toContain('<details open')
+    expect(markup).not.toContain('open=""')
   })
 
   it('wraps the row carrying a warning instead of clipping it', () => {
@@ -53,12 +53,12 @@ describe('RunTimeline', () => {
     const warned = messageClass(markup, 'docs digest: 97000 bytes')
     expect(warned).not.toContain('truncate')
     expect(warned).toContain('break-words')
-    expect(warned).toContain('text-warn')
+    expect(warned).toContain('text-warning')
     // The row beside it is untouched — only the warning costs the density.
     expect(messageClass(markup, 'docs digest: 2400 bytes')).toContain('truncate')
   })
 
   it('opens the panel when it holds a warning, so it is read without a click', () => {
-    expect(html([event({ id: 1 }), oversized])).toContain('<details open')
+    expect(html([event({ id: 1 }), oversized])).toContain('open=""')
   })
 })

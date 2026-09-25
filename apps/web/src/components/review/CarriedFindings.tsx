@@ -1,5 +1,5 @@
 import type { ReviewFinding } from '@runcastle/core'
-import { SectionTitle } from '../../ui'
+
 import { WorkList, type WorkRow } from './WorkList'
 
 /**
@@ -42,11 +42,11 @@ export function CarriedFindings({
   }))
 
   return (
-    <section id="carried-findings" className="flex flex-col gap-4">
-      <div className="flex items-baseline gap-3">
-        <SectionTitle>Carried, still open</SectionTitle>
-        <span className="font-mono text-xs text-text-3">
-          {findings.length} carried · not counted as open
+    <section id="carried-findings" className="flex flex-col gap-2">
+      <div className="flex min-h-7 items-baseline gap-3">
+        <h2 className="m-0 text-lg font-semibold text-text">Carried, still open</h2>
+        <span className="text-xs text-text-tertiary">
+          {findings.length} carried, not counted as open
         </span>
       </div>
 

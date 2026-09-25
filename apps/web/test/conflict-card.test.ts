@@ -165,7 +165,7 @@ describe('the next-step bar beside the conflict card', () => {
     expect(bar).toContain('flex-wrap')
   })
 
-  it('keeps the kick, title and description on a readable measure', () => {
-    expect(bar).toContain('basis-[26rem]')
+  it('keeps the sentence on a readable measure before the actions wrap', () => {
+    expect(bar).toContain('basis-80')
   })
 })

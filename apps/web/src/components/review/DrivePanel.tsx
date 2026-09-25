@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '../../ui'
+import { Button, IconButton, StatusLabel, TextArea, Tooltip } from '../../ui'
+import { IconExternalLink, IconRefresh } from '../../icons'
+import { IconSelectArea } from './stage-icons'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import {
@@ -272,62 +274,68 @@ export function DrivePanel({
   }
 
   return (
-    <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-hairline bg-black">
+    <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
       <iframe
         key={generation}
-        className="min-h-0 flex-1 border-0 bg-white"
+        className="min-h-0 flex-1 border-0"
         src={url}
         title="the app on this branch"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         onLoad={() => setLoaded(true)}
       />
 
-      {/* The toolbar sits over the app rather than above it: the stage is 16:9
-          and every row of chrome is a row the app does not get. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-2">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-md border border-hairline bg-panel/90 p-1">
+      {/* The toolbar floats over the app rather than above it: the stage is
+          16:9 and every row of chrome is a row the app does not get. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3">
+        <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">
           {canCapture ? (
-            <Button
-              className="px-2"
-              aria-pressed={selecting}
+            <IconButton
+              label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
+              icon={<IconSelectArea />}
+              active={selecting}
               disabled={arming}
+              tooltipSide="bottom"
               onClick={() => void armSelection()}
+            />
+          ) : null}
+          <IconButton
+            label="Reload"
+            icon={<IconRefresh />}
+            tooltipSide="bottom"
+            onClick={() => setGeneration((g) => g + 1)}
+          />
+          <Tooltip label="Open app in a new tab" side="bottom">
+            <a
+              className="inline-flex size-(--control-h) items-center justify-center rounded-md text-icon no-underline transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text"
+              href={url}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label="Open app"
             >
-              {arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
-            </Button>
-          ) : (
-            <span className="px-2 font-mono text-xs text-text-3">
-              this browser can’t capture its own tab — paste a screenshot into a note instead
-            </span>
-          )}
-          <Button className="px-2" onClick={() => setGeneration((g) => g + 1)}>
-            Reload
-          </Button>
-          <a
-            className="inline-flex h-8 items-center rounded-md border border-hairline px-2 font-mono text-xs text-text-2 no-underline hover:border-hairline-strong hover:text-text"
-            href={url}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            Open app ↗
-          </a>
+              <IconExternalLink size={16} />
+            </a>
+          </Tooltip>
         </div>
+        {!canCapture && !readonly && (
+          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
+            This browser can’t capture its own tab — paste a screenshot into a note instead
+          </span>
+        )}
         {agentDriving && (
-          <span className="pointer-events-none flex items-center gap-2 rounded-md bg-panel/90 px-2 py-1 text-sm text-drive">
-            <span className="size-2 animate-pulse rounded-pill bg-drive" />
-            review agent driving — notes land below as it finds things
+          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 shadow-popover">
+            <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
           </span>
         )}
         {!loaded && slow && (
-          <span className="pointer-events-none rounded-md bg-panel/90 px-2 py-1 font-mono text-xs text-text-3">
-            Can’t embed? Open app ↗ and paste a screenshot into a note.
+          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
+            Can’t embed? Open the app and paste a screenshot into a note.
           </span>
         )}
       </div>
 
       {selecting && (
         <div
-          className="absolute inset-0 z-10 cursor-crosshair touch-none bg-bg/15"
+          className="absolute inset-0 z-10 cursor-crosshair touch-none bg-scrim/20 animate-fade-in"
           aria-label="drag over the part of the app that needs fixing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -336,7 +344,7 @@ export function DrivePanel({
         >
           {marquee && (
             <div
-              className="absolute border-2 border-danger bg-danger/15"
+              className="absolute rounded-sm border-2 border-accent bg-accent-subtle/40"
               style={{
                 left: marquee.x,
                 top: marquee.y,
@@ -349,16 +357,17 @@ export function DrivePanel({
       )}
 
       {shot && (
-        <div className="absolute inset-x-0 bottom-0 z-20 flex items-end gap-3 bg-panel/95 p-3">
+        <div className="absolute inset-x-3 bottom-3 z-20 flex items-end gap-3 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
           <img
-            className="h-14 w-24 rounded-sm border border-hairline bg-black object-contain"
+            className="h-14 w-24 rounded-md bg-surface-inset object-contain"
             src={shot.preview}
             alt="the region you selected"
           />
-          <textarea
+          <TextArea
+            rows={2}
             aria-label="what’s wrong here?"
-            className="h-16 min-w-0 flex-1 resize-none rounded-md border border-hairline bg-panel-inset px-3 py-2 font-mono text-sm text-text placeholder:text-text-4 focus:border-accent-line focus:outline-none"
-            placeholder="What’s wrong here? (optional — the picture is the note)"
+            className="min-w-0 flex-1 resize-none"
+            placeholder="What’s wrong here? Optional — the picture is the note."
             value={text}
             autoFocus
             onChange={(e) => setText(e.target.value)}
@@ -368,10 +377,12 @@ export function DrivePanel({
               void save()
             }}
           />
-          <Button variant="solid" disabled={saving} onClick={() => void save()}>
+          <Button variant="ghost" onClick={discard}>
+            Discard
+          </Button>
+          <Button variant="primary" loading={saving} onClick={() => void save()}>
             {saving ? 'Saving…' : 'Save note'}
           </Button>
-          <Button onClick={discard}>Discard</Button>
         </div>
       )}
 

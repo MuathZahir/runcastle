@@ -1,82 +1,86 @@
+import type { ReactNode } from 'react'
 import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { PipelineStep } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
-import { PhaseTag } from '../../ui'
+import { MetaLine, PageHeader, cx, type MetaItem } from '../../ui'
 import { IconBranch } from '../../icons'
 import { copyText } from './copy-text'
 import { PipelineStepper } from './PipelineStepper'
 
 /**
- * The feature view's header: what this feature is, where it is in the pipeline,
- * and the branch it lives on.
+ * The top of the feature page (DESIGN.md §Page anatomy): the title once
+ * (22/28), one meta line — the branch (a click copies it), then 2–3 facts —
+ * the pipeline stepper, and the next-step row passed as `children`.
  *
- * Every part of it is written to FIT the column it is handed. A feature title
- * and a branch name are both arbitrarily long, and the row that let them size
- * themselves pushed the branch chip past the right edge of the workspace — where
- * `body { overflow: hidden }` clips it away with no scrollbar to find it again.
- * So the title takes the leftover room and ellipsizes into it (`flex-1` +
- * `truncate`, which is also what makes the phase tag and the chip stop being
- * squeezed), and the chip ellipsizes rather than escaping if even that is not
- * enough. The `ws-title-spacer` the row used to carry is gone with it: a title
- * that claims the middle already pushes the chip to the right edge.
- *
- * The row aligns on the BASELINE, which is why it no longer carries
- * `ws-title-row`: that legacy rule centres the row, and centring two different
- * type sizes lines up their boxes rather than their text — the 12px mono phase
- * tag ends up riding visibly above the 17px title beside it. An unlayered
- * `styles.css` rule beats a utility (apps/web/STYLE.md), so the fix is to stop
- * wearing the class here and write the row in utilities. The branch chip opts
- * back out with `self-center`: it leads with an icon, so its own baseline is
- * the icon's edge rather than its text.
+ * Everything here fits the column it is handed: the title wraps (it is the
+ * page's one heading, and the topbar crumb already carries the truncated
+ * copy), the branch ellipsizes rather than widening the page, and the stepper
+ * wraps onto a second line in a narrow column.
  */
 export function FeatureHeader({
   feature,
   isDraft,
   steps,
   onViewPhase,
+  readonly = false,
+  facts = [],
+  className,
+  children,
 }: {
   feature: FeatureFull['feature']
   isDraft: boolean
   steps: PipelineStep[]
   onViewPhase: (phase: Phase | null) => void
+  /** An earlier phase is pinned (the stepper marks the one being viewed). */
+  readonly?: boolean
+  /** The facts after the branch: age, ticket count, lap. */
+  facts?: Array<MetaItem | false | null | undefined>
+  className?: string
+  /** The next-step row (or, pinned, the way back). */
+  children?: ReactNode
 }) {
   const toast = useToast()
 
-  return (
-    <div className="ws-head">
-      <div className="flex items-baseline gap-2.5">
-        {/* Same reason the stepper is hidden below: a draft's phase is
-            `ideation` by construction, and naming it here reads as progress. */}
-        {isDraft ? (
-          <span className="shrink-0 font-mono text-sm font-semibold lowercase text-text-4">
-            draft
-          </span>
-        ) : (
-          <PhaseTag phase={feature.phase} />
-        )}
-        <span className="ws-title min-w-0 flex-1 truncate" title={feature.title}>
-          {feature.title}
-        </span>
+  const meta = (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+      {/* A draft has no branch yet — it picks its base at Start (decision 3). */}
+      {!isDraft && feature.branch && (
         <button
-          className="inline-flex min-w-0 items-center gap-1.5 self-center border-0 bg-transparent p-0 font-mono text-xs text-text-3 transition-colors duration-(--dur-1) hover:text-text"
+          type="button"
+          className={cx(
+            'inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm bg-transparent p-0',
+            'font-mono text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:text-text',
+          )}
           title="Copy branch name"
           onClick={() => copyText(feature.branch, toast)}
         >
-          <IconBranch size={11} className="shrink-0" />
+          <IconBranch size={14} className="shrink-0 text-icon" />
           <span className="truncate">{feature.branch}</span>
         </button>
-      </div>
-      {/* A draft has no meaningful pipeline position (decision 9): it is
-          created at `ideation` like everything else, and a stepper lit at that
-          first step would claim work has begun on a feature with no branch. */}
-      {!isDraft && (
-        <PipelineStepper
-          steps={steps}
-          lap={feature.lap}
-          onView={(p) => onViewPhase(p === feature.phase ? null : p)}
-        />
       )}
+      <MetaLine items={facts} />
     </div>
+  )
+
+  return (
+    <PageHeader title={feature.title} meta={meta} className={className}>
+      {(!isDraft || children) && (
+      <div className="flex flex-col gap-5">
+        {/* A draft has no meaningful pipeline position (decision 9): it is
+            created at `ideation` like everything else, and a stepper lit at
+            that first step would claim work has begun on a feature with no
+            branch. The meta line says "Draft" instead. */}
+        {!isDraft && (
+          <PipelineStepper
+            steps={steps}
+            readonly={readonly}
+            onView={(p) => onViewPhase(p === feature.phase ? null : p)}
+          />
+        )}
+        {children}
+      </div>
+      )}
+    </PageHeader>
   )
 }

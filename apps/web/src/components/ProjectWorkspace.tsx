@@ -4,6 +4,9 @@ import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
+import { IconArrowRight, IconBranch, IconFolder, IconPanelRight } from '../icons'
+import { useLivePoll } from '../lib/live'
+import { Aside, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
 import { ConversationTranscript } from './ConversationTranscript'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -24,9 +27,10 @@ import { useProjectDrive } from '../lib/use-project-drive'
  * This is the one surface in the shell bound to a project rather than a feature:
  * the project's CONVERSATIONS, and the door to a new one.
  *
- * At rest it is three pieces and nothing else (decisions.md #6): a header line
- * naming the branch this chat runs on and the branch its work lands on, the New
- * chat card, and the list — plus the Notes inbox between the last two, on the
+ * At rest it is three pieces and nothing else (decisions.md #6): a header
+ * naming the branch this chat runs on and the branch its work lands on, the two
+ * doors (New chat — the page's one primary — and Test drive) as quiet rows, and
+ * the list of chats — plus the Notes inbox as the page's one aside, on the
  * projects that have jotted one. It used to carry a paragraph on every card —
  * what the chat already knows, what the landing branch means, why changing it
  * would not affect the chat already running — which is first-use explanation
@@ -76,6 +80,10 @@ export function ProjectWorkspace({
   const drive = projectDrive.drive
   const session = talk.session
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
+  // The same key the Notes aside reads, so knowing whether to offer it is free.
+  const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
+  // The Notes aside: `null` until the human toggles it (then it follows them).
+  const [notesOpen, setNotesOpen] = useState<boolean | null>(null)
   // Keep the terminal mounted behind the list so xterm retains its client-side
   // buffer and socket; `TerminalView` tears both down when it unmounts.
   const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
@@ -101,6 +109,7 @@ export function ProjectWorkspace({
     if (inboxRequest > 0) {
       setViewing(null)
       setShowList(true)
+      setNotesOpen(true)
     }
   }, [inboxRequest])
   useEffect(() => {
@@ -158,125 +167,155 @@ export function ProjectWorkspace({
     showChat()
   }
 
-  return (
-    <section className="workspace">
-      {/* The page's own rail, on the rhythm of decisions.md #9 — 8px inside the
-          header, 24px between the body's cards, 32px from header to body. The
-          width and gutter are the shell's, so swapping to this page does not
-          shift the column the feature workspace beside it uses. */}
-      <div className="min-h-0 flex-1 overflow-y-auto pt-6 pb-8" hidden={!resting}>
-        <div className="mx-auto flex w-full max-w-[calc(var(--content-max)+56px)] flex-col gap-8 px-7">
-          <header className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex items-center rounded-pill border border-accent-line bg-accent-soft px-2 py-0.5 text-xs font-semibold tracking-[0.1em] text-accent-hi uppercase">
-                Project
-              </span>
-              <h1 className="text-xl leading-tight font-semibold tracking-[-0.01em] text-text">
-                {project?.name ?? 'This project'}
-              </h1>
-            </div>
-            <p className="text-sm text-text-3">
-              Chats run on <code className="font-mono text-text-2">{PROJECT_BRANCH}</code> and land
-              on <code className="font-mono text-text-2">{landing.value ?? '…'}</code>.
-            </p>
-          </header>
+  const projectName = project?.name ?? 'This project'
+  const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
+  const hasNotes = (notesQ.data ?? []).length > 0
+  // Open by default while something is waiting in the inbox; the human's own
+  // toggle wins from then on.
+  const notesShown = hasNotes && (notesOpen ?? openNotes > 0)
 
-          {reading ? (
-            <TranscriptPane
-              conversation={reading}
-              onBack={() => setViewing(null)}
-              onReopen={() => {
-                if (reading.status === 'ended') reopen(reading.id)
-                else {
-                  setViewing(null)
-                  showChat()
-                }
-              }}
-              reopening={talk.starting}
-            >
-              <ConversationTranscript sessionId={reading.id} />
-            </TranscriptPane>
-          ) : resting ? (
-            <div className="flex flex-col gap-6">
-              <NewChatCard
-                landing={landing}
-                onStart={talk.start}
-                starting={talk.starting}
-                openSession={
-                  session && showOpenNotice
-                    ? {
-                        onOpen: () => {
-                          setShowOpenNotice(false)
-                          setNoticePurpose(undefined)
-                          showChat()
-                        },
-                        onReplace: () => {
-                          setShowOpenNotice(false)
-                          talk.replace(noticePurpose)
-                          showChat()
-                        },
+  return (
+    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <div className={resting ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting}>
+        {reading ? (
+          <TranscriptPane
+            conversation={reading}
+            projectName={projectName}
+            onBack={() => setViewing(null)}
+            onReopen={() => {
+              if (reading.status === 'ended') reopen(reading.id)
+              else {
+                setViewing(null)
+                showChat()
+              }
+            }}
+            reopening={talk.starting}
+          >
+            <ConversationTranscript sessionId={reading.id} />
+          </TranscriptPane>
+        ) : (
+          <>
+            <PageTopbar
+              crumbs={[{ label: projectName, icon: <IconFolder /> }]}
+              actions={
+                <>
+                  {session && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<StatusDot tone="live" />}
+                      onClick={showChat}
+                    >
+                      Live chat
+                    </Button>
+                  )}
+                  {hasNotes && (
+                    <IconButton
+                      label={openNotes > 0 ? `Notes · ${openNotes} open` : 'Notes'}
+                      icon={<IconPanelRight />}
+                      active={notesShown}
+                      onClick={() => setNotesOpen(!notesShown)}
+                    />
+                  )}
+                </>
+              }
+            />
+            <div className="flex min-h-0 flex-1">
+              <Page routeKey={`project-${projectId}`}>
+                <PageHeader
+                  title={projectName}
+                  meta={[
+                    { icon: <IconBranch />, text: PROJECT_BRANCH, mono: true, title: 'the branch project chats run on' },
+                    { icon: <IconArrowRight />, text: `lands on ${landing.value ?? '…'}` },
+                  ]}
+                />
+                <div className="mt-8">
+                  <NewChatCard
+                    landing={landing}
+                    onStart={talk.start}
+                    starting={talk.starting}
+                    openSession={
+                      session && showOpenNotice
+                        ? {
+                            onOpen: () => {
+                              setShowOpenNotice(false)
+                              setNoticePurpose(undefined)
+                              showChat()
+                            },
+                            onReplace: () => {
+                              setShowOpenNotice(false)
+                              talk.replace(noticePurpose)
+                              showChat()
+                            },
+                          }
+                        : undefined
+                    }
+                  />
+                  <TestDriveCard
+                    card={projectDriveCard({
+                      // Nothing to say until the row answers, rather than a
+                      // "Prepare drive" that flickers into "Test drive".
+                      empty: empty || !project,
+                      setupCommand: project?.driveSetupCommand,
+                      devCommand: project?.devCommand,
+                      drive: projectDrive.slot,
+                      projectId,
+                    })}
+                    branch={drive?.branch ?? (branchesQ.data?.current || null)}
+                    setupCommand={project?.driveSetupCommand}
+                    devCommand={project?.devCommand}
+                    stopCommand={project?.driveStopCommand}
+                    starting={projectDrive.starting}
+                    onStart={() => projectDrive.start(showDrive)}
+                    onPrepare={() => onOpenPreparation?.()}
+                    onReturn={showDrive}
+                  />
+                </div>
+                <ConversationList
+                  conversations={talk.conversations}
+                  pending={talk.conversationsPending}
+                  busy={talk.starting}
+                  onResume={reopen}
+                  onOpen={showChat}
+                  onView={setViewing}
+                />
+              </Page>
+              {/* The inbox is the page's one aside (decisions.md #10): read on
+                  the way to triaging it, and triage starts from it. */}
+              {notesShown && (
+                <Aside title="Notes" onClose={() => setNotesOpen(false)}>
+                  <NotesCard
+                    projectId={projectId}
+                    triaging={talk.starting}
+                    reveal={inboxRequest > 0}
+                    onRevealed={onConsumeInboxRequest}
+                    onTriage={() => {
+                      if (!session) {
+                        talk.triage()
+                        return
                       }
-                    : undefined
-                }
-              />
-              <TestDriveCard
-                card={projectDriveCard({
-                  // Nothing to say until the row answers, rather than a
-                  // "Prepare drive" that flickers into "Test drive".
-                  empty: empty || !project,
-                  setupCommand: project?.driveSetupCommand,
-                  devCommand: project?.devCommand,
-                  drive: projectDrive.slot,
-                  projectId,
-                })}
-                branch={drive?.branch ?? (branchesQ.data?.current || null)}
-                setupCommand={project?.driveSetupCommand}
-                devCommand={project?.devCommand}
-                stopCommand={project?.driveStopCommand}
-                starting={projectDrive.starting}
-                onStart={() => projectDrive.start(showDrive)}
-                onPrepare={() => onOpenPreparation?.()}
-                onReturn={showDrive}
-              />
-              {/* Between the door and the list (decisions.md #10): the pile is
-                  read on the way to triaging it, and triage starts here. */}
-              <NotesCard
-                projectId={projectId}
-                triaging={talk.starting}
-                reveal={inboxRequest > 0}
-                onRevealed={onConsumeInboxRequest}
-                onTriage={() => {
-                  if (!session) {
-                    talk.triage()
-                    return
-                  }
-                  // One live chat per project, so the human chooses: carry on in
-                  // the one that is open, or end it and triage in a fresh one.
-                  setNoticePurpose('triage')
-                  setShowOpenNotice(true)
-                }}
-              />
-              <ConversationList
-                conversations={talk.conversations}
-                pending={talk.conversationsPending}
-                busy={talk.starting}
-                onResume={reopen}
-                onOpen={showChat}
-                onView={setViewing}
-              />
+                      // One live chat per project, so the human chooses: carry on
+                      // in the one that is open, or end it and triage in a fresh one.
+                      setNoticePurpose('triage')
+                      setShowOpenNotice(true)
+                    }}
+                  />
+                </Aside>
+              )}
             </div>
-          ) : null}
-        </div>
+          </>
+        )}
       </div>
       {drive && (
         <ProjectDriveView
           projectId={projectId}
+          projectName={projectName}
           repoPath={project?.repoPath}
           drive={drive}
           hidden={!driveInFront}
           onProjectPage={toRestingPage}
           // Stop lands on the resting page, where the drive's notes are waiting
-          // on the Notes card. No summary, no prompt: the inbox is the exit.
+          // in the Notes aside. No summary, no prompt: the inbox is the exit.
           onStop={() => projectDrive.stop(toRestingPage)}
           stopping={projectDrive.stopping}
           onOpenPreparation={() => onOpenPreparation?.()}
@@ -286,6 +325,7 @@ export function ProjectWorkspace({
       {session && (
         <LiveChat
           session={session}
+          projectName={projectName}
           title={titleFor(talk.conversations, session.id) ?? 'project'}
           branch={landing.value}
           hidden={!chatInFront}
