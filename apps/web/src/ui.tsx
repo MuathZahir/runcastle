@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReactNode, RefObject } from 'react'
+import type { CSSProperties, ReactNode, RefObject } from 'react'
 import type { LapGroup } from './lib/feature-ui'
 import { IconChevronDown, IconChevronRight, IconX } from './icons'
 import { Button, IconButton } from './ui/button'
@@ -35,7 +35,7 @@ import { SectionLabel } from './ui/list'
 export { cx } from './ui/floating'
 export { Kbd } from './ui/kbd'
 export { Tooltip, TooltipProvider } from './ui/tooltip'
-export { BARE_BUTTON, Button, IconButton, Spinner } from './ui/button'
+export { BARE_BUTTON, Button, IconButton, LINK, Spinner } from './ui/button'
 export type { ButtonProps, ButtonSize, ButtonVariant, IconButtonProps } from './ui/button'
 export {
   CheckLine,
@@ -58,28 +58,23 @@ export { Tabs } from './ui/tabs'
 export type { TabItem } from './ui/tabs'
 export { Field, SearchField, TEXT_INPUT, TextArea, TextField } from './ui/field'
 export type { TextFieldProps } from './ui/field'
-export { Aside, Crumbs, Page, PageHeader, PageSection, PageTopbar } from './ui/page'
+export { Aside, AsideLayout, Crumbs, Page, PageHeader, PageSection, PageTopbar } from './ui/page'
+export { Checkbox, SegmentedControl, Switch } from './ui/choice'
+export type { SegmentItem } from './ui/choice'
 export type { Crumb } from './ui/page'
 
 /**
  * The old section heading. Renders exactly as {@link SectionLabel} now (12px
  * medium, sentence case, `text-tertiary`) — the uppercase tracked label is
  * retired. New code uses `SectionLabel`.
- *
- * Keeps the `section-title` class as a hook: one surviving legacy rule places
- * it in its surface (`.body-title .section-title`, the run body's heading row).
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <SectionLabel className="section-title">{children}</SectionLabel>
+  return <SectionLabel>{children}</SectionLabel>
 }
 
-/**
- * One quiet line — an inline empty or error state for a tight spot, in
- * `text-xs text-tertiary`. Keeps the `dim-line` class, whose base rule raw spans
- * elsewhere still carry (and which says the same thing).
- */
+/** One quiet line — an inline empty or error state for a tight spot, in `text-xs text-tertiary`. */
 export function DimLine({ children }: { children: ReactNode }) {
-  return <div className="dim-line py-0.5 text-xs text-text-tertiary">{children}</div>
+  return <div className="py-0.5 text-xs text-text-tertiary">{children}</div>
 }
 
 /**
@@ -118,13 +113,33 @@ export function EmptyState({
   )
 }
 
+const DISCLOSURE_SUMMARY = {
+  md: 'h-10 items-center gap-2 text-sm font-medium text-text-secondary hover:text-text',
+  sm: 'min-h-6 items-start gap-1.5 py-1 text-xs text-text-tertiary hover:text-text-secondary',
+} as const
+
+const DISCLOSURE_BODY = {
+  md: 'pb-4 pl-6 text-sm text-text-secondary',
+  sm: 'pt-0.5 pb-2 pl-4.5 text-xs text-text-secondary',
+} as const
+
 /**
  * A collapsed section (DESIGN.md principle 6: collapse what is read once) —
  * drive instructions, digests, raw logs. A `<details>`: chevron (rotates 90°),
  * optional `icon`, `title`, and an `aside` on the right (a count, a
  * timestamp, a link); the body opens with an animated height. Closed by
- * default (`defaultOpen` to start open). A `border-subtle` rule above it
- * separates stacked disclosures; `bare` drops it.
+ * default (`defaultOpen` to start open).
+ *
+ * `size`:
+ * - `md` (default) — a 40px medium row for a page section; a `border-subtle`
+ *   rule above it separates stacked disclosures (`bare` drops it).
+ * - `sm` — a compact 12px text-level line (and a 12px body) under something else: a tool call
+ *   in a transcript, "What the engine reported", a defect's detail. No rule;
+ *   the title **wraps** rather than truncating (put `truncate` inside it when
+ *   one line is wanted).
+ *
+ * `index` staggers its entrance like a `ListRow` (the first 8 of an initial
+ * render rise in 20ms apart); `animate` rises it in alone.
  */
 export function Disclosure({
   title,
@@ -132,6 +147,9 @@ export function Disclosure({
   aside,
   defaultOpen = false,
   bare = false,
+  size = 'md',
+  index,
+  animate = false,
   onToggle,
   className,
   bodyClassName,
@@ -142,6 +160,11 @@ export function Disclosure({
   aside?: ReactNode
   defaultOpen?: boolean
   bare?: boolean
+  size?: 'sm' | 'md'
+  /** Position on the initial render, for the entrance stagger. */
+  index?: number
+  /** Rise in on mount (without a stagger). */
+  animate?: boolean
   onToggle?: (open: boolean) => void
   className?: string
   bodyClassName?: string
@@ -150,28 +173,40 @@ export function Disclosure({
   // Uncontrolled: `open` is only the initial state. React leaves the attribute
   // alone while the prop does not change, so the user's toggles stand.
   const [initial] = useState(defaultOpen)
+  const staggered = index !== undefined && index < 8
   return (
     <details
       data-disclosure=""
       open={initial}
       onToggle={onToggle && ((e) => onToggle((e.currentTarget as HTMLDetailsElement).open))}
-      className={cx('group/disclosure', !bare && 'border-t border-border-subtle', className)}
+      style={staggered ? ({ '--i': index } as CSSProperties) : undefined}
+      className={cx(
+        'group/disclosure min-w-0',
+        size === 'md' && !bare && 'border-t border-border-subtle',
+        (staggered || animate) && 'animate-rise-in',
+        staggered && '[animation-delay:calc(var(--i)*20ms)]',
+        className,
+      )}
     >
       <summary
         className={cx(
-          'flex h-10 cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium text-text-secondary',
-          'transition-colors duration-(--dur-1) ease-app select-none hover:text-text [&::-webkit-details-marker]:hidden',
+          'flex cursor-pointer list-none rounded-md',
+          'transition-colors duration-(--dur-1) ease-app select-none [&::-webkit-details-marker]:hidden',
+          DISCLOSURE_SUMMARY[size],
         )}
       >
         <IconChevronRight
-          size={14}
-          className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/disclosure:rotate-90"
+          size={size === 'sm' ? 12 : 14}
+          className={cx(
+            'shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/disclosure:rotate-90',
+            size === 'sm' && 'mt-0.5',
+          )}
         />
         {icon && <span className="inline-flex shrink-0 text-icon [&>svg]:size-3.5">{icon}</span>}
-        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className={cx('min-w-0 flex-1', size === 'md' && 'truncate')}>{title}</span>
         {aside && <span className="shrink-0 text-xs font-normal text-text-tertiary">{aside}</span>}
       </summary>
-      <div className={cx('pb-4 pl-6 text-sm text-text-secondary', bodyClassName)}>{children}</div>
+      <div className={cx(DISCLOSURE_BODY[size], bodyClassName)}>{children}</div>
     </details>
   )
 }

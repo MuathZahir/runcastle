@@ -97,6 +97,7 @@ export function ConversationList({
                 title={title}
                 meta={c.createdAt === null ? undefined : relTime(c.createdAt)}
                 onClick={() => onView(c)}
+                actionsOverlay
                 actions={
                   // A conversation Claude Code never picked up has nothing to
                   // resume — reopening it would silently be a new chat, so it

@@ -316,15 +316,17 @@ export function Sidebar(props: SidebarProps) {
                 />
               ))}
               {lane.expanderLabel && (
-                <QuietRow onClick={() => setShowAllShipped((v) => !v)}>{lane.expanderLabel}</QuietRow>
+                <NavItem tone="quiet" label={lane.expanderLabel} onClick={() => setShowAllShipped((v) => !v)} />
               )}
             </section>
           )
         })}
         {archivedCount > 0 && (
-          <QuietRow onClick={toggleArchived}>
-            {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
-          </QuietRow>
+          <NavItem
+            tone="quiet"
+            label={`${showArchived ? 'Hide' : 'Show'} archived (${archivedCount})`}
+            onClick={toggleArchived}
+          />
         )}
       </div>
 
@@ -433,23 +435,6 @@ export function SearchLauncher({ onOpen }: { onOpen?: () => void }) {
       <IconSearch size={14} className="shrink-0 text-icon" />
       <span className="min-w-0 flex-1 truncate">Search</span>
       <Kbd>{modKey()}</Kbd>
-    </button>
-  )
-}
-
-/** A quiet tertiary row — "Show all (N)", "Show archived (N)" — lined up under the labels. */
-function QuietRow({ onClick, children }: { onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cx(
-        'flex h-7 w-full shrink-0 cursor-pointer items-center rounded-md border-0 bg-transparent pr-3 pl-8.5',
-        'text-left text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app',
-        'hover:bg-surface-hover hover:text-text-secondary',
-      )}
-    >
-      {children}
     </button>
   )
 }

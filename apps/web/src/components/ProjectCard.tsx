@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
 import { PROJECT_NAME_MAX } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import type { ProjectStats } from '../lib/projects'
 import type { Project } from '../lib/api'
-import { Button, cx, MetaLine, TEXT_INPUT } from '../ui'
+import { Button, ListRow, MetaLine, TEXT_INPUT } from '../ui'
 import { IconFolder, IconTrash } from '../icons'
 import { FeatureActionsMenu } from './FeatureActionsMenu'
 
@@ -20,17 +19,7 @@ import { FeatureActionsMenu } from './FeatureActionsMenu'
  * removal asks, on the row, in a sentence that says what it does not do.
  */
 
-/** The row's inner surface — the same box whether it is a button or not. */
-const FACE = 'flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left'
-
-/**
- * The face when it *is* the button into the project. There is no preflight
- * (STYLE.md), so a button that names no background or border paints in the user
- * agent's `buttonface` grey inside a 2px outset border.
- */
-const FACE_BUTTON = `${FACE} cursor-pointer rounded-md border-0 bg-transparent`
-
-const RENAME_INPUT = `${TEXT_INPUT} h-7 flex-1 font-medium`
+const RENAME_INPUT = `${TEXT_INPUT} h-7 w-full font-medium`
 
 /** The reason removal is refused while the project still has a run going. */
 const IN_FLIGHT_REASON = 'A run is in flight — it has to finish before this project can go.'
@@ -90,58 +79,43 @@ export function ProjectCard({
     else setRenaming(false)
   }
 
-  const face = (
-    <CardFace
-      project={project}
-      stats={stats}
-      loading={loading}
-      name={
-        renaming ? (
-          <input
-            className={RENAME_INPUT}
-            value={name}
-            aria-label="Project name"
-            // Same cap the server enforces (findings F20) — refusing the 81st
-            // keystroke beats a rejection toast after the fact.
-            maxLength={PROJECT_NAME_MAX}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === 'Enter') submitRename()
-              if (e.key === 'Escape') {
-                setName(project.name)
-                setRenaming(false)
-              }
-            }}
-            onBlur={submitRename}
-          />
-        ) : (
-          <span className="min-w-0 truncate text-sm font-medium text-text">{project.name}</span>
-        )
-      }
+  const nameCell = renaming ? (
+    <input
+      className={RENAME_INPUT}
+      value={name}
+      aria-label="Project name"
+      // Same cap the server enforces (findings F20) — refusing the 81st
+      // keystroke beats a rejection toast after the fact.
+      maxLength={PROJECT_NAME_MAX}
+      autoFocus
+      onChange={(e) => setName(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') submitRename()
+        if (e.key === 'Escape') {
+          setName(project.name)
+          setRenaming(false)
+        }
+      }}
+      onBlur={submitRename}
     />
+  ) : (
+    <span className="block truncate font-medium">{project.name}</span>
   )
 
-  const staggered = index !== undefined && index < 8
-  return (
-    <div
-      data-list-row=""
-      style={staggered ? ({ '--i': index } as CSSProperties) : undefined}
-      className={cx(
-        'group/row relative flex min-w-0 items-center rounded-md transition-colors duration-(--dur-1) ease-app',
-        !confirming && !renaming && 'hover:bg-surface-hover',
-        staggered && 'animate-rise-in [animation-delay:calc(var(--i)*20ms)]',
-      )}
-    >
-      {confirming ? (
-        <div className={cx(FACE, 'flex-wrap animate-fade-in')}>
-          <p className="m-0 min-w-0 flex-1 text-sm text-text-secondary">
-            Remove <span className="font-medium text-text">{project.name}</span>? The repo on disk
-            is untouched.
+  if (confirming) {
+    return (
+      <ListRow
+        className="animate-fade-in"
+        wrap
+        title={
+          <span className="text-text-secondary">
+            Remove <span className="font-medium text-text">{project.name}</span>? The repo on disk is untouched.
             {runsInFlight && <span className="block text-xs text-text-tertiary">{IN_FLIGHT_REASON}</span>}
-          </p>
-          <div className="flex shrink-0 gap-2">
+          </span>
+        }
+        control={
+          <span className="flex shrink-0 gap-2 pr-3">
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
               Cancel
             </Button>
@@ -154,18 +128,46 @@ export function ProjectCard({
             >
               {close.isPending ? 'Removing…' : 'Remove'}
             </Button>
-          </div>
-        </div>
-      ) : renaming ? (
-        <div className={FACE}>{face}</div>
-      ) : (
-        <button className={FACE_BUTTON} onClick={onOpen} title={`Open ${project.name}`}>
-          {face}
-        </button>
-      )}
+          </span>
+        }
+      />
+    )
+  }
 
-      {!confirming && !renaming && (
-        <div className="absolute top-1/2 right-2 z-10 -translate-y-1/2 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+  return (
+    <ListRow
+      index={index}
+      leading={<IconFolder />}
+      title={nameCell}
+      // `dir="rtl"` truncates from the left — where a repo path is least
+      // interesting — and <bdi> keeps the path itself left-to-right.
+      description={
+        <span className="block truncate text-left font-mono" dir="rtl" title={project.repoPath}>
+          <bdi>{project.repoPath}</bdi>
+        </span>
+      }
+      meta={
+        loading ? (
+          'Loading…'
+        ) : (
+          <MetaLine
+            className="flex-nowrap"
+            items={[
+              { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },
+              stats.activeRuns > 0 && { tone: 'live', strong: stats.activeRuns, text: 'running' },
+              stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: 'needs you' },
+            ]}
+          />
+        )
+      }
+      // A text input nested in a button is neither valid nor clickable, so
+      // while the name is being edited the row is not the button into the
+      // project.
+      onClick={renaming ? undefined : onOpen}
+      tooltip={`Open ${project.name}`}
+      actionsOverlay
+      actions={
+        !renaming && (
           <FeatureActionsMenu
             label={`${project.name} actions`}
             actions={[
@@ -185,57 +187,8 @@ export function ProjectCard({
               },
             ]}
           />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
- * What a row says about its project. Split out because it is rendered inside a
- * button (the whole face opens the project) and, while the name is being
- * edited, inside a plain div — a text input nested in a button is neither valid
- * nor clickable.
- */
-function CardFace({
-  project,
-  stats,
-  loading,
-  name,
-}: {
-  project: Project
-  stats: ProjectStats
-  loading: boolean
-  name: ReactNode
-}) {
-  return (
-    <>
-      <span className="inline-flex size-4 shrink-0 items-center justify-center self-start pt-0.5 text-icon">
-        <IconFolder />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-center">{name}</span>
-        {/* `dir="rtl"` truncates from the left — where a repo path is least
-            interesting — and <bdi> keeps the path itself left-to-right. */}
-        <span className="truncate text-left font-mono text-xs text-text-tertiary" dir="rtl" title={project.repoPath}>
-          <bdi>{project.repoPath}</bdi>
-        </span>
-      </span>
-      {/* Right padding clears the "…" that appears over this end on hover. */}
-      <span className="shrink-0 pr-8">
-        {loading ? (
-          <span className="text-xs text-text-tertiary">Loading…</span>
-        ) : (
-          <MetaLine
-            className="flex-nowrap"
-            items={[
-              { strong: stats.total, text: stats.total === 1 ? 'feature' : 'features' },
-              stats.activeRuns > 0 && { tone: 'live', strong: stats.activeRuns, text: 'running' },
-              stats.needsYou > 0 && { tone: 'warning', strong: stats.needsYou, text: 'needs you' },
-            ]}
-          />
-        )}
-      </span>
-    </>
+        )
+      }
+    />
   )
 }

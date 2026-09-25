@@ -24,7 +24,7 @@ import {
 } from '../../ui/select'
 import { IconCheck, IconClaude, IconCodex, IconPlus, IconTrash } from '../../icons'
 import type { SettingWrites } from './ModelsPage'
-import { SELECT_TRUNCATE, SaveMark } from './SettingRow'
+import { SaveMark } from './SettingRow'
 import { showsSetting, type FilterState } from './types'
 
 /**
@@ -226,7 +226,8 @@ function ModelRow({
             size="sm"
             icon={<IconTrash />}
             onClick={remove}
-            className={cx('enabled:hover:text-danger', REVEAL)}
+            variant="danger-ghost"
+            className={REVEAL}
           />
         ) : (
           <span />
@@ -338,7 +339,7 @@ function AddModelRow({
         <Select value={runtime} onValueChange={setRuntime}>
           <SelectTrigger
             aria-label="Runtime (required)"
-            className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full', runtime === '' && 'text-text-tertiary')}
+            className={cx(SELECT_FIELD, 'w-full', runtime === '' && 'text-text-tertiary')}
           >
             <SelectValue />
           </SelectTrigger>

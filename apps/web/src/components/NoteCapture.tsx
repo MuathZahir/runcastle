@@ -3,7 +3,7 @@ import { trpc } from '../trpc'
 import { imageOnClipboard, toPngBlob } from '../lib/reviews'
 import { uploadProjectNoteScreenshot } from '../lib/project-notes'
 import { useToast } from '../lib/toast'
-import { cx, Dialog, IconButton, Kbd } from '../ui'
+import { cx, Dialog, IconButton, Kbd, LINK } from '../ui'
 import { IconCheck, IconPencil, IconX } from '../icons'
 
 /**
@@ -50,10 +50,6 @@ export interface NoteCaptureProps {
   /** Open the project workspace, where the pile is read and triaged. */
   onOpenInbox: () => void
 }
-
-/** A text-coloured link inside a `<button>`: the unlayered `button { color:
- *  inherit }` beats a colour written on the button, so it goes on a span. */
-const LINK_BUTTON = 'cursor-pointer rounded-sm border-0 bg-transparent p-0'
 
 /** The palette's one-line row height (the command palette's input row). */
 const LINE = 'flex h-13 items-center gap-3 px-4'
@@ -223,11 +219,11 @@ export function NoteCapture({
             {openCount.data !== undefined && <> · {openCount.data} open</>}
           </span>
           <button
-            className={LINK_BUTTON}
+            className={cx(LINK, 'text-sm')}
             onClick={readInbox}
             title="Read the pile on the project workspace"
           >
-            <span className="text-sm text-accent-text hover:underline">View</span>
+            View
           </button>
         </div>
       ) : (

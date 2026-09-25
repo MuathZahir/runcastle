@@ -53,10 +53,9 @@ export function Select({
 }
 
 /**
- * The closed control. Layout and the chevron only: the surface it wears — a
- * pill on a ticket row, a 32px field in settings — is the call site's, because
- * the sites this replaced did not look alike and this feature is not restyling
- * them.
+ * The closed control. Layout and the chevron only: the surface it wears is one
+ * of the two looks below, passed as its `className` — `SELECT_FIELD` in a form,
+ * `SELECT_GHOST` inline in a row or a bar.
  */
 const TRIGGER = 'inline-flex min-w-0 cursor-pointer items-center justify-between gap-1.5 text-left'
 
@@ -69,6 +68,18 @@ export const SELECT_FIELD =
   'h-(--control-h) rounded-md border border-border bg-surface-inset px-2.5 text-sm text-text ' +
   'transition-colors duration-(--dur-1) ease-app hover:border-border-strong ' +
   'data-[state=open]:border-accent data-placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:text-text-disabled'
+
+/**
+ * The quiet inline look for a trigger — a ghost button (no border or fill at
+ * rest, `surface-hover` under the pointer, `surface-selected` while open), 24px,
+ * 12px `text-tertiary`. For a value picker that sits in a row or a header
+ * rather than a form: the ticket's model, the run history. Add `font-mono` for
+ * a code-shaped value.
+ */
+export const SELECT_GHOST =
+  'h-(--control-sm) rounded-md px-1.5 text-xs text-text-tertiary ' +
+  'transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text ' +
+  'data-[state=open]:bg-surface-selected data-[state=open]:text-text disabled:cursor-not-allowed disabled:text-text-disabled'
 
 export function SelectTrigger({
   className,
@@ -89,12 +100,19 @@ export function SelectTrigger({
  * The selected row's text, inside the trigger. Truncates rather than widening
  * the control — a model id with a use-case note is longer than any of the
  * places this sits.
+ *
+ * Radix's `Select.Value` drops `className` (and `style`) on the floor, so the
+ * truncation lives on a span of ours around it; `className` lands there.
  */
 export function SelectValue({
   className,
   ...props
 }: ComponentPropsWithoutRef<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value className={cx('min-w-0 truncate', className)} {...props} />
+  return (
+    <span className={cx('min-w-0 flex-1 truncate text-left', className)}>
+      <SelectPrimitive.Value {...props} />
+    </span>
+  )
 }
 
 /**

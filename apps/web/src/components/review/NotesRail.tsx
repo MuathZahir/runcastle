@@ -29,6 +29,7 @@ export function NotesRail({
 
   return (
     <Aside
+      label="Needs attention"
       title={
         <span className="flex items-baseline gap-2">
           Needs attention

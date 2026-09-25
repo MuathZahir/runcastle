@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react'
 import type { AgentRuntime } from '@runcastle/core'
 import { trpc } from '../trpc'
+import { turnDisplay } from '../lib/conversation-title'
 import { agentName } from '../lib/vocabulary'
 import { DimLine, cx } from '../ui'
-import { IconClaude, IconCodex, IconUser } from '../icons'
+import { IconClaude, IconCodex, IconTerminal, IconUser } from '../icons'
 import { Markdown } from './Markdown'
 
 /** One side of an exchange, as the server read it off disk. */
@@ -65,6 +66,10 @@ const BUBBLES_BOX = 'flex max-h-[clamp(300px,calc(100dvh-340px),1200px)] flex-co
  * because they are written as Markdown and used to show their `##` and `**`
  * literally; yours is what you typed, plain text with its line breaks kept, on
  * the inset ground so "what did I ask for?" is found by scanning for it.
+ *
+ * A slash command and what it printed are not prose: each is one quiet mono
+ * line with a terminal glyph and no speaker label (`turnDisplay`), and the
+ * caveat Claude Code files beside them is not shown at all.
  */
 export function TranscriptBubbles({
   turns,
@@ -82,13 +87,26 @@ export function TranscriptBubbles({
   return (
     <div className={className}>
       {turns.map((turn, i) => {
+        const shown = turnDisplay(turn.text)
+        if (shown.kind === 'skip') return null
+        const stagger = i < 8 ? ({ '--i': i } as CSSProperties) : undefined
+        const enter = cx('animate-rise-in', i < 8 && '[animation-delay:calc(var(--i)*20ms)]')
+        if (shown.kind === 'command' || shown.kind === 'output') {
+          return (
+            <div
+              key={i}
+              style={stagger}
+              data-turn-kind={shown.kind}
+              className={cx('flex min-w-0 items-start gap-1.5 font-mono text-xs text-text-tertiary', enter)}
+            >
+              <IconTerminal size={12} className="mt-0.5 shrink-0 text-icon" />
+              <span className="min-w-0 break-words whitespace-pre-wrap">{shown.kind === 'command' ? shown.command : shown.text}</span>
+            </div>
+          )
+        }
         const user = turn.role === 'user'
         return (
-          <article
-            key={i}
-            style={i < 8 ? ({ '--i': i } as CSSProperties) : undefined}
-            className={cx('flex flex-col gap-1.5 animate-rise-in', i < 8 && '[animation-delay:calc(var(--i)*20ms)]')}
-          >
+          <article key={i} style={stagger} className={cx('flex flex-col gap-1.5', enter)}>
             <span className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
               {user ? (
                 <IconUser size={14} className="shrink-0 text-icon" />
@@ -99,12 +117,10 @@ export function TranscriptBubbles({
             </span>
             {user ? (
               <div className="rounded-md bg-surface-inset px-3 py-2 text-base break-words whitespace-pre-wrap text-text">
-                {turn.text}
+                {shown.text}
               </div>
             ) : (
-              // The prose is the app's one Markdown renderer; `!` lifts its
-              // 13px secondary UI face to the reading size a transcript wants.
-              <Markdown source={turn.text} className="text-base! text-text!" />
+              <Markdown source={shown.text} size="base" tone="primary" />
             )}
           </article>
         )

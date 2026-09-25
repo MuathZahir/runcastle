@@ -30,7 +30,8 @@ vi.mock('../src/components/TerminalView', () => ({
 
 import type { FeatureFull } from '../src/lib/api'
 import { ToastProvider } from '../src/lib/toast'
-import { ChatDock, ChatPanel } from '../src/components/workspace/ChatPanel'
+import { ChatPanel } from '../src/components/workspace/ChatPanel'
+import { AsideLayout } from '../src/ui'
 
 type Session = FeatureFull['sessions'][number]
 
@@ -135,12 +136,12 @@ describe('ChatPanel', () => {
  * Collapsed, the dock is not a narrower panel or a stub — it is nothing at all,
  * which is what lets the body keep the layout its phase gave it.
  */
-describe('ChatDock', () => {
+describe('AsideLayout (the chat dock)', () => {
   const body = createElement('div', { id: 'phase-body' }, 'the phase body')
 
   it('renders the body and nothing else while the chat is away', () => {
     const html = renderToStaticMarkup(
-      createElement(ChatDock, { open: false, panel: createElement('aside', null, 'chat'), children: body }),
+      createElement(AsideLayout, { aside: false, children: body }),
     )
 
     expect(html).toBe('<div id="phase-body">the phase body</div>')
@@ -148,7 +149,7 @@ describe('ChatDock', () => {
 
   it('puts the panel beside the body, with the body still in it', () => {
     const html = renderToStaticMarkup(
-      createElement(ChatDock, { open: true, panel: createElement('aside', null, 'chat'), children: body }),
+      createElement(AsideLayout, { aside: createElement('aside', null, 'chat'), children: body }),
     )
 
     expect(html).toContain('<div id="phase-body">the phase body</div>')
@@ -156,5 +157,8 @@ describe('ChatDock', () => {
     // The body is given a column of its own so a wide table cannot push the
     // panel off the edge.
     expect(html).toContain('min-w-0')
+    // Under 56rem of panel the aside floats over the page instead of sharing it.
+    expect(html).toContain('@container')
+    expect(html).toContain('@max-4xl:absolute')
   })
 })

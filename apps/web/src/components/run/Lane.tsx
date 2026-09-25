@@ -5,7 +5,7 @@ import { laneState, verdictStrip } from '../../lib/feature-ui/run'
 import type { LaneState } from '../../lib/feature-ui/run'
 import type { TicketModelChip } from '../../lib/feature-ui'
 import { shortSha } from '../../lib/format'
-import { Button, StatusLabel, TicketKindChip, Tooltip, cx } from '../../ui'
+import { Button, Disclosure, StatusLabel, TicketKindChip, Tooltip, cx } from '../../ui'
 import type { StatusTone } from '../../ui'
 import {
   IconAlert,
@@ -22,7 +22,6 @@ import {
 import { ModelMenu } from '../bodies/tickets/ModelMenu'
 import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { ConfirmDialog } from './ConfirmDialog'
-import { DANGER_GHOST } from './actions'
 
 /** A ticket as its lane reads it. Every stored `Ticket` satisfies this. */
 export interface LaneRow {
@@ -396,12 +395,11 @@ export function Lane({
                   for at the moment an agent is visibly going wrong. */}
               {state === 'burning' && onStop && (
                 <Button
-                  variant="ghost"
+                  variant="danger-ghost"
                   size="sm"
                   icon={<IconStop />}
                   loading={stopping}
                   disabled={busy}
-                  className={DANGER_GHOST}
                   title="stop this ticket's agent — other lanes keep burning; committed work is preserved for retry"
                   onClick={onStop}
                 >
@@ -439,18 +437,11 @@ export function Lane({
               </p>
               {verdict.hint && <p className="m-0 pl-5 text-sm text-text-secondary">{verdict.hint}</p>}
               {ticket.error && (
-                <details data-disclosure="" className="group/raw pl-5">
-                  <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 text-xs text-text-tertiary transition-colors duration-(--dur-1) select-none hover:text-text [&::-webkit-details-marker]:hidden">
-                    <IconChevronRight
-                      size={12}
-                      className="shrink-0 transition-transform duration-(--dur-2) ease-app group-open/raw:rotate-90"
-                    />
-                    What the engine reported
-                  </summary>
-                  <pre className="m-0 mt-1 overflow-x-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs whitespace-pre-wrap text-text-secondary">
+                <Disclosure size="sm" title="What the engine reported" className="pl-5">
+                  <pre className="m-0 overflow-x-auto rounded-md bg-surface-inset px-3 py-2 font-mono text-xs whitespace-pre-wrap text-text-secondary">
                     {ticket.error}
                   </pre>
-                </details>
+                </Disclosure>
               )}
             </div>
           )}

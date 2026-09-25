@@ -5,13 +5,17 @@ import type { Phase } from '@runcastle/core'
 import { PhaseIcon } from '../src/icons'
 import type { PhaseIconPhase } from '../src/icons'
 import {
+  Aside,
+  AsideLayout,
   Button,
   CheckLine,
+  Checkbox,
   DimLine,
   Disclosure,
   EmptyState,
   FindingSeverityChip,
   IconButton,
+  LINK,
   List,
   ListRow,
   MetaLine,
@@ -23,10 +27,12 @@ import {
   RunStatusChip,
   SectionLabel,
   SectionTitle,
+  SegmentedControl,
   SessionStatusDot,
   Spinner,
   StatusDot,
   StatusLabel,
+  Switch,
   Tabs,
   TextField,
   TicketKindChip,
@@ -123,8 +129,26 @@ describe('Button', () => {
 
   it('keeps its width while loading without an icon', () => {
     const out = render({ loading: true })
-    expect(out).toMatch(/<span class="invisible contents">Ship it<\/span>/)
+    // The spinner is stacked over the invisible label in one grid cell — no
+    // `relative`/`absolute`, so the button's position stays the caller's.
+    expect(out).toMatch(/<span class="invisible col-start-1 row-start-1[^"]*">Ship it<\/span>/)
     expect(out).toContain('animate-spin')
+    expect(out).not.toMatch(/(relative|absolute)/)
+  })
+
+  it('states no position, so a caller`s className places it', () => {
+    const out = render({ className: 'absolute top-3 right-3 -ml-2' })
+    expect(classOf(out, 'button')).not.toMatch(/(^| )(relative|static|fixed|sticky)( |$)/)
+    expect(classOf(out, 'button')).toContain('absolute top-3 right-3 -ml-2')
+  })
+
+  it('has a borderless danger for a destructive action in a row of ghosts', () => {
+    const out = render({ variant: 'danger-ghost' })
+    expect(out).toContain('data-variant="danger-ghost"')
+    expect(out).toContain('border-transparent bg-transparent text-danger')
+    expect(out).toContain('enabled:hover:bg-danger-subtle')
+    expect(out).not.toContain('border-border ')
+    expect(out).not.toContain('!')
   })
 
   it('keeps a caller`s className and forwards button attributes', () => {
@@ -155,6 +179,33 @@ describe('IconButton', () => {
   it('shows its on state as pressed', () => {
     expect(render({ active: true })).toContain('aria-pressed="true"')
     expect(render({})).not.toContain('aria-pressed="')
+  })
+
+  it('renders as a link with href, opening a new tab safely', () => {
+    const out = html(createElement(IconButton, { label: 'Open app', href: 'http://x', target: '_blank', icon: 'I' }))
+    expect(out).toMatch(/^<a /)
+    expect(out).toContain('href="http://x"')
+    expect(out).toContain('rel="noreferrer noopener"')
+    expect(out).toContain('aria-label="Open app"')
+    expect(out).toContain('no-underline')
+  })
+
+  it('carries a small neutral count badge, and none at zero', () => {
+    const out = html(createElement(IconButton, { label: 'Notes', badge: 3, icon: 'I' }))
+    expect(out).toContain('aria-label="Notes (3)"')
+    expect(out).toMatch(/<span aria-hidden="true" class="[^"]*rounded-full[^"]*bg-text-tertiary[^"]*">3<\/span>/)
+    // Only a badge positions the button (the badge is placed in its corner).
+    expect(classOf(out, 'button')).toContain('relative')
+    const none = html(createElement(IconButton, { label: 'Notes', badge: 0, icon: 'I' }))
+    expect(none).toContain('aria-label="Notes"')
+    expect(classOf(none, 'button')).not.toContain('relative')
+    expect(html(createElement(IconButton, { label: 'N', badge: 120, icon: 'I' }))).toContain('>99+<')
+  })
+
+  it('stays quiet at rest and turns danger on hover as a danger-ghost', () => {
+    const out = html(createElement(IconButton, { label: 'Delete', variant: 'danger-ghost', icon: 'I' }))
+    expect(classOf(out, 'button')).toContain('text-icon')
+    expect(classOf(out, 'button')).toContain('enabled:hover:text-danger')
   })
 
   it('sizes down inside rows', () => {
@@ -368,9 +419,9 @@ describe('SectionLabel and SectionTitle', () => {
     expect(out).toMatch(/ml-auto[^>]*><button id="act"/)
   })
 
-  it('renders the old SectionTitle the same way, keeping its hook class', () => {
+  it('renders the old SectionTitle exactly as a SectionLabel', () => {
     const out = html(createElement(SectionTitle, null, 'Tickets'))
-    expect(out).toContain('section-title')
+    expect(out).toBe(html(createElement(SectionLabel, null, 'Tickets')))
     expect(out).toContain('text-xs')
     expect(out).not.toContain('uppercase')
   })
@@ -546,5 +597,129 @@ describe('EmptyState', () => {
   it('pads a compact empty state less than a full one', () => {
     expect(render({ compact: true })).toContain('py-8')
     expect(render({})).toContain('py-12')
+  })
+})
+
+describe('primitive gaps closed by the consistency pass', () => {
+  it('counts a section in plain tertiary, not a tinted alpha', () => {
+    const out = html(createElement(SectionLabel, { count: 4, children: 'Needs you' }))
+    expect(out).toContain('font-normal text-text-tertiary tabular-nums')
+    expect(out).not.toContain('/80')
+  })
+
+  it('has a quiet NavItem for "Show all (N)" rows, lined up under the labels', () => {
+    const out = html(createElement(NavItem, { tone: 'quiet', label: 'Show all (12)', onClick: () => {} }))
+    expect(out).toContain('h-7')
+    expect(out).toContain('text-text-tertiary')
+    expect(out).toContain('pl-8.5 text-xs')
+    expect(out).not.toContain('h-(--row-h)')
+  })
+
+  it('keeps a ListRow`s control out of its button, with the meta after it', () => {
+    const out = html(
+      createElement(ListRow, {
+        title: 'Ticket',
+        label: 'Expand ticket #1',
+        expanded: false,
+        onClick: () => {},
+        control: createElement('button', { id: 'model' }),
+        meta: 'Pending',
+      }),
+    )
+    expect(out).toContain('aria-label="Expand ticket #1"')
+    expect(out).toContain('aria-expanded="false"')
+    // The control is a sibling of the row's button, never nested in it.
+    expect(out).toMatch(/<\/button><span[^>]*><button id="model"><\/button><\/span>/)
+    expect(out.indexOf('id="model"')).toBeLessThan(out.indexOf('Pending'))
+  })
+
+  it('floats a ListRow`s actions over its meta when asked, fading the meta', () => {
+    const out = html(
+      createElement(ListRow, { title: 'A', meta: '2h', actions: createElement('button', { id: 'act' }), actionsOverlay: true }),
+    )
+    expect(out).toMatch(/group-hover\/row:opacity-0[^>]*>2h</)
+    expect(out).toMatch(/absolute right-2[^>]*><button id="act"/)
+    const reserved = html(createElement(ListRow, { title: 'A', meta: '2h', actions: createElement('button', { id: 'act' }) }))
+    expect(reserved).not.toContain('absolute right-2')
+    expect(reserved).not.toContain('group-hover/row:opacity-0')
+  })
+
+  it('takes a second line, wraps prose, and renders as a list item', () => {
+    const two = html(createElement(ListRow, { title: 'runcastle', description: '/code/runcastle' }))
+    expect(two).toMatch(/text-xs text-text-tertiary">\/code\/runcastle</)
+    const prose = html(createElement(ListRow, { as: 'li', wrap: true, title: 'a long note' }))
+    expect(prose).toMatch(/^<li /)
+    expect(prose).toContain('wrap-anywhere')
+    expect(prose).not.toMatch(/"min-w-0 truncate">a long note/)
+  })
+
+  it('has a compact Disclosure that staggers in', () => {
+    const out = html(createElement(Disclosure, { size: 'sm', title: 'What the engine reported', index: 1, children: 'raw' }))
+    expect(out).toContain('min-h-6')
+    expect(out).toContain('text-xs')
+    expect(out).toContain('width="12"')
+    expect(out).not.toContain('border-t')
+    expect(out).toContain('--i:1')
+    expect(out).toContain('animate-rise-in')
+  })
+
+  it('names an Aside whose title is not a string', () => {
+    const out = html(createElement(Aside, { title: createElement('span', null, 'tabs'), label: 'Details', onClose: () => {}, children: 'x' }))
+    expect(out).toContain('aria-label="Details"')
+  })
+
+  it('lays an aside beside the page, and floats it in a narrow panel', () => {
+    const body = createElement('main', null, 'page')
+    expect(html(createElement(AsideLayout, { aside: null, children: body }))).toBe('<main>page</main>')
+    const out = html(createElement(AsideLayout, { aside: createElement('aside', null, 'a'), children: body }))
+    expect(out).toContain('@container')
+    expect(out).toContain('@max-4xl:absolute')
+    expect(out).toContain('@max-4xl:shadow-dialog')
+  })
+
+  it('is one quiet link look: accent text, underlined on hover', () => {
+    expect(LINK).toContain('text-accent-text')
+    expect(LINK).toContain('no-underline')
+    expect(LINK).toContain('hover:underline')
+  })
+
+  it('is a radio group of segments, the chosen one alone in the Tab order', () => {
+    const out = html(
+      createElement(SegmentedControl, {
+        label: 'Theme',
+        value: 'light',
+        onChange: () => {},
+        items: [
+          { value: 'dark', label: 'Dark' },
+          { value: 'light', label: 'Light' },
+          { value: 'system', label: 'System' },
+        ],
+      }),
+    )
+    expect(out).toContain('role="radiogroup" aria-label="Theme"')
+    expect(out.match(/role="radio"/g)).toHaveLength(3)
+    expect(out).toMatch(/aria-checked="true" tabindex="0"[^>]*>(?:<[^>]+>)*Light/)
+    expect(out.match(/tabindex="-1"/g)).toHaveLength(2)
+    // The raised ground slides to the chosen segment: transform only.
+    expect(out).toContain('translateX(100%)')
+    expect(out).toContain('transition-transform')
+  })
+
+  it('draws a checkbox on the tokens, native underneath', () => {
+    const out = html(createElement(Checkbox, { checked: true, onChange: () => {}, label: 'Quick fix' }))
+    expect(out).toContain('type="checkbox"')
+    expect(out).toContain('checked=""')
+    expect(out).toContain('appearance-none')
+    expect(out).toContain('checked:bg-primary')
+    expect(out).toContain('focus-visible:outline-focus-ring')
+    expect(out).toContain('Quick fix')
+    expect(out).not.toMatch(/accent-\(|accent-accent/)
+  })
+
+  it('is a named switch', () => {
+    const out = html(createElement(Switch, { checked: false, onChange: () => {}, 'aria-label': 'Sandbox' }))
+    expect(out).toContain('role="switch"')
+    expect(out).toContain('aria-checked="false"')
+    expect(out).toContain('aria-label="Sandbox"')
   })
 })

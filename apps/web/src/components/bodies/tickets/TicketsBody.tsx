@@ -127,5 +127,5 @@ function useTerminalStrip(sessionId: string | undefined, ticketCount: number) {
  */
 function TicketsTerminal({ featureId, live, ticketCount, open, onToggle }: { featureId: string; live: Parameters<typeof SessionStrip>[0]['session']; ticketCount: number; open: boolean; onToggle: (value: boolean) => void }) {
   if (open) return <div className="flex h-full shrink-0 flex-col"><SessionPanel featureId={featureId} sessions={[live]} right={<Button size="sm" variant="ghost" icon={<IconTerminal />} onClick={() => onToggle(false)}>Hide terminal</Button>} /></div>
-  return <div className="flex-none rounded-lg border border-border-subtle"><SessionStrip session={live} right={<><span className="text-xs text-text-tertiary tabular-nums">{ticketCount} tickets emitted</span><Button size="sm" variant="ghost" icon={<IconTerminal />} onClick={() => onToggle(true)}>Show terminal</Button><EndSessionButton featureId={featureId} sessionId={live.id} /></>} /></div>
+  return <div className="flex-none"><SessionStrip session={live} right={<><span className="text-xs text-text-tertiary tabular-nums">{ticketCount} tickets emitted</span><Button size="sm" variant="ghost" icon={<IconTerminal />} onClick={() => onToggle(true)}>Show terminal</Button><EndSessionButton featureId={featureId} sessionId={live.id} /></>} /></div>
 }

@@ -41,6 +41,7 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
 
   return (
     <Aside
+      label="Details"
       title={<Tabs items={TABS} value={tab} onChange={setTab} size="sm" label="Details" />}
       onClose={onClose}
       bodyClassName="px-4 py-4"

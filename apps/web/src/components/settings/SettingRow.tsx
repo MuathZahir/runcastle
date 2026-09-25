@@ -38,13 +38,6 @@ import { showsSetting, type FilterState } from './types'
  * it is a popover the project page opens — never a paragraph under the control.
  */
 
-/**
- * Truncates the selected value inside a `SelectTrigger`. `SelectValue`'s own
- * `truncate` does not reach the span Radix renders, so a long option ("Inherit
- * mine — my servers alongside runcastle's") wrapped the trigger onto two lines.
- */
-export const SELECT_TRUNCATE = '[&>span:first-child]:min-w-0 [&>span:first-child]:truncate'
-
 /** How long "Saved" stays up after a commit lands. */
 const SAVED_MS = 1400
 
@@ -445,7 +438,7 @@ function RowControl({
           onCommit(next)
         }}
       >
-        <SelectTrigger {...wiring} className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full')}>
+        <SelectTrigger {...wiring} className={cx(SELECT_FIELD, 'w-full')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

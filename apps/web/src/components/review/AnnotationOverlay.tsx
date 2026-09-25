@@ -8,8 +8,7 @@ import {
 import { fmtClock } from '@runcastle/core'
 import type { ReactNode } from 'react'
 import { Button, Dialog, DialogFooter, DialogHeader, IconButton, TextArea } from '../../ui'
-import { IconTrash, IconUndo } from '../../icons'
-import { IconArrowTool, IconPen, IconRect, IconRedo } from './stage-icons'
+import { IconArrowTool, IconPen, IconRect, IconRedo, IconTrash, IconUndo } from '../../icons'
 import {
   beginShape,
   canSave,

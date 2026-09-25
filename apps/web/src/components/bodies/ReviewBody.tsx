@@ -28,6 +28,7 @@ import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import type { StageExpand } from '../../lib/stage-expand'
+import { AsideLayout } from '../../ui'
 import { useToast } from '../../lib/toast'
 import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert } from '../review/ConflictCard'
@@ -447,8 +448,9 @@ export function ReviewBody({
   // overlay would be a box inside the page rather than the window.
   const overlay = expanded ? (
     <div data-stage-overlay="" className="fixed inset-0 z-[100] flex bg-surface animate-fade-in">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-6">{stage}</div>
-      {railOpen && <NotesRail {...workProps} onClose={() => setRailOpen(false)} />}
+      <AsideLayout aside={railOpen && <NotesRail {...workProps} onClose={() => setRailOpen(false)} />}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-6">{stage}</div>
+      </AsideLayout>
     </div>
   ) : null
 

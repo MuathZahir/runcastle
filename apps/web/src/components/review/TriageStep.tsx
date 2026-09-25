@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
-import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, EmptyState, LapSections } from '../../ui'
+import { Button, Checkbox, Dialog, DialogBody, DialogFooter, DialogHeader, EmptyState, LapSections } from '../../ui'
 import { IconCheck, IconInbox, IconX } from '../../icons'
 import { groupByLap, triageExits, triageFooter } from '../../lib/feature-ui'
 import { Lightbox } from './Lightbox'
@@ -227,16 +227,13 @@ export function TriagePanel({
                       onOpenImage={setPicture}
                       controls={
                         <>
-                          <label className="flex h-(--control-sm) cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text">
-                            <input
-                              type="checkbox"
-                              className="size-3.5 cursor-pointer accent-accent"
-                              checked={picked(row)}
-                              disabled={busy}
-                              onChange={() => toggle(itemId(row.item))}
-                            />
-                            Quick fix
-                          </label>
+                          <Checkbox
+                            label="Quick fix"
+                            checked={picked(row)}
+                            disabled={busy}
+                            onChange={() => toggle(itemId(row.item))}
+                            className="h-(--control-sm) px-1.5"
+                          />
                           <Button
                             size="sm"
                             variant="ghost"

@@ -15,6 +15,8 @@ import {
   PageSection,
   PageTopbar,
   Aside,
+  AsideLayout,
+  LINK,
   StatusDot,
   StatusLabel,
   cx,
@@ -175,20 +177,24 @@ export function PreparationWorkspace({
       )}
 
       {session ? (
-        <div className="flex min-h-0 flex-1">
+        // While a conversation is open the call-to-action is gone, so what it
+        // carries stands on its own in the aside.
+        <AsideLayout
+          aside={
+            asideOpen &&
+            findings.length > 0 && (
+              <Aside title="Established" onClose={() => setAsideOpen(false)} bodyClassName="px-4 py-3">
+                <PrepEvidence findings={findings} staleCount={staleCount} compact />
+              </Aside>
+            )
+          }
+        >
           <div className="min-h-0 min-w-0 flex-1 bg-surface-inset animate-fade-in">
             <ErrorBoundary label="terminal">
               <TerminalView sessionId={session.id} />
             </ErrorBoundary>
           </div>
-          {/* While a conversation is open the call-to-action is gone, so what
-              it carries stands on its own in the aside. */}
-          {asideOpen && findings.length > 0 && (
-            <Aside title="Established" onClose={() => setAsideOpen(false)} bodyClassName="px-4 py-3">
-              <PrepEvidence findings={findings} staleCount={staleCount} compact />
-            </Aside>
-          )}
-        </div>
+        </AsideLayout>
       ) : (
         <Page routeKey={`prepare-${projectId}`}>
           {prep.isLoading && (
@@ -398,7 +404,7 @@ function DryRunRow({
       {open &&
         (open.state === 'ready' ? (
           <a
-            className="inline-flex min-w-0 items-center gap-1 truncate font-mono text-xs text-accent-text no-underline hover:underline"
+            className={cx(LINK, 'inline-flex min-w-0 items-center gap-1 truncate font-mono text-xs')}
             href={open.url}
             target="_blank"
             rel="noreferrer"
@@ -448,8 +454,8 @@ function StaleWarning({ count }: { count: number }) {
 export function EstablishedFrame({ findings }: { findings: readonly ProjectFinding[] }) {
   return (
     <div className="flex flex-col [&>details:last-child]:border-b [&>details:last-child]:border-border-subtle">
-      {findings.map((f) => (
-        <FindingRow key={f.key} finding={f} label={PREPARED_LABEL[f.key] ?? f.key} />
+      {findings.map((f, i) => (
+        <FindingRow key={f.key} finding={f} label={PREPARED_LABEL[f.key] ?? f.key} index={i} />
       ))}
     </div>
   )
@@ -458,9 +464,12 @@ export function EstablishedFrame({ findings }: { findings: readonly ProjectFindi
 function FindingRow({
   finding: f,
   label,
+  index,
 }: {
   finding: ProjectFinding
   label: string
+  /** Position on first render, for the entrance stagger. */
+  index: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const source = findingSource(f)
@@ -468,7 +477,7 @@ function FindingRow({
   return (
     <Disclosure
       title={label}
-      className="animate-rise-in"
+      index={index}
       aside={
         <span className="flex items-center gap-4">
           {stale && <StatusLabel tone="warning">Stale</StatusLabel>}

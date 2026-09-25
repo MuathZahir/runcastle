@@ -7,8 +7,8 @@ import { transcriptBlocks } from '../../lib/feature-ui/run'
 import type { TranscriptBlock } from '../../lib/feature-ui/run'
 import { fmtTime } from '../../lib/format'
 import { agentName } from '../../lib/vocabulary'
-import { Button, DimLine, StatusLabel } from '../../ui'
-import { IconCheck, IconChevronDown, IconChevronRight, IconClaude, IconCodex } from '../../icons'
+import { Button, DimLine, Disclosure, StatusLabel } from '../../ui'
+import { IconCheck, IconChevronDown, IconClaude, IconCodex } from '../../icons'
 import { Markdown } from '../Markdown'
 
 type TranscriptChunk = RouterOutputs['run']['agentTranscript']['chunks'][number]
@@ -124,14 +124,13 @@ export function LaneTranscript({
       )}
       {!following && (
         <div className="pointer-events-none sticky bottom-0 flex justify-end">
-          <Button
-            size="sm"
-            icon={<IconChevronDown />}
-            className="pointer-events-auto bg-surface-raised! shadow-popover animate-fade-in"
-            onClick={() => setFollowing(true)}
-          >
-            Follow
-          </Button>
+          {/* A floating layer: the raised ground and shadow are the float's,
+              the button inside it is an ordinary one. */}
+          <span className="pointer-events-auto rounded-md bg-surface-raised shadow-popover animate-fade-in">
+            <Button size="sm" icon={<IconChevronDown />} onClick={() => setFollowing(true)}>
+              Follow
+            </Button>
+          </span>
         </div>
       )}
     </div>
@@ -147,31 +146,27 @@ function TranscriptLine({ block }: { block: TranscriptBlock }) {
   if (block.kind === 'text') {
     return (
       <div className="py-1 animate-rise-in">
-        {/* `!`: the renderer states its own 13px secondary face, and a
-            transcript is prose to read, not UI chrome. */}
-        <Markdown source={block.text} className="text-base! text-text!" />
+        {/* A transcript is prose to read, not UI chrome: reading size, `text`. */}
+        <Markdown source={block.text} size="base" tone="primary" />
       </div>
     )
   }
   return (
-    <details data-disclosure="" className="group/tool animate-rise-in">
-      <summary
-        className="flex h-6 min-w-0 cursor-pointer list-none items-center gap-1.5 text-xs select-none [&::-webkit-details-marker]:hidden"
-        title={block.args || undefined}
-      >
-        <IconChevronRight
-          size={12}
-          className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/tool:rotate-90"
-        />
-        <span className="shrink-0 font-medium text-text-secondary">{block.name}</span>
-        {block.args && <span className="min-w-0 truncate font-mono text-text-tertiary">{block.args}</span>}
-      </summary>
+    <Disclosure
+      size="sm"
+      animate
+      title={
+        <span className="flex min-w-0 items-center gap-1.5" title={block.args || undefined}>
+          <span className="shrink-0 font-medium text-text-secondary">{block.name}</span>
+          {block.args && <span className="min-w-0 truncate font-mono text-text-tertiary">{block.args}</span>}
+        </span>
+      }
+      bodyClassName="pb-1"
+    >
       {block.args && (
-        <pre className="m-0 mt-0.5 mb-1 ml-4.5 font-mono text-xs break-words whitespace-pre-wrap text-text-tertiary">
-          {block.args}
-        </pre>
+        <pre className="m-0 font-mono text-xs break-words whitespace-pre-wrap text-text-tertiary">{block.args}</pre>
       )}
-    </details>
+    </Disclosure>
   )
 }
 

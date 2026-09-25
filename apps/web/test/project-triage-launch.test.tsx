@@ -157,11 +157,11 @@ describe('the project workspace at rest', () => {
       screen.getByText('Talk it through').compareDocumentPosition(aside),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
 
-    const toggle = screen.getByRole('button', { name: 'Notes · 1 open' })
+    const toggle = screen.getByRole('button', { name: 'Notes (1)' })
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(toggle)
     expect(screen.queryByRole('complementary', { name: 'Notes' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Notes · 1 open' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Notes (1)' }))
     expect(screen.getByRole('complementary', { name: 'Notes' })).toBeTruthy()
   })
 

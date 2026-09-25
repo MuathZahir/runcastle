@@ -1,6 +1,8 @@
 import type { ModelEntry, TicketKind } from '@runcastle/core'
 import { modelOptionGroups, RUNTIME_LABEL } from '../../../lib/settings'
+import { cx } from '../../../ui'
 import {
+  SELECT_GHOST,
   Select,
   SelectContent,
   SelectGroup,
@@ -40,7 +42,7 @@ export function ModelMenu({
 }) {
   const entry = roster.find((model) => model.id === value)
   const reviewMismatch = ticketKind === 'review' && isImplementerOnly(entry)
-  // The closed pill says the runtime a model launches, where the row in the
+  // The closed trigger says the runtime a model launches, where the row in the
   // list says the use-case note instead — so the trigger states its own text
   // rather than echoing the row it points at. A `label` overrides it outright:
   // the bulk control names what it acts on, there being no one value across
@@ -58,7 +60,7 @@ export function ModelMenu({
         <SelectTrigger
           aria-label={name}
           disabled={disabled}
-          className="h-(--control-sm) max-w-64 rounded-md border-0 bg-transparent px-1.5 font-mono text-xs text-text-tertiary transition-colors duration-(--dur-1) ease-app enabled:hover:bg-surface-hover enabled:hover:text-text disabled:text-text-disabled aria-expanded:bg-surface-selected aria-expanded:text-text"
+          className={cx(SELECT_GHOST, 'max-w-64 font-mono')}
         >
           <SelectValue>{triggerText}</SelectValue>
         </SelectTrigger>

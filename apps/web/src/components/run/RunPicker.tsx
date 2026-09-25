@@ -2,7 +2,7 @@ import type { RunStatus } from '@runcastle/core'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
 import { IconClock } from '../../icons'
 import { RunStatusChip } from '../../ui'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { SELECT_GHOST, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 
 /** One past run, as `run.listByFeature` reports it. */
 export interface RunOption {
@@ -52,7 +52,7 @@ export function RunPicker({
       <SelectTrigger
         aria-label="Run history"
         title={shown ? fmtDateTime(shown.startedAt) : undefined}
-        className="h-(--control-sm) rounded-md px-2 text-xs text-text-secondary transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text data-[state=open]:bg-surface-selected data-[state=open]:text-text"
+        className={SELECT_GHOST}
       >
         <IconClock size={14} className="shrink-0 text-icon" />
         <SelectValue>{trigger}</SelectValue>

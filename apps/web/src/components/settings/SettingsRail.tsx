@@ -43,7 +43,7 @@ export function SettingsRail({
   return (
     <nav
       aria-label="Settings pages"
-      className="flex min-h-0 flex-col gap-0.5 border-r border-border bg-canvas px-2 pt-4 pb-3"
+      className="flex min-h-0 flex-col gap-0.5 border-r border-border-subtle bg-canvas px-2 pt-4 pb-3"
     >
       {/* A quiet label, not a heading: the dialog is already named "Settings",
           and the page beside this rail owns the one heading on screen. */}

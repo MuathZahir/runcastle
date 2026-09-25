@@ -141,11 +141,14 @@ export function SettingsDialog({
             </div>
           </div>
         </section>
-        {/* Positioned by a wrapper: the button's own `relative` would beat an
-            `absolute` passed beside it, and it would drop into the grid. */}
-        <div className="absolute top-3 right-3">
-          <IconButton label="Close" kbd="Esc" size="sm" icon={<IconX />} onClick={onClose} />
-        </div>
+        <IconButton
+          label="Close"
+          kbd="Esc"
+          size="sm"
+          icon={<IconX />}
+          onClick={onClose}
+          className="absolute top-3 right-3"
+        />
       </div>
     </Dialog>
   )

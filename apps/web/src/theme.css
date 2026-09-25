@@ -1,8 +1,8 @@
 /* runcastle web — the theme.
    THIS FILE IS THE SINGLE TOKEN SOURCE. Every design token lives in the
    `@theme` block below (dark values) and the `[data-theme="light"]` block under
-   it (the light peer); `styles.css` only aliases them (see its LEGACY ALIASES
-   header) and is deleted flow by flow. Add a token here, never there.
+   it (the light peer). `styles.css` holds only the document base (body, focus
+   ring). Add a token here, never there.
    The values are the Runcastle Design System's (`tokens.json`); the look they
    add up to is apps/web/DESIGN.md. How they are used is apps/web/STYLE.md.
 
@@ -18,10 +18,10 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source("../");
 
-/* `static` emits every token below even when no utility references it: the
-   legacy alias block reads these through `var()` from a stylesheet Tailwind
-   does not process, so it cannot see those uses and would tree-shake them.
-   It is also what makes the light theme work: a `static` (not `inline`) theme
+/* `static` emits every token below even when no utility references it:
+   `styles.css` and `lib/terminal.ts` read these through `var()` where Tailwind
+   cannot see those uses and would tree-shake them. It is also what makes the
+   light theme work: a `static` (not `inline`) theme
    compiles `bg-surface` to `var(--color-surface)`, so redefining the variable
    under `[data-theme="light"]` repaints every utility at once. */
 @theme static {
@@ -38,7 +38,10 @@
 
   /* ---- lines (1px, always) ---- */
   --color-border: #232327; /* the panel edge, section rules, input borders */
-  --color-border-subtle: #1a1a1d; /* between rows */
+  /* Between rows, and dividers inside a raised layer. Translucent, so it reads
+     on every ground — as a hex it was #1a1a1d, which vanished on
+     surface-raised (#18181b): dialog and menu dividers disappeared. */
+  --color-border-subtle: rgb(255 255 255 / 0.05);
   --color-border-strong: #34343a; /* hovered input / secondary border, Kbd */
 
   /* ---- text ---- */
@@ -82,40 +85,6 @@
   /* the veil behind a dialog — dark in both themes, lighter in light */
   --color-scrim: rgb(0 0 0 / 0.6);
 
-  /* ==== DEPRECATED ALIASES ==================================================
-     The pre-redesign palette, pointed at its closest design-system token so
-     every surface re-skins today. DO NOT USE THESE IN NEW CODE: when you touch
-     a file, replace each one with the name on the right. They are deleted once
-     `grep -rE "(bg|text|border|ring|fill|stroke)-(bg|panel|hairline|text-[234]|accent-(hi|2|ink|soft|line)|ph-|needs|warn|ok|drive)\b"`
-     over apps/web/src comes back empty. ================================== */
-  --color-bg: var(--color-canvas);
-  --color-panel: var(--color-surface);
-  --color-panel-2: var(--color-canvas);
-  --color-panel-3: var(--color-surface-hover);
-  --color-panel-inset: var(--color-surface-inset);
-  --color-hairline: var(--color-border);
-  --color-hairline-soft: var(--color-border-subtle);
-  --color-hairline-strong: var(--color-border-strong);
-  --color-text-2: var(--color-text-secondary);
-  --color-text-3: var(--color-text-tertiary);
-  --color-text-4: var(--color-text-disabled);
-  --color-accent-hi: var(--color-accent-text);
-  --color-accent-2: var(--color-accent);
-  --color-accent-ink: var(--color-on-primary);
-  --color-accent-soft: var(--color-accent-subtle);
-  --color-accent-line: var(--color-border-strong);
-  --color-ph-ideation: var(--color-phase-ideation);
-  --color-ph-spec: var(--color-phase-spec);
-  --color-ph-tickets: var(--color-phase-tickets);
-  --color-ph-implementation: var(--color-phase-implementation);
-  --color-ph-review: var(--color-phase-review);
-  --color-ph-shipped: var(--color-phase-shipped);
-  --color-needs: var(--color-warning);
-  --color-warn: var(--color-warning);
-  --color-ok: var(--color-success);
-  --color-drive: var(--color-accent);
-  /* ==== end DEPRECATED ALIASES ==== */
-
   /* ---- type: Geist + Geist Mono (Fontsource, imported in main.tsx) ---- */
   --font-sans: "Geist Variable", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
   --font-mono: "Geist Mono Variable", "Cascadia Code", ui-monospace, Consolas, monospace;
@@ -138,24 +107,20 @@
   --text-xl--letter-spacing: -0.02em;
 
   /* ---- radii: kbd/checkbox 4 · controls/rows 6 · panel/menus/dialogs 10 ·
-     dots only full. `pill` is a deprecated alias of `full`. ---- */
+     dots only full. ---- */
   --radius-*: initial;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
   --radius-full: 9999px;
-  --radius-pill: var(--radius-full);
 
   /* ---- elevation: floating layers only, content is flat ----
      Each is a `var()` onto an `--elevation-*` pair defined per theme below:
      Tailwind inlines a literal shadow into the utility at build time, so a
-     literal here could not follow the theme switch. `menu` and `overlay` are
-     deprecated aliases. */
+     literal here could not follow the theme switch. */
   --shadow-*: initial;
   --shadow-popover: var(--elevation-popover);
   --shadow-dialog: var(--elevation-dialog);
-  --shadow-menu: var(--elevation-popover);
-  --shadow-overlay: var(--elevation-dialog);
 
   /* ---- motion (DESIGN.md §Motion) ---- Suffixed `-app` so they sit beside
      Tailwind's own `ease-out` rather than redefining what that utility means. */
@@ -214,7 +179,7 @@
 
 /* ---- the light theme: a full peer. `lib/theme.ts` sets `data-theme` on
    <html> before first paint. Only the base tokens are restated — the phase,
-   focus and deprecated names are `var()`s onto these, so they follow. ---- */
+   and focus names are `var()`s onto these, so they follow. ---- */
 :root[data-theme="light"] {
   color-scheme: light;
   --color-canvas: #f7f7f8;
@@ -224,7 +189,7 @@
   --color-surface-selected: #eaeaed;
   --color-surface-inset: #f7f7f8;
   --color-border: #e4e4e7;
-  --color-border-subtle: #efeff1;
+  --color-border-subtle: rgb(24 24 27 / 0.07);
   --color-border-strong: #d1d1d6;
   --color-text: #18181b;
   --color-text-secondary: #52525b;

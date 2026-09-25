@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { fmtClock, type ReviewFinding, type TestNote } from '@runcastle/core'
-import { cx, FindingSeverityChip, NoteAuthorChip, NoteThumbnail } from '../../ui'
-import { IconChevronRight } from '../../icons'
+import { cx, Disclosure, FindingSeverityChip, LINK, NoteAuthorChip, NoteThumbnail } from '../../ui'
 import { findingOpenReason, headline } from '../../lib/feature-ui'
 import { findingStanding, type FindingStanding } from '../../lib/feature-ui/review'
 import { timestampMode } from '../../lib/walkthrough'
@@ -59,28 +58,19 @@ export function rowElementId(id: string): string {
 
 /**
  * What a defect wrote, one click away — the walls decision 5(4) demoted. A
- * compact text-level disclosure (the `Disclosure` primitive's 40px row is for
- * page sections, not for a line under a row's title).
+ * compact text-level `Disclosure` (`size="sm"`): its headline wraps, the rest
+ * opens beneath it.
  */
 function FindingDetail({ finding }: { finding: ReviewFinding }) {
   const { head, rest } = headline(finding.detail)
   const location = finding.location.trim()
   return (
-    <details className="group/detail min-w-0" data-disclosure="">
-      <summary className="flex cursor-pointer list-none items-start gap-1 text-sm text-text-tertiary transition-colors duration-(--dur-1) ease-app hover:text-text-secondary [&::-webkit-details-marker]:hidden">
-        <IconChevronRight
-          size={12}
-          className="mt-1 shrink-0 transition-transform duration-(--dur-2) ease-app group-open/detail:rotate-90"
-        />
-        <span className="min-w-0">{head}</span>
-      </summary>
-      <div className="mt-1.5 flex flex-col gap-1 pl-4 text-sm text-text-secondary">
-        {rest && <p className="m-0 text-pretty">{rest}</p>}
-        {location && <div className="font-mono text-xs text-text-tertiary">{location}</div>}
-        <div className="font-mono text-xs text-text-tertiary">{finding.citation}</div>
-        {finding.reproStep && <div className="font-mono text-xs text-text-tertiary">{finding.reproStep}</div>}
-      </div>
-    </details>
+    <Disclosure size="sm" title={head} bodyClassName="flex flex-col gap-1">
+      {rest && <p className="m-0 text-pretty">{rest}</p>}
+      {location && <div className="font-mono text-xs text-text-tertiary">{location}</div>}
+      <div className="font-mono text-xs text-text-tertiary">{finding.citation}</div>
+      {finding.reproStep && <div className="font-mono text-xs text-text-tertiary">{finding.reproStep}</div>}
+    </Disclosure>
   )
 }
 
@@ -206,7 +196,7 @@ export function NoteRow({
             ) : (
               <button
                 type="button"
-                className="cursor-pointer text-phase-implementation underline decoration-dotted underline-offset-2 hover:text-text"
+                className={LINK}
                 onClick={() => onViewLane(fixing.id)}
               >
                 being fixed in the running burn · lane #{fixing.seq}

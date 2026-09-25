@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import type { FeatureFull } from '../../lib/api'
 import { dockedChat, sessionActive } from '../../lib/feature-ui'
 import { IconMessage, IconPlay, IconRefresh } from '../../icons'
@@ -7,42 +6,6 @@ import { ConversationTranscript } from '../ConversationTranscript'
 import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
-
-/**
- * The feature body with the page's one aside beside it (chat or details), or
- * the body exactly as it was.
- *
- * Closed, this renders nothing of its own — not a wrapper, not a stub, not a
- * collapsed rail — so a page with the aside away is the markup it would have
- * without one. That is the whole of "collapsed, it costs nothing".
- */
-export function ChatDock({
-  open,
-  panel,
-  children,
-}: {
-  open: boolean
-  /** The aside itself, built by the workspace that knows the feature. */
-  panel: ReactNode
-  children: ReactNode
-}) {
-  if (!open) return <>{children}</>
-  // The body is given its own column rather than dropped straight into the row:
-  // `min-w-0` is what stops a wide ledger or a long branch name from pushing
-  // the aside off the edge.
-  // In a wide panel the aside takes its own column beside the page; in a
-  // narrow one (under 56rem — a 1024px window with the sidebar open) pushing
-  // would leave the page a sliver, so it floats over the page's right edge
-  // instead, as a raised layer.
-  return (
-    <div className="@container relative flex min-h-0 flex-1 overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
-      <div className="flex h-full shrink-0 @max-4xl:absolute @max-4xl:inset-y-0 @max-4xl:right-0 @max-4xl:z-20 @max-4xl:shadow-dialog">
-        {panel}
-      </div>
-    </div>
-  )
-}
 
 /**
  * The feature's one conversation, as the page's aside (decision 16).
@@ -77,6 +40,7 @@ export function ChatPanel({
 
   return (
     <Aside
+      label="Chat"
       title={
         <span className="flex min-w-0 items-center gap-2">
           {live && chat && <SessionStatusDot status={chat.status} />}

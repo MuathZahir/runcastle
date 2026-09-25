@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
 import { IconButton, StatusLabel } from '../../ui'
-import { IconCollapse, IconExpand } from './stage-icons'
+import { IconCollapse, IconExpand } from '../../icons'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
 import type { ReviewArtifacts } from '../../lib/reviews'
 import { useStageExpandKeys, type StageExpand } from '../../lib/stage-expand'

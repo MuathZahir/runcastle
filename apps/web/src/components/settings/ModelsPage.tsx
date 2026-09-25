@@ -19,7 +19,7 @@ import { SELECT_FIELD, Select, SelectContent, SelectTrigger, SelectValue } from 
 import { IconRefresh } from '../../icons'
 import { useHighlight } from './highlight'
 import { ModelOptions, Refusal, RosterTable, RuntimeIcon } from './RosterTable'
-import { SELECT_TRUNCATE, SaveMark, SettingLine, SettingSection } from './SettingRow'
+import { SaveMark, SettingLine, SettingSection } from './SettingRow'
 import { StepTable } from './StepTable'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -272,7 +272,7 @@ function DefaultModelRow({
       aside={writes.saved === DEFAULT_CELL && <SaveMark />}
       control={
         <Select value={value} onValueChange={(next) => writes.save(DEFAULT_CELL, 'model', next)}>
-          <SelectTrigger id="settings-default-model" className={cx(SELECT_FIELD, SELECT_TRUNCATE, 'w-full')}>
+          <SelectTrigger id="settings-default-model" className={cx(SELECT_FIELD, 'w-full')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

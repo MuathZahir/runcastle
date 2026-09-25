@@ -3,7 +3,6 @@ import type { RunStatus } from '@runcastle/core'
 import { Button, MetaLine, RunStatusChip } from '../../ui'
 import { IconArrowLeft, IconClock, IconCube, IconStop } from '../../icons'
 import { ConfirmDialog } from './ConfirmDialog'
-import { DANGER_GHOST } from './actions'
 import { RunPicker } from './RunPicker'
 import type { RunOption } from './RunPicker'
 
@@ -79,12 +78,11 @@ export function RunHeader({
         )}
         {onCancelRun && (
           <Button
-            variant="ghost"
+            variant="danger-ghost"
             size="sm"
             icon={<IconStop />}
             loading={cancelling}
             disabled={busy}
-            className={DANGER_GHOST}
             onClick={() => setConfirming(true)}
           >
             {cancelling ? 'Stopping…' : 'Cancel run'}

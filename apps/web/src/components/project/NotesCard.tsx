@@ -7,7 +7,7 @@ import { useLivePoll } from '../../lib/live'
 import { pathFor } from '../../lib/routes'
 import { useToast } from '../../lib/toast'
 import { IconCheck, IconInbox, IconPencil, IconSparkle, IconTrash, IconUndo } from '../../icons'
-import { Button, Disclosure, EmptyState, IconButton, NoteThumbnail, TEXT_INPUT } from '../../ui'
+import { Button, Disclosure, EmptyState, IconButton, LINK, NoteThumbnail, TEXT_INPUT } from '../../ui'
 import { Lightbox } from '../review/Lightbox'
 import { DriveTag, NoteDot, NoteRow } from './NoteRow'
 
@@ -165,7 +165,7 @@ export function NotesCard({
                     size="sm"
                     label="Delete"
                     icon={<IconTrash />}
-                    className="enabled:hover:text-danger"
+                    variant="danger-ghost"
                     disabled={busy}
                     onClick={() => remove.mutate({ noteId: note.id })}
                   />
@@ -261,7 +261,7 @@ function FeatureLink({
   if (!feature) return null
   return (
     <a
-      className="text-accent-text underline decoration-dotted underline-offset-2 hover:text-accent"
+      className={LINK}
       href={pathFor({ kind: 'feature', projectId, featureSlug: feature.slug })}
     >
       {feature.title}

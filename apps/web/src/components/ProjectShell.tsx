@@ -219,7 +219,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   const body =
     view === 'create' ? (
-      <section className="workspace">
+      <section className="relative flex min-h-0 min-w-0 flex-col">
         <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={ws.select} />
       </section>
     ) : view === 'prepare' ? (

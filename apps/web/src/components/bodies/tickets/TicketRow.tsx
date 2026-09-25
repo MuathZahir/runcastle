@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import type { ModelEntry, Ticket } from '@runcastle/core'
 import { shortSha } from '../../../lib/format'
 import { ticketModelChip } from '../../../lib/feature-ui'
-import { Button, TicketKindChip, TicketStatusChip, cx } from '../../../ui'
+import { Button, ListRow, TicketKindChip, TicketStatusChip, cx } from '../../../ui'
 import { IconChevronRight, IconPencil, IconX } from '../../../icons'
 import { Markdown } from '../../Markdown'
 import { MessageWithSettingsLink } from '../../settings/MessageWithSettingsLink'
@@ -22,10 +22,9 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * One ticket in the ledger, as a 40px list row (the `ListRow` look, built
- * here because its trailing model menu is a control of its own and cannot sit
- * inside the row's button): chevron, `#seq`, the title, its kind, what it
- * waits on — then the model, quiet, and the status as the trailing word.
+ * One ticket in the ledger, as a 40px `ListRow`: chevron, `#seq`, the title,
+ * its kind, what it waits on — then the model (the row's `control`, beside its
+ * button rather than in it), quiet, and the status as the trailing word.
  * Opened, it reads as a short document: goal, context, acceptance, seams,
  * commits, digest.
  */
@@ -56,51 +55,54 @@ export function TicketRow({
   const cancelled = ticket.status === 'cancelled'
 
   return (
-    <article data-list-row="" className="group/row">
-      <div
-        className={cx(
-          'flex min-h-10 min-w-0 items-center gap-3 rounded-md pr-2 transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover',
-          open && 'bg-surface-hover/50',
-        )}
-      >
-        <button
-          type="button"
-          aria-label={`${open ? 'Collapse' : 'Expand'} ticket #${ticket.seq}`}
-          aria-expanded={open}
-          className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md bg-transparent pl-3 text-left text-sm text-text"
-          onClick={() => setOpen((value) => !value)}
-        >
-          <IconChevronRight
-            size={12}
-            className={cx(
-              'shrink-0 text-icon transition-transform duration-(--dur-2) ease-app',
-              open && 'rotate-90',
-            )}
-          />
-          <span className="w-7 shrink-0 text-xs text-text-tertiary tabular-nums">#{ticket.seq}</span>
-          <span className={cx('min-w-0 truncate', cancelled ? 'text-text-tertiary line-through' : 'text-text')}>
-            {ticket.title}
+    <article data-list-row="">
+      <ListRow
+        label={`${open ? 'Collapse' : 'Expand'} ticket #${ticket.seq}`}
+        expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={cx(open && 'bg-surface-hover/50')}
+        leading={
+          // Wrapped, so the row's 16px glyph rule leaves the 12px chevron its size.
+          <span className="inline-flex">
+            <IconChevronRight
+              size={12}
+              className={cx('transition-transform duration-(--dur-2) ease-app', open && 'rotate-90')}
+            />
           </span>
-          <TicketKindChip kind={ticket.kind} />
-          {ticket.blockedBy.length > 0 && (
-            <span className="shrink-0 text-xs text-text-tertiary" title="Runs after these tickets land">
-              after #{ticket.blockedBy.join(', #')}
+        }
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="w-7 shrink-0 text-xs text-text-tertiary tabular-nums">#{ticket.seq}</span>
+            <span className={cx('min-w-0 truncate', cancelled ? 'text-text-tertiary line-through' : 'text-text')}>
+              {ticket.title}
             </span>
-          )}
-        </button>
-        {editable && !readonly && onModel ? (
-          <ModelMenu value={ticket.model ?? ''} roster={roster} onChange={(model) => onModel(ticket.id, model)} />
-        ) : (
-          assigned && (
-            <span className="max-w-56 shrink truncate font-mono text-xs text-text-tertiary">
-              {assigned.id} · {assigned.runtimeLabel}
-            </span>
+            <TicketKindChip kind={ticket.kind} />
+            {ticket.blockedBy.length > 0 && (
+              <span className="shrink-0 text-xs text-text-tertiary" title="Runs after these tickets land">
+                after #{ticket.blockedBy.join(', #')}
+              </span>
+            )}
+          </span>
+        }
+        // The model picker is a control of its own: beside the row's button,
+        // never inside it.
+        control={
+          editable && !readonly && onModel ? (
+            <ModelMenu value={ticket.model ?? ''} roster={roster} onChange={(model) => onModel(ticket.id, model)} />
+          ) : (
+            assigned && (
+              <span className="max-w-56 shrink truncate font-mono text-xs text-text-tertiary">
+                {assigned.id} · {assigned.runtimeLabel}
+              </span>
+            )
           )
-        )}
-        <span className="flex w-22 shrink-0 justify-end">
-          <TicketStatusChip status={ticket.status} />
-        </span>
-      </div>
+        }
+        meta={
+          <span className="flex w-20 justify-end">
+            <TicketStatusChip status={ticket.status} />
+          </span>
+        }
+      />
 
       {open && editing && onEdit && (
         <TicketEditor

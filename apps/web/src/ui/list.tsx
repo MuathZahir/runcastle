@@ -37,16 +37,19 @@ export function SectionLabel({
     >
       <span className="truncate">{children}</span>
       {count !== undefined && count !== null && (
-        <span className="font-normal text-text-tertiary/80 tabular-nums">{count}</span>
+        <span className="font-normal text-text-tertiary tabular-nums">{count}</span>
       )}
       {action && <span className="ml-auto flex shrink-0 items-center">{action}</span>}
     </div>
   )
 }
 
-/** The fixed 16px square a leading glyph sits in, so dots and icons line up. */
+/**
+ * The 16px square a leading glyph sits in, so dots and icons line up. A
+ * minimum, not a fixed size: a thumbnail (a note's picture) takes its own.
+ */
 function Leading({ children }: { children: ReactNode }) {
-  return <span className="inline-flex size-4 shrink-0 items-center justify-center">{children}</span>
+  return <span className="inline-flex min-h-4 min-w-4 shrink-0 items-center justify-center">{children}</span>
 }
 
 /** The clickable part of a row: an `<a>` with `href`, else a `<button>`. */
@@ -55,6 +58,8 @@ function RowControl({
   onClick,
   current,
   title,
+  label,
+  expanded,
   className,
   children,
 }: {
@@ -62,6 +67,10 @@ function RowControl({
   onClick?: MouseEventHandler<HTMLElement>
   current?: boolean
   title?: string
+  /** An accessible name that replaces the row's own text. */
+  label?: string
+  /** A row that opens something beneath it: `aria-expanded`. */
+  expanded?: boolean
   className: string
   children: ReactNode
 }) {
@@ -71,6 +80,7 @@ function RowControl({
         href={href}
         onClick={onClick}
         aria-current={current ? 'page' : undefined}
+        aria-label={label}
         title={title}
         className={cx(className, 'no-underline')}
       >
@@ -79,7 +89,15 @@ function RowControl({
     )
   }
   return (
-    <button type="button" onClick={onClick} aria-current={current ? 'page' : undefined} title={title} className={className}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={current ? 'page' : undefined}
+      aria-label={label}
+      aria-expanded={expanded}
+      title={title}
+      className={className}
+    >
       {children}
     </button>
   )
@@ -98,7 +116,10 @@ function RowControl({
  * - `href` / `onClick` — renders an `<a>` or a `<button>`.
  * - `actions` — a trailing slot (usually an `IconButton size="sm"` "…")
  *   revealed on hover or keyboard focus, over the meta. Never visible at rest.
- * - `onContextMenu` — the row's menu by right-click.
+ * - `onContextMenu` — the row's menu by right-click; `onDoubleClick` — a
+ *   second gesture on the row (the folder picker: enter *and* pick a repo).
+ * - `tone="quiet"` — a 28px `text-xs text-tertiary` row with no glyph, its
+ *   words lined up with the labels above: "Show all (N)", "Show archived".
  */
 export function NavItem({
   icon,
@@ -111,6 +132,8 @@ export function NavItem({
   onClick,
   actions,
   onContextMenu,
+  onDoubleClick,
+  tone = 'default',
   title,
   className,
 }: {
@@ -124,9 +147,12 @@ export function NavItem({
   onClick?: MouseEventHandler<HTMLElement>
   actions?: ReactNode
   onContextMenu?: MouseEventHandler<HTMLDivElement>
+  onDoubleClick?: MouseEventHandler<HTMLDivElement>
+  tone?: 'default' | 'quiet'
   title?: string
   className?: string
 }) {
+  const quiet = tone === 'quiet'
   const glyph = phase ? (
     <PhaseIcon phase={phase} />
   ) : icon ? (
@@ -137,10 +163,18 @@ export function NavItem({
   return (
     <div
       onContextMenu={onContextMenu}
+      onDoubleClick={onDoubleClick}
       className={cx(
-        'group/nav relative flex h-(--row-h) min-w-0 shrink-0 items-center rounded-md',
+        // `relative` holds the absolutely placed actions; the row is never
+        // itself positioned by a caller (it lives in a flex column).
+        'group/nav relative flex min-w-0 shrink-0 items-center rounded-md',
         'transition-colors duration-(--dur-1) ease-app',
-        active ? 'bg-surface-selected text-text' : 'text-text-secondary hover:bg-surface-hover hover:text-text',
+        quiet ? 'h-7' : 'h-(--row-h)',
+        active
+          ? 'bg-surface-selected text-text'
+          : quiet
+            ? 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
+            : 'text-text-secondary hover:bg-surface-hover hover:text-text',
         className,
       )}
     >
@@ -150,7 +184,10 @@ export function NavItem({
         current={active}
         title={title ?? (typeof label === 'string' ? label : undefined)}
         className={cx(
-          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md pr-3 pl-2.5 text-left text-sm text-inherit',
+          'flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md pr-3 text-left text-inherit',
+          // Quiet rows carry no glyph: the words start where a label does
+          // after a 16px icon (10 + 16 + 8).
+          quiet ? 'pl-8.5 text-xs' : 'pl-2.5 text-sm',
           active && 'font-medium',
         )}
       >
@@ -185,71 +222,122 @@ export function NavItem({
 
 /**
  * A 40px list row in the content panel: a leading glyph, a one-line title,
- * trailing meta — conversations, tickets, laps, runs.
+ * trailing meta — conversations, tickets, laps, runs, projects, notes.
  *
- * - `leading` — the glyph (a `PhaseIcon`, a `StatusDot`, an `Icon*`); it sits
- *   in a 16px square in the `icon` colour.
- * - `title` — one line, truncated. `subtitle` — optional second word run,
- *   inline after it in `text-tertiary`.
- * - `meta` — trailing timestamp or count, `text-xs text-tertiary`, tabular.
+ * - `leading` — the glyph (a `PhaseIcon`, a `StatusDot`, an `Icon*`, a
+ *   thumbnail); it sits in a 16px square in the `icon` colour.
+ * - `title` — one line, truncated; `wrap` lets it wrap instead (a note is
+ *   prose). `subtitle` — an inline second word run after it in
+ *   `text-tertiary`. `description` — a second line beneath the title (12px
+ *   `text-tertiary`, truncated): a repo path, a drive tag.
+ * - `meta` — trailing timestamp, count or status word, `text-xs text-tertiary`.
  * - `onClick` / `href` — makes the row a button / link; without either it is
- *   static.
- * - `actions` — trailing controls, revealed on hover / focus.
+ *   static. `tooltip` is the hover title ("Open runcastle"); `label` replaces
+ *   the row's text as its accessible name;
+ *   `expanded` marks a row that opens something beneath it (`aria-expanded`).
+ * - `control` — an interactive thing that lives *in* the row but not in its
+ *   click target (a model picker): rendered beside the button, never nested
+ *   in it. With a `control`, the `meta` follows it, outside the button too.
+ * - `actions` — trailing controls revealed on hover / focus. By default they
+ *   reserve their width; `actionsOverlay` floats them over the `meta` instead
+ *   (which fades out while they show), so a row keeps its meta column tight.
  * - `active` — the current row (`surface-selected`).
  * - `index` — its position on first render: the first 8 rows rise in with a
  *   20ms stagger. Pass it only on the initial list, never on rows that arrive
  *   by polling (those can pass `animate` alone).
+ * - `as` — the root element (`div`, or `li` inside a `ul`, or `article`).
  */
 export function ListRow({
   leading,
   title,
   subtitle,
+  description,
+  wrap = false,
   meta,
   onClick,
   href,
+  tooltip,
+  label,
+  expanded,
+  control,
   actions,
+  actionsOverlay = false,
   active = false,
   index,
   animate = false,
+  as: Root = 'div',
   className,
 }: {
   leading?: ReactNode
   title: ReactNode
   subtitle?: ReactNode
+  description?: ReactNode
+  wrap?: boolean
   meta?: ReactNode
   onClick?: MouseEventHandler<HTMLElement>
   href?: string
+  tooltip?: string
+  label?: string
+  expanded?: boolean
+  control?: ReactNode
   actions?: ReactNode
+  actionsOverlay?: boolean
   active?: boolean
   index?: number
   animate?: boolean
+  as?: 'div' | 'li' | 'article'
   className?: string
 }) {
   const interactive = onClick !== undefined || href !== undefined
   const staggered = index !== undefined && index < 8
+  const multiline = wrap || description !== undefined
+  const hasMeta = meta !== undefined && meta !== null
+  const overlay = actionsOverlay && !!actions
+  const metaNode = hasMeta && (
+    <span
+      className={cx(
+        'shrink-0 text-xs text-text-tertiary tabular-nums',
+        wrap && 'mt-0.5 self-start',
+        overlay && 'transition-opacity duration-(--dur-1) group-focus-within/row:opacity-0 group-hover/row:opacity-0',
+      )}
+    >
+      {meta}
+    </span>
+  )
   const body = (
     <>
       {leading && (
-        <Leading>
-          <span className="inline-flex text-icon [&>svg]:size-4">{leading}</span>
-        </Leading>
+        <span className={cx('inline-flex shrink-0', multiline && 'mt-0.5 self-start')}>
+          <Leading>
+            <span className="inline-flex text-icon [&>svg]:size-4">{leading}</span>
+          </Leading>
+        </span>
       )}
-      <span className="min-w-0 flex-1 truncate">
-        {title}
-        {subtitle && <span className="ml-2 text-text-tertiary">{subtitle}</span>}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={wrap ? 'min-w-0 text-pretty wrap-anywhere' : 'min-w-0 truncate'}>
+          {title}
+          {subtitle && <span className="ml-2 text-text-tertiary">{subtitle}</span>}
+        </span>
+        {description !== undefined && (
+          <span className="min-w-0 truncate text-xs text-text-tertiary">{description}</span>
+        )}
       </span>
-      {meta !== undefined && meta !== null && (
-        <span className="shrink-0 text-xs text-text-tertiary tabular-nums">{meta}</span>
-      )}
+      {!control && metaNode}
     </>
   )
-  const inner = 'flex min-h-10 min-w-0 flex-1 items-center gap-3 rounded-md px-3 text-left text-sm text-text'
+  const inner = cx(
+    'flex min-h-10 min-w-0 flex-1 gap-3 rounded-md px-3 text-left text-sm text-text',
+    wrap ? 'items-start' : 'items-center',
+    multiline && 'py-2',
+  )
   return (
-    <div
+    <Root
       data-list-row=""
       style={staggered ? ({ '--i': index } as CSSProperties) : undefined}
       className={cx(
+        // `relative` anchors the overlaid actions.
         'group/row relative flex min-w-0 items-center rounded-md transition-colors duration-(--dur-1) ease-app',
+        'list-none',
         active ? 'bg-surface-selected' : interactive && 'hover:bg-surface-hover',
         (staggered || animate) && 'animate-rise-in',
         staggered && '[animation-delay:calc(var(--i)*20ms)]',
@@ -257,18 +345,36 @@ export function ListRow({
       )}
     >
       {interactive ? (
-        <RowControl href={href} onClick={onClick} current={active} className={cx(inner, 'cursor-pointer')}>
+        <RowControl
+          href={href}
+          onClick={onClick}
+          current={active}
+          title={tooltip}
+          label={label}
+          expanded={expanded}
+          className={cx(inner, 'cursor-pointer')}
+        >
           {body}
         </RowControl>
       ) : (
         <div className={inner}>{body}</div>
       )}
+      {control && <span className="flex min-w-0 shrink items-center">{control}</span>}
+      {control && hasMeta && <span className="flex shrink-0 items-center pr-3 pl-3">{metaNode}</span>}
       {actions && (
-        <span className="mr-2 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-(--dur-1) group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+        <span
+          className={cx(
+            'flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-(--dur-1)',
+            'group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-[[aria-expanded=true]]:opacity-100',
+            overlay
+              ? cx('absolute right-2 rounded-md bg-inherit pl-1', wrap ? 'top-1.5' : 'top-1/2 -translate-y-1/2')
+              : 'mr-2',
+          )}
+        >
           {actions}
         </span>
       )}
-    </div>
+    </Root>
   )
 }
 

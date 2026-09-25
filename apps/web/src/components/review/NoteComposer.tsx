@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react'
 import type { TestNote } from '@runcastle/core'
 import { Button, Dialog, DialogFooter, DialogHeader, IconButton, Kbd, TextArea } from '../../ui'
-import { IconPlus, IconX } from '../../icons'
+import { IconImage, IconPlus, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import { imageOnClipboard, toPngBlob, uploadScreenshot } from '../../lib/reviews'
 import { saveAnnotatedNote } from '../../lib/walkthrough'
 import { useToast } from '../../lib/toast'
-import { IconImage } from './stage-icons'
 
 /**
  * Writing a note, and changing one (decisions 7a, 24d, 25d–g).

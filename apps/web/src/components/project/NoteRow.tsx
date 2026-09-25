@@ -1,19 +1,19 @@
 import type { ReactNode } from 'react'
 import type { ProjectNote } from '@runcastle/core'
 import { driveTag } from '../../lib/project-drive'
-import { cx } from '../../ui'
+import { ListRow, cx } from '../../ui'
 
 /**
  * One note: picture (or its absence), the text, and — at rest — the time. The
- * verbs sit beside the time and take its place under the pointer or the
+ * verbs float over the time and take its place under the pointer or the
  * keyboard's focus; they are always in the tab order, so focusing one is what
  * reveals it.
  *
- * It is `ListRow`'s anatomy (leading · title · trailing meta, hover ground,
- * `surface-hover`) with one difference ListRow does not offer: a note is prose,
- * so its text wraps instead of truncating. Shared by the two lists of project
- * notes — the Notes aside on the project page and the project drive's — so a
- * note reads the same in both.
+ * A `ListRow` (`as="li"`, `wrap` — a note is prose, so its text wraps instead
+ * of truncating — and `actionsOverlay`), with the hover ground a static row
+ * does not otherwise take, so the verbs read as this note's. Shared by the two
+ * lists of project notes — the Notes aside on the project page and the project
+ * drive's — so a note reads the same in both.
  */
 export function NoteRow({
   lead,
@@ -29,34 +29,17 @@ export function NoteRow({
   children: ReactNode
 }) {
   return (
-    <li
-      className={cx(
-        'group grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-md px-3 py-2',
-        'transition-colors duration-(--dur-1) ease-app focus-within:bg-surface-hover hover:bg-surface-hover',
-        'animate-rise-in',
-        className,
-      )}
-    >
-      <div className="flex min-h-6 items-center">{lead}</div>
-      <div className="flex min-h-6 min-w-0 flex-col justify-center text-sm wrap-anywhere">{children}</div>
-      <div className="flex min-h-6 items-center gap-0.5">
-        {when && (
-          <span
-            className={cx(
-              'pl-1 text-xs text-text-tertiary tabular-nums',
-              actions ? 'group-focus-within:hidden group-hover:hidden' : undefined,
-            )}
-          >
-            {when}
-          </span>
-        )}
-        {actions && (
-          <span className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur-1) group-focus-within:opacity-100 group-hover:opacity-100">
-            {actions}
-          </span>
-        )}
-      </div>
-    </li>
+    <ListRow
+      as="li"
+      animate
+      wrap
+      leading={lead}
+      title={<span className="flex flex-col">{children}</span>}
+      meta={when}
+      actions={actions}
+      actionsOverlay
+      className={cx('focus-within:bg-surface-hover hover:bg-surface-hover', className)}
+    />
   )
 }
 

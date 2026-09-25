@@ -102,7 +102,8 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 - Text: `text` primary, `text-secondary` descriptions, `text-tertiary` metadata.
   `text-disabled` is decorative only.
 - Lines: `border` for the panel edge and section rules, `border-subtle` between
-  rows. Never border + fill on the same idle element.
+  rows and for dividers inside floating layers (it is translucent, so it reads
+  on `surface-raised` too). Never border + fill on the same idle element.
 - `accent` (blue) is spent only on focus, selection, links, *live* and the review
   phase. Never a button fill, never a gradient, never a glow. Violet is retired.
 - `success` / `warning` / `danger` appear as 6px dots, 16px glyphs or short words.
@@ -138,26 +139,29 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 
 | Primitive | Contract |
 |---|---|
-| `Button` | `variant` primary · secondary (default) · ghost · danger; `size` sm 24 · md 28 · lg 32; `icon` (leading), `kbd` hint. Icon-only ⇒ use `IconButton`. |
-| `IconButton` | Square ghost button, one icon, required `label` (tooltip + aria-label). |
+| `Button` | `variant` primary · secondary (default) · ghost · danger · danger-ghost (Stop / Cancel / End in a row of ghosts); `size` sm 24 · md 28 · lg 32; `icon` (leading), `kbd` hint. Icon-only ⇒ use `IconButton`. |
+| `IconButton` | Square ghost button, one icon, required `label` (tooltip + aria-label). `href` makes it a link ("Open app"); `badge` a small neutral count. |
+| Link (`LINK`) | `accent-text`, no underline at rest, underline on hover — one look for every link in text. |
 | `Kbd` | One key; `text-tertiary`, hairline. Only in menus, search, beside the primary. |
 | `Icon*` / `PhaseIcon` | 16px, 1.5 stroke, `currentColor`, default `text-icon`; `text-text` on hover/selected. PhaseIcon: draft dashed ring · ideation ring · spec ¼ · tickets ½ · implementation ¾ · review ring+dot · shipped filled check. |
 | `StatusDot` | 6px dot; tone success · warning · danger · accent · live (breathing) · neutral. |
 | `StatusLabel` | dot/glyph + word in `text-secondary` — what every former "chip" becomes. |
 | `SectionLabel` | 12px medium sentence-case group heading + count + one trailing action. |
 | `NavItem` | 32px sidebar row: icon/PhaseIcon, one-line truncated label, trailing meta; selected = `surface-selected` + `text`, nothing else. Row menu on hover "…" / right-click. |
-| `ListRow` | 40px list row: glyph, one-line title, trailing meta. |
+| `ListRow` | 40px list row: glyph, one-line title (or wrapping prose), optional second line, trailing meta; hover actions float over the meta; a control (a model picker) sits beside the row's button, never inside it. |
 | `PropertyList` | Two quiet columns: `text-tertiary` keys, `text` values with a leading glyph. |
 | `MetaLine` | One line of small inline facts separated by space. |
 | `PhaseStepper` | Inline: done = check glyph, current = its glyph in `text`, future = dashed ring; past step being viewed = `surface-selected`. |
 | `Tabs` | Text tabs; selected = `surface-selected` fill. No underline, no box. |
 | `TextField` / `Input` | `surface-inset`, hairline, focus → accent border + ring. |
-| `Disclosure` | Chevron + title + aside; closed by default; animated open. |
+| `Disclosure` | Chevron + title + aside; closed by default; animated open. `sm`: a compact 12px line for detail under something else. |
+| `SegmentedControl` | Inset track, raised thumb that slides; for 2–4 values that should all be visible (Theme). |
+| `Checkbox` / `Switch` | Hairline box / track on the inset ground; on = `primary` fill. Focus ring outside. |
 | `EmptyState` | Tertiary icon, title, hint, ≤1 action; no frame. |
 | `Menu` / `DropdownMenu` / `Select` / `Combobox` / `Popover` | `surface-raised`, `rounded-lg`, `shadow-popover`, 30px items with icons + kbd. |
 | `Dialog` | `surface-raised`, `rounded-lg`, `shadow-dialog`; title `text-lg`, footer right-aligned with one primary. |
 | `Tooltip` | Small `surface-raised` label after 400ms hover; for every IconButton. |
-| `PageTopbar`, `Page`, `PageHeader`, `Section`, `Aside` | The frame pieces above, so every surface lays out identically. |
+| `PageTopbar`, `Page`, `PageHeader`, `Section`, `Aside`, `AsideLayout` | The frame pieces above, so every surface lays out identically. `AsideLayout` floats the aside over the page when the panel is too narrow to share. |
 
 ## Motion
 

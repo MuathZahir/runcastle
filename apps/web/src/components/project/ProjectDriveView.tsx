@@ -13,7 +13,7 @@ import {
   IconTerminal,
   IconUser,
 } from '../../icons'
-import { Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
+import { AsideLayout, Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
 import { DrivePanel } from '../review/DrivePanel'
 import { DriveFailureReport, DriveFooter } from '../review/drive-parts'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
@@ -98,7 +98,17 @@ export function ProjectDriveView({
           </>
         }
       />
-      <div className="flex min-h-0 flex-1">
+      <AsideLayout
+        aside={
+          notesOpen && (
+            <ProjectNotesRail
+              projectId={projectId}
+              startedAt={drive.startedAt}
+              onClose={() => setNotesOpen(false)}
+            />
+          )
+        }
+      >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4 animate-fade-in">
           {/* The branch is named up front because the checkout is driven as it
               is (decision 3): a checkout sitting somewhere other than main is
@@ -126,15 +136,7 @@ export function ProjectDriveView({
           />
           <DriveFooter branch={drive.branch} drive={drive} />
         </div>
-
-        {notesOpen && (
-          <ProjectNotesRail
-            projectId={projectId}
-            startedAt={drive.startedAt}
-            onClose={() => setNotesOpen(false)}
-          />
-        )}
-      </div>
+      </AsideLayout>
     </div>
   )
 }

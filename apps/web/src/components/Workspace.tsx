@@ -9,6 +9,7 @@ import { STOP_TIMEOUT, lapExplainer } from '../lib/vocabulary'
 import { relTimeAgo } from '../lib/format'
 import { pathFor } from '../lib/routes'
 import {
+  AsideLayout,
   Button,
   DimLine,
   IconButton,
@@ -72,7 +73,7 @@ import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { Inspector } from './inspector/Inspector'
-import { ChatDock, ChatPanel } from './workspace/ChatPanel'
+import { ChatPanel } from './workspace/ChatPanel'
 import { copyText } from './workspace/copy-text'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
@@ -1012,10 +1013,9 @@ export function Workspace({
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
       {/* The one aside sits beside the whole page — topbar included — so its
           own 44px header lines up with the topbar rather than stacking under it. */}
-      <ChatDock
-        open={aside !== null}
-        panel={
-          aside === 'chat' ? (
+      <AsideLayout
+        aside={
+          aside === null ? null : aside === 'chat' ? (
             <ChatPanel
               featureId={featureId}
               sessions={full.sessions}
@@ -1099,7 +1099,7 @@ export function Workspace({
             <div className="mt-10">{body}</div>
           </Page>
         )}
-      </ChatDock>
+      </AsideLayout>
 
       {confirmBurn && (
         <BurnFeatureDialog

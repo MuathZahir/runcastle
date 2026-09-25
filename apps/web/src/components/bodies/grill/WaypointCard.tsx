@@ -99,10 +99,10 @@ export function WaypointCard({
       )}
       {shownOpen && (
         <div className={cx('pr-2 pb-3 text-sm animate-fade-in', readonly ? 'pl-8' : 'pl-[3.25rem]')}>
-          <Markdown source={waypoint.question} className="text-text-secondary" />
+          <Markdown source={waypoint.question} />
           {group === 'working' && byRun && <div className="mt-2 text-xs text-text-tertiary">Researching…</div>}
           {group === 'done' && waypoint.summary && (
-            <Markdown source={waypoint.summary} className="mt-2 text-text-tertiary" />
+            <Markdown source={waypoint.summary} tone="tertiary" className="mt-2" />
           )}
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
             <span className="font-mono">{waypoint.type}</span>

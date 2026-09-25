@@ -208,10 +208,17 @@ export function PageSection({
  * The one right-hand panel (chat, details, notes) inside the content panel:
  * a 44px header with the `title`, optional `actions` and a close button, then
  * a scrolling body. Slides in from the right. Only ever one open at a time —
- * opening another replaces it. Width `--aside-w` unless `className` says so.
+ * opening another replaces it. Width `--aside-w`.
+ *
+ * Lay it out with {@link AsideLayout}, which puts it beside the page and floats
+ * it over the page when the panel is too narrow to share.
+ *
+ * `label` names the region when `title` is not a plain string (a tab set, a
+ * title with a status dot); a string `title` names it by itself.
  */
 export function Aside({
   title,
+  label,
   onClose,
   actions,
   className,
@@ -219,6 +226,7 @@ export function Aside({
   children,
 }: {
   title: ReactNode
+  label?: string
   onClose: () => void
   actions?: ReactNode
   className?: string
@@ -227,7 +235,7 @@ export function Aside({
 }) {
   return (
     <aside
-      aria-label={typeof title === 'string' ? title : undefined}
+      aria-label={label ?? (typeof title === 'string' ? title : undefined)}
       className={cx(
         'flex h-full w-(--aside-w) min-w-0 shrink-0 flex-col border-l border-border bg-surface animate-slide-in-right',
         className,
@@ -240,5 +248,41 @@ export function Aside({
       </div>
       <div className={cx('min-h-0 flex-1 overflow-y-auto', bodyClassName)}>{children}</div>
     </aside>
+  )
+}
+
+/**
+ * The row a page and its one {@link Aside} share. Without an `aside` it
+ * renders `children` and nothing of its own — not a wrapper, not a stub, not a
+ * collapsed rail — so a page with the aside away is exactly the markup it would
+ * have without one.
+ *
+ * With one, the page gets its own column (`min-w-0`, so a wide ledger or a
+ * long branch never pushes the aside off the edge) and the aside sits beside
+ * it. In a narrow panel — under 56rem, a 1024px window with the sidebar open —
+ * sharing would leave the page a sliver, so the aside **floats over** the
+ * page's right edge instead, as a raised layer (`shadow-dialog`). A container
+ * query, so it answers to the panel's width, not the window's.
+ *
+ * `className` lands on the page column (a `flex-col` by default).
+ */
+export function AsideLayout({
+  aside,
+  className,
+  children,
+}: {
+  /** The aside, or a falsy value when none is open. */
+  aside: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  if (aside === null || aside === undefined || aside === false) return <>{children}</>
+  return (
+    <div className="@container relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className={cx('flex min-h-0 min-w-0 flex-1 flex-col', className)}>{children}</div>
+      <div className="flex h-full shrink-0 @max-4xl:absolute @max-4xl:inset-y-0 @max-4xl:right-0 @max-4xl:z-20 @max-4xl:shadow-dialog">
+        {aside}
+      </div>
+    </div>
   )
 }

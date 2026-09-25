@@ -24,7 +24,8 @@ import type { Phase } from '@runcastle/core'
 import { nextStep, PHASE_ORDER, type ActionKind } from '../src/lib/feature-ui'
 import { ToastProvider } from '../src/lib/toast'
 import { useWorkspace } from '../src/lib/workspace'
-import { ChatDock, ChatPanel } from '../src/components/workspace/ChatPanel'
+import { ChatPanel } from '../src/components/workspace/ChatPanel'
+import { AsideLayout } from '../src/ui'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
 import { full } from './fixtures'
 
@@ -44,9 +45,9 @@ function Harness({ phase }: { phase: Phase }) {
   return (
     <ToastProvider>
       <NextStepBar ns={ns} guidance={false} busy={false} onAction={onAction} />
-      <ChatDock
-        open={ws.chatPanelOpen}
-        panel={
+      <AsideLayout
+        aside={
+          ws.chatPanelOpen && (
           <ChatPanel
             featureId="feat_1"
             sessions={feature.sessions}
@@ -54,10 +55,11 @@ function Harness({ phase }: { phase: Phase }) {
             onOpenChat={() => undefined}
             onCollapse={ws.toggleChatPanel}
           />
+          )
         }
       >
         <div data-testid="phase-body">{phase} body</div>
-      </ChatDock>
+      </AsideLayout>
     </ToastProvider>
   )
 }

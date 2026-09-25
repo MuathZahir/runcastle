@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, IconButton, StatusLabel, TextArea, Tooltip } from '../../ui'
-import { IconExternalLink, IconRefresh } from '../../icons'
-import { IconSelectArea } from './stage-icons'
+import { Button, IconButton, StatusLabel, TextArea } from '../../ui'
+import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import {
@@ -304,17 +303,7 @@ export function DrivePanel({
             tooltipSide="bottom"
             onClick={() => setGeneration((g) => g + 1)}
           />
-          <Tooltip label="Open app in a new tab" side="bottom">
-            <a
-              className="inline-flex size-(--control-h) items-center justify-center rounded-md text-icon no-underline transition-colors duration-(--dur-1) ease-app hover:bg-surface-hover hover:text-text"
-              href={url}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label="Open app"
-            >
-              <IconExternalLink size={16} />
-            </a>
-          </Tooltip>
+          <IconButton label="Open app" href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
         </div>
         {!canCapture && !readonly && (
           <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">

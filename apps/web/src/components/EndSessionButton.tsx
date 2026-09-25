@@ -2,7 +2,6 @@ import { trpc } from '../trpc'
 import { useToast } from '../lib/toast'
 import { Button } from '../ui'
 import { IconStop } from '../icons'
-import { DANGER_GHOST } from './run/actions'
 
 /**
  * One-click End-session control shown wherever a live/launching session strip
@@ -39,11 +38,10 @@ export function EndSessionButton({
 
   return (
     <Button
-      variant="ghost"
+      variant="danger-ghost"
       size="sm"
       icon={<IconStop />}
       loading={end.isPending}
-      className={DANGER_GHOST}
       title="end this session — recoverable, you can relaunch it"
       onClick={() => end.mutate({ sessionId })}
     >

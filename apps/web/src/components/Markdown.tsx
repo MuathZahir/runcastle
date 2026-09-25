@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
+import { LINK } from '../ui/button'
 
 /**
  * What we hand the renderer, as plain data. The component itself has no unit
@@ -32,7 +33,7 @@ export const MARKDOWN_POLICY = {
 export const MARKDOWN_CLASSES = {
   /** Self-sufficient on purpose: it states its own face and white-space so it
       reads the same inside a mono, `pre-wrap` container as it does anywhere. */
-  root: 'font-sans whitespace-normal text-pretty text-text-secondary [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+  root: 'font-sans whitespace-normal text-pretty [&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
   h1: 'mt-6 mb-2 text-[1.3em] leading-tight font-semibold tracking-tight text-text',
   h2: 'mt-6 mb-2 text-[1.12em] leading-snug font-semibold text-text',
   h3: 'mt-5 mb-1.5 text-[1em] font-semibold text-text',
@@ -46,8 +47,9 @@ export const MARKDOWN_CLASSES = {
   checkbox: 'mr-2 align-[-1px] accent-accent',
   strong: 'font-semibold text-text',
   em: 'italic',
-  a: 'text-accent-text underline decoration-accent/40 underline-offset-2 transition-colors duration-(--dur-1) hover:decoration-accent',
-  code: 'rounded-sm bg-surface-inset px-1 py-px font-mono text-[0.88em]',
+  /** The app's one link look (`LINK`): accent text, underlined on hover. */
+  a: LINK,
+  code: 'rounded-sm border border-border-subtle bg-surface-inset px-1 py-px font-mono text-[0.88em] text-text',
   /** A fenced block resets the inline code chrome on the `<code>` inside it. */
   pre:
     'mt-0 mb-3 overflow-x-auto rounded-md bg-surface-inset px-3 py-2.5 font-mono text-xs leading-[18px] ' +
@@ -61,6 +63,17 @@ export const MARKDOWN_CLASSES = {
 
 /** The root's type size: `sm` (13/20) for dense surfaces, `base` (14/22) for reading. */
 const MARKDOWN_SIZE = { sm: 'text-sm', base: 'text-base' } as const
+
+/**
+ * The body text's colour: `secondary` (the default, prose beside UI), `primary`
+ * (`text` — a transcript or a document that *is* the page), `tertiary` (a
+ * summary under something else). Headings and `strong` stay `text` in all three.
+ */
+const MARKDOWN_TONE = {
+  primary: 'text-text',
+  secondary: 'text-text-secondary',
+  tertiary: 'text-text-tertiary',
+} as const
 
 /** remark-gfm marks a task list with this class and nothing else does. */
 const TASK_LIST = 'contains-task-list'
@@ -103,20 +116,24 @@ const COMPONENTS: Components = {
 
 /**
  * The one renderer for every agent-authored prose surface (doc peek, specs,
- * the map's section bodies, ticket goal/context). Every element it emits is
- * styled by {@link MARKDOWN_CLASSES} at this component, in theme utilities.
- * `size` — `sm` (default) for dense surfaces, `base` for a page of prose.
+ * the map's section bodies, ticket goal/context, transcripts). Every element it
+ * emits is styled by {@link MARKDOWN_CLASSES} at this component, in theme
+ * utilities. `size` — `sm` (default) for dense surfaces, `base` for a page of
+ * prose or a transcript; `tone` — `secondary` (default) · `primary` ·
+ * `tertiary`. `className` places it (margins); size and colour are the props.
  */
 export function Markdown({
   source,
   className,
   size = 'sm',
+  tone = 'secondary',
 }: {
   source: string
   className?: string
   size?: keyof typeof MARKDOWN_SIZE
+  tone?: keyof typeof MARKDOWN_TONE
 }) {
-  const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]}`
+  const root = `${MARKDOWN_CLASSES.root} ${MARKDOWN_SIZE[size]} ${MARKDOWN_TONE[tone]}`
   return (
     <div className={className ? `${root} ${className}` : root}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>

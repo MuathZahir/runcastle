@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { UNTITLED_CHAT, conversationTitle, sentenceCase } from '../src/lib/conversation-title'
+import { UNTITLED_CHAT, conversationTitle, sentenceCase, turnDisplay } from '../src/lib/conversation-title'
 
 /**
  * A project chat is titled with the first thing typed into it, verbatim. The
@@ -47,5 +47,30 @@ describe('sentenceCase', () => {
   it('capitalises the first letter only', () => {
     expect(sentenceCase('live')).toBe('Live')
     expect(sentenceCase('launching…')).toBe('Launching…')
+  })
+})
+
+describe('turnDisplay', () => {
+  it('reads a slash command as its invocation, args and all', () => {
+    expect(
+      turnDisplay('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>'),
+    ).toEqual({ kind: 'command', command: '/clear' })
+    expect(
+      turnDisplay('<command-message>model</command-message>\n<command-name>/model</command-name>\n<command-args>opus</command-args>'),
+    ).toEqual({ kind: 'command', command: '/model opus' })
+  })
+
+  it('reads what a local command printed, without its colour codes', () => {
+    const esc = String.fromCharCode(27)
+    expect(turnDisplay(`<local-command-stdout>Set model to ${esc}[1mopus${esc}[22m</local-command-stdout>`)).toEqual({
+      kind: 'output',
+      text: 'Set model to opus',
+    })
+    expect(turnDisplay('<local-command-stdout></local-command-stdout>')).toEqual({ kind: 'skip' })
+  })
+
+  it('drops the caveat and leaves prose alone', () => {
+    expect(turnDisplay('<local-command-caveat>Caveat: the messages below…</local-command-caveat>')).toEqual({ kind: 'skip' })
+    expect(turnDisplay('a < b and <b>bold</b>')).toEqual({ kind: 'text', text: 'a < b and <b>bold</b>' })
   })
 })

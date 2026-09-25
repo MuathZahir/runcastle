@@ -6,6 +6,7 @@ import { browseFailure, pickerStartDir, type RepoOpenFailure } from '../lib/proj
 import { IconBranch, IconChevronUp, IconFolder, IconHome } from '../icons'
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogFooter,
   DialogHeader,
@@ -148,7 +149,7 @@ export function DirectoryPicker({
         onClose={onCancel}
       />
 
-      <div className="flex shrink-0 items-center gap-2 border-y border-border px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-y border-border-subtle px-3 py-2">
         <IconButton
           label="Up one level"
           icon={<IconChevronUp />}
@@ -162,19 +163,11 @@ export function DirectoryPicker({
           onEnterPath={enterPath}
           placeholder={pathPlaceholder()}
         />
-        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs text-text-secondary select-none hover:bg-surface-hover hover:text-text">
-          <input
-            type="checkbox"
-            className="size-3.5 accent-(--color-accent)"
-            checked={showHidden}
-            onChange={(e) => setShowHidden(e.target.checked)}
-          />
-          <span>Hidden</span>
-        </label>
+        <Checkbox label="Hidden" checked={showHidden} onChange={setShowHidden} className="shrink-0 px-2" />
       </div>
 
       {refusal && (
-        <div className="shrink-0 border-b border-border px-4 py-3">
+        <div className="shrink-0 border-b border-border-subtle px-4 py-3">
           <FailureNote
             message={refusal.message}
             path={refusal.path}
@@ -187,7 +180,7 @@ export function DirectoryPicker({
 
       <div className="flex min-h-0 flex-1">
         <div
-          className="flex w-44 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2"
+          className="flex w-44 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border-subtle p-2"
           onKeyDown={onListKey}
         >
           <SectionLabel className="px-2.5">Locations</SectionLabel>
@@ -230,15 +223,11 @@ export function DirectoryPicker({
             // a refetch of the same folder does not.
             <div key={current} className="flex flex-col gap-0.5 animate-rise-in" role="list">
               {(data?.entries ?? []).map((entry) => (
-                <div
-                  key={entry.path}
-                  role="listitem"
-                  data-dir-row=""
-                  // A repo is usually the destination, so let a double-click
-                  // both enter and commit it in one gesture.
-                  onDoubleClick={() => entry.isRepo && onPick(entry.path)}
-                >
+                <div key={entry.path} role="listitem" data-dir-row="">
                   <NavItem
+                    // A repo is usually the destination, so let a double-click
+                    // both enter and commit it in one gesture.
+                    onDoubleClick={() => entry.isRepo && onPick(entry.path)}
                     label={entry.name}
                     title={entry.path}
                     icon={entry.isRepo ? <IconBranch /> : <IconFolder />}
@@ -265,7 +254,7 @@ export function DirectoryPicker({
       </div>
 
       <DialogFooter
-        className="border-t border-border pt-3 pb-3"
+        className="border-t border-border-subtle pt-3 pb-3"
         start={
           // A long path is truncated at its *start* — the tail (the folder you
           // picked) is the part worth reading. `dir="rtl"` moves the ellipsis to

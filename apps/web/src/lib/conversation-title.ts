@@ -42,3 +42,45 @@ export function conversationTitle(raw: string | null | undefined): string {
 export function sentenceCase(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1)
 }
+
+/**
+ * What one transcript turn should read as, for display. Claude Code records a
+ * slash command as markup — `<command-name>/clear</command-name>`,
+ * `<command-message>`, `<command-args>` — its output as
+ * `<local-command-stdout>…`, and a `<local-command-caveat>` telling the model
+ * to ignore both. None of that is prose a human typed, so a turn is one of:
+ *
+ * - `command` — the invocation, e.g. `/model opus` (rendered as a quiet mono line);
+ * - `output` — what a local command printed, ANSI stripped (also quiet mono);
+ * - `skip` — nothing worth a line (a caveat, an empty output);
+ * - `text` — ordinary words, exactly as recorded.
+ *
+ * Pure display, like `conversationTitle`: the stored transcript is untouched.
+ */
+export type TurnDisplay =
+  | { kind: 'command'; command: string }
+  | { kind: 'output'; text: string }
+  | { kind: 'skip' }
+  | { kind: 'text'; text: string }
+
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/
+const STDOUT = /^\s*<local-command-(?:stdout|stderr)>([\s\S]*?)<\/local-command-(?:stdout|stderr)>\s*$/
+const CAVEAT = /^\s*<local-command-caveat>[\s\S]*?<\/local-command-caveat>\s*$/
+
+export function turnDisplay(text: string): TurnDisplay {
+  if (CAVEAT.test(text)) return { kind: 'skip' }
+  const name = COMMAND_NAME.exec(text)
+  if (name) {
+    const command = name[1]!.trim()
+    const args = COMMAND_ARGS.exec(text)?.[1]?.trim() ?? ''
+    const shown = command.startsWith('/') ? command : `/${command}`
+    return { kind: 'command', command: args ? `${shown} ${args}` : shown }
+  }
+  const out = STDOUT.exec(text)
+  if (out) {
+    const printed = out[1]!.replace(ANSI, '').trim()
+    return printed ? { kind: 'output', text: printed } : { kind: 'skip' }
+  }
+  return { kind: 'text', text }
+}

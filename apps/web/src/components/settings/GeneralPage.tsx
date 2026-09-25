@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
-import { DimLine, Spinner } from '../../ui'
-import { SELECT_FIELD, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { DimLine, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
-import { SELECT_TRUNCATE, SettingGroup, SettingLine, SettingSection } from './SettingRow'
+import { SettingGroup, SettingLine, SettingSection } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
 /**
@@ -71,31 +70,24 @@ export function GeneralPage({ globals, filter, highlightField }: SettingsPagePro
 
 /**
  * Dark, light, or whatever the OS says. A browser preference (`localStorage`),
- * so it applies the moment it is picked and never goes to the server.
+ * so it applies the moment it is picked and never goes to the server. Three
+ * values, all worth seeing at once: a segmented control, not a dropdown.
  */
 function ThemeRow() {
   const { preference, setPreference } = useTheme()
   return (
     <SettingLine
       label="Theme"
-      htmlFor="settings-theme"
       description="Dark is the default; System follows your operating system as it changes."
       control={
-        <Select value={preference} onValueChange={(next) => setPreference(next as ThemePreference)}>
-          <SelectTrigger id="settings-theme" className={`${SELECT_FIELD} ${SELECT_TRUNCATE} w-full`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {THEMES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>
-                <span className="inline-flex items-center gap-2">
-                  <span className="inline-flex text-icon">{t.icon}</span>
-                  {t.label}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SegmentedControl
+          id="settings-theme"
+          label="Theme"
+          items={THEMES.map((t) => ({ value: t.value, label: t.label, icon: t.icon }))}
+          value={preference}
+          onChange={setPreference}
+          className="w-full"
+        />
       }
     />
   )

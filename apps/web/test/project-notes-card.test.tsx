@@ -99,7 +99,7 @@ describe('the Notes card', () => {
     card()
 
     const row = screen.getByText('the crumbs overflow on a long title').closest('li')
-    expect(row?.className).toMatch(/(^| )group( |$)/)
+    expect(row?.className).toMatch(/(^| )group\/row( |$)/)
     // ListRow's ground: the hover and the keyboard's focus light the row
     expect(row?.className).toContain('hover:bg-surface-hover')
     for (const name of ['Edit', 'Dismiss', 'Delete']) {
@@ -110,14 +110,14 @@ describe('the Notes card', () => {
       // at rest they are invisible, and the row's hover or keyboard focus shows them
       const tray = verb.closest('span.opacity-0')?.className ?? ''
       expect(tray).toContain('opacity-0')
-      expect(tray).toContain('group-hover:opacity-100')
-      expect(tray).toContain('group-focus-within:opacity-100')
+      expect(tray).toContain('group-hover/row:opacity-100')
+      expect(tray).toContain('group-focus-within/row:opacity-100')
     }
     // Delete names its danger only under the pointer
     expect(button('Delete').className).toContain('enabled:hover:text-danger')
     expect(button('Delete').className).not.toMatch(/(^| )text-danger/)
-    // the time is what the verbs replace
-    expect(row?.innerHTML).toContain('group-hover:hidden')
+    // the time is what the verbs replace: it fades as they float over it
+    expect(row?.innerHTML).toContain('group-hover/row:opacity-0')
   })
 
   it('marks a note without a picture with a quiet dot rather than an empty thumbnail', () => {
@@ -189,7 +189,7 @@ describe('the Notes card', () => {
     // Reopen is an icon, revealed the same way the open rows' verbs are
     expect(button('Reopen').textContent).toBe('')
     expect(button('Reopen').closest('span.opacity-0')?.className).toContain(
-      'group-focus-within:opacity-100',
+      'group-focus-within/row:opacity-100',
     )
     fireEvent.click(button('Reopen'))
     expect(reopenNote).toHaveBeenCalledWith({ noteId: 'pnote_2' })

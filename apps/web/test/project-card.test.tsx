@@ -94,15 +94,13 @@ describe('ProjectCard', () => {
     expect(onOpen).toHaveBeenCalled()
   })
 
-  // The app ships no CSS reset while the legacy sheet lives (STYLE.md), so a
-  // <button> with only layout utilities paints the whole card in the user
-  // agent's grey behind near-white text.
-  it('resets the button the face is, so the card keeps the panel behind it', () => {
+  // The face is a `ListRow`'s button: theme.css's base layer takes the user
+  // agent's chrome off every raw button, so all it has to say is that it is one.
+  it('makes the face a real button into the project', () => {
     card()
 
     const face = screen.getByTitle('Open runcastle')
-    expect(face.className).toContain('bg-transparent')
-    expect(face.className).toContain('border-0')
+    expect(face.tagName).toBe('BUTTON')
     expect(face.className).toContain('cursor-pointer')
   })
 

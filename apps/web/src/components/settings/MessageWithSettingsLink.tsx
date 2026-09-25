@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import { settingsMention, type SettingsLocation } from '../../lib/settings'
+import { LINK } from '../../ui'
 
 /**
  * Turning "…Rebuild it from Settings → Burns (Rebuild image)." into a link that
@@ -44,7 +45,7 @@ export function SettingsLink({
   return (
     <button
       type="button"
-      className="cursor-pointer border-0 bg-transparent p-0 text-accent-text underline decoration-accent/40 underline-offset-2 transition-colors duration-(--dur-1) hover:decoration-accent"
+      className={LINK}
       onClick={(event) => {
         // The lane or row this can sit in is itself a click target.
         event.stopPropagation()

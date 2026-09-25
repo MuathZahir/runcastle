@@ -6,7 +6,7 @@ import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk
 import { useSessionBranch } from '../lib/use-session-branch'
 import { IconArrowRight, IconBranch, IconFolder, IconPanelRight } from '../icons'
 import { useLivePoll } from '../lib/live'
-import { Aside, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
+import { Aside, AsideLayout, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
 import { ConversationTranscript } from './ConversationTranscript'
 import { EndSessionButton } from './EndSessionButton'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -211,7 +211,8 @@ export function ProjectWorkspace({
                   )}
                   {hasNotes && (
                     <IconButton
-                      label={openNotes > 0 ? `Notes · ${openNotes} open` : 'Notes'}
+                      label="Notes"
+                      badge={openNotes}
                       icon={<IconPanelRight />}
                       active={notesShown}
                       onClick={() => setNotesOpen(!notesShown)}
@@ -220,7 +221,32 @@ export function ProjectWorkspace({
                 </>
               }
             />
-            <div className="flex min-h-0 flex-1">
+            {/* The inbox is the page's one aside (decisions.md #10): read on
+                the way to triaging it, and triage starts from it. */}
+            <AsideLayout
+              aside={
+                notesShown && (
+                  <Aside title="Notes" onClose={() => setNotesOpen(false)}>
+                    <NotesCard
+                      projectId={projectId}
+                      triaging={talk.starting}
+                      reveal={inboxRequest > 0}
+                      onRevealed={onConsumeInboxRequest}
+                      onTriage={() => {
+                        if (!session) {
+                          talk.triage()
+                          return
+                        }
+                        // One live chat per project, so the human chooses: carry on
+                        // in the one that is open, or end it and triage in a fresh one.
+                        setNoticePurpose('triage')
+                        setShowOpenNotice(true)
+                      }}
+                    />
+                  </Aside>
+                )
+              }
+            >
               <Page routeKey={`project-${projectId}`}>
                 <PageHeader
                   title={projectName}
@@ -280,29 +306,7 @@ export function ProjectWorkspace({
                   onView={setViewing}
                 />
               </Page>
-              {/* The inbox is the page's one aside (decisions.md #10): read on
-                  the way to triaging it, and triage starts from it. */}
-              {notesShown && (
-                <Aside title="Notes" onClose={() => setNotesOpen(false)}>
-                  <NotesCard
-                    projectId={projectId}
-                    triaging={talk.starting}
-                    reveal={inboxRequest > 0}
-                    onRevealed={onConsumeInboxRequest}
-                    onTriage={() => {
-                      if (!session) {
-                        talk.triage()
-                        return
-                      }
-                      // One live chat per project, so the human chooses: carry on
-                      // in the one that is open, or end it and triage in a fresh one.
-                      setNoticePurpose('triage')
-                      setShowOpenNotice(true)
-                    }}
-                  />
-                </Aside>
-              )}
-            </div>
+            </AsideLayout>
           </>
         )}
       </div>
