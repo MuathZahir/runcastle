@@ -347,6 +347,18 @@ describe('project-session MCP tools', () => {
     expect(existsSync(join(repoPath, 'docs', 'features', 'fork-door'))).toBe(false)
   })
 
+  it('create_feature with tickets and draft: true parks the quick change, tickets kept', async () => {
+    const out = await toolCreateFeature(ctx, session, {
+      title: 'Loading skeletons',
+      tickets: ['Show a skeleton for every loading state.'],
+      draft: true,
+    })
+
+    expect(getFeatureRow(ctx, out.id).status).toBe('draft')
+    expect(listByFeature(ctx, out.id).map((t) => t.kind)).toEqual(['implementation', 'review'])
+    expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/loading-skeletons')
+  })
+
   it('create_feature parks a draft from a feature session, in that feature’s project', async () => {
     const feature = seedFeature(ctx, projectId, { slug: 'dark-mode' })
     const grill = createSessionRow(ctx, {
