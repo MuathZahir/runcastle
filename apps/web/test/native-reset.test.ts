@@ -64,8 +64,27 @@ describe('native element reset', () => {
     expect(decls).toMatch(/padding:\s*0/)
   })
 
-  it('resets nothing but that one element', () => {
-    expect([...baseLayerRules().keys()]).toEqual(['button'])
+  // The slice grew by exactly two element families and one opt-in attribute:
+  // form fields take the app's face (a `<textarea>` was monospace), a text
+  // field's focus ring sits here so `outline-none` can switch it off, and a
+  // `<details data-disclosure>` animates its height. Lists are still untouched —
+  // that is the line preflight would cross.
+  it('resets only buttons, form fields and opted-in disclosures', () => {
+    const selectors = [...baseLayerRules().keys()].map((s) => s.replace(/\s+/g, ' '))
+    expect(selectors).toEqual([
+      'button',
+      'input, textarea, select',
+      ':is(input, textarea, select):focus-visible',
+      'details[data-disclosure]::details-content',
+      'details[data-disclosure][open]::details-content',
+    ])
+    expect(selectors.join(' ')).not.toMatch(/\b(ol|ul|li)\b/)
+  })
+
+  it('gives form fields the inherited face, which a utility still beats', () => {
+    const decls = baseLayerRules().get('input,\n  textarea,\n  select')
+    expect(decls).toMatch(/font-family:\s*inherit/)
+    expect(decls).toMatch(/color:\s*inherit/)
   })
 
   it('has no select left to reset', () => {

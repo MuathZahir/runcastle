@@ -8,51 +8,92 @@ stories, the shell layout, the terminal — still stands.
 
 ## Tokens & scale
 
-`src/theme.css` is the **single token source**. It declares one `@theme` block;
-every token in the app lives there and nowhere else. `src/styles.css` only
-aliases those tokens (see [Migration rule](#migration-rule)) — never add a token
-to it.
+`src/theme.css` is the **single token source**. Its `@theme static` block holds
+every token with its **dark** value; a `:root[data-theme="light"]` block right
+under it restates the base colours (and the two elevations) for the **light**
+theme. `src/styles.css` only aliases tokens (see [Migration rule](#migration-rule))
+— never add a token to it. The values are the Runcastle Design System's
+(`tokens.json`); what they add up to is `DESIGN.md`.
 
 Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 
 | Namespace | Tokens | Utilities |
 |---|---|---|
-| `--color-*` | `bg`, `panel`, `panel-2`, `panel-3`, `panel-inset`, `hairline`/`-soft`/`-strong`, `text`, `text-2`, `text-3`, `text-4`, `accent`, `accent-hi`, `accent-2`, `accent-ink`, `accent-soft`, `accent-line`, `ph-ideation … ph-shipped`, `danger`, `needs`, `warn`, `ok`, `drive` | `bg-panel-2`, `text-text-3`, `border-hairline`, … |
-| `--font-*` | `sans` (Inter Variable), `mono` (JetBrains Mono Variable) | `font-mono` |
-| `--text-*` | `xs` 11 · `sm` 12 · `base` 14 · `lg` 16 · `xl` 20 | `text-sm`, `text-lg`, … |
-| `--radius-*` | `sm` 6 · `md` 8 · `lg` 12 · `pill` 999 | `rounded-md`, `rounded-pill` |
-| `--shadow-*` | `menu`, `overlay` | `shadow-overlay` |
-| `--ease-*` | `app`, `out-app` | `ease-app`, `ease-out-app` |
+| `--color-*` grounds | `canvas`, `surface`, `surface-raised`, `surface-hover`, `surface-selected`, `surface-inset`, `scrim` | `bg-surface`, `bg-surface-hover`, `bg-scrim` |
+| `--color-*` lines | `border`, `border-subtle`, `border-strong` | `border-border-subtle` |
+| `--color-*` text | `text`, `text-secondary`, `text-tertiary`, `text-disabled`, `icon` | `text-text-secondary`, `text-icon` |
+| `--color-*` action | `primary`, `primary-hover`, `on-primary`, `accent`, `accent-text`, `accent-subtle`, `focus-ring` | `bg-primary`, `text-accent-text` |
+| `--color-*` status | `success`, `warning`, `danger`, `danger-subtle` | `text-success`, `bg-danger-subtle` |
+| `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped` | `text-phase-review` |
+| `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
+| `--text-*` | `xs` 12/16 · `sm` **13/20, the UI default** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-sm`, `text-xl` |
+| `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, rows) · `lg` 10 (panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
+| `--shadow-*` | `popover`, `dialog` — floating layers only | `shadow-popover` |
+| `--ease-*` | `app` (state changes), `out-app` (entering) | `ease-out-app` |
+| `--animate-*` | `rise-in`, `fade-in`, `pop-in`, `dialog-in`, `backdrop-in`, `slide-in-right`, `toast-in`, `breathe`, `spin` | `animate-rise-in` |
+
+The phase tokens are `var()`s onto `icon` / `warning` / `accent` / `success` /
+`text-disabled`, and `planning` / `building` are the app's own `Phase` names
+(spec's and implementation's hue). `focus-ring` is `accent`.
+
+**Deprecated aliases.** Every pre-redesign colour name still resolves — `bg`,
+`panel`, `panel-2/-3/-inset`, `hairline`/`-soft`/`-strong`, `text-2/-3/-4`,
+`accent-hi/-2/-ink/-soft/-line`, `ph-*`, `needs`, `warn`, `ok`, `drive` — as a
+`var()` onto the closest new token (listed in the DEPRECATED block in
+`theme.css`), and so do `rounded-pill`, `shadow-menu` and `shadow-overlay`. They
+exist so the whole app re-skinned at once. **Do not write them in new code; when
+you touch a file, replace every one in it.** The block is deleted when a grep
+finds none left.
 
 Tailwind's own colour, type, radius and shadow scales are switched off
 (`--color-*: initial` and friends): `bg-red-500` and `text-3xl` do not resolve,
-by design. Its motion easings are kept, which is why ours are suffixed `-app`.
+by design. No raw hex, no `rgba()`, no arbitrary colours in components.
 
-Metrics that no utility should generate stay un-namespaced and are read with
-`var()` or an arbitrary value (`h-(--control-h)`): `--control-h`, `--sidebar-w`,
-`--inspector-w`, `--maprail-w`, `--content-max`, `--dur-1/-2/-3`, `--ring`.
+Metrics are un-namespaced and read with `var()` or an arbitrary value
+(`h-(--control-h)`): `--control-sm` 24 · `--control-h` 28 · `--control-lg` 32,
+`--row-h` 32, `--topbar-h` 44, `--sidebar-w` 248, `--inspector-w` 320,
+`--aside-w` 380, `--content-max` 760, `--content-wide` 1040 (plus the older
+`--maprail-w`, `--artifact-w`, `--chat-panel-w`, `--notes-rail-w`), and
+`--dur-1/-2/-3` = 120/180/240ms. Spacing is Tailwind's **default 4px scale** —
+no custom spacing tokens.
 
-**The scale is one notch up from the pre-Tailwind app** (decision 4): body
-**14px / 1.5** (was 13 / 1.45), controls **32px** high (was 28), radii **6 / 8 /
-12** (was 5 / 7 / 10), the 10px type step gone and 11px reserved for uppercase
-micro-labels. Spacing is Tailwind's **default 4px scale** — there are no custom
-spacing tokens, and adding one needs a decision, not a commit.
+### Themes
 
-Single dark theme. There is no light mode and no `dark:` variant.
+Dark is the default; light is a full peer. `src/lib/theme.ts` owns it: the
+preference (`dark` · `light` · `system`) lives in `localStorage`
+(`runcastle.theme`), `applyStoredTheme()` paints `<html data-theme>` at the top
+of `main.tsx` before the first render, and a `system` preference follows
+`prefers-color-scheme` live. A toggle uses `useTheme()` →
+`{ preference, resolved, setPreference, toggle }`. There is **no `dark:`
+variant**: a component names one token and both themes follow, because
+`@theme static` compiles `bg-surface` to `var(--color-surface)` and the light
+block redefines the variable. (Shadows go through `--elevation-*` for the same
+reason — Tailwind inlines a literal shadow at build time.)
+
+### Focus and motion
+
+Focus is one 2px `focus-ring` outline at 2px offset, set globally and unlayered
+in `styles.css` (`:focus-visible:not(input, textarea, select)`), so no utility
+can switch it off. Text fields are the exception: their ring is drawn *on*
+their border from `theme.css`'s base layer, so a field that shows focus another
+way can say `outline-none` (a `TextField` draws it on its wrapper). Menu rows,
+options and `tabindex="-1"` panels show none — their highlight is their ground.
+
+Motion is transform and opacity only, from the named `animate-*` utilities; the
+`prefers-reduced-motion` switch in `theme.css` turns all of it off. A
+`<details data-disclosure>` animates its height (`interpolate-size` +
+`::details-content`).
 
 ### Two things Tailwind does here that will surprise you
 
-- **No preflight — except for one element.** `theme.css` imports the theme and
+- **No preflight — except for a slice.** `theme.css` imports the theme and
   utilities layers but not Tailwind's base reset, because the reset changes the
   legacy sheet under it — `ol, ul { list-style: none }` alone strips every
   markdown bullet. Preflight arrives when the legacy sheet is gone. What
-  `theme.css` hand-writes in the meantime is the one slice a near-black app
-  cannot go without: `button`, whose user-agent chrome is a light pill. (A
-  `select` slice sat beside it until the floating primitives left no raw
-  `<select>` in the app to reset.) It sits in `@layer base`, so the unlayered
-  legacy sheet and the utilities layer both still beat it. Everything else is
-  un-reset — outside that one element, do not assume one: style what you
-  render.
+  `theme.css` hand-writes in `@layer base` meanwhile: `button` (no UA chrome;
+  inherits font and colour) and `input, textarea, select` (inherit the app's
+  face). The unlayered legacy sheet and every utility still beat it. Everything
+  else is un-reset — style what you render.
 - **Legacy rules beat utilities.** `styles.css` is unlayered and utilities live
   in `@layer utilities`, and unlayered CSS wins over layered CSS whatever the
   specificity. So a utility on an element that still carries a legacy class is
@@ -61,90 +102,124 @@ Single dark theme. There is no light mode and no `dark:` variant.
 
 ## Primitives
 
-`src/ui.tsx` holds the shared primitives, and `src/ui/` the floating ones (see
-below). Build one there rather than styling the same thing twice in two surfaces.
+**Import every primitive from `src/ui.tsx`** — it holds the older ones and
+re-exports the rest from `src/ui/` (one concern per file: `button.tsx`,
+`status.tsx`, `list.tsx`, `tabs.tsx`, `field.tsx`, `page.tsx`, `kbd.tsx`,
+`tooltip.tsx`, and the four floating ones). Icons and `PhaseIcon` are in
+`src/icons.tsx`. Build a missing primitive there rather than styling the same
+thing twice in two surfaces; never hand-roll a button, row, chip, menu, dialog,
+tab set or empty state in a surface. What each should look like is `DESIGN.md`.
 
-How they are to be styled (decision 5): Tailwind utility classes written inline
-in the TSX, variants composed by a local `cx()` helper. No `@apply` component
-classes — that just grows a second semantic stylesheet to replace the one being
-retired — and no runtime styling dependency; `clsx`, `cva` and `tailwind-merge`
-are deliberately absent. `@utility` in `theme.css` is the escape hatch for what
-utilities genuinely cannot express, kept to a minimum.
+How they are styled: Tailwind utility classes written inline in the TSX,
+variants as lookup maps composed by `cx()` (exported from `ui.tsx`). No `@apply`
+component classes and no runtime styling dependency; `clsx`, `cva` and
+`tailwind-merge` are deliberately absent. `@utility` in `theme.css` is the
+escape hatch for what utilities cannot express (`animate-pop-in`, which also
+sets the Radix transform origin).
 
 ### Floating primitives (`src/ui/`)
 
-Anything that floats — a menu, a value picker, a searchable list — is one of the
-four in `src/ui/`, one file each: `popover.tsx`, `dropdown-menu.tsx`,
-`select.tsx`, `combobox.tsx`. Do not hand-roll another absolutely-positioned
-panel: the app had five and every one of them was clipped by an ancestor's
-overflow or ran off the bottom of the page.
+Anything that floats — a menu, a value picker, a searchable list, a tooltip —
+is one of `popover.tsx`, `dropdown-menu.tsx`, `select.tsx`, `combobox.tsx`,
+`tooltip.tsx`. Do not hand-roll another absolutely-positioned panel: the app had
+five and every one was clipped by an ancestor's overflow or ran off the page.
 
-They are shadcn's floating family, restyled. That amends decision 5 for
-*behaviour only*: the per-primitive Radix packages and `cmdk` are in, because
-portals, collision-aware positioning, focus traps and keyboard nav are where
-hand-rolling fails; `clsx`, `cva` and `tailwind-merge` are still out, and the
-copied markup is rewritten onto `cx()`, lookup-map variants and these tokens.
+They are shadcn's floating family on the per-primitive Radix packages and
+`cmdk`, restyled: portals, collision-aware positioning, focus traps and keyboard
+nav are where hand-rolling fails.
 
-What they share (`src/ui/floating.ts`): the `cx()` helper and `FLOATING_SURFACE`,
-the one class list a floating layer wears — `bg-panel-3`, a hairline, `shadow-menu`
-and `z-[300]`, one band above `Dialog`'s `z-[200]` so a picker opened inside
-settings floats over its backdrop. Each content part portals to `<body>`, caps
-itself at the height Radix measured, and stops Escape so the keystroke that
-closes it does not also close the dialog around it.
+What they share (`src/ui/floating.ts`): `FLOATING_SURFACE` — `surface-raised`,
+`rounded-lg`, `shadow-popover` (its first ring is the hairline), `text-sm`,
+`animate-pop-in`, and `z-[300]`, one band above `Dialog`'s `z-[200]` so a
+picker opened inside settings floats over its backdrop — and the row classes
+`FLOATING_ITEM` + `FLOATING_ITEM_DEFAULT` | `FLOATING_ITEM_DANGER` (30px,
+icon + label + trailing slot, `surface-hover` where the keyboard or pointer
+is), `FLOATING_LABEL` (12px medium group heading) and `FLOATING_SEPARATOR`.
+Each content part portals to `<body>`, caps itself at the height Radix
+measured, and stops Escape so the keystroke that closes it does not also close
+the dialog around it.
 
-| Primitive | What it is | Where it is used |
+| Primitive | What it is | Notes |
 |---|---|---|
-| `Popover` | An anchored panel — and the Combobox's foundation. | the branch pickers, via Combobox |
-| `DropdownMenu` | A menu of **actions**, not a value picker. | DocsMenu, FeatureActionsMenu, ProjectSwitcher |
-| `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge, because Radix reads `''` as "nothing selected". | the model choosers, every settings dropdown |
-| `Combobox` | A single-select whose list is long enough to want searching. | the "lands on" picker, BaseSelect |
+| `Popover` | An anchored panel — and the Combobox's foundation. | `PopoverContent` pads `p-1`; pass your own for prose. |
+| `DropdownMenu` | A menu of **actions**, not a value picker. | `DropdownMenuItem` takes `icon`, `kbd`, `tone="danger"`; plus `DropdownMenuLabel`, `DropdownMenuSeparator`. |
+| `Select` | A grouped single-select over a short, fixed list. `value=""` means *unset* and is translated at the primitive's edge. | `SELECT_FIELD` is the form-field look for a `SelectTrigger`; pass `font-mono` on `SelectContent` for model ids. |
+| `Combobox` | A single-select whose list is long enough to want searching. | `ComboboxItem current` marks the held value. |
+| `Tooltip` | A label after 400ms hover, or on focus. `TooltipProvider` is mounted once in `main.tsx` (a stray tooltip brings its own). | `label`, `kbd`, `side`. Every `IconButton` has one. |
 
 ### Catalogue
 
-| Primitive | What it is | Variants |
+Every prop list below is the contract; the JSDoc on each export says the same.
+
+**Actions**
+
+| Primitive | Props | Notes |
 |---|---|---|
-| `Button` | The app's button. 32px tall, `rounded-md`, forwards every `<button>` attribute; a `className` you pass is appended. `type` defaults to `button` rather than to HTML's own `submit`, so a control runs its `onClick` and nothing else; pass `type="submit"` where a submit is what you want. `size="xs"` is the 22px one that sits inside a row — a lane's Retry, a bar secondary, an inspector action — and was the `btn-xs` class before the atoms migrated. | `variant`: `ghost` (default) · `solid` · `accent` (the violet ghost — accent-line border, accent-hi text; a second door that is not a second solid) · `danger` · `size`: `md` (default) · `xs` |
-| `SectionTitle` | 11px uppercase tracked label over a section. | — |
-| `DimLine` | One dim mono line — an inline empty or error state for a tight spot. | — |
-| `EmptyState` | A designed blank area: quiet icon chip, plain-language title, one-line hint, optional action. | `compact` |
-| `Dialog` | The one modal shell — see [Dialog](#dialog) below. | `size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 (settings: rail + roster table) · `palette` 560 at the ⌘K palette's 12vh (note capture) · `scrim`: `dim` (default) · `light` · `none` (clicks fall through) · plus `inline` |
-| `Field` | A control with its label, help and error wired to it by id. The child control is cloned with an `id` and `aria-describedby`; an `id` already on the control wins and the label follows it there. The error carries `role="alert"`. `layout` replaces the default stacked column (settings' rows are a two-column grid) and `labelAside` puts an affordance *beside* the label — a `<label>` may not contain another labelable element, so a help button or a save flash cannot be its child. | — |
-| `Card` | A bounded surface — `bg-panel`, hairline border, `rounded-lg`, `p-4` — with an optional `header` slot. | — |
-| `Section` | `SectionTitle` + `Card`. A **separate export**, not a `Card` title prop (the spec left the choice open): the title belongs outside the card's border, which is where every `SectionTitle` in the app already sits. | — |
-| `Kbd` | One key in a keyboard hint. | — |
-| `CheckLine` | One review figure — tone dot, label, value — from a `CheckRow`. | tone comes from the row: `ok` · `warn` · `danger` · `idle` |
-| `LapSections<T>` | Rows under `Lap N` headers. Current lap is an open `<section>`, earlier laps a `<details>` with a caret. Suppressed entirely below lap 2 (ADR-0010 §4). | — |
-| `PhaseTag` | A feature's phase, in the phase's own colour. | one per `Phase` |
-| `PhaseDot` | The same phase where a row has no space to name it — the rail's rows and the palette's. | one per `Phase` |
-| `TicketStatusChip` | A ticket's status. `burning` breathes. | one per `TicketStatus` |
-| `TicketKindChip` | Marks a `review` ticket. Renders **nothing** for `implementation` — the default would be noise on every row. | — |
-| `NoteAuthorChip` | Marks the review agent's note. Renders **nothing** for `human`. | — |
-| `NoteThumbnail` | The picture attached to a note, ~96×54, as the button that opens it in the app's lightbox. Worn by both lists of notes — the review lap's rows and the project inbox's. Renders **nothing** without a url, so neither surface repeats that guard. | `size`: `md` (default, ~96×54 — the review rows) · `sm` (~40×26 — the inbox's dense rows) |
-| `FindingSeverityChip` | How bad the review thought a finding was. Even `high` is amber: severity is read, never enforced. | `high` · `medium` · `low` |
-| `RunStatusChip` | A burn run's status. `running` breathes. | one per `RunStatus` |
-| `SessionStatusDot` | A 8px dot for a session's lifecycle. | `launching` · `live` · `ended` |
-| `Spinner` | The ring that says something is in flight. Decorative — whatever it sits beside says the state in words — so it is `aria-hidden`. | `size`: `md` (default) · `sm` (rides inside a chip's line) · `tone`: `work` (default) · `accent` |
+| `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger`; `size` `sm` 24 · `md` 28 (default) · `lg` 32; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
+| `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
+| `Kbd` | children, `className`. | One key or a short chord. |
+| `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. |
 
-**Exactly one `solid` button is visible per view.** Everything else is `ghost`;
-`danger` is for destructive confirmations, and it is still not the solid one. If
-a view needs a second primary action, the view is the thing to rethink.
+**Status** (facts are text, not boxes)
 
-Two more house rules the primitives already follow:
+| Primitive | Props | Notes |
+|---|---|---|
+| `StatusDot` | `tone` `success` · `warning` · `danger` · `accent` · `live` · `neutral`; `label`. | 6px. `live` breathes. With `label` it is `role="img"`; without, decorative. |
+| `StatusLabel` | children (the word); `tone`; or `icon` (tone-coloured) / `phase` / `spinning`; `size` `xs` (default) · `sm`; `strong`; `title`. | What every former chip is now. |
+| `PhaseIcon` (icons.tsx) | `phase` (`Phase` or `draft` · `ideation` · `spec` · `tickets` · `implementation`); `size`; `label` (`''` = decorative); `className`. | Shape first: dashed ring · ring · ¼ · ½ · ¾ · ring+dot · filled check. The fill sweeps on a phase change. `PHASE_TEXT`, `PHASE_NAME` maps exported. |
+| `PhaseTag` · `PhaseDot` | `phase`. | PhaseIcon + sentence-case name · the glyph alone at 14px. |
+| `TicketStatusChip` · `RunStatusChip` · `FindingSeverityChip` · `TicketKindChip` · `NoteAuthorChip` | unchanged. | Rendered as `StatusLabel`s in sentence case. `TicketKindChip` / `NoteAuthorChip` render nothing for the default kind/author. |
+| `SessionStatusDot` | `status`. | A dot with a `title` (not an accessible name). |
+| `CheckLine` | `row: CheckRow`. | One review figure as a property row. |
 
-- **Focus rings are not written here.** `styles.css` sets
-  `:focus-visible { box-shadow: var(--ring) }` globally and unlayered, so it
-  paints every one and would shadow a utility that repeated it.
-- **Colour families are lookup maps, not string interpolation.** A phase or
-  status maps to a whole literal class (`implementation → 'text-ph-implementation'`)
-  so Tailwind's content scanner can see it. `` `text-ph-${phase}` `` generates
-  nothing. No `@utility` escape hatch was needed for any of them.
+**Rows and facts**
+
+| Primitive | Props | Notes |
+|---|---|---|
+| `SectionLabel` | children, `count`, `action`, `className`, `id`. | 12px medium sentence case. `SectionTitle` renders the same (keeps its hook class). |
+| `NavItem` | `label`; `icon` or `phase`; `meta`; `dot` (tone); `active`; `href` or `onClick`; `actions` (hover/focus-revealed); `onContextMenu`; `title`; `className`. | 32px sidebar row. |
+| `ListRow` | `title`; `leading`; `subtitle`; `meta`; `onClick` or `href`; `actions`; `active`; `index` (stagger for the first 8 of an initial render); `animate`; `className`. | 40px content row. |
+| `List` | `divided`, `label`, `className`, children. | `divided` rules rows with `border-subtle`. |
+| `PropertyList` | `items: { label, value, sub?, leading? \| tone? \| phase?, mono? }[]`. | Two quiet columns. |
+| `MetaLine` | `items: ({ text?, strong?, tone? \| icon? \| phase?, mono?, title? } \| false \| null)[]`. | One line of 2–4 facts. |
+| `Tabs` | `items: { id, label, icon?, count?, disabled?, panelId? }[]`, `value`, `onChange`, `size` `sm` · `md`, `label`. | ARIA tablist, roving tabindex, ←/→/Home/End. |
+| `Disclosure` | `title`, `icon`, `aside`, `defaultOpen`, `bare`, `onToggle`, `className`, `bodyClassName`, children. | Closed by default; animated height; rotating chevron. |
+| `EmptyState` | `title`, `icon`, `hint`, `action`, `compact`, `className`. | No frame, no icon chip. |
+
+**Fields**
+
+| Primitive | Props | Notes |
+|---|---|---|
+| `TextField` | every `<input>` attribute and `ref`; `icon`, `kbd`, `trailing`, `size` `md` · `lg`, `mono`, `invalid`, `inputClassName`. | `className` styles the wrapper. |
+| `SearchField` | as TextField, minus `icon`; `size` defaults to `lg`. | |
+| `TextArea` | every `<textarea>` attribute; `mono`, `invalid`. | |
+| `TEXT_INPUT` | — | The class list for a bare `<input>` a surface already owns. |
+| `Field` | `label`, `labelAside`, `help`, `error`, `htmlFor`, `layout`, one control child. | Wires the ids; the error is `role="alert"`. |
+
+**Frame** (every surface lays out with these)
+
+| Primitive | Props | Notes |
+|---|---|---|
+| `PageTopbar` | `crumbs` (`Crumb[]`) or `leading`; `tabs`; `actions`. | 44px, `border-subtle` under it. |
+| `Crumbs` | `items: { label, icon?, onClick?, href?, mono? }[]`. | Last item is the current page. |
+| `Page` | `width` `default` 760 · `wide` 1040; `routeKey`; `className`; children. | The scrolling, centred column; rises in once per `routeKey`. |
+| `PageHeader` | `title`, `meta` (MetaLine items or a node), `actions`, children. | Title once, 22/28. |
+| `PageSection` | `title`, `action`, `id`, `className`, children. | 16/24 heading; separated by 40px of air. |
+| `Aside` | `title`, `onClose`, `actions`, `className`, `bodyClassName`, children. | The one right panel; slides in. |
+| `Card` | `header`, `className`, children. | Quiet bordered surface — **prefer no card**. |
+| `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
+
+**Other**: `DimLine`, `FailureNote` (`danger-subtle` notice about a path),
+`BranchMenu`, `LapSections`, `NoteThumbnail`, `BARE_BUTTON`.
 
 ### Dialog
 
 Every overlay in the app runs its mechanics through `Dialog`. Do not hand-roll
-another one — these five were each a copy, and the copies had already drifted
-(one closed on `click`, the rest on `mousedown`; one asked before discarding
-typed prose, the rest threw it away; none restored focus).
+another one. Its look: `surface-raised`, `rounded-lg`, `shadow-dialog`, the
+backdrop fading in (`bg-scrim`) and the panel rising (`animate-dialog-in`).
+Compose the content with `DialogHeader` (`title`, `description`, `onClose` →
+close IconButton, `id` for `labelledBy`), `DialogBody` and `DialogFooter`
+(actions right-aligned, one primary last; `start` slot on the left).
 
 What it owns: a portal into `<body>`, `role="dialog"` + `aria-modal`, Escape,
 backdrop dismissal, focus on open and focus restore on close, and — with
@@ -154,48 +229,36 @@ Three of those look like details and are not:
 
 - **Escape only answers when the focus is inside the dialog.** The palette and
   the settings pane can be open *on top of* another dialog, and focus is the only
-  thing that says which one is on top. A dialog that answered unconditionally
-  would close underneath the one being looked at. `null` / `<body>` counts as
-  inside — that is where a click on its own backdrop leaves the focus.
+  thing that says which one is on top. `null` / `<body>` counts as inside.
 - **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
   inside the panel and releases outside it is a text selection, not a dismissal.
 - **Focus is not stolen from a child that asked for it.** `Dialog` focuses the
-  panel on open only when nothing inside it already has the focus, so an
-  `autoFocus` control (or `initialFocusRef`) still wins.
+  panel on open only when nothing inside it already has the focus.
 
-`className` lands on the panel and `backdropClassName` on the backdrop, which is
-how the five existing overlays keep their present look while their flow feature
-waits its turn: they pass `peek`, `peek settings`, `nf-card` and so on, and those
-unlayered legacy rules beat the utilities underneath.
+`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh;
+`scrim`: `dim` (default) · `light` · `none` (clicks fall through). `className`
+lands on the panel and `backdropClassName` on the backdrop — legacy class names
+passed there still win over the utilities until their flow migrates.
 
-`inline` is the one escape from the portal, and there is exactly one consumer:
-`FormOverlay`, which fills the workspace column rather than the viewport and
-leaves the sidebar live beside it. Portalling that one to `<body>` would blank
-the workspace behind a backdrop and cover navigation that still works, so it
-renders in place and claims no `aria-modal` — content around it genuinely *is*
-reachable. Reach for `inline` only when that is true of your dialog too.
+`inline` is the one escape from the portal, for `FormOverlay`, which fills the
+workspace column rather than the viewport; it claims no `aria-modal`.
 
 ### Legacy hook classes
 
 Some primitives still carry one pre-Tailwind class name. It is a **hook, not
 styling**: a surviving `styles.css` rule places the primitive inside a specific
-surface, and dropping the name would silently lose that placement.
+surface.
 
 | Primitive | Hook | The rule that needs it |
 |---|---|---|
 | `SectionTitle` | `section-title` | `.body-title .section-title` (the run body's heading row) |
-| `DimLine` | `dim-line mono` | none left — the base `.dim-line` rule, which raw spans still carry |
+| `DimLine` | `dim-line` | none left — the base `.dim-line` rule, which raw spans still carry |
 
-Remember that an unlayered legacy rule beats a utility, so where the base rule
-also still exists — `.section-title` and `.dim-line` do, because raw spans
-elsewhere in the app carry those names — it wins over the utilities beside it.
-**When your flow migrates one of those surfaces, delete the rule and the hook
-together**, and check whether the base rule has any raw callers left.
-
-`LapSections` used to be on that list. Its replacement is the pattern to copy
-when you retire a hook whose rule only existed to place a shared primitive
-inside one surface: the placement becomes a `headClassName` the *surface* passes,
-so the utilities are written where the frame is known instead of reached in for.
+The ATOMS section of `styles.css` (`.btn*`, `.chip*`, `.mono`, `.spin-ring`,
+`.section-title`, `.dim-line`, `.ghost-link`, `.tag`) is restyled onto the new
+tokens so its remaining raw callers already look like the system; retire each
+with its last caller. **When your flow migrates one of those surfaces, delete
+the rule and the hook together.**
 
 ## Concern modules
 

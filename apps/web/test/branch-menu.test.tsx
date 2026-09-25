@@ -168,7 +168,7 @@ describe('BranchMenu', () => {
     open()
 
     expect(screen.queryAllByRole('option')).toHaveLength(0)
-    expect(screen.getByText('no branches to land on')).toBeTruthy()
+    expect(screen.getByText('No branches to land on')).toBeTruthy()
   })
 
   it('paints the trigger in the warn colour when the branch is gone', () => {
@@ -176,6 +176,6 @@ describe('BranchMenu', () => {
       <BranchMenu prefix="landing on" value="gone" branches={BRANCHES} onPick={() => {}} missing />,
     )
 
-    expect(screen.getByRole('button').className).toContain('text-warn')
+    expect(screen.getByRole('button').className).toContain('text-warning')
   })
 })

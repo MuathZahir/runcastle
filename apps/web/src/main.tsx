@@ -4,13 +4,18 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { unhandledMutationError } from './lib/mutation-errors'
+import { applyStoredTheme } from './lib/theme'
 import { pushToast, ToastProvider } from './lib/toast'
-import '@fontsource-variable/inter'
-import '@fontsource-variable/jetbrains-mono'
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 // theme.css first: it declares the tokens styles.css aliases (apps/web/STYLE.md).
 import './theme.css'
 import './styles.css'
 import { trpc } from './trpc'
+import { TooltipProvider } from './ui/tooltip'
+
+// Paint the stored theme onto <html> before the first render (lib/theme.ts).
+applyStoredTheme()
 
 function Root() {
   const [queryClient] = useState(
@@ -54,9 +59,11 @@ function Root() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+        <TooltipProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </TooltipProvider>
       </QueryClientProvider>
     </trpc.Provider>
   )

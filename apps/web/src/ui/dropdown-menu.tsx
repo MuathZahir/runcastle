@@ -1,6 +1,15 @@
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
-import type { ComponentPropsWithoutRef } from 'react'
-import { FLOATING_SURFACE, cx } from './floating'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import {
+  FLOATING_ITEM,
+  FLOATING_ITEM_DANGER,
+  FLOATING_ITEM_DEFAULT,
+  FLOATING_LABEL,
+  FLOATING_SEPARATOR,
+  FLOATING_SURFACE,
+  cx,
+} from './floating'
+import { Kbd } from './kbd'
 
 /**
  * The app's action menu — the kebab, the breadcrumb switcher, the docs picker.
@@ -60,7 +69,7 @@ export function DropdownMenuContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-dropdown-menu-content-available-height) min-w-32 p-1 font-mono text-xs',
+          'max-h-(--radix-dropdown-menu-content-available-height) min-w-48 p-1',
           className,
         )}
         {...props}
@@ -72,46 +81,49 @@ export function DropdownMenuContent({
 type ItemTone = 'default' | 'danger'
 
 /**
+ * One action: 30px, optional leading `icon` (16px, `text-icon`), the label,
+ * and an optional trailing `kbd` hint. `tone="danger"` is the destructive row
+ * (Delete, Remove) — label and icon in `danger`.
+ *
  * Highlight, not hover: Radix marks the item the keyboard *or* the pointer is
  * on with `data-highlighted`, so arrowing down and moving the mouse light the
- * same row. `hover:` rides along for the pointer-only case a headless library
- * cannot see (an item rendered under a pointer that never moves).
+ * same row.
  */
-const ITEM_TONE: Record<ItemTone, string> = {
-  default:
-    'text-text-2 hover:bg-accent-soft hover:text-text data-highlighted:bg-accent-soft data-highlighted:text-text',
-  danger: 'text-danger hover:bg-danger/12 data-highlighted:bg-danger/12',
-}
-
-const ITEM_BASE =
-  'flex w-full cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-left ' +
-  'transition-colors duration-(--dur-1) ease-app select-none ' +
-  'data-disabled:cursor-not-allowed data-disabled:opacity-40'
-
 export function DropdownMenuItem({
   className,
   tone = 'default',
+  icon,
+  kbd,
+  children,
   ...props
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & {
   /** `danger` is the destructive row — Delete, Remove. */
   tone?: ItemTone
+  /** Leading 16px icon. */
+  icon?: ReactNode
+  /** Trailing shortcut hint, e.g. "R" or "Ctrl K". */
+  kbd?: string
 }) {
   return (
     <DropdownMenuPrimitive.Item
-      className={cx(ITEM_BASE, ITEM_TONE[tone], className)}
+      className={cx(FLOATING_ITEM, tone === 'danger' ? FLOATING_ITEM_DANGER : FLOATING_ITEM_DEFAULT, className)}
       {...props}
-    />
+    >
+      {icon}
+      {kbd ? <span className="min-w-0 flex-1 truncate">{children}</span> : children}
+      {kbd && <Kbd className="ml-auto">{kbd}</Kbd>}
+    </DropdownMenuPrimitive.Item>
   )
 }
 
-/** The uppercase micro-label over a group of items. */
+/** The heading over a group of items: 12px medium, sentence case. */
 export function DropdownMenuLabel({
   className,
   ...props
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label>) {
   return (
     <DropdownMenuPrimitive.Label
-      className={cx('px-2.5 py-1.5 text-xs tracking-[0.08em] text-text-4 uppercase', className)}
+      className={cx(FLOATING_LABEL, className)}
       {...props}
     />
   )
@@ -123,7 +135,7 @@ export function DropdownMenuSeparator({
 }: ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator>) {
   return (
     <DropdownMenuPrimitive.Separator
-      className={cx('my-1 h-px bg-hairline-soft', className)}
+      className={cx(FLOATING_SEPARATOR, className)}
       {...props}
     />
   )

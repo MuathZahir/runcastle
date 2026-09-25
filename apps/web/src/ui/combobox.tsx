@@ -9,7 +9,7 @@ import {
 import { createContext, useContext, useState } from 'react'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconSearch } from '../icons'
-import { cx } from './floating'
+import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, cx } from './floating'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 /**
@@ -124,11 +124,11 @@ export function ComboboxInput({
   ...props
 }: ComponentPropsWithoutRef<typeof CommandInput>) {
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-hairline-soft px-2.5 py-2 text-text-4">
-      <IconSearch size={12} className="shrink-0" />
+    <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border-subtle px-3 text-icon">
+      <IconSearch size={14} className="shrink-0" />
       <CommandInput
         className={cx(
-          'min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 font-mono text-sm text-text placeholder:text-text-4',
+          'min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 font-sans text-sm text-text outline-none placeholder:text-text-tertiary',
           className,
         )}
         {...props}
@@ -163,11 +163,10 @@ export function ComboboxEmpty({
   className,
   ...props
 }: ComponentPropsWithoutRef<typeof CommandEmpty>) {
-  return <CommandEmpty className={cx('px-2.5 py-1.5 text-text-3', className)} {...props} />
+  return <CommandEmpty className={cx('px-2 py-1.5 text-sm text-text-tertiary', className)} {...props} />
 }
 
-const GROUP_HEADING =
-  'block px-2.5 pt-1 pb-0.5 font-sans text-xs tracking-[0.06em] text-text-4 uppercase'
+const GROUP_HEADING = FLOATING_LABEL
 
 /**
  * A headed run of rows. The heading is wrapped rather than styled through
@@ -199,12 +198,7 @@ export function ComboboxGroup({
  * the rendered text when no `value` is given — so a call site that needs the
  * exact thing it offered closes over it rather than reading the argument.
  */
-const ITEM =
-  'flex cursor-pointer items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 ' +
-  'text-left text-text-2 transition-colors duration-(--dur-1) ease-app select-none ' +
-  'data-[selected=true]:bg-accent-soft data-[selected=true]:text-text ' +
-  'aria-[current=true]:text-text ' +
-  'data-disabled:cursor-not-allowed data-disabled:opacity-40'
+const ITEM = cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'justify-between gap-3 aria-[current=true]:font-medium')
 
 export function ComboboxItem({
   className,
@@ -229,7 +223,7 @@ export function ComboboxItem({
       {...props}
     >
       <span className="min-w-0 truncate">{children}</span>
-      {current && <IconCheck size={11} className="shrink-0 text-accent-hi" />}
+      {current && <IconCheck size={14} className="shrink-0 text-text!" />}
     </CommandItem>
   )
 }

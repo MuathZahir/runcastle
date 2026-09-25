@@ -1,16 +1,16 @@
-/* runcastle web — the theme (decision 3).
+/* runcastle web — the theme.
    THIS FILE IS THE SINGLE TOKEN SOURCE. Every design token lives in the
-   `@theme` block below; `styles.css` only aliases them (see its LEGACY ALIASES
+   `@theme` block below (dark values) and the `[data-theme="light"]` block under
+   it (the light peer); `styles.css` only aliases them (see its LEGACY ALIASES
    header) and is deleted flow by flow. Add a token here, never there.
-   See apps/web/STYLE.md.
+   The values are the Runcastle Design System's (`tokens.json`); the look they
+   add up to is apps/web/DESIGN.md. How they are used is apps/web/STYLE.md.
 
    Preflight is deliberately omitted. The documented "add Tailwind to a project
    with existing CSS" import below pulls in the theme and utilities layers but
    not the base reset, because the reset would silently change the legacy sheet:
-   `ol, ul { list-style: none }` alone kills every markdown bullet (`.md ul` at
-   styles.css sets margin/padding only, and `.md li::marker` exists to colour
-   the marker preflight would remove). The feature's contract is that legacy
-   rules render unchanged, so the reset waits until the legacy sheet is gone.
+   `ol, ul { list-style: none }` alone kills every markdown bullet. The reset
+   waits until the legacy sheet is gone.
 
    `source("../")` scopes content detection to apps/web instead of letting
    automatic detection walk up to the monorepo root and scan every package. */
@@ -20,171 +20,325 @@
 
 /* `static` emits every token below even when no utility references it: the
    legacy alias block reads these through `var()` from a stylesheet Tailwind
-   does not process, so it cannot see those uses and would tree-shake them. */
+   does not process, so it cannot see those uses and would tree-shake them.
+   It is also what makes the light theme work: a `static` (not `inline`) theme
+   compiles `bg-surface` to `var(--color-surface)`, so redefining the variable
+   under `[data-theme="light"]` repaints every utility at once. */
 @theme static {
-  /* Tailwind's own palette is not part of this design language — the ramp
-     below is. Dropping it keeps `bg-red-500` from ever resolving. */
+  /* Tailwind's own palette is not part of this design language. */
   --color-*: initial;
 
-  /* ---- surfaces (near-black, layered by hairlines not shadows) ---- */
-  --color-bg: #090b10; /* app canvas — the darkest layer */
-  --color-panel: #0e1117; /* raised bars (title bar, toolbars, next-step) */
-  --color-panel-2: #0b0e14; /* sunken rails (sidebar, inspector) */
-  --color-panel-3: #12151d; /* hover / elevated row */
-  --color-panel-inset: #07080b; /* deepest inset (inputs, event stream) */
+  /* ---- grounds (dark values; light ones in the block below) ---- */
+  --color-canvas: #0a0a0b; /* the frame: the one sidebar, behind the content panel */
+  --color-surface: #111113; /* the content panel: pages, lists, documents */
+  --color-surface-raised: #18181b; /* anything floating: menus, dialogs, toasts, tooltips */
+  --color-surface-hover: #1c1c20; /* hovered row, item, ghost button */
+  --color-surface-selected: #222226; /* the current row / tab / pressed ghost */
+  --color-surface-inset: #0d0d0f; /* code, terminal, transcript, inputs */
 
-  /* ---- hairlines (the only separators; 1px) ---- */
-  --color-hairline: #1c2230; /* standard 1px divider / control border */
-  --color-hairline-soft: #151a26; /* fainter internal divider */
-  --color-hairline-strong: #2a3242; /* hover border */
+  /* ---- lines (1px, always) ---- */
+  --color-border: #232327; /* the panel edge, section rules, input borders */
+  --color-border-subtle: #1a1a1d; /* between rows */
+  --color-border-strong: #34343a; /* hovered input / secondary border, Kbd */
 
-  /* ---- text ramp (high -> low emphasis) ---- */
-  --color-text: #dde3ed; /* primary text, active identifiers */
-  --color-text-2: #96a0b0; /* secondary text, labels */
-  --color-text-3: #5f6a7a; /* tertiary / dim, timestamps, glyphs */
-  --color-text-4: #3a4354; /* faintest — separators, empty ticks */
+  /* ---- text ---- */
+  --color-text: #ededef;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #8c8c94;
+  --color-text-disabled: #4f4f56; /* decorative only — never carries information */
+  --color-icon: #8b8b94; /* default 16px icon stroke */
 
-  /* ---- violet accent (exactly one solid accent surface per view) ---- */
-  --color-accent: #7c6cf6; /* solid button / active markers */
-  --color-accent-hi: #a49bff; /* hover / links / headings */
-  --color-accent-2: #8f80f8; /* solid button hover */
-  --color-accent-ink: #0d0722; /* text on a solid accent surface */
-  --color-accent-soft: #161329; /* faint violet wash (hover on violet ghost) */
-  --color-accent-line: #3d3670; /* violet-tinted hairline */
+  /* ---- the one primary (inverted neutral) ---- */
+  --color-primary: #ededef;
+  --color-primary-hover: #ffffff;
+  --color-on-primary: #0a0a0b;
 
-  /* ---- phase palette (feature lifecycle — the semantic spine) ---- */
-  --color-ph-ideation: #8b7cf8;
-  --color-ph-spec: #8a94a2;
-  --color-ph-tickets: #d7a94a;
-  --color-ph-implementation: #f0883e;
-  --color-ph-review: #58a6ff;
-  --color-ph-shipped: #3fb950;
+  /* ---- the one accent (blue): focus, selection, links, live, review ---- */
+  --color-accent: #4f8ef7;
+  --color-accent-text: #7aaafa;
+  --color-accent-subtle: #16213a;
 
   /* ---- status ---- */
-  --color-danger: #f4594e; /* error / destructive */
-  --color-needs: #d7a94a; /* needs-attention / warning (amber) */
-  --color-warn: var(--color-needs); /* the name warning rules ask for */
-  --color-ok: #3fb950; /* success / healthy */
-  --color-drive: #58a6ff; /* test-drive blue */
+  --color-success: #46b67a;
+  --color-warning: #e2a53b;
+  --color-danger: #f06363;
+  --color-danger-subtle: #2a1515;
 
-  /* ---- type ---- */
-  --font-mono: "JetBrains Mono Variable", "Cascadia Code", Consolas, ui-monospace, monospace;
-  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* ---- phases (shape first — PhaseIcon — hue second). References, so both
+     themes follow from the tokens above. `planning` / `building` are the app's
+     own `Phase` names (@runcastle/core); they wear spec's and implementation's
+     hue, which is the stretch of the pipeline each one covers. ---- */
+  --color-phase-draft: var(--color-text-disabled);
+  --color-phase-ideation: var(--color-icon);
+  --color-phase-spec: var(--color-icon);
+  --color-phase-planning: var(--color-icon);
+  --color-phase-tickets: var(--color-warning);
+  --color-phase-implementation: var(--color-warning);
+  --color-phase-building: var(--color-warning);
+  --color-phase-review: var(--color-accent);
+  --color-phase-shipped: var(--color-success);
 
-  /* ---- type ramp: 11 / 12 / 14 / 16 / 20 (decision 4; 10px is gone) ----
-     11px is for uppercase micro-labels only. Tailwind's larger default steps
-     are dropped so the ramp is exactly these five. */
+  --color-focus-ring: var(--color-accent);
+  /* the veil behind a dialog — dark in both themes, lighter in light */
+  --color-scrim: rgb(0 0 0 / 0.6);
+
+  /* ==== DEPRECATED ALIASES ==================================================
+     The pre-redesign palette, pointed at its closest design-system token so
+     every surface re-skins today. DO NOT USE THESE IN NEW CODE: when you touch
+     a file, replace each one with the name on the right. They are deleted once
+     `grep -rE "(bg|text|border|ring|fill|stroke)-(bg|panel|hairline|text-[234]|accent-(hi|2|ink|soft|line)|ph-|needs|warn|ok|drive)\b"`
+     over apps/web/src comes back empty. ================================== */
+  --color-bg: var(--color-canvas);
+  --color-panel: var(--color-surface);
+  --color-panel-2: var(--color-canvas);
+  --color-panel-3: var(--color-surface-hover);
+  --color-panel-inset: var(--color-surface-inset);
+  --color-hairline: var(--color-border);
+  --color-hairline-soft: var(--color-border-subtle);
+  --color-hairline-strong: var(--color-border-strong);
+  --color-text-2: var(--color-text-secondary);
+  --color-text-3: var(--color-text-tertiary);
+  --color-text-4: var(--color-text-disabled);
+  --color-accent-hi: var(--color-accent-text);
+  --color-accent-2: var(--color-accent);
+  --color-accent-ink: var(--color-on-primary);
+  --color-accent-soft: var(--color-accent-subtle);
+  --color-accent-line: var(--color-border-strong);
+  --color-ph-ideation: var(--color-phase-ideation);
+  --color-ph-spec: var(--color-phase-spec);
+  --color-ph-tickets: var(--color-phase-tickets);
+  --color-ph-implementation: var(--color-phase-implementation);
+  --color-ph-review: var(--color-phase-review);
+  --color-ph-shipped: var(--color-phase-shipped);
+  --color-needs: var(--color-warning);
+  --color-warn: var(--color-warning);
+  --color-ok: var(--color-success);
+  --color-drive: var(--color-accent);
+  /* ==== end DEPRECATED ALIASES ==== */
+
+  /* ---- type: Geist + Geist Mono (Fontsource, imported in main.tsx) ---- */
+  --font-sans: "Geist Variable", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", "Cascadia Code", ui-monospace, Consolas, monospace;
+
+  /* ---- type ramp: exactly five steps (DESIGN.md §Type) ----
+     xs 12/16 caption+label · sm 13/20 THE UI DEFAULT · base 14/22 prose ·
+     lg 16/24 section title · xl 22/28 page title (once per page). */
   --text-*: initial;
-  --text-xs: 11px;
-  --text-xs--line-height: 1.45;
-  --text-sm: 12px;
-  --text-sm--line-height: 1.5;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
   --text-base: 14px;
-  --text-base--line-height: 1.5;
+  --text-base--line-height: 22px;
   --text-lg: 16px;
-  --text-lg--line-height: 1.4;
-  --text-xl: 20px;
-  --text-xl--line-height: 1.3;
+  --text-lg--line-height: 24px;
+  --text-lg--letter-spacing: -0.01em;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+  --text-xl--letter-spacing: -0.02em;
 
-  /* ---- radii: 6 / 8 / 12 (decision 4, one notch up from 5 / 7 / 10) ---- */
+  /* ---- radii: kbd/checkbox 4 · controls/rows 6 · panel/menus/dialogs 10 ·
+     dots only full. `pill` is a deprecated alias of `full`. ---- */
   --radius-*: initial;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-pill: 999px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+  --radius-pill: var(--radius-full);
 
-  /* ---- elevation (floating surfaces only — content stays flat) ----
-     Tailwind's generic shadow scale is dropped: this app has exactly two. */
+  /* ---- elevation: floating layers only, content is flat ----
+     Each is a `var()` onto an `--elevation-*` pair defined per theme below:
+     Tailwind inlines a literal shadow into the utility at build time, so a
+     literal here could not follow the theme switch. `menu` and `overlay` are
+     deprecated aliases. */
   --shadow-*: initial;
-  --shadow-menu: 0 8px 28px -10px rgba(0, 0, 0, 0.7), 0 2px 8px -2px rgba(0, 0, 0, 0.5);
-  --shadow-overlay: 0 24px 70px -24px rgba(0, 0, 0, 0.85), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-popover: var(--elevation-popover);
+  --shadow-dialog: var(--elevation-dialog);
+  --shadow-menu: var(--elevation-popover);
+  --shadow-overlay: var(--elevation-dialog);
 
-  /* ---- motion ---- Suffixed `-app` so they sit beside Tailwind's own
-     `ease-out` rather than redefining what that utility means. */
-  --ease-app: cubic-bezier(0.22, 0.61, 0.24, 1); /* decelerate */
-  --ease-out-app: cubic-bezier(0.16, 1, 0.3, 1);
+  /* ---- motion (DESIGN.md §Motion) ---- Suffixed `-app` so they sit beside
+     Tailwind's own `ease-out` rather than redefining what that utility means. */
+  --ease-app: cubic-bezier(0.22, 0.61, 0.24, 1); /* state changes */
+  --ease-out-app: cubic-bezier(0.16, 1, 0.3, 1); /* everything entering */
 
-  /* The named motions a surface asks for by utility. The keyframes they run
-     live outside this block — see the note above them. */
-  --animate-toast-in: toastIn var(--dur-3) var(--ease-out-app);
-  --animate-backdrop-in: backdropIn var(--dur-2) var(--ease-out-app);
-  /* `cmdkIn` is the command palette's entrance, which every overlay shares. */
+  /* The named motions a surface asks for by utility (`animate-rise-in`). The
+     keyframes they run live outside this block — see the note above them.
+     `animate-pop-in` is not here: it is an `@utility` below, because it also
+     has to set the transform origin Radix measured. */
+  --animate-rise-in: riseIn var(--dur-3) var(--ease-out-app) both;
+  --animate-fade-in: fadeIn var(--dur-2) var(--ease-out-app) both;
+  --animate-dialog-in: dialogIn var(--dur-3) var(--ease-out-app) both;
+  --animate-backdrop-in: backdropIn var(--dur-2) var(--ease-out-app) both;
+  --animate-slide-in-right: slideInRight var(--dur-3) var(--ease-out-app) both;
+  --animate-toast-in: toastIn var(--dur-3) var(--ease-out-app) both;
+  --animate-breathe: breathe 2s ease-in-out infinite;
+  --animate-spin: spin 0.8s linear infinite;
+  /* Kept for the surfaces that still name them. */
   --animate-overlay-in: cmdkIn var(--dur-2) var(--ease-out-app);
   --animate-dot-glow: dotGlow 2.2s var(--ease-app) infinite;
 
   /* ---- metrics ---- Not in a Tailwind namespace, so no utility is generated:
-     these are read with `var()` / arbitrary values (`h-(--control-h)`).
+     read them with `var()` / arbitrary values (`h-(--control-h)`).
      Spacing stays on Tailwind's default 4px scale — no custom tokens. */
-  --control-h: 32px; /* decision 4, was 28px */
-  --sidebar-w: 300px; /* decision 10 default; the shell overrides it as you drag */
-  --inspector-w: 300px;
+  --control-sm: 24px; /* small buttons, icon buttons in rows */
+  --control-h: 28px; /* default button / input / select */
+  --control-lg: 32px; /* the page's primary, the search field */
+  --row-h: 32px; /* sidebar row */
+  --topbar-h: 44px; /* content topbar, aside header */
+  --sidebar-w: 248px; /* the shell overrides it as you drag */
+  --inspector-w: 320px;
+  --aside-w: 380px; /* the one right-hand aside */
+  --content-max: 760px; /* document-like page column */
+  --content-wide: 1040px; /* data-heavy page column */
   --maprail-w: 300px;
   --artifact-w: 380px;
-  --chat-panel-w: 400px; /* the feature chat docked beside the body (decision 16) */
+  --chat-panel-w: 400px;
   --notes-rail-w: 360px; /* the review page's notes rail; the rail overrides it as you drag */
-  --content-max: 1060px; /* centered column for document-style phase bodies */
-  --dur-1: 0.12s; /* micro (hover, color) */
-  --dur-2: 0.19s; /* small (rows, chips) */
-  --dur-3: 0.32s; /* content enter */
-  --ring: 0 0 0 2px var(--color-bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
+  --dur-1: 120ms; /* hover, colour, press */
+  --dur-2: 180ms; /* menus, popovers, tooltips, rows, disclosure */
+  --dur-3: 240ms; /* page enter, dialog, aside */
+  /* Deprecated: focus is an outline now (styles.css base). Kept for any
+     `shadow-(--ring)` caller. */
+  --ring: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-focus-ring);
+}
+
+/* ---- per-theme values that are not colours Tailwind can own ---- */
+:root {
+  color-scheme: dark;
+  --elevation-popover: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 24px -6px rgba(0, 0, 0, 0.6);
+  --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 24px 64px -12px rgba(0, 0, 0, 0.75);
+  /* Disclosures animate their height (DESIGN.md §Motion). */
+  interpolate-size: allow-keywords;
+}
+
+/* ---- the light theme: a full peer. `lib/theme.ts` sets `data-theme` on
+   <html> before first paint. Only the base tokens are restated — the phase,
+   focus and deprecated names are `var()`s onto these, so they follow. ---- */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #f1f1f3;
+  --color-surface-selected: #eaeaed;
+  --color-surface-inset: #f7f7f8;
+  --color-border: #e4e4e7;
+  --color-border-subtle: #efeff1;
+  --color-border-strong: #d1d1d6;
+  --color-text: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-tertiary: #626268;
+  --color-text-disabled: #a8a8b0;
+  --color-icon: #71717a;
+  --color-primary: #18181b;
+  --color-primary-hover: #2c2c31;
+  --color-on-primary: #ffffff;
+  --color-accent: #2f6fe4;
+  --color-accent-text: #2463d6;
+  --color-accent-subtle: #ecf2fe;
+  --color-success: #1e8e53;
+  --color-warning: #a86a06;
+  --color-danger: #c42828;
+  --color-danger-subtle: #fdeeee;
+  --color-scrim: rgb(24 24 27 / 0.28);
+  --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
+  --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22);
+}
+
+/* For the frame of a theme switch (lib/theme.ts), nothing transitions: the
+   whole app changes at once instead of each control fading on its own clock. */
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none !important;
+}
+
+/* A floating menu / popover / select / tooltip entering. Opacity plus a small
+   scale from the corner Radix measured (the trigger side), so the layer grows
+   out of the thing that opened it. Outside Radix it scales from the top. */
+@utility animate-pop-in {
+  animation: popIn var(--dur-2) var(--ease-out-app) both;
+  transform-origin: var(--radix-popper-transform-origin, top);
 }
 
 /* ---- native element reset ----
-   The slice of preflight this app can afford. The header above says why the
-   whole reset stays out; what its absence costs is a `<button>` that arrives
-   wearing the user agent's own chrome — `buttonface` grey, a 2px outset border —
-   punched into a near-black app. Surfaces that noticed wrote the reset out by
-   hand (`BARE_BUTTON` in `ui.tsx` and in `components/settings/button.ts`,
-   `BUTTON_RESET` in `Sidebar.tsx`); surfaces that did not — the conversation
-   rows, the pipeline stepper's pills, the branch pickers — rendered a white pill.
-
-   A `<select>` used to be reset here too, for the white listbox it drops into a
-   dark app. There is no `<select>` left to reset: every picker in the app is a
-   `Select` or a `Combobox` now (feature: floating-primitives-via-shadcn-radix),
-   which is to say a button and a portalled list this app styles itself.
-
-   This rule takes only what those hand-written copies took, so nothing the
-   legacy sheet leans on moves: no `list-style`, no `margin`, nothing outside the
-   one element named.
-
-   It sits in `@layer base`, which is what makes it safe to state globally.
-   Unlayered `styles.css` beats every layer, so `.btn` and the other legacy
-   controls keep every pixel they declare; the utilities layer beats base, so a
-   `bg-panel` on a raw button still wins. Only an element that named nothing
-   changes, and what it wore before was the OS.
-
-   The other half of the button reset — `font-family` and `color`, both
-   `inherit` — stays in `styles.css`. It is unlayered there and so beats the
-   `text-*` utility on a raw button; moving it here would repaint every one of
-   them, which is its own flow's migration and not this reset's to smuggle in. */
+   The slice of preflight this app can afford (see the header). It sits in
+   `@layer base`, so unlayered `styles.css` and every utility still beat it:
+   only an element that named nothing changes. */
 @layer base {
+  /* A raw button inherits its font and colour — in the base layer, so a
+      `text-*` utility on the button itself wins (it used to be unlayered in
+     styles.css, which is why primitives painted labels on an inner span). */
   button {
     appearance: none;
     background: none;
     border: 0;
     padding: 0;
+    font-family: inherit;
+    color: inherit;
+  }
+  /* Form fields take the app's face instead of the user agent's (a
+     `<textarea>` would otherwise be monospace); a `font-mono` utility wins. */
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+  }
+
+  /* A text field's focus ring, drawn on its own border. Here (layered) rather
+     than beside the global ring in styles.css, so a field that shows focus
+     another way can switch it off with `outline-none`. */
+  :is(input, textarea, select):focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -1px;
+  }
+
+  /* Disclosure height animation: opt in with `data-disclosure` on a
+     `<details>` (the `Disclosure` primitive and `LapSections` do). Browsers
+     without `::details-content` open instantly, which is fine. The clip margin
+     keeps the 2px focus outline of the first/last row visible. */
+  details[data-disclosure]::details-content {
+    block-size: 0;
+    overflow: clip;
+    overflow-clip-margin: 4px;
+    transition:
+      block-size var(--dur-2) var(--ease-app),
+      content-visibility var(--dur-2) allow-discrete;
+  }
+  details[data-disclosure][open]::details-content {
+    block-size: auto;
   }
 }
 
 /* ---- keyframes ----
-   Declared at the top level and not inside `@theme`, because most of them are
-   named from rules Tailwind never reads: the `styles.css` sections still waiting
-   for their flow, and the `animate-[name_…]` arbitrary values the run and
-   shipped surfaces already write. Tailwind emits a `@theme` keyframe only when
-   an `--animate-*` utility naming it is used, so declaring them there would take
-   the animation out from under those callers. */
+   Declared at the top level and not inside `@theme`, because many are named
+   from rules Tailwind never reads: the `styles.css` sections still waiting for
+   their flow, and the `animate-[name_…]` arbitrary values surfaces write.
+   Tailwind emits a `@theme` keyframe only when an `--animate-*` utility naming
+   it is used, so declaring them there would take the animation out from under
+   those callers. Every one is transform + opacity only. */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.32; } }
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes dotGlow {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(124, 108, 246, 0.22); }
-  50% { box-shadow: 0 0 0 5px rgba(124, 108, 246, 0.08); }
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 22%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--color-accent) 8%, transparent); }
 }
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes bodyIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes detailIn {
@@ -192,17 +346,25 @@
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes popIn {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 @keyframes cmdkIn {
-  from { opacity: 0; transform: translateY(-10px) scale(0.985); }
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 @keyframes toastIn {
-  from { opacity: 0; transform: translateX(16px) scale(0.98); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Motion here is always a garnish — transforms and opacity, never the only way
@@ -213,6 +375,11 @@
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  /* Its own rule: a selector list with a pseudo-element a browser does not
+     know is dropped whole, and would take the rule above with it. */
+  details[data-disclosure]::details-content {
     transition-duration: 0.001ms !important;
   }
 }

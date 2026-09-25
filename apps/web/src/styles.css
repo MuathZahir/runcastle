@@ -1,20 +1,18 @@
-/* runcastle web — pipeline-first IDE shell (app-redesign).
-   Near-black surfaces, 1px hairlines everywhere, NO shadows on content, exactly
-   one solid violet button per view, mono for every identifier. VS Code grammar,
-   not a marketing dashboard — but with the quiet, deliberate motion of a modern
-   production app (Linear / Cursor): transforms + opacity only, always cheap,
-   always interruptible, and fully disabled under prefers-reduced-motion. */
+/* runcastle web — the legacy stylesheet, retired flow by flow (STYLE.md,
+   Migration rule). The look it serves is apps/web/DESIGN.md: a quiet
+   workbench — neutral grounds, 1px hairlines, one inverted-neutral primary,
+   colour only where it says something. Never add a rule here. */
 
 /* LEGACY ALIASES — delete with the last of styles.css. Do not add tokens here;
    add them to theme.css.
-   Every value now lives in the `@theme` block in theme.css (decision 3). These
-   are the short names the ~4,300 rules below already spell, mapped onto their
-   namespaced source so those rules keep resolving untouched. Names that are
-   already identical in theme.css — --radius-sm/-lg/-pill, --control-h,
-   --sidebar-w, --inspector-w, --maprail-w, --content-max, --shadow-menu,
-   --shadow-overlay, --dur-1/-2/-3, --ring — are deliberately absent: theme.css
-   emits them on :root under exactly those names, and redeclaring them here
-   would shadow the theme from an unlayered rule. */
+   These are the short names the rules below still spell, mapped onto their
+   namespaced source so those rules keep resolving untouched — and, through
+   theme.css's deprecated aliases, onto the design-system palette, so the
+   legacy rules re-skin (and follow the light theme) with everything else.
+   Names that are already identical in theme.css — --radius-sm/-lg/-pill,
+   --control-h, --sidebar-w, --inspector-w, --maprail-w, --content-max,
+   --shadow-menu, --shadow-overlay, --dur-1/-2/-3, --ring — are deliberately
+   absent: redeclaring them here would shadow the theme from an unlayered rule. */
 :root {
   /* ---- surfaces ---- */
   --bg: var(--color-bg);
@@ -80,181 +78,170 @@ body,
   margin: 0;
   padding: 0;
 }
+/* The UI default is `ui` 13/20 (text-sm); prose opts up to text-base. */
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  /* The base step of the theme ramp — one notch up from the old 13px/1.45
-     (decision 4). Legacy rules below keep their hardcoded px until the flow
-     that owns them migrates the surface. */
-  font-size: var(--text-base);
-  line-height: 1.5;
-  letter-spacing: 0.004em;
-  font-feature-settings: "tnum" 1, "cv05" 1;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
-button {
-  font-family: inherit;
-  color: inherit;
+/* Thin, quiet scrollbars in both themes (Chromium 121+ reads these and
+   ignores the ::-webkit-scrollbar pseudo-elements). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
-:focus-visible {
+/* Focus: one 2px `focus-ring` outline at 2px offset on every interactive
+   element (DESIGN.md). Unlayered on purpose, so no utility can switch it off.
+   Text fields are the exception: their ring (drawn on their own border) is in
+   theme.css's base layer, so a field that shows focus another way — its
+   border, a TextField wrapper — can say `outline-none`. A row that a menu
+   highlights with its own ground, and a panel focused only to hold the
+   keyboard (tabindex -1), show none. */
+:focus-visible:not(input, textarea, select) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+:is([tabindex="-1"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"],
+    [role="option"], [cmdk-item]):focus-visible {
   outline: none;
-  box-shadow: var(--ring);
-  border-radius: var(--radius-sm);
-}
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: #1c2230;
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #2a3242;
-  background-clip: padding-box;
-  border: 2px solid transparent;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 /* ============================================================================
-   ATOMS
+   ATOMS — the class-name versions of the primitives, kept for the raw callers
+   that still spell them. Same look as `Button` / `StatusLabel` / `Spinner` in
+   ui.tsx; retire each with its last caller.
    ========================================================================== */
 .mono {
-  font-family: var(--mono);
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 .dim {
-  color: var(--text-3);
+  color: var(--color-text-tertiary);
 }
 .dim-line {
-  color: var(--text-3);
-  font-family: var(--mono);
-  font-size: 12.5px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  line-height: 16px;
   padding: 2px 0;
 }
+/* Sentence case, 12px medium — the uppercase tracked label is retired. */
 .section-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--text-3);
-  font-weight: 600;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-tertiary);
+  font-weight: 500;
   padding: 4px 0;
 }
 
-/* ---- buttons ---- */
+/* ---- buttons: `btn` alone is secondary, `btn-solid` the primary ---- */
 .btn {
   height: var(--control-h);
-  padding: 0 12px;
-  border-radius: var(--radius);
-  border: 1px solid var(--hairline);
-  background: transparent;
-  color: var(--text);
-  font-size: 12.5px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   white-space: nowrap;
-  transition: border-color var(--dur-1) var(--ease),
-    background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
-    transform var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease),
-    opacity var(--dur-1);
+  transition: border-color var(--dur-1) var(--ease-app), background-color var(--dur-1) var(--ease-app),
+    color var(--dur-1) var(--ease-app), transform var(--dur-1) var(--ease-app);
 }
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.btn:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-hover);
 }
 .btn:active:not(:disabled) {
-  transform: translateY(0.5px) scale(0.99);
+  transform: translateY(1px);
+}
+.btn:disabled {
+  color: var(--color-text-disabled);
+  background: transparent;
+  border-color: var(--color-border-subtle);
+  cursor: not-allowed;
+}
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
 }
 .btn-ghost:hover:not(:disabled) {
-  border-color: var(--hairline-strong);
-  background: var(--panel);
-  color: var(--text);
+  border-color: transparent;
+  color: var(--color-text);
 }
 .btn-solid {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
+  background: var(--color-primary);
+  border-color: transparent;
+  color: var(--color-on-primary);
 }
 .btn-solid:hover:not(:disabled) {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px -6px rgba(124, 108, 246, 0.7);
+  background: var(--color-primary-hover);
+  border-color: transparent;
 }
-.btn-solid:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: none;
+.btn-solid:disabled {
+  background: var(--color-surface-selected);
 }
 .btn-danger {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--hairline));
-  color: var(--danger);
+  color: var(--color-danger);
 }
 .btn-danger:hover:not(:disabled) {
-  background: rgba(244, 89, 78, 0.12);
-  border-color: var(--danger);
+  background: var(--color-danger-subtle);
+  border-color: var(--color-danger-subtle);
 }
 .btn-xs {
-  height: 22px;
-  padding: 0 9px;
-  font-size: 11.5px;
-  border-radius: var(--radius-sm);
+  height: var(--control-sm);
+  padding: 0 8px;
+  font-size: 12px;
 }
 .btn-lg {
-  height: 32px;
-  padding: 0 16px;
-  font-size: 13px;
+  height: var(--control-lg);
+  padding: 0 14px;
 }
 
 .ghost-link {
   background: none;
   border: none;
-  color: var(--text-2);
-  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
   cursor: pointer;
   padding: 2px 0;
-  transition: color var(--dur-1) var(--ease);
+  transition: color var(--dur-1) var(--ease-app);
 }
 .ghost-link:hover:not(:disabled) {
-  color: var(--accent-hi);
+  color: var(--color-accent-text);
 }
 .ghost-link:disabled {
-  opacity: 0.4;
+  color: var(--color-text-disabled);
   cursor: not-allowed;
 }
 
-/* ---- chips / tags / dots ---- */
+/* ---- chips → status labels: no pill, no outline, a word in sentence case ---- */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 19px;
-  padding: 0 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--hairline);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--text-2);
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-secondary);
   white-space: nowrap;
 }
-.chip-neutral { color: var(--text-2); }
-.chip-blocked { color: var(--needs); border-color: color-mix(in srgb, var(--needs) 40%, transparent); }
+.chip-neutral { color: var(--color-text-secondary); }
+.chip-blocked { color: var(--color-warning); }
 
 .tag {
-  font-family: var(--mono);
   font-size: 12px;
-  text-transform: lowercase;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .spinner,
@@ -262,7 +249,7 @@ button {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1.6px solid var(--ph-implementation);
+  border: 1.5px solid var(--color-text-tertiary);
   border-top-color: transparent;
   display: inline-block;
   animation: spin 0.8s linear infinite;

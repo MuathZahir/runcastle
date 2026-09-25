@@ -1,7 +1,7 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
 import type { ComponentPropsWithoutRef } from 'react'
 import { IconCheck, IconChevronDown } from '../icons'
-import { FLOATING_SURFACE, cx } from './floating'
+import { FLOATING_ITEM, FLOATING_ITEM_DEFAULT, FLOATING_LABEL, FLOATING_SURFACE, cx } from './floating'
 
 /**
  * The app's value picker: one choice out of a fixed, grouped list — the model
@@ -60,6 +60,16 @@ export function Select({
  */
 const TRIGGER = 'inline-flex min-w-0 cursor-pointer items-center justify-between gap-1.5 text-left'
 
+/**
+ * The standard field look for a trigger — a form control on `surface-inset`
+ * with a hairline, like `TextField`. Pass it as the trigger's `className`
+ * (plus a width) wherever the select is a form field rather than inline chrome.
+ */
+export const SELECT_FIELD =
+  'h-(--control-h) rounded-md border border-border bg-surface-inset px-2.5 text-sm text-text ' +
+  'transition-colors duration-(--dur-1) ease-app hover:border-border-strong ' +
+  'data-[state=open]:border-accent data-placeholder:text-text-tertiary disabled:cursor-not-allowed disabled:text-text-disabled'
+
 export function SelectTrigger({
   className,
   children,
@@ -68,8 +78,8 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger className={cx(TRIGGER, className)} {...props}>
       {children}
-      <SelectPrimitive.Icon className="shrink-0 text-text-4">
-        <IconChevronDown size={11} />
+      <SelectPrimitive.Icon className="shrink-0 text-icon">
+        <IconChevronDown size={14} />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -100,13 +110,9 @@ export function SelectValue({
  * would hand it to an enclosing `Dialog` — the settings dialog every one of
  * these opens inside.
  *
- * Mono, but no type size: the five places this drops from are not written at
- * one scale (11px on a ticket row, 12px in settings), and a size stated here
- * could not be overridden by the one a caller passes. Tailwind emits utilities
- * in its own order, not the order of the class attribute, and `text-xs` happens
- * to sort last — so a default here would silently beat every call site. The
- * family is safe (`font-sans` does sort after `font-mono`); the size is the
- * caller's.
+ * The surface states the UI default size (`text-sm`); a caller that passes
+ * `text-xs` wins, because Tailwind happens to emit `text-xs` after `text-sm`.
+ * Pass `font-mono` for a list of code-shaped values (model ids).
  */
 export function SelectContent({
   className,
@@ -129,7 +135,7 @@ export function SelectContent({
         }}
         className={cx(
           FLOATING_SURFACE,
-          'max-h-(--radix-select-content-available-height) min-w-32 font-mono',
+          'max-h-(--radix-select-content-available-height) min-w-32',
           className,
         )}
         {...props}
@@ -146,14 +152,14 @@ export function SelectContent({
 
 export const SelectGroup = SelectPrimitive.Group
 
-/** The uppercase micro-label over a group of rows — a runtime's name. */
+/** The heading over a group of rows — a runtime's name. 12px medium, sentence case. */
 export function SelectLabel({
   className,
   ...props
 }: ComponentPropsWithoutRef<typeof SelectPrimitive.Label>) {
   return (
     <SelectPrimitive.Label
-      className={cx('px-2.5 py-1.5 text-xs tracking-[0.08em] text-text-4 uppercase', className)}
+      className={cx(FLOATING_LABEL, className)}
       {...props}
     />
   )
@@ -165,12 +171,7 @@ export function SelectLabel({
  * what says which one is current, so the highlight and the selection never
  * argue over the same colour.
  */
-const ITEM =
-  'flex w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 ' +
-  'text-left text-text-2 transition-colors duration-(--dur-1) ease-app select-none ' +
-  'hover:bg-accent-soft hover:text-text ' +
-  'data-highlighted:bg-accent-soft data-highlighted:text-text data-[state=checked]:text-text ' +
-  'data-disabled:cursor-not-allowed data-disabled:opacity-40'
+const ITEM = cx(FLOATING_ITEM, FLOATING_ITEM_DEFAULT, 'justify-between gap-3 data-[state=checked]:font-medium')
 
 export function SelectItem({
   className,
@@ -181,8 +182,8 @@ export function SelectItem({
   return (
     <SelectPrimitive.Item value={toRadix(value)} className={cx(ITEM, className)} {...props}>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator className="inline-flex shrink-0 items-center text-accent-hi">
-        <IconCheck size={11} />
+      <SelectPrimitive.ItemIndicator className="inline-flex shrink-0 items-center">
+        <IconCheck size={14} className="text-text!" />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
   )

@@ -1,16 +1,9 @@
-import { cloneElement, isValidElement, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react'
-import type {
-  FindingSeverity,
-  Phase,
-  RunStatus,
-  SessionStatus,
-  TestNoteAuthor,
-  TicketKind,
-  TicketStatus,
-} from '@runcastle/core'
-import type { CheckRow, CheckTone, LapGroup } from './lib/feature-ui'
+import type { ReactNode, RefObject } from 'react'
+import type { LapGroup } from './lib/feature-ui'
+import { IconChevronDown, IconChevronRight, IconX } from './icons'
+import { Button, IconButton } from './ui/button'
 import {
   Combobox,
   ComboboxContent,
@@ -21,206 +14,78 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from './ui/combobox'
+import { cx } from './ui/floating'
+import { SectionLabel } from './ui/list'
 
 /**
- * Primitive UI atoms for the IDE shell (apps/web/STYLE.md). Exactly one `solid`
- * button is visible per view — everything else is `ghost`. No cards, no shadows.
+ * The shared primitives (apps/web/DESIGN.md §Components, STYLE.md §Primitives).
+ * Import every primitive from here — this file re-exports the ones that live
+ * in `src/ui/` — and never hand-roll a button, row, chip, menu, dialog, tab set
+ * or empty state in a surface.
  *
- * Every primitive is styled with Tailwind utilities written inline on the theme
- * tokens (decision 5): a primitive's whole look lives in this file, which is the
- * file the flow features copy from. No `@apply`, no `clsx`/`cva`/`tailwind-merge`
- * — {@link cx} below is the whole of the variant machinery.
+ * Every primitive is styled with Tailwind utilities on the design-system tokens
+ * (`bg-surface`, `text-text-secondary`, `border-border-subtle` …); a
+ * primitive's whole look lives in its own file. No `@apply`, no
+ * `clsx`/`cva`/`tailwind-merge` — {@link cx} is the whole variant machinery.
  *
- * Focus rings are deliberately absent from these class lists: `styles.css` sets
- * `:focus-visible { box-shadow: var(--ring) }` globally and unlayered, so it
- * already paints every one of them and would shadow a utility that repeated it.
+ * Focus rings are deliberately absent from these class lists: `styles.css`
+ * draws the `:focus-visible` outline globally and unlayered.
  */
 
-/** Join the parts that are present. Falsy branches drop out. */
-function cx(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(' ')
-}
-
-type Variant = 'solid' | 'ghost' | 'accent' | 'danger'
-type ButtonSize = 'md' | 'xs'
-
-const BUTTON_BASE =
-  'inline-flex items-center justify-center gap-1.5 whitespace-nowrap border font-medium ' +
-  'transition-[color,background-color,border-color,box-shadow,transform,opacity] ' +
-  'duration-(--dur-1) ease-app enabled:active:scale-[0.99] ' +
-  'disabled:cursor-not-allowed disabled:opacity-40'
-
-/**
- * `xs` is the button that sits inside a row rather than under a form — a lane's
- * Retry, the next-step bar's secondaries, an inspector action. It was the
- * `btn-xs` legacy class every one of those surfaces reached for, which is why it
- * is a variant here and not a class list copied around.
- */
-const BUTTON_SIZE: Record<ButtonSize, string> = {
-  md: 'h-(--control-h) rounded-md px-3 text-sm',
-  xs: 'h-5.5 rounded-sm px-2.5 text-xs',
-}
-
-/**
- * Every variant states its own background, `danger` included. There is no
- * preflight (see {@link BARE_BUTTON}), so a variant that names only a border and
- * a colour leaves the user agent's `buttonface` behind it — which is how the
- * danger button rendered as white-on-white until it said `bg-transparent`.
- */
-const BUTTON_VARIANT: Record<Variant, string> = {
-  ghost:
-    'border-hairline bg-transparent text-text enabled:hover:border-hairline-strong enabled:hover:bg-panel',
-  solid:
-    'border-accent bg-accent font-semibold text-accent-ink enabled:hover:border-accent-2 enabled:hover:bg-accent-2',
-  // The violet ghost: a view's second door that still wants to read as the
-  // accent's, without becoming a second solid (the Notes card's Triage). Its
-  // label colour is in BUTTON_LABEL, not here.
-  accent: 'border-accent-line bg-transparent enabled:hover:bg-accent-soft',
-  danger:
-    'border-danger/55 bg-transparent text-danger enabled:hover:border-danger enabled:hover:bg-danger/12',
-}
+export { cx } from './ui/floating'
+export { Kbd } from './ui/kbd'
+export { Tooltip, TooltipProvider } from './ui/tooltip'
+export { BARE_BUTTON, Button, IconButton, Spinner } from './ui/button'
+export type { ButtonProps, ButtonSize, ButtonVariant, IconButtonProps } from './ui/button'
+export {
+  CheckLine,
+  FindingSeverityChip,
+  NoteAuthorChip,
+  PhaseDot,
+  PhaseTag,
+  RunStatusChip,
+  SessionStatusDot,
+  StatusDot,
+  StatusLabel,
+  TicketKindChip,
+  TicketStatusChip,
+  TONE_TEXT,
+} from './ui/status'
+export type { StatusTone } from './ui/status'
+export { List, ListRow, MetaLine, NavItem, PropertyList, SectionLabel } from './ui/list'
+export type { MetaItem, PropertyItem } from './ui/list'
+export { Tabs } from './ui/tabs'
+export type { TabItem } from './ui/tabs'
+export { Field, SearchField, TEXT_INPUT, TextArea, TextField } from './ui/field'
+export type { TextFieldProps } from './ui/field'
+export { Aside, Crumbs, Page, PageHeader, PageSection, PageTopbar } from './ui/page'
+export type { Crumb } from './ui/page'
 
 /**
- * A variant's label colour, painted on a `display: contents` span around the
- * children rather than on the `<button>`. The unlayered `button { color:
- * inherit }` in styles.css beats any `text-*` utility on the button itself
- * (STYLE.md, "Legacy rules beat utilities"), and moving that rule is its own
- * migration (theme.css, the button reset). `contents` leaves the button's flex
- * layout exactly as it was; colour still inherits down the DOM.
- */
-const BUTTON_LABEL: Partial<Record<Variant, string>> = {
-  accent: 'text-accent-hi',
-}
-
-/**
- * `type` is stated rather than left off. HTML's missing-value default for a
- * `<button>` is `submit`, so every control that named no type was asking the
- * browser to submit whatever form it lands in — the app's own `onClick` runs,
- * and then the browser does its own thing on top of it. A caller that genuinely
- * wants a submit still passes `type="submit"`.
- */
-export function Button({
-  variant = 'ghost',
-  size = 'md',
-  type = 'button',
-  className,
-  children,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: ButtonSize }) {
-  const label = BUTTON_LABEL[variant]
-  return (
-    <button
-      type={type}
-      className={cx(BUTTON_BASE, BUTTON_SIZE[size], BUTTON_VARIANT[variant], className)}
-      {...rest}
-    >
-      {label ? <span className={cx('contents', label)}>{children}</span> : children}
-    </button>
-  )
-}
-
-const SPINNER_SIZE: Record<'sm' | 'md', string> = {
-  sm: 'size-2.5 border-[1.4px]',
-  md: 'size-3 border-[1.6px]',
-}
-
-const SPINNER_TONE: Record<'work' | 'accent', string> = {
-  work: 'border-ph-implementation',
-  accent: 'border-accent',
-}
-
-/**
- * The ring that says something is in flight — a burning run, a launching
- * session, a project chat coming up. `sm` is the one that rides inside a chip's
- * own line; `md` stands beside body text.
+ * The old section heading. Renders exactly as {@link SectionLabel} now (12px
+ * medium, sentence case, `text-tertiary`) — the uppercase tracked label is
+ * retired. New code uses `SectionLabel`.
  *
- * Purely decorative: whatever it spins next to says the state in words, so it is
- * hidden from assistive tech rather than given a label of its own.
- */
-export function Spinner({
-  size = 'md',
-  tone = 'work',
-  className,
-}: {
-  size?: 'sm' | 'md'
-  tone?: 'work' | 'accent'
-  className?: string
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cx(
-        'inline-block shrink-0 animate-spin rounded-pill border-t-transparent',
-        SPINNER_SIZE[size],
-        SPINNER_TONE[tone],
-        className,
-      )}
-    />
-  )
-}
-
-/**
- * The reset a plain `<button>` needs when it is not a {@link Button} — a
- * breadcrumb, a rail row, a close ✕. There is no preflight (apps/web/STYLE.md),
- * so a bare button keeps the user agent's `buttonface` grey and its outset
- * border while inheriting the dark theme's near-white text: an unreadable
- * light-grey pill. `Button` states both itself, which is why it never showed.
- *
- * A control that wants a background of its own writes that one *instead* of
- * this — two background utilities on one element collide, and which wins is
- * the order Tailwind emits them in, not the order they are written.
- */
-export const BARE_BUTTON = 'border-0 bg-transparent'
-
-/**
- * The app's text input, as a class list rather than a component: the surfaces
- * that need one already have their own `<input>` wired to state, an id, an
- * `aria-describedby` from {@link Field} and their own key handling, so what they
- * share is the look and nothing else. Shared because it IS shared — the open
- * screen's path field and the wizard's identity fields are the same control.
- *
- * Deliberately not `flex-1`: a `flex-basis` of 0 would collapse the height this
- * sets when the input is the child of a column flex container, which is what
- * {@link Field} makes it. A row that wants the input to take the slack appends
- * `flex-1` itself.
- */
-export const TEXT_INPUT =
-  'h-(--control-h) w-full min-w-0 rounded-md border border-hairline bg-panel-inset px-3 ' +
-  'font-mono text-sm text-text transition-[border-color] duration-(--dur-1) ease-app ' +
-  'placeholder:text-text-4 focus:border-accent-line focus:outline-none'
-
-/**
- * 11px uppercase tracked section title.
- *
- * Keeps the `section-title` class as a hook: one surviving legacy rule places it
- * in its surface (`.body-title`, the run body's heading row) and raw spans
- * elsewhere still carry the class, so its rule stays until that flow migrates.
- * The utilities below say the same thing the rule does — 11px is already the
- * theme's micro-label step — and are what is left when it goes.
+ * Keeps the `section-title` class as a hook: one surviving legacy rule places
+ * it in its surface (`.body-title .section-title`, the run body's heading row).
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <div className="section-title py-1 text-xs font-semibold tracking-[0.09em] text-text-3 uppercase">
-      {children}
-    </div>
-  )
+  return <SectionLabel className="section-title">{children}</SectionLabel>
 }
 
 /**
- * One dim mono line — inline empty/error state for tight spots.
- *
- * Keeps `dim-line mono` for the same reason {@link SectionTitle} keeps its
- * class: the base rule is still in `styles.css` because the error boundary and
- * other raw spans render the pair by hand, and unlayered rules beat utilities.
+ * One quiet line — an inline empty or error state for a tight spot, in
+ * `text-xs text-tertiary`. Keeps the `dim-line` class, whose base rule raw spans
+ * elsewhere still carry (and which says the same thing).
  */
 export function DimLine({ children }: { children: ReactNode }) {
-  return <div className="dim-line py-0.5 font-mono text-sm text-text-3">{children}</div>
+  return <div className="dim-line py-0.5 text-xs text-text-tertiary">{children}</div>
 }
 
 /**
- * Designed empty state: quiet icon chip, plain-language title, one-line hint,
- * optional action. Replaces the dashed placeholder boxes so blank areas read
- * as intentional, not unfinished.
+ * A calm blank area (DESIGN.md: empty areas are an EmptyState, never a box):
+ * a `text-tertiary` icon (20px), a short `title`, one `hint` line, at most one
+ * `action` (a Button). No frame, no icon chip. `compact` for tight spots.
  */
 export function EmptyState({
   icon,
@@ -228,41 +93,97 @@ export function EmptyState({
   hint,
   action,
   compact,
+  className,
 }: {
   icon?: ReactNode
-  title: string
+  title: ReactNode
   hint?: ReactNode
   action?: ReactNode
   compact?: boolean
+  className?: string
 }) {
   return (
     <div
       className={cx(
         'flex flex-col items-center justify-center gap-1.5 text-center',
-        compact ? 'px-5 py-6' : 'px-6 py-11',
+        compact ? 'px-6 py-8' : 'px-6 py-12',
+        className,
       )}
     >
-      {icon && (
-        <div className="mb-1 flex size-9 items-center justify-center rounded-md border border-hairline bg-panel-3 text-text-3">
-          {icon}
-        </div>
-      )}
-      <div className="text-base font-medium text-text-2">{title}</div>
-      {hint && <div className="max-w-[42ch] text-sm text-pretty text-text-3">{hint}</div>}
-      {action && <div className="mt-2">{action}</div>}
+      {icon && <div className="mb-1.5 inline-flex text-text-tertiary [&>svg]:size-5">{icon}</div>}
+      <div className="text-base leading-5 font-medium text-text">{title}</div>
+      {hint && <div className="max-w-80 text-sm text-pretty text-text-tertiary">{hint}</div>}
+      {action && <div className="mt-3">{action}</div>}
     </div>
   )
 }
 
 /**
+ * A collapsed section (DESIGN.md principle 6: collapse what is read once) —
+ * drive instructions, digests, raw logs. A `<details>`: chevron (rotates 90°),
+ * optional `icon`, `title`, and an `aside` on the right (a count, a
+ * timestamp, a link); the body opens with an animated height. Closed by
+ * default (`defaultOpen` to start open). A `border-subtle` rule above it
+ * separates stacked disclosures; `bare` drops it.
+ */
+export function Disclosure({
+  title,
+  icon,
+  aside,
+  defaultOpen = false,
+  bare = false,
+  onToggle,
+  className,
+  bodyClassName,
+  children,
+}: {
+  title: ReactNode
+  icon?: ReactNode
+  aside?: ReactNode
+  defaultOpen?: boolean
+  bare?: boolean
+  onToggle?: (open: boolean) => void
+  className?: string
+  bodyClassName?: string
+  children: ReactNode
+}) {
+  // Uncontrolled: `open` is only the initial state. React leaves the attribute
+  // alone while the prop does not change, so the user's toggles stand.
+  const [initial] = useState(defaultOpen)
+  return (
+    <details
+      data-disclosure=""
+      open={initial}
+      onToggle={onToggle && ((e) => onToggle((e.currentTarget as HTMLDetailsElement).open))}
+      className={cx('group/disclosure', !bare && 'border-t border-border-subtle', className)}
+    >
+      <summary
+        className={cx(
+          'flex h-10 cursor-pointer list-none items-center gap-2 rounded-md text-sm font-medium text-text-secondary',
+          'transition-colors duration-(--dur-1) ease-app select-none hover:text-text [&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <IconChevronRight
+          size={14}
+          className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/disclosure:rotate-90"
+        />
+        {icon && <span className="inline-flex shrink-0 text-icon [&>svg]:size-3.5">{icon}</span>}
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {aside && <span className="shrink-0 text-xs font-normal text-text-tertiary">{aside}</span>}
+      </summary>
+      <div className={cx('pb-4 pl-6 text-sm text-text-secondary', bodyClassName)}>{children}</div>
+    </details>
+  )
+}
+
+/**
  * An inline failure about a path: the problem stated once, the path it is about
- * shown once beneath it, and what to do next.
+ * shown once beneath it, and what to do next — on the `danger-subtle` ground
+ * (the one tinted ground an inline notice may take).
  *
  * The path gets its own line because a long one has to be truncated from the
- * *left* — the interesting end of a path is its tail — and a sentence with the
- * path spliced into the middle cannot be. `dir="rtl"` moves the ellipsis to the
- * left; `<bdi>` isolates the path so bidi reordering cannot carry
- * direction-neutral characters round to the wrong end.
+ * *left* — the interesting end of a path is its tail. `dir="rtl"` moves the
+ * ellipsis to the left; `<bdi>` isolates the path from bidi reordering.
  */
 export function FailureNote({
   message,
@@ -279,22 +200,14 @@ export function FailureNote({
   id?: string
 }) {
   return (
-    <div
-      className="rounded-md border border-danger/45 bg-danger/8 px-3 py-2.5"
-      id={id}
-      role="alert"
-    >
+    <div className="rounded-md bg-danger-subtle px-3 py-2.5" id={id} role="alert">
       <div className="text-sm font-medium text-danger">{message}</div>
       {path && (
-        <div
-          className="mt-1 truncate text-left font-mono text-sm text-text-3"
-          dir="rtl"
-          title={path}
-        >
+        <div className="mt-1 truncate text-left font-mono text-xs text-text-tertiary" dir="rtl" title={path}>
           <bdi>{path}</bdi>
         </div>
       )}
-      {hint && <p className="mt-1.5 text-sm text-text-2">{hint}</p>}
+      {hint && <p className="mt-1.5 mb-0 text-sm text-text-secondary">{hint}</p>}
       {action && <div className="mt-2.5">{action}</div>}
     </div>
   )
@@ -308,7 +221,7 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
   lg: 'max-w-[780px]',
   // Settings: a page rail beside a five-column model roster. `lg` clipped it.
   xl: 'max-w-[940px]',
-  // Note capture: the ⌘K palette's width, so it reads as the same gesture.
+  // Note capture: the palette's width, so it reads as the same gesture.
   palette: 'max-w-[560px]',
 }
 
@@ -320,39 +233,34 @@ type DialogScrim = 'dim' | 'light' | 'none'
  * coin flip without `tailwind-merge`.
  */
 const DIALOG_SCRIM: Record<DialogScrim, string> = {
-  dim: 'bg-bg/70',
+  dim: 'bg-scrim animate-backdrop-in',
   // Note capture: you are noting something on the page, so it stays readable.
-  light: 'bg-[rgba(4,6,10,0.28)]',
+  light: 'bg-scrim/40 animate-backdrop-in',
   // Nothing left to dim — clicks fall through to the page (the panel opts back in).
   none: 'pointer-events-none bg-transparent',
 }
 
 /**
- * The one modal shell. Every overlay in the app runs its mechanics through this
- * — portal, Escape, backdrop dismissal, focus — because those mechanics were
- * copy-pasted into five components and had already drifted apart between them
- * (one closed on `click`, the rest on `mousedown`; one asked before discarding,
- * the rest threw prose away; none restored focus).
+ * The one modal shell: `surface-raised`, `rounded-lg`, `shadow-dialog`; the
+ * backdrop fades in and the panel rises (`animate-dialog-in`). Compose its
+ * content with {@link DialogHeader}, {@link DialogBody} and
+ * {@link DialogFooter}.
+ *
+ * Every overlay in the app runs its mechanics through this — portal, Escape,
+ * backdrop dismissal, focus — because those mechanics were copy-pasted into
+ * five components and had drifted apart.
  *
  * The three mechanics that look like details and are not:
  *
  * - **Escape only answers when the focus is ours.** The command palette and the
  *   settings pane can be open ON TOP of another dialog, and the topmost one owns
- *   the key. Focus is the only thing that says which that is, so a dialog that
- *   answered unconditionally would close underneath the one the user is looking
- *   at. `null`/`<body>` counts as ours — that is where a click on our own
+ *   the key. `null`/`<body>` counts as ours — that is where a click on our own
  *   backdrop leaves it.
  * - **The backdrop dismisses on `mousedown`, not `click`.** A drag that starts
- *   inside the panel (selecting a slug, a summary, a field value) and releases
- *   outside it is a selection, not a dismissal.
- * - **Focus returns to the opener** — if it was still ours at close. Otherwise
- *   closing a dialog drops the keyboard back at the top of the document; but a
- *   focus the human already moved into the page stays where they put it.
+ *   inside the panel and releases outside it is a selection, not a dismissal.
+ * - **Focus returns to the opener** — if it was still ours at close.
  *
- * The panel keeps whatever `className` the caller passes and the backdrop
- * whatever `backdropClassName` it passes: the five existing overlays hand over
- * their own legacy class names and so keep their present look, which their own
- * flow feature redesigns later.
+ * `className` lands on the panel and `backdropClassName` on the backdrop.
  */
 export function Dialog({
   open,
@@ -389,10 +297,8 @@ export function Dialog({
   returnFocusRef?: RefObject<HTMLElement | null>
   /**
    * Render in place instead of portalling, for a "dialog" that is really a
-   * region: the feature-creation form fills the workspace column and leaves the
-   * sidebar live behind it, so portalling it to `<body>` would blank the
-   * workspace and cover navigation that is still meant to work. Such a dialog is
-   * not `aria-modal` either — the content around it genuinely is reachable.
+   * region (the feature-creation form fills the workspace column and leaves the
+   * sidebar live). Such a dialog is not `aria-modal` either.
    */
   inline?: boolean
   backdropClassName?: string
@@ -426,8 +332,7 @@ export function Dialog({
       target.focus()
       // A backdrop mousedown can finish its native focus action after React has
       // synchronously unmounted the portal. Reassert the return focus once that
-      // event has completed; this is especially relevant to conditionally
-      // mounted peeks whose panel was the last focused element.
+      // event has completed.
       queueMicrotask(() => {
         const focused = document.activeElement
         const fallback = target.isConnected ? target : returnFocusRef?.current
@@ -494,7 +399,7 @@ export function Dialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         className={cx(
-          'w-full rounded-lg border border-hairline-strong bg-panel shadow-overlay',
+          'w-full rounded-lg bg-surface-raised text-sm text-text shadow-dialog animate-dialog-in',
           scrim === 'none' && 'pointer-events-auto',
           DIALOG_SIZE[size],
           className,
@@ -503,14 +408,14 @@ export function Dialog({
         {typeof children === 'function' ? children(dismiss) : children}
         {confirming && (
           <div
-            className="mt-4 flex items-center gap-2 rounded-sm border border-warn/45 bg-warn/8 px-3 py-2.5"
+            className="m-4 flex items-center gap-2 rounded-md bg-surface-hover px-3 py-2 animate-fade-in"
             role="alert"
           >
-            <span className="flex-1 text-base text-text">{discardPrompt}</span>
-            <Button variant="ghost" onClick={() => setConfirming(false)}>
+            <span className="flex-1 text-sm text-text">{discardPrompt}</span>
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
               Keep editing
             </Button>
-            <Button variant="danger" onClick={onClose}>
+            <Button variant="danger" size="sm" onClick={onClose}>
               Discard
             </Button>
           </div>
@@ -523,88 +428,68 @@ export function Dialog({
 }
 
 /**
- * A labelled control with its help and error text wired to it — the three ids
- * an assistive technology needs in order to read a field as one thing rather
- * than as three unrelated strings near each other.
- *
- * The control is the child: it is cloned with an `id` and `aria-describedby` so
- * the call site stays `<Field label="Base"><input …/></Field>`.
- * An `id` already on the control wins — something else is pointing at it — and
- * the label follows it there rather than dangling on the generated one.
- *
- * `layout` and `labelAside` are what let the settings dialog render the same
- * wiring as a two-column row: a `<label>` may not contain another labelable
- * element, so the ⓘ tooltip and the "Saved ✓" flash beside it have to be the
- * label's siblings rather than its children.
+ * A dialog's header: the `title` (16/24 semibold; give it `id` and pass that as
+ * the Dialog's `labelledBy`), an optional `description` in `text-secondary`,
+ * and a close IconButton when `onClose` is given (pass the guarded `dismiss`).
  */
-export function Field({
-  label,
-  labelAside,
-  help,
-  error,
-  htmlFor,
-  layout = 'flex flex-col gap-1.5',
-  children,
+export function DialogHeader({
+  title,
+  description,
+  onClose,
+  id,
+  className,
 }: {
-  label: ReactNode
-  /** Sits beside the label, outside it — a help affordance, a save indicator. */
-  labelAside?: ReactNode
-  help?: ReactNode
-  error?: ReactNode
-  /** Force the control's id, rather than generating one. */
-  htmlFor?: string
-  /** Root layout classes, REPLACING the default stacked column. */
-  layout?: string
-  children: ReactNode
+  title: ReactNode
+  description?: ReactNode
+  onClose?: () => void
+  id?: string
+  className?: string
 }) {
-  const generated = useId()
-  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children)
-    ? children
-    : null
-  const id = control?.props.id ?? htmlFor ?? generated
-  const helpId = `${id}-help`
-  const errorId = `${id}-error`
-  const describedBy = cx(help ? helpId : null, error ? errorId : null) || undefined
-
-  const labelEl = (
-    <label className="text-sm font-medium text-text-2" htmlFor={id}>
-      {label}
-    </label>
-  )
-
   return (
-    <div className={layout}>
-      {labelAside ? (
-        // The cell is control-height so the label reads as being on the
-        // control's line, which is what a two-column row needs.
-        <div className="flex min-h-(--control-h) items-center gap-1.5">
-          {labelEl}
-          {labelAside}
-        </div>
-      ) : (
-        labelEl
-      )}
-      {control
-        ? cloneElement(control, {
-            id,
-            'aria-describedby': cx(control.props['aria-describedby'], describedBy) || undefined,
-          })
-        : children}
-      {help && (
-        <div id={helpId} className="text-sm text-text-3">
-          {help}
-        </div>
-      )}
-      {error && (
-        <div id={errorId} role="alert" className="text-sm text-danger">
-          {error}
-        </div>
-      )}
+    <div className={cx('flex items-start gap-3 px-5 pt-4 pb-3', className)}>
+      <div className="min-w-0 flex-1">
+        <h2 id={id} className="m-0 text-lg font-semibold text-text">
+          {title}
+        </h2>
+        {description && <p className="mt-1 mb-0 text-sm text-text-secondary">{description}</p>}
+      </div>
+      {onClose && <IconButton label="Close" size="sm" icon={<IconX />} onClick={onClose} className="-mr-1" />}
     </div>
   )
 }
 
-/** A bounded surface for a group of related content, with an optional header. */
+/** A dialog's content area, padded to line up with the header and footer. */
+export function DialogBody({ className, children }: { className?: string; children: ReactNode }) {
+  return <div className={cx('px-5 pb-4', className)}>{children}</div>
+}
+
+/**
+ * A dialog's footer: actions right-aligned (one primary, last), with an
+ * optional `start` slot on the left (a secondary link, a note).
+ */
+export function DialogFooter({
+  start,
+  className,
+  children,
+}: {
+  start?: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={cx('flex items-center gap-2 px-5 pt-1 pb-4', className)}>
+      {start && <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-text-tertiary">{start}</div>}
+      <div className="ml-auto flex items-center gap-2">{children}</div>
+    </div>
+  )
+}
+
+/**
+ * A quiet bounded surface — `surface`, a `border` hairline, `rounded-lg`,
+ * `p-4` — with an optional `header` slot. **Prefer no card**: page sections are
+ * separated by air (`PageSection`), and facts are a `PropertyList`. Reach for a
+ * card only for a genuinely separate object sitting inside a page.
+ */
 export function Card({
   header,
   className,
@@ -615,9 +500,9 @@ export function Card({
   children: ReactNode
 }) {
   return (
-    <div className={cx('rounded-lg border border-hairline bg-panel p-4', className)}>
+    <div className={cx('rounded-lg border border-border bg-surface p-4', className)}>
       {header && (
-        <div className="mb-3 flex items-center justify-between gap-2 border-b border-hairline-soft pb-3">
+        <div className="mb-3 flex items-center justify-between gap-2 border-b border-border-subtle pb-3">
           {header}
         </div>
       )}
@@ -627,71 +512,48 @@ export function Card({
 }
 
 /**
- * A titled {@link Card} — the shape most of the app's panels are. Kept a
- * separate export rather than a `Card` title prop (the spec left the choice
- * open) so the title stays outside the card's border, which is where every
- * existing {@link SectionTitle} in the app sits.
+ * A labelled group: a {@link SectionLabel} over its content, with no card
+ * border. `className` lands on the content. (For a page body's sections with a
+ * 16px title, use `PageSection`.)
  */
 export function Section({
   title,
+  action,
   className,
   children,
 }: {
   title: ReactNode
+  action?: ReactNode
   className?: string
   children: ReactNode
 }) {
   return (
     <section>
-      <SectionTitle>{title}</SectionTitle>
-      <Card className={className}>{children}</Card>
+      <SectionLabel action={action}>{title}</SectionLabel>
+      <div className={className}>{children}</div>
     </section>
-  )
-}
-
-/** One key in a keyboard hint. */
-export function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-hairline bg-panel-3 px-1.5 font-mono text-xs text-text-2">
-      {children}
-    </kbd>
   )
 }
 
 /**
  * Branches this app made for itself, and never somewhere a human means to land:
- * the project chat's own branch and every feature branch runcastle cuts
- * (`runcastle/*`), the throwaway checkouts a burn forks (`worktree-*`), and the
- * unattended lane's (`afk/*`). Filtered inside the primitive so no caller has to
- * remember the list — a picker offering forty of them is a picker nobody reads.
+ * `runcastle/*`, `worktree-*` and `afk/*`. Filtered inside the primitive so no
+ * caller has to remember the list.
  */
 const NOISE_BRANCH = /^(?:runcastle\/|worktree-|afk\/)/
 
 const BRANCH_TRIGGER =
-  'inline-flex h-(--control-h) min-w-0 items-center gap-1.5 rounded-md border px-2.5 font-mono text-sm ' +
-  'transition-[color,background-color,border-color] duration-(--dur-1) ease-app ' +
-  'disabled:cursor-not-allowed disabled:opacity-40'
+  'inline-flex h-(--control-h) min-w-0 items-center gap-1.5 rounded-md border px-2 text-sm ' +
+  'transition-colors duration-(--dur-1) ease-app ' +
+  'disabled:cursor-not-allowed disabled:text-text-disabled'
 
 /**
- * The inline branch picker (decisions.md #3): `landing on main ▾`, `from main ▾`.
- *
- * A branch choice reads as chrome when it sits in a page header and as an
- * argument when it sits beside the button it applies to — which is the whole
- * point here. The project workspace used to front a standing "this chat's work
- * lands on" select that only affected the *next* launch, and had to apologise
- * for that in a line of grey text; the same value beside **New chat** needs no
- * apology, because that is the moment it bites.
- *
- * `branches` undefined means the list is still in flight — the trigger says so
- * by being disabled rather than by claiming there are none. `missing` is the one
- * error state: a pick whose branch this repo no longer has, or no usable base at
- * all. It paints the trigger in the warn colour and is the caller's cue to
- * disable whatever the branch is an argument to.
- *
- * The list itself is a `Combobox` (`src/ui/combobox.tsx`), which is what makes a
- * repo with sixty branches usable: the panel is portalled and capped rather than
- * a column drawn down the page, and the search filters it. This component keeps
- * what is its own — which branches are worth offering, and how they are headed.
+ * The inline branch picker: `landing on main ▾`, `from main ▾` — a branch
+ * choice beside the button it is an argument to. `branches` undefined means
+ * the list is in flight (the trigger is disabled). `missing` — a pick this repo
+ * no longer has — paints the trigger `warning` and is the caller's cue to
+ * disable whatever the branch is an argument to. The list is a searchable
+ * `Combobox`.
  */
 export function BranchMenu({
   prefix,
@@ -726,8 +588,7 @@ export function BranchMenu({
       key={branch}
       value={branch}
       current={branch === value}
-      // The row's own branch, not the value cmdk hands back: what is offered is
-      // what is picked, whatever cmdk's list does to its keys.
+      // The row's own branch, not the value cmdk hands back.
       onSelect={() => onPick(branch)}
     >
       {branch}
@@ -736,33 +597,30 @@ export function BranchMenu({
 
   return (
     <Combobox>
-      {/* No `aria-label`: the trigger is a plain button and its own words —
-          "landing on main" — are a better name than anything added here. */}
+      {/* No `aria-label`: the trigger's own words — "landing on main" — are
+          a better name than anything added here. */}
       <ComboboxTrigger
         disabled={disabled || !branches}
         className={cx(
           BRANCH_TRIGGER,
           missing
-            ? 'border-warn text-warn'
-            : 'border-transparent text-text-2 enabled:hover:border-hairline enabled:hover:bg-panel-3 enabled:hover:text-text',
+            ? 'border-transparent text-warning'
+            : 'border-transparent text-text-secondary enabled:hover:bg-surface-hover enabled:hover:text-text',
           className,
         )}
       >
         {/* A branch name is arbitrarily long and the trigger sits in a header
-            row, so it ellipsizes rather than widening the row past the window
-            — the caret stays, because it is what says this is a menu. */}
+            row, so it ellipsizes; the chevron stays, because it says "menu". */}
         <span className="truncate">
           {prefix} {value ?? '…'}
         </span>
-        <span aria-hidden className="shrink-0 text-xs text-text-3">
-          ▾
-        </span>
+        <IconChevronDown size={12} className="shrink-0 text-icon" />
       </ComboboxTrigger>
-      <ComboboxContent align="end" className="font-mono text-sm">
+      <ComboboxContent align="end">
         <ComboboxInput placeholder="Find a branch…" />
-        <ComboboxList label={`${prefix} branch`}>
+        <ComboboxList label={`${prefix} branch`} className="font-mono text-xs">
           <ComboboxEmpty>
-            {offered.length === 0 ? 'no branches to land on' : 'no branch matches'}
+            {offered.length === 0 ? 'No branches to land on' : 'No branch matches'}
           </ComboboxEmpty>
           {main ? (
             <>
@@ -780,55 +638,16 @@ export function BranchMenu({
   )
 }
 
-/** Review-figure tones (findings F23): absence is grey, never green. */
-const CHECK_TONE: Record<CheckTone, string> = {
-  ok: 'bg-ok',
-  warn: 'bg-warn',
-  danger: 'bg-danger',
-  idle: 'bg-text-3',
-}
+const LAP_HEAD = 'flex items-center gap-2 py-2 text-xs font-medium'
 
 /**
- * One review figure — tone dot, label, value. Shared by the review SUMMARY card
- * and the merge confirmation that quotes it, so a figure cannot be green in the
- * card and amber in the dialog. The tone comes from the view-model; the dot only
- * paints it.
- */
-export function CheckLine({ row }: { row: CheckRow }) {
-  return (
-    <div className="mt-3 flex items-center gap-2.5">
-      <span className={cx('size-2 shrink-0 rounded-pill', CHECK_TONE[row.tone])} />
-      <span className="w-23 shrink-0 font-mono text-sm text-text">{row.key}</span>
-      <span className="font-mono text-xs text-text-3">{row.value}</span>
-    </div>
-  )
-}
-
-const LAP_HEAD = 'flex items-baseline gap-2 py-2 font-mono text-xs tracking-[0.06em] uppercase'
-
-/**
- * Rows under `Lap N` headers (decisions.md #6) — the shared shape of the ticket
- * ledger and the notes inbox, which are the two places a human looks for "what
- * was done this lap" and used to render everything flat.
+ * Rows under `Lap N` headers — the ticket ledger and the notes inbox. The
+ * current lap is an always-open section; earlier laps are a `<details>` (with
+ * a rotating chevron and an animated height) that opens on a click. A feature
+ * still on lap 1 gets no headers at all (ADR-0010 §4). That suppression keys on
+ * the feature's lap, never on how many laps have rows.
  *
- * The current lap is a plain always-open section; earlier laps are a `<details>`
- * that opens on a click — the same collapse idiom the map rail uses for its done
- * waypoints. The caret is drawn here rather than left to the native marker: a
- * flex summary drops the marker entirely, and a collapsed lap with no affordance
- * reads as a lap with nothing in it. A feature still on LAP 1 gets no headers at
- * all: it never iterated, and a "Lap 1" band over everything it owns is exactly
- * the ceremony ADR-0010 §4 keeps off a feature that merges first try.
- *
- * That suppression keys on the feature's lap, never on how many laps have rows.
- * A lap-2 feature whose rows are all lap-1 carryovers has exactly one group, and
- * heading it is the whole point: the lap banner directly above already says LAP
- * 2, so a flat list there would have the two halves of the workspace disagreeing
- * about which lap the human is looking at.
- *
- * A surface that needs its headers placed inside its own frame — the bordered
- * ticket ledger wants a band on the rows' gutter — passes `headClassName`. That
- * used to be a legacy rule reaching in through a `lap-group-head` hook class;
- * the utilities come from the surface that knows where the header sits.
+ * A surface that frames its rows passes `headClassName` for its headers.
  */
 export function LapSections<T extends { lap: number }>({
   groups,
@@ -854,24 +673,27 @@ export function LapSections<T extends { lap: number }>({
         const head = (
           <>
             <span>Lap {g.lap}</span>
-            <span className="text-text-4">{meta(g)}</span>
+            <span className="font-normal text-text-tertiary">{meta(g)}</span>
           </>
         )
         return g.current ? (
           <section key={g.lap}>
-            <div className={cx(LAP_HEAD, headClassName, 'text-text-2')}>{head}</div>
+            <div className={cx(LAP_HEAD, headClassName, 'text-text-secondary')}>{head}</div>
             {children(g.rows)}
           </section>
         ) : (
-          <details className="group" key={g.lap}>
+          <details className="group/lap" data-disclosure="" key={g.lap}>
             <summary
               className={cx(
                 LAP_HEAD,
                 headClassName,
-                "cursor-pointer list-none text-text-3 before:shrink-0 before:text-text-4 before:content-['▸']",
-                "group-open:before:content-['▾'] [&::-webkit-details-marker]:hidden",
+                'cursor-pointer list-none text-text-tertiary hover:text-text [&::-webkit-details-marker]:hidden',
               )}
             >
+              <IconChevronRight
+                size={12}
+                className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/lap:rotate-90"
+              />
               {head}
             </summary>
             {children(g.rows)}
@@ -882,177 +704,17 @@ export function LapSections<T extends { lap: number }>({
   )
 }
 
-const PHASE_FG: Record<Phase, string> = {
-  planning: 'text-ph-ideation',
-  building: 'text-ph-implementation',
-  review: 'text-ph-review',
-  shipped: 'text-ph-shipped',
-}
-
-export function PhaseTag({ phase }: { phase: Phase }) {
-  return (
-    <span className={cx('font-mono text-sm font-semibold lowercase', PHASE_FG[phase])}>
-      {phase}
-    </span>
-  )
-}
-
-/** The phase dot's colour. A whole class per phase so Tailwind can see it. */
-const PHASE_DOT_BG: Record<Phase, string> = {
-  planning: 'bg-ph-ideation',
-  building: 'bg-ph-implementation',
-  review: 'bg-ph-review',
-  shipped: 'bg-ph-shipped',
-}
-
-/**
- * A feature's phase where a row has no space to name it — the rail's rows and
- * the palette's both wear one, which is why the map lives here rather than
- * being written out once per surface.
- */
-export function PhaseDot({ phase, className }: { phase: Phase; className?: string }) {
-  return <span className={cx('size-2 shrink-0 rounded-full', PHASE_DOT_BG[phase], className)} />
-}
-
-const CHIP_BASE =
-  'inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-pill border px-2 font-mono text-xs'
-
-/** A burning ticket and a running lane breathe on the app's own `pulse`. */
-const CHIP_PULSE = 'animate-[pulse_1.5s_ease-in-out_infinite]'
-
-/**
- * The two review-flavoured badges: a ticket that verifies the branch, and a note
- * the agent that verified it wrote. Both mark WHOSE work a row is, not a status
- * the human has to act on, so they share the review phase's colour, and neither
- * is ever squeezed by the title beside it.
- */
-const CHIP_REVIEW = 'shrink-0 border-ph-review/40 bg-ph-review/8 text-ph-review'
-
-const TICKET_STATUS_CHIP: Record<TicketStatus, string> = {
-  pending: 'border-hairline text-text-3',
-  burning: `border-ph-implementation/45 bg-ph-implementation/8 text-ph-implementation ${CHIP_PULSE}`,
-  done: 'border-ok/40 text-ok',
-  failed: 'border-danger/45 text-danger',
-  cancelled: 'border-hairline text-text-3 line-through',
-}
-
-export function TicketStatusChip({ status }: { status: TicketStatus }) {
-  return <span className={cx(CHIP_BASE, TICKET_STATUS_CHIP[status])}>{status}</span>
-}
-
-/**
- * The kind badge, shown only for `review` tickets: implementation is the
- * default and the overwhelming majority, so badging it would be noise on every
- * row without distinguishing anything.
- *
- * A `verification` pass says so instead of `review` (decisions.md #41b): it
- * tours the build and confirms the fixes that landed rather than auditing the
- * branch, and a run whose last two lanes both read "review" hides that.
- */
-export function TicketKindChip({
-  kind,
-  passKind,
-}: {
-  kind: TicketKind
-  passKind?: 'review' | 'verification'
-}) {
-  if (kind === 'implementation') return null
-  const verification = passKind === 'verification'
-  return (
-    <span
-      className={cx(CHIP_BASE, CHIP_REVIEW)}
-      title={
-        verification
-          ? 'Confirms the fixes that landed since the last review'
-          : 'Verifies the integrated feature branch'
-      }
-    >
-      {verification ? 'verification' : kind}
-    </span>
-  )
-}
-
-/**
- * Who wrote a test note, shown only for the review agent's — same reasoning as
- * {@link TicketKindChip}: the human is the default author and badging every one
- * of their own notes would distinguish nothing. This is the whole of the
- * attribution the review panel needs (decisions #7): the human has to be able to
- * tell the agent's findings from their own at a glance, and nothing more.
- */
-export function NoteAuthorChip({ author }: { author: TestNoteAuthor }) {
-  if (author === 'human') return null
-  return (
-    <span className={cx(CHIP_BASE, CHIP_REVIEW)} title="Written by the review agent">
-      {author}
-    </span>
-  )
-}
-
-/**
- * Even `high` is amber: an open defect is information the human decides about,
- * and red would read as a merge this app is refusing.
- */
-const SEVERITY_CHIP: Record<FindingSeverity, string> = {
-  high: 'border-warn/45 text-warn',
-  medium: 'border-hairline text-text-2',
-  low: 'border-hairline text-text-3',
-}
-
-/**
- * How bad the review agent thought a finding was. Display and ordering only —
- * severity never gates anything (decisions #8), so every level gets a chip: a
- * list where only the loud rows are labelled reads as if the quiet ones were
- * unclassified.
- */
-export function FindingSeverityChip({ severity }: { severity: FindingSeverity }) {
-  return <span className={cx(CHIP_BASE, SEVERITY_CHIP[severity])}>{severity}</span>
-}
-
-const RUN_STATUS_CHIP: Record<RunStatus, string> = {
-  running: `border-ph-implementation/45 text-ph-implementation ${CHIP_PULSE}`,
-  succeeded: 'border-ok/40 text-ok',
-  failed: 'border-danger/45 text-danger',
-  cancelled: 'border-hairline text-text-3',
-}
-
-export function RunStatusChip({ status }: { status: RunStatus }) {
-  return <span className={cx(CHIP_BASE, RUN_STATUS_CHIP[status])}>{status}</span>
-}
-
-const SESSION_DOT: Record<SessionStatus, string> = {
-  launching: 'bg-needs animate-[pulse_1.3s_ease-in-out_infinite]',
-  live: 'bg-ok ring-3 ring-ok/15',
-  ended: 'bg-text-3',
-}
-
-export function SessionStatusDot({ status }: { status: SessionStatus }) {
-  return (
-    <span
-      className={cx('inline-block size-2 shrink-0 rounded-pill', SESSION_DOT[status])}
-      title={status}
-    />
-  )
-}
-
 type NoteThumbnailSize = 'md' | 'sm'
 
 const NOTE_THUMBNAIL_SIZE: Record<NoteThumbnailSize, string> = {
-  md: 'h-[54px] w-24 rounded-sm border-hairline',
-  sm: 'h-[26px] w-10 rounded-[4px] border-hairline-strong cursor-zoom-in',
+  md: 'h-[54px] w-24 rounded-md',
+  sm: 'h-[26px] w-10 rounded-sm cursor-zoom-in',
 }
 
 /**
- * The picture a note is evidence for, as the door onto it: ~96×54, big enough
- * to recognise the screen it was taken on, and a button because the full PNG
- * opens in the app's own lightbox rather than in a bare browser tab.
- *
- * Shared because both lists of notes wear it — the review lap's rows and the
- * project inbox's — and a thumbnail written out twice is two lightbox doors and
- * two alt texts free to drift apart. Takes a nullable url and renders nothing
- * for a note without a picture, so neither surface repeats that guard either.
- *
- * `sm` (~40×26) is the one that rides a dense one-line row — the project inbox
- * (decisions.md #17) — where the picture only has to say "there is one".
+ * The picture a note is evidence for, as the button that opens it in the app's
+ * lightbox. Renders nothing for a note without a picture. `md` ~96×54 (review
+ * rows) · `sm` ~40×26 (the inbox's dense rows).
  */
 export function NoteThumbnail({
   url,
@@ -1068,17 +730,14 @@ export function NoteThumbnail({
     <button
       type="button"
       className={cx(
-        'shrink-0 overflow-hidden border bg-black p-0 hover:border-accent-line',
+        'shrink-0 cursor-pointer overflow-hidden border border-border bg-surface-inset p-0',
+        'transition-colors duration-(--dur-1) ease-app hover:border-border-strong',
         NOTE_THUMBNAIL_SIZE[size],
       )}
       title="see the whole picture"
       onClick={() => onOpen(url)}
     >
-      <img
-        src={url}
-        alt="the picture attached to this note"
-        className="h-full w-full object-cover"
-      />
+      <img src={url} alt="the picture attached to this note" className="h-full w-full object-cover" />
     </button>
   )
 }

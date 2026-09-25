@@ -52,7 +52,7 @@ describe('LapSections', () => {
     expect(html).toContain('Lap 1')
     expect(html).toContain('Lap 2')
     // Earlier laps are a click away; the current one is always open.
-    expect(html).toMatch(/<details class="group"[^>]*>.*Lap 1/)
+    expect(html).toMatch(/<details class="group\/lap" data-disclosure=""[^>]*>.*Lap 1/)
     expect(html).toMatch(/<section>.*Lap 2/)
   })
 
