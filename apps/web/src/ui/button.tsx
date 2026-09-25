@@ -315,6 +315,8 @@ const SPINNER_TONE: Record<'work' | 'accent' | 'quiet' | 'current', string> = {
  * The quiet ring that says something is in flight — 1.5px, `text-tertiary`.
  * Only ever beside a word that says the state ("Burning", "Starting…"), so it
  * is `aria-hidden` rather than labelled. `size`: `md` 14 (default) · `sm` 12.
+ * `data-progress` keeps it moving under reduced motion — a pulse, not a spin
+ * (`theme.css`).
  */
 export function Spinner({
   size = 'md',
@@ -328,6 +330,7 @@ export function Spinner({
   return (
     <span
       aria-hidden="true"
+      data-progress=""
       className={cx(
         'inline-block shrink-0 animate-spin rounded-full border-[1.5px] border-t-transparent',
         SPINNER_SIZE[size],

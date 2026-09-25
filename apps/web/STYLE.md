@@ -78,7 +78,9 @@ way can say `outline-none` (a `TextField` draws it on its wrapper). Menu rows,
 options and `tabindex="-1"` panels show none — their highlight is their ground.
 
 Motion is transform and opacity only, from the named `animate-*` utilities; the
-`prefers-reduced-motion` switch in `theme.css` turns all of it off. A
+`prefers-reduced-motion` switch in `theme.css` turns all of it off — except a
+progress indicator marked `data-progress` (the `Spinner`), which swaps its
+rotation for a slow opacity pulse so it never freezes into a still frame. A
 `<details data-disclosure>` animates its height (`interpolate-size` +
 `::details-content`).
 
