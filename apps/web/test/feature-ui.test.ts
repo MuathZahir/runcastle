@@ -2562,8 +2562,10 @@ describe.skip('draft derivations', () => {
  */
 describe('nextStep at building', () => {
   const buildFull = (opts: {
-    runs?: { id: string; status: string; startedAt: number }[]
+    runs?: { id: string; status: string; startedAt: number; summary?: string }[]
     ticketStatuses?: TicketStatus[]
+    /** When the non-pending tickets went terminal; absent leaves them unstamped. */
+    completedAt?: number
     sessionLive?: boolean
     /** Per-ticket goal/context/kind, for the shape cases; burnable by default. */
     shapes?: { goal: string; context: string; kind?: 'implementation' | 'review' }[]
@@ -2581,6 +2583,7 @@ describe('nextStep at building', () => {
         ...(opts.shapes?.[i] ?? {}),
         lap: 1,
         commits: [],
+        completedAt: status === 'pending' ? null : (opts.completedAt ?? null),
       })),
       sessions: opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : [],
       runs: opts.runs ?? [],
@@ -2614,6 +2617,69 @@ describe('nextStep at building', () => {
       driving: false,
     })
     expect(failed.desc).toContain('failed')
+  })
+
+  /**
+   * A failed burn says why it failed. Seen 2026-09-25: three runs died in
+   * preflight on a stale sandbox CLI, the reason was recorded on every one, and
+   * the bar said only "resume the burn to retry" — so the human did, three times.
+   */
+  describe('after a failed run', () => {
+    const CLI_MISMATCH =
+      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+    const RESUME = { label: 'Resume burn', kind: 'burn' }
+
+    it('leads a failed preflight with its fix, the summary verbatim, Resume behind it', () => {
+      const ns = nextStep(
+        buildFull({
+          runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: CLI_MISMATCH }],
+          ticketStatuses: ['pending', 'pending'],
+        }),
+        { driving: false },
+      )
+      expect(ns.title).toBe('The burn could not start')
+      expect(ns.desc).toBe(CLI_MISMATCH)
+      expect(ns.primary).toEqual({ label: 'Open Settings → Burns', kind: 'openBurnSettings' })
+      expect(ns.secondary).toEqual([RESUME, CHAT_ACTION, MERGE_ACTION])
+    })
+
+    it('offers no retry as the primary when a preflight names no fix', () => {
+      const ns = nextStep(
+        buildFull({
+          runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: 'docker is not running' }],
+        }),
+        { driving: false },
+      )
+      expect(ns.desc).toBe('docker is not running')
+      expect(ns.primary).toBeUndefined()
+      expect(ns.secondary[0]).toEqual(RESUME)
+    })
+
+    it('keeps the Resume flow for a run that failed partway through tickets, plus the summary', () => {
+      const ns = nextStep(
+        buildFull({
+          runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: '1 of 2 tickets failed' }],
+          ticketStatuses: ['done', 'failed'],
+          completedAt: 200,
+        }),
+        { driving: false },
+      )
+      expect(ns.title).toBe('Resume the burn')
+      expect(ns.desc).toContain('1 of 2 tickets failed')
+      expect(ns.desc).not.toContain('The run failed')
+      expect(ns.primary).toEqual(RESUME)
+      expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
+    })
+
+    it('keeps today’s copy for a failed run with no summary', () => {
+      const ns = nextStep(
+        buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 100 }] }),
+        { driving: false },
+      )
+      expect(ns.title).toBe('Resume the burn')
+      expect(ns.desc).toContain('The run failed — resume the burn to retry.')
+      expect(ns.primary).toEqual(RESUME)
+    })
   })
 
   it('shows the cancel action while a run is live, whatever came before', () => {

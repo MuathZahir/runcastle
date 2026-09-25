@@ -26,6 +26,11 @@ export function OpenSettingsProvider({
   return <OpenSettings.Provider value={open}>{children}</OpenSettings.Provider>
 }
 
+/** The shell's settings opener, for a button rather than a phrase; `null` outside the provider. */
+export function useOpenSettings() {
+  return useContext(OpenSettings)
+}
+
 /**
  * A phrase that opens settings on the row it names. Where a surface knows its
  * own destination — the drive states name the dev-command field directly — this
