@@ -274,6 +274,13 @@ export interface QuickChangeInput {
   tickets: string[]
   /** Same semantics as `CreateFeatureInput.baseBranch`. */
   baseBranch?: string
+  /**
+   * Same semantics as `CreateFeatureInput.draft`: park instead of start. The
+   * tickets are still stored — they are DB rows, needing no branch — and the
+   * brief parks in the column, so Start lands the same ready-to-Burn feature a
+   * started quick change is born as.
+   */
+  draft?: boolean
 }
 
 /** How wide a derived ticket title may run before it is cut. */
@@ -386,8 +393,12 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
-  const base = await requestedBase(ctx, project, input.baseBranch)
-  const { branchReady, baseBranch } = await ensureFeatureBranch(ctx, project, slug, base)
+  const brief = quickBrief(title, proses)
+  // A draft cuts nothing, exactly as `createFeature`'s does: the base is chosen
+  // at Start, which scaffolds the brief parked in the column below.
+  const cut = input.draft
+    ? null
+    : await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
 
   const inserted = ctx.db
     .insert(features)
@@ -403,6 +414,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       // status line, the burner's brief header). Every sentence survives
       // verbatim where it belongs — brief.md and the tickets.
       oneLiner: proses[0].split('\n')[0].trim(),
+      brief: cut ? null : brief,
       mapped: false,
       lap: 1,
       // Ready at birth: the tickets below are complete and no session is
@@ -417,8 +429,8 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       ticketsReadyLap: 1,
       phase: 'planning' as const,
       branch,
-      baseBranch,
-      status: 'active' as const,
+      baseBranch: cut?.baseBranch ?? null,
+      status: cut ? ('active' as const) : ('draft' as const),
       createdAt: Date.now(),
     })
     .returning()
@@ -427,13 +439,21 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   emit(ctx, feature.id, {
     type: 'feature.created',
-    message: branchReady
-      ? `feature.created (${branch} ← ${baseBranch})`
-      : 'feature.created (branch pending)',
-    data: { slug, branch, baseBranch, branchReady },
+    message: !cut
+      ? `feature.created (draft — ${branch} not cut yet)`
+      : cut.branchReady
+        ? `feature.created (${branch} ← ${cut.baseBranch})`
+        : 'feature.created (branch pending)',
+    data: {
+      slug,
+      branch,
+      baseBranch: cut?.baseBranch,
+      branchReady: cut?.branchReady ?? false,
+      draft: !cut,
+    },
   })
 
-  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: quickBrief(title, proses) })
+  if (cut) await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief })
 
   // One batch, not two: the review ticket's `blockedBy` names batch positions,
   // which only resolve against the typed tickets it is stored alongside.

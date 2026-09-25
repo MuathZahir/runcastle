@@ -1602,6 +1602,7 @@ export async function toolCreateFeature(
         // identically on both doors.
         tickets: input.tickets,
         baseBranch: input.baseBranch,
+        draft: input.draft,
       })
     : await createFeature(ctx, {
         projectId: project.id,
@@ -2484,7 +2485,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .optional()
             .describe(
               'PARK it instead of starting it: a row and its brief, no branch and no files, ' +
-                'until the human clicks Start. Ask them per feature whether to start or park.',
+                'until the human clicks Start. With `tickets`, the draft keeps them and Start lands ' +
+                'it ready to Burn. Ask them per feature whether to start or park.',
             ),
           tickets: z
             .array(z.string().min(1))
