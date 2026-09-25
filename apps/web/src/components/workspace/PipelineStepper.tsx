@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import type { CSSProperties } from 'react'
 import type { Phase } from '@runcastle/core'
 import type { PipelineStep } from '../../lib/feature-ui'
 import { PHASE_NAME, PhaseIcon } from '../../icons'
@@ -10,36 +11,29 @@ import { cx } from '../../ui'
  * fill from the dashed ring to its own fraction, and from there to the check.
  *
  * - done — the shipped check, in its own (success) hue.
- * - current — the step's own glyph in `text` (shipped keeps its check hue:
- *   a finished pipeline is all checks).
+ * - current — the step's own glyph in its own phase hue.
  * - upcoming — the dashed ring, in `text-tertiary`.
  */
 function StepGlyph({ step }: { step: PipelineStep }) {
   if (step.state === 'done') return <PhaseIcon phase="shipped" size={14} label="" />
-  if (step.state === 'current')
-    return (
-      <PhaseIcon
-        phase={step.phase}
-        size={14}
-        label=""
-        className={step.phase === 'shipped' ? undefined : 'text-text'}
-      />
-    )
+  if (step.state === 'current') return <PhaseIcon phase={step.phase} size={14} label="" />
   return <PhaseIcon phase="draft" size={14} label="" className="text-text-tertiary" />
 }
 
 const STEP_TEXT: Record<PipelineStep['state'], string> = {
   done: 'text-text-secondary',
-  current: 'font-medium text-text',
+  // A 14% wash of the step's own hue (`--step-hue`, set per step below).
+  current: 'font-medium text-text bg-[color-mix(in_srgb,var(--step-hue)_14%,transparent)]',
   upcoming: 'text-text-tertiary',
 }
 
 /**
  * The feature's pipeline as a compact inline stepper under the title
  * (DESIGN.md §PhaseStepper): 24px steps, 12px hairline separators. A past step
- * is a button that pins it read-only; the step being viewed in that pin takes
- * `surface-selected` — the stepper itself says what you are looking at, so no
- * badge or band repeats it.
+ * is a button that pins it read-only; the current step wears a wash of its
+ * phase hue, and the step being viewed in that pin takes `surface-selected` —
+ * the stepper itself says what you are looking at, so no badge or band
+ * repeats it.
  *
  * The row is pulled left by one step's padding so the first glyph starts on
  * the title's left edge; it wraps rather than overflowing a narrow column.
@@ -73,6 +67,7 @@ export function PipelineStepper({
                     ? 'cursor-pointer'
                     : 'cursor-default',
               )}
+              style={{ '--step-hue': `var(--color-phase-${s.phase})` } as CSSProperties}
               title={s.tip}
               aria-current={s.state === 'current' ? 'step' : undefined}
               aria-pressed={s.clickable ? pinned : undefined}

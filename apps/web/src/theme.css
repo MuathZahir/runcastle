@@ -29,32 +29,32 @@
   --color-*: initial;
 
   /* ---- grounds (dark values; light ones in the block below) ---- */
-  --color-canvas: #0a0a0b; /* the frame: the one sidebar, behind the content panel */
-  --color-surface: #111113; /* the content panel: pages, lists, documents */
-  --color-surface-raised: #18181b; /* anything floating: menus, dialogs, toasts, tooltips */
-  --color-surface-hover: #1c1c20; /* hovered row, item, ghost button */
-  --color-surface-selected: #222226; /* the current row / tab / pressed ghost */
-  --color-surface-inset: #0d0d0f; /* code, terminal, transcript, inputs */
+  --color-canvas: #0a0c11; /* the frame: the one sidebar, behind the content panel */
+  --color-surface: #10131a; /* the content panel: pages, lists, documents */
+  --color-surface-raised: #161a24; /* anything floating: menus, dialogs, toasts, tooltips */
+  --color-surface-hover: #1a1e29; /* hovered row, item, ghost button */
+  --color-surface-selected: #212636; /* the current row / tab / pressed ghost */
+  --color-surface-inset: #0c0e14; /* code, terminal, transcript, inputs */
 
   /* ---- lines (1px, always) ---- */
-  --color-border: #232327; /* the panel edge, section rules, input borders */
+  --color-border: #222837; /* the panel edge, section rules, input borders */
   /* Between rows, and dividers inside a raised layer. Translucent, so it reads
      on every ground — as a hex it was #1a1a1d, which vanished on
      surface-raised (#18181b): dialog and menu dividers disappeared. */
-  --color-border-subtle: rgb(255 255 255 / 0.05);
-  --color-border-strong: #34343a; /* hovered input / secondary border, Kbd */
+  --color-border-subtle: rgb(200 215 255 / 0.06);
+  --color-border-strong: #333a4d; /* hovered input / secondary border, Kbd */
 
   /* ---- text ---- */
-  --color-text: #ededef;
-  --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #8c8c94;
-  --color-text-disabled: #4f4f56; /* decorative only — never carries information */
-  --color-icon: #8b8b94; /* default 16px icon stroke */
+  --color-text: #eceef4;
+  --color-text-secondary: #a2a8b9;
+  --color-text-tertiary: #8a91a5;
+  --color-text-disabled: #4b5163; /* decorative only — never carries information */
+  --color-icon: #8990a4; /* default 16px icon stroke */
 
   /* ---- the one primary (inverted neutral) ---- */
-  --color-primary: #ededef;
+  --color-primary: #eceef4;
   --color-primary-hover: #ffffff;
-  --color-on-primary: #0a0a0b;
+  --color-on-primary: #0a0c11;
 
   /* ---- the one accent (blue): focus, selection, links, live, review ---- */
   --color-accent: #4f8ef7;
@@ -72,12 +72,15 @@
      own `Phase` names (@runcastle/core); they wear spec's and implementation's
      hue, which is the stretch of the pipeline each one covers. ---- */
   --color-phase-draft: var(--color-text-disabled);
-  --color-phase-ideation: var(--color-icon);
-  --color-phase-spec: var(--color-icon);
-  --color-phase-planning: var(--color-icon);
+  /* Each step before review wears its own hue — pink, teal, amber, orange —
+     so the sidebar reads as a pipeline, not a column of grey rings. The
+     literals are restated in the light block below. */
+  --color-phase-ideation: #ec7cb5;
+  --color-phase-spec: #35c2b8;
+  --color-phase-planning: var(--color-phase-spec);
   --color-phase-tickets: var(--color-warning);
-  --color-phase-implementation: var(--color-warning);
-  --color-phase-building: var(--color-warning);
+  --color-phase-implementation: #f08a4b;
+  --color-phase-building: var(--color-phase-implementation);
   --color-phase-review: var(--color-accent);
   --color-phase-shipped: var(--color-success);
 
@@ -178,26 +181,26 @@
 }
 
 /* ---- the light theme: a full peer. `lib/theme.ts` sets `data-theme` on
-   <html> before first paint. Only the base tokens are restated — the phase,
-   and focus names are `var()`s onto these, so they follow. ---- */
+   <html> before first paint. The base tokens are restated, and the three phase hues that are literals;
+   the other phase and focus names are `var()`s onto these, so they follow. ---- */
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-canvas: #f7f7f8;
+  --color-canvas: #f4f6f9;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-surface-hover: #f1f1f3;
-  --color-surface-selected: #eaeaed;
-  --color-surface-inset: #f7f7f8;
-  --color-border: #e4e4e7;
-  --color-border-subtle: rgb(24 24 27 / 0.07);
-  --color-border-strong: #d1d1d6;
-  --color-text: #18181b;
-  --color-text-secondary: #52525b;
-  --color-text-tertiary: #626268;
-  --color-text-disabled: #a8a8b0;
-  --color-icon: #71717a;
-  --color-primary: #18181b;
-  --color-primary-hover: #2c2c31;
+  --color-surface-hover: #eef1f6;
+  --color-surface-selected: #e4e8f1;
+  --color-surface-inset: #f4f6f9;
+  --color-border: #dfe3ec;
+  --color-border-subtle: rgb(22 30 50 / 0.07);
+  --color-border-strong: #cdd2de;
+  --color-text: #161a24;
+  --color-text-secondary: #4c5366;
+  --color-text-tertiary: #5c6377;
+  --color-text-disabled: #a4aab9;
+  --color-icon: #6a7185;
+  --color-primary: #161a24;
+  --color-primary-hover: #2a3040;
   --color-on-primary: #ffffff;
   --color-accent: #2f6fe4;
   --color-accent-text: #2463d6;
@@ -206,7 +209,10 @@
   --color-warning: #a86a06;
   --color-danger: #c42828;
   --color-danger-subtle: #fdeeee;
-  --color-scrim: rgb(24 24 27 / 0.28);
+  --color-phase-ideation: #c13d7e;
+  --color-phase-spec: #0b7f78;
+  --color-phase-implementation: #b44f0c;
+  --color-scrim: rgb(22 26 36 / 0.28);
   --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
   --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22);
 }

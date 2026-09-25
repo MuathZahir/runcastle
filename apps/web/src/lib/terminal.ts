@@ -280,22 +280,22 @@ type Resolved = 'dark' | 'light'
  */
 const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
   dark: {
-    '--color-surface-inset': '#0d0d0f',
-    '--color-text': '#ededef',
+    '--color-surface-inset': '#0c0e14',
+    '--color-text': '#eceef4',
     '--color-accent': '#4f8ef7',
     '--color-accent-subtle': '#16213a',
-    '--color-surface-selected': '#222226',
+    '--color-surface-selected': '#212636',
     '--color-danger': '#f06363',
     '--color-success': '#46b67a',
     '--color-warning': '#e2a53b',
     '--color-accent-text': '#7aaafa',
   },
   light: {
-    '--color-surface-inset': '#f7f7f8',
-    '--color-text': '#18181b',
+    '--color-surface-inset': '#f4f6f9',
+    '--color-text': '#161a24',
     '--color-accent': '#2f6fe4',
     '--color-accent-subtle': '#ecf2fe',
-    '--color-surface-selected': '#eaeaed',
+    '--color-surface-selected': '#e4e8f1',
     '--color-danger': '#c42828',
     '--color-success': '#1e8e53',
     '--color-warning': '#a86a06',
