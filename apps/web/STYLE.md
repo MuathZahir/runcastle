@@ -32,9 +32,11 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 | `--ease-*` | `app` (state changes), `out-app` (entering) | `ease-out-app` |
 | `--animate-*` | `rise-in`, `fade-in`, `pop-in`, `dialog-in`, `backdrop-in`, `slide-in-right`, `toast-in`, `breathe`, `spin` | `animate-rise-in` |
 
-The phase tokens are `var()`s onto `icon` / `warning` / `accent` / `success` /
-`text-disabled`, and `planning` / `building` are the app's own `Phase` names
-(spec's and implementation's hue). `focus-ring` is `accent`.
+`ideation`, `spec` and `implementation` are their own hues (literals, restated
+in the light block); `draft` / `tickets` / `review` / `shipped` are `var()`s onto
+`text-disabled` / `warning` / `accent` / `success`, and `planning` / `building`
+are the app's own `Phase` names (`var()`s onto spec's and implementation's
+hue). `focus-ring` is `accent`.
 
 **No deprecated aliases remain.** The pre-redesign names (`bg`, `panel*`,
 `hairline*`, `text-2/-3/-4`, `accent-hi/-2/-ink/-soft/-line`, `ph-*`, `needs`,

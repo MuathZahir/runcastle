@@ -12,8 +12,8 @@ target for a shipped feature and the project home.
 ## The feeling
 
 A tool you keep open all day: a quiet workbench in the vein of Linear and Cursor.
-Neutral chrome, generous space, one obvious next step, colour only where it tells
-you something. If a screen looks busy, it is wrong — remove, collapse or demote
+Cool slate chrome, generous space, one obvious next step, colour only where it
+tells you something — and the pipeline is where it tells you most. If a screen looks busy, it is wrong — remove, collapse or demote
 before adding.
 
 ## Principles
@@ -95,6 +95,8 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 `text-accent-text`, `bg-accent-subtle`, `text-success`, `text-warning`,
 `text-danger`, `bg-danger-subtle`, `text-phase-*`.
 
+- Neutrals are a faint cool slate (hue ≈225°, low chroma), not pure zinc: the
+  chrome reads as a material, never as flat grey. Keep new greys on that ramp.
 - Grounds: `canvas` frame + sidebar; `surface` content; `surface-raised` for
   anything floating (menus, popovers, dialogs, toasts, palette); `surface-inset`
   for code, terminal, transcript and inputs. Hover `surface-hover`; current item
@@ -107,6 +109,12 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 - `accent` (blue) is spent only on focus, selection, links, *live* and the review
   phase. Never a button fill, never a gradient, never a glow. Violet is retired.
 - `success` / `warning` / `danger` appear as 6px dots, 16px glyphs or short words.
+- Phases each wear a hue, in pipeline order: ideation pink, spec/planning teal,
+  tickets amber (`warning`), implementation/building orange, review blue
+  (`accent`), shipped green (`success`); draft stays `text-disabled`. The hue is
+  on the glyph, and — only for the stepper's current step — a 14% wash of it
+  behind the step. Never on words, rows or selection: selection stays
+  `surface-selected`.
 - Dark is the default theme; light is a full peer (`<html data-theme="light">`).
 
 ## Type
@@ -151,7 +159,7 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 | `ListRow` | 40px list row: glyph, one-line title (or wrapping prose), optional second line, trailing meta; hover actions float over the meta; a control (a model picker) sits beside the row's button, never inside it. |
 | `PropertyList` | Two quiet columns: `text-tertiary` keys, `text` values with a leading glyph. |
 | `MetaLine` | One line of small inline facts separated by space. |
-| `PhaseStepper` | Inline: done = check glyph, current = its glyph in `text`, future = dashed ring; past step being viewed = `surface-selected`. |
+| `PhaseStepper` | Inline: done = check glyph, current = its glyph in its phase hue over a 14% wash of that hue, future = dashed ring; past step being viewed = `surface-selected`. |
 | `Tabs` | Text tabs; selected = `surface-selected` fill. No underline, no box. |
 | `TextField` / `Input` | `surface-inset`, hairline, focus → accent border + ring. |
 | `Disclosure` | Chevron + title + aside; closed by default; animated open. `sm`: a compact 12px line for detail under something else. |
