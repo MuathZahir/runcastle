@@ -206,7 +206,7 @@ function render(
     openDefects?: ReviewFinding[]
     carriedFindings?: ReviewFinding[]
     recordings?: ReviewArtifacts[]
-    drive?: { featureId: string; state: string; dryRun: boolean }
+    drive?: { featureId: string; state: string; dryRun: boolean; holderLabel: string }
     /** The server's own counts, where the point is that they are not the rows'. */
     summary?: { found: number; fixed: number; open: number; observations: number }
     tickets?: FeatureFull['tickets']
