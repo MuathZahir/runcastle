@@ -52,6 +52,7 @@ import {
   stampedReview,
   testDriveTaken,
   ticketCountText,
+  ticketsAreBody,
   unresolvedMergeConflict,
   unverifiedLap,
   verificationState,
@@ -852,7 +853,7 @@ export function Workspace({
 
   // The page's views of the feature. Tickets is a view only where it is not
   // already the body (the ledger before the first burn IS the overview).
-  const ticketsIsBody = bodyPhase === 'building' && !run
+  const ticketsIsBody = ticketsAreBody({ full, phase: bodyPhase, readonly, hasRun: !!run })
   const hasTicketsView = !isDraft && full.tickets.length > 0 && !ticketsIsBody
   const view: FeatureView =
     hasTicketsView && viewPick?.featureId === featureId ? viewPick.view : 'overview'
@@ -870,7 +871,7 @@ export function Workspace({
   // and each pane scrolls itself; every other body is a document in the page
   // column, the header scrolling away with it. The data-heavy ones (the run's
   // lanes, the review's evidence, the ledger) take the wide column.
-  const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly
+  const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly && !ticketsIsBody
   // Per phase, not per view: switching tabs must not move the title. Every
   // working phase (planning's panes included) shares the wide column; the
   // shipped record and a draft read as documents.
@@ -1007,6 +1008,7 @@ export function Workspace({
         driving={driving}
         conflict={conflict}
         runId={run?.id ?? null}
+        ticketsIsBody={ticketsIsBody}
         readonly={readonly}
         chatDocked={chatPanelOpen}
         mapRailCollapsed={mapRailCollapsed}
@@ -1210,6 +1212,7 @@ function PhaseBody({
   driving,
   conflict,
   runId,
+  ticketsIsBody,
   readonly,
   chatDocked,
   mapRailCollapsed,
@@ -1224,6 +1227,8 @@ function PhaseBody({
   driving: DriveState | null
   conflict: MergeConflictState | null
   runId: string | null
+  /** The ledger is this body — see `ticketsAreBody`. */
+  ticketsIsBody: boolean
   readonly: boolean
   /** The chat panel is up beside this body, so the chat's terminal is not ours. */
   chatDocked: boolean
@@ -1248,7 +1253,12 @@ function PhaseBody({
   }
   switch (effective) {
     case 'planning':
-      return (
+      // Planning's own body is the conversation that shapes the idea; once this
+      // lap has tickets, they are what the human reviews and corrects before
+      // Burn — and a quick change never had a conversation to show.
+      return ticketsIsBody ? (
+        <TicketsBody featureId={full.feature.id} chatDocked={chatDocked} />
+      ) : (
         <GrillBody
           full={full}
           effective={effective}

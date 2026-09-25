@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { modelRoster } from '@runcastle/core'
-import type { EventRow, TicketStatus } from '@runcastle/core'
+import type { EventRow, Phase, TicketStatus } from '@runcastle/core'
 import {
   ACTION_KINDS,
   activeSession,
@@ -45,6 +45,7 @@ import {
   ticketDurations,
   ticketModelChip,
   ticketProgress,
+  ticketsAreBody,
   triage,
   triageOf,
   unresolvedMergeConflict,
@@ -1543,6 +1544,46 @@ describe('groupByLap', () => {
  * tickets are emitted. Burn is offered only once there is something to burn —
  * a burn over an empty ledger is a no-op, not a gate (decision 5).
  */
+describe('ticketsAreBody — the ledger is the page before the first burn', () => {
+  const featureFull = (phase: Phase, opts: { tickets?: unknown[]; sessions?: unknown[] } = {}): FeatureFull =>
+    ({
+      feature: { id: 'f1', phase, mapped: false, lap: 1, status: 'active' },
+      tickets: opts.tickets ?? [],
+      sessions: opts.sessions ?? [],
+      runs: [],
+      docs: [],
+    }) as unknown as FeatureFull
+  const ticket = (seq: number) => ({ id: `t${seq}`, seq, kind: 'implement', status: 'pending', lap: 1 })
+
+  /** A quick change is born at planning with its tickets and never has a planning session. */
+  it('shows a quick change its tickets while it is still in planning', () => {
+    const quick = featureFull('planning', { tickets: [ticket(1), ticket(2)] })
+    expect(ticketsAreBody({ full: quick, phase: 'planning', readonly: false, hasRun: false })).toBe(true)
+  })
+
+  it('keeps the planning body for a feature in planning with a live session and no tickets yet', () => {
+    const shaping = featureFull('planning', { sessions: [{ id: 's1', kind: 'chat', status: 'running', lap: 1 }] })
+    expect(ticketsAreBody({ full: shaping, phase: 'planning', readonly: false, hasRun: false })).toBe(false)
+  })
+
+  it('keeps the planning body when every ticket is from an earlier lap', () => {
+    const later = featureFull('planning', { tickets: [ticket(1)] })
+    later.feature.lap = 2
+    expect(ticketsAreBody({ full: later, phase: 'planning', readonly: false, hasRun: false })).toBe(false)
+  })
+
+  it('leaves a pinned planning phase to its frozen record', () => {
+    const pinned = featureFull('review', { tickets: [ticket(1)] })
+    expect(ticketsAreBody({ full: pinned, phase: 'planning', readonly: true, hasRun: false })).toBe(false)
+  })
+
+  it('shows the ledger at building until a run exists to narrate', () => {
+    const building = featureFull('building', { tickets: [ticket(1)] })
+    expect(ticketsAreBody({ full: building, phase: 'building', readonly: false, hasRun: false })).toBe(true)
+    expect(ticketsAreBody({ full: building, phase: 'building', readonly: false, hasRun: true })).toBe(false)
+  })
+})
+
 describe('nextStep at planning — the step derived from the artifacts', () => {
   const planningFull = (opts: { docs?: string[]; tickets?: unknown[] } = {}): FeatureFull =>
     ({
