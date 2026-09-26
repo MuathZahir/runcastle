@@ -2097,6 +2097,7 @@ type DriveState =
   | {
       kind: 'feature'
       purpose: DrivePurpose
+      projectId: string
       featureId: string
       branch: string
       previousBranch: string
@@ -2485,6 +2486,7 @@ export async function testDrive(
   testDriveState = {
     kind: 'feature',
     purpose,
+    projectId: project.id,
     featureId: feature.id,
     branch,
     previousBranch,
@@ -3307,11 +3309,13 @@ async function detectDbDrift(
  * The active-drive guard is a safety net: the merge tRPC handler already stops a
  * drive of the SAME feature first (via `activeTestDriveFeatureId`), so in the
  * normal flow this only fires when a DIFFERENT feature is being test-driven.
+ * It protects this repo's checkout, so only a drive of THIS project denies — a
+ * drive of another project never touches this repo.
  */
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
   const target = featureBase(feature)
 
-  if (testDriveState) {
+  if (testDriveState?.projectId === project.id) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')
   }
 
