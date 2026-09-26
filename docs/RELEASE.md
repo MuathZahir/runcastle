@@ -87,7 +87,9 @@ latest `v*` tag plus `-local.<short sha>`. The tarball is kept under
 
 It refuses while something is listening on `:4512` — stop runcastle first, or
 pass `--skip-running-check`. `--check` runs typecheck + tests before packing
-(off by default, for speed); `--no-install` skips `bun install`.
+(off by default, for speed); `--no-install` skips `bun install` and links this
+checkout's installed `node_modules` into the snapshot instead (it refuses if the
+ref's `bun.lock` differs from the checkout's).
 
 Return to the published version with `bun add -g runcastle@latest`.
 

@@ -10,7 +10,7 @@
  *   bun run install:local                  # build + install local `main`
  *   bun run install:local my-branch        # any ref
  *   bun run install:local --check          # typecheck + test before packing
- *   bun run install:local --no-install     # skip `bun install` in the snapshot
+ *   bun run install:local --no-install     # reuse this checkout's node_modules
  *   bun run install:local --skip-running-check
  *
  * It builds from a detached worktree in the OS temp dir, never from this
@@ -21,10 +21,21 @@
  * so `runcastle --version` and the doctor show it is a local build. Return to
  * the published version with `bun add -g runcastle@latest`.
  */
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from 'node:fs'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $ } from 'bun'
 import { prodDataDir } from '../packages/core/src/paths.ts'
@@ -33,6 +44,7 @@ import {
   InstallLocalUsageError,
   localBuildVersion,
   parseInstallLocalArgs,
+  snapshotLinkTarget,
 } from '../packages/server/src/dev/install-local.ts'
 import type { InstallLocalOptions } from '../packages/server/src/dev/install-local.ts'
 
@@ -78,6 +90,57 @@ function isListening(port: number): Promise<boolean> {
   })
 }
 
+/** Every `node_modules` a workspace install creates under `root`: the root's plus each workspace's. */
+function dependencyDirs(root: string): string[] {
+  const { workspaces = [] } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { workspaces?: string[] }
+  const members = workspaces.flatMap((pattern) => {
+    const parent = join(root, pattern.replace(/\/\*$/, ''))
+    if (!existsSync(parent)) return []
+    return readdirSync(parent, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => join(parent, d.name))
+  })
+  return [root, ...members].map((dir) => join(dir, 'node_modules'))
+}
+
+/** Link `target` at `path`: a directory as a junction (no privilege needed on Windows), a file as a copy. */
+function linkEntry(target: string, path: string): void {
+  if (statSync(target).isDirectory()) symlinkSync(target, path, 'junction')
+  else copyFileSync(target, path)
+}
+
+/** Mirror one checkout `node_modules` (and its `@scope` dirs) into the snapshot, entry by entry. */
+function mirrorDependencyDir(from: string, to: string, snapshot: string): void {
+  mkdirSync(to, { recursive: true })
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const source = join(from, entry.name)
+    const dest = join(to, entry.name)
+    if (entry.isSymbolicLink()) linkEntry(snapshotLinkTarget(realpathSync(source), REPO_ROOT, snapshot), dest)
+    else if (entry.isDirectory() && entry.name.startsWith('@')) mirrorDependencyDir(source, dest, snapshot)
+    else linkEntry(source, dest)
+  }
+}
+
+/**
+ * `--no-install`: the snapshot is a fresh worktree outside the repo with nothing
+ * installed, so reuse this checkout's dependencies. Links are mirrored entry by
+ * entry rather than linking whole `node_modules` dirs, so a workspace package
+ * (`@runcastle/core`) still resolves to the snapshot's sources, not this
+ * checkout's. Refuses when the lockfiles differ — the installed set would not be
+ * the ref's.
+ */
+function linkCheckoutDependencies(snapshot: string): void {
+  if (!existsSync(join(REPO_ROOT, 'node_modules'))) {
+    throw new Error(`--no-install needs installed dependencies, but ${REPO_ROOT} has no node_modules — run bun install there, or drop --no-install`)
+  }
+  if (readFileSync(join(REPO_ROOT, 'bun.lock'), 'utf8') !== readFileSync(join(snapshot, 'bun.lock'), 'utf8')) {
+    throw new Error(`--no-install: the ref's bun.lock differs from ${REPO_ROOT}'s, so its installed dependencies do not fit — drop --no-install`)
+  }
+  for (const from of dependencyDirs(REPO_ROOT)) {
+    if (existsSync(from)) mirrorDependencyDir(from, join(snapshot, relative(REPO_ROOT, from)), snapshot)
+  }
+}
+
 /** Build, verify, and pack the snapshot; returns the tarball's path. */
 async function buildTarball(snapshot: string, outDir: string, version: string, opts: InstallLocalOptions): Promise<string> {
   const serverDir = join(snapshot, 'packages', 'server')
@@ -86,6 +149,9 @@ async function buildTarball(snapshot: string, outDir: string, version: string, o
   if (opts.install) {
     step('Installing dependencies in the snapshot')
     await run($`bun install --frozen-lockfile`.cwd(snapshot))
+  } else {
+    step('Linking this checkout’s installed dependencies into the snapshot')
+    linkCheckoutDependencies(snapshot)
   }
 
   if (opts.check) {
@@ -163,6 +229,9 @@ async function main(): Promise<void> {
     }
   } finally {
     step('Removing the snapshot')
+    // Drop node_modules first: rmSync unlinks --no-install's junctions without
+    // following them into this checkout's dependencies.
+    for (const dir of existsSync(snapshot) ? dependencyDirs(snapshot) : []) rmSync(dir, { recursive: true, force: true })
     await capture`git -C ${REPO_ROOT} worktree remove --force ${snapshot}`
     await capture`git -C ${REPO_ROOT} worktree prune`
     rmSync(tmp, { recursive: true, force: true })

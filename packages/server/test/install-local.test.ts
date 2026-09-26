@@ -1,5 +1,6 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { InstallLocalUsageError, localBuildVersion, parseInstallLocalArgs } from '../src/dev/install-local'
+import { InstallLocalUsageError, localBuildVersion, parseInstallLocalArgs, snapshotLinkTarget } from '../src/dev/install-local'
 
 /** `bun run install:local` — the argv parse and the local version stamp. */
 describe('parseInstallLocalArgs', () => {
@@ -39,5 +40,26 @@ describe('localBuildVersion', () => {
 
   it('falls back to 0.0.0 when no release tag exists', () => {
     expect(localBuildVersion([], 'abc1234')).toBe('0.0.0-local.abc1234')
+  })
+})
+
+describe('snapshotLinkTarget', () => {
+  const checkout = join('/', 'repo')
+  const snapshot = join('/', 'tmp', 'snapshot')
+
+  it('rebases a workspace package onto the snapshot, so the ref is what gets built', () => {
+    expect(snapshotLinkTarget(join(checkout, 'packages', 'core'), checkout, snapshot)).toBe(
+      join(snapshot, 'packages', 'core'),
+    )
+  })
+
+  it('reuses an installed package from the checkout', () => {
+    const hono = join(checkout, 'node_modules', '.bun', 'hono@4.0.0', 'node_modules', 'hono')
+    expect(snapshotLinkTarget(hono, checkout, snapshot)).toBe(hono)
+  })
+
+  it('reuses a target outside the checkout', () => {
+    const global = join('/', 'cache', 'bun', 'zod')
+    expect(snapshotLinkTarget(global, checkout, snapshot)).toBe(global)
   })
 })

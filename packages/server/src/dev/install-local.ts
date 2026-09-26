@@ -1,3 +1,4 @@
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { compareSemver } from '../services/update-check'
 
 /**
@@ -14,7 +15,7 @@ import { compareSemver } from '../services/update-check'
 export interface InstallLocalOptions {
   /** The git ref to snapshot and build (default `main`). */
   ref: string
-  /** `false` under `--no-install`: skip `bun install` in the snapshot. */
+  /** `false` under `--no-install`: link the checkout's installed dependencies instead of `bun install`. */
   install: boolean
   /** `--check`: run typecheck + tests in the snapshot before packing. */
   check: boolean
@@ -40,6 +41,20 @@ export function parseInstallLocalArgs(argv: string[]): InstallLocalOptions {
     check: argv.includes('--check'),
     skipRunningCheck: argv.includes('--skip-running-check'),
   }
+}
+
+/**
+ * Where a `--no-install` snapshot's copy of one of the checkout's dependency
+ * links should point, given the link's resolved target. A workspace package
+ * (inside the checkout, outside every `node_modules`) is rebased onto the
+ * snapshot so the build compiles the ref's sources, not the checkout's; any
+ * other target (an installed package) is reused where it is.
+ */
+export function snapshotLinkTarget(target: string, checkout: string, snapshot: string): string {
+  const rel = relative(checkout, target)
+  const insideCheckout = rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+  if (!insideCheckout || rel.split(sep).includes('node_modules')) return target
+  return join(snapshot, rel)
 }
 
 const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[\w.]+)?$/
