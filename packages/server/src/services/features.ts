@@ -146,12 +146,7 @@ export async function createFeature(
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
 
-  // A draft cuts nothing (decision 3): its base is chosen and resolved later, at
-  // Start. Otherwise the stored base is the RESOLVED local branch (a remote pick
-  // materialized a local tracking branch), always a real merge target at ship time.
-  const cut = input.draft
-    ? null
-    : await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
+  const { cut, baseBranch, status } = await parkOrCut(ctx, project, slug, input)
 
   const row = {
     id: newId('feat'),
@@ -161,7 +156,7 @@ export async function createFeature(
     oneLiner: input.oneLiner,
     // Only a draft parks its brief in the column (decision 4); a live create
     // writes it straight to `brief.md`, the source of truth from then on.
-    brief: input.draft ? (input.brief ?? null) : null,
+    brief: cut ? null : (input.brief ?? null),
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
@@ -171,13 +166,51 @@ export async function createFeature(
     // The branch NAME is recorded even for a draft (decision 2); `status:
     // 'draft'` alone means the branch does not exist in the repo yet.
     branch,
-    baseBranch: cut?.baseBranch ?? null,
-    status: cut ? ('active' as const) : ('draft' as const),
+    baseBranch,
+    status,
     createdAt: Date.now(),
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
   const feature = rowToFeature(inserted)
 
+  emitFeatureCreated(ctx, feature, cut)
+
+  // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
+  // commit until Start, so parked scribbles never land on the current branch.
+  if (!cut) return feature
+
+  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: input.brief })
+
+  return feature
+}
+
+/** The branch a creation door cut: its resolved base, and whether git made it. */
+type BranchCut = { branchReady: boolean; baseBranch: string }
+
+/**
+ * Park or cut — the one decision every creation door makes. A draft cuts nothing
+ * (decision 3): its base is chosen and resolved later, at Start. Otherwise the
+ * stored base is the RESOLVED local branch (a remote pick materialized a local
+ * tracking branch), always a real merge target at ship time. `cut` is null for a
+ * draft; `baseBranch` and `status` are the row's columns derived from it.
+ */
+async function parkOrCut(
+  ctx: AppCtx,
+  project: Project,
+  slug: string,
+  input: { draft?: boolean; baseBranch?: string },
+): Promise<{ cut: BranchCut | null; baseBranch: string | null; status: 'active' | 'draft' }> {
+  if (input.draft) return { cut: null, baseBranch: null, status: 'draft' }
+  const cut = await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
+  return { cut, baseBranch: cut.baseBranch, status: 'active' }
+}
+
+/**
+ * The birth event every creation door emits — `cut` is the branch it cut, or
+ * null for a draft, which cuts nothing until Start.
+ */
+function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null): void {
+  const { slug, branch } = feature
   emit(ctx, feature.id, {
     type: 'feature.created',
     message: !cut
@@ -193,14 +226,6 @@ export async function createFeature(
       draft: !cut,
     },
   })
-
-  // A draft is a DB row and nothing else (decision 4) — no docs on disk and no
-  // commit until Start, so parked scribbles never land on the current branch.
-  if (!cut) return feature
-
-  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: input.brief })
-
-  return feature
 }
 
 /**
@@ -275,6 +300,13 @@ export interface QuickChangeInput {
   tickets: string[]
   /** Same semantics as `CreateFeatureInput.baseBranch`. */
   baseBranch?: string
+  /**
+   * Same semantics as `CreateFeatureInput.draft`: park instead of start. The
+   * tickets are still stored — they are DB rows, needing no branch — and the
+   * brief parks in the column, so Start lands the same ready-to-Burn feature a
+   * started quick change is born as.
+   */
+  draft?: boolean
 }
 
 /** How wide a derived ticket title may run before it is cut. */
@@ -387,8 +419,9 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
 
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
-  const base = await requestedBase(ctx, project, input.baseBranch)
-  const { branchReady, baseBranch } = await ensureFeatureBranch(ctx, project, slug, base)
+  const brief = quickBrief(title, proses)
+  // A draft's brief is parked in the column below; Start scaffolds it.
+  const { cut, baseBranch, status } = await parkOrCut(ctx, project, slug, input)
 
   const inserted = ctx.db
     .insert(features)
@@ -404,6 +437,7 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       // status line, the burner's brief header). Every sentence survives
       // verbatim where it belongs — brief.md and the tickets.
       oneLiner: proses[0].split('\n')[0].trim(),
+      brief: cut ? null : brief,
       mapped: false,
       lap: 1,
       // Ready at birth: the tickets below are complete and no session is
@@ -419,22 +453,16 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       phase: 'planning' as const,
       branch,
       baseBranch,
-      status: 'active' as const,
+      status,
       createdAt: Date.now(),
     })
     .returning()
     .get()
   const feature = rowToFeature(inserted)
 
-  emit(ctx, feature.id, {
-    type: 'feature.created',
-    message: branchReady
-      ? `feature.created (${branch} ← ${baseBranch})`
-      : 'feature.created (branch pending)',
-    data: { slug, branch, baseBranch, branchReady },
-  })
+  emitFeatureCreated(ctx, feature, cut)
 
-  await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief: quickBrief(title, proses) })
+  if (cut) await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief })
 
   // One batch, not two: the review ticket's `blockedBy` names batch positions,
   // which only resolve against the typed tickets it is stored alongside.
@@ -530,7 +558,7 @@ async function ensureFeatureBranch(
   project: Project,
   slug: string,
   base: string,
-): Promise<{ branchReady: boolean; baseBranch: string }> {
+): Promise<BranchCut> {
   try {
     const reportHeal = (): void => {
       emitProject(ctx, project.id, {

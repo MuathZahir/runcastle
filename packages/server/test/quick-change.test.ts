@@ -500,6 +500,84 @@ describe('quickChange service — a one-ticket feature born ready to burn', () =
     expect(getFeatureRow(ctx, draft.id).ticketsReadyLap).toBeNull()
   })
 
+  /**
+   * A quick change can be parked like any other shape: the row and its tickets
+   * are stored, but nothing touches the repo until Start — the same contract a
+   * `createFeature` draft keeps, with the tickets riding along.
+   */
+  it('parks a draft quick change with its tickets, cutting nothing', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Parked tweak',
+      tickets: [PROSE, 'Tighten the rail spacing.'],
+      draft: true,
+    })
+
+    expect(feature.status).toBe('draft')
+    expect(feature.baseBranch).toBeUndefined()
+    expect(feature.phase).toBe('planning')
+    expect(feature.ticketsReadyLap).toBe(1)
+    expect(getFeatureRow(ctx, feature.id).status).toBe('draft')
+
+    expect(typedTickets(ctx, feature.id).map((t) => t.goal)).toEqual([
+      PROSE,
+      'Tighten the rail spacing.',
+    ])
+    const review = listByFeature(ctx, feature.id).find((t) => t.kind === 'review')
+    expect(review?.blockedBy).toEqual([1, 2])
+
+    const g = simpleGit(repoPath)
+    expect((await g.branchLocal()).all).not.toContain('feature/parked-tweak')
+    expect((await g.status()).isClean()).toBe(true)
+    expect(existsSync(docsDir(ctx, feature))).toBe(false)
+    expect(listAfter(ctx, feature.id, 0).find((e) => e.type === 'feature.created')?.data).toMatchObject({
+      draft: true,
+    })
+  })
+
+  it('Start cuts the parked quick change from the picked base, tickets and brief intact', async () => {
+    const g = simpleGit(repoPath)
+    await g.checkoutLocalBranch('release')
+    await g.checkout('main')
+    const draft = await features.quickChange(ctx, {
+      projectId,
+      title: 'Parked tweak',
+      tickets: [PROSE],
+      draft: true,
+    })
+    const ticketsBefore = listByFeature(ctx, draft.id)
+
+    const started = await features.startDraft(ctx, draft.id, { baseBranch: 'release' })
+
+    expect(started.status).toBe('active')
+    expect(started.baseBranch).toBe('release')
+    expect((await g.branchLocal()).all).toContain('feature/parked-tweak')
+    const row = getFeatureRow(ctx, draft.id)
+    expect(row.phase).toBe('planning')
+    expect(row.ticketsReadyLap).toBe(1)
+    expect(listByFeature(ctx, draft.id)).toEqual(ticketsBefore)
+    expect(ticketsBefore.map((t) => t.kind)).toEqual(['implementation', 'review'])
+    expect(readFileSync(join(docsDir(ctx, started), 'brief.md'), 'utf8')).toBe(
+      `# Parked tweak\n\n${PROSE}\n`,
+    )
+  })
+
+  it('still starts a quick change at once when draft is not asked for', async () => {
+    const feature = await features.quickChange(ctx, {
+      projectId,
+      title: 'Live tweak',
+      tickets: [PROSE],
+      draft: false,
+    })
+
+    expect(feature.status).toBe('active')
+    expect(feature.baseBranch).toBe('main')
+    expect(feature.brief).toBeUndefined()
+    expect((await simpleGit(repoPath).branchLocal()).all).toContain('feature/live-tweak')
+    expect(existsSync(join(docsDir(ctx, feature), 'brief.md'))).toBe(true)
+    expect(listByFeature(ctx, feature.id)).toHaveLength(2)
+  })
+
   it('deduplicates slugs against existing features, like create does', async () => {
     const first = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
     const second = await features.quickChange(ctx, { projectId, title: 'Tweak', tickets: [PROSE] })
