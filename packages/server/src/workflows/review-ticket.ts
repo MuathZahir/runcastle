@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
+import { resolvePreparedSettings } from '@runcastle/core'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
@@ -112,17 +113,59 @@ export function renderReviewPrompt(
 /** The CLI a drive's recording is muxed with. */
 export const FFMPEG_BIN = 'ffmpeg'
 
-export function executableIsHealthy(path: string | undefined): boolean {
-  if (!path) return false
-  const result = spawnSync(path, ['--version'], { timeout: 3_000, stdio: 'ignore' })
-  return result.status === 0 && !result.error
+/** What one `<path> --version` probe observed — everything a failed one needs to be diagnosed. */
+export interface ExecutableHealth {
+  ok: boolean
+  path: string
+  status: number | null
+  signal: string | null
+  /** The spawn error's code (`ETIMEDOUT`, `ENOENT`), or its message when it has none. */
+  error?: string
+  elapsedMs: number
+}
+
+/** The process boundary the probe crosses — injectable so the failure shapes are testable. */
+export type ProbeSpawn = (path: string) => { status: number | null; signal: string | null; error?: Error }
+
+const spawnVersion: ProbeSpawn = (path) => spawnSync(path, ['--version'], { timeout: 3_000, stdio: 'ignore' })
+
+function probeExecutable(path: string, spawn: ProbeSpawn): ExecutableHealth {
+  const started = performance.now()
+  const result = spawn(path)
+  const elapsedMs = Math.round(performance.now() - started)
+  const error = result.error ? ((result.error as NodeJS.ErrnoException).code ?? result.error.message) : undefined
+  return {
+    ok: result.status === 0 && !result.error,
+    path,
+    status: result.status,
+    signal: result.signal,
+    ...(error ? { error } : {}),
+    elapsedMs,
+  }
+}
+
+/**
+ * `<path> --version`, retried once before it counts as a failure: a single slow
+ * spawn on a loaded host should not cost a whole review its Drive mode. No
+ * shell, and the same 3s timeout per attempt, so the probe stays cheap.
+ */
+export function checkExecutableHealth(path: string, spawn: ProbeSpawn = spawnVersion): ExecutableHealth {
+  const first = probeExecutable(path, spawn)
+  return first.ok ? first : probeExecutable(path, spawn)
+}
+
+/** A failed probe in one parenthesis-sized phrase, e.g. `C:\…\agent-browser.CMD --version: ETIMEDOUT after 3001ms`. */
+export function describeHealthFailure(health: ExecutableHealth): string {
+  const cause = health.error
+    ?? (health.signal ? `killed by ${health.signal}` : `exited with status ${health.status}`)
+  return `${health.path} --version: ${cause} after ${health.elapsedMs}ms`
 }
 
 /** Every piece a drive needs that this host does not have, in prompt prose. */
 function missingDrivePieces(
   browserPath: string | undefined,
   devCommand: string | undefined,
-  browserHealthy: boolean,
+  browserFailure: string | undefined,
   ffmpegPath: string | null | undefined,
 ): string[] {
   const missing: string[] = []
@@ -130,8 +173,8 @@ function missingDrivePieces(
     missing.push(
       `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
     )
-  } else if (!browserHealthy) {
-    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check`)
+  } else if (browserFailure) {
+    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check (${browserFailure})`)
   }
   if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
   if (!devCommand?.trim()) {
@@ -159,10 +202,10 @@ function missingDrivePieces(
 export function driveWithheldReason(
   browserPath: string | undefined,
   devCommand: string | undefined,
-  browserHealthy: boolean,
+  browserFailure: string | undefined,
   ffmpegPath: string | null | undefined,
 ): string | undefined {
-  const missing = missingDrivePieces(browserPath, devCommand, browserHealthy, ffmpegPath)
+  const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
   if (missing.length === 0) return undefined
   return `Drive was unavailable: ${missing.join(', and ')}.`
 }
@@ -183,13 +226,13 @@ export function buildDriveAvailability(
   browserPath: string | undefined,
   devCommand: string | undefined,
   inheritedMode?: 'drive' | 'gates',
-  browserHealthy = true,
+  browserFailure?: string,
   ffmpegPath: string | null | undefined = browserPath,
 ): string {
   if (inheritedMode === 'gates') {
     return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose Drive mode or call `review_drive`.'
   }
-  const missing = missingDrivePieces(browserPath, devCommand, browserHealthy, ffmpegPath)
+  const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
   if (inheritedMode === 'drive' && missing.length === 0) {
     return 'Inherited mode: **Drive**. The pass being verified recorded Drive mode, so run Drive mode and record the full tour; do not choose Gates mode.'
   }
@@ -338,12 +381,19 @@ export function buildDriveInstructions(instructions: string | null | undefined):
  * With nothing configured the answer is to run nothing. A reviewer guessing at a
  * monorepo's filter names — and discovering them by running the wrong suite — is
  * the long-review failure mode this whole mode split exists to end.
+ *
+ * Both fields are resolved project-first ({@link resolvePreparedSettings}),
+ * exactly as the implementer's `buildVerifyNotes` input is: they are normally
+ * stored on the project row, so reading the global config alone told every
+ * reviewer its project had no gates.
  */
 export function buildGateNotes(
   config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
+  project?: { verifyCommands?: string | null; knownFailures?: string | null } | null,
 ): string {
-  const commands = config.verifyCommands?.trim()
-  const failures = config.knownFailures?.trim()
+  const prepared = resolvePreparedSettings(config, project)
+  const commands = prepared.verifyCommands
+  const failures = prepared.knownFailures
   const out: string[] = []
 
   if (commands) {
@@ -617,11 +667,13 @@ async function reviewTicketOutcome(
   const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.reviewMode) : undefined
   const browserPath = findOnPath(AGENT_BROWSER_BIN)
   const ffmpegPath = findOnPath(FFMPEG_BIN)
-  const browserHealthy = executableIsHealthy(browserPath)
+  const browserHealth = browserPath ? checkExecutableHealth(browserPath) : undefined
+  const browserFailure = browserHealth && !browserHealth.ok ? describeHealthFailure(browserHealth) : undefined
+  if (browserFailure) console.error(`[review] ${AGENT_BROWSER_BIN} failed its health check: ${browserFailure}`)
   // The one sentence that serves both the prompt and the pass's record: the
   // agent is told why Drive is closed, and the ticket row keeps the same reason
   // so the trail can say why the lap ran Gates (decision 8).
-  const withheldReason = driveWithheldReason(browserPath, project.devCommand, browserHealthy, ffmpegPath)
+  const withheldReason = driveWithheldReason(browserPath, project.devCommand, browserFailure, ffmpegPath)
   const offeredMode: 'drive' | 'gates' = inheritedMode === 'gates' || withheldReason ? 'gates' : 'drive'
   const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
@@ -639,9 +691,9 @@ async function reviewTicketOutcome(
     // a perfectly healthy lap, and its own failure criterion then made it report
     // "could not review".
     BASE_BRANCH: feature.baseBranch,
-    DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserHealthy, ffmpegPath),
+    DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserFailure, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
-    GATE_NOTES: buildGateNotes(deps.config),
+    GATE_NOTES: buildGateNotes(deps.config, project),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
