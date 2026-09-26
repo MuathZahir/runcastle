@@ -1,7 +1,9 @@
 import type { Feature, SessionKind, SessionRow } from '@runcastle/core'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
+import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
+import { evaluateInstallGuard } from '../launcher/install-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
 import {
   getSessionRow,
@@ -318,7 +320,8 @@ function emitConversationEnded(
 }
 
 /**
- * `PreToolUse` for the file-write tools — the talk-session edit guard (F2). A
+ * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
+ * (F2) and the talk-worktree install guard ({@link evaluateInstallGuard}). A
  * deny is returned as the verified hook shape; anything allowed answers `{}`,
  * which Claude Code reads as "no opinion". Registered only for the kinds that
  * may not write code (see `renderSettings` / {@link evaluateEditGuard}).
@@ -347,15 +350,26 @@ async function handlePreToolUse(
   const mergeInProgress =
     session.purpose === 'resolve-conflict' ? await mergeInProgressAt(session.worktreePath) : false
 
-  const denial = evaluateEditGuard({
-    kind: session.kind,
-    purpose: session.purpose,
-    mergeInProgress,
-    worktreePath: session.worktreePath,
-    toolName,
-    filePath: path,
-    featureSlug: feature?.slug,
-  })
+  const denial =
+    evaluateEditGuard({
+      kind: session.kind,
+      purpose: session.purpose,
+      mergeInProgress,
+      worktreePath: session.worktreePath,
+      toolName,
+      filePath: path,
+      featureSlug: feature?.slug,
+    }) ??
+    evaluateInstallGuard({
+      kind: session.kind,
+      worktreePath: session.worktreePath,
+      toolName,
+      command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+      talkWorktreePath:
+        feature && feature.slug !== PROJECT_WORKTREE_SLUG
+          ? worktreeDir(feature.projectId, feature.slug)
+          : undefined,
+    })
   return denial ? editDenyResponse(denial) : {}
 }
 

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
+import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
@@ -335,6 +336,104 @@ describe('hooks route', () => {
         payload: { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {} },
       })
       expect(noPath.json).toEqual({})
+    })
+  })
+
+  /**
+   * The talk-worktree install guard: talk worktrees are docs-only (charter
+   * decision 6), so a package install from a shell there is denied — and only
+   * there.
+   */
+  describe('pre-tool — no package installs in a talk worktree', () => {
+    let projectId: string
+    let talkPath: string
+    let talkFeatureId: string
+
+    beforeEach(() => {
+      projectId = seedProject(ctx).id
+      talkFeatureId = seedFeature(ctx, projectId, { slug: 'no-deps' }).id
+      talkPath = worktreeDir(projectId, 'no-deps')
+    })
+
+    async function install(id: string, tool = 'Bash'): Promise<any> {
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: id,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: tool,
+          tool_input: { command: 'cd packages/server && bun install' },
+        },
+      })
+      return json
+    }
+
+    it('denies an install from a talk session in its feature worktree, naming the alternative', async () => {
+      const talk = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: talkPath,
+      }).id
+      for (const tool of ['Bash', 'PowerShell']) {
+        const json = await install(talk, tool)
+        expect(json.hookSpecificOutput).toMatchObject({
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+        })
+        const reason = json.hookSpecificOutput.permissionDecisionReason
+        expect(reason).toMatch(/docs-only/)
+        expect(reason).toMatch(/burn sandbox/)
+        expect(reason).toMatch(/review lap/)
+        expect(reason).toMatch(/test drive/)
+      }
+    })
+
+    it('allows other shell commands in the same worktree', async () => {
+      const talk = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: talkPath,
+      }).id
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: talk,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Bash',
+          tool_input: { command: 'grep -rn "bun install" docs/' },
+        },
+      })
+      expect(json).toEqual({})
+    })
+
+    it('allows a prepare session in the main checkout', async () => {
+      const prep = createSessionRow(ctx, { projectId, kind: 'prepare', worktreePath: '/repo' }).id
+      expect(await install(prep)).toEqual({})
+    })
+
+    it('allows a drive-fix session in the main checkout', async () => {
+      const fix = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'drive-fix',
+        worktreePath: '/repo',
+      }).id
+      expect(await install(fix)).toEqual({})
+    })
+
+    it('allows the project session in the __project worktree', async () => {
+      const project = createSessionRow(ctx, {
+        projectId,
+        kind: 'project',
+        worktreePath: worktreeDir(projectId, PROJECT_WORKTREE_SLUG),
+      }).id
+      expect(await install(project)).toEqual({})
+    })
+
+    it('allows a non-project session whose cwd is the __project worktree', async () => {
+      const chat = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: worktreeDir(projectId, PROJECT_WORKTREE_SLUG),
+      }).id
+      expect(await install(chat)).toEqual({})
     })
   })
 

@@ -180,12 +180,15 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     writeFileSync(join(repo, 'vitest.config.ts'), 'export default { main: true }\n')
     git(repo, 'commit', '-am', 'main moves')
 
-    worktree = join(mkTmp('runcastle-resolve-wt-'), 'dark-mode')
+    // At the feature's real talk-worktree path (under the test data dir), so the
+    // install guard — which keys on that location — sees a talk worktree.
+    const project = seedProject(ctx, repo)
+    worktree = worktreeDir(project.id, 'dark-mode')
+    cleanup.push(worktree)
     git(repo, 'worktree', 'add', worktree, 'feature/dark-mode')
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
     git(worktree, 'commit', '-am', 'feature moves')
 
-    const project = seedProject(ctx, repo)
     const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
@@ -240,6 +243,28 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
   it('denies before the agent has started the merge', async () => {
     const json = await preTool(sessionId, join(worktree, 'vitest.config.ts'))
     expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+  })
+
+  /** The merge exemption is the edit guard's alone: resolve sessions were the main installers. */
+  it('still denies a package install while the merge is unresolved', async () => {
+    startConflictingMerge()
+    const app = new Hono()
+    app.route('/api/hooks', hooksApp)
+    const res = await app.request('/api/hooks/pre-tool', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        payload: {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Bash',
+          tool_input: { command: 'bun install && bun run typecheck' },
+        },
+      }),
+    })
+    const json: any = await res.json()
+    expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/docs-only/)
   })
 
   /** A worktree git cannot read answers "no merge", never a thrown hook. */
