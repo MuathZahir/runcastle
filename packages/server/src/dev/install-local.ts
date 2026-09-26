@@ -18,7 +18,7 @@ export interface InstallLocalOptions {
   install: boolean
   /** `--check`: run typecheck + tests in the snapshot before packing. */
   check: boolean
-  /** `--skip-running-check`: install even if something listens on :4512. */
+  /** `--skip-running-check`: install even if something listens on the configured `serverPort`. */
   skipRunningCheck: boolean
 }
 

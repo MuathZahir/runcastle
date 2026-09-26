@@ -85,7 +85,8 @@ is never built from, so it may be dirty or on another branch), runs
 latest `v*` tag plus `-local.<short sha>`. The tarball is kept under
 `~/.runcastle/local-builds/` because the global install references its path.
 
-It refuses while something is listening on `:4512` — stop runcastle first, or
+It refuses while something is listening on runcastle's port (`serverPort` from
+`~/.runcastle/config.json`, default `4512`) — stop runcastle first, or
 pass `--skip-running-check`. `--check` runs typecheck + tests before packing
 (off by default, for speed); `--no-install` skips `bun install`.
 

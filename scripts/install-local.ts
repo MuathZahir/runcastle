@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $ } from 'bun'
+import { loadConfig } from '../packages/core/src/config-load.ts'
 import { prodDataDir } from '../packages/core/src/paths.ts'
 import {
   INSTALL_LOCAL_USAGE,
@@ -37,7 +38,7 @@ import {
 import type { InstallLocalOptions } from '../packages/server/src/dev/install-local.ts'
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..')
-const SERVER_PORT = 4512
+const DEFAULT_SERVER_PORT = 4512
 
 function die(message: string): never {
   console.error(`\n✗ ${message}`)
@@ -64,6 +65,18 @@ async function capture(strings: TemplateStringsArray, ...values: unknown[]): Pro
     .nothrow()
   if (result.exitCode !== 0) return null
   return result.stdout.toString().trim()
+}
+
+/**
+ * The port the installed runcastle listens on: its config's `serverPort`
+ * (file + `RUNCASTLE_SERVER_PORT`), or the default if that config is unreadable.
+ */
+function serverPort(): number {
+  try {
+    return loadConfig().serverPort
+  } catch {
+    return DEFAULT_SERVER_PORT
+  }
 }
 
 /** Whether anything accepts connections on the server's loopback port. */
@@ -124,8 +137,11 @@ async function main(): Promise<void> {
 
   // A running server holds the global install's files open on Windows, and
   // stopping it here would kill every live session's PTY — the human decides.
-  if (!opts.skipRunningCheck && (await isListening(SERVER_PORT))) {
-    die(`runcastle is running on :${SERVER_PORT} — stop it (close its window / Ctrl+C), then re-run`)
+  if (!opts.skipRunningCheck) {
+    const port = serverPort()
+    if (await isListening(port)) {
+      die(`runcastle is running on :${port} — stop it (close its window / Ctrl+C), then re-run`)
+    }
   }
 
   const sha = await capture`git -C ${REPO_ROOT} rev-parse --verify ${`${opts.ref}^{commit}`}`
