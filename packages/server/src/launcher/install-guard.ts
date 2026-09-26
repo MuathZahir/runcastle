@@ -81,9 +81,9 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
   if (!input.command || !input.talkWorktreePath) return null
   if (!samePath(input.worktreePath, input.talkWorktreePath)) return null
 
-  // Blank quoted spans, as the burn guard does: searching for the string is not
-  // running it.
-  const stripped = input.command.replace(/'[^']*'/g, ' ').replace(/"[^"]*"/g, ' ')
+  // Blank heredoc bodies and quoted spans, as the burn guard does: a commit
+  // message that mentions the string, or searching for it, is not running it.
+  const stripped = blankHeredocBodies(input.command).replace(/'[^']*'/g, ' ').replace(/"[^"]*"/g, ' ')
   if (!INSTALL_PATTERNS.some((pattern) => pattern.test(stripped))) return null
 
   return {
@@ -95,6 +95,32 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
       'the main checkout with dependencies installed. Check what you can without them ' +
       '(`git diff --check`, grep, re-reading the code).',
   }
+}
+
+/** A heredoc opener — `<<EOF`, `<<-'EOF'`, `<< "EOF"` — but not a `<<<` here-string. */
+const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\?([\w.-]+))/g
+
+/**
+ * Drop the body lines of every heredoc, keeping the line that opens it and the
+ * lines after its terminator. A body is text fed to a command's stdin — a
+ * `git commit -F - <<'EOF'` message line that starts with `bun install` is prose,
+ * yet after a newline it would sit in command position.
+ */
+function blankHeredocBodies(command: string): string {
+  const kept: string[] = []
+  const pending: { word: string; stripTabs: boolean }[] = []
+  for (const line of command.split('\n')) {
+    const open = pending[0]
+    if (open) {
+      if ((open.stripTabs ? line.replace(/^\t+/, '') : line) === open.word) pending.shift()
+      continue
+    }
+    kept.push(line)
+    for (const m of line.matchAll(HEREDOC_OPENER)) {
+      pending.push({ word: m[2] ?? m[3] ?? m[4] ?? '', stripTabs: m[1] === '-' })
+    }
+  }
+  return kept.join('\n')
 }
 
 /** Same directory? Case-insensitive on Windows, where the filesystem is. */

@@ -83,6 +83,22 @@ describe('install guard', () => {
     }
   })
 
+  it('reads a heredoc body as text, not commands', () => {
+    for (const cmd of [
+      "git commit -F - <<'EOF'\ndocs: note\nbun install is blocked here\nEOF",
+      'git commit -m "$(cat <<\'EOF\'\ndocs: note\n\nnpm ci is blocked here\nEOF\n)"',
+      'cat <<EOF > notes.md\nyarn\nEOF',
+      'cat <<-"END"\n\tpnpm add zod\n\tEND',
+    ]) {
+      expect(denied(cmd), cmd).toBe(false)
+    }
+  })
+
+  it('still denies an install after a heredoc ends', () => {
+    expect(denied("git commit -F - <<'EOF'\ndocs: note\nEOF\nbun install")).toBe(true)
+    expect(denied("cat <<'EOF' && bun install\nbody\nEOF")).toBe(true)
+  })
+
   it('denies every feature-worktree kind', () => {
     for (const kind of ['chat', 'waypoint', 'converge'] as const) {
       expect(denied('bun install', { kind }), kind).toBe(true)
