@@ -17,7 +17,8 @@ import {
   Aside,
   AsideLayout,
   LINK,
-  Loading,
+  Skeleton,
+  SkeletonBar,
   StatusDot,
   StatusLabel,
   cx,
@@ -198,9 +199,7 @@ export function PreparationWorkspace({
         </AsideLayout>
       ) : (
         <Page routeKey={`prepare-${projectId}`}>
-          {prep.isLoading && (
-            <Loading>Loading preparation…</Loading>
-          )}
+          {prep.isLoading && <PreparationSkeleton />}
           {prep.error && (
             <EmptyState
               icon={<IconAlert />}
@@ -226,6 +225,37 @@ export function PreparationWorkspace({
         </Page>
       )}
     </section>
+  )
+}
+
+/**
+ * Preparation while its first read is in flight: {@link PrepCallToAction}'s
+ * header in placeholder bars — the title, the meta line, the sentence, the
+ * primary button and the line under it — on `PageHeader`'s metrics. Bars, not
+ * words: which of the two headings is right is what the read decides.
+ */
+export function PreparationSkeleton() {
+  return (
+    <Skeleton label="Loading preparation…">
+      <div className="flex h-7 items-center" data-skeleton="title">
+        <SkeletonBar className="h-5 w-3/5" />
+      </div>
+      <div className="mt-2 flex h-5 items-center">
+        <SkeletonBar className="h-2.5 w-32" />
+      </div>
+      <div className="mt-5 max-w-[60ch]" data-skeleton="sentence">
+        <div className="flex h-[22px] items-center">
+          <SkeletonBar className="h-3 w-full" />
+        </div>
+        <div className="flex h-[22px] items-center">
+          <SkeletonBar className="h-3 w-3/4" />
+        </div>
+      </div>
+      <SkeletonBar className="mt-6 h-(--control-h) w-40 rounded-md" />
+      <div className="mt-2 flex h-4 max-w-[60ch] items-center">
+        <SkeletonBar className="h-2.5 w-5/6" />
+      </div>
+    </Skeleton>
   )
 }
 
