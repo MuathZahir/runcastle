@@ -52,6 +52,10 @@ describe('the skeletons are shaped like their content', () => {
     expect(count(html, 'project-row')).toBe(3)
   })
 
+  it('the first load: each project row is two lines, the name over its repo path', () => {
+    expect(count(render(ProjectsSkeleton), 'repo-path')).toBe(3)
+  })
+
   it('the general settings: the Server and Sessions rows', () => {
     expect(count(render(SettingsSkeleton), 'setting-row')).toBe(5)
   })
