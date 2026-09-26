@@ -40,6 +40,7 @@ import {
   shippedAt,
   shippedChatSessions,
   sortForSidebar,
+  startOpensChat,
   testDriveTaken,
   ticketConflictKickoff,
   ticketDurations,
@@ -106,6 +107,16 @@ const BURNABLE = {
  * currently checked out on, falling back to main when runcastle's own internal
  * branch is the checkout. Tested at the pure derivation, no DOM.
  */
+describe('startOpensChat', () => {
+  it('chains the grill chat after starting an ordinary draft', () => {
+    expect(startOpensChat({ ticketsReadyLap: null })).toBe(true)
+  })
+
+  it('opens no session for a parked quick change, born with its tickets ready', () => {
+    expect(startOpensChat({ ticketsReadyLap: 1 })).toBe(false)
+  })
+})
+
 describe('defaultBaseBranch', () => {
   it('defaults to the current checkout when it is a selectable base', () => {
     expect(defaultBaseBranch({ current: 'develop', detected: 'main', branches: ['main', 'develop'] })).toBe('develop')

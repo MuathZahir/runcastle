@@ -50,6 +50,7 @@ import {
   shippedAt,
   specDocPath,
   stampedReview,
+  startOpensChat,
   testDriveTaken,
   ticketCountText,
   unresolvedMergeConflict,
@@ -463,12 +464,14 @@ export function Workspace({
   })
   // Start a parked draft (decision 7): the server cuts the branch, commits the
   // brief and activates the feature, and the grill session is chained after it
-  // best-effort — mirroring the New Feature form's create-then-launch. A failure
-  // leaves the draft intact and startable, so the toast is the whole recovery.
+  // best-effort — mirroring the New Feature form's create-then-launch. A parked
+  // quick change skips the chat: it lands ready to Burn, as a started one does.
+  // A failure leaves the draft intact and startable, so the toast is the whole
+  // recovery.
   const start = trpc.feature.start.useMutation({
-    onSuccess: (_res, vars) => {
+    onSuccess: (res, vars) => {
       invalidate()
-      launch.mutate({ featureId: vars.featureId, kind: 'chat' })
+      if (startOpensChat(res)) launch.mutate({ featureId: vars.featureId, kind: 'chat' })
     },
     onError: (e) => toast.push(e.message),
   })
