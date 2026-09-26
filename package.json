@@ -21,6 +21,7 @@
     "burn-cache:probe": "bun scripts/burn-cache-probe.ts",
     "deploy:worker": "bun run --filter '@runcastle/ping' deploy",
     "release": "bun run scripts/release.ts",
+    "install:local": "bun run scripts/install-local.ts",
     "postinstall": "bun scripts/postinstall-node-pty.ts"
   },
   "devDependencies": {
