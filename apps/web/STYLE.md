@@ -82,7 +82,9 @@ Motion is transform and opacity only, from the named `animate-*` utilities; the
 progress indicator marked `data-progress` (the `Spinner`), which swaps its
 rotation for a slow opacity pulse so it never freezes into a still frame. A
 `<details data-disclosure>` animates its height (`interpolate-size` +
-`::details-content`).
+`::details-content`), and so does the jot-a-note field as it grows to fit its
+text (`NoteCapture`: a pixel height set from `scrollHeight`, capped, then it
+scrolls).
 
 ### Two things Tailwind does here that will surprise you
 
