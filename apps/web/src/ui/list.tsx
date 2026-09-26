@@ -115,7 +115,8 @@ function RowControl({
  * - `dot` — a trailing `StatusDot` tone for a live state.
  * - `href` / `onClick` — renders an `<a>` or a `<button>`.
  * - `actions` — a trailing slot (usually an `IconButton size="sm"` "…")
- *   revealed on hover or keyboard focus, over the meta. Never visible at rest.
+ *   revealed on hover or keyboard focus, over the dot and meta — which fade
+ *   out meanwhile, so the two never overlap. Never visible at rest.
  * - `onContextMenu` — the row's menu by right-click; `onDoubleClick` — a
  *   second gesture on the row (the folder picker: enter *and* pick a repo).
  * - `tone="quiet"` — a 28px `text-xs text-tertiary` row with no glyph, its
@@ -153,6 +154,7 @@ export function NavItem({
   className?: string
 }) {
   const quiet = tone === 'quiet'
+  const hasMeta = meta !== undefined && meta !== null
   const glyph = phase ? (
     <PhaseIcon phase={phase} />
   ) : icon ? (
@@ -195,15 +197,19 @@ export function NavItem({
       >
         {glyph && <Leading>{glyph}</Leading>}
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        {dot && <StatusDot tone={dot} />}
-        {meta !== undefined && meta !== null && (
+        {(dot || hasMeta) && (
+          // The trailing cluster steps aside while the actions show — they sit
+          // over this edge, and a dot peeking out behind the "…" read as a
+          // fourth dot (hovered, focused, or with its menu open).
           <span
             className={cx(
-              'shrink-0 text-xs font-normal text-text-tertiary tabular-nums',
-              actions ? 'group-focus-within/nav:opacity-0 group-hover/nav:opacity-0' : undefined,
+              'flex shrink-0 items-center gap-2',
+              actions != null &&
+                'transition-opacity duration-(--dur-1) group-focus-within/nav:opacity-0 group-hover/nav:opacity-0 group-has-[[aria-expanded=true]]/nav:opacity-0',
             )}
           >
-            {meta}
+            {dot && <StatusDot tone={dot} />}
+            {hasMeta && <span className="text-xs font-normal text-text-tertiary tabular-nums">{meta}</span>}
           </span>
         )}
       </RowControl>

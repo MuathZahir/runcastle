@@ -1,3 +1,4 @@
+import { settingsLocationFromMessage } from '../../settings'
 import { burnLabel } from '../laps'
 import { burnExpectation } from '../run'
 import { burnWarningLine } from './burn-warnings'
@@ -127,9 +128,29 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       ...(shape ? { note: shape } : {}),
     }
   }
+  // A failed run that recorded why says so verbatim — the generic line hid the
+  // one sentence that named the fix, and the human clicked Resume three times.
+  const failure =
+    run.status === 'failed' && !isRunnerPlaceholder(run.summary) ? run.summary : undefined
+  // Died before any ticket started (a setup or preflight failure): a resume
+  // would meet the same wall, so the fix leads and Resume waits behind it.
+  if (failure && !ticketsStartedIn(run, full.tickets)) {
+    const resume: NextAction = { label: 'Resume burn', kind: 'burn' }
+    return {
+      alert: true,
+      kick: 'NEXT STEP',
+      title: 'The burn could not start',
+      desc: failure,
+      primary: settingsLocationFromMessage(failure)
+        ? { label: 'Open Settings → Burns', kind: 'openBurnSettings' }
+        : undefined,
+      secondary: [resume, CHAT_ACTION, mergeAction],
+      busy: false,
+    }
+  }
   const why =
     run.status === 'failed'
-      ? 'The run failed — resume the burn to retry.'
+      ? (failure ?? 'The run failed — resume the burn to retry.')
       : run.status === 'cancelled'
         ? 'The run was cancelled — resume the burn to continue.'
         : 'The burn has not started — resume to run the tickets.'
@@ -144,4 +165,27 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     busy: false,
     ...(shape ? { note: shape } : {}),
   }
+}
+
+/**
+ * The runner's fallback summaries (packages/server/src/workflows/runner.ts),
+ * written when a workflow threw a non-Error or returned no reason. They name no
+ * cause, so they read as no recorded reason and keep the generic copy and flow.
+ */
+function isRunnerPlaceholder(summary: string | undefined): boolean {
+  return summary === 'run failed' || summary === 'run cancelled'
+}
+
+/**
+ * Whether any ticket was taken up by this run: one burning now, or one that
+ * went terminal after the run started. Pending rows alone mean the run died in
+ * setup — the tickets were never handed to an agent.
+ */
+function ticketsStartedIn(
+  run: { startedAt: number },
+  tickets: ResolverInput['full']['tickets'],
+): boolean {
+  return tickets.some(
+    (t) => t.status === 'burning' || (t.completedAt !== null && t.completedAt >= run.startedAt),
+  )
 }

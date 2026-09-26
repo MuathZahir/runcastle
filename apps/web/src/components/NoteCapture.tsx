@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from 'react'
 import { trpc } from '../trpc'
 import { imageOnClipboard, toPngBlob } from '../lib/reviews'
 import { uploadProjectNoteScreenshot } from '../lib/project-notes'
@@ -10,16 +10,17 @@ import { IconCheck, IconPencil, IconX } from '../icons'
  * Jot a project note, from wherever you were standing (project-notes,
  * decisions #3, #16 and #18).
  *
- * One focused line and an optional pasted screenshot, and nothing else: the
+ * One focused field and an optional pasted screenshot, and nothing else: the
  * whole contract is that an observation gets out of the human's head in under
  * ten seconds. All the thinking happens later, in the project chat — so there
  * is no destination picker, no severity, and no project picker either (the note
  * belongs to the project this shell is showing).
  *
  * It is shaped like the ⌘K palette — top-centre, the palette's width, one large
- * borderless line — because that is the capture gesture the app already
- * teaches, over a light scrim so the page being noted stays readable. There is
- * no Save button: Enter saves. It runs its mechanics through `Dialog` like every
+ * borderless line that grows downward as the note does — because that is the
+ * capture gesture the app already teaches, over a light scrim so the page being
+ * noted stays readable. There is no Save button: Enter saves, Shift+Enter
+ * starts a new line. It runs its mechanics through `Dialog` like every
  * other overlay (apps/web/STYLE.md), which is what gives it Escape-discards,
  * focus on open and focus back to whatever you were doing on close.
  *
@@ -54,6 +55,27 @@ export interface NoteCaptureProps {
 /** The palette's one-line row height (the command palette's input row). */
 const LINE = 'flex h-13 items-center gap-3 px-4'
 
+/** The tallest the note field grows (about six lines) before it scrolls. */
+const FIELD_MAX_PX = 160
+
+/**
+ * Size the note field to its text, capped at `FIELD_MAX_PX`. The height is set
+ * in pixels rather than left to `field-sizing`, because only a change between
+ * two lengths runs the field's height transition.
+ */
+function fitToText(field: HTMLTextAreaElement): void {
+  const from = field.style.height
+  // Collapse to read the text's own height; `auto` does not interpolate, so
+  // neither this nor the restore below starts a transition.
+  field.style.height = 'auto'
+  const content = field.scrollHeight
+  field.style.height = from
+  void field.offsetHeight // commit `from`, so the transition runs from it
+  field.style.height = `${Math.min(content, FIELD_MAX_PX)}px`
+  // Hidden until the cap, so a growing field never flashes a scrollbar.
+  field.style.overflowY = content > FIELD_MAX_PX ? 'auto' : 'hidden'
+}
+
 export function NoteCapture({
   projectId,
   projectName,
@@ -68,7 +90,7 @@ export function NoteCapture({
   const [staged, setStaged] = useState<StagedImage | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // Every open is a fresh note, and the reset happens DURING the render that
   // opens it (decision #18). The component stays mounted while closed, so the
@@ -105,6 +127,12 @@ export function NoteCapture({
     if (open) inputRef.current?.focus()
     // Keyed on the request alone: the open edge's focus is `Dialog`'s job.
   }, [openRequest])
+
+  // Before paint, so a keystroke that wraps never shows a frame of cut-off text.
+  // `open` and `saved` are here because the field remounts on either edge.
+  useLayoutEffect(() => {
+    if (inputRef.current) fitToText(inputRef.current)
+  }, [text, open, saved])
 
   const add = trpc.projectNotes.add.useMutation()
   // Only while the box is up: the rail's badge is the count's standing reader,
@@ -228,22 +256,27 @@ export function NoteCapture({
         </div>
       ) : (
         <div onPaste={onPaste}>
-          <div className={cx(LINE, 'border-b border-border-subtle')}>
-            <span className="flex shrink-0 items-center text-icon">
+          {/* Starts as the palette's one line and grows downward with the note:
+              the pencil stays on the first line, and the field's vertical
+              padding makes a one-line field exactly the row's `h-13`. */}
+          <div className="flex items-start gap-3 border-b border-border-subtle px-4">
+            <span className="flex h-13 shrink-0 items-center text-icon">
               <IconPencil size={16} />
             </span>
-            <input
+            <textarea
               ref={inputRef}
-              // `font-sans` because there is no preflight: an `<input>` keeps the
-              // UA's own face and size unless it is told otherwise.
-              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base text-text outline-none placeholder:text-text-tertiary"
+              rows={1}
+              // `font-sans` and `box-border` because there is no preflight: a
+              // `<textarea>` keeps the UA's face and content-box sizing otherwise.
+              className="box-border block min-w-0 flex-1 resize-none border-0 bg-transparent px-0 py-3.75 font-sans text-base text-text outline-none transition-[height] duration-(--dur-2) ease-app placeholder:text-text-tertiary"
               autoComplete="off"
               aria-label="what did you just notice?"
               placeholder="What did you just notice?"
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
+                // Enter saves, as it always has; Shift+Enter is the newline.
+                if (e.key !== 'Enter' || e.shiftKey) return
                 e.preventDefault()
                 void submit()
               }}
@@ -270,6 +303,9 @@ export function NoteCapture({
             </span>
             <span className="flex items-center gap-1.5">
               <Kbd>↵</Kbd> save
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Kbd>⇧↵</Kbd> new line
             </span>
             <span className="flex items-center gap-1.5">
               <Kbd>esc</Kbd> close

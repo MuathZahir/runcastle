@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
+import { projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -449,6 +449,14 @@ describe('ensureTalkWorktree', () => {
       'runcastle: initial commit',
     )
     expect(healed).toEqual(['healed'])
+  })
+
+  it('leaves no empty project dir behind when the worktree cannot be added', async () => {
+    // The main checkout holding the branch makes every `worktree add` refuse it.
+    await simpleGit(project.repoPath).checkout('feature/wt')
+
+    await expect(ensureTalkWorktree(project, feature)).rejects.toThrow(/could not create talk worktree/)
+    expect(existsSync(projectWorktreesDir(project.id))).toBe(false)
   })
 
   it('reuses an existing valid worktree', async () => {

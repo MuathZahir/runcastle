@@ -48,10 +48,12 @@ import type { Runtime } from '../services/setup'
 export interface ExecOutcome {
   /** The process spawned and ran (regardless of exit code). `false` = not found. */
   ok: boolean
-  /** Exit code, or `null` when the spawn itself failed. */
+  /** Exit code, or `null` when the spawn itself failed or the command timed out. */
   code: number | null
   stdout: string
   stderr: string
+  /** The command never answered and was killed — `ok` stays true, `code` is null. */
+  timedOut?: boolean
 }
 
 /** The single injected seam: run a command, never throw. */
@@ -884,6 +886,20 @@ function staleImage(detail: string, unchecked = ''): ProbeResult {
   }
 }
 
+/** The container-runtime verdicts where the CLI is present but nothing answers behind it. */
+const RUNTIME_DOWN: ReadonlySet<ProbeStatus> = new Set(['daemon-dead', 'machine-stopped'])
+
+/** The image row while the runtime is down: unknown, and the runtime row says why. */
+function imageUncheckable(): ProbeResult {
+  return {
+    ...IMAGE_ROW,
+    status: 'unhealthy',
+    severity: 'error',
+    detail: 'cannot inspect the image while the container runtime is not responding',
+    fix: 'Get the container runtime answering first (see the container runtime row), then re-run doctor.',
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -916,20 +932,26 @@ export async function runDoctor(env: DoctorEnv): Promise<DoctorReport> {
       })),
     )
   }
+  const containerRuntime = await containerRuntimeProbe(exec)
   results.push(
     await gitIdentityProbe(exec, env.cwd),
-    await containerRuntimeProbe(exec),
-    await sandcastleImageProbe({
-      exec,
-      imageName,
-      burnerDockerfile,
-      dockerfileHash,
-      // Presence is the injected exec's to decide, as for every other probe
-      // here: the production exec resolves the binary the same way anyway.
-      hostVersions: (await resolveHostAgentVersions(exec, () => true)).versions,
-      ...(env.projectImage ? { project: env.projectImage } : {}),
-      ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
-    }),
+    containerRuntime,
+    // A runtime whose CLI is there but whose daemon is not answering cannot say
+    // anything about an image — and a wedged one never answers at all, so every
+    // `image inspect` would sit out the full exec timeout on top of `info`'s.
+    RUNTIME_DOWN.has(containerRuntime.status)
+      ? imageUncheckable()
+      : await sandcastleImageProbe({
+          exec,
+          imageName,
+          burnerDockerfile,
+          dockerfileHash,
+          // Presence is the injected exec's to decide, as for every other probe
+          // here: the production exec resolves the binary the same way anyway.
+          hostVersions: (await resolveHostAgentVersions(exec, () => true)).versions,
+          ...(env.projectImage ? { project: env.projectImage } : {}),
+          ...(env.knownProjectIds ? { knownProjectIds: env.knownProjectIds } : {}),
+        }),
   )
 
   const counts = (r: ProbeResult) => r.severity === 'error'

@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -693,7 +694,34 @@ async function addWorktree(
   branch: string,
   label: string,
 ): Promise<string> {
-  mkdirSync(dirname(worktreePath), { recursive: true })
+  // The parent (`worktrees/<projectId>/`) must exist for the add, but a failed
+  // add must not leave it behind: one empty dir per project that never got a
+  // worktree is how thousands of `proj_<id>/` piled up in the data dir.
+  const parent = dirname(worktreePath)
+  mkdirSync(parent, { recursive: true })
+  try {
+    return await addWorktreeOrRepair(g, worktreePath, branch, label)
+  } catch (e) {
+    removeIfEmpty(parent)
+    throw e
+  }
+}
+
+/** `rmdir`, which refuses a non-empty dir — so a sibling worktree is never at risk. */
+function removeIfEmpty(dir: string): void {
+  try {
+    rmdirSync(dir)
+  } catch {
+    // not empty, or already gone — either way there is nothing of ours to clear
+  }
+}
+
+async function addWorktreeOrRepair(
+  g: SimpleGit,
+  worktreePath: string,
+  branch: string,
+  label: string,
+): Promise<string> {
   try {
     await g.raw(['worktree', 'add', worktreePath, branch])
     return worktreePath

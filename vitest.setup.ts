@@ -19,9 +19,30 @@
  * `getSettings(…, io({…}))`) or set the variable themselves and restore it
  * afterwards.
  */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll } from 'vitest'
+
 for (const key of Object.keys(process.env)) {
   if (key.startsWith('RUNCASTLE_')) delete process.env[key]
 }
+
+/**
+ * Then pin a data dir of this file's own. With the variable merely deleted,
+ * `dataDir()` falls back to the real `~/.runcastle` for every test that does not
+ * opt in via `useDataDir` — which leaked thousands of `worktrees/proj_<id>/`
+ * dirs and whole fixture worktrees into the developer's install. A test that
+ * needs its own tree still calls `useDataDir`, which overrides this one and
+ * restores it afterwards; core's `dataDir()` throws under Vitest if anything
+ * resolves to the real tree regardless.
+ */
+const testDataDir = mkdtempSync(join(tmpdir(), 'runcastle-data-'))
+process.env.RUNCASTLE_DATA_DIR = testDataDir
+afterAll(() => {
+  // Retries for win32, where a git child's handle is released asynchronously.
+  rmSync(testDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+})
 
 /** The whole of the DOM `Storage` contract, which this file has no DOM lib for. */
 type StorageLike = {

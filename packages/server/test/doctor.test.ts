@@ -131,6 +131,25 @@ describe('runDoctor — canned environments', () => {
     expect(c.status).not.toBe('missing')
   })
 
+  it('does not ask a dead daemon about the image — the row defers to the runtime row', async () => {
+    const table = { ...ALL_HEALTHY }
+    delete table['docker info']
+    const calls: string[] = []
+    const canned = cannedExec(table)
+    const exec: ExecFn = (command, args) => {
+      calls.push([command, ...args].join(' '))
+      return canned(command, args)
+    }
+    const report = await runDoctor({ ...base, exec })
+    const image = byId(report.results, 'sandcastle-image')
+    expect(image.status).toBe('unhealthy')
+    expect(image.fix).toMatch(/container runtime/i)
+    // A wedged daemon would make each of these sit out the full exec timeout.
+    expect(calls.filter((c) => c.startsWith('docker ') && c !== 'docker --version')).toEqual([
+      'docker info',
+    ])
+  })
+
   it('classifies a stopped podman machine as its own state', async () => {
     // Docker absent entirely; podman CLI present but its machine is not started.
     const table: Record<string, Partial<ExecOutcome>> = {

@@ -12,7 +12,6 @@ import {
   AsideLayout,
   Button,
   DimLine,
-  Loading,
   IconButton,
   Page,
   PageSection,
@@ -26,7 +25,8 @@ import {
 import { IconCube, IconHome, IconMessage, IconPanelRight, IconX, PhaseIcon } from '../icons'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
-import { effectiveStepModel } from '../lib/settings'
+import { effectiveStepModel, settingsLocationFromMessage } from '../lib/settings'
+import { useOpenSettings } from './settings/MessageWithSettingsLink'
 import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
@@ -80,6 +80,7 @@ import { ChatPanel } from './workspace/ChatPanel'
 import { copyText } from './workspace/copy-text'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
+import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
@@ -168,6 +169,7 @@ export function Workspace({
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
+  const openSettings = useOpenSettings()
   const q = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   const resumeFailed = useResumeFailedAlert(featureId)
   // The review bar has to know two things the feature row cannot tell it: whether
@@ -515,10 +517,7 @@ export function Workspace({
   if (q.isLoading) {
     return (
       <section className={FRAME}>
-        <PageTopbar />
-        <Page>
-          <Loading>Loading feature…</Loading>
-        </Page>
+        <FeatureSkeleton />
       </section>
     )
   }
@@ -748,6 +747,13 @@ export function Workspace({
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
         break
+      // A burn that could not start named its fix in the summary — open the
+      // settings row that summary points at (the image rebuild).
+      case 'openBurnSettings': {
+        const location = run?.summary ? settingsLocationFromMessage(run.summary) : null
+        if (location) openSettings?.(location)
+        break
+      }
       case 'unarchive':
         unarchive.mutate({ featureId })
         break

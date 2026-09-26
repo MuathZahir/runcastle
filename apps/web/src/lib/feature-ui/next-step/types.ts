@@ -14,6 +14,7 @@ export const ACTION_KINDS = [
   'resumeConverge', // feature.converge — resume a stranded converge session
   'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
+  'openBurnSettings', // opens Settings → Burns where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
   'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then the Iterate road

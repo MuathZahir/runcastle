@@ -1,7 +1,4 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { DEFAULT_SANDBOX_IMAGE } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +8,7 @@ import { listByProject } from '../src/services/events'
 import { requireProjectById } from '../src/services/repo'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -48,12 +45,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 describe('an orphaned sandboxImage column', () => {
   let ctx: AppCtx
   let repoPath: string
-  let home: string
   let restoreDataDir: () => void
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'rc-image-heal-'))
-    restoreDataDir = useDataDir(home)
+    restoreDataDir = withTempDataDir()
     ctx = await makeTestCtx()
     // Deliberately no `.runcastle/sandbox/Dockerfile`: the missing file is what
     // makes the stored column an orphan.
@@ -63,7 +58,6 @@ describe('an orphaned sandboxImage column', () => {
   afterEach(() => {
     restoreDataDir()
     rmTemp(repoPath)
-    rmTemp(home)
   })
 
   it('is healed by the probe, and the target resolves to the stock image after it', async () => {

@@ -37,11 +37,12 @@ export function IconSearch(p: IconProps) {
   )
 }
 
+/** A toothed cog — one closed outline, so it never reads as `IconSun`'s rays. */
 export function IconSettings(p: IconProps) {
   return (
     <svg {...base(p)}>
+      <path d="M6.28 3.52L6.43 1.69A6.5 6.5 0 0 1 9.57 1.69L9.72 3.52A4.8 4.8 0 0 1 11.02 4.27L12.68 3.48A6.5 6.5 0 0 1 14.25 6.21L12.74 7.25A4.8 4.8 0 0 1 12.74 8.75L14.25 9.79A6.5 6.5 0 0 1 12.68 12.52L11.02 11.73A4.8 4.8 0 0 1 9.72 12.48L9.57 14.31A6.5 6.5 0 0 1 6.43 14.31L6.28 12.48A4.8 4.8 0 0 1 4.98 11.73L3.32 12.52A6.5 6.5 0 0 1 1.75 9.79L3.26 8.75A4.8 4.8 0 0 1 3.26 7.25L1.75 6.21A6.5 6.5 0 0 1 3.32 3.48L4.98 4.27A4.8 4.8 0 0 1 6.28 3.52Z" />
       <circle cx="8" cy="8" r="2" />
-      <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" />
     </svg>
   )
 }
