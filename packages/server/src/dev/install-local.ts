@@ -1,5 +1,5 @@
 import { isAbsolute, join, relative, sep } from 'node:path'
-import { compareSemver } from '../services/update-check'
+import { LOCAL_BUILD_PRERELEASE, compareSemver } from '../services/update-check'
 
 /**
  * Pure helpers for the local-build installer (`scripts/install-local.ts` →
@@ -19,7 +19,7 @@ export interface InstallLocalOptions {
   install: boolean
   /** `--check`: run typecheck + tests in the snapshot before packing. */
   check: boolean
-  /** `--skip-running-check`: install even if something listens on :4512. */
+  /** `--skip-running-check`: install even if something listens on the configured `serverPort`. */
   skipRunningCheck: boolean
 }
 
@@ -69,5 +69,5 @@ export function localBuildVersion(tags: string[], shortSha: string): string {
     .filter((t) => RELEASE_TAG.test(t))
     .map((t) => t.slice(1))
     .reduce<string | null>((best, v) => (best === null || compareSemver(v, best) > 0 ? v : best), null)
-  return `${latest ?? '0.0.0'}-local.${shortSha}`
+  return `${latest ?? '0.0.0'}-${LOCAL_BUILD_PRERELEASE}.${shortSha}`
 }
