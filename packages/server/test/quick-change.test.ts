@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Ticket } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
@@ -13,7 +13,7 @@ import { getFeatureRow, projectForFeature } from '../src/services/repo'
 import { listByFeature } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -67,17 +67,14 @@ function docsDir(ctx: AppCtx, feature: Feature): string {
  * a temp tree — otherwise a run writes worktrees into the developer's real
  * `~/.runcastle`.
  */
-let dataHome: string
 let restoreDataDir: () => void
 
 beforeEach(() => {
-  dataHome = tmpRepo()
-  restoreDataDir = useDataDir(dataHome)
+  restoreDataDir = withTempDataDir()
 })
 
 afterEach(() => {
   restoreDataDir()
-  rmSync(dataHome, { recursive: true, force: true })
 })
 
 describe('quickChange service — a one-ticket feature born ready to burn', () => {

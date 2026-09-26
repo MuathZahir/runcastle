@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { DOCS_DIGEST_WARN_BYTES, docsDigestSizeWarning } from '@runcastle/core'
@@ -8,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
+import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * What the build phase's bar has to know before it can warn: how many bytes of
@@ -26,12 +25,10 @@ describe('docs.digestSize', () => {
   let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
   let project: Project
   let feature: Feature
-  let home: string
   let restore: () => void
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'runcastle-digest-size-'))
-    restore = useDataDir(home)
+    restore = withTempDataDir()
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
     project = seedProject(ctx)
@@ -40,7 +37,6 @@ describe('docs.digestSize', () => {
 
   afterEach(() => {
     restore()
-    rmTemp(home)
   })
 
   /** Write feature docs where the burner reads them: the talk worktree. */

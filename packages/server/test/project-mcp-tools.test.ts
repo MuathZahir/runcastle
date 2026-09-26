@@ -41,7 +41,7 @@ import {
 } from '../src/services/project-notes'
 import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/services/repo'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, tmpRepo } from './helpers/fixtures'
 
@@ -85,7 +85,7 @@ describe('project-session MCP tools', () => {
   beforeEach(async () => {
     // `create_feature` cuts the feature's talk worktree to commit its brief onto
     // the feature branch, so the data dir has to be a temp tree.
-    restoreDataDir = useDataDir(tmpRepo())
+    restoreDataDir = withTempDataDir()
     ctx = await makeTestCtx()
     repoPath = await gitRepo()
     projectId = (await openProject(ctx, repoPath)).id

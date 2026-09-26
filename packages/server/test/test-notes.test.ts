@@ -1,5 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
 import { annotationPath } from '@runcastle/core/paths'
@@ -20,7 +19,7 @@ import {
   toggleNote,
 } from '../src/services/test-notes'
 import { listByFeature as listTickets } from '../src/services/tickets'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -281,7 +280,6 @@ describe('test notes service', () => {
    * annotations dir these tests write into is disposable.
    */
   describe('annotated notes', () => {
-    let home: string
     let restoreDataDir: () => void
 
     // A real PNG header is not needed at this seam — the service stores bytes and
@@ -289,13 +287,11 @@ describe('test notes service', () => {
     const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
 
     beforeEach(() => {
-      home = mkdtempSync(join(tmpdir(), 'rc-annotations-'))
-      restoreDataDir = useDataDir(home)
+      restoreDataDir = withTempDataDir()
     })
 
     afterEach(() => {
       restoreDataDir()
-      rmSync(home, { recursive: true, force: true })
     })
 
     it('stores the moment in the walkthrough a note was captured at', () => {

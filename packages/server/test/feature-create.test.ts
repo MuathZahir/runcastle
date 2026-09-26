@@ -5,22 +5,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter, listByProject } from '../src/services/events'
 import { createFeature } from '../src/services/features'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { rmTemp, seedProject, tmpRepo } from './helpers/fixtures'
+import { seedProject, tmpRepo } from './helpers/fixtures'
 
 describe('feature.create', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
-  let home: string
   let restoreDataDir: () => void
 
   beforeEach(async () => {
     // Creation now cuts the feature's talk worktree (that is where the scaffolded
     // docs are written and committed), so the data dir has to be a temp tree.
-    home = tmpRepo()
-    restoreDataDir = useDataDir(home)
+    restoreDataDir = withTempDataDir()
 
     ctx = await makeTestCtx()
     // A project always points at a real git repo (validated by project.init);
@@ -40,7 +38,6 @@ describe('feature.create', () => {
 
   afterEach(() => {
     restoreDataDir()
-    rmTemp(home)
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {
