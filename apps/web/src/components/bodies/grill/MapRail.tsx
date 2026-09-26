@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { trpc } from '../../../trpc'
-import { DimLine, Disclosure, EmptyState, IconButton, SectionLabel, cx } from '../../../ui'
+import { DimLine, Disclosure, EmptyState, IconButton, SectionLabel, Skeleton, SkeletonBar, cx } from '../../../ui'
 import type { FeatureFull } from '../../../lib/api'
 import {
   liveSessionBlocker,
@@ -65,7 +65,6 @@ export function MapRail({
 
   const content = (
     <>
-      {q.isLoading && <DimLine>Loading the map…</DimLine>}
       {charted ? (
         <>
           <WaypointGroupList
@@ -74,7 +73,9 @@ export function MapRail({
             blocker={liveSessionBlocker(full.sessions, full.waypoints)}
             readonly={readonly}
           />
-          {relPath && <MapDoc sections={sections} />}
+          {/* The skeleton stands where the document will be — never over a
+              "Nothing written yet" that the first read is about to contradict. */}
+          {relPath && (q.isLoading ? <MapDocSkeleton /> : <MapDoc sections={sections} />)}
         </>
       ) : (
         <EmptyState
@@ -130,6 +131,23 @@ export function MapRail({
         />
       )}
     </section>
+  )
+}
+
+/**
+ * The map document while its first read is in flight: the closed "Map
+ * document" disclosure in placeholder bars, on `Disclosure`'s metrics — a 40px
+ * summary of chevron, icon and title under a rule.
+ */
+export function MapDocSkeleton() {
+  return (
+    <Skeleton label="Loading the map…" className="mt-4">
+      <div className="flex h-10 items-center gap-2 border-t border-border-subtle" data-skeleton="disclosure">
+        <SkeletonBar className="size-3.5" />
+        <SkeletonBar className="size-3.5" />
+        <SkeletonBar className="h-3 w-28" />
+      </div>
+    </Skeleton>
   )
 }
 

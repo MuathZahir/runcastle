@@ -13,6 +13,8 @@ import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
 import { DetailsSkeleton } from '../src/components/inspector/Inspector'
 import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
 import { PreparationSkeleton } from '../src/components/PreparationWorkspace'
+import { TicketsSkeleton } from '../src/components/bodies/tickets/TicketsBody'
+import { MapDocSkeleton } from '../src/components/bodies/grill/MapRail'
 
 /**
  * Every content area loads as a skeleton shaped like what it is loading — not
@@ -34,6 +36,8 @@ const SITES: Array<[string, string, string]> = [
   ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
   ['an artifact pane', renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' })), 'Loading spec.md…'],
   ['preparation', render(PreparationSkeleton), 'Loading preparation…'],
+  ['the tickets body', render(TicketsSkeleton), 'Loading tickets…'],
+  ['the map rail', render(MapDocSkeleton), 'Loading the map…'],
 ]
 
 describe.each(SITES)('%s while it loads', (_site, html, label) => {
@@ -85,6 +89,14 @@ describe('the skeletons are shaped like their content', () => {
     expect(count(html, 'title')).toBe(1)
     expect(count(html, 'sentence')).toBe(1)
   })
+
+  it('the tickets body: rows shaped like ticket rows', () => {
+    expect(count(render(TicketsSkeleton), 'ticket-row')).toBe(4)
+  })
+
+  it('the map rail: the closed map document disclosure', () => {
+    expect(count(render(MapDocSkeleton), 'disclosure')).toBe(1)
+  })
 })
 
 describe('no content area uses the old loading line', () => {
@@ -94,5 +106,11 @@ describe('no content area uses the old loading line', () => {
   it('renders <Loading> nowhere in apps/web/src', () => {
     const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<Loading'))
     expect(offenders).toEqual([])
+  })
+
+  // DocPeek's "Loading {title}…" stays: a popover over the page, not a content area.
+  it('renders an undelayed "Loading…" line only in the doc peek popover', () => {
+    const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<DimLine>Loading'))
+    expect(offenders.map((f) => f.replaceAll('\\', '/'))).toEqual(['components/DocPeek.tsx'])
   })
 })
