@@ -1,5 +1,4 @@
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { httpBatchLink } from '@trpc/client'
 import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
@@ -11,7 +10,7 @@ import '@fontsource-variable/geist-mono'
 // theme.css first: it declares the tokens styles.css aliases (apps/web/STYLE.md).
 import './theme.css'
 import './styles.css'
-import { trpc } from './trpc'
+import { trpc, trpcLinks } from './trpc'
 import { TooltipProvider } from './ui/tooltip'
 
 // Paint the stored theme onto <html> before the first render (lib/theme.ts).
@@ -52,7 +51,7 @@ function Root() {
   const [trpcClient] = useState(() =>
     trpc.createClient({
       // Same-origin URL — Vite proxies `/api` to the server on 4512.
-      links: [httpBatchLink({ url: '/api/trpc' })],
+      links: trpcLinks('/api/trpc'),
     }),
   )
 
