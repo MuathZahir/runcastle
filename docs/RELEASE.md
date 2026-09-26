@@ -67,6 +67,30 @@ prefer the clean re-release.
 > a beta carrying a new migration leaves the DB ahead of what stable can read.
 > Back it up before testing a preview if that machine has real feature history.
 
+### Installing a local build
+
+To run a merged fix before it is released, install the local `main` as the
+global `runcastle` — nothing is published:
+
+```sh
+bun run install:local            # build + install local `main`
+bun run install:local my-branch  # any ref
+runcastle --version              # -> 1.4.1-local.ebc6eaab
+```
+
+It snapshots the ref into a detached worktree in the OS temp dir (your checkout
+is never built from, so it may be dirty or on another branch), runs
+`bun install --frozen-lockfile` and the same `build:pkg` + manifest check as
+`release.yml`, packs `build/`, and `bun add -g`s the tarball. The version is the
+latest `v*` tag plus `-local.<short sha>`. The tarball is kept under
+`~/.runcastle/local-builds/` because the global install references its path.
+
+It refuses while something is listening on `:4512` — stop runcastle first, or
+pass `--skip-running-check`. `--check` runs typecheck + tests before packing
+(off by default, for speed); `--no-install` skips `bun install`.
+
+Return to the published version with `bun add -g runcastle@latest`.
+
 ### How CI authenticates — npm Trusted Publishing (OIDC)
 
 The publish uses **OpenID Connect**, so there is **no `NPM_TOKEN` secret**. The

@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   const sha = await capture`git -C ${REPO_ROOT} rev-parse --verify ${`${opts.ref}^{commit}`}`
   if (!sha) die(`'${opts.ref}' is not a commit in ${REPO_ROOT}`)
   const shortSha = await capture`git -C ${REPO_ROOT} rev-parse --short ${sha}`
-  const tags = (await capture`git -C ${REPO_ROOT} tag --list v*`) ?? ''
+  const tags = (await capture`git -C ${REPO_ROOT} tag --list ${'v*'}`) ?? ''
   const version = localBuildVersion(tags.split('\n'), shortSha ?? sha.slice(0, 8))
 
   console.log(`\nInstalling runcastle ${version} from ${opts.ref} (${sha})\n${'─'.repeat(40)}`)
