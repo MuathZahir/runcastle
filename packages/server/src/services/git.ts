@@ -1269,17 +1269,36 @@ export async function cleanupBurnWorktree(
   branch: string,
   opts: { attempts?: number; delayMs?: number } = {},
 ): Promise<boolean> {
-  const path = burnWorktreePath(repoPath, branch)
+  return discardWorktree(repoPath, burnWorktreePath(repoPath, branch), opts)
+}
+
+/**
+ * Remove the worktree at `path` (registered in `repoPath`'s repo, or a stray
+ * dir that merely sits where one was) the way {@link cleanupBurnWorktree}
+ * describes: retried `worktree remove --force`, a direct recursive delete as the
+ * fallback, and an unconditional prune. NEVER throws; returns whether the dir is
+ * actually gone — callers decide whether a survivor is an error.
+ */
+export async function discardWorktree(
+  repoPath: string,
+  path: string,
+  opts: { attempts?: number; delayMs?: number } = {},
+): Promise<boolean> {
   const attempts = Math.max(1, opts.attempts ?? 3)
   const delayMs = opts.delayMs ?? 750
-  const g = git(repoPath)
+  // `simpleGit` itself throws when the repo dir is gone, so it is constructed
+  // inside the guard too — the direct delete below still gets its chance.
+  const gitQuietly = async (args: string[]): Promise<void> => {
+    try {
+      await git(repoPath).raw(args)
+    } catch {
+      // Still locked, not a registered worktree, or no repo — callers read the
+      // outcome off the filesystem, never off git.
+    }
+  }
 
   for (let attempt = 1; attempt <= attempts && existsSync(path); attempt++) {
-    try {
-      await g.raw(['worktree', 'remove', '--force', path])
-    } catch {
-      // Still locked (or not a registered worktree) — retry, then fall back.
-    }
+    await gitQuietly(['worktree', 'remove', '--force', path])
     if (existsSync(path) && attempt < attempts) await sleep(delayMs)
   }
   if (existsSync(path)) {
@@ -1289,11 +1308,8 @@ export async function cleanupBurnWorktree(
       // best-effort — a locked file just means the dir survives this pass
     }
   }
-  try {
-    await g.raw(['worktree', 'prune'])
-  } catch {
-    // best-effort — a leftover registry entry is harmless once the dir is gone
-  }
+  // Always prune: a leftover registry entry is harmless once the dir is gone.
+  await gitQuietly(['worktree', 'prune'])
   return !existsSync(path)
 }
 
@@ -1875,28 +1891,33 @@ export async function cleanupTempBranches(repoPath: string): Promise<TempBranchC
  * BEFORE deleting DB rows so the half-cleanup is retryable, never half-deleted.
  */
 export async function removeTalkWorktree(repoPath: string, worktreePath: string): Promise<void> {
-  const g = git(repoPath)
-  try {
-    await g.raw(['worktree', 'remove', '--force', worktreePath])
-  } catch {
-    // Not a clean registered worktree (stale dir), or a locked file blocked the
-    // git removal — fall back to a direct delete, then prune the stale entry.
-    try {
-      rmSync(worktreePath, { recursive: true, force: true })
-    } catch {
-      // best-effort — the existsSync guard below turns a real failure into a throw
-    }
-  }
-  try {
-    await g.raw(['worktree', 'prune'])
-  } catch {
-    // best-effort — a leftover registry entry is harmless once the dir is gone
-  }
-  if (existsSync(worktreePath)) {
+  if (!(await discardWorktree(repoPath, worktreePath, { attempts: 1 }))) {
     throw new InvalidInputError(
       `could not remove talk worktree at ${worktreePath} — a file may be locked; ` +
         'close anything using it and retry the delete',
     )
+  }
+}
+
+/**
+ * What a talk worktree dir holds, for deciding whether removing it is safe:
+ * `clean`/`dirty` by `git status --porcelain` (untracked files count as dirty —
+ * `--force` would destroy them too), `not-a-checkout` for a dir with no `.git`
+ * entry (a leftover git never owned), `missing` when there is no dir, and
+ * `unreadable` when git cannot answer — which callers must treat as unsafe.
+ *
+ * The `.git` probe comes first so `git status` never runs in a bare dir, where it
+ * would walk up and report on whatever repo happens to enclose the data dir.
+ */
+export type WorktreeState = 'clean' | 'dirty' | 'not-a-checkout' | 'missing' | 'unreadable'
+
+export async function worktreeState(path: string): Promise<WorktreeState> {
+  if (!existsSync(path)) return 'missing'
+  if (!existsSync(join(path, '.git'))) return 'not-a-checkout'
+  try {
+    return (await git(path).raw(['status', '--porcelain'])).trim() === '' ? 'clean' : 'dirty'
+  } catch {
+    return 'unreadable'
   }
 }
 

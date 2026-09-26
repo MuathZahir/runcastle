@@ -9,6 +9,7 @@ import {
 } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
+import { retireShippedWorktree } from '../../services/feature-worktrees'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
 import { promoteOutcomeDoc } from '../../services/outcome'
@@ -224,6 +225,9 @@ export const featureRouter = router({
         await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
         setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
         setFeatureStatus(ctx, input.featureId, 'shipped')
+        // Last, and best-effort: the merge has landed, so a worktree that will
+        // not go is reported by an event, never by failing the ship.
+        await retireShippedWorktree(ctx, project, feature)
       } else {
         // Carry the base branch + conflicting files on the event so the review
         // UI can surface the conflict card after a reload and brief the
