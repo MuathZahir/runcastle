@@ -145,18 +145,22 @@ async function main(): Promise<void> {
     const packed = await buildTarball(snapshot, tmp, version, opts)
 
     // The global manifest records the tarball's path, and bun re-reads it on a
-    // later `bun add -g <anything>` — so it must outlive the temp dir. Only the
-    // newest is kept; the version (sha included) names each one uniquely.
+    // later `bun add -g <anything>` — so it must outlive the temp dir. The
+    // version (sha included) names each one uniquely; older ones are pruned only
+    // once the new one is installed, so a failed install leaves the last intact.
     const keepDir = join(prodDataDir(), 'local-builds')
-    rmSync(keepDir, { recursive: true, force: true })
     mkdirSync(keepDir, { recursive: true })
-    tarball = join(keepDir, `runcastle-${version}.tgz`)
+    const kept = `runcastle-${version}.tgz`
+    tarball = join(keepDir, kept)
     copyFileSync(packed, tarball)
 
     // A bare absolute path ending in .tgz is a tarball to bun on every OS
     // (drive-letter paths included), so no npm fallback is needed.
     step('Installing globally')
     await run($`bun add -g ${tarball}`)
+    for (const old of readdirSync(keepDir).filter((f) => f.endsWith('.tgz') && f !== kept)) {
+      rmSync(join(keepDir, old), { force: true })
+    }
   } finally {
     step('Removing the snapshot')
     await capture`git -C ${REPO_ROOT} worktree remove --force ${snapshot}`
