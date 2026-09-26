@@ -41,9 +41,10 @@ import {
   buildDriveAvailability,
   buildDriveInstructions,
   buildGateNotes,
+  checkExecutableHealth,
   composeReviewDigest,
+  describeHealthFailure,
   driveWithheldReason,
-  executableIsHealthy,
   executeReviewTicket,
   FFMPEG_BIN,
   findOnPath,
@@ -865,11 +866,11 @@ describe('the mode the review is handed', () => {
     expect(inheritedReviewMode(undefined)).toBe('gates')
   })
   it('states both inherited verification modes without offering a choice', () => {
-    expect(buildDriveAvailability('/browser', 'bun dev', 'drive', true, '/ffmpeg')).toContain('Inherited mode: **Drive**')
+    expect(buildDriveAvailability('/browser', 'bun dev', 'drive', undefined, '/ffmpeg')).toContain('Inherited mode: **Drive**')
     expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
   })
   it('opens Drive mode when the browser and a dev command are both there', () => {
-    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, true, '/usr/bin/ffmpeg')
+    const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, undefined, '/usr/bin/ffmpeg')
 
     expect(block).toContain('A drive **is** available')
     expect(block).toContain('take it if, and only if')
@@ -894,9 +895,11 @@ describe('the mode the review is handed', () => {
   })
 
   it('requires a healthy browser and ffmpeg', () => {
-    expect(buildDriveAvailability('/browser', 'bun dev', undefined, false, '/ffmpeg')).toContain('failed its health check')
-    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain('ffmpeg')
-    const fallback = buildDriveAvailability('/browser', 'bun dev', 'drive', false, '/ffmpeg')
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, 'probe failed', '/ffmpeg')).toContain(
+      'failed its health check (probe failed)',
+    )
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, undefined, null)).toContain('ffmpeg')
+    const fallback = buildDriveAvailability('/browser', 'bun dev', 'drive', 'probe failed', '/ffmpeg')
     expect(fallback).toContain('run Gates mode')
     expect(fallback).not.toContain('Inherited mode: **Drive**')
   })
@@ -906,27 +909,89 @@ describe('the mode the review is handed', () => {
     // sentence lands in the pass's outcome, so a lap that ran Gates because
     // ffmpeg was missing says so on the trail instead of reading as a plain
     // Gates review.
-    expect(driveWithheldReason('/browser', 'bun dev', true, '/ffmpeg')).toBeUndefined()
+    expect(driveWithheldReason('/browser', 'bun dev', undefined, '/ffmpeg')).toBeUndefined()
 
-    const noFfmpeg = driveWithheldReason('/browser', 'bun dev', true, null)
+    const noFfmpeg = driveWithheldReason('/browser', 'bun dev', undefined, null)
     expect(noFfmpeg).toContain(FFMPEG_BIN)
     expect(noFfmpeg).toContain('Drive was unavailable')
 
     // Probed absence, as `findOnPath` reports it — undefined, not null.
-    expect(driveWithheldReason('/browser', 'bun dev', true, undefined)).toContain(FFMPEG_BIN)
+    expect(driveWithheldReason('/browser', 'bun dev', undefined, undefined)).toContain(FFMPEG_BIN)
 
-    expect(driveWithheldReason('/browser', 'bun dev', false, '/ffmpeg')).toContain('failed its health check')
-    expect(driveWithheldReason(undefined, undefined, true, undefined)).toContain('no dev command configured')
+    expect(driveWithheldReason('/browser', 'bun dev', 'probe failed', '/ffmpeg')).toContain('failed its health check')
+    expect(driveWithheldReason(undefined, undefined, undefined, undefined)).toContain('no dev command configured')
 
     // One list, one wording: the availability block quotes the same pieces.
-    expect(buildDriveAvailability('/browser', 'bun dev', undefined, true, null)).toContain(
+    expect(buildDriveAvailability('/browser', 'bun dev', undefined, undefined, null)).toContain(
       `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`,
     )
   })
 
   it('health-checks the browser executable rather than trusting its PATH entry', () => {
-    expect(executableIsHealthy(process.execPath)).toBe(true)
-    expect(executableIsHealthy(undefined)).toBe(false)
+    const health = checkExecutableHealth(process.execPath)
+    expect(health.ok).toBe(true)
+    expect(health.status).toBe(0)
+    expect(health.path).toBe(process.execPath)
+  })
+
+  describe('a failed health check says why', () => {
+    const errno = (code: string) => Object.assign(new Error(`spawnSync /x ${code}`), { code })
+    const withheldFor = (spawn: Parameters<typeof checkExecutableHealth>[1]) => {
+      const health = checkExecutableHealth('/opt/agent-browser', spawn)
+      expect(health.ok).toBe(false)
+      const reason = driveWithheldReason('/opt/agent-browser', 'bun dev', describeHealthFailure(health), '/ffmpeg')
+      return { health, reason }
+    }
+
+    it('names a non-zero exit status', () => {
+      const { health, reason } = withheldFor(() => ({ status: 2, signal: null }))
+      expect(health.status).toBe(2)
+      expect(reason).toMatch(/failed its health check \(\/opt\/agent-browser --version: exited with status 2 after \d+ms\)/)
+    })
+
+    it('names a spawn error by its code', () => {
+      const { health, reason } = withheldFor(() => ({ status: null, signal: null, error: errno('ENOENT') }))
+      expect(health.error).toBe('ENOENT')
+      expect(reason).toMatch(/\(\/opt\/agent-browser --version: ENOENT after \d+ms\)/)
+    })
+
+    it('names a timeout', () => {
+      const { health, reason } = withheldFor(() => ({ status: null, signal: 'SIGTERM', error: errno('ETIMEDOUT') }))
+      expect(health.signal).toBe('SIGTERM')
+      expect(reason).toMatch(/\(\/opt\/agent-browser --version: ETIMEDOUT after \d+ms\)/)
+    })
+
+    it('states the elapsed time it measured', () => {
+      expect(
+        describeHealthFailure({ ok: false, path: 'C:\\bin\\agent-browser.CMD', status: null, signal: 'SIGTERM', error: 'ETIMEDOUT', elapsedMs: 3001 }),
+      ).toBe('C:\\bin\\agent-browser.CMD --version: ETIMEDOUT after 3001ms')
+      expect(
+        describeHealthFailure({ ok: false, path: '/b', status: null, signal: 'SIGKILL', elapsedMs: 12 }),
+      ).toBe('/b --version: killed by SIGKILL after 12ms')
+    })
+
+    it('retries once, so one slow spawn does not withhold the drive', () => {
+      const results = [
+        { status: null, signal: 'SIGTERM', error: errno('ETIMEDOUT') },
+        { status: 0, signal: null },
+      ]
+      let calls = 0
+      const health = checkExecutableHealth('/opt/agent-browser', () => results[calls++]!)
+
+      expect(calls).toBe(2)
+      expect(health.ok).toBe(true)
+      const failure = health.ok ? undefined : describeHealthFailure(health)
+      expect(driveWithheldReason('/opt/agent-browser', 'bun dev', failure, '/ffmpeg')).toBeUndefined()
+      expect(buildDriveAvailability('/opt/agent-browser', 'bun dev', undefined, failure, '/ffmpeg')).toContain(
+        'A drive **is** available',
+      )
+    })
+
+    it('probes only once when the first attempt is healthy', () => {
+      let calls = 0
+      checkExecutableHealth('/opt/agent-browser', () => (calls++, { status: 0, signal: null }))
+      expect(calls).toBe(1)
+    })
   })
 
   it('hands Gates mode the project commands, or tells it to run none', () => {
@@ -1236,7 +1301,7 @@ describe('the agent-browser probe', () => {
     const withheld = driveWithheldReason(
       findOnPath(AGENT_BROWSER_BIN, env, 'linux'),
       'bun dev',
-      true,
+      undefined,
       findOnPath(FFMPEG_BIN, env, 'linux'),
     )
 
