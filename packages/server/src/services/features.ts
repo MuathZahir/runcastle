@@ -145,12 +145,7 @@ export async function createFeature(
   const slug = uniqueSlug(ctx, project.id, input.title)
   const branch = `feature/${slug}`
 
-  // A draft cuts nothing (decision 3): its base is chosen and resolved later, at
-  // Start. Otherwise the stored base is the RESOLVED local branch (a remote pick
-  // materialized a local tracking branch), always a real merge target at ship time.
-  const cut = input.draft
-    ? null
-    : await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
+  const { cut, baseBranch, status } = await parkOrCut(ctx, project, slug, input)
 
   const row = {
     id: newId('feat'),
@@ -160,7 +155,7 @@ export async function createFeature(
     oneLiner: input.oneLiner,
     // Only a draft parks its brief in the column (decision 4); a live create
     // writes it straight to `brief.md`, the source of truth from then on.
-    brief: input.draft ? (input.brief ?? null) : null,
+    brief: cut ? null : (input.brief ?? null),
     // Every feature is created unmapped; mapping is escalation-only, reached
     // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
     mapped: false,
@@ -170,8 +165,8 @@ export async function createFeature(
     // The branch NAME is recorded even for a draft (decision 2); `status:
     // 'draft'` alone means the branch does not exist in the repo yet.
     branch,
-    baseBranch: cut?.baseBranch ?? null,
-    status: cut ? ('active' as const) : ('draft' as const),
+    baseBranch,
+    status,
     createdAt: Date.now(),
   }
   const inserted = ctx.db.insert(features).values(row).returning().get()
@@ -188,15 +183,32 @@ export async function createFeature(
   return feature
 }
 
+/** The branch a creation door cut: its resolved base, and whether git made it. */
+type BranchCut = { branchReady: boolean; baseBranch: string }
+
+/**
+ * Park or cut — the one decision every creation door makes. A draft cuts nothing
+ * (decision 3): its base is chosen and resolved later, at Start. Otherwise the
+ * stored base is the RESOLVED local branch (a remote pick materialized a local
+ * tracking branch), always a real merge target at ship time. `cut` is null for a
+ * draft; `baseBranch` and `status` are the row's columns derived from it.
+ */
+async function parkOrCut(
+  ctx: AppCtx,
+  project: Project,
+  slug: string,
+  input: { draft?: boolean; baseBranch?: string },
+): Promise<{ cut: BranchCut | null; baseBranch: string | null; status: 'active' | 'draft' }> {
+  if (input.draft) return { cut: null, baseBranch: null, status: 'draft' }
+  const cut = await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
+  return { cut, baseBranch: cut.baseBranch, status: 'active' }
+}
+
 /**
  * The birth event every creation door emits — `cut` is the branch it cut, or
  * null for a draft, which cuts nothing until Start.
  */
-function emitFeatureCreated(
-  ctx: AppCtx,
-  feature: Feature,
-  cut: { branchReady: boolean; baseBranch: string } | null,
-): void {
+function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null): void {
   const { slug, branch } = feature
   emit(ctx, feature.id, {
     type: 'feature.created',
@@ -407,11 +419,8 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
   const slug = uniqueSlug(ctx, project.id, title)
   const branch = `feature/${slug}`
   const brief = quickBrief(title, proses)
-  // A draft cuts nothing, exactly as `createFeature`'s does: the base is chosen
-  // at Start, which scaffolds the brief parked in the column below.
-  const cut = input.draft
-    ? null
-    : await ensureFeatureBranch(ctx, project, slug, await requestedBase(ctx, project, input.baseBranch))
+  // A draft's brief is parked in the column below; Start scaffolds it.
+  const { cut, baseBranch, status } = await parkOrCut(ctx, project, slug, input)
 
   const inserted = ctx.db
     .insert(features)
@@ -442,8 +451,8 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       ticketsReadyLap: 1,
       phase: 'planning' as const,
       branch,
-      baseBranch: cut?.baseBranch ?? null,
-      status: cut ? ('active' as const) : ('draft' as const),
+      baseBranch,
+      status,
       createdAt: Date.now(),
     })
     .returning()
@@ -548,7 +557,7 @@ async function ensureFeatureBranch(
   project: Project,
   slug: string,
   base: string,
-): Promise<{ branchReady: boolean; baseBranch: string }> {
+): Promise<BranchCut> {
   try {
     const reportHeal = (): void => {
       emitProject(ctx, project.id, {
