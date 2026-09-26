@@ -51,10 +51,18 @@ function parse(version: string): { release: number[]; pre: string[] } {
 }
 
 /**
+ * The prerelease id `bun run install:local` stamps a build with
+ * (`1.4.1-local.<sha>`) — see `localBuildVersion`.
+ */
+export const LOCAL_BUILD_PRERELEASE = 'local'
+
+/**
  * Semver compare: negative if `a < b`, positive if `a > b`, 0 if equal.
  * Numeric release parts compare numerically (so 0.2 < 0.10), and a prerelease
  * ranks below its release (1.0.0-beta < 1.0.0), matching the semver spec's
  * precedence rules closely enough for an "is there a newer stable?" check.
+ * One deliberate departure: a local build ranks ABOVE its base release
+ * (1.4.1 < 1.4.1-local.x < 1.4.2).
  */
 export function compareSemver(a: string, b: string): number {
   const pa = parse(a)
@@ -64,7 +72,12 @@ export function compareSemver(a: string, b: string): number {
     const diff = (pa.release[i] ?? 0) - (pb.release[i] ?? 0)
     if (diff !== 0) return diff
   }
-  // Equal release: no prerelease outranks any prerelease.
+  // Equal release: a local build is built from commits after its base release,
+  // so it outranks it — otherwise the banner offers the release over the fixes.
+  const la = pa.pre[0] === LOCAL_BUILD_PRERELEASE
+  const lb = pb.pre[0] === LOCAL_BUILD_PRERELEASE
+  if (la !== lb) return la ? 1 : -1
+  // Otherwise no prerelease outranks any prerelease.
   if (pa.pre.length === 0 && pb.pre.length === 0) return 0
   if (pa.pre.length === 0) return 1
   if (pb.pre.length === 0) return -1

@@ -1,4 +1,4 @@
-import { compareSemver } from '../services/update-check'
+import { LOCAL_BUILD_PRERELEASE, compareSemver } from '../services/update-check'
 
 /**
  * Pure helpers for the local-build installer (`scripts/install-local.ts` →
@@ -54,5 +54,5 @@ export function localBuildVersion(tags: string[], shortSha: string): string {
     .filter((t) => RELEASE_TAG.test(t))
     .map((t) => t.slice(1))
     .reduce<string | null>((best, v) => (best === null || compareSemver(v, best) > 0 ? v : best), null)
-  return `${latest ?? '0.0.0'}-local.${shortSha}`
+  return `${latest ?? '0.0.0'}-${LOCAL_BUILD_PRERELEASE}.${shortSha}`
 }
