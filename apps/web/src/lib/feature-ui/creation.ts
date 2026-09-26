@@ -17,6 +17,17 @@ export function defaultBaseBranch(data: Pick<BranchList, 'current' | 'detected' 
 }
 
 /**
+ * Whether Start chains the grill chat after the draft it activates. An ordinary
+ * draft starts at the conversation, so it does; a parked quick change was born
+ * with its tickets ready (`ticketsReadyLap` set), and a quick change started
+ * directly never opens a session — Start must land it in that same state rather
+ * than spend a terminal with nothing to grill.
+ */
+export function startOpensChat(started: Pick<FeatureListItem, 'ticketsReadyLap'>): boolean {
+  return started.ticketsReadyLap === null
+}
+
+/**
  * The slug a title will get, for the branch line both creation forms preview.
  * A preview only — the server slugifies again (and deduplicates) on create, so
  * this never has to agree about a collision suffix, only about the shape.
