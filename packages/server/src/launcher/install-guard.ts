@@ -45,6 +45,11 @@ export const PRE_TOOL_MATCHER = [...EDIT_TOOLS, ...SHELL_TOOLS].join('|')
 const CMD_START = '(?:^|[;&|(\\n])\\s*'
 /** The verb ends at whitespace, a separator, or the end — so `bun init` ≠ `bun i`. */
 const VERB_END = '(?=\\s|[;&|)]|$)'
+/**
+ * Bare `yarn`'s read-only flags — `yarn --version` / `yarn --help` report and
+ * exit, so only its other flags (`yarn --frozen-lockfile`) mean an install.
+ */
+const YARN_READ_ONLY_FLAG = `(?:-v|--version|-h|--help)${VERB_END}`
 
 /** Package-manager install verbs, each anchored at command position. */
 const INSTALL_PATTERNS: readonly RegExp[] = [
@@ -52,8 +57,9 @@ const INSTALL_PATTERNS: readonly RegExp[] = [
   new RegExp(`${CMD_START}npm\\s+(?:install|i|ci|add)${VERB_END}`),
   new RegExp(`${CMD_START}pnpm\\s+(?:install|i|add)${VERB_END}`),
   new RegExp(`${CMD_START}yarn\\s+(?:install|add)${VERB_END}`),
-  // Bare `yarn` — alone or with flags only — installs too.
-  new RegExp(`${CMD_START}yarn(?:\\s+-|\\s*(?:[;&|)]|$))`),
+  // Bare `yarn` — alone, or with install flags only — installs too. It ends at a
+  // separator, a newline (the next line is its own command), or the end.
+  new RegExp(`${CMD_START}yarn(?:[^\\S\\n]+(?!${YARN_READ_ONLY_FLAG})-|[^\\S\\n]*(?:[;&|)\\n]|$))`),
 ]
 
 export interface InstallGuardInput {

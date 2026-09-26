@@ -50,6 +50,9 @@ describe('install guard', () => {
       '(cd packages/web && pnpm install)',
       'echo hi | yarn',
       'git merge main\nbun install',
+      'yarn\ngit status',
+      'yarn\r\ngit status',
+      'git merge main\nyarn --frozen-lockfile\ngit status',
     ]) {
       expect(denied(cmd), cmd).toBe(true)
     }
@@ -78,6 +81,12 @@ describe('install guard', () => {
       'git log --oneline',
       'git diff --check',
       'cat yarn.lock',
+      'yarn --version',
+      'yarn -v',
+      'yarn --help',
+      'yarn -h',
+      'yarn --version && git status',
+      'yarn -v\ngit status',
     ]) {
       expect(denied(cmd), cmd).toBe(false)
     }
