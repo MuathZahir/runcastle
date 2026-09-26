@@ -1011,6 +1011,28 @@ describe('the mode the review is handed', () => {
     expect(bare).toContain('Do not go hunting for them')
     expect(bare).toContain('may well predate this lap')
   })
+
+  it("reads the gates off the project first, falling back to the global config", () => {
+    // The project row is where verify commands normally live — an empty global
+    // config must not make the reviewer believe there are no gates.
+    const own = buildGateNotes({}, { verifyCommands: 'bun run check', knownFailures: 'a red e2e spec' })
+    expect(own).toContain('bun run check')
+    expect(own).toContain('a red e2e spec')
+    expect(own).not.toContain('no verify commands configured')
+
+    const project = buildGateNotes(
+      { verifyCommands: 'global verify', knownFailures: 'global failure' },
+      { verifyCommands: 'bun run check', knownFailures: null },
+    )
+    expect(project).toContain('bun run check')
+    expect(project).not.toContain('global verify')
+    expect(project).toContain('global failure')
+
+    const inherited = buildGateNotes({ verifyCommands: 'global verify' }, { verifyCommands: '', knownFailures: null })
+    expect(inherited).toContain('global verify')
+
+    expect(buildGateNotes({}, { verifyCommands: null, knownFailures: null })).toContain('no verify commands configured')
+  })
 })
 
 describe('review declaration resolution', () => {
