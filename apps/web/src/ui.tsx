@@ -60,6 +60,7 @@ export { Field, SearchField, TEXT_INPUT, TextArea, TextField } from './ui/field'
 export type { TextFieldProps } from './ui/field'
 export { Aside, AsideLayout, Crumbs, Page, PageHeader, PageSection, PageTopbar } from './ui/page'
 export { Checkbox, SegmentedControl, Switch } from './ui/choice'
+export { Skeleton, SkeletonBar } from './ui/skeleton'
 export type { SegmentItem } from './ui/choice'
 export type { Crumb } from './ui/page'
 
