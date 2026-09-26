@@ -1,6 +1,7 @@
-import { homedir } from 'node:os'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { homedir, tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import {
   configPath,
   dataDir,
@@ -19,16 +20,48 @@ import {
  * everything else in paths.ts derives from `dataDir()`.
  */
 
-const ENV_KEYS = ['RUNCASTLE_DATA_DIR', 'RUNCASTLE_DEV_DATA_DIR'] as const
+const ENV_KEYS = ['RUNCASTLE_DATA_DIR', 'RUNCASTLE_DEV_DATA_DIR', 'HOME', 'USERPROFILE'] as const
+const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]))
 
 afterEach(() => {
-  for (const k of ENV_KEYS) delete process.env[k]
+  for (const k of ENV_KEYS) {
+    if (saved[k] === undefined) delete process.env[k]
+    else process.env[k] = saved[k]
+  }
 })
+
+/**
+ * Point `homedir()` at a throwaway dir and clear the data-dir pin, so the
+ * fallback to `~/.runcastle` can be observed without resolving to the real one
+ * — which core refuses under Vitest.
+ */
+function unpinnedTempHome(): void {
+  const home = mkdtempSync(join(tmpdir(), 'rc-paths-home-'))
+  onTestFinished(() => rmSync(home, { recursive: true, force: true }))
+  process.env.HOME = home
+  process.env.USERPROFILE = home
+  delete process.env.RUNCASTLE_DATA_DIR
+}
 
 describe('dataDir', () => {
   it('defaults to the production tree when nothing is set', () => {
+    unpinnedTempHome()
     expect(dataDir()).toBe(prodDataDir())
     expect(prodDataDir()).toBe(join(homedir(), '.runcastle'))
+  })
+
+  it('refuses the real ~/.runcastle under Vitest when the pin is cleared', () => {
+    delete process.env.RUNCASTLE_DATA_DIR
+    expect(() => dataDir()).toThrow(/under Vitest/)
+  })
+
+  it('refuses the real ~/.runcastle under Vitest when pinned to it explicitly', () => {
+    process.env.RUNCASTLE_DATA_DIR = join(userInfo().homedir, '.runcastle')
+    expect(() => dataDir()).toThrow(/under Vitest/)
+  })
+
+  it('is pinned to a temp tree for every test file by the setup', () => {
+    expect(dataDir().startsWith(resolve(tmpdir()))).toBe(true)
   })
 
   it('follows RUNCASTLE_DATA_DIR, resolved to an absolute path', () => {
@@ -51,6 +84,7 @@ describe('dataDir', () => {
   })
 
   it('reads the env var per call, so pinning it after import still works', () => {
+    unpinnedTempHome()
     expect(dataDir()).toBe(prodDataDir())
     process.env.RUNCASTLE_DATA_DIR = join(homedir(), '.runcastle-dev')
     expect(dataDir()).toBe(join(homedir(), '.runcastle-dev'))

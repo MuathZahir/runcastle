@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { rmTemp, tmpRepo } from './fixtures'
 
 /**
  * Redirect runcastle's data dir into `home` for the duration of one test, and
@@ -28,5 +29,21 @@ export function useDataDir(home: string): () => void {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+  }
+}
+
+/**
+ * {@link useDataDir} against a fresh temp home that the returned function also
+ * removes — the whole create / pin / restore / delete sequence in one call, so
+ * the cleanup cannot be forgotten. A data dir that ever held a talk worktree
+ * holds a full checkout of the repo, which is what each forgotten copy leaked
+ * into the temp dir per test per run.
+ */
+export function withTempDataDir(): () => void {
+  const home = tmpRepo()
+  const restore = useDataDir(home)
+  return () => {
+    restore()
+    rmTemp(home)
   }
 }

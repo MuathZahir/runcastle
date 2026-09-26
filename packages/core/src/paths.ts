@@ -1,4 +1,4 @@
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 
 /**
@@ -39,10 +39,34 @@ export function devDataDir(): string {
  * The active data dir. `RUNCASTLE_DATA_DIR` wins when set — `scripts/dev.ts`
  * sets it to {@link devDataDir} for the dev server; the published bin never
  * sets it, so a real install always lands on {@link prodDataDir}.
+ *
+ * Under Vitest it refuses to resolve to the developer's real `~/.runcastle`:
+ * `vitest.setup.ts` pins a temp data dir for every test file, so reaching the
+ * real one means a test cleared that pin, and before the pin existed the suite
+ * leaked thousands of worktree dirs into the real install.
  */
 export function dataDir(): string {
   const override = process.env.RUNCASTLE_DATA_DIR
-  return override ? resolve(override) : prodDataDir()
+  const dir = override ? resolve(override) : prodDataDir()
+  if (process.env.VITEST && sameDataDir(dir, join(realHomeDir(), '.runcastle'))) {
+    throw new Error(
+      `dataDir() resolved to the real ${dir} under Vitest; a test must run against a temp data dir (useDataDir / withTempDataDir)`,
+    )
+  }
+  return dir
+}
+
+/**
+ * The account's home from the user database, which — unlike `homedir()` — does
+ * not follow a test's HOME/USERPROFILE override, so a temp home stays usable.
+ * Falls back to `homedir()` where the account has no database entry.
+ */
+function realHomeDir(): string {
+  try {
+    return userInfo().homedir
+  } catch {
+    return homedir()
+  }
 }
 
 /**

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { listAfter, listByProject } from '../src/services/events'
 import { createFeature } from '../src/services/features'
-import { useDataDir } from './helpers/data-dir'
+import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -13,20 +13,26 @@ describe('feature.create', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
-  let home: string
   let restoreDataDir: () => void
+  let repoDirs: string[] = []
+
+  /** A fresh fixture repo dir, removed again in afterEach. */
+  function repoDir(): string {
+    const dir = tmpRepo()
+    repoDirs.push(dir)
+    return dir
+  }
 
   beforeEach(async () => {
     // Creation now cuts the feature's talk worktree (that is where the scaffolded
     // docs are written and committed), so the data dir has to be a temp tree.
-    home = tmpRepo()
-    restoreDataDir = useDataDir(home)
+    restoreDataDir = withTempDataDir()
 
     ctx = await makeTestCtx()
     // A project always points at a real git repo (validated by project.init);
     // now that B2's git service is live, createFeature creates a real branch,
     // so the fixture must be an actual repo with a seed commit on main.
-    repoPath = tmpRepo()
+    repoPath = repoDir()
     const g = simpleGit(repoPath)
     await g.init(['-b', 'main'])
     await g.addConfig('user.email', 'test@runcastle.dev')
@@ -40,7 +46,8 @@ describe('feature.create', () => {
 
   afterEach(() => {
     restoreDataDir()
-    rmTemp(home)
+    for (const dir of repoDirs) rmTemp(dir)
+    repoDirs = []
   })
 
   it('slugifies the title and dedupes against existing slugs', async () => {
@@ -76,7 +83,7 @@ describe('feature.create', () => {
   })
 
   it('creates a feature end-to-end from an unborn repository', async () => {
-    const unbornRepo = tmpRepo()
+    const unbornRepo = repoDir()
     const g = simpleGit(unbornRepo)
     await g.init(['-b', 'main'])
     await g.addConfig('user.email', 'test@runcastle.dev')
@@ -101,7 +108,7 @@ describe('feature.create', () => {
   })
 
   it('heals before resolving an explicit base in an unborn repository', async () => {
-    const unbornRepo = tmpRepo()
+    const unbornRepo = repoDir()
     const g = simpleGit(unbornRepo)
     await g.init(['-b', 'main'])
     await g.addConfig('user.email', 'test@runcastle.dev')
@@ -157,7 +164,7 @@ describe('feature.create', () => {
   it('materializes a local base for a remote-only pick and stores the local name', async () => {
     const g = simpleGit(repoPath)
     // Give the repo an origin carrying `release` with no local copy.
-    const remote = tmpRepo()
+    const remote = repoDir()
     await simpleGit(remote).init(['--bare', '-b', 'main'])
     await g.addRemote('origin', remote)
     await g.push(['-u', 'origin', 'main'])
