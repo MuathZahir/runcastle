@@ -2680,6 +2680,16 @@ describe('nextStep at building', () => {
       expect(ns.desc).toContain('The run failed — resume the burn to retry.')
       expect(ns.primary).toEqual(RESUME)
     })
+
+    it('reads the runner’s placeholder summary as no reason, keeping today’s copy', () => {
+      const ns = nextStep(
+        buildFull({ runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: 'run failed' }] }),
+        { driving: false },
+      )
+      expect(ns.title).toBe('Resume the burn')
+      expect(ns.desc).toContain('The run failed — resume the burn to retry.')
+      expect(ns.primary).toEqual(RESUME)
+    })
   })
 
   it('shows the cancel action while a run is live, whatever came before', () => {

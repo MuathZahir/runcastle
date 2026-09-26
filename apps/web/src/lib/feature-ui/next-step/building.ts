@@ -130,7 +130,8 @@ export function resolveBuilding(input: ResolverInput): NextStep {
   }
   // A failed run that recorded why says so verbatim — the generic line hid the
   // one sentence that named the fix, and the human clicked Resume three times.
-  const failure = run.status === 'failed' ? run.summary : undefined
+  const failure =
+    run.status === 'failed' && !isRunnerPlaceholder(run.summary) ? run.summary : undefined
   // Died before any ticket started (a setup or preflight failure): a resume
   // would meet the same wall, so the fix leads and Resume waits behind it.
   if (failure && !ticketsStartedIn(run, full.tickets)) {
@@ -164,6 +165,15 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     busy: false,
     ...(shape ? { note: shape } : {}),
   }
+}
+
+/**
+ * The runner's fallback summaries (packages/server/src/workflows/runner.ts),
+ * written when a workflow threw a non-Error or returned no reason. They name no
+ * cause, so they read as no recorded reason and keep the generic copy and flow.
+ */
+function isRunnerPlaceholder(summary: string | undefined): boolean {
+  return summary === 'run failed' || summary === 'run cancelled'
 }
 
 /**
