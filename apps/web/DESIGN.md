@@ -174,7 +174,8 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 ## Motion
 
 Motion is garnish that makes the app feel responsive and calm — never a
-delay. Transform and opacity only; everything honours `prefers-reduced-motion`.
+delay. Transform and opacity only, bar the two height animations below;
+everything honours `prefers-reduced-motion`, bar the progress pulse below.
 
 | Token | Value | Use |
 |---|---|---|
@@ -198,6 +199,12 @@ delay. Transform and opacity only; everything honours `prefers-reduced-motion`.
 - Aside: slides 12px + fades from the right (`animate-slide-in-right`).
 - Disclosure: height animates (`interpolate-size: allow-keywords` +
   `::details-content` transition), chevron rotates 90°.
+- Note field: the jot-a-note field's height animates as it grows to fit its
+  text (`NoteCapture`: a pixel height from `scrollHeight`, `--dur-2`), capped
+  at 160px, then it scrolls.
+- Progress under reduced motion: a progress indicator marked `data-progress`
+  (the `Spinner`) swaps its rotation for a slow 2s opacity pulse instead of
+  freezing into a still frame — it must still say "working".
 - Live state: `StatusDot tone="live"` breathes (`animate-breathe`, 2s); spinners
   only beside a word that says the state.
 - Phase advance: the PhaseIcon fill sweeps to its new fraction (240ms).

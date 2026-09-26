@@ -12,7 +12,6 @@ import {
   AsideLayout,
   Button,
   DimLine,
-  Loading,
   IconButton,
   Page,
   PageSection,
@@ -81,6 +80,7 @@ import { ChatPanel } from './workspace/ChatPanel'
 import { copyText } from './workspace/copy-text'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
+import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
@@ -517,10 +517,7 @@ export function Workspace({
   if (q.isLoading) {
     return (
       <section className={FRAME}>
-        <PageTopbar />
-        <Page>
-          <Loading>Loading feature…</Loading>
-        </Page>
+        <FeatureSkeleton />
       </section>
     )
   }

@@ -348,6 +348,13 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+  /* The one exception: a progress indicator. Clamped like the rest, an endless
+     spinner stops on its end frame and reads as stuck, so it swaps the rotation
+     for a slow opacity pulse that still says "working" without moving. The
+     attribute selector outranks `*`, so this `!important` wins over the clamp. */
+  [data-progress] {
+    animation: pulse 2s ease-in-out infinite !important;
+  }
   /* Its own rule: a selector list with a pseudo-element a browser does not
      know is dropped whole, and would take the rule above with it. */
   details[data-disclosure]::details-content {

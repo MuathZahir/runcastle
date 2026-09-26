@@ -106,4 +106,55 @@ describe('sidebar feature row', () => {
     expect(html).toContain('opacity-0')
     expect(html).toContain('group-hover/nav:opacity-100')
   })
+
+  // The "…" sits over the row's trailing edge: whatever lives there — the dot
+  // alone, or the dot and a fraction — steps aside while the menu shows.
+  const HIDES = [
+    'group-hover/nav:opacity-0',
+    'group-focus-within/nav:opacity-0',
+    'group-has-[[aria-expanded=true]]/nav:opacity-0',
+  ]
+  /** Whether some `<span>` enclosing `inner` carries every hide-under-the-menu class. */
+  const hiddenWhileMenuShows = (html: string, inner: string): boolean => {
+    const tags = [...html.slice(0, html.indexOf(inner)).matchAll(/<span\b[^>]*>|<\/span>/g)].map((m) => m[0])
+    const open: string[] = []
+    for (const tag of tags) {
+      if (tag === '</span>') open.pop()
+      else open.push(tag)
+    }
+    return open.some((tag) => HIDES.every((c) => tag.includes(c)))
+  }
+
+  it('hides a lone status dot under the menu so the two never overlap', () => {
+    const html = render(listItem({ phase: 'review' }), false, [copyLink])
+
+    expect(html).toContain('bg-warning')
+    expect(html).not.toMatch(/>\d+\/\d+</)
+    expect(hiddenWhileMenuShows(html, 'bg-warning')).toBe(true)
+  })
+
+  it('hides the dot and the ticket fraction together under the menu', () => {
+    const html = render(
+      listItem({
+        activeRun: true,
+        ticketCounts: { total: 10, pending: 9, burning: 1, done: 0, failed: 0, cancelled: 0 },
+      }),
+      false,
+      [copyLink],
+    )
+
+    expect(html).toContain('>0/10<')
+    expect(html).toContain('animate-breathe')
+    expect(hiddenWhileMenuShows(html, 'animate-breathe')).toBe(true)
+    expect(hiddenWhileMenuShows(html, '0/10')).toBe(true)
+  })
+
+  it('keeps the dot and fraction in view on a row with no menu', () => {
+    const html = render(
+      listItem({ ticketCounts: { total: 2, pending: 0, burning: 0, done: 2, failed: 0, cancelled: 0 } }),
+    )
+
+    expect(html).toContain('>2/2<')
+    expect(html).not.toContain('group-hover/nav:opacity-0')
+  })
 })

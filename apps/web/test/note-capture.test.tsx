@@ -163,6 +163,47 @@ describe('NoteCapture', () => {
     expect(uploadProjectNoteScreenshot).not.toHaveBeenCalled()
   })
 
+  it('adds a new line on Shift+Enter instead of saving', async () => {
+    popover()
+
+    fireEvent.change(line(), { target: { value: 'first thought' } })
+    const shiftEnter = fireEvent.keyDown(line(), { key: 'Enter', shiftKey: true })
+
+    // Not prevented, so the field takes the newline; nothing is saved.
+    expect(shiftEnter).toBe(true)
+    expect(addNote).not.toHaveBeenCalled()
+
+    fireEvent.change(line(), { target: { value: 'first thought\nsecond thought' } })
+    fireEvent.keyDown(line(), { key: 'Enter' })
+    await waitFor(() =>
+      expect(addNote).toHaveBeenCalledWith({
+        projectId: 'proj_1',
+        text: 'first thought\nsecond thought',
+      }),
+    )
+  })
+
+  // The one-line box cut the start of a long note out of view: the field grows
+  // downward to fit its text, then scrolls once it reaches its cap.
+  it('grows to fit a long note, up to a cap after which it scrolls', () => {
+    popover()
+    const field = line() as HTMLTextAreaElement
+    expect(field.tagName).toBe('TEXTAREA')
+
+    // happy-dom lays nothing out, so the content height is the stubbed seam.
+    let contentHeight = 96
+    Object.defineProperty(field, 'scrollHeight', { get: () => contentHeight })
+
+    fireEvent.change(field, { target: { value: 'a note that wraps\nonto a few lines' } })
+    expect(field.style.height).toBe('96px')
+    expect(field.style.overflowY).toBe('hidden')
+
+    contentHeight = 900
+    fireEvent.change(field, { target: { value: 'a very long note '.repeat(80) } })
+    expect(field.style.height).toBe('160px')
+    expect(field.style.overflowY).toBe('auto')
+  })
+
   it('does not save an empty line', () => {
     popover()
 
@@ -244,6 +285,7 @@ describe('NoteCapture', () => {
     expect(dialog.textContent).toContain('Paste a screenshot')
     expect(dialog.textContent).toContain('to runcastle-demo')
     expect(dialog.textContent).toMatch(/↵\s*save/)
+    expect(dialog.textContent).toMatch(/⇧↵\s*new line/)
     expect(dialog.textContent).toMatch(/esc\s*close/)
 
     // A pasted picture takes the hint's place as a chip.
