@@ -30,8 +30,10 @@ import {
   listBranches,
   makeInitialCommit,
   detachWorktree,
+  dryRunDrive,
   ensureTalkWorktree,
   mergeFeature,
+  projectDrive,
   commitSummaries,
   mergeTempBranch,
   reattachWorktree,
@@ -1659,6 +1661,62 @@ describe('mergeFeature', () => {
     await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
 
     await testDrive(ctx, project, feature, 'stop')
+  })
+
+  it('denies merge while a project drive or dry run of the same project holds the slot', async () => {
+    await createFeatureBranch(project, 'sameproj', 'main')
+    const feature = seedFeature(ctx, project.id, { slug: 'sameproj' })
+
+    expect((await projectDrive(ctx, project, 'start')).ok).toBe(true)
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
+    await projectDrive(ctx, project, 'stop')
+
+    expect((await dryRunDrive(ctx, project, 'start')).ok).toBe(true)
+    await expect(mergeFeature(project, feature)).rejects.toThrow(/test drive/i)
+    await dryRunDrive(ctx, project, 'stop')
+  })
+
+  describe("another project's drive", () => {
+    let other: Project
+    let otherFeature: Feature
+
+    beforeEach(async () => {
+      const otherRepo = mkTmp('rc-merge-other-')
+      await initRepo(otherRepo)
+      other = seedProject(ctx, otherRepo)
+      otherFeature = seedFeature(ctx, other.id, { slug: 'elsewhere' })
+      await createFeatureBranch(other, otherFeature.slug, 'main')
+    })
+
+    /** A feature of `project` with one commit ahead of main, ready to merge. */
+    async function mergeableFeature(slug: string): Promise<Feature> {
+      await createFeatureBranch(project, slug, 'main')
+      const g = simpleGit(project.repoPath)
+      await g.checkout(`feature/${slug}`)
+      writeFileSync(join(project.repoPath, `${slug}.txt`), 'hi\n')
+      await g.add([`${slug}.txt`])
+      await g.commit('feat: work')
+      await g.checkout('main')
+      return seedFeature(ctx, project.id, { slug })
+    }
+
+    const holders: Array<[string, () => Promise<{ ok: boolean }>]> = [
+      ['a feature drive', () => testDrive(ctx, other, otherFeature, 'start')],
+      ['a project drive', () => projectDrive(ctx, other, 'start')],
+      ['a dry run', () => dryRunDrive(ctx, other, 'start')],
+    ]
+
+    it.each(holders)('does not block a merge while it holds %s', async (_label, start) => {
+      const feature = await mergeableFeature('unblocked')
+      expect((await start()).ok).toBe(true)
+
+      const res = await mergeFeature(project, feature)
+
+      expect(res.ok).toBe(true)
+      expect(existsSync(join(project.repoPath, 'unblocked.txt'))).toBe(true)
+      // The other project's drive still holds the one shared slot.
+      expect(activeDriveInfo()).not.toBeNull()
+    })
   })
 
   it('denies merge when the checkout is dirty', async () => {
