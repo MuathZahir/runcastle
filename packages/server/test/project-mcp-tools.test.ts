@@ -43,7 +43,7 @@ import { getFeatureRow, listSessionsByFeature, setFeatureStatus } from '../src/s
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, tmpRepo } from './helpers/fixtures'
+import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
  * The project session's MCP surface (decisions 15, 19, 21): exactly four tools,
@@ -98,6 +98,7 @@ describe('project-session MCP tools', () => {
   afterEach(() => {
     clearRuntimeCtx()
     restoreDataDir()
+    rmTemp(repoPath)
   })
 
   // --- scoping ---------------------------------------------------------------
