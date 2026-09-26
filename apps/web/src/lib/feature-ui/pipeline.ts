@@ -1,4 +1,6 @@
 import type { Phase } from '@runcastle/core'
+import type { FeatureFull } from '../api'
+import { lapTicketCount } from './laps'
 
 export const PHASE_ORDER: Phase[] = ['planning', 'building', 'review', 'shipped']
 
@@ -41,6 +43,24 @@ export function pipelineSteps(feature: { phase: Phase }, effective: Phase, summa
     const tip = state === 'done' ? `${summaries[phase] || PHASE_STEP_NAME[phase]} — click to view it read-only` : state === 'current' || phase === 'planning' ? PHASE_TIP[phase] : PHASE_UNLOCK[phase]
     return { phase, label: PHASE_LABELS[phase], state, isViewed: phase === effective, clickable: state !== 'upcoming', tip }
   })
+}
+
+/**
+ * Whether the page's body is the ticket ledger — the card you correct before
+ * Burn. At building that holds until a run exists to narrate; at planning it
+ * holds the moment this lap has a ticket, because a quick change is born there
+ * with its tickets and never has a planning session to show, and a feature
+ * whose tickets agent has emitted them is past shaping the idea. A pinned
+ * planning phase is a frozen record instead (decision 10).
+ */
+export function ticketsAreBody({ full, phase, readonly, hasRun }: {
+  full: Pick<FeatureFull, 'feature' | 'tickets'>
+  phase: Phase
+  readonly: boolean
+  hasRun: boolean
+}): boolean {
+  if (phase === 'building') return !hasRun
+  return phase === 'planning' && !readonly && lapTicketCount(full.tickets, full.feature.lap).total > 0
 }
 
 export { nextStep } from './next-step'
