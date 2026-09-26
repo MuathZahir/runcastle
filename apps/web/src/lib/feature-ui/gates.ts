@@ -9,11 +9,27 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
     `Proceed with your task: RESOLVE A MERGE CONFLICT. Merging ${base} into ${branch} conflicts ` +
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
     `Run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
-    `decisions.md for intent, and commit the merge. Do NOT push and do NOT advance the phase ` +
-    `(never call complete_phase). When the merge commit is in, tell me to click “Merge & ship” ` +
-    `again for a clean retry.`
+    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and ` +
+    `do NOT advance the phase (never call complete_phase). When the merge commit is in, tell me ` +
+    `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
   )
 }
+
+/**
+ * How a resolve session checks its merge. A talk worktree is docs-only (charter
+ * decision 6) and the install guard denies package installs there, so the
+ * checks are the ones that need no dependencies; a real run is the test drive's.
+ */
+const DEPENDENCY_FREE_CHECKS =
+  'Verify without dependencies — package installs are blocked in this worktree: run ' +
+  '`git diff --check` and grep for leftover `<<<<<<<` / `>>>>>>>` markers, re-read each ' +
+  'resolved hunk against both sides, and confirm every import and symbol the merged code uses ' +
+  'exists on the merged side.'
+
+/** The closing hand-off: the test drive runs in the main checkout, where deps are installed. */
+const TEST_DRIVE_OFFER =
+  'and that I can test-drive the branch first (it runs in the main checkout, with dependencies) ' +
+  'for a real run.'
 
 /**
  * Kickoff line for the run lane's "Resolve in terminal" — the human escape
@@ -45,9 +61,9 @@ export function ticketConflictKickoff(input: {
     `${input.featureBranch}. Run \`git merge ${input.branch}\`, read both sides before resolving ` +
     `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
     `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
-    `Run the tests over the touched code, then commit the merge. Do NOT push and do NOT advance ` +
-    `the phase (never call complete_phase). When the merge commit is in, tell me to click Retry ` +
-    `on the ticket so runcastle records it as landed.`
+    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and do NOT advance the phase ` +
+    `(never call complete_phase). When the merge commit is in, tell me to click Retry on the ` +
+    `ticket so runcastle records it as landed — ${TEST_DRIVE_OFFER}`
   )
 }
 

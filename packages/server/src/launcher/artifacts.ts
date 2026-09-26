@@ -18,7 +18,8 @@ import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
-import { EDIT_TOOL_MATCHER, guardsEdits } from './edit-guard'
+import { guardsEdits } from './edit-guard'
+import { PRE_TOOL_MATCHER } from './install-guard'
 import { type ChatOpening, ENTRY_SKILLS, entrySkillsFor, skillRef } from './runtimes/skills'
 
 /**
@@ -126,7 +127,10 @@ export function noCodeRule(docs: string): string {
     'and nothing else in this checkout. Every code change rides a ticket, burned by an ' +
     'implementation agent in its own sandbox — even the one-line fix that is obviously faster ' +
     'to just do. This is enforced by a hook, not left to your judgement: edits outside the docs ' +
-    'are denied.'
+    'are denied.\n' +
+    '- **Package installs are blocked in this worktree** (`bun install`, `npm ci`, `pnpm add`, ' +
+    '`yarn` …): it is docs-only, so it carries no dependencies. Verification that needs them ' +
+    'happens in the burn sandbox, the review lap, or a test drive of the branch.'
   )
 }
 
@@ -145,7 +149,12 @@ export function conflictResolutionRule(): string {
     'conflicted files in this checkout, resolving them from the feature docs’ intent, and ' +
     'commit the merge. That is the exception and its whole extent: the edit guard exempts ' +
     'writes only while the merge is in progress, so work the merge revealed but did not ' +
-    'cause still rides a ticket.'
+    'cause still rides a ticket.\n' +
+    '- **Verify the merge without dependencies — package installs are blocked in this ' +
+    'worktree, merge or no merge.** Run `git diff --check` and grep for leftover conflict ' +
+    'markers, re-read each resolved hunk against both sides, and confirm every import and symbol ' +
+    'the merged code uses exists on the merged side. A real run is the test drive’s: tell the ' +
+    'human they can test-drive the branch before retrying.'
   )
 }
 
@@ -1256,8 +1265,9 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   `UserPromptSubmit` it is what tells the server whether a live session is
  *   working or waiting on its human, and it is registered for every kind
  *   because a turn ends the same way whatever the session was opened to do.
- * - `PreToolUse` matches the file-write tools and carries the talk-session edit
- *   guard (see {@link evaluateEditGuard}) — registered for every kind except
+ * - `PreToolUse` matches the file-write and shell tools and carries the
+ *   talk-session edit guard (see {@link evaluateEditGuard}) and the talk-worktree
+ *   install guard (`evaluateInstallGuard`) — registered for every kind except
  *   `project`, the one allowed to write code. A kind is needed to make that
  *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
  *   not know is not one to hand whole-repo write access to.
@@ -1284,7 +1294,7 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
       Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
-        ? { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
+        ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
         : {}),
     },
   }

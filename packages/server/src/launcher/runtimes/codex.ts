@@ -15,7 +15,8 @@ import { RUNTIME_SPECS } from '../../doctor/doctor'
 import { codexAuthFile } from '../../services/codex-auth'
 import { resolveTool } from '../../util/resolve-executable'
 import { hookClientPath, renderSessionPrompt, serverUrlFor } from '../artifacts'
-import { EDIT_TOOL_MATCHER, guardsEdits } from '../edit-guard'
+import { guardsEdits } from '../edit-guard'
+import { PRE_TOOL_MATCHER } from '../install-guard'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
 import type {
@@ -269,8 +270,8 @@ export interface CodexHooksFile {
  * invoking the same hook client. `hook-client.ts` is runtime-neutral (stdin JSON
  * → `POST /api/hooks/<event>`), so the whole server side of the lifecycle —
  * `launching → live` on SessionStart, `awaiting-input` on Stop, `ended` on
- * SessionEnd, the kickoff delivery receipt on UserPromptSubmit, and the edit
- * guard's deny verdict on PreToolUse — works with nothing changed.
+ * SessionEnd, the kickoff delivery receipt on UserPromptSubmit, and the edit and
+ * install guards' deny verdicts on PreToolUse — works with nothing changed.
  *
  * Two deliberate differences from the Claude settings. `SessionStart` takes no
  * per-source matcher: Claude Code needs one entry per source, and Codex's
@@ -301,7 +302,7 @@ export function renderCodexHooks(
       Stop: [{ hooks: [cmd('stop')] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
-        ? { PreToolUse: [{ matcher: EDIT_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
+        ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
         : {}),
     },
   }

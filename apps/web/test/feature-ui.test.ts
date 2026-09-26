@@ -2477,6 +2477,42 @@ describe('ticketConflictKickoff', () => {
 })
 
 /**
+ * Talk worktrees are docs-only and installs are blocked there, so neither resolve
+ * briefing may invite a test run: they ask for dependency-free checks and hand the
+ * human the test drive instead.
+ */
+describe('conflict kickoffs verify without dependencies', () => {
+  const lines = [
+    mergeConflictKickoff('main', 'feature/x', ['a.ts']),
+    ticketConflictKickoff({
+      seq: 3,
+      title: 't',
+      branch: 'runcastle/ticket/x/3-abc',
+      featureBranch: 'feature/x',
+      files: ['a.ts'],
+    }),
+  ]
+
+  it('no longer asks to run the tests', () => {
+    for (const line of lines) expect(line).not.toMatch(/run the tests/i)
+  })
+
+  it('lists the dependency-free checks and says installs are blocked', () => {
+    for (const line of lines) {
+      expect(line).toContain('git diff --check')
+      expect(line).toContain('<<<<<<<')
+      expect(line).toMatch(/re-read each resolved hunk against both sides/)
+      expect(line).toMatch(/import and symbol/)
+      expect(line).toMatch(/installs are blocked/)
+    }
+  })
+
+  it('ends by offering the human a test drive', () => {
+    for (const line of lines) expect(line).toMatch(/test-drive the branch[^.]*\.$/)
+  })
+})
+
+/**
  * Ticket 7 — archive/unarchive derivations. Archived features leave the default
  * sidebar lanes (surfacing only under a show-archived toggle) and expose no
  * pipeline next-step action — only a way back (Unarchive).
