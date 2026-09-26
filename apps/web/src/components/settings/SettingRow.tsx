@@ -9,7 +9,7 @@ import {
   type SettingRow as Row,
   type SourceChip as SourceChipKind,
 } from '../../lib/settings'
-import { Button, cx, StatusDot, TextArea, TextField } from '../../ui'
+import { Button, cx, Skeleton, SkeletonBar, StatusDot, TextArea, TextField } from '../../ui'
 import type { StatusTone } from '../../ui'
 import {
   SELECT_FIELD,
@@ -84,6 +84,46 @@ export function SettingGroup({
         />
       ))}
     </SettingSection>
+  )
+}
+
+/**
+ * A page of the dialog while its settings' first read is in flight: its groups
+ * in placeholder bars, on `SettingSection`'s and `SettingLine`'s metrics — a
+ * heading over a rule, then two-column rows of label and description beside a
+ * control. `groups` is the page's own shape: one entry per group, holding each
+ * row's label width.
+ */
+export function SettingsSkeleton({
+  groups,
+  className,
+}: {
+  groups: readonly (readonly string[])[]
+  className?: string
+}) {
+  return (
+    <Skeleton label="Loading settings…" className={className}>
+      {groups.map((labels, g) => (
+        <div key={g} className="mt-9 first:mt-0">
+          <div className="flex min-h-7 items-center border-b border-border-subtle pb-2">
+            <SkeletonBar className="h-3 w-16" />
+          </div>
+          {labels.map((width, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,300px)] items-start gap-x-8 border-b border-border-subtle py-4 last:border-b-0"
+              data-skeleton="setting-row"
+            >
+              <div className="flex flex-col gap-2 pt-1">
+                <SkeletonBar className={cx('h-3', width)} />
+                <SkeletonBar className="h-2.5 w-4/5" />
+              </div>
+              <SkeletonBar className="h-(--control-h) w-full rounded-md" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </Skeleton>
   )
 }
 
