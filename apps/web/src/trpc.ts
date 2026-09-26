@@ -25,6 +25,8 @@ export const UNBATCHED_PATHS: ReadonlySet<string> = new Set([
   'system.burnCache.status',
   'project.branches',
   'project.sessionBranch',
+  // Staleness of every prep finding: detectMainBranch plus a rev-list per sha.
+  'project.prep',
   'feature.mergeDelta',
   'feature.commitCount',
 ])
