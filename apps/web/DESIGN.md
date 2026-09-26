@@ -203,7 +203,7 @@ everything honours `prefers-reduced-motion`, bar the progress pulse below.
   text (`NoteCapture`: a pixel height from `scrollHeight`, `--dur-2`), capped
   at 160px, then it scrolls.
 - Progress under reduced motion: a progress indicator marked `data-progress`
-  (the `Spinner`) swaps its rotation for a slow 2s opacity pulse instead of
+  (the `Spinner`, a `Skeleton`'s bars) swaps its motion for a slow 2s opacity pulse instead of
   freezing into a still frame — it must still say "working".
 - Live state: `StatusDot tone="live"` breathes (`animate-breathe`, 2s); spinners
   only beside a word that says the state.

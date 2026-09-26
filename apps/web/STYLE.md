@@ -79,8 +79,8 @@ options and `tabindex="-1"` panels show none — their highlight is their ground
 
 Motion is transform and opacity only, from the named `animate-*` utilities; the
 `prefers-reduced-motion` switch in `theme.css` turns all of it off — except a
-progress indicator marked `data-progress` (the `Spinner`, the breathing bars of
-`FeatureSkeleton`), which swaps its motion for a slow opacity pulse so it never freezes into a still frame. A
+progress indicator marked `data-progress` (the `Spinner`, the breathing bars of a
+`Skeleton`), which swaps its motion for a slow opacity pulse so it never freezes into a still frame. A
 `<details data-disclosure>` animates its height (`interpolate-size` +
 `::details-content`), and so does the jot-a-note field as it grows to fit its
 text (`NoteCapture`: a pixel height set from `scrollHeight`, capped, then it
@@ -108,7 +108,7 @@ scrolls).
 **Import every primitive from `src/ui.tsx`** — it holds the older ones and
 re-exports the rest from `src/ui/` (one concern per file: `button.tsx`,
 `status.tsx`, `list.tsx`, `tabs.tsx`, `field.tsx`, `page.tsx`, `kbd.tsx`,
-`tooltip.tsx`, and the four floating ones). Icons and `PhaseIcon` are in
+`tooltip.tsx`, `skeleton.tsx`, and the four floating ones). Icons and `PhaseIcon` are in
 `src/icons.tsx`. Build a missing primitive there rather than styling the same
 thing twice in two surfaces; never hand-roll a button, row, chip, menu, dialog,
 tab set or empty state in a surface. What each should look like is `DESIGN.md`.
@@ -171,7 +171,8 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
 | `Kbd` | children, `className`. | One key or a short chord. |
-| `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. |
+| `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. For inline busy states — a pending button, a dialog step; a content area loads as a `Skeleton`. |
+| `Skeleton` · `SkeletonBar` | `Skeleton`: `label` (announced as `role="status"`; omit for a decorative companion), `className` (placement), children (the bars, laid out on the real content's metrics). `SkeletonBar`: `className` (size and shape). | The one content-area loading state: the content's shape in breathing bars (`data-progress`), fading in after 300ms so a fast load shows nothing. Each surface draws its own shape (`FeatureSkeleton`, `FeatureRowsSkeleton` …). |
 
 **Status** (facts are text, not boxes)
 

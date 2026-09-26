@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { Aside, DimLine, Loading, Tabs } from '../../ui'
+import { Aside, cx, DimLine, Skeleton, SkeletonBar, Tabs } from '../../ui'
 import { IconActivity, IconDoc } from '../../icons'
 import { Activity } from './Activity'
 import { Knowledge } from './Knowledge'
@@ -47,7 +47,7 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
       bodyClassName="px-4 py-4"
     >
       {full.isLoading ? (
-        <Loading>Loading…</Loading>
+        <DetailsSkeleton />
       ) : !full.data ? (
         // Hard error only when there was NEVER data — a refetch failure after
         // data exists (server restart) keeps the last-good panel rendered; the
@@ -63,5 +63,29 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
         </div>
       )}
     </Aside>
+  )
+}
+
+/** Title widths for the placeholder doc rows. */
+const SKELETON_ROW_WIDTHS = ['w-28', 'w-20', 'w-32'] as const
+
+/**
+ * The details while the feature's first read is in flight: the Knowledge
+ * tab's doc list in placeholder bars, on `ListRow`'s metrics — the doc glyph,
+ * the title, the file name trailing.
+ */
+export function DetailsSkeleton() {
+  return (
+    <Skeleton label="Loading the details…">
+      <div className="-mx-2 flex flex-col">
+        {SKELETON_ROW_WIDTHS.map((width, i) => (
+          <div key={i} className="flex min-h-10 items-center gap-3 px-3" data-skeleton="doc-row">
+            <SkeletonBar className="size-4" />
+            <SkeletonBar className={cx('h-3', width)} />
+            <SkeletonBar className="ml-auto h-2.5 w-16" />
+          </div>
+        ))}
+      </div>
+    </Skeleton>
   )
 }

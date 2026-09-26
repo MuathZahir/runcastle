@@ -4,7 +4,7 @@ import { pageRows, type SettingRow as Row, type SettingsGroup } from '../../lib/
 import type { ProjectFinding } from '../../lib/api'
 import { DimLine } from '../../ui'
 import { EvidencePopover } from './EvidencePopover'
-import { SettingGroup } from './SettingRow'
+import { SettingGroup, SettingsSkeleton } from './SettingRow'
 import type { SettingsPageProps } from './types'
 
 /**
@@ -30,6 +30,9 @@ const GROUPS: readonly { group: SettingsGroup; title: string }[] = [
   { group: 'chat', title: 'Project chat' },
 ]
 
+/** Label widths for the placeholder rows of the three sections, in the same order. */
+export const PROJECT_SKELETON = [['w-24', 'w-32'], ['w-28', 'w-20', 'w-32'], ['w-24']] as const
+
 export function ProjectPage({ scoped, projectId, filter, highlightField }: SettingsPageProps) {
   // The findings are the provenance behind the chips, and every write to a
   // prepared key re-sources one — so this query is invalidated alongside
@@ -38,7 +41,7 @@ export function ProjectPage({ scoped, projectId, filter, highlightField }: Setti
   /** The one row whose evidence is open — never two at once. */
   const [openEvidence, setOpenEvidence] = useState<string | null>(null)
 
-  if (scoped.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (scoped.isLoading) return <SettingsSkeleton groups={PROJECT_SKELETON} />
   if (scoped.error) return <DimLine>Could not load settings: {scoped.error.message}</DimLine>
   if (!scoped.data) return null
 

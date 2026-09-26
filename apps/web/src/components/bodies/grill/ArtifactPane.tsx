@@ -3,7 +3,7 @@ import type { FeatureFull } from '../../../lib/api'
 import { countDecisions } from '../../../lib/feature-ui'
 import { useFeatureDoc } from '../../../lib/use-feature-doc'
 import { IconDoc, IconPanelLeft } from '../../../icons'
-import { DimLine, EmptyState, IconButton, Loading, PageSection, StatusLabel } from '../../../ui'
+import { cx, DimLine, EmptyState, IconButton, PageSection, Skeleton, SkeletonBar, StatusLabel } from '../../../ui'
 import { DocsMenu } from '../../DocsMenu'
 import { Markdown } from '../../Markdown'
 
@@ -69,10 +69,13 @@ export function ArtifactPane({
   const title = kind === 'spec' ? 'Spec' : frozen ? 'Decisions' : 'Decisions so far'
   const prose = (
     <>
-      {doc.loading && <Loading>Loading…</Loading>}
       {doc.failed && <DimLine>Could not read {selectedPath}</DimLine>}
       {content ? (
         <Markdown source={content} size={frozen ? 'base' : 'sm'} />
+      ) : doc.loading ? (
+        // The skeleton stands where the document will be — never beside an
+        // empty state that the first read is about to contradict.
+        <ProseSkeleton label={`Loading ${selectedPath?.split(/[\\/]/).pop()}…`} />
       ) : showingPrimary ? (
         <ArtifactEmpty kind={kind} mapped={mapped} frozen={frozen} />
       ) : null}
@@ -120,6 +123,35 @@ export function ArtifactPane({
       </div>
       <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-border-subtle pt-4 pr-3">{prose}</div>
     </section>
+  )
+}
+
+/** Line widths for the placeholder prose: a heading, then two paragraphs. */
+const SKELETON_PARAGRAPHS = [
+  ['w-full', 'w-11/12', 'w-4/5', 'w-2/3'],
+  ['w-full', 'w-5/6', 'w-1/2'],
+] as const
+
+/**
+ * A document while its first read is in flight: a heading and two paragraphs
+ * in placeholder bars, one bar per 20px line of `Markdown`.
+ */
+export function ProseSkeleton({ label }: { label: string }) {
+  return (
+    <Skeleton label={label}>
+      <div className="flex h-6 items-center">
+        <SkeletonBar className="h-3.5 w-1/3" />
+      </div>
+      {SKELETON_PARAGRAPHS.map((lines, p) => (
+        <div key={p} className="mt-3" data-skeleton="paragraph">
+          {lines.map((width, i) => (
+            <div key={i} className="flex h-5 items-center">
+              <SkeletonBar className={cx('h-2.5', width)} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </Skeleton>
   )
 }
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { lapTicketCount, ticketCountText } from '../src/lib/feature-ui'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
 import { SidebarFootChrome } from '../src/components/Sidebar'
-import { Loading } from '../src/ui'
+import * as ui from '../src/ui'
 
 /**
  * The UX audit's consistency pass, pinned: one ticket count, Merge & ship in
@@ -74,11 +74,17 @@ describe('a demoted action on the next-step bar', () => {
 })
 
 describe('the one loading look', () => {
-  it('is a status line that waits before it fades in', () => {
-    const html = renderToStaticMarkup(createElement(Loading, null, 'Loading feature…'))
+  it('is a skeleton that waits before it fades in', () => {
+    const html = renderToStaticMarkup(
+      createElement(ui.Skeleton, { label: 'Loading feature…', children: createElement(ui.SkeletonBar, { className: 'h-3' }) }),
+    )
     expect(html).toContain('role="status"')
     expect(html).toContain('animation-delay:300ms')
     expect(html).toContain('Loading feature…')
+  })
+
+  it('has retired the spinner-and-a-word Loading line', () => {
+    expect('Loading' in ui).toBe(false)
   })
 })
 

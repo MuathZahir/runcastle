@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, Loading, NavItem, SectionLabel, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Kbd, NavItem, SectionLabel, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
@@ -289,9 +289,7 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="-mx-2 mt-3 min-h-0 flex-1 overflow-y-auto px-2">
-        {list.isLoading && (
-          <Loading className="px-2.5 py-2 text-xs">Loading features…</Loading>
-        )}
+        {list.isLoading && <FeatureRowsSkeleton />}
         {list.data && list.data.length === 0 && (
           <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
             No features yet. Start a chat to cut the first one.
@@ -494,6 +492,32 @@ function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
   if (!trigger) return
   e.preventDefault()
   trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
+}
+
+/** Label widths for the placeholder feature rows. */
+const SKELETON_ROW_WIDTHS = ['w-32', 'w-24', 'w-36', 'w-28'] as const
+
+/**
+ * The feature list while its first read is in flight: a lane heading and a
+ * few rows on {@link FeatureRow}'s metrics — the 32px row, the phase glyph,
+ * the title — so the real list lands where the bars were.
+ */
+export function FeatureRowsSkeleton() {
+  return (
+    <Skeleton label="Loading features…">
+      <div className="flex h-7 items-center px-2.5">
+        <SkeletonBar className="h-2.5 w-16" />
+      </div>
+      <div className="flex flex-col gap-px">
+        {SKELETON_ROW_WIDTHS.map((width, i) => (
+          <div key={i} className="flex h-(--row-h) items-center gap-2 pr-3 pl-2.5" data-skeleton="feature-row">
+            <SkeletonBar className="size-4 rounded-full" />
+            <SkeletonBar className={cx('h-2.5', width)} />
+          </div>
+        ))}
+      </div>
+    </Skeleton>
+  )
 }
 
 /**

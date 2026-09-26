@@ -1,0 +1,120 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createElement, type FunctionComponent } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { FeatureRowsSkeleton } from '../src/components/Sidebar'
+import { ProjectsSkeleton } from '../src/components/Shell'
+import { SettingsSkeleton } from '../src/components/settings/SettingRow'
+import { GENERAL_SKELETON } from '../src/components/settings/GeneralPage'
+import { BURNS_SKELETON } from '../src/components/settings/BurnsPage'
+import { MODELS_SKELETON } from '../src/components/settings/ModelsPage'
+import { PROJECT_SKELETON } from '../src/components/settings/ProjectPage'
+import { DetailsSkeleton } from '../src/components/inspector/Inspector'
+import { ProseSkeleton } from '../src/components/bodies/grill/ArtifactPane'
+import { PreparationSkeleton } from '../src/components/PreparationWorkspace'
+import { TicketsSkeleton } from '../src/components/bodies/tickets/TicketsBody'
+import { MapDocSkeleton } from '../src/components/bodies/grill/MapRail'
+
+/**
+ * Every content area loads as a skeleton shaped like what it is loading — not
+ * a spinner and a word — announced by what it is loading, and waiting 300ms so
+ * a fast load shows nothing at all.
+ */
+const render = (component: FunctionComponent) => renderToStaticMarkup(createElement(component))
+const count = (html: string, marker: string) => html.split(`data-skeleton="${marker}"`).length - 1
+const settings = (groups: readonly (readonly string[])[]) =>
+  renderToStaticMarkup(createElement(SettingsSkeleton, { groups }))
+
+const SITES: Array<[string, string, string]> = [
+  ['the sidebar', render(FeatureRowsSkeleton), 'Loading features…'],
+  ['the first load', render(ProjectsSkeleton), 'Loading projects…'],
+  ['the general settings', settings(GENERAL_SKELETON), 'Loading settings…'],
+  ['the burns settings', settings(BURNS_SKELETON), 'Loading settings…'],
+  ['the models settings', settings(MODELS_SKELETON), 'Loading settings…'],
+  ['the project settings', settings(PROJECT_SKELETON), 'Loading settings…'],
+  ['the details aside', render(DetailsSkeleton), 'Loading the details…'],
+  ['an artifact pane', renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' })), 'Loading spec.md…'],
+  ['preparation', render(PreparationSkeleton), 'Loading preparation…'],
+  ['the tickets body', render(TicketsSkeleton), 'Loading tickets…'],
+  ['the map rail', render(MapDocSkeleton), 'Loading the map…'],
+]
+
+describe.each(SITES)('%s while it loads', (_site, html, label) => {
+  it('is a skeleton announced by what it is loading', () => {
+    expect(html).toContain('role="status"')
+    expect(html).toContain(`<span class="sr-only">${label}</span>`)
+    expect(html).not.toContain('animate-spin')
+  })
+
+  it('waits 300ms before fading in', () => {
+    expect(html).toContain('animate-fade-in [animation-delay:300ms]')
+  })
+})
+
+describe('the skeletons are shaped like their content', () => {
+  it('the sidebar: rows shaped like feature rows', () => {
+    const html = render(FeatureRowsSkeleton)
+    expect(count(html, 'feature-row')).toBe(4)
+    expect(html).toContain('h-(--row-h)')
+  })
+
+  it('the first load: the portfolio title over project rows', () => {
+    const html = render(ProjectsSkeleton)
+    expect(count(html, 'title')).toBe(1)
+    expect(count(html, 'project-row')).toBe(3)
+  })
+
+  it('the first load: each project row is two lines, the name over its repo path', () => {
+    expect(count(render(ProjectsSkeleton), 'repo-path')).toBe(3)
+  })
+
+  it('the general settings: the Server and Sessions rows', () => {
+    expect(count(settings(GENERAL_SKELETON), 'setting-row')).toBe(5)
+  })
+
+  it('every settings page: its own groups of setting rows', () => {
+    expect(count(settings(BURNS_SKELETON), 'setting-row')).toBe(5)
+    expect(count(settings(MODELS_SKELETON), 'setting-row')).toBe(7)
+    expect(count(settings(PROJECT_SKELETON), 'setting-row')).toBe(6)
+  })
+
+  it('the details aside: the Knowledge doc rows', () => {
+    expect(count(render(DetailsSkeleton), 'doc-row')).toBe(3)
+  })
+
+  it('an artifact pane: paragraphs of prose', () => {
+    const html = renderToStaticMarkup(createElement(ProseSkeleton, { label: 'Loading spec.md…' }))
+    expect(count(html, 'paragraph')).toBe(2)
+  })
+
+  it('preparation: the call to action’s title and sentence', () => {
+    const html = render(PreparationSkeleton)
+    expect(count(html, 'title')).toBe(1)
+    expect(count(html, 'sentence')).toBe(1)
+  })
+
+  it('the tickets body: rows shaped like ticket rows', () => {
+    expect(count(render(TicketsSkeleton), 'ticket-row')).toBe(4)
+  })
+
+  it('the map rail: the closed map document disclosure', () => {
+    expect(count(render(MapDocSkeleton), 'disclosure')).toBe(1)
+  })
+})
+
+describe('no content area uses the old loading line', () => {
+  const src = join(import.meta.dirname, '../src')
+  const files = readdirSync(src, { recursive: true, encoding: 'utf8' }).filter((f) => /\.tsx?$/.test(f))
+
+  it('renders <Loading> nowhere in apps/web/src', () => {
+    const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<Loading'))
+    expect(offenders).toEqual([])
+  })
+
+  // DocPeek's "Loading {title}…" stays: a popover over the page, not a content area.
+  it('renders an undelayed "Loading…" line only in the doc peek popover', () => {
+    const offenders = files.filter((f) => readFileSync(join(src, f), 'utf8').includes('<DimLine>Loading'))
+    expect(offenders.map((f) => f.replaceAll('\\', '/'))).toEqual(['components/DocPeek.tsx'])
+  })
+})

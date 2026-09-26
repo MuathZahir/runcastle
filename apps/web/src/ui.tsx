@@ -60,6 +60,7 @@ export { Field, SearchField, TEXT_INPUT, TextArea, TextField } from './ui/field'
 export type { TextFieldProps } from './ui/field'
 export { Aside, AsideLayout, Crumbs, Page, PageHeader, PageSection, PageTopbar } from './ui/page'
 export { Checkbox, SegmentedControl, Switch } from './ui/choice'
+export { Skeleton, SkeletonBar } from './ui/skeleton'
 export type { SegmentItem } from './ui/choice'
 export type { Crumb } from './ui/page'
 
@@ -70,26 +71,6 @@ export type { Crumb } from './ui/page'
  */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <SectionLabel>{children}</SectionLabel>
-}
-
-/**
- * The app's one loading state: a quiet spinner and a word, in `text-tertiary`,
- * where the content will appear. It waits 300ms before fading in, so a fast
- * load shows nothing at all rather than a flash of "Loading…".
- */
-export function Loading({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div
-      role="status"
-      className={cx(
-        'flex items-center gap-2 text-sm text-text-tertiary animate-fade-in [animation-delay:300ms]',
-        className,
-      )}
-    >
-      <Spinner size="sm" />
-      {children}
-    </div>
-  )
 }
 
 /** One quiet line — an inline empty or error state for a tight spot, in `text-xs text-tertiary`. */

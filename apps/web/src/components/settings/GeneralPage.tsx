@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { pageRows } from '../../lib/settings'
 import { useTheme, type ThemePreference } from '../../lib/theme'
-import { DimLine, Loading, SegmentedControl, Spinner } from '../../ui'
+import { DimLine, SegmentedControl, Spinner } from '../../ui'
 import { IconMonitor, IconMoon, IconSun } from '../../icons'
-import { SettingGroup, SettingLine, SettingSection } from './SettingRow'
+import { SettingGroup, SettingLine, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
 /**
@@ -32,7 +32,7 @@ export function GeneralPage({ globals, filter, highlightField }: SettingsPagePro
     return (
       <>
         {appearance}
-        <Loading className="mt-9">Loading settings…</Loading>
+        <SettingsSkeleton groups={GENERAL_SKELETON} className="mt-9" />
       </>
     )
   if (globals.error)
@@ -65,6 +65,12 @@ export function GeneralPage({ globals, filter, highlightField }: SettingsPagePro
     </>
   )
 }
+
+/** Label widths for the placeholder rows of the two groups: Server · Sessions. */
+export const GENERAL_SKELETON = [
+  ['w-20', 'w-28'],
+  ['w-24', 'w-32', 'w-20'],
+] as const
 
 /**
  * Dark, light, or whatever the OS says. A browser preference (`localStorage`),

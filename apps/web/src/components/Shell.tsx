@@ -7,7 +7,7 @@ import { FirstRunWizard } from './first-run/FirstRunWizard'
 import { UpdateBanner } from './UpdateBanner'
 import { SetupCheckBanner } from './SetupCheckBanner'
 import { Frame, FrameProvider } from './Frame'
-import { Dialog, Loading, Page } from '../ui'
+import { Dialog, Page, Skeleton, SkeletonBar, cx } from '../ui'
 
 /**
  * The runcastle app root (multi-project #45). Two levels: a portfolio *home*
@@ -33,12 +33,12 @@ export function Shell() {
   // who is past it. A doctor that FAILS has answered as far as this gate is
   // concerned — a broken probe never holds the project list.
   if (nav.loading || nav.projects === undefined) {
-    // The frame is up at once, the one loading line where the page will be —
-    // the same place every surface says it is still loading.
+    // The frame is up at once, the page's shape in placeholder bars where the
+    // page will be.
     content = (
       <Frame>
         <Page>
-          <Loading>Loading projects…</Loading>
+          <ProjectsSkeleton />
         </Page>
       </Frame>
     )
@@ -102,5 +102,51 @@ export function Shell() {
         {overlay}
       </div>
     </FrameProvider>
+  )
+}
+
+/** Name and repo-path widths for the placeholder project rows. */
+const SKELETON_ROW_WIDTHS = [
+  { name: 'w-40', path: 'w-56' },
+  { name: 'w-28', path: 'w-44' },
+  { name: 'w-48', path: 'w-64' },
+] as const
+
+/**
+ * The first load, before anything can be placed: the portfolio's shape — the
+ * page title, its meta line, a divided list of project rows — on
+ * `PageHeader`'s and `ListRow`'s metrics. Each row is `ListRow`'s two-line
+ * form: the name over the repo path `ProjectCard` passes as its description.
+ */
+export function ProjectsSkeleton() {
+  return (
+    <Skeleton label="Loading projects…">
+      <div className="flex h-7 items-center" data-skeleton="title">
+        <SkeletonBar className="h-5 w-32" />
+      </div>
+      <div className="mt-2 flex h-5 items-center">
+        <SkeletonBar className="h-2.5 w-28" />
+      </div>
+      <div className="mt-8 flex flex-col">
+        {SKELETON_ROW_WIDTHS.map((width, i) => (
+          <div
+            key={i}
+            className="flex min-h-10 items-center gap-3 border-b border-border-subtle px-3 py-2 last:border-b-0"
+            data-skeleton="project-row"
+          >
+            <SkeletonBar className="mt-0.5 size-4 self-start" />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="flex h-5 items-center">
+                <SkeletonBar className={cx('h-3', width.name)} />
+              </div>
+              <div className="flex h-4 items-center" data-skeleton="repo-path">
+                <SkeletonBar className={cx('h-2.5', width.path)} />
+              </div>
+            </div>
+            <SkeletonBar className="h-2.5 w-16" />
+          </div>
+        ))}
+      </div>
+    </Skeleton>
   )
 }
