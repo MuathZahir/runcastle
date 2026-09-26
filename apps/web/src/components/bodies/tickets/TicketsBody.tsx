@@ -7,7 +7,7 @@ import { useLivePoll } from '../../../lib/live'
 import { effectiveStepModel, rosterFromView } from '../../../lib/settings'
 import { bodySessions, sessionActive } from '../../../lib/feature-ui'
 import { useToast } from '../../../lib/toast'
-import { Button, DimLine } from '../../../ui'
+import { Button, cx, DimLine, Skeleton, SkeletonBar } from '../../../ui'
 import { IconTerminal } from '../../../icons'
 import { DocPeek } from '../../DocPeek'
 import { EndSessionButton } from '../../EndSessionButton'
@@ -45,7 +45,7 @@ export function TicketsBody({ featureId, chatDocked = false }: { featureId: stri
   const lapTickets = data ? data.tickets.filter((ticket) => ticket.lap === data.feature.lap) : []
   const terminal = useTerminalStrip(live?.id, lapTickets.length)
 
-  if (full.isLoading) return <DimLine>Loading tickets…</DimLine>
+  if (full.isLoading) return <TicketsSkeleton />
   if (!data) return <DimLine>Could not load tickets: {full.error?.message ?? 'unknown'}</DimLine>
   const { feature, tickets, docs } = data
   const ended = [...sessions].reverse().find((session) => session.status === 'ended')
@@ -87,6 +87,40 @@ export function TicketsBody({ featureId, chatDocked = false }: { featureId: stri
     </section>
     {peek && <DocPeek featureId={featureId} relPath={peek} title={docs.find((doc) => doc.relPath === peek)?.title ?? peek} onClose={() => setPeek(null)} />}
   </div>
+}
+
+/** Title widths for the placeholder ticket rows. */
+const SKELETON_TITLES = ['w-2/3', 'w-1/2', 'w-3/5', 'w-2/5'] as const
+
+/**
+ * The tickets while the feature's first read is in flight: the section heading
+ * and the ledger's meta line, then ticket rows on `ListRow`'s metrics — a 40px
+ * row of chevron, `#seq` and title, divided by `border-subtle`.
+ */
+export function TicketsSkeleton() {
+  return (
+    <Skeleton label="Loading tickets…" className="min-w-0 flex-1">
+      <div className="mb-2 flex h-7 items-center">
+        <SkeletonBar className="h-4 w-20" />
+      </div>
+      <div className="mb-2 flex min-h-7 items-center">
+        <SkeletonBar className="h-2.5 w-40" />
+      </div>
+      <div>
+        {SKELETON_TITLES.map((width, i) => (
+          <div
+            key={i}
+            className="flex min-h-10 items-center gap-3 border-b border-border-subtle px-3 last:border-b-0"
+            data-skeleton="ticket-row"
+          >
+            <SkeletonBar className="size-3" />
+            <SkeletonBar className="h-2.5 w-5" />
+            <SkeletonBar className={cx('h-3', width)} />
+          </div>
+        ))}
+      </div>
+    </Skeleton>
+  )
 }
 
 export function pendingTicketsForLap<T extends { lap: number; status: string }>(tickets: readonly T[], lap: number): T[] {

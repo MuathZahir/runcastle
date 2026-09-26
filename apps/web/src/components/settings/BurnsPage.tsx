@@ -2,7 +2,7 @@ import { BURN_PREREQUISITES } from '../../lib/afk-rows'
 import { pageRows } from '../../lib/settings'
 import { DimLine } from '../../ui'
 import { EnableAfkCard } from '../EnableAfkCard'
-import { SettingGroup, SettingSection } from './SettingRow'
+import { SettingGroup, SettingSection, SettingsSkeleton } from './SettingRow'
 import { showsSetting, type SettingsPageProps } from './types'
 
 /**
@@ -13,8 +13,11 @@ import { showsSetting, type SettingsPageProps } from './types'
  * that runs and one that cannot — and because every "Settings → Burns (Rebuild
  * image)" pointer in the app lands on a row of that checklist.
  */
+/** Label widths for the placeholder rows: Prerequisites · Width & retries. */
+export const BURNS_SKELETON = [['w-32', 'w-28', 'w-36'], ['w-20', 'w-24']] as const
+
 export function BurnsPage({ globals, projectId, filter, highlightField }: SettingsPageProps) {
-  if (globals.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (globals.isLoading) return <SettingsSkeleton groups={BURNS_SKELETON} />
   if (globals.error) return <DimLine>Could not load settings: {globals.error.message}</DimLine>
   if (!globals.data) return null
 

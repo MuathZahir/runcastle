@@ -19,7 +19,7 @@ import { SELECT_FIELD, Select, SelectContent, SelectTrigger, SelectValue } from 
 import { IconRefresh } from '../../icons'
 import { useHighlight } from './highlight'
 import { ModelOptions, Refusal, RosterTable, RuntimeIcon } from './RosterTable'
-import { SaveMark, SettingLine, SettingSection } from './SettingRow'
+import { SaveMark, SettingLine, SettingSection, SettingsSkeleton } from './SettingRow'
 import { StepTable } from './StepTable'
 import { showsSetting, type SettingsPageProps } from './types'
 
@@ -119,10 +119,13 @@ function useSettingWrites(): SettingWrites {
   }
 }
 
+/** Label widths for the placeholder rows: the default model · Roster · Per step. */
+export const MODELS_SKELETON = [['w-28'], ['w-32', 'w-24', 'w-28'], ['w-20', 'w-28', 'w-24']] as const
+
 export function ModelsPage({ globals, scoped, filter, highlightField }: SettingsPageProps) {
   const writes = useSettingWrites()
 
-  if (globals.isLoading) return <DimLine>Loading settings…</DimLine>
+  if (globals.isLoading) return <SettingsSkeleton groups={MODELS_SKELETON} />
   if (globals.error) return <DimLine>Could not load settings: {globals.error.message}</DimLine>
   if (!globals.data) return null
 
