@@ -250,8 +250,8 @@ describe('draft features', () => {
       draft = seedFeature(ctx, project.id, { slug: 'parked', status: 'draft' })
     })
 
-    it('refuses the synchronous service verbs', () => {
-      expect(() => archiveFeature(ctx, draft.id)).toThrow(DRAFT_REFUSAL)
+    it('refuses archive', async () => {
+      await expect(archiveFeature(ctx, draft.id)).rejects.toThrow(DRAFT_REFUSAL)
     })
 
     it('refuses burn', async () => {

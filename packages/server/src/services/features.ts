@@ -22,6 +22,7 @@ import type { AppCtx } from '../db/types'
 import { events, features, runs, sessions, tickets, waypoints } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
 import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
+import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
 import type { DocSummary, ScaffoldOptions } from './knowledge'
@@ -1037,9 +1038,11 @@ export function escalateToMap(
  * an already-archived one. Ends any live session first (the same PTY-killing
  * teardown the End-session button uses), flips status to `archived`, and emits
  * `feature.archived`. All data is kept — archiving only hides the feature behind
- * the sidebar's show-archived filter; `unarchiveFeature` reverses it.
+ * the sidebar's show-archived filter; `unarchiveFeature` reverses it. The talk
+ * worktree goes too when it is clean (a relaunch after unarchive re-adds it);
+ * the branch is never touched.
  */
-export function archiveFeature(ctx: AppCtx, featureId: string): Feature {
+export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   // Archive is refused for drafts (decision 8): `unarchiveFeature` derives the
   // restored status from the phase and would resurrect a draft as
@@ -1059,6 +1062,7 @@ export function archiveFeature(ctx: AppCtx, featureId: string): Feature {
     message: `feature ${feature.slug} archived`,
     data: { from: feature.status },
   })
+  await retireArchivedWorktree(ctx, projectForFeature(ctx, feature), feature)
   return { ...feature, status: 'archived' }
 }
 

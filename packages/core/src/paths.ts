@@ -189,9 +189,14 @@ export function attachmentRelPath(noteId: string): string {
   return `${ATTACHMENTS_DIR}/${noteId}.png`
 }
 
+/** Every project's talk worktrees: `~/.runcastle/worktrees/`. */
+export function worktreesRoot(): string {
+  return join(dataDir(), 'worktrees')
+}
+
 /** Every talk worktree of one project: `~/.runcastle/worktrees/<projectId>/`. */
 export function projectWorktreesDir(projectId: string): string {
-  return join(dataDir(), 'worktrees', projectId)
+  return join(worktreesRoot(), projectId)
 }
 
 /** Talk worktree for a feature: `~/.runcastle/worktrees/<projectId>/<slug>/`. */

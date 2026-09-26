@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { newId } from '@runcastle/core'
 import { listAfter } from '../src/services/events'
 import { archiveFeature, unarchiveFeature } from '../src/services/features'
 import { getSessionRow } from '../src/launcher/sessions'
+import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { seedFeature, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /** A live session row for `featureId`, inserted directly (no PTY spawned). */
 function seedLiveSession(ctx: AppCtx, featureId: string): string {
@@ -29,41 +30,51 @@ function seedLiveSession(ctx: AppCtx, featureId: string): string {
 describe('feature archive / unarchive', () => {
   let ctx: AppCtx
   let projectId: string
+  // Archive probes the feature's talk worktree under the data dir — pin it.
+  let home: string
+  let restoreDataDir: () => void
 
   beforeEach(async () => {
+    home = tmpRepo()
+    restoreDataDir = useDataDir(home)
     ctx = await makeTestCtx()
     projectId = seedProject(ctx).id
   })
 
-  it('archives from any phase, sets status=archived, and emits feature.archived', () => {
+  afterEach(() => {
+    restoreDataDir()
+    rmTemp(home)
+  })
+
+  it('archives from any phase, sets status=archived, and emits feature.archived', async () => {
     const f = seedFeature(ctx, projectId, { phase: 'planning', status: 'active' })
 
-    const archived = archiveFeature(ctx, f.id)
+    const archived = await archiveFeature(ctx, f.id)
 
     expect(archived.status).toBe('archived')
     const events = listAfter(ctx, f.id, 0)
     expect(events.some((e) => e.type === 'feature.archived')).toBe(true)
   })
 
-  it('ends a live session before archiving', () => {
+  it('ends a live session before archiving', async () => {
     const f = seedFeature(ctx, projectId, { phase: 'building', status: 'active' })
     const sessionId = seedLiveSession(ctx, f.id)
 
-    archiveFeature(ctx, f.id)
+    await archiveFeature(ctx, f.id)
 
     expect(getSessionRow(ctx, sessionId)?.status).toBe('ended')
     const events = listAfter(ctx, f.id, 0)
     expect(events.some((e) => e.type === 'session.ended')).toBe(true)
   })
 
-  it('archives a shipped feature (any status except archived)', () => {
+  it('archives a shipped feature (any status except archived)', async () => {
     const f = seedFeature(ctx, projectId, { phase: 'shipped', status: 'shipped' })
-    expect(archiveFeature(ctx, f.id).status).toBe('archived')
+    expect((await archiveFeature(ctx, f.id)).status).toBe('archived')
   })
 
-  it('refuses to archive an already-archived feature', () => {
+  it('refuses to archive an already-archived feature', async () => {
     const f = seedFeature(ctx, projectId, { status: 'archived' })
-    expect(() => archiveFeature(ctx, f.id)).toThrow(/already archived/)
+    await expect(archiveFeature(ctx, f.id)).rejects.toThrow(/already archived/)
   })
 
   it('unarchives a non-shipped feature back to active', () => {

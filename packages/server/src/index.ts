@@ -20,6 +20,7 @@ import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
 import { mountWebAppIfBuilt } from './routes/web'
+import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
@@ -126,6 +127,18 @@ export async function startServer(): Promise<void> {
   if (staleRuns.length > 0) {
     console.log(`reconciled ${staleRuns.length} stale run(s) from a previous server run`)
   }
+
+  // Talk worktrees of shipped/archived features and of projects that are gone
+  // (a full checkout each). After both reconciliations, so nothing still marked
+  // live holds one; not awaited, so a slow disk never delays the listener.
+  void sweepFeatureWorktrees(ctx).then((s) => {
+    if (s.removed + s.orphanProjects + s.failed > 0) {
+      console.log(
+        `worktree sweep: removed ${s.removed} feature worktree(s) and ` +
+          `${s.orphanProjects} orphaned project dir(s); kept ${s.kept} dirty, ${s.failed} failed`,
+      )
+    }
+  })
 
   // Embedded-terminal WebSocket (UI-SPEC §5/§6, W1). The `/ws/terminal/:sessionId`
   // upgrade is attempted BEFORE Hono's fetch fallthrough; every other path is
