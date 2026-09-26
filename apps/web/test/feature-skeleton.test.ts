@@ -32,4 +32,13 @@ describe('FeatureSkeleton', () => {
     expect(html).toContain('animate-fade-in [animation-delay:300ms]')
     expect(html).not.toContain('animate-spin')
   })
+
+  it('keeps every breathing bar pulsing under reduced motion', () => {
+    // The feature page's only progress indicator now: each `animate-breathe`
+    // element must be marked `data-progress`, or the reduced-motion clamp
+    // freezes it into a still frame.
+    const breathing = html.match(/<[^>]*animate-breathe[^>]*>/g) ?? []
+    expect(breathing.length).toBe(2)
+    for (const tag of breathing) expect(tag).toContain('data-progress')
+  })
 })
