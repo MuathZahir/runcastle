@@ -34,7 +34,7 @@ import {
   symlinkSync,
 } from 'node:fs'
 import { connect } from 'node:net'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $ } from 'bun'
@@ -43,6 +43,8 @@ import { prodDataDir } from '../packages/core/src/paths.ts'
 import {
   INSTALL_LOCAL_USAGE,
   InstallLocalUsageError,
+  bunGlobalManifestPath,
+  globalRuncastleSpec,
   localBuildVersion,
   parseInstallLocalArgs,
   snapshotLinkTarget,
@@ -101,6 +103,14 @@ function isListening(port: number): Promise<boolean> {
     })
     socket.once('error', () => done(false))
   })
+}
+
+function readTextOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return null
+  }
 }
 
 /** Every `node_modules` a workspace install creates under `root`: the root's plus each workspace's. */
@@ -236,10 +246,29 @@ async function main(): Promise<void> {
     tarball = join(keepDir, kept)
     copyFileSync(packed, tarball)
 
+    // bun cannot swap an existing global `runcastle` (registry or tarball) for
+    // a tarball in place — DependencyLoop — so remove it first, and put the
+    // previous spec back if the add fails so a bad build never leaves none.
+    const previous = globalRuncastleSpec(readTextOrNull(bunGlobalManifestPath(process.env, homedir())))
+    if (previous) {
+      step(`Removing the current global runcastle (${previous})`)
+      await run($`bun remove -g runcastle`)
+    }
+
     // A bare absolute path ending in .tgz is a tarball to bun on every OS
     // (drive-letter paths included), so no npm fallback is needed.
     step('Installing globally')
-    await run($`bun add -g ${tarball}`)
+    try {
+      await run($`bun add -g ${tarball}`)
+    } catch (err) {
+      if (previous) {
+        // A kept tarball is re-added by path (pruning only follows a success).
+        const restore = previous.endsWith('.tgz') ? previous : `runcastle@${previous}`
+        step(`Install failed — restoring ${restore}`)
+        await $`bun add -g ${restore}`.nothrow()
+      }
+      throw err
+    }
     for (const old of readdirSync(keepDir).filter((f) => f.endsWith('.tgz') && f !== kept)) {
       rmSync(join(keepDir, old), { force: true })
     }

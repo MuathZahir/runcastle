@@ -1,6 +1,13 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { InstallLocalUsageError, localBuildVersion, parseInstallLocalArgs, snapshotLinkTarget } from '../src/dev/install-local'
+import {
+  InstallLocalUsageError,
+  bunGlobalManifestPath,
+  globalRuncastleSpec,
+  localBuildVersion,
+  parseInstallLocalArgs,
+  snapshotLinkTarget,
+} from '../src/dev/install-local'
 
 /** `bun run install:local` — the argv parse and the local version stamp. */
 describe('parseInstallLocalArgs', () => {
@@ -61,5 +68,34 @@ describe('snapshotLinkTarget', () => {
   it('reuses a target outside the checkout', () => {
     const global = join('/', 'cache', 'bun', 'zod')
     expect(snapshotLinkTarget(global, checkout, snapshot)).toBe(global)
+  })
+})
+
+describe('bunGlobalManifestPath', () => {
+  const home = join('C:', 'Users', 'u')
+
+  it('defaults to ~/.bun/install/global', () => {
+    expect(bunGlobalManifestPath({}, home)).toBe(join(home, '.bun', 'install', 'global', 'package.json'))
+  })
+
+  it('follows BUN_INSTALL, and BUN_INSTALL_GLOBAL_DIR over it', () => {
+    const bunInstall = join('D:', 'bun')
+    const globalDir = join('E:', 'g')
+    expect(bunGlobalManifestPath({ BUN_INSTALL: bunInstall }, home)).toBe(join(bunInstall, 'install', 'global', 'package.json'))
+    expect(bunGlobalManifestPath({ BUN_INSTALL: bunInstall, BUN_INSTALL_GLOBAL_DIR: globalDir }, home)).toBe(join(globalDir, 'package.json'))
+  })
+})
+
+describe('globalRuncastleSpec', () => {
+  it('reads a registry spec or a tarball path', () => {
+    expect(globalRuncastleSpec('{"dependencies":{"runcastle":"^1.4.1"}}')).toBe('^1.4.1')
+    expect(globalRuncastleSpec('{"dependencies":{"runcastle":"C:/x/runcastle-1.4.1-local.ab.tgz"}}')).toBe('C:/x/runcastle-1.4.1-local.ab.tgz')
+  })
+
+  it('is null when runcastle is not installed or the manifest is missing or unreadable', () => {
+    expect(globalRuncastleSpec('{"dependencies":{"@resvg/resvg-js":"^2.6.2"}}')).toBeNull()
+    expect(globalRuncastleSpec('{}')).toBeNull()
+    expect(globalRuncastleSpec(null)).toBeNull()
+    expect(globalRuncastleSpec('{not json')).toBeNull()
   })
 })

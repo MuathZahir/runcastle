@@ -57,7 +57,36 @@ export function snapshotLinkTarget(target: string, checkout: string, snapshot: s
   return join(snapshot, rel)
 }
 
-const RELEASE_TAG = /^v\d+\.\d+\.\d+(-[\w.]+)?$/
+/**
+ * bun's global manifest: `$BUN_INSTALL_GLOBAL_DIR/package.json`, else
+ * `$BUN_INSTALL/install/global/package.json`, `BUN_INSTALL` defaulting to `~/.bun`.
+ */
+export function bunGlobalManifestPath(env: Record<string, string | undefined>, home: string): string {
+  const globalDir = env.BUN_INSTALL_GLOBAL_DIR || join(env.BUN_INSTALL || join(home, '.bun'), 'install', 'global')
+  return join(globalDir, 'package.json')
+}
+
+/**
+ * The spec the global manifest installs `runcastle` from (`^1.4.1`, a tarball
+ * path, …), or null when it is not installed or the manifest is unreadable.
+ *
+ * `bun add -g <tarball>` over an existing `runcastle` entry, registry spec or
+ * another tarball alike, fails with `DependencyLoop` (and can leave the key
+ * duplicated), so the installer removes the entry first and restores this spec
+ * if the add then fails.
+ */
+export function globalRuncastleSpec(manifestText: string | null): string | null {
+  if (manifestText === null) return null
+  try {
+    const manifest = JSON.parse(manifestText) as { dependencies?: Record<string, unknown> }
+    const spec = manifest.dependencies?.runcastle
+    return typeof spec === 'string' && spec !== '' ? spec : null
+  } catch {
+    return null
+  }
+}
+
+const RELEASE_TAG =/^v\d+\.\d+\.\d+(-[\w.]+)?$/
 
 /**
  * The version a local build is stamped with: `<latest v* tag without v>-local.<short sha>`
