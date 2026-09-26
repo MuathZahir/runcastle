@@ -200,6 +200,30 @@ describe('boot sweep', () => {
     expect(await branchExists('feature/shipped')).toBe(true)
   }, 20_000)
 
+  it("removes a shipped feature's worktree even when it is dirty or not a checkout", async () => {
+    // Merged already, so its scratch is disposable — as on the ship path itself.
+    const shippedDirty = await featureWithWorktree({ slug: 'shipped-dirty', phase: 'shipped', status: 'shipped' })
+    writeFileSync(join(shippedDirty.worktree, 'shot.png'), 'x')
+    // A half-failed rmSync fallback leaves a dir with no `.git`.
+    const husk = seedFeature(ctx, project.id, { slug: 'shipped-husk', phase: 'shipped', status: 'shipped' })
+    const huskDir = worktreeDir(project.id, husk.slug)
+    mkdirSync(huskDir, { recursive: true })
+    writeFileSync(join(huskDir, 'leftover.txt'), 'x\n')
+    // An archived one without `.git` holds nothing git could lose either.
+    const archivedHusk = seedFeature(ctx, project.id, { slug: 'archived-husk', status: 'archived' })
+    const archivedHuskDir = worktreeDir(project.id, archivedHusk.slug)
+    mkdirSync(archivedHuskDir, { recursive: true })
+    writeFileSync(join(archivedHuskDir, 'leftover.txt'), 'x\n')
+
+    const sweep = await sweepFeatureWorktrees(ctx)
+
+    expect(existsSync(shippedDirty.worktree)).toBe(false)
+    expect(existsSync(huskDir)).toBe(false)
+    expect(existsSync(archivedHuskDir)).toBe(false)
+    expect(sweep).toEqual({ removed: 3, kept: 0, failed: 0, orphanProjects: 0 })
+    expect(await branchExists('feature/shipped-dirty')).toBe(true)
+  }, 20_000)
+
   it('is a no-op when there is no worktrees dir yet', async () => {
     expect(await sweepFeatureWorktrees(ctx)).toEqual({
       removed: 0,

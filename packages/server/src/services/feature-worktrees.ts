@@ -1,6 +1,6 @@
 import { readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Feature, Project } from '@runcastle/core'
+import type { Feature, FeatureStatus, Project } from '@runcastle/core'
 import { worktreeDir, worktreesRoot } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 import { features } from '../db/schema'
@@ -102,7 +102,7 @@ function keptReason(
 export interface WorktreeSweep {
   /** Feature worktrees removed. */
   removed: number
-  /** Feature worktrees left in place because they were dirty or unreadable. */
+  /** Unshipped feature worktrees left in place because they were dirty or unreadable. */
   kept: number
   /** Feature worktrees whose removal failed (a locked file, typically). */
   failed: number
@@ -116,8 +116,9 @@ export interface WorktreeSweep {
  *
  * - A `<projectId>/` dir with no project row goes whole, with no git per slug —
  *   test runs leaked thousands of these, so this path has to be cheap.
- * - A `<slug>/` dir goes when its feature is shipped or archived and clean, or
- *   when no feature row matches and it is clean or not a git checkout at all.
+ * - A `<slug>/` dir goes when its feature is shipped (in any state — the branch
+ *   is merged, so ship would have force-removed it too), or when its feature is
+ *   archived or no feature row matches and it is clean or not a git checkout.
  * - `_`-prefixed slugs (the project session's `__project`) and features that
  *   are still active or parked are never touched. A leading `_` on a PROJECT id
  *   means nothing — `newId` can mint one.
@@ -155,8 +156,7 @@ export async function sweepFeatureWorktrees(ctx: AppCtx): Promise<WorktreeSweep>
 
       const path = worktreeDir(projectId, slug)
       const state = await git.worktreeState(path)
-      const removable = state === 'clean' || (status === undefined && state === 'not-a-checkout')
-      if (!removable) {
+      if (!sweepable(status, state)) {
         sweep.kept++
       } else if (await git.discardWorktree(project.repoPath, path, { attempts: 1 })) {
         sweep.removed++
@@ -166,6 +166,17 @@ export async function sweepFeatureWorktrees(ctx: AppCtx): Promise<WorktreeSweep>
     }
   }
   return sweep
+}
+
+/**
+ * Whether the boot sweep may remove a finished or ownerless worktree. A shipped
+ * feature's branch is merged, so its worktree goes whatever state it is in — as
+ * on the ship path. Otherwise only when there is nothing git could lose: clean,
+ * or not a git checkout at all.
+ */
+function sweepable(status: FeatureStatus | undefined, state: git.WorktreeState): boolean {
+  if (status === 'shipped') return true
+  return state === 'clean' || state === 'not-a-checkout'
 }
 
 /** Names of the directories directly under `dir`; none when it is unreadable. */
