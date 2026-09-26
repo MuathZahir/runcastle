@@ -28,6 +28,12 @@ describe('compareSemver', () => {
     expect(compareSemver('1.0.0-beta.2', '1.0.0-beta.1')).toBeGreaterThan(0)
   })
 
+  it('ranks a local build above the release it was built on, but below the next one', () => {
+    expect(compareSemver('1.4.1', '1.4.1-local.ebc6eaab')).toBeLessThan(0)
+    expect(compareSemver('1.4.1-local.ebc6eaab', '1.4.1-beta.1')).toBeGreaterThan(0)
+    expect(compareSemver('1.4.2', '1.4.1-local.ebc6eaab')).toBeGreaterThan(0)
+  })
+
   it('tolerates a leading v and stray whitespace', () => {
     expect(compareSemver(' v1.2.0 ', '1.2.0')).toBe(0)
   })
@@ -98,6 +104,12 @@ describe('checkForUpdate', () => {
   it('reports no update when running is current or ahead', async () => {
     expect((await checkForUpdate({ current: '0.2.0', fetchImpl: fetchReturning('0.2.0') })).updateAvailable).toBe(false)
     expect((await checkForUpdate({ current: '0.3.0', fetchImpl: fetchReturning('0.2.0') })).updateAvailable).toBe(false)
+  })
+
+  it('does not offer a local build its own base release, only a newer one', async () => {
+    const current = '1.4.1-local.ebc6eaab'
+    expect((await checkForUpdate({ current, fetchImpl: fetchReturning('1.4.1') })).updateAvailable).toBe(false)
+    expect((await checkForUpdate({ current, fetchImpl: fetchReturning('1.4.2') })).updateAvailable).toBe(true)
   })
 
   it('asks runcastle first, POSTing the install ID, version and platform — nothing else', async () => {
