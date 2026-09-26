@@ -23,7 +23,9 @@ const SUMMARY_ROWS = [
  * quiet placeholder bars — the crumb, the title, the branch line, one step per
  * phase, and the summary rows — laid out on the same metrics as
  * `FeatureHeader` and `PropertyList`, so the real page lands where the bars
- * were. Like `Loading`, it waits 300ms before fading in.
+ * were. Like `Loading`, it waits 300ms before fading in. The bars' breathing
+ * is the page's only progress indicator, so each breathing element is marked
+ * `data-progress` and keeps a slow pulse under reduced motion (`theme.css`).
  */
 export function FeatureSkeleton() {
   return (
@@ -31,14 +33,16 @@ export function FeatureSkeleton() {
       <PageTopbar
         leading={
           <span aria-hidden="true" className={DELAYED}>
-            <Bone className="h-3 w-40 animate-breathe" />
+            <span data-progress="" className="block animate-breathe">
+              <Bone className="h-3 w-40" />
+            </span>
           </span>
         }
       />
       <Page>
         <div role="status" className={DELAYED}>
           <span className="sr-only">Loading feature…</span>
-          <div aria-hidden="true" className="animate-breathe">
+          <div aria-hidden="true" data-progress="" className="animate-breathe">
             <div className="flex h-7 items-center" data-skeleton="title">
               <Bone className="h-5 w-2/5" />
             </div>
