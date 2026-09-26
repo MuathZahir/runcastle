@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { RunStatus } from '@runcastle/core'
 import { Button, MetaLine, RunStatusChip } from '../../ui'
 import { IconArrowLeft, IconClock, IconCube, IconStop } from '../../icons'
+import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { ConfirmDialog } from './ConfirmDialog'
 import { RunPicker } from './RunPicker'
 import type { RunOption } from './RunPicker'
@@ -11,7 +12,8 @@ import type { RunOption } from './RunPicker'
  * of facts — status, elapsed, how many tickets landed, the honest counts — and
  * the run-level controls on the heading's right. Nothing else: the lanes below
  * are the page's spine, and a header that grew a summary of them would be the
- * digest wall this redesign is removing from the review page.
+ * digest wall this redesign is removing from the review page. The one addition
+ * is a failed run's recorded reason, as a prose line under the facts.
  *
  * The counts are {@link runHeadline}'s, so a stopped lane is never reported as a
  * failure and a solo per-ticket retry says so instead of speaking whole-run
@@ -25,6 +27,7 @@ export function RunHeader({
   headline,
   elapsed,
   status,
+  summary,
   landed,
   burning,
   busy,
@@ -39,6 +42,11 @@ export function RunHeader({
   headline: string
   elapsed: string
   status?: RunStatus
+  /**
+   * The run's recorded one-liner, said under a Failed chip — a run that died
+   * in preflight otherwise reads "Failed · 9s · 0 of 2 landed" and nothing else.
+   */
+  summary?: string
   /** Tickets done out of the lanes shown. */
   landed?: { done: number; total: number }
   /** Lanes with a live agent — the blast radius Cancel run states. */
@@ -110,6 +118,13 @@ export function RunHeader({
           ]}
         />
       </div>
+      {/* A sentence, not a fact: its own wrapping line, so the fix it ends on
+          ("…from Settings → Burns") is never the part a truncating fact clips. */}
+      {status === 'failed' && summary && (
+        <p className="m-0 text-sm text-pretty text-text-secondary">
+          <MessageWithSettingsLink text={summary} />
+        </p>
+      )}
 
       {onCancelRun && (
         <ConfirmDialog
