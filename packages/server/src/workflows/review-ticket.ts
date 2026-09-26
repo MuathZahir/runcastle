@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
+import { resolvePreparedSettings } from '@runcastle/core'
 import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
 import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
@@ -338,12 +339,19 @@ export function buildDriveInstructions(instructions: string | null | undefined):
  * With nothing configured the answer is to run nothing. A reviewer guessing at a
  * monorepo's filter names — and discovering them by running the wrong suite — is
  * the long-review failure mode this whole mode split exists to end.
+ *
+ * Both fields are resolved project-first ({@link resolvePreparedSettings}),
+ * exactly as the implementer's `buildVerifyNotes` input is: they are normally
+ * stored on the project row, so reading the global config alone told every
+ * reviewer its project had no gates.
  */
 export function buildGateNotes(
   config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
+  project?: { verifyCommands?: string | null; knownFailures?: string | null } | null,
 ): string {
-  const commands = config.verifyCommands?.trim()
-  const failures = config.knownFailures?.trim()
+  const prepared = resolvePreparedSettings(config, project)
+  const commands = prepared.verifyCommands
+  const failures = prepared.knownFailures
   const out: string[] = []
 
   if (commands) {
@@ -641,7 +649,7 @@ async function reviewTicketOutcome(
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserHealthy, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
-    GATE_NOTES: buildGateNotes(deps.config),
+    GATE_NOTES: buildGateNotes(deps.config, project),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
