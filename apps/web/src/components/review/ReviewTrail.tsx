@@ -1,4 +1,3 @@
-import type { FindingStatus } from '@runcastle/core'
 import {
   Button,
   Disclosure,
@@ -6,6 +5,7 @@ import {
   ListRow,
   MetaLine,
   TicketStatusChip,
+  TONE_TEXT,
   Timeline,
   TimelineNode,
   type MetaItem,
@@ -88,13 +88,6 @@ function passTone(pass: PassNode): TimelineTone {
   return 'neutral'
 }
 
-const TONE_WORD: Record<TimelineTone, string> = {
-  success: 'text-success',
-  warning: 'text-warning',
-  danger: 'text-danger',
-  neutral: 'text-text-secondary',
-}
-
 /** "gates mode · Verified · 3 defects found" — only the parts the pass has. */
 function PassMeta({ pass }: { pass: PassNode }) {
   const word = pass.couldNotRun
@@ -107,7 +100,7 @@ function PassMeta({ pass }: { pass: PassNode }) {
   const parts = [
     pass.mode ? `${pass.mode} mode` : null,
     word && (
-      <span key="verdict" className={`font-medium ${TONE_WORD[passTone(pass)]}`}>
+      <span key="verdict" className={`font-medium ${TONE_TEXT[passTone(pass)]}`}>
         {word}
       </span>
     ),
@@ -257,7 +250,7 @@ export function ReviewTrail({
   passes: readonly ReviewPassFigure[]
   /** The feature's tickets — what burned, and what the feed cannot say. */
   tickets: readonly TimelineTicket[]
-  findings: readonly (TimelineFinding & { status: FindingStatus })[]
+  findings: readonly TimelineFinding[]
   notes: readonly { lap: number }[]
   currentLap: number
   /**
