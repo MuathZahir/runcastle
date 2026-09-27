@@ -134,7 +134,8 @@ describe('OpenWork', () => {
     })
     expect(html).toContain('the save drops the edited value')
     expect(html).toContain('the run chip goes grey while burning')
-    expect(html).toContain('2 open')
+    // The open count is the next-step bar's (decision 8b), not the heading's.
+    expect(html).not.toContain('2 open')
   })
 
   it('says so plainly when nothing is open', () => {
@@ -156,8 +157,9 @@ describe('OpenWork', () => {
       { onViewLane: () => undefined },
     )
     expect(html).toContain('being fixed in the running burn · lane #9')
-    // ...and the tally does not call it the human's problem.
-    expect(html).toContain('0 open · 1 being fixed')
+    // ...and the heading says only what the bar's open count does not.
+    expect(html).toContain('>1 being fixed<')
+    expect(html).not.toContain('0 open')
   })
 
   it('moves a landed fix out of the list and into the settled half', () => {

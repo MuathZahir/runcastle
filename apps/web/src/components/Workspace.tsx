@@ -39,6 +39,7 @@ import {
   freshness,
   isReadonlyView,
   lapTicketCount,
+  lastTestDriveLap,
   latestRun,
   mapDocPath,
   mergeSummary,
@@ -51,7 +52,6 @@ import {
   specDocPath,
   stampedReview,
   startOpensChat,
-  testDriveTaken,
   ticketCountText,
   ticketsAreBody,
   unresolvedMergeConflict,
@@ -176,12 +176,12 @@ export function Workspace({
   const resumeFailed = useResumeFailedAlert(featureId)
   // The review bar has to know two things the feature row cannot tell it: whether
   // a merge conflict is standing (it must not recommend a merge that will fail
-  // again — findings F8) and whether this branch was ever test-driven (the merge
-  // confirmation reports it — F21). Both live in the event feed, same query key
-  // as every other reader, so this shares one poll.
+  // again — findings F8) and which lap this branch was last test-driven in (the
+  // merge confirmation reports it — F21, decision 8a). Both live in the event
+  // feed, same query key as every other reader, so this shares one poll.
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
-  const driveTaken = testDriveTaken(events)
+  const driveLap = lastTestDriveLap(events)
   // Commit and file scale from git, for the confirmation's "what lands" row
   // (decision 31a) — the base it reports is also the branch the dialog names.
   // Only at review, where the dialog that reports it is: every earlier phase
@@ -1157,7 +1157,7 @@ export function Workspace({
             ...(delta.data ? { delta: delta.data } : {}),
             tickets: full.tickets,
             lap: feature.lap,
-            driveTaken,
+            driveLap,
             openNotes,
             // A project drive of this project serves from the checkout the
             // merge commits in, so the server stops it first (decision 6).

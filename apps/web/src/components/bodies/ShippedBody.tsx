@@ -12,10 +12,10 @@ import {
   lastTestDriveLap,
   latestRun,
   outcomeDocPath,
-  reviewChecks,
   sessionActive,
   shippedChatSessions,
   specDocPath,
+  stampedOutcome,
   stampedReview,
 } from '../../lib/feature-ui'
 import { relTimeAgo } from '../../lib/format'
@@ -26,7 +26,7 @@ import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { ReviewTrail } from '../review/ReviewTrail'
-import { CheckDetails, LapStory, StatusStrip } from '../review/StatusStrip'
+import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { DocPeek } from '../DocPeek'
 import { SessionPanel } from '../SessionPanel'
@@ -42,7 +42,7 @@ import { SessionPanel } from '../SessionPanel'
  * Nothing here acts. `readonly` is passed to the bands the review page shares
  * with this one, which is what keeps a history view from offering to launch an
  * agent (decision 33a); the stage plays with Annotate gone, and the facts state
- * what WAS done ("Taken · lap 2") rather than instructing anyone to do it.
+ * what WAS done (Test drive "Lap 2") rather than instructing anyone to do it.
  */
 export function ShippedBody({
   full,
@@ -78,14 +78,6 @@ export function ShippedBody({
   const chats = shippedChatSessions(full.sessions)
   const liveChats = bodySessions(chats.filter(sessionActive), chatDocked)
   const run = latestRun(runs)
-  // The commit row is dropped on purpose: it counts what the branch is ahead
-  // of its base, which is zero once the branch has landed. The scale of what
-  // shipped lives in the outcome doc.
-  const checks = reviewChecks({
-    tickets,
-    run,
-    findings: findings.data?.findings.length,
-  }).filter((row) => row.key !== 'changes')
   const account = lapAccount(tickets, feature.lap)
   const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
@@ -97,10 +89,10 @@ export function ShippedBody({
         <div className="min-w-0 flex-1">
           <StatusStrip
             artifact={stamped}
+            outcome={stampedOutcome({ passes: rows, tickets })}
             currentLap={feature.lap}
             landedSince={stamped?.landedSince ?? 0}
             tickets={tickets}
-            checks={checks}
             runState={run?.status ?? 'no run recorded'}
             shipped
             driveLap={lastTestDriveLap(events)}
@@ -162,7 +154,6 @@ export function ShippedBody({
       <div className="flex flex-col [&>*:last-child]:border-b [&>*:last-child]:border-border-subtle">
         <DriveInstructions text={project?.driveInstructions} />
         <FullAccounts account={account} tickets={tickets} observations={observations} />
-        <CheckDetails checks={checks} />
         <LapStory
           lap={lapChip(tickets, { lap: feature.lap, lapSessionRan: true })}
           laterLaps={deferredScope(specQ.data?.content)}

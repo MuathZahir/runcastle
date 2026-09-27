@@ -1,20 +1,20 @@
 import type { TicketKind } from '@runcastle/core'
-import { Button, CheckLine, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
-import { IconCube, IconList, IconPlay, IconShield, IconUndo } from '../../icons'
-import type { CheckRow, CheckTone, LapChipFigure, ReviewArtifactFigure } from '../../lib/feature-ui'
+import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
+import { IconCube, IconPlay, IconShield, IconUndo } from '../../icons'
+import type { CheckTone, LapChipFigure, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
 import { statusProperties, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
 
 /**
  * The returning human's TL;DR (decision 18b), as facts rather than pills
- * (DESIGN.md: facts are text, not boxes): Review · Checks · Test drive ·
- * Tickets · Laps, each a key and a glyph-plus-words value, from
+ * (DESIGN.md: facts are text, not boxes): Review · Tickets · Test drive (·
+ * Burn), each a key and a glyph-plus-words value, from
  * {@link statusProperties} — so the words and their order live in one tested
  * derivation rather than in this markup.
  *
- * "No review ran this lap" is the review row's quiet limiting case, and the
- * unverified-drive caveat is the Test drive row's sub-note (the whole sentence
- * is its tooltip) — neither is a chip of its own any more.
+ * Each row owns its facts (decision 4): there is no Checks tally restating
+ * them, and the unverified-drive caveat is the Test drive row's sub-note (the
+ * whole sentence is its tooltip).
  *
  * On review the list is the page's ONE state line (decision 8), so the two
  * things a human can start from here — their own Test drive and another
@@ -40,7 +40,7 @@ function toItem(p: StatusProperty): PropertyItem {
     </span>
   )
   const sub = p.sub && p.detail ? <span className="text-warning" title={p.detail}>{p.sub}</span> : p.sub
-  const leading = p.key === 'tickets' ? <IconCube /> : p.key === 'laps' ? <IconUndo /> : undefined
+  const leading = p.key === 'tickets' ? <IconCube /> : undefined
   return {
     label: p.label,
     value,
@@ -51,10 +51,10 @@ function toItem(p: StatusProperty): PropertyItem {
 
 export function StatusStrip({
   artifact,
+  outcome,
   currentLap,
   landedSince,
   tickets,
-  checks,
   runState,
   verification,
   driveLap,
@@ -67,11 +67,12 @@ export function StatusStrip({
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
   artifact: Pick<ReviewArtifactFigure, 'lap'> | null
+  /** What that pass amounted to — the Review row's verdict ({@link stampedOutcome}). */
+  outcome?: TrailOutcome
   currentLap: number
   /** Implementation tickets that landed after that pass — decision 19's stamp. */
   landedSince: number
   tickets: readonly { kind?: TicketKind; status: string; lap?: number }[]
-  checks: readonly CheckRow[]
   runState: string
   verification?: { state: 'running' | 'failed'; reason?: string }
   /** The lap the branch was last driven in; omit where the strip is not to say. */
@@ -114,10 +115,10 @@ export function StatusStrip({
 }) {
   const properties = statusProperties({
     artifact,
+    ...(outcome ? { outcome } : {}),
     currentLap,
     landedSince,
     tickets,
-    checks: { passed: checks.filter((row) => row.tone === 'ok').length, total: checks.length },
     ...(shipped ? {} : { runState }),
     ...(verification ? { verification } : {}),
     ...(driveLap === undefined ? {} : { driveLap }),
@@ -157,22 +158,6 @@ export function StatusStrip({
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * Every review figure behind the Checks row, read once — so it is a closed
- * disclosure at the foot of the page, not a popover on a pill.
- */
-export function CheckDetails({ checks }: { checks: readonly CheckRow[] }) {
-  if (checks.length === 0) return null
-  // The count is the Checks property's, above — said once. This is its detail.
-  return (
-    <Disclosure title="Check details" icon={<IconList />}>
-      {checks.map((row) => (
-        <CheckLine key={row.key} row={row} />
-      ))}
-    </Disclosure>
   )
 }
 

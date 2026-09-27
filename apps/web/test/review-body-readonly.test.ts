@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { DriveState, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
-import { lapChip, reviewChecks } from '../src/lib/feature-ui'
+import { lapChip } from '../src/lib/feature-ui'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 
 /**
@@ -143,7 +143,6 @@ function bands(readonly: boolean): ReactNode[] {
       currentLap: 2,
       landedSince: 0,
       tickets: [],
-      checks: reviewChecks({ tickets: [], commitCount: 2 }),
       runState: 'succeeded',
       // The one live control the state line carries — a history view is handed
       // none, exactly as the orchestrator omits it there.

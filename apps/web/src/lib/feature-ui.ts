@@ -10,7 +10,7 @@ export {
   findingOpenReason,
   lapTrail,
   unverifiedLap,
-  reviewChecks,
+  stampedOutcome,
   latestReview,
   stampedReview,
   freshness,

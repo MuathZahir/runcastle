@@ -45,9 +45,14 @@ export interface OpenWorkProps {
   scrollTo?: string | null
 }
 
-/** "2 open · 1 being fixed" — a defect the burn is fixing still needs watching but is not the human's problem. */
+/** Defects the running burn is fixing — still to watch, but not the human's problem. */
+function beingFixedCount(rows: readonly WorkRow[]): number {
+  return rows.filter((r) => r.item.kind === 'defect' && r.item.fixTicket).length
+}
+
+/** "2 open · 1 being fixed" — the expanded stage's rail, where the bar is out of sight. */
 export function openTally(rows: readonly WorkRow[]): string {
-  const beingFixed = rows.filter((r) => r.item.kind === 'defect' && r.item.fixTicket).length
+  const beingFixed = beingFixedCount(rows)
   const tally = [`${rows.length - beingFixed} open`]
   if (beingFixed > 0) tally.push(`${beingFixed} being fixed`)
   return tally.join(' · ')
@@ -63,12 +68,17 @@ export function openTally(rows: readonly WorkRow[]): string {
 export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkProps) {
   if (rows.length === 0 && readonly) return null
   const empty = rows.length === 0
+  // The open count is the next-step bar's, always visible above (review-arrival
+  // decision 3), so the heading says only what the bar does not (decision 8b).
+  const beingFixed = beingFixedCount(rows)
 
   return (
     <section id="open-work" className="flex flex-col gap-2">
       <div className="flex min-h-7 items-baseline gap-3">
         <h2 className="m-0 text-lg font-semibold text-text">{empty ? 'Notes' : 'Needs attention'}</h2>
-        {!empty && <span className="text-xs text-text-tertiary tabular-nums">{openTally(rows)}</span>}
+        {beingFixed > 0 && (
+          <span className="text-xs text-text-tertiary tabular-nums">{beingFixed} being fixed</span>
+        )}
       </div>
       {empty ? (
         <p className="m-0 text-sm text-text-tertiary">

@@ -13,13 +13,14 @@ import {
   lapAccount,
   lapAccountLine,
   lapChip,
+  lastTestDriveLap,
   latestReview,
   latestRun,
   liveSessionLine,
-  reviewChecks,
   reviewDriveDenial,
   slotHeldReason,
   specDocPath,
+  stampedOutcome,
   unverifiedLap,
   verificationState,
   type MergeConflictState,
@@ -41,7 +42,7 @@ import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { ReviewTrail } from '../review/ReviewTrail'
-import { CheckDetails, LapStory, StatusStrip } from '../review/StatusStrip'
+import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -109,13 +110,6 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
-  // Commits come from git, not from ticket commit rows (findings F23). Polled
-  // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
-  // only moves when a burn lands, and a human reads a page, not a ticker.
-  const commits = trpc.feature.commitCount.useQuery(
-    { featureId: feature.id },
-    { refetchInterval: useLivePoll(5000) },
-  )
   const drive = trpc.feature.driveInfo.useQuery(undefined, {
     refetchInterval: useLivePoll(),
   })
@@ -320,24 +314,11 @@ export function ReviewBody({
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const account = lapAccount(tickets, feature.lap)
-  // Every count on this page is the server's own, scoped to THIS lap
-  // (decisions #5) — the inflated all-laps figure is what sent the human back
-  // through Iterate over defects a later lap had already answered. So the review
-  // row's finding count is read off the summary rather than measured on the
-  // `findings` array, which spans every lap the feature has run.
-  const summary = findings.data?.summary
-  const lapFindings = summary ? summary.found + summary.observations : undefined
   // The lap at one line (decision 8): the review agent's digest is written to
   // open with exactly this line. With no digest, the counts say what happened
-  // instead — the same figures the bar is holding.
-  const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
-
-  const checks = reviewChecks({
-    tickets,
-    run,
-    commitCount: commits.data?.count,
-    findings: lapFindings,
-  })
+  // instead — the same figures the bar is holding, scoped to THIS lap by the
+  // server (decisions #5).
+  const accountLine = lapAccountLine(account) ?? findingCountsLine(findings.data?.summary)
   const lapFigure = lapChip(tickets, {
     lap: feature.lap,
     // The lap's own session has run once it has emitted this lap's tickets —
@@ -465,12 +446,13 @@ export function ReviewBody({
         {
           <StatusStrip
             artifact={stamped}
+            outcome={stampedOutcome({ passes: rows, tickets })}
             currentLap={feature.lap}
             landedSince={stamped?.landedSince ?? 0}
             tickets={tickets}
-            checks={checks}
             runState={run?.status ?? 'no run recorded'}
             verification={verificationState(tickets)}
+            driveLap={lastTestDriveLap(events)}
             // History states what was; a caveat about the next drive is the live page's.
             {...(readonly ? {} : { unverifiedKeys })}
             {...(readonly ? {} : { driving: driveUp })}
@@ -536,7 +518,6 @@ export function ReviewBody({
                 ) : null
               }
             />
-            <CheckDetails checks={checks} />
             <LapStory lap={lapFigure} laterLaps={laterLaps} currentLap={feature.lap} readonly={readonly} />
           </div>
         }

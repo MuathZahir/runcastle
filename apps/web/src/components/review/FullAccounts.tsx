@@ -11,18 +11,17 @@ export interface AccountTicket {
   title: string
   kind?: TicketKind
   lap: number
-  passKind?: 'review' | 'verification'
   digest?: string
 }
 
 /**
  * ONE collapsed disclosure at the bottom of the review page (decision 8).
  *
- * Everything written in words about this lap is behind it: the review pass's
- * digest in full — the page lifts its first line out and renders that alone
- * above as the lap account, and this is where the account it opens is read —
- * every burner's own account of its ticket, the work already dealt with, and
- * the observations. It used to OPEN the page: a wall of ~200-word
+ * Everything written in words about this lap is behind it: the lap's write-up
+ * in full — the page lifts its first line out and renders that alone above as
+ * the lap account, and this is where the account it opens is read — every
+ * burner's own account of its ticket, the work already dealt with, and the
+ * observations. It used to OPEN the page: a wall of ~200-word
  * digests above the evidence, which is the "far too much text… confusing rather
  * than informative" the human named. The text is not deleted, it is demoted;
  * state and the open work lead, prose follows.
@@ -49,8 +48,10 @@ export function FullAccounts({
   /** The rows already carried, quick-fixed or handled, or null when there are none. */
   carried?: ReactNode
 }) {
+  // A review pass's digest is not listed (decision 6c): the lap write-up above
+  // is that account, and the trail's pass carries its one line.
   const digests = tickets
-    .filter((ticket) => (ticket.digest ?? '').trim().length > 0)
+    .filter((ticket) => ticket.kind !== 'review' && (ticket.digest ?? '').trim().length > 0)
     .sort((a, b) => a.seq - b.seq)
   const hasDigest = !!account || digests.length > 0
   if (!hasDigest && !carried && observations.length === 0) return null
@@ -77,14 +78,7 @@ export function FullAccounts({
                   <div key={ticket.seq}>
                     <div className="text-sm font-medium text-text">
                       #{ticket.seq} {ticket.title}
-                      <span className="ml-2 font-normal text-text-tertiary">
-                        lap {ticket.lap}
-                        {ticket.kind === 'review'
-                          ? ticket.passKind === 'verification'
-                            ? ' · verification pass'
-                            : ' · review pass'
-                          : ''}
-                      </span>
+                      <span className="ml-2 font-normal text-text-tertiary">lap {ticket.lap}</span>
                     </div>
                     <Markdown source={ticket.digest!.trim()} className="mt-2" />
                   </div>

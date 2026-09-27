@@ -1,7 +1,7 @@
 import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { holderSentence } from './drive'
-import type { MergeConflictState } from './gates'
+import { testDriveFigure, type MergeConflictState } from './gates'
 import { noun } from './laps'
 import { parseMapSections } from './map'
 import type { CheckRow, Freshness } from './review'
@@ -203,7 +203,8 @@ export function mergeSummary(input: {
   tickets?: readonly MergeTicketFigure[]
   /** The lap the feature is on; earlier laps' pending tickets are the debt. */
   lap?: number
-  driveTaken: boolean
+  /** The lap the branch was last test-driven in, null when it never was. */
+  driveLap: number | null
   /** Notes captured during the test drive that were never ticked off. */
   openNotes?: number
   /**
@@ -222,9 +223,14 @@ export function mergeSummary(input: {
   burning?: boolean
 }): MergeSummary {
   const tickets = input.tickets ?? []
-  const drive: CheckRow = input.driveTaken
-    ? { key: 'test drive', value: 'taken', tone: 'ok' }
-    : { key: 'test drive', value: 'never test-driven', tone: 'warn' }
+  // The status row's own formula (decision 8a), so the two cannot disagree. A
+  // branch never driven is amber here rather than quiet: this is the last door.
+  const driven = testDriveFigure(input.driveLap, input.lap ?? 1)
+  const drive: CheckRow = {
+    key: 'test drive',
+    value: driven.sub ? `${driven.value} · ${driven.sub}` : driven.value,
+    tone: driven.tone === 'ok' ? 'ok' : 'warn',
+  }
   const review: CheckRow = {
     key: 'review',
     value: input.freshness.text,

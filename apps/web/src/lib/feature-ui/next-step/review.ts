@@ -259,15 +259,13 @@ export function resolveReview(input: ResolverInput): NextStep {
   // no defect is open, and nothing was checked. Nothing is blocked and Merge is
   // still one click away — what changes is that it is no longer THE click, and
   // the bar carries no primary at all here, because the one action that answers
-  // this state is the Agentic review the page's own banner leads with.
+  // this state is the Agentic review the page's own banner leads with. That
+  // banner also says, with its reason, that nothing was verified — so the bar
+  // offers only the next action (simplify-the-pages decision 9d).
   if (ctx.unverifiedReview) {
-    const reason = ctx.unverifiedReview.reason?.trim()
     return {
       kick: 'NEXT STEP',
-      title: 'Nothing was verified this lap',
-      desc:
-        `The review pass produced no evidence${reason ? ` — ${reason}` : ''}. ` +
-        'Run another agentic review from the review page, or drive the branch yourself, before you ship.',
+      title: 'Run another review, or drive the branch yourself, before you ship',
       secondary: [{ label: 'Merge & ship', kind: 'merge' }, ...burnAction, testDriveAction, ...iterate],
       busy: false,
       counts,

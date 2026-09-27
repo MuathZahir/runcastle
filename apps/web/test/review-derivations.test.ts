@@ -1,5 +1,91 @@
 import { describe, expect, it } from 'vitest'
-import { freshness, latestReview, reviewOutcome, reviewWalkthroughUrl, statusChips } from '../src/lib/feature-ui/review'
+import {
+  freshness,
+  latestReview,
+  reviewOutcome,
+  reviewWalkthroughUrl,
+  stampedOutcome,
+  statusChips,
+  statusProperties,
+  type ReviewPassFigure,
+} from '../src/lib/feature-ui/review'
+
+/**
+ * simplify-the-pages decisions 3, 4, 6a–b, 8a: the Status tier states each fact
+ * once. Review owns the verdict and its freshness; there is no Checks, Laps or
+ * Walkthrough row; Test drive is "test-driven on lap N".
+ */
+describe('statusProperties', () => {
+  const tickets = [{ kind: 'implementation' as const, status: 'done', lap: 2 }]
+  const base = {
+    artifact: { lap: 2 },
+    outcome: { kind: 'verified', mode: 'gates' } as const,
+    currentLap: 2,
+    landedSince: 0,
+    tickets,
+    driveLap: null,
+  }
+  const rowOf = (props: Parameters<typeof statusProperties>[0], key: string) =>
+    statusProperties(props).find((p) => p.key === key)
+
+  it('states Review, Tickets, Test drive and Burn on review — no Checks or Laps', () => {
+    expect(statusProperties({ ...base, runState: 'succeeded' }).map((p) => p.label)).toEqual([
+      'Review',
+      'Tickets',
+      'Test drive',
+      'Burn',
+    ])
+  })
+
+  it('states Review, Tickets and Test drive on shipped — no Checks, Laps or Walkthrough', () => {
+    const props = { ...base, driveLap: 2, noWalkthrough: true, runState: 'succeeded', shipped: true }
+    expect(statusProperties(props).map((p) => p.label)).toEqual(['Review', 'Tickets', 'Test drive'])
+  })
+
+  describe('the Review row', () => {
+    it('says a verified pass on this build with its mode', () => {
+      expect(rowOf(base, 'review')).toMatchObject({ value: 'Verified', sub: 'gates mode · this build', tone: 'ok' })
+    })
+
+    it('never reads "Reviewed · this build" over a pass that verified nothing', () => {
+      const row = rowOf({ ...base, outcome: { kind: 'unverified', line: null, reason: null } }, 'review')
+      expect(row).toMatchObject({ value: 'Unverified', sub: 'nothing verified', tone: 'warn' })
+    })
+
+    it('ambers a verified pass later work has left behind, laps ago and what landed since', () => {
+      const row = rowOf({ ...base, artifact: { lap: 1 }, currentLap: 3, landedSince: 3 }, 'review')
+      expect(row).toMatchObject({ value: 'Verified 2 laps ago', sub: '3 landed since', tone: 'warn' })
+    })
+
+    it('says "Not reviewed yet" when no pass has finished', () => {
+      expect(rowOf({ ...base, artifact: null, outcome: { kind: 'none' } }, 'review')?.value).toBe('Not reviewed yet')
+    })
+
+    it('reads the verdict off the stamped pass', () => {
+      const pass = (over: Partial<ReviewPassFigure>): ReviewPassFigure => ({
+        ticketId: 't1',
+        seq: 1,
+        lap: 1,
+        passKind: 'review',
+        reviewMode: 'gates',
+        reviewVerdict: 'verified',
+        reviewVerdictReason: null,
+        completedAt: 10,
+        videoUrl: null,
+        ...over,
+      })
+      const passes = [pass({}), pass({ ticketId: 't2', seq: 2, lap: 2, reviewVerdict: 'unverified', completedAt: 20 })]
+      expect(stampedOutcome({ passes, tickets: [] }).kind).toBe('unverified')
+      expect(stampedOutcome({ passes: [], tickets: [] }).kind).toBe('none')
+    })
+  })
+
+  it('reads the Test drive row as the lap it was taken in, amber when a later lap went undriven', () => {
+    expect(rowOf({ ...base, driveLap: 1 }, 'drive')).toMatchObject({ value: 'Lap 1', sub: 'not since', tone: 'warn' })
+    expect(rowOf({ ...base, driveLap: 2 }, 'drive')).toMatchObject({ value: 'Lap 2', tone: 'ok' })
+    expect(rowOf(base, 'drive')).toMatchObject({ value: 'Not run' })
+  })
+})
 
 describe('latest review evidence', () => {
   it('orders by completion time, then sequence, with null completion losing', () => {

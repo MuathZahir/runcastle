@@ -13,7 +13,8 @@ import type { RunOption } from './RunPicker'
  * the run-level controls on the heading's right. Nothing else: the lanes below
  * are the page's spine, and a header that grew a summary of them would be the
  * digest wall this redesign is removing from the review page. The one addition
- * is a failed run's recorded reason, as a prose line under the facts.
+ * is a failed PAST run's recorded reason, as a prose line under the facts — the
+ * latest run's is on the next-step bar, which speaks only of the latest.
  *
  * The counts are {@link runHeadline}'s, so a stopped lane is never reported as a
  * failure and a solo per-ticket retry says so instead of speaking whole-run
@@ -43,8 +44,9 @@ export function RunHeader({
   elapsed: string
   status?: RunStatus
   /**
-   * The run's recorded one-liner, said under a Failed chip — a run that died
-   * in preflight otherwise reads "Failed · 9s · 0 of 2 landed" and nothing else.
+   * The run's recorded one-liner, said under a Failed chip in record mode — a
+   * past run that died in preflight otherwise reads "Failed · 9s · 0 of 2
+   * landed" and nothing else.
    */
   summary?: string
   /** Tickets done out of the lanes shown. */
@@ -119,8 +121,10 @@ export function RunHeader({
         />
       </div>
       {/* A sentence, not a fact: its own wrapping line, so the fix it ends on
-          ("…from Settings → Burns") is never the part a truncating fact clips. */}
-      {status === 'failed' && summary && (
+          ("…from Settings → Burns") is never the part a truncating fact clips.
+          Only for a past run: the latest run's reason is the next-step bar's,
+          said once there (simplify-the-pages decision 6d). */}
+      {status === 'failed' && summary && onBackToLatest && (
         <p className="m-0 text-sm text-pretty text-text-secondary">
           <MessageWithSettingsLink text={summary} />
         </p>
