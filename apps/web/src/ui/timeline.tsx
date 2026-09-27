@@ -51,14 +51,16 @@ const MILESTONE_TONE: Record<TimelineTone, string> = {
 }
 
 /**
- * One step on a {@link Timeline}. `title` and `aside` share the heading line
- * (the aside right-aligned: a time, a button); `children` sit under it.
+ * One step on a {@link Timeline}. `title`, `meta` and `aside` share the heading
+ * line — the meta in quiet 12px after the title, the aside right-aligned (a
+ * time, a button); `children` sit under it.
  */
 export function TimelineNode({
   variant = 'ring',
   tone = 'neutral',
   icon,
   title,
+  meta,
   aside,
   children,
 }: {
@@ -68,6 +70,7 @@ export function TimelineNode({
   /** A milestone's glyph. */
   icon?: ReactNode
   title: ReactNode
+  meta?: ReactNode
   aside?: ReactNode
   children?: ReactNode
 }) {
@@ -91,6 +94,7 @@ export function TimelineNode({
       </span>
       <div className="flex min-h-[30px] flex-wrap items-center gap-x-3 gap-y-1">
         <span className={cx(milestone ? 'text-base font-medium text-text' : 'text-sm text-text-secondary')}>{title}</span>
+        {meta && <span className="text-xs text-text-secondary">{meta}</span>}
         {aside && <span className="ml-auto flex items-center gap-2">{aside}</span>}
       </div>
       {children}

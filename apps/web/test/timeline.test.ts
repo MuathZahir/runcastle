@@ -21,6 +21,7 @@ describe('Timeline', () => {
           tone: 'success',
           icon: createElement('svg'),
           title: 'Review #2',
+          meta: 'gates mode',
           aside: createElement('button', null, 'Recording'),
         }),
       ],
@@ -39,6 +40,7 @@ describe('Timeline', () => {
   it('keeps the nodes in the order given, with their bodies and asides', () => {
     expect(html.indexOf('Burned 1 ticket')).toBeLessThan(html.indexOf('#1 work'))
     expect(html.indexOf('#1 work')).toBeLessThan(html.indexOf('Review #2'))
+    expect(html.indexOf('Review #2')).toBeLessThan(html.indexOf('gates mode'))
     expect(html).toContain('<button>Recording</button>')
   })
 
