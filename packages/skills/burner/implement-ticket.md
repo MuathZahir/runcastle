@@ -52,7 +52,7 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 - **Report a gate that cannot run.** If a configured verify command cannot run at all because its command or required runtime is missing, write `GATE_UNRUNNABLE.md` at the sandbox root as JSON with the exact strings `{"command":"<exact command>","error":"<exact error>"}` (or a JSON array of those objects for multiple gates). Continue every other gate you can run. This is an environment report, never your ticket's failure, and it does not replace `BLOCKED.md` or `DIGEST.md`.
 
 - **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
-- **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once before your final commit, plus once more only if that run found something you then fixed.
+- **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once at the end — *after* your work is committed (see "How to work", step 4) — plus once more only if that run found something you then fixed.
 - **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, read the file at `HEAD` with `git show`, or — only if you genuinely need the old tree on disk — `git worktree add --detach <path> <sha>` a **detached** scratch checkout and `git worktree remove` it when done. Never `git worktree add <path> <branch>`: that checks the branch out, and a worktree left holding a branch is one nobody else can check it out in.
 
 ## How to work
@@ -73,11 +73,13 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 
    A half-done ticket with four green commits is a good outcome the next iteration can finish. A nearly-done ticket with zero commits is a total loss.
 
-5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find and re-run typecheck + tests:
+   **Commit before the long final checks.** The full typecheck and test suite are the commands most likely to kill your process — in real burns they were OOM-killed mid-run, and every agent that ran them before committing lost a finished, passing fix in all of its iterations. So once the targeted tests for your change pass, commit it *before* you start the full typecheck and test suite. If those checks then find something, fix it in a follow-up commit. A death during the long checks must never cost the work itself.
+
+5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find — and, as in step 4, once the targeted tests for those fixes pass, commit the fixes *before* you re-run the full typecheck and test suite:
    - **Standards** — does the diff follow the documented standards above and the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.
    - **Spec = this ticket** — is every acceptance criterion actually met, and is there **nothing in the diff the ticket did not ask for**? Missing and extra both count.
 
-   A review agent runs against your diff at the end of this burn, along exactly these two axes and against exactly those standards files. Everything you catch here is a finding that never becomes someone's fix ticket. Commit the fixes.
+   A review agent runs against your diff at the end of this burn, along exactly these two axes and against exactly those standards files. Everything you catch here is a finding that never becomes someone's fix ticket.
 
 6. **Write your digest — the last thing you do.** Once every acceptance criterion passes and the self-review fixes are committed, write `DIGEST.md` (see "Where to work" for exactly where) as your final act before printing `<promise>COMPLETE</promise>`. Roughly 10–15 lines, three parts:
    - **What was done** — past tense, what you actually built, *including where it deviated* from the approach the ticket described.
