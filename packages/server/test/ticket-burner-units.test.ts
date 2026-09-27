@@ -248,6 +248,10 @@ describe('renderTicketPrompt', () => {
     expect(template).toMatch(/commit it \*before\* you start the full typecheck and test suite/i)
     expect(template).toMatch(/follow-up commit/i)
     expect(template).not.toMatch(/full suite once before your final commit/i)
+    // Self-review is where the agent most wants the full suite again — its
+    // fixes must be committed before that re-run too.
+    expect(template).not.toMatch(/re-run typecheck \+ tests/i)
+    expect(template).toMatch(/commit the fixes \*before\* you re-run the full typecheck and test suite/i)
   })
 
   it('makes the parent the only writer and bounds read-only subagent reports', () => {
