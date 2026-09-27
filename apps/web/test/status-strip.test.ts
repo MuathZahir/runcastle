@@ -87,10 +87,11 @@ describe('StatusStrip', () => {
     expect(render({ tickets: rows })).toContain('1 of 1 landed')
   })
 
+  /** simplify-the-pages decision 2: a waived ticket leaves the total. */
   it('counts a cancelled ticket as waived rather than as landed or failed', () => {
     const rows = [ticket(), ticket({ status: 'cancelled' })]
     const html = render({ tickets: rows })
-    expect(html).toContain('1 of 2 landed')
+    expect(html).toContain('1 of 1 landed')
     expect(html).toContain('1 waived')
   })
 

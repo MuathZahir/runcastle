@@ -1,4 +1,5 @@
-import type { FindingResolvedBy, FindingStatus, TicketKind } from '@runcastle/core'
+import { lapWorkTickets, ticketTally } from '@runcastle/core'
+import type { FindingResolvedBy, FindingStatus, TallyTicket, TicketKind } from '@runcastle/core'
 import { testDriveFigure } from './gates'
 import { unverifiedWarning } from './internal'
 
@@ -265,6 +266,7 @@ function reviewProperty(input: {
   currentLap: number
   landedSince: number
   verification?: { state: 'running' | 'failed'; reason?: string }
+  building?: StatusBuilding
 }): StatusProperty {
   const row = { key: 'review', label: 'Review' } as const
   const v = input.verification
@@ -277,7 +279,8 @@ function reviewProperty(input: {
   }
   // Amber, not quiet: on review and shipped a missing review means nothing was
   // checked for the human, and this row is where that fact now lives (d4).
-  if (!input.artifact) return { ...row, value: 'Not reviewed yet', tone: 'warn' }
+  // While the burn runs, the review is simply still to come.
+  if (!input.artifact) return { ...row, value: 'Not reviewed yet', tone: input.building ? 'idle' : 'warn' }
   const outcome = input.outcome ?? { kind: 'none' }
   if (outcome.kind === 'unverified') return { ...row, value: 'Unverified', sub: 'nothing verified', tone: 'warn' }
   if (outcome.kind === 'could-not-run') return { ...row, value: 'Could not run', sub: 'nothing verified', tone: 'warn' }
@@ -294,10 +297,22 @@ function reviewProperty(input: {
 }
 
 /**
- * The review and shipped Status tier as a property list: Review · Tickets ·
- * Test drive (· Burn on the live page). Each row owns its facts (decision 4):
- * a check that is not fine turns its own row amber or red rather than feeding
- * a separate tally. Words, not glyph soup — "Verified", "Not run", "this build".
+ * The building page's Status tier (decision 9a): the burn on screen, which the
+ * run header no longer states.
+ */
+export interface StatusBuilding {
+  /** How long the burn has run, or ran — said beside its status. */
+  elapsed?: string
+  /** The lap the burn on screen belongs to, when a past run's record is up. */
+  lap?: number
+}
+
+/**
+ * The Status tier as a property list: Review · Tickets · Test drive (· Burn on
+ * the live page) on review and shipped, and Burn · Tickets · Review while
+ * building (decision 9a). Each row owns its facts (decision 4): a check that is
+ * not fine turns its own row amber or red rather than feeding a separate tally.
+ * Words, not glyph soup — "Verified", "Not run", "this build".
  */
 export function statusProperties(input: {
   artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
@@ -305,7 +320,7 @@ export function statusProperties(input: {
   outcome?: TrailOutcome
   currentLap: number
   landedSince: number
-  tickets: readonly { kind?: TicketKind; status: string; lap?: number; landedLap?: number }[]
+  tickets: readonly TallyTicket[]
   /** The burn's status; omitted on the shipped record, where it is history. */
   runState?: string
   verification?: { state: 'running' | 'failed'; reason?: string }
@@ -317,54 +332,78 @@ export function statusProperties(input: {
   noWalkthrough?: boolean
   unverifiedKeys?: readonly string[]
   shipped?: boolean
+  building?: StatusBuilding
 }): StatusProperty[] {
-  const out: StatusProperty[] = [reviewProperty(input)]
+  const review = reviewProperty(input)
+  const tickets = ticketsProperty(input.tickets, input.building?.lap ?? input.currentLap)
+  const burn =
+    input.shipped || input.runState === undefined ? [] : [burnProperty(input.runState, input.building?.elapsed)]
+  // While building the burn is the page, so it leads, and no drive is due yet.
+  if (input.building) return [...burn, tickets, review]
+  return [review, tickets, ...driveProperty(input), ...burn]
+}
 
-  const implementation = input.tickets.filter(
-    (t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap,
-  )
-  const landed = implementation.filter((t) => t.status === 'done').length
-  const waived = implementation.filter((t) => t.status === 'cancelled').length
-  const failed = implementation.filter((t) => t.status === 'failed').length
-  const ticketNotes = [...(failed > 0 ? [`${failed} failed`] : []), ...(waived > 0 ? [`${waived} waived`] : [])]
-  out.push({
+/**
+ * The Tickets row: the one ticket count (decision 2) — this lap's work tickets,
+ * the waived ones out of the total and said on their own.
+ */
+function ticketsProperty(tickets: readonly TallyTicket[], lap: number): StatusProperty {
+  const tally = ticketTally(tickets, lap)
+  const work = lapWorkTickets(tickets, lap)
+  const failed = work.filter((t) => t.status === 'failed').length
+  const burning = work.filter((t) => t.status === 'burning').length
+  const notes = [
+    ...(failed > 0 ? [`${failed} failed`] : []),
+    ...(burning > 0 ? [`${burning} burning`] : []),
+    ...(tally.waived > 0 ? [`${tally.waived} waived`] : []),
+  ]
+  return {
     key: 'tickets',
     label: 'Tickets',
-    value: `${landed} of ${implementation.length} landed`,
-    ...(ticketNotes.length > 0 ? { sub: ticketNotes.join(' · ') } : {}),
-    tone: failed > 0 ? 'danger' : waived > 0 ? 'warn' : 'idle',
-  })
+    value: `${tally.landed} of ${tally.total} landed`,
+    ...(notes.length > 0 ? { sub: notes.join(' · ') } : {}),
+    tone: failed > 0 ? 'danger' : tally.waived > 0 ? 'warn' : 'idle',
+  }
+}
 
+/** The Test drive row, or none where the drive is not this list's to report. */
+function driveProperty(input: {
+  currentLap: number
+  driveLap?: number | null
+  driving?: boolean
+  noWalkthrough?: boolean
+  unverifiedKeys?: readonly string[]
+}): StatusProperty[] {
+  if (input.driving) return [{ key: 'drive', label: 'Test drive', value: 'Running', tone: 'ok' }]
+  if (input.driveLap === undefined) return []
   const unverified = input.unverifiedKeys ?? []
-  if (input.driving) {
-    out.push({ key: 'drive', label: 'Test drive', value: 'Running', tone: 'ok' })
-  } else if (input.driveLap !== undefined) {
-    const driven = testDriveFigure(input.driveLap, input.currentLap)
-    const why = input.driveLap === null && input.noWalkthrough ? 'the review reported without driving' : undefined
-    const caveat = unverified.length > 0
-      ? `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`
-      : undefined
-    const sub = [driven.sub, why, caveat].filter(Boolean).join(' · ')
-    out.push({
+  const driven = testDriveFigure(input.driveLap, input.currentLap)
+  const why = input.driveLap === null && input.noWalkthrough ? 'the review reported without driving' : undefined
+  const caveat = unverified.length > 0
+    ? `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`
+    : undefined
+  const sub = [driven.sub, why, caveat].filter(Boolean).join(' · ')
+  return [
+    {
       key: 'drive',
       label: 'Test drive',
       value: driven.value,
       ...(sub ? { sub } : {}),
       ...(caveat ? { detail: unverifiedWarning([...unverified]) } : {}),
       tone: caveat ? 'warn' : driven.tone,
-    })
-  }
+    },
+  ]
+}
 
-  if (!input.shipped && input.runState !== undefined) {
-    const run = input.runState
-    out.push({
-      key: 'run',
-      label: 'Burn',
-      value: run === 'no run recorded' ? 'None recorded' : run.charAt(0).toUpperCase() + run.slice(1),
-      tone: run === 'succeeded' ? 'ok' : run === 'failed' ? 'danger' : run === 'no run recorded' ? 'idle' : 'warn',
-    })
+/** The Burn row: the run's status, and while building how long it has taken. */
+function burnProperty(run: string, elapsed?: string): StatusProperty {
+  return {
+    key: 'run',
+    label: 'Burn',
+    value: run === 'no run recorded' ? 'None recorded' : run.charAt(0).toUpperCase() + run.slice(1),
+    ...(elapsed ? { sub: elapsed } : {}),
+    tone: run === 'succeeded' ? 'ok' : run === 'failed' ? 'danger' : run === 'no run recorded' ? 'idle' : 'warn',
   }
-  return out
 }
 
 /** One implementation ticket's own account, as the fallback block lists it. */

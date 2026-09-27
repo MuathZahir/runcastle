@@ -1,14 +1,15 @@
-import type { TicketKind } from '@runcastle/core'
+import type { TallyTicket } from '@runcastle/core'
 import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
 import { IconCube, IconPlay, IconShield, IconUndo } from '../../icons'
 import type { CheckTone, LapChipFigure, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
-import { statusProperties, type StatusProperty } from '../../lib/feature-ui/review'
+import { statusProperties, type StatusBuilding, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
 
 /**
  * The returning human's TL;DR (decision 18b), as facts rather than pills
  * (DESIGN.md: facts are text, not boxes): Review · Tickets · Test drive (·
- * Burn), each a key and a glyph-plus-words value, from
+ * Burn), or Burn · Tickets · Review while building, each a key and a
+ * glyph-plus-words value, from
  * {@link statusProperties} — so the words and their order live in one tested
  * derivation rather than in this markup.
  *
@@ -64,6 +65,7 @@ export function StatusStrip({
   shipped = false,
   driving,
   noWalkthrough = false,
+  building,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
   artifact: Pick<ReviewArtifactFigure, 'lap'> | null
@@ -72,7 +74,7 @@ export function StatusStrip({
   currentLap: number
   /** Implementation tickets that landed after that pass — decision 19's stamp. */
   landedSince: number
-  tickets: readonly { kind?: TicketKind; status: string; lap?: number }[]
+  tickets: readonly TallyTicket[]
   runState: string
   verification?: { state: 'running' | 'failed'; reason?: string }
   /** The lap the branch was last driven in; omit where the strip is not to say. */
@@ -112,6 +114,8 @@ export function StatusStrip({
   driving?: boolean
   /** No recording exists — the shipped record's Test drive row says why. */
   noWalkthrough?: boolean
+  /** The building page's strip: Burn · Tickets · Review (decision 9a). */
+  building?: StatusBuilding
 }) {
   const properties = statusProperties({
     artifact,
@@ -126,6 +130,7 @@ export function StatusStrip({
     ...(noWalkthrough ? { noWalkthrough } : {}),
     ...(unverifiedKeys ? { unverifiedKeys } : {}),
     shipped,
+    ...(building ? { building } : {}),
   })
 
   return (

@@ -42,6 +42,61 @@ describe('statusProperties', () => {
     expect(statusProperties(props).map((p) => p.label)).toEqual(['Review', 'Tickets', 'Test drive'])
   })
 
+  /** Decision 9a: building gets the same Status tier, led by the burn. */
+  describe('while building', () => {
+    const building = {
+      artifact: null,
+      outcome: { kind: 'none' } as const,
+      currentLap: 1,
+      landedSince: 0,
+      runState: 'running',
+      building: { elapsed: '12m' },
+      tickets: [
+        { kind: 'implementation' as const, status: 'done', lap: 1 },
+        { kind: 'implementation' as const, status: 'done', lap: 1 },
+        { kind: 'implementation' as const, status: 'burning', lap: 1 },
+        { kind: 'implementation' as const, status: 'pending', lap: 1 },
+        { kind: 'review' as const, status: 'pending', lap: 1 },
+      ],
+    }
+
+    it('states Burn, Tickets and Review — no Test drive', () => {
+      expect(statusProperties({ ...building, driveLap: null }).map((p) => p.label)).toEqual([
+        'Burn',
+        'Tickets',
+        'Review',
+      ])
+    })
+
+    it('says the burn’s status with its elapsed time beside it', () => {
+      expect(rowOf(building, 'run')).toMatchObject({ value: 'Running', sub: '12m' })
+      expect(rowOf({ ...building, runState: 'failed' }, 'run')).toMatchObject({ value: 'Failed', tone: 'danger' })
+    })
+
+    it('counts this lap’s work tickets, never the review pass', () => {
+      expect(rowOf(building, 'tickets')).toMatchObject({ value: '2 of 4 landed', sub: '1 burning' })
+    })
+
+    it('counts the lap a past run’s record belongs to', () => {
+      const tickets = [...building.tickets, { kind: 'implementation' as const, status: 'done', lap: 2 }]
+      const record = { ...building, tickets, currentLap: 2, building: { lap: 1 } }
+      expect(rowOf(record, 'tickets')?.value).toBe('2 of 4 landed')
+    })
+
+    it('reads a review still to come as quiet, not amber', () => {
+      expect(rowOf(building, 'review')).toMatchObject({ value: 'Not reviewed yet', tone: 'idle' })
+    })
+  })
+
+  it('leaves waived tickets out of the total and says them on their own', () => {
+    const waived = [...tickets, { kind: 'implementation' as const, status: 'cancelled', lap: 2 }]
+    expect(rowOf({ ...base, tickets: waived }, 'tickets')).toMatchObject({
+      value: '1 of 1 landed',
+      sub: '1 waived',
+      tone: 'warn',
+    })
+  })
+
   describe('the Review row', () => {
     it('says a verified pass on this build with its mode', () => {
       expect(rowOf(base, 'review')).toMatchObject({ value: 'Verified', sub: 'gates mode · this build', tone: 'ok' })
