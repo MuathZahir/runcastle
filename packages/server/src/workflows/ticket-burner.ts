@@ -88,7 +88,12 @@ import type {
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
 import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
-import { trackLastCommand, withInterruptedCommandNotes } from './interrupted-command'
+import {
+  type LastCommandRecord,
+  buildInterruptedCommandNotes,
+  trackLastCommand,
+  withInterruptedCommandNotes,
+} from './interrupted-command'
 import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
 import {
   BURN_CACHE_MOUNT,
@@ -2737,12 +2742,22 @@ export function retryDelayMs(attempt: number): number {
  * fresh agent has no memory of the dead one, so it must be told the history is
  * on its branch and that redoing (or reverting) it would burn the ticket.
  */
-export function buildRetryNotes(input: { error?: string; commitCount: number }): string {
+export function buildRetryNotes(input: {
+  error?: string
+  commitCount: number
+  /**
+   * What the dead attempt was still running. An attempt that died on the idle
+   * timeout or a non-zero agent exit throws out of `run()`, so the in-run
+   * iteration notes never see it — this carries the command across instead.
+   */
+  lastCommand?: LastCommandRecord
+}): string {
   const cause = input.error ? ` (${input.error})` : ''
   const commits =
     input.commitCount > 0
       ? `${input.commitCount} commit(s) from the previous attempt(s) are already on your branch — completed work, not noise.`
       : 'The previous attempt had not committed anything yet, so you are effectively starting clean.'
+  const interrupted = buildInterruptedCommandNotes(input.lastCommand)
   return [
     '## Recovery context — a previous attempt was interrupted',
     '',
@@ -2751,6 +2766,7 @@ export function buildRetryNotes(input: { error?: string; commitCount: number }):
     commits,
     '',
     'Before doing anything else, run `git log --oneline -15` and `git status` to see what was already completed. Build on that work — do NOT revert or redo existing commits. Uncommitted changes from the previous attempt were lost; only commits survived. If the ticket turns out to be fully implemented already, verify the acceptance criteria and finish normally.',
+    ...(interrupted ? ['', interrupted] : []),
   ].join('\n')
 }
 
@@ -5058,7 +5074,12 @@ async function burnTicket(
         const verdict = classifyTicketRunError(err, model.runtime, setupCommand)
         if (verdict === 'retryable' && attempt < maxAttempts) {
           const headline = errorHeadline(msg)
-          retryNotes = buildRetryNotes({ error: headline, commitCount: salvaged.length })
+          // Read before the next attempt's beginSetupSpan resets the tracker.
+          retryNotes = buildRetryNotes({
+            error: headline,
+            commitCount: salvaged.length,
+            lastCommand: lastCommand.last(),
+          })
           ctx.emitEvent({
             type: 'ticket.retrying',
             message: `ticket ${ticket.seq} attempt ${attempt}/${maxAttempts} died (${headline}) — retrying${salvaged.length > 0 ? ` from ${salvaged.length} preserved commit(s)` : ''}`,

@@ -5,6 +5,11 @@ import {
   trackLastCommand,
   withInterruptedCommandNotes,
 } from '../src/workflows/interrupted-command'
+import {
+  buildRetryNotes,
+  classifyTicketRunError,
+  errorHeadline,
+} from '../src/workflows/ticket-burner'
 
 /**
  * A burn iteration that died mid-command (OOM-killed full suite) must be named
@@ -131,5 +136,71 @@ describe('withInterruptedCommandNotes — per-iteration prompts', () => {
     print(agent)
 
     expect(prompts[1]).toBe('do the ticket')
+  })
+})
+
+/**
+ * An attempt whose `run()` rejects (idle timeout, agent CLI OOM-killed) never
+ * reaches a second in-run iteration, so the burner's attempt retry is the only
+ * place the command can cross over — before the next attempt resets the tracker.
+ */
+describe('a retried attempt — run() rejected mid-command', () => {
+  function idleTimeout(): Error {
+    const err = new Error(
+      'Agent idle for 600 seconds — no output received. Consider increasing the idle timeout with --idle-timeout.',
+    )
+    err.name = 'AgentIdleTimeoutError'
+    return err
+  }
+
+  /** The burner's attempt loop in miniature: run, and on a retryable death build the next prompt. */
+  async function nextAttemptPrompt(
+    events: AgentStreamEvent[],
+    failure: unknown,
+  ): Promise<string> {
+    const lastCommand = trackLastCommand()
+    const run = async (): Promise<never> => {
+      for (const event of events) lastCommand.onEvent(event)
+      throw failure
+    }
+    let retryNotes: string | undefined
+    try {
+      lastCommand.reset() // beginSetupSpan
+      await run()
+    } catch (err) {
+      expect(classifyTicketRunError(err, 'claude-code')).toBe('retryable')
+      const msg = err instanceof Error ? err.message : String(err)
+      retryNotes = buildRetryNotes({
+        error: errorHeadline(msg),
+        commitCount: 0,
+        lastCommand: lastCommand.last(),
+      })
+    }
+    lastCommand.reset() // the next attempt's beginSetupSpan
+    return retryNotes ? `do the ticket\n\n${retryNotes}` : 'do the ticket'
+  }
+
+  it('names the command an idle-timed-out attempt died running', async () => {
+    const prompt = await nextAttemptPrompt([tool('Bash', 'bun run test')], idleTimeout())
+    expect(prompt).toContain('## Recovery context — a previous attempt was interrupted')
+    expect(prompt).toContain('## Recovery context — the previous iteration died mid-command')
+    expect(prompt).toContain('    bun run test')
+  })
+
+  it('names it when the agent CLI itself was killed', async () => {
+    const prompt = await nextAttemptPrompt(
+      [text('targeted test passes'), tool('Bash', FULL_SUITE)],
+      new Error('claude-code exited with code 137:\nKilled'),
+    )
+    expect(prompt).toContain(`    ${FULL_SUITE}`)
+  })
+
+  it('adds only the generic notes when the attempt was not mid-command', async () => {
+    const prompt = await nextAttemptPrompt(
+      [tool('Bash', FULL_SUITE), text('all green')],
+      idleTimeout(),
+    )
+    expect(prompt).toContain('## Recovery context — a previous attempt was interrupted')
+    expect(prompt).not.toContain('died mid-command')
   })
 })
