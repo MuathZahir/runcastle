@@ -52,7 +52,6 @@ import {
   stampedReview,
   startOpensChat,
   testDriveTaken,
-  ticketCountText,
   ticketsAreBody,
   unresolvedMergeConflict,
   unverifiedLap,
@@ -904,10 +903,8 @@ export function Workspace({
       : shipped
         ? { tone: 'success', text: `Merged ${relTimeAgo(shipped)}` }
         : { text: `Started ${relTimeAgo(feature.createdAt)}` },
-    // Said once per page: planning's ledger has no count line of its own, so
-    // the meta carries it; the run header (build) and the property list
-    // (review, shipped) state it everywhere after.
-    ticketCount.total > 0 && bodyPhase === 'planning' && { text: ticketCountText(ticketCount) },
+    // No ticket count here (d6e): the ticket ledger's own count line, next to
+    // the tickets, states it in planning; the status rows state it after.
     feature.status === 'archived' && { tone: 'neutral', text: 'Archived' },
     feature.lap > 1 && { text: `Lap ${feature.lap}`, title: lapExplainer(feature.lap) },
   ]

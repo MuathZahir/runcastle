@@ -28,8 +28,16 @@ export interface TicketTally {
   waived: number
 }
 
+/**
+ * This lap's work tickets, waived ones included — the set the tally counts, for
+ * a surface that breaks it down further (the ledger's "1 failed · 2 burning").
+ */
+export function lapWorkTickets<T extends TallyTicket>(tickets: readonly T[], lap: number): T[] {
+  return tickets.filter((ticket) => ticket.kind !== 'review' && (ticket.landedLap ?? ticket.lap) === lap)
+}
+
 export function ticketTally(tickets: readonly TallyTicket[], lap: number): TicketTally {
-  const work = tickets.filter((ticket) => ticket.kind !== 'review' && (ticket.landedLap ?? ticket.lap) === lap)
+  const work = lapWorkTickets(tickets, lap)
   const waived = work.filter((ticket) => ticket.status === 'cancelled').length
   return {
     landed: work.filter((ticket) => ticket.status === 'done').length,

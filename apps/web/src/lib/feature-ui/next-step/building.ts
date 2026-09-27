@@ -21,8 +21,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     ctx,
     live,
     resumableChat,
-    ticketCount: t,
-    done,
+    tally: { landed, total: t },
     failed,
     pending,
     pendingTickets,
@@ -45,7 +44,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
     return {
       kick: 'IN PROGRESS',
       title: 'Burning tickets',
-      desc: `Burning ${t} ticket${t === 1 ? '' : 's'} — ${done} done${failed ? `, ${failed} failed` : ''}.`,
+      desc: `Burning ${t} ticket${t === 1 ? '' : 's'} — ${landed} done${failed ? `, ${failed} failed` : ''}.`,
       primary: { label: 'Cancel run', kind: 'cancelRun', danger: true },
       // The door this feature exists for: a burn used to refuse every terminal
       // because the run held the branch, so the bar had one button and the human
@@ -86,7 +85,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
   // an empty ledger whose own copy said the opposite (findings F25.1) — the
   // planning bar has always handled this state honestly, so this says the
   // same thing: the missing thing is tickets, and a session emits them.
-  if (t === 0) {
+  if (full.tickets.length === 0) {
     if (live) {
       return {
         kick: 'WAITING',

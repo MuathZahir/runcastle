@@ -15,6 +15,7 @@ import {
   ticketDurations,
   ticketModelChip,
   runHeadline,
+  runLanded,
   unrunnableGates,
 } from '../../lib/feature-ui'
 import { fmtDuration, shortSha } from '../../lib/format'
@@ -347,7 +348,7 @@ export function RunBody({
         }
         status={run.data?.status}
         summary={run.data?.summary}
-        landed={{ done: tickets.filter((t) => t.status === 'done').length, total: tickets.length }}
+        landed={runLanded(tickets, runs.data?.find((r) => r.id === shownRunId), lap)}
         burning={burning}
         busy={busy}
         cancelling={cancelRun.isPending}

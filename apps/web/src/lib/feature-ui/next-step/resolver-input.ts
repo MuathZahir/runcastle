@@ -1,4 +1,4 @@
-import type { DriveState } from '@runcastle/core'
+import type { DriveState, TicketTally } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import type { MergeConflictState } from '../gates'
 import type { BurnDurationStats, BurnInterruption } from '../run'
@@ -51,10 +51,9 @@ export interface ResolverInput {
   live: FeatureFull['sessions'][number] | undefined
   /** The feature's chat has a conversation on disk — Resume vs Start wording. */
   resumableChat: boolean
-  lapTickets: FeatureFull['tickets']
-  lapTicketCount: number
-  ticketCount: number
-  done: number
+  /** This lap's work tickets, landed of total — core's one `ticketTally`. */
+  tally: TicketTally
+  /** This lap's failed work tickets; a failed review pass is not one. */
   failed: number
   pending: number
   /** The pending rows themselves, for the Burn label's lap breakdown (#28a). */
