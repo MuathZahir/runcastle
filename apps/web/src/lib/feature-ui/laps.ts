@@ -1,5 +1,5 @@
-import { modelEntryFor } from '@runcastle/core'
-import type { AgentRuntime, EventRow, ModelEntry, Ticket, TicketKind } from '@runcastle/core'
+import { modelEntryFor, ticketTally } from '@runcastle/core'
+import type { AgentRuntime, EventRow, ModelEntry, TallyTicket, Ticket, TicketKind } from '@runcastle/core'
 import { RUNTIME_LABEL } from '../settings'
 
 export interface TicketAccount {
@@ -276,19 +276,13 @@ export function burnLabel(
  */
 
 /**
- * The one ticket count every surface states (meta line, Tickets tab, ledger
- * header, the review/shipped property list): this lap's implementation
- * tickets, not cancelled. The review ticket is the review step — the
- * property list's Review row speaks for it — so it is never counted as work.
+ * The one ticket count every surface states, in the web's "done" wording — a
+ * thin reading of core's `ticketTally`, which owns the definition: this lap's
+ * work tickets, the review ticket and waived tickets never counted.
  */
-export function lapTicketCount(
-  tickets: readonly { kind?: TicketKind; status: string; lap: number; landedLap?: number }[],
-  lap: number,
-): { done: number; total: number } {
-  const rows = tickets.filter(
-    (ticket) => ticket.kind !== 'review' && ticket.status !== 'cancelled' && (ticket.landedLap ?? ticket.lap) === lap,
-  )
-  return { done: rows.filter((ticket) => ticket.status === 'done').length, total: rows.length }
+export function lapTicketCount(tickets: readonly TallyTicket[], lap: number): { done: number; total: number } {
+  const { landed, total } = ticketTally(tickets, lap)
+  return { done: landed, total }
 }
 
 /** "1 of 1 ticket done", "2 of 3 tickets done" — pluralised on the total. */

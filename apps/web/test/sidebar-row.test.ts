@@ -28,6 +28,7 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     status: 'active',
     createdAt: 0,
     ticketCounts: { total: 0, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 0 },
+    lapTally: { landed: 0, total: 0, waived: 0 },
     activeRun: false,
     liveSession: null,
     lastActivityAt: 0,
@@ -66,9 +67,7 @@ describe('sidebar feature row', () => {
 
   it('writes ticket progress as a fraction, only once there are tickets', () => {
     const without = render(listItem())
-    const withTickets = render(
-      listItem({ ticketCounts: { total: 7, pending: 3, burning: 0, done: 4, failed: 0, cancelled: 0 } }),
-    )
+    const withTickets = render(listItem({ lapTally: { landed: 4, total: 7, waived: 0 } }))
 
     expect(without).not.toMatch(/\d+\/\d+/)
     expect(withTickets).toContain('>4/7<')
@@ -137,7 +136,7 @@ describe('sidebar feature row', () => {
     const html = render(
       listItem({
         activeRun: true,
-        ticketCounts: { total: 10, pending: 9, burning: 1, done: 0, failed: 0, cancelled: 0 },
+        lapTally: { landed: 0, total: 10, waived: 0 },
       }),
       false,
       [copyLink],
@@ -150,9 +149,7 @@ describe('sidebar feature row', () => {
   })
 
   it('keeps the dot and fraction in view on a row with no menu', () => {
-    const html = render(
-      listItem({ ticketCounts: { total: 2, pending: 0, burning: 0, done: 2, failed: 0, cancelled: 0 } }),
-    )
+    const html = render(listItem({ lapTally: { landed: 2, total: 2, waived: 0 } }))
 
     expect(html).toContain('>2/2<')
     expect(html).not.toContain('group-hover/nav:opacity-0')

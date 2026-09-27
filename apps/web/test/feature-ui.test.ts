@@ -3677,9 +3677,10 @@ describe.skip('turn-aware feature states', () => {
  * nothing, and the rail has one line's width to spend.
  */
 describe('ticketProgress', () => {
-  it('reads done over total', () => {
-    const counts = { total: 5, pending: 2, burning: 0, done: 3, failed: 0, cancelled: 0 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5')
+  it('reads this lap’s landed over total, not the all-laps status counts', () => {
+    const allLaps = { total: 9, pending: 2, burning: 0, done: 7, failed: 0, cancelled: 0 }
+    const item = listItem({ ticketCounts: allLaps, lapTally: { landed: 3, total: 5, waived: 1 } })
+    expect(ticketProgress(item)).toBe('3/5')
   })
 
   it('is null when the feature has no tickets', () => {
