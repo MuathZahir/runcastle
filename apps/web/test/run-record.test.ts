@@ -117,6 +117,19 @@ describe('RunHeader in record mode', () => {
     )
   })
 
+  /**
+   * The review pass is not work (simplify-the-pages decision 2): an orphaned
+   * review lane already reads "Stopped" on its own lane, so the heading's counts
+   * must not state it a second time as "1 stopped".
+   */
+  it('leaves the review ticket out of the heading counts', () => {
+    const tickets = [
+      { seq: 4, status: 'done' },
+      { seq: 5, status: 'failed', kind: 'review', orphaned: true },
+    ]
+    expect(runHeadline(tickets, { status: 'running' })).toBe('Burning 1 ticket · 1 done')
+  })
+
 })
 
 describe('unrunnable verification on a run card', () => {
