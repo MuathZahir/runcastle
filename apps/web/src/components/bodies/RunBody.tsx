@@ -40,8 +40,9 @@ import { UnrunnableGates } from '../run/UnrunnableGates'
 /**
  * Run / implementation phase-body, lanes-first (decisions #10–#16).
  *
- * The lanes ARE the page: a run header over them, each lane expanding in place
- * to its own boot narrative and agent transcript, the run timeline collapsed
+ * Under the Status tier's Burn · Tickets · Review rows (simplify-the-pages
+ * decision 9a), the lanes ARE the page: a run header over them, each lane
+ * expanding in place to its own boot narrative and agent transcript, the run timeline collapsed
  * underneath. The shared Agent|Events pane this used to be built around is
  * gone — it pinned one ticket's transcript beside every ticket's lane, and the
  * transcript was the least trustworthy thing on the page while the lanes
