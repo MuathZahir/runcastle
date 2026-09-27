@@ -296,11 +296,11 @@ describe('renderSettings', () => {
    * between a session told to grill and a session that just implemented the
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
    */
-  it('registers the PreToolUse edit guard for every kind but `project`', () => {
+  it('registers the PreToolUse edit and install guards for every kind but `project`', () => {
     for (const kind of ['chat', 'waypoint', 'converge', 'prepare', 'drive-fix'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
-      expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
+      expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
       expect(guard?.[0].hooks[0]).toMatchObject({
         type: 'command',
         command: 'bun run "C:\\hooks\\hook-client.ts" pre-tool',
@@ -459,6 +459,8 @@ describe('renderSystemPrompt', () => {
       // and it says where the line is, and where the change goes instead
       expect(p).toContain('docs/features/dark-mode/')
       expect(p).toMatch(/ticket/i)
+      // and it states the install guard's rule before the guard denies one
+      expect(p).toMatch(/Package installs are blocked in this worktree/)
     }
   })
 
@@ -473,6 +475,11 @@ describe('renderSystemPrompt', () => {
     expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
     // the exception is bounded: other work still rides a ticket
     expect(p).toMatch(/ticket/i)
+    // and it verifies without dependencies — the install guard has no merge exemption
+    expect(p).toMatch(/package installs are blocked in this worktree/i)
+    expect(p).toContain('git diff --check')
+    expect(p).toMatch(/test-drive the branch/)
+    expect(p).not.toMatch(/run the tests/i)
   })
 
   it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
@@ -794,7 +801,7 @@ describe('writeSessionArtifacts', () => {
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
     expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
     // the edit guard reaches the session as a real registered hook, not just a rule
-    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
     expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('pre-tool')
 
     const mcp = JSON.parse(readFileSync(out.mcpConfigPath, 'utf8'))
@@ -1105,9 +1112,10 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(hooks.hooks.UserPromptSubmit[0].hooks[0].command).toBe(`bun run "${client}" user-prompt`)
     expect(hooks.hooks.Stop[0].hooks[0].command).toBe(`bun run "${client}" stop`)
     expect(hooks.hooks.SessionEnd[0].hooks[0].command).toBe(`bun run "${client}" session-end`)
-    // the edit guard reaches a Codex session as the same deny hook, matching the
-    // tool name Codex edits files with
-    expect(hooks.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch')
+    // the edit and install guards reach a Codex session as the same deny hook,
+    // matching the tool names Codex edits files (`apply_patch`) and runs shell
+    // commands (`Bash`) with
+    expect(hooks.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
     expect(hooks.hooks.PreToolUse[0].hooks[0].command).toBe(`bun run "${client}" pre-tool`)
   })
 

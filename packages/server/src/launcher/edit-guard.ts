@@ -42,15 +42,9 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * Codex's (`apply_patch`), because the guard is shared and a session is one or
  * the other. Additive on purpose — a runtime never sees the other's tool names,
  * so listing both costs nothing and keeps one matcher for both `hooks.json` and
- * `settings.json`.
+ * `settings.json` (`PRE_TOOL_MATCHER`, beside the install guard's shell tools).
  */
 export const EDIT_TOOLS = ['Edit', 'Write', 'NotebookEdit', 'apply_patch'] as const
-
-/**
- * The `matcher` string registering them. Both runtimes match a tool name against
- * this as a regex, so the alternation covers all of them in one entry.
- */
-export const EDIT_TOOL_MATCHER = EDIT_TOOLS.join('|')
 
 /** Does a session of this kind get the guard? Every kind but `project`. */
 export function guardsEdits(kind: SessionKind): boolean {
