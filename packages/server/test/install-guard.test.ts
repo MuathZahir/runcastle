@@ -37,8 +37,17 @@ describe('install guard', () => {
       'yarn --frozen-lockfile',
       'yarn install',
       'yarn add zod',
+      'bun --cwd packages/server install',
+      'pnpm -C x install',
+      'npm --prefix x ci',
+      'FOO=1 bun install',
+      'CI=true NODE_ENV=dev npm --silent install',
+      'yarn --cwd x add zod',
     ]) {
       expect(denied(cmd), cmd).toBe(true)
+    }
+    for (const cmd of ['npm.cmd ci', 'bun.exe install', 'pnpm.cmd -C x i', '& yarn.cmd']) {
+      expect(denied(cmd, { toolName: 'PowerShell' }), cmd).toBe(true)
     }
   })
 
@@ -87,6 +96,11 @@ describe('install guard', () => {
       'yarn -h',
       'yarn --version && git status',
       'yarn -v\ngit status',
+      'bun --version',
+      'npm --prefix x run build',
+      'FOO=1 bun run typecheck',
+      'pnpm -C x run test',
+      'yarn.cmd --version',
     ]) {
       expect(denied(cmd), cmd).toBe(false)
     }
