@@ -89,7 +89,9 @@ export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | nul
 
   // Blank heredoc bodies and quoted spans, as the burn guard does: a commit
   // message that mentions the string, or searching for it, is not running it.
-  const stripped = blankHeredocBodies(input.command).replace(/'[^']*'/g, ' ').replace(/"[^"]*"/g, ' ')
+  // One left-to-right pass over both quote kinds, so the quote that opens first
+  // wins — an apostrophe inside `"it's"` never opens a single-quoted span.
+  const stripped = blankHeredocBodies(input.command).replace(/'[^']*'|"[^"]*"/g, ' ')
   if (!INSTALL_PATTERNS.some((pattern) => pattern.test(stripped))) return null
 
   return {

@@ -92,6 +92,13 @@ describe('install guard', () => {
     }
   })
 
+  it('reads an apostrophe inside double quotes as text, not a quote opener', () => {
+    expect(denied(`echo "it's" && bun install 'x'`)).toBe(true)
+    expect(denied(`git commit -m "don't" && npm ci && echo 'done'`)).toBe(true)
+    expect(denied(`echo 'say "hi"' && bun install`)).toBe(true)
+    expect(denied(`echo "it's bun install"`)).toBe(false)
+  })
+
   it('reads a heredoc body as text, not commands', () => {
     for (const cmd of [
       "git commit -F - <<'EOF'\ndocs: note\nbun install is blocked here\nEOF",
