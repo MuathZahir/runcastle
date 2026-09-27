@@ -469,6 +469,21 @@ describe('nextStep after a server restart interrupted a burn', () => {
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
     expect(ns.desc).toContain('hands off to review')
   })
+
+  // The reconcile event counts every ticket on the feature, the orphaned review
+  // pass included; the bar states the one ticket count (decisions d2) instead,
+  // so it agrees with the Tickets row and the sidebar beside it.
+  it('counts only this lap’s work tickets, never the orphaned review pass', () => {
+    const full = interrupted(['done', 'done', 'done', 'done', 'burning'])
+    ;(full.tickets[4] as { kind: string }).kind = 'review'
+    const ns = nextStep(full, {
+      driving: false,
+      interruptedBurn: { runId: 'r1', landedTickets: 4, pendingTickets: 1 },
+    })
+
+    expect(ns.title).toBe('A burn was interrupted by a server restart: 4 tickets landed, 0 pending')
+    expect(ns.desc).toContain('hands off to review')
+  })
 })
 
 describe('burnInterruption', () => {
@@ -2604,6 +2619,38 @@ describe('nextStep at building', () => {
       expect(ns.desc).not.toContain('The run failed')
       expect(ns.primary).toEqual(RESUME)
       expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
+    })
+
+    // The burner's summary counts the review ticket ("1/2 tickets done"); the
+    // bar restates it with the one ticket count (decisions d2), so it matches
+    // the Tickets row's "1 of 1 landed" and the sidebar's 1/1.
+    it('restates the runner’s ticket count with the lap’s work-ticket tally', () => {
+      const full = buildFull({
+        runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: '1/2 tickets done' }],
+        ticketStatuses: ['done', 'failed'],
+        completedAt: 200,
+      })
+      ;(full.tickets[1] as { kind: string }).kind = 'review'
+      const ns = nextStep(full, { driving: false })
+      expect(ns.desc).toContain('1 of 1 ticket done')
+      expect(ns.desc).not.toContain('1/2')
+    })
+
+    it('keeps the rest of a halted run’s summary, restating only its count', () => {
+      const full = buildFull({
+        runs: [
+          {
+            id: 'r1',
+            status: 'failed',
+            startedAt: 100,
+            summary: 'run halted at ticket 2: gate failed — 1/3 tickets done (1 cancelled)',
+          },
+        ],
+        ticketStatuses: ['done', 'failed', 'cancelled'],
+        completedAt: 200,
+      })
+      const ns = nextStep(full, { driving: false })
+      expect(ns.desc).toContain('run halted at ticket 2: gate failed — 1 of 2 tickets done · 1 waived')
     })
 
     it('keeps today’s copy for a failed run with no summary', () => {

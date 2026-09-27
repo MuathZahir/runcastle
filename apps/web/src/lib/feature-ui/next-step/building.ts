@@ -1,5 +1,6 @@
+import type { TicketTally } from '@runcastle/core'
 import { settingsLocationFromMessage } from '../../settings'
-import { burnLabel } from '../laps'
+import { burnLabel, ticketCountText } from '../laps'
 import { burnExpectation } from '../run'
 import { burnWarningLine } from './burn-warnings'
 import { CHAT_ACTION } from './chat'
@@ -57,12 +58,15 @@ export function resolveBuilding(input: ResolverInput): NextStep {
   }
   const interruption = ctx.interruptedBurn
   if (interruption && interruption.runId === run?.id) {
-    const landed = interruption.landedTickets
-    if (interruption.pendingTickets > 0) {
+    // The reconcile event's own counts take every ticket on the feature, the
+    // orphaned review pass included, so the bar states the one ticket count
+    // (decision d2) and agrees with the Tickets row and the sidebar beside it.
+    const unlanded = t - landed
+    if (unlanded > 0) {
       return {
         alert: true,
         kick: 'INTERRUPTED',
-        title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, ${interruption.pendingTickets} pending`,
+        title: `A burn was interrupted by a server restart: ${landed} ticket${landed === 1 ? '' : 's'} landed, ${unlanded} pending`,
         desc: 'Resume the burn to sweep orphaned work and continue the remaining tickets.',
         primary: { label: 'Resume burn', kind: 'burn' },
         secondary: [CHAT_ACTION],
@@ -130,7 +134,9 @@ export function resolveBuilding(input: ResolverInput): NextStep {
   // A failed run that recorded why says so verbatim — the generic line hid the
   // one sentence that named the fix, and the human clicked Resume three times.
   const failure =
-    run.status === 'failed' && !isRunnerPlaceholder(run.summary) ? run.summary : undefined
+    run.status === 'failed' && !isRunnerPlaceholder(run.summary)
+      ? withTicketCount(run.summary, input.tally)
+      : undefined
   // Died before any ticket started (a setup or preflight failure): a resume
   // would meet the same wall, so the fix leads and Resume waits behind it.
   if (failure && !ticketsStartedIn(run, full.tickets)) {
@@ -173,6 +179,22 @@ export function resolveBuilding(input: ResolverInput): NextStep {
  */
 function isRunnerPlaceholder(summary: string | undefined): boolean {
   return summary === 'run failed' || summary === 'run cancelled'
+}
+
+/**
+ * The burner's summary counts everything the run burned, review ticket
+ * included ("1/2 tickets done (1 cancelled)", packages/server/src/workflows/
+ * ticket-burner.ts). The bar restates that count with the one ticket count
+ * (decision d2) and keeps the rest of the summary verbatim — a halted run's
+ * headline is still the fact the human has to fix.
+ */
+const RUNNER_COUNT = /\d+\/\d+ tickets done(?: \(\d+ cancelled\))?/
+
+function withTicketCount(summary: string | undefined, tally: TicketTally): string | undefined {
+  if (!summary) return summary
+  const count = ticketCountText({ done: tally.landed, total: tally.total })
+  const waived = tally.waived > 0 ? ` · ${tally.waived} waived` : ''
+  return summary.replace(RUNNER_COUNT, `${count}${waived}`)
 }
 
 /**
