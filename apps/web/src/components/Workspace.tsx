@@ -220,7 +220,7 @@ export function Workspace({
   // vouch for different builds — the walked bug was a green merge row over a
   // review of a build that fix tickets had already replaced.
   const artifacts = useReviewArtifacts(featureId, atReview)
-  const stamped = stampedReview(artifacts.data ?? [])
+  const stamped = stampedReview(artifacts.data ?? [], q.data?.tickets ?? [])
   const reviewFreshness = freshness(
     stamped,
     { landedSince: stamped?.landedSince ?? 0, lap: q.data?.feature.lap ?? 1 },

@@ -12,13 +12,13 @@ import {
   lapAccount,
   lapChip,
   lastTestDriveLap,
-  latestReview,
   latestRun,
   liveSessionLine,
   reviewDriveDenial,
   slotHeldReason,
   specDocPath,
   stampedOutcome,
+  stampedReview,
   unverifiedLap,
   verificationState,
   type MergeConflictState,
@@ -146,7 +146,7 @@ export function ReviewBody({
   // The stamp is the LATEST COMPLETED pass (decision 41a) — a pass still burning
   // vouches for nothing, and ordering on completion is what makes "latest" mean
   // latest rather than highest-numbered.
-  const stamped = latestReview(rows.filter((a) => a.completedAt !== null)) ?? null
+  const stamped = stampedReview(rows, tickets)
   // What a test drive is about to depend on that no dry run has ever proven
   // (decision 8) — the state line's amber chip. Same query key the next-step bar
   // reads, so the chip and the bar come out of one fetch of the project's

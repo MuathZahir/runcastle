@@ -35,11 +35,22 @@ export function latestReview<T extends { seq: number; completedAt?: number | nul
  *
  * One implementation, because the review page's stage and the merge dialog's
  * review row must never be stamped against different passes.
+ *
+ * A pass that finished before `completed_at` existed carries no stamp, so its
+ * own ticket says it finished instead — without that, a page whose timeline
+ * shows the pass would read "Not reviewed yet" above it. Having no time, it
+ * ranks below every stamped pass.
  */
-export function stampedReview<T extends { seq: number; completedAt?: number | null }>(
+export function stampedReview<T extends { ticketId: string; seq: number; completedAt?: number | null }>(
   rows: readonly T[],
+  tickets: readonly { id: string; status: string }[],
 ): T | null {
-  return latestReview(rows.filter((row) => row.completedAt !== null)) ?? null
+  const finished = (row: T): boolean => {
+    if (row.completedAt !== null) return true
+    const status = tickets.find((t) => t.id === row.ticketId)?.status
+    return status === 'done' || status === 'failed'
+  }
+  return latestReview(rows.filter(finished)) ?? null
 }
 
 /**
@@ -585,7 +596,9 @@ export interface TrailPass {
 /** One lap in the trail: what burned, how the review went, what it found. */
 export interface TrailEntry {
   lap: number
-  /** When the lap's latest completed pass finished; null while none has. */
+  /** A pass of the lap has finished ({@link stampedReview}). */
+  reviewed: boolean
+  /** When the lap's latest completed pass finished; null while none has, or it predates the stamp. */
   completedAt: number | null
   outcome: TrailOutcome
   /** Implementation tickets the lap burned and landed — the run view holds the detail. */
@@ -667,10 +680,11 @@ export function lapTrail(input: TrailInput): TrailEntry[] {
 
   return laps.map((lap) => {
     const lapPasses = passes.filter((p) => p.lap === lap)
-    const stamp = stampedReview(lapPasses)
+    const stamp = stampedReview(lapPasses, tickets)
     const defects = findings.filter((f) => f.lap === lap && f.kind === 'defect')
     return {
       lap,
+      reviewed: stamp !== null,
       completedAt: stamp?.completedAt ?? null,
       outcome: passOutcome(stamp, tickets),
       // Only rows that landed: the lap the page is most often read in has fix
@@ -724,7 +738,8 @@ export function unverifiedLap(input: {
   currentLap: number
 }): UnverifiedLap | null {
   const lapPasses = (input.passes ?? []).filter((p) => p.lap === input.currentLap)
-  const outcome = passOutcome(stampedReview(lapPasses), input.tickets ?? [])
+  const tickets = input.tickets ?? []
+  const outcome = passOutcome(stampedReview(lapPasses, tickets), tickets)
   return outcome.kind === 'unverified' ? outcome : null
 }
 
@@ -737,7 +752,8 @@ export function stampedOutcome(input: {
   passes?: readonly ReviewPassFigure[]
   tickets?: readonly TrailTicketFigure[]
 }): TrailOutcome {
-  return passOutcome(stampedReview(input.passes ?? []), input.tickets ?? [])
+  const tickets = input.tickets ?? []
+  return passOutcome(stampedReview(input.passes ?? [], tickets), tickets)
 }
 
 /** How much of a note or finding its one-line headline may carry. */

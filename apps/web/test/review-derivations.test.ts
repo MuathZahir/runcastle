@@ -5,6 +5,7 @@ import {
   reviewOutcome,
   reviewWalkthroughUrl,
   stampedOutcome,
+  stampedReview,
   statusChips,
   statusProperties,
   type ReviewPassFigure,
@@ -132,6 +133,17 @@ describe('statusProperties', () => {
       const passes = [pass({}), pass({ ticketId: 't2', seq: 2, lap: 2, reviewVerdict: 'unverified', completedAt: 20 })]
       expect(stampedOutcome({ passes, tickets: [] }).kind).toBe('unverified')
       expect(stampedOutcome({ passes: [], tickets: [] }).kind).toBe('none')
+    })
+
+    /** The walked contradiction: a pass that finished before completion was stamped. */
+    it('reads "Reviewed" over a finished pass that carries no completion stamp', () => {
+      const legacy = { ticketId: 't8', seq: 8, lap: 2, completedAt: null, landedSince: 0 }
+      const tickets = [{ id: 't8', lap: 2, kind: 'review' as const, status: 'done' }]
+      const artifact = stampedReview([legacy], tickets)
+      expect(artifact?.seq).toBe(8)
+      expect(rowOf({ ...base, artifact, outcome: { kind: 'none' } }, 'review')).toMatchObject({ value: 'Reviewed', tone: 'ok' })
+      // A pass still burning vouches for nothing, stamp or no stamp.
+      expect(stampedReview([legacy], [{ ...tickets[0]!, status: 'burning' }])).toBeNull()
     })
   })
 

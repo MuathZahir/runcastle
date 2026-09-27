@@ -63,11 +63,22 @@ function outcomeItem(outcome: TrailOutcome): MetaItem | null {
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
 
-/** When the lap was reviewed, or that it has not been yet. */
+/**
+ * When an earlier lap was reviewed, or that it has not been yet. A pass that
+ * predates the completion stamp still reviewed the lap, only at no known time.
+ */
 function reviewedItem(entry: TrailEntry): MetaItem {
+  if (entry.completedAt !== null) {
+    return { text: `Reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
+  }
+  return { text: entry.reviewed ? 'Reviewed' : 'Not reviewed yet' }
+}
+
+/** The current lap's heading figure: only the time (decision 5) — the Review row owns the rest. */
+function timeItems(entry: TrailEntry): MetaItem[] {
   return entry.completedAt !== null
-    ? { text: `Reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
-    : { text: 'Not reviewed yet' }
+    ? [{ text: relTimeAgo(entry.completedAt), title: fmtDateTime(entry.completedAt) }]
+    : []
 }
 
 /** An earlier lap's heading figures: its verdict, then only the counts that are not zero. */
@@ -313,7 +324,7 @@ export function ReviewTrail({
       <div className="flex flex-col">
         <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-1">
           <h3 className="m-0 text-sm font-medium text-text">Lap {current.lap}</h3>
-          <MetaLine items={[reviewedItem(current)]} />
+          <MetaLine items={timeItems(current)} />
         </div>
         {timeline(current)}
       </div>

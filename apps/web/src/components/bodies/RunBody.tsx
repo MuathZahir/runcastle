@@ -126,7 +126,7 @@ export function RunBody({
   // The lap's review, for the Status tier's Review row — the same feed and
   // the same stamp the review page reads, so the two pages cannot disagree.
   const passes = useReviewArtifacts(featureId).data ?? []
-  const stamped = stampedReview(passes)
+  const stamped = stampedReview(passes, ledger)
   const featureBranch = feature.data?.feature.branch ?? ''
   const lap = feature.data?.feature.lap ?? 1
   const runEvents = useMemo(
