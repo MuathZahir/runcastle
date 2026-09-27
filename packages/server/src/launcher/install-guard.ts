@@ -51,15 +51,29 @@ const VERB_END = '(?=\\s|[;&|)]|$)'
  */
 const YARN_READ_ONLY_FLAG = `(?:-v|--version|-h|--help)${VERB_END}`
 
+/**
+ * A package manager at command position: optionally env-prefixed (`FOO=1 bun`),
+ * optionally with Windows' `.cmd`/`.exe` suffix (`npm.cmd`, from PowerShell).
+ */
+const manager = (name: string) =>
+  `${CMD_START}(?:[A-Za-z_]\\w*=[^\\s;&|()]*\\s+)*${name}(?:\\.cmd|\\.exe)?`
+/**
+ * Global flags between the manager and its verb, each with an optional value —
+ * `bun --cwd packages/server install`, `pnpm -C x install`, `npm --prefix x ci`.
+ */
+const GLOBAL_FLAGS = '(?:\\s+-[^\\s;&|()]*(?:\\s+[^\\s;&|()-][^\\s;&|()]*)?)*'
+const verbAfter = (name: string, verbs: string) =>
+  new RegExp(`${manager(name)}${GLOBAL_FLAGS}\\s+(?:${verbs})${VERB_END}`)
+
 /** Package-manager install verbs, each anchored at command position. */
 const INSTALL_PATTERNS: readonly RegExp[] = [
-  new RegExp(`${CMD_START}bun\\s+(?:install|i|add)${VERB_END}`),
-  new RegExp(`${CMD_START}npm\\s+(?:install|i|ci|add)${VERB_END}`),
-  new RegExp(`${CMD_START}pnpm\\s+(?:install|i|add)${VERB_END}`),
-  new RegExp(`${CMD_START}yarn\\s+(?:install|add)${VERB_END}`),
+  verbAfter('bun', 'install|i|add'),
+  verbAfter('npm', 'install|i|ci|add'),
+  verbAfter('pnpm', 'install|i|add'),
+  verbAfter('yarn', 'install|add'),
   // Bare `yarn` — alone, or with install flags only — installs too. It ends at a
   // separator, a newline (the next line is its own command), or the end.
-  new RegExp(`${CMD_START}yarn(?:[^\\S\\n]+(?!${YARN_READ_ONLY_FLAG})-|[^\\S\\n]*(?:[;&|)\\n]|$))`),
+  new RegExp(`${manager('yarn')}(?:[^\\S\\n]+(?!${YARN_READ_ONLY_FLAG})-|[^\\S\\n]*(?:[;&|)\\n]|$))`),
 ]
 
 export interface InstallGuardInput {
