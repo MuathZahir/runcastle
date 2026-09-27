@@ -342,19 +342,20 @@ describe('the review page’s arrival bands', () => {
   /**
    * Decisions #5: the figures on the page are the server's, scoped to this lap.
    * Handed an earlier lap's finding among the rows, the review row and the
-   * counts line still report what THIS lap's pass found — the all-laps count is
-   * the inflated "N still open" that sent the human back through Iterate.
+   * lap's review pass still report what THIS lap's pass found — the all-laps
+   * count is the inflated "N still open" that sent the human back through
+   * Iterate.
    */
   it('reports the counts the server sends for this lap, never the rows it holds', () => {
     const html = render({
       findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
       openDefects: [DEFECT],
       summary: { found: 1, fixed: 0, open: 1, observations: 1 },
-      // No digest, so the counts line is what the lap says for itself.
       tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
     })
     expect(html).not.toContain('3 findings')
-    expect(html).toContain('1 defect found · 1 still open')
+    expect(html).toMatch(/Review #\d+<\/span><span[^>]*>1 defect found</)
+    expect(html).not.toContain('2 defects found')
   })
 
   /**

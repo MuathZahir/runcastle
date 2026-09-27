@@ -14,7 +14,9 @@ import {
   shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
+  ticketTally,
 } from '@runcastle/core'
+import type { TicketTally } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -80,7 +82,10 @@ export interface LiveSessionState {
 }
 
 export interface FeatureListItem extends Feature {
+  /** Every ticket across every lap, by status — the red dot reads `failed`. */
   ticketCounts: TicketCounts
+  /** This lap's progress, by the one shared definition — the row's "3/7". */
+  lapTally: TicketTally
   activeRun: boolean
   /**
    * The feature's open session, or null when it has none — an ended session
@@ -680,6 +685,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     return {
       ...feature,
       ticketCounts: counts,
+      lapTally: ticketTally(tickets, feature.lap),
       activeRun: hasActiveRun(ctx, feature.id),
       liveSession: liveSessionOf(ctx, feature.id),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,

@@ -1,4 +1,5 @@
-import type { RunStatus } from '@runcastle/core'
+import type { RunStatus, TallyTicket } from '@runcastle/core'
+import { lapTicketCount } from './laps'
 
 export interface BurnInterruption {
   runId: string
@@ -133,6 +134,20 @@ export function runHeadline(
   if (counts.stopped) parts.push(`${counts.stopped} stopped`)
   if (counts.waived) parts.push(`${counts.waived} waived`)
   return parts.join(' · ')
+}
+
+/**
+ * The run header's "X of Y landed": the one ticket count (`lapTicketCount`),
+ * over the lap the run on screen burned. The live view reads the feature's
+ * whole ledger, so a finished burn reads "3 of 3" while its review ticket still
+ * runs, and earlier laps' tickets stay out of it.
+ */
+export function runLanded(
+  tickets: readonly TallyTicket[],
+  shownRun: { lap: number } | undefined,
+  featureLap: number,
+): { done: number; total: number } {
+  return lapTicketCount(tickets, shownRun?.lap ?? featureLap)
 }
 
 /** The project's own ticket history, as `ticket.durationStats` reports it. */

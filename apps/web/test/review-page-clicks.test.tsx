@@ -150,7 +150,8 @@ describe('picking a recording off the lap trail', () => {
     page()
     expect(video().getAttribute('src')).toBe('/lap-2.webm')
 
-    const [earlier] = screen.getAllByRole('button', { name: 'Recording' }).slice(-1)
+    // The trail reads oldest first, so lap 1's recording is the first one.
+    const [earlier] = screen.getAllByRole('button', { name: 'Recording' })
     fireEvent.click(earlier!)
 
     expect(video().getAttribute('src')).toBe('/lap-1.webm')

@@ -34,6 +34,7 @@ export type {
   StatusChip,
 } from './feature-ui/review'
 export * from './feature-ui/laps'
+export * from './feature-ui/timeline'
 export * from './feature-ui/summary'
 export { mapDocPath, mapProgress, nextReadyWaypoint, parseMapSections, waypointGroups } from './feature-ui/map'
 export type {

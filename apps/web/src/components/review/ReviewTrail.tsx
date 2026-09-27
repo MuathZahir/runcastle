@@ -1,5 +1,3 @@
-import type { FindingStatus, TicketKind } from '@runcastle/core'
-import type { ReactNode } from 'react'
 import {
   Button,
   Disclosure,
@@ -7,47 +5,45 @@ import {
   ListRow,
   MetaLine,
   TicketStatusChip,
+  TONE_TEXT,
+  Timeline,
+  TimelineNode,
   type MetaItem,
+  type TimelineTone,
 } from '../../ui'
-import { IconCheck, IconCube, IconPlay, IconShield } from '../../icons'
+import { IconCheck, IconPlay, IconShield } from '../../icons'
 import {
+  lapTimeline,
   lapTrail,
+  type BurnNode,
+  type PassNode,
   type ReviewPassFigure,
+  type TimelineFinding,
+  type TimelineTicket,
   type TrailEntry,
   type TrailOutcome,
 } from '../../lib/feature-ui'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
 
 /**
- * The laps (decisions 4–5), as sections rather than cards: the newest lap is a
- * `Lap N` heading, one meta line (reviewed when · how · what it found), the
- * lap's account in one paragraph, and the tickets it burned as a list. Earlier
- * laps are closed disclosures with the same anatomy inside.
+ * The laps as a timeline, oldest first (decision 5): each lap reads top to
+ * bottom in the order things happened — the work it burned, the review pass,
+ * the fixes burned under it, the verification. Passes are milestones and never
+ * ticket rows.
  *
- * It replaces the stage's "Earlier recordings (N)" popover and the bordered lap
- * cards: "lap 2 found six defects, lap 3 verified nothing" stays readable at a
- * glance because each lap says it on its meta line.
+ * The current lap is last and open, its heading only the time: the Review
+ * status row owns its verdict (decision 3). Earlier laps sit above it, each
+ * folded to a heading line that still carries its verdict and counts — every
+ * lap stays visible, only its detail folds (knowingly bending
+ * review-as-a-lap-trail d4).
  *
- * It is history and nothing else. The stage above stays the viewer — a review
- * pass's Recording button stages it there rather than opening a second player.
- * The open work is its own section; a defect count here is a figure, never a
- * row to act on, and observations render only in the Full account.
+ * It is history and nothing else. The stage above stays the viewer — a pass's
+ * Recording button stages it there rather than opening a second player. The
+ * open work is its own section; a defect count here is a figure, never a row
+ * to act on, and observations render only in the Full account.
  */
 
-/** A ticket as the lap list reads it. */
-export interface TrailTicket {
-  id: string
-  seq?: number
-  title?: string
-  lap: number
-  kind?: TicketKind
-  passKind?: 'review' | 'verification'
-  status: string
-  digest?: string
-  completedAt?: number | null
-}
-
-/** The outcome as a dot and words on the meta line, or null for no verdict. */
+/** The outcome as a dot and words on an earlier lap's heading, or null for no verdict. */
 function outcomeItem(outcome: TrailOutcome): MetaItem | null {
   switch (outcome.kind) {
     case 'verified':
@@ -63,119 +59,180 @@ function outcomeItem(outcome: TrailOutcome): MetaItem | null {
 
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
 
-/** The lap's figures, only the ones that are not zero. */
+/** When the lap was reviewed, or that it has not been yet. */
+function reviewedItem(entry: TrailEntry): MetaItem {
+  return entry.completedAt !== null
+    ? { text: `Reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
+    : { text: 'Not reviewed yet' }
+}
+
+/** An earlier lap's heading figures: its verdict, then only the counts that are not zero. */
 function lapMeta(entry: TrailEntry): MetaItem[] {
   const { found, fixed, carried } = entry.defects
   const items: (MetaItem | null)[] = [
-    entry.completedAt !== null
-      ? { text: `Reviewed ${relTimeAgo(entry.completedAt)}`, title: fmtDateTime(entry.completedAt) }
-      : { text: 'Not reviewed yet' },
     outcomeItem(entry.outcome),
     entry.burned > 0 ? { text: `${plural(entry.burned, 'ticket')} burned` } : null,
     found > 0
       ? { text: [plural(found, 'defect') + ' found', fixed > 0 ? `${fixed} fixed` : '', carried > 0 ? `${carried} carried` : ''].filter(Boolean).join(', ') }
       : null,
     entry.notes > 0 ? { text: plural(entry.notes, 'test note') } : null,
+    reviewedItem(entry),
   ]
   return items.filter((i): i is MetaItem => i !== null)
 }
 
-/** A review pass's own words on its row: "Review — gates mode, verified". */
-function passTitle(pass: TrailEntry['passes'][number]): string {
-  const kind = pass.passKind === 'verification' ? 'Verification' : 'Review'
-  const how = [pass.mode ? `${pass.mode} mode` : null, pass.couldNotRun ? 'could not run' : pass.verdict]
-    .filter(Boolean)
-    .join(', ')
-  return how ? `${kind} — ${how}` : kind
+/** A pass's verdict as its milestone's tone. */
+function passTone(pass: PassNode): TimelineTone {
+  if (pass.couldNotRun || pass.verdict === 'unverified') return 'warning'
+  if (pass.verdict === 'verified') return 'success'
+  return 'neutral'
 }
 
-function LapBody({
+/** "gates mode · Verified · 3 defects found" — only the parts the pass has. */
+function PassMeta({ pass }: { pass: PassNode }) {
+  const word = pass.couldNotRun
+    ? 'Could not run'
+    : pass.verdict === 'verified'
+      ? 'Verified'
+      : pass.verdict === 'unverified'
+        ? 'Unverified'
+        : null
+  const parts = [
+    pass.mode ? `${pass.mode} mode` : null,
+    word && (
+      <span key="verdict" className={`font-medium ${TONE_TEXT[passTone(pass)]}`}>
+        {word}
+      </span>
+    ),
+    pass.found > 0 ? `${plural(pass.found, 'defect')} found` : null,
+    pass.fixed > 0 ? `${pass.fixed} fixed` : null,
+  ].filter(Boolean)
+  return <>{parts.flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}</>
+}
+
+function PassMilestone({
+  pass,
+  staged,
+  onStage,
+}: {
+  pass: PassNode
+  staged: string | null
+  onStage: (ticketId: string) => void
+}) {
+  const unverified = pass.verdict === 'unverified'
+  return (
+    <TimelineNode
+      variant="milestone"
+      tone={passTone(pass)}
+      icon={pass.passKind === 'verification' ? <IconCheck /> : <IconShield />}
+      title={`${pass.passKind === 'verification' ? 'Verification' : 'Review'} #${pass.seq}`}
+      meta={<PassMeta pass={pass} />}
+      aside={
+        <>
+          {pass.completedAt ? (
+            <span className="text-xs text-text-tertiary" title={fmtDateTime(pass.completedAt)}>
+              {relTimeAgo(pass.completedAt)}
+            </span>
+          ) : null}
+          {pass.videoUrl && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconPlay />}
+              aria-pressed={staged === pass.ticketId}
+              onClick={() => onStage(pass.ticketId)}
+            >
+              Recording
+            </Button>
+          )}
+        </>
+      }
+    >
+      {/* An unverified pass states the line runcastle templated (decision 5)
+          — never the agent's own prose, which is in the Full account. */}
+      {(pass.account || pass.reason) && (
+        <div className="flex flex-col gap-0.5 text-sm text-pretty">
+          {pass.account && <span className={unverified ? 'text-warning' : 'text-text-secondary'}>{pass.account}</span>}
+          {pass.reason && <span className="text-text-tertiary">{pass.reason}</span>}
+        </div>
+      )}
+    </TimelineNode>
+  )
+}
+
+/** "Burned 3 fixes" — or Burning while one is, or Queued while none has started. */
+function burnTitle(node: BurnNode) {
+  const verb = node.tickets.some((t) => t.status === 'burning')
+    ? 'Burning'
+    : node.tickets.some((t) => t.status === 'done')
+      ? 'Burned'
+      : 'Queued'
+  // A cancelled ticket keeps its row, but leaves the count (decision 2).
+  const n = node.tickets.filter((t) => t.status !== 'cancelled').length
+  const what = node.fixes ? (n === 1 ? 'fix' : 'fixes') : n === 1 ? 'ticket' : 'tickets'
+  return (
+    <>
+      {verb} <span className="font-medium text-text">{`${n} ${what}`}</span>
+    </>
+  )
+}
+
+function BurnStep({ node, lap, onViewRun }: { node: BurnNode; lap: number; onViewRun?: () => void }) {
+  return (
+    <TimelineNode title={burnTitle(node)}>
+      <List label={`Lap ${lap} ${node.fixes ? 'fixes' : 'tickets'}`}>
+        {node.tickets.map((ticket) => (
+          <ListRow
+            key={ticket.id}
+            className="-ml-3"
+            title={`#${ticket.seq ?? '?'} · ${ticket.title ?? 'Ticket'}`}
+            meta={
+              ticket.status === 'done' ? (
+                ticket.completedAt ? relTimeAgo(ticket.completedAt) : undefined
+              ) : (
+                <TicketStatusChip status={ticket.status as 'pending'} />
+              )
+            }
+            {...(onViewRun ? { onClick: onViewRun } : {})}
+          />
+        ))}
+      </List>
+    </TimelineNode>
+  )
+}
+
+function LapTimeline({
   entry,
   tickets,
-  account,
+  findings,
   staged,
   onStage,
   onViewRun,
 }: {
   entry: TrailEntry
-  tickets: readonly TrailTicket[]
-  account: string | null
+  tickets: readonly TimelineTicket[]
+  findings: readonly TimelineFinding[]
   staged: string | null
   onStage: (ticketId: string) => void
   onViewRun?: () => void
 }) {
-  const passes = new Map(entry.passes.map((p) => [p.ticketId, p]))
-  // Newest first, as the lap is read: the review that closed it, then what
-  // burned under it. Passes the feed knows of but the ticket list does not are
-  // still rows — a recording must never be unreachable.
-  const rows = [...tickets.filter((t) => t.lap === entry.lap)].sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0))
-  const orphanPasses = entry.passes.filter((p) => !rows.some((t) => t.id === p.ticketId))
-
-  const passRow = (pass: TrailEntry['passes'][number], ticket?: TrailTicket, i = 0): ReactNode => (
-    <ListRow
-      key={pass.ticketId}
-      index={i}
-      leading={pass.verdict === 'verified' ? <IconCheck /> : <IconShield />}
-      title={`#${pass.seq} · ${passTitle(pass)}`}
-      meta={ticket?.completedAt ? relTimeAgo(ticket.completedAt) : undefined}
-      active={staged === pass.ticketId}
-      actions={
-        pass.videoUrl ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<IconPlay />}
-            aria-pressed={staged === pass.ticketId}
-            onClick={() => onStage(pass.ticketId)}
-          >
-            Recording
-          </Button>
-        ) : undefined
-      }
-    />
-  )
-
+  const nodes = lapTimeline(entry, tickets, findings)
+  if (nodes.length === 0) return null
   return (
-    <div className="flex flex-col gap-3">
-      <MetaLine items={lapMeta(entry)} />
-      {account && <p className="m-0 text-base text-pretty text-text-secondary">{account}</p>}
-
-      {/* The line runcastle filled for a lap that verified nothing (decision 5)
-          — never the agent's own prose, which is in the Full account. */}
-      {entry.outcome.kind === 'unverified' && (entry.outcome.line || entry.outcome.reason) && (
-        <div className="flex flex-col gap-0.5 text-sm">
-          {entry.outcome.line && <span className="text-warning">{entry.outcome.line}</span>}
-          {entry.outcome.reason && <span className="text-text-tertiary">{entry.outcome.reason}</span>}
-        </div>
+    <Timeline label={`Lap ${entry.lap}`}>
+      {nodes.map((node) =>
+        node.kind === 'pass' ? (
+          <PassMilestone key={node.ticketId} pass={node} staged={staged} onStage={onStage} />
+        ) : (
+          <BurnStep
+            key={node.tickets[0]!.id}
+            node={node}
+            lap={entry.lap}
+            {...(onViewRun ? { onViewRun } : {})}
+          />
+        ),
       )}
-
-      {(rows.length > 0 || orphanPasses.length > 0) && (
-        <List divided label={`Lap ${entry.lap} tickets`}>
-          {rows.map((ticket, i) => {
-            const pass = passes.get(ticket.id)
-            if (pass) return passRow(pass, ticket, i)
-            const review = ticket.kind === 'review'
-            return (
-              <ListRow
-                key={ticket.id}
-                index={i}
-                leading={review ? <IconShield /> : <IconCube />}
-                title={`#${ticket.seq ?? '?'} · ${ticket.title ?? (review ? 'Review' : 'Ticket')}`}
-                meta={
-                  ticket.status === 'done' ? (
-                    ticket.completedAt ? relTimeAgo(ticket.completedAt) : undefined
-                  ) : (
-                    <TicketStatusChip status={ticket.status as 'pending'} />
-                  )
-                }
-                {...(onViewRun && !review ? { onClick: onViewRun } : {})}
-              />
-            )
-          })}
-          {orphanPasses.map((pass, i) => passRow(pass, undefined, rows.length + i))}
-        </List>
-      )}
-    </div>
+    </Timeline>
   )
 }
 
@@ -185,7 +242,6 @@ export function ReviewTrail({
   findings,
   notes,
   currentLap,
-  account = null,
   staged,
   onStage,
   onViewRun,
@@ -193,45 +249,45 @@ export function ReviewTrail({
   /** Every review pass this feature ran, from the artifacts feed. */
   passes: readonly ReviewPassFigure[]
   /** The feature's tickets — what burned, and what the feed cannot say. */
-  tickets: readonly TrailTicket[]
-  findings: readonly {
-    lap: number
-    kind: 'defect' | 'observation'
-    status: FindingStatus
-    fixTicketId?: string | null
-  }[]
+  tickets: readonly TimelineTicket[]
+  findings: readonly TimelineFinding[]
   notes: readonly { lap: number }[]
   currentLap: number
-  /** The current lap's account at one line, when the review wrote one. */
+  /**
+   * The current lap's account at one line. No longer rendered: each pass node
+   * carries its own account (decision 5), so this only restated it.
+   */
   account?: string | null
-  /** The recording the stage is playing, so its row reads as the picked one. */
+  /** The recording the stage is playing, so its button reads as the pressed one. */
   staged: string | null
   /** Put this pass's recording on the stage — the page owns which one is up. */
   onStage: (ticketId: string) => void
   /** Go to the run view, where the lap's lanes are. Absent where it cannot. */
   onViewRun?: () => void
 }) {
-  const entries = lapTrail({ passes, tickets, findings, notes, currentLap })
   // Nothing reviewed and nothing burned: no laps to tell, and a heading over a
   // line saying so would be the dead box the page no longer draws. Otherwise
   // the current lap is always told, even before its own review has run — a lap
   // not reviewed yet reads differently from a lap that does not exist.
   if (passes.length === 0 && tickets.length === 0) return null
-  const shown = entries.filter(
-    (e) =>
-      e.lap === currentLap ||
-      e.passes.length > 0 ||
-      tickets.some((t) => t.lap === e.lap) ||
-      e.defects.found > 0 ||
-      e.notes > 0,
-  )
-  const [latest, ...earlier] = shown
+  const entries = lapTrail({ passes, tickets, findings, notes, currentLap })
+    .filter(
+      (e) =>
+        e.lap === currentLap ||
+        e.passes.length > 0 ||
+        tickets.some((t) => t.lap === e.lap) ||
+        e.defects.found > 0 ||
+        e.notes > 0,
+    )
+    .reverse()
+  const current = entries.find((e) => e.lap === currentLap)!
+  const earlier = entries.filter((e) => e !== current)
 
-  const body = (entry: TrailEntry) => (
-    <LapBody
+  const timeline = (entry: TrailEntry) => (
+    <LapTimeline
       entry={entry}
       tickets={tickets}
-      account={entry.lap === currentLap ? account : null}
+      findings={findings}
       staged={staged}
       onStage={onStage}
       {...(onViewRun ? { onViewRun } : {})}
@@ -239,25 +295,28 @@ export function ReviewTrail({
   )
 
   return (
-    <section id="lap-trail" className="flex flex-col gap-3">
-      <h2 className="m-0 text-lg font-semibold text-text">Lap {latest!.lap}</h2>
-      {body(latest!)}
-      {earlier.length > 0 && (
-        <div className="mt-3">
-          {earlier.map((entry) => {
-            const outcome = outcomeItem(entry.outcome)
-            return (
-              <Disclosure
-                key={entry.lap}
-                title={`Lap ${entry.lap}`}
-                aside={outcome?.strong ?? (entry.completedAt !== null ? `Reviewed ${relTimeAgo(entry.completedAt)}` : undefined)}
-              >
-                {body(entry)}
-              </Disclosure>
-            )
-          })}
+    <section id="lap-trail" className="flex flex-col gap-1">
+      {earlier.map((entry) => (
+        <Disclosure
+          key={entry.lap}
+          bare
+          title={
+            <span className="flex min-w-0 items-center gap-4">
+              <span className="font-medium text-text">Lap {entry.lap}</span>
+              <MetaLine items={lapMeta(entry)} className="min-w-0" />
+            </span>
+          }
+        >
+          {timeline(entry)}
+        </Disclosure>
+      ))}
+      <div className="flex flex-col">
+        <div className="flex min-h-8 flex-wrap items-center gap-x-4 gap-y-1">
+          <h3 className="m-0 text-sm font-medium text-text">Lap {current.lap}</h3>
+          <MetaLine items={[reviewedItem(current)]} />
         </div>
-      )}
+        {timeline(current)}
+      </div>
     </section>
   )
 }

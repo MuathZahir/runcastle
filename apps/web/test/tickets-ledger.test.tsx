@@ -100,6 +100,15 @@ describe('TicketLedger', () => {
     expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })], 2)).toBe('0 of 1 ticket done · Lap 2')
   })
 
+  it('leaves the review ticket out of its failed and burning figures', () => {
+    const rows = [
+      ticket({ status: 'failed' }),
+      ticket({ id: 't2', seq: 2, kind: 'review', status: 'burning' }),
+      ticket({ id: 't3', seq: 3, kind: 'review', status: 'failed' }),
+    ]
+    expect(ticketLedgerMeta(rows, 2)).toBe('0 of 1 ticket done · Lap 2 · 1 failed')
+  })
+
   it('offers one bulk model control when pending tickets exist', () => {
     const bulk = vi.fn()
     render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} currentLap={2} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)

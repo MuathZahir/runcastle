@@ -7,7 +7,7 @@ import type { ReviewArtifacts } from '../src/lib/reviews'
 import { ReviewTrail } from '../src/components/review/ReviewTrail'
 
 /**
- * The lap trail (decisions 4–5) — the review page's history band.
+ * The lap trail as a timeline (decision 5) — the feature page's history.
  *
  * Tier 1: the band's whole behaviour is the entries it emits from the per-pass
  * artifacts feed — which laps, in which order, with which outcome — and it is
@@ -90,11 +90,14 @@ const TWO_LAPS = {
   currentLap: 3,
 }
 
+/** What the current lap says, from its heading on — earlier laps sit above it. */
+const currentLap = (html: string): string => html.slice(html.indexOf('<h3'))
+
 describe('the lap trail', () => {
-  it('heads the newest lap as a section and folds earlier laps into closed disclosures', () => {
+  it('tells the laps oldest first: earlier ones folded above, the current one open last', () => {
     const html = render(TWO_LAPS)
-    expect(html.indexOf('Lap 3')).toBeLessThan(html.indexOf('Lap 2'))
-    expect(html).toMatch(/<h2[^>]*>Lap 3<\/h2>/)
+    expect(html.indexOf('Lap 2')).toBeLessThan(html.indexOf('Lap 3'))
+    expect(html).toMatch(/<h3[^>]*>Lap 3<\/h3>/)
     expect(html.match(/<details/g)).toHaveLength(1)
     expect(html).not.toContain('open=""')
   })
@@ -103,29 +106,40 @@ describe('the lap trail', () => {
     expect(render(TWO_LAPS)).not.toContain('rounded-lg border')
   })
 
-  it('stamps each entry with its outcome chip and when the lap was reviewed', () => {
+  /** Decision 3: the Review status row owns the current lap's verdict. */
+  it('heads the current lap with its time only, and an earlier lap with its verdict', () => {
     const html = render(TWO_LAPS)
-    expect(html).toContain('>Verified<')
-    expect(html).toContain('drive mode')
-    expect(html).toContain('Unverified')
-    expect(html).toContain('Reviewed ')
+    const heading = html.slice(html.indexOf('<h3'), html.indexOf('<ol', html.indexOf('<h3')))
+    expect(heading).toContain('Reviewed ')
+    expect(heading).not.toContain('Unverified')
+    const earlier = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))
+    expect(earlier).toContain('>Verified<')
+    expect(earlier).toContain('drive mode')
+    expect(earlier).toContain('Reviewed ')
   })
 
-  it('names the mode a verified lap ran in, gates included', () => {
+  it('opens an earlier lap in place onto its own timeline', () => {
+    const html = render(TWO_LAPS)
+    const folded = html.slice(html.indexOf('<details'), html.indexOf('</details>'))
+    expect(folded).toContain('Review #4')
+  })
+
+  it('names the mode and verdict on the pass, gates included', () => {
     const html = render({ passes: [pass({ reviewMode: 'gates' })] })
+    expect(html).toContain('Review #4')
     expect(html).toContain('>Verified<')
     expect(html).toContain('gates mode')
   })
 
-  /** Decision 5: the runcastle-filled template, never the agent's own prose. */
-  it('states the templated line and the declared reason on an unverified lap', () => {
-    const html = render(TWO_LAPS)
-    expect(html).toContain('Lap 3 · drive mode · DRIVE FAILED · nothing verified')
-    expect(html).toContain('no browser could be attached')
-    expect(html).not.toContain('All acceptance criteria remain honestly unverified')
+  /** Review-as-a-lap-trail d5: the runcastle-filled template, never the agent's own prose. */
+  it('states the templated line and the declared reason on an unverified pass', () => {
+    const lap3 = currentLap(render(TWO_LAPS))
+    expect(lap3).toContain('>Unverified<')
+    expect(lap3).toContain('Lap 3 · drive mode · DRIVE FAILED · nothing verified')
+    expect(lap3).toContain('no browser could be attached')
+    expect(lap3).not.toContain('All acceptance criteria remain honestly unverified')
   })
 
-  /** The template already carries the reason — saying it twice is noise. */
   it('says the declared reason on its own when no templated line was stored', () => {
     const html = render({
       passes: [pass({ reviewVerdict: 'unverified', reviewVerdictReason: 'ffmpeg is missing' })],
@@ -135,13 +149,11 @@ describe('the lap trail', () => {
   })
 
   /** Pre-feature passes carry no verdict: show none rather than invent one. */
-  it('renders a pass that recorded no verdict without a chip', () => {
-    const html = render({
-      passes: [pass({ reviewMode: null, reviewVerdict: null })],
-    })
+  it('renders a pass that recorded no verdict without one', () => {
+    const html = render({ passes: [pass({ reviewMode: null, reviewVerdict: null })] })
     expect(html).not.toContain('Verified')
     expect(html).not.toContain('Unverified')
-    expect(html).toContain('Lap 1')
+    expect(html).toContain('Review #4')
   })
 
   it('reads a review ticket that failed as a pass that could not run', () => {
@@ -152,66 +164,111 @@ describe('the lap trail', () => {
     expect(html).toContain('Could not run')
   })
 
-  it('counts what the lap burned, linking it to the run view', () => {
+  it('carries the pass’s own one-line account, not a restatement of its name', () => {
+    const html = render({
+      tickets: [ticket({ digest: 'Lap 1: the filter landed · 0 defects · Drive mode\n\nThe long account.' })],
+      account: 'Lap 1: the filter landed.',
+    })
+    expect(html).toContain('The filter landed')
+    expect(html).not.toContain('The long account')
+    expect(html).not.toContain('Lap 1: the filter landed.')
+  })
+
+  /** Decision 5: work, the review, the fixes under it, the verification. */
+  it('reads a lap top to bottom in the order it happened', () => {
+    const html = render({
+      passes: [
+        pass({ ticketId: 'rev', seq: 2 }),
+        pass({ ticketId: 'ver', seq: 6, passKind: 'verification', videoUrl: null }),
+      ],
+      tickets: [
+        ticket({ id: 'imp_1', seq: 1, kind: 'implementation', title: 'filter by mood' }),
+        ticket({ id: 'rev', seq: 2 }),
+        ticket({ id: 'fix_3', seq: 3, kind: 'implementation', title: 'fix one' }),
+        ticket({ id: 'fix_4', seq: 4, kind: 'implementation', title: 'fix two' }),
+        ticket({ id: 'fix_5', seq: 5, kind: 'implementation', title: 'fix three' }),
+        ticket({ id: 'ver', seq: 6 }),
+      ],
+      findings: [
+        defect({ reviewTicketId: 'rev', status: 'fixed' }),
+        defect({ reviewTicketId: 'rev', fixTicketId: 'fix_4' }),
+        defect({ reviewTicketId: 'rev' }),
+      ],
+    })
+    const order = ['Burned <span', '#1 · filter by mood', 'Review #2', '3 defects found', 'Burned <span', '#3 · fix one', '#5 · fix three', 'Verification #6', '2 fixed']
+    let at = -1
+    for (const text of order) {
+      const next = html.indexOf(text, at + 1)
+      expect(next, text).toBeGreaterThan(at)
+      at = next
+    }
+    expect(html).toContain('>1 ticket<')
+    expect(html).toContain('>3 fixes<')
+    expect(html.match(/data-node="milestone"/g)).toHaveLength(2)
+  })
+
+  it('never lists a review or verification pass as a ticket row', () => {
+    const html = render({
+      tickets: [ticket(), ticket({ id: 'imp_1', seq: 1, kind: 'implementation' })],
+      onViewRun: () => undefined,
+    })
+    expect(html.match(/data-list-row/g)).toHaveLength(1)
+    expect(html).not.toContain('#4 · review the lap')
+  })
+
+  it('links each burned ticket to the run view, and counts what burned', () => {
     const html = render({
       tickets: [
         ticket(),
-        ticket({ id: 'imp_1', seq: 1, kind: 'implementation' }),
-        ticket({ id: 'imp_2', seq: 2, kind: 'implementation' }),
-        ticket({ id: 'imp_3', seq: 3, kind: 'implementation', status: 'cancelled' }),
+        ticket({ id: 'imp_1', seq: 1, kind: 'implementation', title: 'one' }),
+        ticket({ id: 'imp_2', seq: 2, kind: 'implementation', title: 'two' }),
+        ticket({ id: 'imp_3', seq: 3, kind: 'implementation', title: 'three', status: 'cancelled' }),
       ],
       onViewRun: () => undefined,
     })
-    expect(html).toContain('2 tickets burned')
-    // Each burned ticket is a row that goes to the run view.
-    expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>).)*#1 · review the lap/)
+    expect(html).toMatch(/Burned <span[^>]*>2 tickets</)
+    expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>).)*#1 · one/)
   })
 
-  /** The state the page is most often read in: a review reported a defect and
-   *  its fix ticket is sitting pending for the human. Nothing burned it yet. */
-  it('counts only the tickets that landed, never pending, burning or failed ones', () => {
-    const html = render({
-      tickets: [
-        ticket(),
-        ticket({ id: 'imp_1', seq: 1, kind: 'implementation' }),
-        ticket({ id: 'fix_1', seq: 2, kind: 'implementation', status: 'pending' }),
-        ticket({ id: 'imp_2', seq: 3, kind: 'implementation', status: 'burning' }),
-        ticket({ id: 'imp_3', seq: 5, kind: 'implementation', status: 'failed' }),
-      ],
-    })
-    expect(html).toContain('1 ticket burned')
+  it('says a batch is burning while one of its tickets is, and queued before any started', () => {
+    const burning = render({ passes: [], tickets: [ticket({ id: 'a', seq: 1, kind: 'implementation', status: 'burning' })] })
+    expect(burning).toContain('Burning <span')
+    const queued = render({ passes: [], tickets: [ticket({ id: 'a', seq: 1, kind: 'implementation', status: 'pending' })] })
+    expect(queued).toContain('Queued <span')
   })
 
-  /** A lap can hold several passes — the entry is the lap, the passes are rows. */
-  it('lists every pass of a lap, with the recording link that stages it', () => {
+  /** A lap can hold several passes — one milestone each. */
+  it('shows every pass of a lap, with the recording link that stages it', () => {
     const html = render({
       passes: [
         pass({ ticketId: 'tkt_a', seq: 4 }),
-        pass({
-          ticketId: 'tkt_b',
-          seq: 7,
-          passKind: 'verification',
-          reviewMode: 'gates',
-          completedAt: 4000,
-          hasVideo: false,
-          videoUrl: null,
-        }),
+        pass({ ticketId: 'tkt_b', seq: 7, reviewMode: 'gates', completedAt: 4000, videoUrl: null }),
       ],
       tickets: [ticket({ id: 'tkt_a' }), ticket({ id: 'tkt_b', seq: 7 })],
     })
-    expect(html).toContain('#4 · Review — drive mode, verified')
-    expect(html).toContain('#7 · Verification — gates mode, verified')
+    expect(html).toContain('Review #4')
+    expect(html).toContain('Review #7')
+    expect(html.match(/data-node="milestone"/g)).toHaveLength(2)
     // Only the pass that left a recording offers one.
     expect(html.match(/>Recording</g)).toHaveLength(1)
   })
 
+  /** A recording must never be unreachable. */
+  it('still shows a pass the ticket list does not know of', () => {
+    const html = render({ passes: [pass({ ticketId: 'ghost', seq: 9 })], tickets: [] })
+    expect(html).toContain('Review #9')
+    expect(html).toContain('>Recording<')
+  })
+
   it('marks the pass whose recording is on the stage', () => {
     expect(render({ staged: 'tkt_1' })).toContain('aria-pressed="true"')
+    expect(render({ staged: null })).toContain('aria-pressed="false"')
   })
 
   /** Defects and test notes are figures here; observations never appear at all. */
-  it('counts defects found, fixed and carried, and the lap’s test notes', () => {
+  it('counts an earlier lap’s defects found, fixed and carried, and its test notes', () => {
     const html = render({
+      currentLap: 2,
       findings: [
         defect(),
         defect({ status: 'fixed' }),
@@ -220,30 +277,43 @@ describe('the lap trail', () => {
       ],
       notes: [note(), note()],
     })
-    expect(html).toContain('3 defects found, 1 fixed, 1 carried')
-    expect(html).toContain('2 test notes')
+    const heading = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))
+    expect(heading).toContain('3 defects found, 1 fixed, 1 carried')
+    expect(heading).toContain('2 test notes')
     expect(html).not.toContain('observation')
   })
 
-  /** A lap whose findings belong to another one never borrows them. */
-  it('scopes every count to the lap it is about', () => {
+  /** The state an earlier lap is most often in: its fix tickets minted, not all burned. */
+  it('counts on an earlier lap’s heading only the tickets that landed', () => {
     const html = render({
-      ...TWO_LAPS,
-      findings: [defect({ lap: 2 }), defect({ lap: 2, status: 'fixed' })],
-      notes: [note({ lap: 3 })],
+      currentLap: 2,
+      tickets: [
+        ticket(),
+        ticket({ id: 'imp_1', seq: 1, kind: 'implementation' }),
+        ticket({ id: 'fix_1', seq: 2, kind: 'implementation', status: 'pending' }),
+        ticket({ id: 'imp_2', seq: 3, kind: 'implementation', status: 'burning' }),
+        ticket({ id: 'imp_3', seq: 5, kind: 'implementation', status: 'failed' }),
+      ],
     })
-    const lap3 = html.slice(html.indexOf('Lap 3'), html.indexOf('Lap 2'))
-    expect(lap3).not.toContain('defects found')
-    expect(lap3).toContain('1 test note')
-    expect(html.slice(html.indexOf('Lap 2'))).toContain('2 defects found, 1 fixed')
+    expect(html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))).toContain('1 ticket burned')
   })
 
-  /** The current lap is an entry before it has been reviewed — a lap that has
-   *  not been reviewed yet reads differently from a lap that does not exist. */
-  it('opens on the current lap even before its own review has run', () => {
+  /** A lap whose findings belong to another one never borrows them. */
+  it('scopes every figure to the lap it is about', () => {
+    const html = render({
+      ...TWO_LAPS,
+      findings: [defect({ lap: 2, reviewTicketId: 'tkt_a' }), defect({ lap: 2, status: 'fixed', reviewTicketId: 'tkt_a' })],
+      notes: [note({ lap: 3 })],
+    })
+    expect(currentLap(html)).not.toContain('defects found')
+    expect(html.slice(0, html.indexOf('<h3'))).toContain('2 defects found, 1 fixed')
+  })
+
+  /** A lap not reviewed yet reads differently from a lap that does not exist. */
+  it('tells the current lap even before its own review has run', () => {
     const html = render({ passes: [pass({ lap: 1 })], currentLap: 2, tickets: [ticket()] })
-    expect(html.indexOf('Lap 2')).toBeLessThan(html.indexOf('Lap 1'))
-    expect(html).toContain('Not reviewed yet')
+    expect(html.indexOf('Lap 1')).toBeLessThan(html.indexOf('Lap 2'))
+    expect(currentLap(html)).toContain('Not reviewed yet')
   })
 
   /** Nothing reviewed and nothing burned: no band at all rather than an empty box. */
@@ -256,9 +326,5 @@ describe('the lap trail', () => {
     const html = render({ passes: [], tickets: [ticket({ id: 'imp_1', seq: 1, kind: 'implementation', title: 'filter by mood' })] })
     expect(html).toContain('Lap 1')
     expect(html).toContain('#1 · filter by mood')
-  })
-
-  it('opens the lap with its account, when the review wrote one', () => {
-    expect(render({ account: 'Lap 1: the filter landed.' })).toContain('Lap 1: the filter landed.')
   })
 })

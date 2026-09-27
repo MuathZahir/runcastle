@@ -1,6 +1,7 @@
 import type { EventRow, Phase } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { countDecisions } from './artifact'
+import { lapTicketCount } from './laps'
 
 export type SummaryPhase = Extract<Phase, 'planning'>
 export function isSummaryPhase(phase: Phase): phase is SummaryPhase { return phase === 'planning' }
@@ -19,7 +20,7 @@ export function phaseSummary(input: PhaseSummaryInput): string | null {
 
 export function phaseFacts({ phase, full, decisions }: PhaseSummaryInput): string | null {
   if (!isSummaryPhase(phase)) return null
-  const facts = [`${full.tickets.length} tickets`]
+  const facts = [`${lapTicketCount(full.tickets, full.feature.lap).total} tickets`]
   if (decisions !== undefined) facts.unshift(`${countDecisions(decisions)} decisions`)
   if (full.feature.mapped) facts.push(`${full.waypoints.length} waypoints`)
   return facts.join(' · ')

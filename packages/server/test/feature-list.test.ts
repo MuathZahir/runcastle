@@ -1,4 +1,7 @@
+import { newId } from '@runcastle/core'
+import type { TicketKind, TicketStatus } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import {
   createSessionRow,
@@ -137,5 +140,61 @@ describe('feature.list liveSession', () => {
     openSession()
 
     expect(liveSession()).toEqual({ status: 'live', awaitingInput: true })
+  })
+})
+
+/**
+ * simplify-the-pages ticket 1 (d2) — the sidebar row's "3/7" is this lap's
+ * work, by the one shared definition. It used to count every ticket from every
+ * lap, review included, so it never agreed with the feature page it opens.
+ */
+describe('feature.list lapTally', () => {
+  let ctx: AppCtx
+  let projectId: string
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    projectId = seedProject(ctx).id
+  })
+
+  function seedTicket(
+    featureId: string,
+    seq: number,
+    row: { lap: number; status: TicketStatus; kind?: TicketKind },
+  ): void {
+    ctx.db
+      .insert(tickets)
+      .values({
+        id: newId('tick'),
+        featureId,
+        seq,
+        title: `ticket ${seq}`,
+        goal: 'g',
+        context: 'c',
+        acceptanceCriteria: [],
+        seams: [],
+        blockedBy: [],
+        commits: [],
+        kind: row.kind ?? 'implementation',
+        lap: row.lap,
+        status: row.status,
+      })
+      .run()
+  }
+
+  it('counts only the current lap’s work tickets on a two-lap feature with a review ticket', () => {
+    const feature = seedFeature(ctx, projectId, { lap: 2, phase: 'building' })
+    seedTicket(feature.id, 1, { lap: 1, status: 'done' })
+    seedTicket(feature.id, 2, { lap: 1, status: 'done', kind: 'review' })
+    seedTicket(feature.id, 3, { lap: 2, status: 'done' })
+    seedTicket(feature.id, 4, { lap: 2, status: 'failed' })
+    seedTicket(feature.id, 5, { lap: 2, status: 'cancelled' })
+    seedTicket(feature.id, 6, { lap: 2, status: 'burning', kind: 'review' })
+
+    const [item] = list(ctx, projectId)
+    expect(item.lapTally).toEqual({ landed: 1, total: 2, waived: 1 })
+    // The all-laps status counts stay for the rail's red dot.
+    expect(item.ticketCounts.total).toBe(6)
+    expect(item.ticketCounts.failed).toBe(1)
   })
 })

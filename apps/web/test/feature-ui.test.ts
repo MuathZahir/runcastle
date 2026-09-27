@@ -272,6 +272,29 @@ describe('nextStep — the one Chat door, in all four states', () => {
     expect(ns.secondary[0]?.disabled).toBeUndefined()
   })
 
+  // d2: the burn bar counts this lap's work — a finished burn reads "3 done" of
+  // 3 while its review ticket still runs, and earlier laps stay out of it.
+  it('counts this lap’s work tickets while a burn runs, never the review ticket', () => {
+    const t = (seq: number, over: Record<string, unknown>) => ({ id: `t${seq}`, seq, status: 'done', lap: 2, goal: 'g', context: 'c', ...over })
+    const base = full({ phase: 'building' })
+    const burning = {
+      ...base,
+      feature: { ...base.feature, lap: 2 },
+      tickets: [
+        t(1, { lap: 1 }),
+        t(2, { lap: 1, kind: 'review' }),
+        t(3, {}),
+        t(4, {}),
+        t(5, {}),
+        t(6, { status: 'cancelled' }),
+        t(7, { kind: 'review', status: 'burning' }),
+      ],
+      runs: [{ id: 'r1', status: 'running', startedAt: 1 }],
+    } as FeatureFull
+
+    expect(nextStep(burning, { driving: false }).desc).toBe('Burning 3 tickets — 3 done.')
+  })
+
   // The vocabulary itself: a resolver can no longer name a door that the
   // dispatcher has no case for, and the three collapsed kinds are gone from it.
   it('knows chat and none of the three kinds it replaced', () => {
@@ -3537,9 +3560,10 @@ describe.skip('turn-aware feature states', () => {
  * nothing, and the rail has one line's width to spend.
  */
 describe('ticketProgress', () => {
-  it('reads done over total', () => {
-    const counts = { total: 5, pending: 2, burning: 0, done: 3, failed: 0, cancelled: 0 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5')
+  it('reads this lap’s landed over total, not the all-laps status counts', () => {
+    const allLaps = { total: 9, pending: 2, burning: 0, done: 7, failed: 0, cancelled: 0 }
+    const item = listItem({ ticketCounts: allLaps, lapTally: { landed: 3, total: 5, waived: 1 } })
+    expect(ticketProgress(item)).toBe('3/5')
   })
 
   it('is null when the feature has no tickets', () => {
