@@ -62,7 +62,7 @@ export function ShippedBody({
   const artifacts = useReviewArtifacts(feature.id)
   const rows = artifacts.data ?? []
   const recordings = rows.filter((a) => a.hasVideo && a.videoUrl)
-  const stamped = stampedReview(rows)
+  const stamped = stampedReview(rows, tickets)
   // Shipped is terminal, so none of these reads polls: the SSE feed invalidates
   // their keys, and nothing on this page changes without one.
   const findings = trpc.findings.listByFeature.useQuery({ featureId: feature.id })

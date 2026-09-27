@@ -20,6 +20,7 @@ const trailPass = (over: Partial<TrailPass> = {}): TrailPass => ({
 
 const entry = (over: Partial<TrailEntry> = {}): TrailEntry => ({
   lap: 1,
+  reviewed: true,
   completedAt: 1000,
   outcome: { kind: 'verified', mode: 'gates' },
   burned: 0,

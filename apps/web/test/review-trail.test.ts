@@ -110,7 +110,9 @@ describe('the lap trail', () => {
   it('heads the current lap with its time only, and an earlier lap with its verdict', () => {
     const html = render(TWO_LAPS)
     const heading = html.slice(html.indexOf('<h3'), html.indexOf('<ol', html.indexOf('<h3')))
-    expect(heading).toContain('Reviewed ')
+    expect(heading).toContain(' ago<')
+    // Not even "Reviewed": the Review row says that, and says it once.
+    expect(heading).not.toContain('Reviewed')
     expect(heading).not.toContain('Unverified')
     const earlier = html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))
     expect(earlier).toContain('>Verified<')
@@ -319,7 +321,26 @@ describe('the lap trail', () => {
   it('tells the current lap even before its own review has run', () => {
     const html = render({ passes: [pass({ lap: 1 })], currentLap: 2, tickets: [ticket()] })
     expect(html.indexOf('Lap 1')).toBeLessThan(html.indexOf('Lap 2'))
-    expect(currentLap(html)).toContain('Not reviewed yet')
+    // Its heading is only the time, and it has none: the Review row says the rest.
+    expect(currentLap(html)).not.toContain('reviewed')
+  })
+
+  /**
+   * A pass that finished before completion was stamped is still a review: no
+   * heading says "Not reviewed yet" beside its node (the walked contradiction).
+   */
+  it('reads a finished pass with no completion stamp as reviewed', () => {
+    const html = render({
+      passes: [
+        pass({ ticketId: 'tkt_a', seq: 4, lap: 1, completedAt: null, reviewVerdict: null, reviewMode: null }),
+        pass({ ticketId: 'tkt_b', seq: 8, lap: 2, completedAt: null, reviewVerdict: null, reviewMode: null }),
+      ],
+      tickets: [ticket({ id: 'tkt_a', seq: 4, lap: 1 }), ticket({ id: 'tkt_b', seq: 8, lap: 2 })],
+      currentLap: 2,
+    })
+    expect(html).toContain('Review #8')
+    expect(html).not.toContain('Not reviewed yet')
+    expect(html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))).toContain('Reviewed')
   })
 
   /** Nothing reviewed and nothing burned: no band at all rather than an empty box. */
