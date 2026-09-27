@@ -88,6 +88,7 @@ import type {
 } from '@ai-hero/sandcastle'
 import { claudeCode, codex, run } from '@ai-hero/sandcastle'
 import { GUARD_RULES, buildGuardInstallCommand } from './burn-guard'
+import { trackLastCommand, withInterruptedCommandNotes } from './interrupted-command'
 import type { BurnCacheEngine, SlotAllocator } from './burn-cache'
 import {
   BURN_CACHE_MOUNT,
@@ -4502,7 +4503,12 @@ async function burnTicket(
   // stops throwing it away.
   const timer = createToolTimer(model.runtime)
 
-  // Fourth consumer, slot mode only: the setup hook's own marker line. Sandcastle
+  // Fourth consumer: the implementer's last still-running shell command, so an
+  // iteration that died mid-command (OOM-killed full suite) is named in the
+  // next iteration's prompt instead of being silently re-run.
+  const lastCommand = trackLastCommand()
+
+  // Fifth consumer, slot mode only: the setup hook's own marker line. Sandcastle
   // discards a sandbox hook's stdout, so the script leaves the line in the
   // mounted worktree instead and the host picks it up on that iteration's first
   // agent event — which is by construction the moment after setup finished.
@@ -4527,11 +4533,13 @@ async function burnTicket(
     setupRun.worktree = burnWorktreePath(project.repoPath, branch)
     setupRun.iteration = null
     timer.beginSetup()
+    lastCommand.reset()
   }
 
   const onStreamEvent = (event: AgentStreamEvent): void => {
     throttle.onEvent(event)
     timer.onEvent(event)
+    lastCommand.onEvent(event)
     consumeSetupMarker(event.iteration)
     if (event.type === 'text') {
       appendTranscript(ticket.id, { kind: 'text', text: event.message })
@@ -4915,7 +4923,10 @@ async function burnTicket(
       }
 
       const runOptions: RunOptions = {
-        agent: buildBurnAgent(config, token, model, agentOptions),
+        agent: withInterruptedCommandNotes(
+          buildBurnAgent(config, token, model, agentOptions),
+          lastCommand,
+        ),
         sandbox: selectSandbox(config, project, mounts, sandboxEnv, killHandles(containerName)),
         cwd: project.repoPath,
         prompt: retryNotes ? `${basePrompt}\n\n${retryNotes}` : basePrompt,
