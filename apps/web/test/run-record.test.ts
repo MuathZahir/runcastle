@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { runHeadline, runLanded, transcriptBlocks, unrunnableGates } from '../src/lib/feature-ui/run'
+import { runHeadline, transcriptBlocks, unrunnableGates } from '../src/lib/feature-ui/run'
 import { Lane } from '../src/components/run/Lane'
 import type { LaneRow } from '../src/components/run/Lane'
 import { LaneDigest } from '../src/components/run/LaneDigest'
@@ -74,7 +74,6 @@ describe('RunHeader in record mode', () => {
     renderToStaticMarkup(
       createElement(RunHeader, {
         headline: 'Burned 2 tickets · 2 done',
-        elapsed: '6m 02s',
         status: 'succeeded' as const,
         burning: 0,
         runs: [run({ id: 'r1' }), run({ id: 'r2' })],
@@ -90,7 +89,6 @@ describe('RunHeader in record mode', () => {
     const html = record()
     expect(html).toContain('Past run')
     expect(html).toContain('Back to latest')
-    expect(html).toContain('Succeeded')
     expect(html).not.toContain('Cancel run')
   })
 
@@ -119,25 +117,6 @@ describe('RunHeader in record mode', () => {
     )
   })
 
-  // d2: the header's "X of Y landed" is the one ticket count, over the shown
-  // run's lap — never the review ticket, never an earlier lap's work.
-  it('reads a finished burn as 3 of 3 landed while its review ticket still runs', () => {
-    const tickets = [
-      { lap: 1, status: 'done' },
-      { lap: 1, kind: 'review', status: 'done' },
-      { lap: 2, status: 'done' },
-      { lap: 2, status: 'done' },
-      { lap: 2, status: 'done' },
-      { lap: 2, kind: 'review', status: 'burning' },
-    ]
-    const landed = runLanded(tickets, run({ id: 'r2', lap: 2 }), 2)
-    expect(landed).toEqual({ done: 3, total: 3 })
-    expect(runLanded(tickets, run({ id: 'r1', lap: 1 }), 2)).toEqual({ done: 1, total: 1 })
-    expect(runLanded(tickets, undefined, 2)).toEqual({ done: 3, total: 3 })
-
-    const html = renderToStaticMarkup(createElement(RunHeader, { headline: 'Burning 3 tickets · 3 done', elapsed: '4m', landed, burning: 1 }))
-    expect(html).toContain('3 of 3')
-  })
 })
 
 describe('unrunnable verification on a run card', () => {

@@ -29,6 +29,7 @@ vi.mock('../src/lib/events', () => ({ useEventLog: () => [] }))
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
 vi.mock('../src/components/SessionPanel', () => ({ SessionPanel: () => null }))
 vi.mock('../src/components/run/LaneTranscript', () => ({ LaneTranscript: () => null }))
+vi.mock('../src/lib/reviews', () => ({ useReviewArtifacts: () => ({ data: [] }) }))
 vi.mock('../src/trpc', () => ({ trpc: {
   useUtils: () => ({ feature: { get: { invalidate: async () => undefined } } }),
   feature: {
@@ -74,6 +75,25 @@ function pick(laneId: string, menu: string, option: RegExp) {
   fireEvent.click(within(lane).getByRole('combobox', { name: menu }))
   fireEvent.click(within(screen.getByRole('listbox', { name: menu })).getByRole('option', { name: option }))
 }
+
+/** simplify-the-pages decision 9a: building gets the review page's Status tier. */
+describe('the building page’s tiers', () => {
+  it('states Burn, Tickets and Review above the run’s own heading', () => {
+    mount()
+    const status = document.querySelector('[data-tier="status"]')!
+    expect([...status.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Burn', 'Tickets', 'Review'])
+    expect(within(status as HTMLElement).getByText('Running')).toBeTruthy()
+    expect(within(status as HTMLElement).getByText('0 of 3 landed')).toBeTruthy()
+    const heading = screen.getByRole('heading', { name: 'Run' })
+    expect(status.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('leaves status and elapsed time to the Status tier, not the run header', () => {
+    mount()
+    const header = screen.getByRole('heading', { name: 'Run' }).closest('header')!
+    expect(header.textContent).not.toMatch(/Running|landed|\d+s/)
+  })
+})
 
 describe('reassigning a lane mid-run', () => {
   it('sends a model-only edit from a pending lane while the run is live', () => {
