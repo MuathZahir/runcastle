@@ -52,7 +52,7 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
 - **Report a gate that cannot run.** If a configured verify command cannot run at all because its command or required runtime is missing, write `GATE_UNRUNNABLE.md` at the sandbox root as JSON with the exact strings `{"command":"<exact command>","error":"<exact error>"}` (or a JSON array of those objects for multiple gates). Continue every other gate you can run. This is an environment report, never your ticket's failure, and it does not replace `BLOCKED.md` or `DIGEST.md`.
 
 - **Capture, then read.** Redirect a full run to a file (`<command> > /tmp/test-run.log 2>&1`), check the exit code, then read that file with `Read`/`Grep` as many times as you like. Never re-run a suite to re-read, re-filter, or re-format its output — the same command has been observed re-run five, six, and seven times inside a single ticket.
-- **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once before your final commit, plus once more only if that run found something you then fixed.
+- **Run the whole thing rarely.** Targeted runs (single file, single pattern) while you work; the full suite once at the end — *after* your work is committed (see "How to work", step 4) — plus once more only if that run found something you then fixed.
 - **Never `git stash` to get a clean-tree comparison.** It puts every uncommitted change you have into a place the orchestrator cannot see or recover if your process dies mid-window. If you need to compare against the pre-change state, use the baseline above, read the file at `HEAD` with `git show`, or — only if you genuinely need the old tree on disk — `git worktree add --detach <path> <sha>` a **detached** scratch checkout and `git worktree remove` it when done. Never `git worktree add <path> <branch>`: that checks the branch out, and a worktree left holding a branch is one nobody else can check it out in.
 
 ## How to work
@@ -72,6 +72,8 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
    where `<seq>` is the `seq` field of the ticket JSON at the end of this prompt (so ticket 4 commits `ticket(4): add the login form`). Use that prefix on every commit you make.
 
    A half-done ticket with four green commits is a good outcome the next iteration can finish. A nearly-done ticket with zero commits is a total loss.
+
+   **Commit before the long final checks.** The full typecheck and test suite are the commands most likely to kill your process — in real burns they were OOM-killed mid-run, and every agent that ran them before committing lost a finished, passing fix in all of its iterations. So once the targeted tests for your change pass, commit it *before* you start the full typecheck and test suite. If those checks then find something, fix it in a follow-up commit. A death during the long checks must never cost the work itself.
 
 5. **Self-review before you finish (forked code-review — two axes).** When all acceptance criteria pass, review your own diff along both axes, then fix what you find and re-run typecheck + tests:
    - **Standards** — does the diff follow the documented standards above and the conventions of the surrounding code? Watch for the smells: duplicated logic (extract it), mysterious names (rename), primitive obsession (give the concept a type), speculative generality (delete anything the ticket did not ask for), feature envy, data clumps.

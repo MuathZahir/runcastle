@@ -241,6 +241,15 @@ describe('renderTicketPrompt', () => {
     expect(template).toMatch(/`seq` field of the ticket JSON/i)
   })
 
+  it('has the agent commit green work before the long final checks, not after', () => {
+    // Burns OOM-killed mid-suite lost a finished, passing fix every iteration
+    // because the agent ran the full suite first and committed second.
+    const template = readFileSync(burnerTemplatePath(), 'utf8')
+    expect(template).toMatch(/commit it \*before\* you start the full typecheck and test suite/i)
+    expect(template).toMatch(/follow-up commit/i)
+    expect(template).not.toMatch(/full suite once before your final commit/i)
+  })
+
   it('makes the parent the only writer and bounds read-only subagent reports', () => {
     const out = renderTicketPrompt(readFileSync(burnerTemplatePath(), 'utf8'), promptValues())
 
