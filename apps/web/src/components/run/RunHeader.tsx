@@ -1,34 +1,43 @@
 import { useState } from 'react'
 import type { RunStatus } from '@runcastle/core'
-import { Button, MetaLine, RunStatusChip } from '../../ui'
-import { IconArrowLeft, IconClock, IconCube, IconStop } from '../../icons'
+import { Button, MetaLine } from '../../ui'
+import { IconArrowLeft, IconStop } from '../../icons'
 import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 import { ConfirmDialog } from './ConfirmDialog'
 import { RunPicker } from './RunPicker'
 import type { RunOption } from './RunPicker'
 
 /**
- * The run's own header, over the lanes (decision #10): a heading, then one line
- * of facts — status, elapsed, how many tickets landed, the honest counts — and
- * the run-level controls on the heading's right. Nothing else: the lanes below
- * are the page's spine, and a header that grew a summary of them would be the
- * digest wall this redesign is removing from the review page. The one addition
- * is a failed run's recorded reason, as a prose line under the facts.
- *
- * The counts are {@link runHeadline}'s, so a stopped lane is never reported as a
- * failure and a solo per-ticket retry says so instead of speaking whole-run
- * numbers (decisions #12b, #14c).
+ * The run's own header, over the lanes (decision #10): the Work tier's heading,
+ * with the run-level controls on its right. Status, elapsed time and how many
+ * tickets landed are the Status tier's rows above it (simplify-the-pages
+ * decision 9a), so the header says only what those rows do not: the parts of
+ * {@link runHeadline} beyond the counts — review fixes, stopped lanes, a solo
+ * per-ticket retry (decisions #12b, #14c). The one addition is a failed PAST
+ * run's recorded reason, as a prose line — the latest run's is on the
+ * next-step bar, which speaks only of the latest.
  *
  * The run history hangs off it (decision #15b): a quiet select opens the
  * feature's past runs, and picking one puts the header into record mode — the
  * run is named as history, with the way back to the latest beside it.
  */
+/**
+ * The headline's parts the Status tier's rows already say: the landed and
+ * burning counts and failures (Tickets), and a pass that verified nothing
+ * (Review).
+ */
+const STATUS_TIER_PARTS = [
+  /^All \d+ tickets? landed$/,
+  /^(Burned|Burning) \d+ tickets?$/,
+  /^\d+ (done|failed|waived)$/,
+  /^Succeeded-unverified$/,
+  /^nothing verified$/,
+]
+
 export function RunHeader({
   headline,
-  elapsed,
   status,
   summary,
-  landed,
   burning,
   busy,
   cancelling,
@@ -40,15 +49,14 @@ export function RunHeader({
   onBackToLatest,
 }: {
   headline: string
-  elapsed: string
+  /** The shown run's status — read only for whether a past run failed. */
   status?: RunStatus
   /**
-   * The run's recorded one-liner, said under a Failed chip — a run that died
-   * in preflight otherwise reads "Failed · 9s · 0 of 2 landed" and nothing else.
+   * The run's recorded one-liner, said in record mode — a past run that died
+   * in preflight otherwise reads "Failed · 9s · 0 of 2 landed" and nothing
+   * else.
    */
   summary?: string
-  /** Tickets done out of the lanes shown. */
-  landed?: { done: number; total: number }
   /** Lanes with a live agent — the blast radius Cancel run states. */
   burning: number
   busy?: boolean
@@ -70,15 +78,10 @@ export function RunHeader({
 }) {
   const [confirming, setConfirming] = useState(false)
 
-  // "N of M landed" already says the counts: the headline adds only what it
-  // does not — failures, stops, waivers, review fixes, a retry, a verdict.
-  const showsLanded = !!landed && landed.total > 0
-  const extra = showsLanded
-    ? headline
-        .split(' · ')
-        .filter((part) => !/^All \d+ tickets? landed$/.test(part) && !/^(Burned|Burning) \d+ tickets?$/.test(part) && !/^\d+ done$/.test(part))
-        .join(', ')
-    : headline
+  const extra = headline
+    .split(' · ')
+    .filter((part) => !STATUS_TIER_PARTS.some((said) => said.test(part)))
+    .join(', ')
   return (
     <header className="mb-4 flex flex-col gap-1.5">
       <div className="flex min-h-7 items-center gap-2">
@@ -106,21 +109,12 @@ export function RunHeader({
           </Button>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {status && <RunStatusChip status={status} />}
-        <MetaLine
-          items={[
-            elapsed ? { icon: <IconClock />, text: <span className="tabular-nums">{elapsed}</span> } : null,
-            landed && landed.total > 0
-              ? { icon: <IconCube />, strong: `${landed.done} of ${landed.total}`, text: 'landed' }
-              : null,
-            extra ? { text: extra } : null,
-          ]}
-        />
-      </div>
+      {extra && <MetaLine items={[{ text: extra }]} />}
       {/* A sentence, not a fact: its own wrapping line, so the fix it ends on
-          ("…from Settings → Burns") is never the part a truncating fact clips. */}
-      {status === 'failed' && summary && (
+          ("…from Settings → Burns") is never the part a truncating fact clips.
+          Only for a past run: the latest run's reason is the next-step bar's,
+          said once there (simplify-the-pages decision 6d). */}
+      {status === 'failed' && summary && onBackToLatest && (
         <p className="m-0 text-sm text-pretty text-text-secondary">
           <MessageWithSettingsLink text={summary} />
         </p>

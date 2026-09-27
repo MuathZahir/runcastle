@@ -139,15 +139,6 @@ export function conflictResolveEnded(
 }
 
 /**
- * Whether this feature was ever test-driven, from the event feed — the third
- * figure the merge confirmation reports (findings F21). A stopped drive still
- * counts: the human did put the branch on the road.
- */
-export function testDriveTaken(events: EventRow[]): boolean {
-  return events.some((e) => e.type === 'testdrive.started')
-}
-
-/**
  * Which lap the last test drive was taken in, or null when the branch was never
  * driven — what the shipped record states instead of an instruction to drive it
  * (decision 33a, "test drive taken · lap 2").
@@ -165,6 +156,27 @@ export function lastTestDriveLap(events: EventRow[]): number | null {
     else if (event.type === 'testdrive.started') driven = lap
   }
   return driven
+}
+
+/** The test drive as one fact: the lap it was taken in, and whether that is now. */
+export interface TestDriveFigure {
+  /** "Lap 2", or "Not run" when the branch was never driven. */
+  value: string
+  /** "not since" when the drive predates the current lap. */
+  sub?: string
+  tone: 'ok' | 'warn' | 'idle'
+}
+
+/**
+ * "Test-driven on lap N" — the latest lap that was (decision 8a). One formula
+ * for the status row and the merge dialog: the dialog used to read "any lap",
+ * so after an undriven lap 2 it said "taken" beside a row saying "lap 1". A
+ * drive older than the current lap is amber, since the build it drove has moved.
+ */
+export function testDriveFigure(driveLap: number | null, currentLap: number): TestDriveFigure {
+  if (driveLap === null) return { value: 'Not run', tone: 'idle' }
+  if (driveLap < currentLap) return { value: `Lap ${driveLap}`, sub: 'not since', tone: 'warn' }
+  return { value: `Lap ${driveLap}`, tone: 'ok' }
 }
 
 /** The wall clock a `ticket.timing` event carries, if it carries a usable one. */

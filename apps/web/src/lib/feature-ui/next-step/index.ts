@@ -1,3 +1,4 @@
+import { lapWorkTickets, ticketTally } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { hasResumable } from '../internal'
@@ -18,11 +19,8 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   const { feature, tickets, sessions, runs } = full
   const live = activeSession(sessions)
   const resumableChat = hasResumable(sessions, 'chat')
-  const lapTickets = tickets.filter((ticket) => ticket.lap === feature.lap)
-  const lapTicketCount = lapTickets.filter((ticket) => ticket.status !== 'cancelled').length
-  const ticketCount = tickets.length
-  const done = tickets.filter((ticket) => ticket.status === 'done').length
-  const failed = tickets.filter((ticket) => ticket.status === 'failed').length
+  const tally = ticketTally(tickets, feature.lap)
+  const failed = lapWorkTickets(tickets, feature.lap).filter((ticket) => ticket.status === 'failed').length
   const burnable = pendingTickets(tickets)
   const pending = burnable.length
   const run = latestRun(runs)
@@ -32,10 +30,7 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
     ctx,
     live,
     resumableChat,
-    lapTickets,
-    lapTicketCount,
-    ticketCount,
-    done,
+    tally,
     failed,
     pending,
     pendingTickets: burnable,

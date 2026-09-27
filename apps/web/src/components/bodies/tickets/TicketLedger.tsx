@@ -1,3 +1,4 @@
+import { lapWorkTickets } from '@runcastle/core'
 import type { ModelEntry, Ticket } from '@runcastle/core'
 import type { FeatureFull } from '../../../lib/api'
 import { groupByLap, lapTicketCount, ticketCountText } from '../../../lib/feature-ui'
@@ -9,7 +10,9 @@ import { TicketRow } from './TicketRow'
 import type { TicketPatch } from './TicketEditor'
 
 export function ticketLedgerMeta(tickets: readonly Ticket[], lap: number): string {
-  const rows = tickets.filter((ticket) => ticket.lap === lap && ticket.status !== 'cancelled')
+  // The review ticket is the review pass, not work: its burning is the review
+  // running, never "1 burning" beside a count that leaves it out.
+  const rows = lapWorkTickets(tickets, lap)
   const parts = [ticketCountText(lapTicketCount(tickets, lap)), `Lap ${lap}`]
   const failed = rows.filter((ticket) => ticket.status === 'failed').length
   const burning = rows.filter((ticket) => ticket.status === 'burning').length

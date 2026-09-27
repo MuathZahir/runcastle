@@ -1,0 +1,1012 @@
+<title>Feature Page States</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Tokens: apps/web/src/theme.css, dark first (the app's default), light as the full peer. */
+:root {
+  color-scheme: dark;
+  --canvas: #0a0c11; --surface: #10131a; --raised: #161a24; --hover: #1a1e29; --selected: #212636; --inset: #0c0e14;
+  --border: #222837; --border-subtle: rgb(200 215 255 / 0.06); --border-strong: #333a4d;
+  --text: #eceef4; --text-2: #a2a8b9; --text-3: #8a91a5; --text-dis: #4b5163; --icon: #8990a4;
+  --primary: #eceef4; --on-primary: #0a0c11;
+  --accent: #4f8ef7; --accent-text: #7aaafa; --accent-subtle: #16213a;
+  --success: #46b67a; --warning: #e2a53b; --danger: #f06363; --danger-subtle: #2a1515;
+  --ph-ideation: #ec7cb5; --ph-planning: #35c2b8; --ph-building: #f08a4b; --ph-review: var(--accent); --ph-shipped: var(--success); --ph-draft: var(--text-dis);
+  --sans: "Geist", "Geist Variable", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", "Geist Mono Variable", "Cascadia Code", ui-monospace, Consolas, monospace;
+  --tier: #b98cf5;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --canvas: #f4f6f9; --surface: #ffffff; --raised: #ffffff; --hover: #eef1f6; --selected: #e4e8f1; --inset: #f4f6f9;
+    --border: #dfe3ec; --border-subtle: rgb(22 30 50 / 0.07); --border-strong: #cdd2de;
+    --text: #161a24; --text-2: #4c5366; --text-3: #5c6377; --text-dis: #a4aab9; --icon: #6a7185;
+    --primary: #161a24; --on-primary: #ffffff;
+    --accent: #2f6fe4; --accent-text: #2463d6; --accent-subtle: #ecf2fe;
+    --success: #1e8e53; --warning: #a86a06; --danger: #c42828; --danger-subtle: #fdeeee;
+    --ph-ideation: #c13d7e; --ph-planning: #0b7f78; --ph-building: #b44f0c;
+    --tier: #7b3fd0;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #f4f6f9; --surface: #ffffff; --raised: #ffffff; --hover: #eef1f6; --selected: #e4e8f1; --inset: #f4f6f9;
+  --border: #dfe3ec; --border-subtle: rgb(22 30 50 / 0.07); --border-strong: #cdd2de;
+  --text: #161a24; --text-2: #4c5366; --text-3: #5c6377; --text-dis: #a4aab9; --icon: #6a7185;
+  --primary: #161a24; --on-primary: #ffffff;
+  --accent: #2f6fe4; --accent-text: #2463d6; --accent-subtle: #ecf2fe;
+  --success: #1e8e53; --warning: #a86a06; --danger: #c42828; --danger-subtle: #fdeeee;
+  --ph-ideation: #c13d7e; --ph-planning: #0b7f78; --ph-building: #b44f0c;
+  --tier: #7b3fd0;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--canvas); color: var(--text); font: 13px/20px var(--sans); -webkit-font-smoothing: antialiased; }
+svg { display: block; flex-shrink: 0; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 12px; }
+
+/* ---------- the viewer chrome (outside the mocked app) ---------- */
+.viewer { padding-inline: 16px; padding-block: 24px 48px; max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.intro { display: flex; flex-wrap: wrap; gap: 12px 32px; align-items: flex-end; justify-content: space-between; }
+.intro h1 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+.intro p { margin: 4px 0 0; color: var(--text-2); max-width: 68ch; font-size: 14px; line-height: 22px; }
+.switch { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--inset); border: 1px solid var(--border); border-radius: 8px; }
+.switch a { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; color: var(--text-2); text-decoration: none; font-size: 13px; white-space: nowrap; }
+.switch a:hover { background: var(--hover); color: var(--text); }
+.switch a[aria-current="true"] { background: var(--selected); color: var(--text); font-weight: 500; }
+.switch .grp { color: var(--text-3); font-size: 12px; padding: 0 4px 0 8px; align-self: center; }
+.toggles { display: flex; gap: 8px; align-items: center; color: var(--text-3); font-size: 12px; }
+.toggles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+
+.stage-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+@media (max-width: 1180px) { .stage-wrap { grid-template-columns: minmax(0, 1fr); } }
+.notes { border-left: 2px solid var(--border); padding: 4px 0 4px 16px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 16px; }
+@media (max-width: 1180px) { .notes { position: static; } }
+.notes h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+.notes p { margin: 0; color: var(--text-2); }
+.notes ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.notes li { color: var(--text-2); }
+.notes li b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.notes .t { font-size: 12px; font-weight: 500; color: var(--text-3); margin-top: 4px; }
+
+/* ---------- the app frame ---------- */
+.app { display: flex; background: var(--canvas); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 760px; }
+.sb { width: 248px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; }
+@media (max-width: 860px) { .sb { display: none; } }
+.sb-proj { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; font-weight: 500; }
+.sb-mark { width: 18px; height: 18px; border-radius: 5px; background: var(--selected); display: grid; place-items: center; color: var(--text); }
+.sb-search { display: flex; align-items: center; gap: 8px; height: 28px; margin: 4px 2px 8px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--inset); color: var(--text-3); font-size: 13px; }
+.sb-search kbd { margin-left: auto; font: 11px var(--sans); color: var(--text-3); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.nav { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border-radius: 6px; color: var(--text-2); white-space: nowrap; min-width: 0; }
+.nav > span.l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nav .m { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.nav.on { background: var(--selected); color: var(--text); font-weight: 500; }
+.nav svg { color: var(--icon); }
+.sec { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; margin-top: 12px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.sec .c { font-weight: 400; }
+.dot { width: 6px; height: 6px; border-radius: 9999px; flex: none; display: inline-block; }
+.dot.success { background: var(--success); } .dot.warning { background: var(--warning); } .dot.danger { background: var(--danger); }
+.dot.accent { background: var(--accent); } .dot.neutral { background: var(--text-3); }
+.dot.live { background: var(--accent); animation: breathe 2s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.panel { flex: 1; min-width: 0; margin: 8px 8px 8px 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+@media (max-width: 860px) { .panel { margin: 0; border-radius: 0; border: 0; } }
+.topbar { height: 44px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--border-subtle); }
+.crumb { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: var(--text); }
+.crumb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabs { display: flex; gap: 2px; }
+.tab { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--text-2); }
+.tab.on { background: var(--selected); color: var(--text); }
+.tab .c { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tb-act { display: flex; align-items: center; gap: 2px; }
+@media (max-width: 560px) { .tabs, .tb-act .btn { display: none; } }
+
+.page { flex: 1; min-width: 0; overflow: visible; }
+.col { margin: 0 auto; width: 100%; padding: 48px 32px 64px; }
+.col.narrow { max-width: 760px; } .col.wide { max-width: 1040px; }
+@media (max-width: 560px) { .col { padding: 32px 16px 48px; } }
+
+/* buttons: ui/button.tsx */
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: 13px; border-radius: 6px; border: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
+.btn.primary { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.btn.ghost { border-color: transparent; color: var(--text-2); }
+.btn.ghost:hover, .btn:hover { background: var(--hover); }
+.btn.primary:hover { background: var(--primary); opacity: .92; }
+.btn.danger { color: var(--danger); }
+.ibtn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--icon); }
+.ibtn:hover { background: var(--hover); color: var(--text); }
+.link { color: var(--accent-text); text-decoration: none; font-size: 13px; }
+.link:hover { text-decoration: underline; }
+
+/* header: PageHeader + FeatureHeader */
+.h1 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); text-wrap: pretty; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12px; line-height: 16px; color: var(--text-3); margin-top: 8px; }
+.meta > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.stepper { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; margin: 20px 0 0 -8px; }
+.step { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; }
+.step.done { color: var(--text-2); } .step.up { color: var(--text-3); }
+.step.cur { color: var(--text); font-weight: 500; background: color-mix(in srgb, var(--hue) 14%, transparent); }
+.step-sep { width: 12px; height: 1px; background: var(--border-strong); margin: 0 2px; }
+
+/* next-step bar */
+.next { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 24px; margin-top: 20px; }
+.next .copy { flex: 1 1 26rem; min-width: 0; color: var(--text-2); font-size: 13px; }
+.next .copy p { margin: 0; text-wrap: pretty; }
+.next .lead { color: var(--text); font-weight: 500; }
+.next .pills { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.next .acts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.spinner { width: 12px; height: 12px; border: 1.5px solid var(--border-strong); border-top-color: var(--text-2); border-radius: 9999px; animation: spin .8s linear infinite; display: inline-block; flex: none; }
+
+/* body rhythm: sections separated by air (gap-10 = 40px) */
+.body { display: flex; flex-direction: column; gap: 40px; margin-top: 40px; }
+.h2 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+.sec-head { display: flex; align-items: baseline; gap: 12px; min-height: 28px; }
+.sec-head .tally { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sec-head .r { margin-left: auto; align-self: center; }
+.quiet-label { font-size: 12px; font-weight: 500; color: var(--text-3); height: 28px; display: flex; align-items: center; gap: 8px; }
+
+/* PropertyList */
+.props { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 24px; margin: 0; }
+.props dt { color: var(--text-3); min-height: 24px; display: flex; align-items: center; }
+.props dd { margin: 0; min-height: 24px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.props dd .g { width: 16px; height: 16px; display: grid; place-items: center; color: var(--icon); flex: none; }
+.props dd .v { font-weight: 500; color: var(--text); white-space: nowrap; }
+.props dd .s { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.props dd .s.warn { color: var(--warning); } .props dd .s.bad { color: var(--danger); }
+.status-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 32px; }
+.status-row .props { flex: 1; min-width: 0; }
+
+/* Notice */
+.notice { display: flex; gap: 12px; align-items: flex-start; border-radius: 6px; font-size: 13px; padding: 10px 12px; }
+.notice.accent { background: var(--accent-subtle); }
+.notice .gl { color: var(--warning); margin-top: 2px; }
+.notice .bd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; color: var(--text-2); }
+.notice .tt { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; }
+.notice .tt b { color: var(--text); font-weight: 500; }
+.notice .tt i { font-style: normal; font-size: 12px; color: var(--text-3); }
+.notice p { margin: 0; }
+
+/* list rows */
+.list { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; border-radius: 6px; font-size: 13px; color: var(--text); min-width: 0; }
+.row.hov:hover { background: var(--hover); }
+.row .g { width: 16px; display: grid; place-items: center; color: var(--icon); flex: none; }
+.row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .mt { font-size: 12px; color: var(--text-3); flex: none; font-variant-numeric: tabular-nums; }
+.lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); flex: none; white-space: nowrap; }
+.lbl.success svg { color: var(--success); } .lbl.danger { color: var(--danger); } .lbl.danger svg { color: var(--danger); }
+.lbl.muted { color: var(--text-3); }
+
+/* note rows (NoteRow) */
+.nrow { display: flex; gap: 12px; padding: 12px; border-radius: 6px; }
+.nrow:hover { background: var(--hover); }
+.nrow .g { width: 16px; flex: none; margin-top: 4px; display: grid; place-items: center; align-self: flex-start; }
+.nrow .bd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.nrow p { margin: 0; text-wrap: pretty; }
+.nrow .ml { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-3); }
+.nrow .fixing { color: var(--ph-building); }
+.nrow .ctl { display: flex; gap: 4px; align-items: flex-start; }
+
+/* disclosures */
+.discs { display: flex; flex-direction: column; }
+.discs > details:last-child { border-bottom: 1px solid var(--border-subtle); }
+details.disc { border-top: 1px solid var(--border-subtle); }
+details.disc > summary { list-style: none; display: flex; align-items: center; gap: 8px; height: 40px; font-size: 13px; font-weight: 500; color: var(--text-2); cursor: pointer; }
+details.disc > summary::-webkit-details-marker { display: none; }
+details.disc > summary:hover { color: var(--text); }
+details.disc > summary .chev { transition: transform 180ms cubic-bezier(0.22,0.61,0.24,1); color: var(--icon); }
+details.disc[open] > summary .chev { transform: rotate(90deg); }
+details.disc > summary .as { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-3); }
+details.disc .db { padding: 0 0 16px 24px; color: var(--text-2); font-size: 13px; }
+details.disc .db p { margin: 0 0 8px; }
+
+/* ---------- the lap timeline (decision 5) ---------- */
+.trail { display: flex; flex-direction: column; gap: 4px; }
+.lap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 32px; font-size: 12px; color: var(--text-3); }
+.lap-head .n { font-size: 13px; font-weight: 500; color: var(--text); }
+details.lap > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 6px; padding: 0 8px 0 0; }
+details.lap > summary::-webkit-details-marker { display: none; }
+details.lap > summary:hover { background: var(--hover); }
+details.lap > summary .chev { color: var(--icon); transition: transform 180ms cubic-bezier(0.22,0.61,0.24,1); margin-left: 4px; }
+details.lap[open] > summary .chev { transform: rotate(90deg); }
+.lap-now .lap-head { padding-left: 24px; }
+.tl { position: relative; padding: 8px 0 4px 0; }
+.tl::before { content: ""; position: absolute; left: 11px; top: 16px; bottom: 20px; width: 1px; background: var(--border-strong); }
+.node { position: relative; display: flex; flex-direction: column; padding-left: 36px; }
+.node + .node { margin-top: 12px; }
+.node .mk { position: absolute; left: 0; top: 4px; width: 23px; height: 23px; display: grid; place-items: center; background: var(--surface); }
+.node .mk .ring { width: 9px; height: 9px; border-radius: 9999px; border: 1.5px solid var(--border-strong); background: var(--surface); }
+.node .mk .ring.live { border-color: var(--ph-building); }
+.node .nh { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 30px; }
+.node .nh .nt { font-size: 13px; color: var(--text-2); }
+.node .nh .nt b { color: var(--text); font-weight: 500; }
+.node .nh .r { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.node .acct { margin: 0; font-size: 13px; color: var(--text-2); text-wrap: pretty; }
+.node .acct.warn { color: var(--warning); }
+/* milestone: review / verification pass */
+.node.ms .mk { top: 6px; }
+.node.ms .mk .disc { width: 23px; height: 23px; border-radius: 9999px; display: grid; place-items: center; background: color-mix(in srgb, var(--tone) 16%, var(--surface)); color: var(--tone); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tone) 45%, transparent); }
+.node.ms { padding-block: 6px 8px; }
+.node.ms .nh .nt { font-size: 14px; color: var(--text); font-weight: 500; }
+.node.ms .verdict { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.node.ms .verdict b { color: var(--tone); font-weight: 500; }
+.tone-success { --tone: var(--success); } .tone-warning { --tone: var(--warning); } .tone-accent { --tone: var(--accent); } .tone-danger { --tone: var(--danger); }
+.wrows { display: flex; flex-direction: column; margin-top: 2px; }
+.wrow { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; margin-left: -8px; border-radius: 6px; font-size: 13px; color: var(--text); min-width: 0; }
+.wrow:hover { background: var(--hover); }
+.wrow .seq { width: 24px; flex: none; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.wrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrow .mt { font-size: 12px; color: var(--text-3); flex: none; }
+.btn.rec[aria-pressed="true"] { background: var(--selected); color: var(--text); }
+
+/* evidence stage */
+.ev { display: flex; flex-direction: column; gap: 12px; }
+.ev header { display: flex; align-items: center; gap: 16px; min-height: 28px; }
+.ev header span { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: var(--inset); overflow: hidden; max-width: 100%; }
+.shot { position: absolute; inset: 7% 8% 18%; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); padding: 3%; display: flex; flex-direction: column; gap: 8px; }
+.shot .b { height: 8px; border-radius: 3px; background: var(--selected); }
+.controls { position: absolute; left: 0; right: 0; bottom: 0; height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: linear-gradient(transparent, color-mix(in srgb, var(--inset) 92%, transparent)); color: var(--text-2); font-size: 12px; }
+.scrub { flex: 1; height: 3px; border-radius: 3px; background: var(--border-strong); position: relative; }
+.scrub::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 38%; background: var(--text-2); border-radius: 3px; }
+
+/* grill panes */
+.panes { display: flex; gap: 24px; height: 540px; min-width: 0; }
+.term { flex: 1; min-width: 0; border-radius: 10px; background: var(--inset); padding: 16px; font: 12px/18px var(--mono); color: var(--text-2); overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.term .you { color: var(--text); }
+.term .dim { color: var(--text-3); }
+.term .cursor { display: inline-block; width: 7px; height: 14px; background: var(--text-2); vertical-align: -2px; animation: breathe 1.2s steps(2) infinite; }
+.artp { width: 380px; flex: none; display: flex; flex-direction: column; min-height: 0; }
+@media (max-width: 1100px) { .artp { display: none; } }
+.artp .hd { height: 32px; display: flex; align-items: center; gap: 8px; }
+.artp .hd b { font-weight: 500; font-size: 13px; }
+.artp .doc { flex: 1; overflow: hidden; font-size: 13px; line-height: 20px; color: var(--text-2); display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.artp .doc h4 { margin: 0; font-size: 13px; color: var(--text); font-weight: 600; }
+.artp .doc p { margin: 0; }
+.artp .doc .new { border-left: 2px solid var(--ph-planning); padding-left: 10px; }
+
+/* run lanes */
+.lanes { border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+.lane { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 8px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; min-width: 0; }
+.lane .seq { width: 28px; flex: none; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lane .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane .model { width: 150px; flex: none; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane .time { width: 48px; flex: none; text-align: right; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lane .st { width: 104px; flex: none; }
+.lane-err { padding: 0 8px 12px 46px; border-bottom: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 4px; }
+.lane-err p { margin: 0; display: flex; gap: 6px; font-size: 13px; color: var(--text-2); }
+.lane-err p svg { color: var(--danger); margin-top: 3px; }
+.band { font-size: 12px; font-weight: 500; color: var(--text-3); height: 28px; display: flex; align-items: center; padding: 0 8px; margin-top: 16px; }
+@media (max-width: 760px) { .lane .model, .lane .time { display: none; } }
+
+/* ticket ledger */
+.ledger-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; min-height: 28px; margin-bottom: 8px; font-size: 12px; color: var(--text-3); }
+.ledger-meta b { color: var(--text-2); font-weight: 500; }
+.trow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; min-width: 0; }
+.trow:last-child { border-bottom: 0; }
+.trow .chev { color: var(--icon); }
+.trow .seq { width: 28px; flex: none; font-size: 12px; color: var(--text-3); }
+.trow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .after { font-size: 12px; color: var(--text-3); flex: none; }
+.trow .mono { flex: none; color: var(--text-3); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .st { width: 80px; display: flex; justify-content: flex-end; flex: none; }
+@media (max-width: 760px) { .trow .mono, .trow .after { display: none; } }
+
+/* ---------- tier overlay (viewer aid, off by default) ---------- */
+.show-tiers [data-tier] { position: relative; outline: 1px dashed color-mix(in srgb, var(--tier) 70%, transparent); outline-offset: 8px; border-radius: 2px; }
+.show-tiers [data-tier]::after { content: attr(data-tier); position: absolute; top: -18px; right: -8px; font: 500 11px/14px var(--sans); color: var(--tier); background: var(--surface); padding: 0 4px; }
+
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
+</style>
+
+<div class="viewer" id="viewer">
+  <div class="intro">
+    <div>
+      <h1>Feature page, after the simplify pass</h1>
+      <p>Seven states of one page, built from the app's own tokens, primitives and copy. Each state follows the four tiers from decision 7: Now, Status, Work, Reference. The notes beside each one name the decisions that shaped it.</p>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="tiers-toggle"> Outline the four tiers</label>
+    </div>
+  </div>
+  <nav class="switch" aria-label="Feature state">
+    <span class="grp">Planning</span>
+    <a href="#grilling" data-s="grilling">Grilling</a>
+    <a href="#tickets" data-s="tickets">Tickets ready</a>
+    <span class="grp">Building</span>
+    <a href="#burning" data-s="burning">Burning</a>
+    <a href="#failed" data-s="failed">Burn failed</a>
+    <span class="grp">Review</span>
+    <a href="#review" data-s="review">Open work</a>
+    <a href="#unverified" data-s="unverified">Nothing verified</a>
+    <span class="grp">Shipped</span>
+    <a href="#shipped" data-s="shipped">Shipped, two laps</a>
+  </nav>
+
+  <!-- ============================================================ 1 GRILLING -->
+  <section class="state" id="s-grilling" data-state="grilling">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="planning" data-size="14"></i><span>Simplify the pages — less repetition, more structure</span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm" aria-pressed="true"><i data-icon="message" data-size="14"></i>Chat <span class="dot live"></span></button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide" style="padding-bottom:24px">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Simplify the pages — less repetition, more structure</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/simplify-the-pages-less-repetition-more-structure</span>
+                <span>Started 1h ago</span>
+              </div>
+              <div class="stepper" data-stepper="planning"></div>
+              <div class="next">
+                <div class="copy"><p><span class="dot live" style="margin-right:8px;vertical-align:middle"></span><span class="lead">The ideation session is live.</span> Answer in the terminal; each decision lands in decisions.md as it locks.</p></div>
+                <div class="acts"><button class="btn ghost danger">End session</button></div>
+              </div>
+            </div>
+            <div class="body" style="margin-top:24px">
+              <div data-tier="3 · Work">
+                <div class="panes">
+                  <div class="term" aria-label="Ideation session">
+                    <div class="dim">runcastle ideation · claude-opus-5-5[1m]</div>
+                    <div>Question 7: one skeleton for every state. Every state uses the same four tiers in the same order: Now, Status, Work, Reference. The lap timeline sits in Reference, not Work; it is history…</div>
+                    <div class="you">&gt; Agree</div>
+                    <div>● Decision 7 is recorded. One last cleanup question before I build the artifact.</div>
+                    <div>Question 8: two more facts that can disagree with themselves. Test drive: the shipped row reads the latest lap, the merge dialog reads any lap…</div>
+                    <div class="you">&gt; Agree</div>
+                    <div>● Decision 8 is recorded, and the grilling questions are done.</div>
+                    <div class="you">&gt; <span class="cursor"></span></div>
+                  </div>
+                  <div class="artp">
+                    <div class="hd"><i data-icon="doc" data-size="14"></i><b>decisions.md</b><span class="mono" style="color:var(--text-3);margin-left:auto">8 decisions</span></div>
+                    <div class="doc">
+                      <h4>5. The lap trail becomes a timeline, oldest first</h4>
+                      <p>Each lap reads top to bottom in the order things happened. Review and verification passes are milestone nodes…</p>
+                      <h4>6. Five smaller repeats are cut</h4>
+                      <p>The Laps row goes. The Walkthrough "None recorded" row goes. Full account stops listing the review pass's own digest…</p>
+                      <h4>7. One four-tier skeleton for every state</h4>
+                      <p>Now, Status, Work, Reference. The Work tier keeps a real section heading; Reference is introduced by a quiet label.</p>
+                      <div class="new"><h4>8. Test drive and open work each get one definition</h4>
+                      <p>Test drive reads "test-driven on lap N". The Open work heading keeps only "K being fixed".</p></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Planning · grilling</h2>
+        <p>Barely changes. Planning already follows the tier order.</p>
+        <ul>
+          <li><b>d6e</b> The header meta has no ticket count. It shows the branch and age only.</li>
+          <li><b>d7</b> Now, then Work. There is no Status tier yet, because nothing has run, and no Reference tier, because there's no history.</li>
+          <li><b>d2</b> The sidebar row for this feature carries no count until tickets exist.</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 2 TICKETS READY -->
+  <section class="state" id="s-tickets" data-state="tickets">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="planning" data-size="14"></i><span>Skeletons for every loading state</span></div>
+            <div class="tabs"><span class="tab"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab on"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">4</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Skeletons for every loading state</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/skeletons-for-every-loading-state</span>
+                <span>Started 2h ago</span>
+              </div>
+              <div class="stepper" data-stepper="planning"></div>
+              <div class="next">
+                <div class="copy"><p><span class="lead">Review the tickets, then burn.</span> Each ticket burns in its own sandbox, and a review pass follows once they land.</p></div>
+                <div class="acts"><button class="btn ghost"><i data-icon="message" data-size="14"></i>Chat</button><button class="btn primary"><i data-icon="flame" data-size="14"></i>Burn 4 tickets</button></div>
+              </div>
+            </div>
+            <div class="body">
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">Tickets</h2></div>
+                <div class="ledger-meta"><span><b class="num">0 of 4</b> tickets done</span><span>Sandbox docker</span><span class="mono">claude-opus-5-5[1m]</span></div>
+                <div class="list">
+                  <div class="trow"><i data-icon="chev" class="chev" data-size="14"></i><span class="seq">#1</span><span class="t">Extract the shared Skeleton primitive from FeatureSkeleton and use it at the six remaining loading sites</span><span class="mono">opus-5-5</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Pending</span></span></div>
+                  <div class="trow"><i data-icon="chev" class="chev" data-size="14"></i><span class="seq">#2</span><span class="t">Every settings page loads as a skeleton of its own groups</span><span class="after">after #1</span><span class="mono">opus-5-5</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Pending</span></span></div>
+                  <div class="trow"><i data-icon="chev" class="chev" data-size="14"></i><span class="seq">#3</span><span class="t">The tickets body and the map rail load as shaped skeletons</span><span class="after">after #1</span><span class="mono">opus-5-5</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Pending</span></span></div>
+                  <div class="trow"><i data-icon="chev" class="chev" data-size="14"></i><span class="seq">#4</span><span class="t">ProjectsSkeleton rows are two-line, the name over a repo-path bar</span><span class="after">after #1</span><span class="mono">opus-5-5</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Pending</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Planning · tickets ready</h2>
+        <ul>
+          <li><b>d6e</b> The ticket count lives once, on the ledger's own line next to the tickets. The header meta no longer repeats it.</li>
+          <li><b>d2</b> The Tickets tab count, the ledger line and the sidebar's <span class="mono">0/4</span> all use one definition: this lap's work tickets. The review pass the burn adds later is never counted.</li>
+          <li><b>d7</b> Now, then Work. No Status or Reference tier on lap 1: nothing has run and there's no history yet.</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 3 BURNING -->
+  <section class="state" id="s-burning" data-state="burning">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="building" data-size="14"></i><span>Skeletons for every loading state</span></div>
+            <div class="tabs"><span class="tab on"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">4</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Skeletons for every loading state</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/skeletons-for-every-loading-state</span>
+                <span>Started 5h ago</span>
+              </div>
+              <div class="stepper" data-stepper="building"></div>
+              <div class="next">
+                <div class="copy"><p><span class="spinner" style="margin-right:8px;vertical-align:-2px"></span><span class="lead">Burning 4 tickets.</span> 2 landed, 1 burning, 1 queued. The review pass starts when they land.</p></div>
+                <div class="acts"><button class="btn danger">Cancel run</button></div>
+              </div>
+            </div>
+            <div class="body">
+              <div data-tier="2 · Status">
+                <dl class="props">
+                  <dt>Burn</dt><dd><span class="g"><span class="dot live"></span></span><span class="v">Running</span><span class="s num">12m</span></dd>
+                  <dt>Tickets</dt><dd><span class="g"><i data-icon="cube" data-size="14"></i></span><span class="v num">2 of 4 landed</span><span class="s">1 burning</span></dd>
+                  <dt>Review</dt><dd><span class="g"><span class="dot neutral"></span></span><span class="v">Not reviewed yet</span><span class="s">starts after the burn</span></dd>
+                </dl>
+              </div>
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">Lanes</h2></div>
+                <div class="band" style="margin-top:4px">Tickets</div>
+                <div class="lanes">
+                  <div class="lane"><span class="seq">#1</span><span class="t">Extract the shared Skeleton primitive from FeatureSkeleton and use it at the six remaining loading sites</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">8:14</span><span class="st"><span class="lbl success"><i data-icon="check" data-size="14"></i>Landed</span></span></div>
+                  <div class="lane"><span class="seq">#2</span><span class="t">Every settings page loads as a skeleton of its own groups</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">3:02</span><span class="st"><span class="lbl success"><i data-icon="check" data-size="14"></i>Landed</span></span></div>
+                  <div class="lane"><span class="seq">#3</span><span class="t">The tickets body and the map rail load as shaped skeletons</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">4:41</span><span class="st"><span class="lbl"><span class="spinner"></span>Burning</span></span></div>
+                  <div class="lane"><span class="seq">#4</span><span class="t">ProjectsSkeleton rows are two-line, the name over a repo-path bar</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">—</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Queued</span></span></div>
+                </div>
+                <div class="band">Review</div>
+                <div class="lanes">
+                  <div class="lane"><span class="seq">#5</span><span class="t" style="color:var(--text-2)">Review pass — waits for the 4 tickets</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">—</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Waiting</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Building · burning</h2>
+        <ul>
+          <li><b>d2</b> The count is "2 of 4" everywhere: the bar, the Tickets row, the sidebar row. The review ticket (#5) is a separate band and is never counted as a ticket.</li>
+          <li><b>d7</b> Status is the same property list as the review page, with Burn, Tickets and Review, instead of the run header's own chip line.</li>
+          <li><b>d7</b> Work is the lanes. The run timeline and "What this run produced" are unchanged and sit below them (not drawn here).</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 4 FAILED -->
+  <section class="state" id="s-failed" data-state="failed">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="building" data-size="14"></i><span>Skeletons for every loading state</span></div>
+            <div class="tabs"><span class="tab on"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">4</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Skeletons for every loading state</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/skeletons-for-every-loading-state</span>
+                <span>Started 5h ago</span>
+              </div>
+              <div class="stepper" data-stepper="building"></div>
+              <div class="next">
+                <div class="copy"><p><span class="dot warning" style="margin-right:8px;vertical-align:middle"></span><span class="lead">Resume the burn.</span> Ticket #3 could not merge into the feature branch: <span class="mono">TicketsBody.tsx</span> conflicts with the Skeleton import #1 added. Resuming re-runs #3 on top of what landed.</p></div>
+                <div class="acts"><button class="btn ghost"><i data-icon="message" data-size="14"></i>Chat</button><button class="btn primary"><i data-icon="refresh" data-size="14"></i>Resume burn</button></div>
+              </div>
+            </div>
+            <div class="body">
+              <div data-tier="2 · Status">
+                <dl class="props">
+                  <dt>Burn</dt><dd><span class="g"><span class="dot danger"></span></span><span class="v">Failed</span></dd>
+                  <dt>Tickets</dt><dd><span class="g"><i data-icon="cube" data-size="14"></i></span><span class="v num">2 of 4 landed</span><span class="s bad">1 failed</span></dd>
+                  <dt>Review</dt><dd><span class="g"><span class="dot neutral"></span></span><span class="v">Not reviewed yet</span></dd>
+                </dl>
+              </div>
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">Lanes</h2></div>
+                <div class="band" style="margin-top:4px">Tickets</div>
+                <div class="lanes">
+                  <div class="lane"><span class="seq">#1</span><span class="t">Extract the shared Skeleton primitive from FeatureSkeleton and use it at the six remaining loading sites</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">8:14</span><span class="st"><span class="lbl success"><i data-icon="check" data-size="14"></i>Landed</span></span></div>
+                  <div class="lane"><span class="seq">#2</span><span class="t">Every settings page loads as a skeleton of its own groups</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">3:02</span><span class="st"><span class="lbl success"><i data-icon="check" data-size="14"></i>Landed</span></span></div>
+                  <div class="lane" style="border-bottom:0"><span class="seq">#3</span><span class="t">The tickets body and the map rail load as shaped skeletons</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">6:20</span><span class="st"><span class="lbl danger"><i data-icon="alert" data-size="14"></i>Failed</span></span></div>
+                  <div class="lane-err"><p><i data-icon="alert" data-size="14"></i><span>Merge conflict in <span class="mono" style="color:var(--text)">apps/web/src/components/bodies/tickets/TicketsBody.tsx</span></span></p></div>
+                  <div class="lane"><span class="seq">#4</span><span class="t">ProjectsSkeleton rows are two-line, the name over a repo-path bar</span><span class="model mono">claude-opus-5-5[1m]</span><span class="time">—</span><span class="st"><span class="lbl muted"><span class="dot neutral"></span>Not started</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Building · burn failed</h2>
+        <ul>
+          <li><b>d6d</b> The run's failure summary is said once, on the bar, where the next action is. The Burn row says only "Failed", in red.</li>
+          <li><b>d4</b> The failure stays loud in its own row: Tickets shows "1 failed" in red, with no Checks row restating it.</li>
+          <li><b>d2</b> "2 of 4 landed" still counts only this lap's work tickets.</li>
+          <li>The lane keeps its ticket's own error (which file conflicted). That's a detail about the ticket, not the run summary.</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 5 REVIEW, OPEN WORK -->
+  <section class="state" id="s-review" data-state="review">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="review" data-size="14"></i><span>Install runcastle from local main without publishing</span></div>
+            <div class="tabs"><span class="tab on"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">3</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Install runcastle from local main without publishing</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/install-runcastle-from-local-main-without-publishing</span>
+                <span>Started 1d ago</span>
+              </div>
+              <div class="stepper" data-stepper="review"></div>
+              <div class="next">
+                <div class="copy">
+                  <div class="pills" style="margin-top:0"><span class="pill"><span class="dot danger"></span>1 defect</span><span class="pill"><span class="dot neutral"></span>1 note</span><span style="font-size:13px;color:var(--text-3)">open</span></div>
+                </div>
+                <div class="acts"><button class="btn ghost"><i data-icon="play" data-size="14"></i>Start test drive</button><button class="btn primary"><i data-icon="undo" data-size="14"></i>Iterate</button></div>
+              </div>
+            </div>
+            <div class="body">
+              <div data-tier="2 · Status" class="status-row">
+                <dl class="props">
+                  <dt>Review</dt><dd><span class="g"><span class="dot success"></span></span><span class="v">Verified</span><span class="s">gates mode · this build</span></dd>
+                  <dt>Tickets</dt><dd><span class="g"><i data-icon="cube" data-size="14"></i></span><span class="v num">1 of 3 landed</span><span class="s">2 burning</span></dd>
+                  <dt>Test drive</dt><dd><span class="g"><span class="dot neutral"></span></span><span class="v">Not run</span></dd>
+                  <dt>Burn</dt><dd><span class="g"><span class="dot live"></span></span><span class="v">Running</span><span class="s">2 fixes</span></dd>
+                </dl>
+                <button class="btn sm"><i data-icon="shield" data-size="14"></i>Agentic review</button>
+              </div>
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">Needs attention</h2><span class="tally">2 being fixed</span></div>
+                <div class="list" style="margin-top:8px">
+                  <div class="nrow"><span class="g"><span class="dot danger"></span></span><div class="bd"><p>The running-server guard probes a hardcoded 4512 and ignores the configured serverPort</p><div class="ml"><span>Defect · review #2</span><span class="mono">scripts/install-local.ts:88</span></div></div><div class="ctl"><button class="btn ghost sm">Fix in a ticket</button></div></div>
+                  <div class="nrow"><span class="g"><span class="dot neutral"></span></span><div class="bd"><p>The README section should say to stop the dev server before installing, or the tarball swap fails on Windows.</p><div class="ml"><span>Your note</span><span>2h ago</span></div></div><div class="ctl"><button class="btn ghost sm">Fix in a ticket</button></div></div>
+                  <div class="nrow"><span class="g"><span class="spinner"></span></span><div class="bd"><p style="color:var(--text-2)">--no-install always fails: the fresh snapshot has no node_modules, so build:pkg cannot resolve anything</p><div class="ml"><span class="fixing">fixed in the burn by #3</span></div></div></div>
+                  <div class="nrow"><span class="g"><span class="spinner"></span></span><div class="bd"><p style="color:var(--text-2)">A local build ranks below its base tag, so the update banner tells the owner to install the published version over their fixes</p><div class="ml"><span class="fixing">fixed in the burn by #4</span></div></div></div>
+                </div>
+              </div>
+              <div data-tier="4 · Reference" style="display:flex;flex-direction:column;gap:16px">
+                <div>
+                  <div class="quiet-label">History</div>
+                  <div class="trail">
+                    <div class="lap-now">
+                      <div class="lap-head" style="padding-left:0"><span class="n">Lap 1</span><span>reviewed 2h ago</span></div>
+                      <div class="tl">
+                        <div class="node">
+                          <span class="mk"><span class="ring"></span></span>
+                          <div class="nh"><span class="nt">Burned <b>1 ticket</b></span></div>
+                          <div class="wrows"><div class="wrow"><span class="seq">#1</span><span class="t">Add scripts/install-local.ts and a root script "install:local": "bun scripts/install-local.ts"</span><span class="mt">3h ago</span></div></div>
+                        </div>
+                        <div class="node ms tone-success">
+                          <span class="mk"><span class="disc"><i data-icon="shield" data-size="13"></i></span></span>
+                          <div class="nh"><span class="nt">Review #2</span><span class="verdict">gates mode · <b>3 defects found</b></span><span class="r"><span style="font-size:12px;color:var(--text-3)">2h ago</span></span></div>
+                          <p class="acct">Typecheck and the full suite pass. Three defects in the install path: --no-install, the version ranking, and the hardcoded server port.</p>
+                        </div>
+                        <div class="node">
+                          <span class="mk"><span class="ring live"></span></span>
+                          <div class="nh"><span class="nt">Burning <b>2 fixes</b></span></div>
+                          <div class="wrows">
+                            <div class="wrow"><span class="seq">#3</span><span class="t">--no-install always fails: the fresh snapshot has no node_modules, so build:pkg cannot resolve anything</span><span class="lbl"><span class="spinner"></span>Burning</span></div>
+                            <div class="wrow"><span class="seq">#4</span><span class="t">A local build ranks below its base tag, so the update banner tells the owner to install the published version over their fixes</span><span class="lbl"><span class="spinner"></span>Burning</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="discs">
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="terminal" data-size="14"></i>How to drive this app<span class="as"><a class="link" href="#review" onclick="return false">Edit in settings</a></span></summary><div class="db"><p>Runs <span class="mono">bun run dev</span> on the review branch's checkout; the server answers on :4512, the web app on :4513.</p></div></details>
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="doc" data-size="14"></i>Full account<span class="as">digest · 1 observation</span></summary><div class="db"><p>What landed this lap, each work ticket's digest, and the observations. The review pass's own digest is no longer repeated here.</p></div></details>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Review · open work</h2>
+        <ul>
+          <li><b>d3</b> The Review row owns the verdict and its freshness together: "Verified · gates mode · this build". The lap heading below shows only the time.</li>
+          <li><b>d8b</b> The bar keeps the open count ("1 defect · 1 note"). The section heading says only "2 being fixed", the one thing the bar doesn't.</li>
+          <li><b>d2</b> "1 of 3 landed": work tickets #1, #3 and #4. The review pass (#2) is never counted.</li>
+          <li><b>d4 · d6a</b> There's no Checks row, no Laps row, and no Check details disclosure.</li>
+          <li><b>d5</b> The lap reads oldest first: work, then the review milestone, then the fixes burning under it.</li>
+          <li><b>d7</b> Gates mode records nothing, so there's no evidence stage. Work opens straight on Needs attention, and History is Reference.</li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 6 NOTHING VERIFIED -->
+  <section class="state" id="s-unverified" data-state="unverified">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="review" data-size="14"></i><span>Install runcastle from local main without publishing</span></div>
+            <div class="tabs"><span class="tab on"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">1</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Install runcastle from local main without publishing</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/install-runcastle-from-local-main-without-publishing</span>
+                <span>Started 2d ago</span>
+                <span>Lap 2</span>
+              </div>
+              <div class="stepper" data-stepper="review"></div>
+              <div class="next">
+                <div class="copy">
+                  <p><span class="dot warning" style="margin-right:8px;vertical-align:middle"></span><span class="lead">Nothing was verified this lap.</span> The drive's dev command exited before the app answered on :4513.</p>
+                  <div class="pills"><span class="pill"><span class="dot success"></span>Nothing open</span></div>
+                </div>
+                <div class="acts"><button class="btn ghost"><i data-icon="play" data-size="14"></i>Start test drive</button><button class="btn"><i data-icon="merge" data-size="14"></i>Merge &amp; ship</button></div>
+              </div>
+              <div class="notice accent" style="margin-top:24px">
+                <span class="gl"><i data-icon="alert"></i></span>
+                <div class="bd">
+                  <div class="tt"><b>Nothing verified this lap</b><i>lap 2</i></div>
+                  <p>The review pass ran and produced no evidence, so nothing on this branch has been checked this lap. Nothing is blocked. Run another review, or drive it yourself, before you ship.</p>
+                  <p class="mono" style="color:var(--text-3)">bun run dev exited 1 after 6s · port 4513 never answered</p>
+                </div>
+                <button class="btn sm"><i data-icon="shield" data-size="14"></i>Agentic review</button>
+              </div>
+            </div>
+            <div class="body">
+              <div data-tier="2 · Status" class="status-row">
+                <dl class="props">
+                  <dt>Review</dt><dd><span class="g"><span class="dot warning"></span></span><span class="v">Unverified</span><span class="s">nothing verified</span></dd>
+                  <dt>Tickets</dt><dd><span class="g"><i data-icon="cube" data-size="14"></i></span><span class="v num">1 of 1 landed</span></dd>
+                  <dt>Test drive</dt><dd><span class="g"><span class="dot warning"></span></span><span class="v">Lap 1</span><span class="s warn">not since</span></dd>
+                  <dt>Burn</dt><dd><span class="g"><span class="dot success"></span></span><span class="v">Succeeded</span></dd>
+                </dl>
+              </div>
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">Notes</h2></div>
+                <p style="margin:4px 0 0;color:var(--text-3)">Nothing open. Notes you jot while you drive land here.</p>
+              </div>
+              <div data-tier="4 · Reference" style="display:flex;flex-direction:column;gap:16px">
+                <div>
+                  <div class="quiet-label">History</div>
+                  <div class="trail">
+                    <details class="lap">
+                      <summary><i data-icon="chev" class="chev" data-size="14"></i><div class="lap-head"><span class="n">Lap 1</span><span style="display:inline-flex;gap:6px;align-items:center"><span class="dot success"></span><span style="color:var(--text-2);font-weight:500">Verified</span> gates mode</span><span>4 tickets</span><span>3 defects found, 3 fixed</span><span>1d ago</span></div></summary>
+                      <div class="tl" style="margin-left:24px">
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>1 ticket</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#1</span><span class="t">Add scripts/install-local.ts and a root script "install:local"</span><span class="mt">1d ago</span></div></div></div>
+                        <div class="node ms tone-success"><span class="mk"><span class="disc"><i data-icon="shield" data-size="13"></i></span></span><div class="nh"><span class="nt">Review #2</span><span class="verdict">gates mode · <b>3 defects found</b></span></div></div>
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>3 fixes</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#3</span><span class="t">--no-install always fails: the fresh snapshot has no node_modules…</span></div><div class="wrow"><span class="seq">#4</span><span class="t">A local build ranks below its base tag…</span></div><div class="wrow"><span class="seq">#5</span><span class="t">The running-server guard probes a hardcoded 4512…</span></div></div></div>
+                        <div class="node ms tone-success"><span class="mk"><span class="disc"><i data-icon="check" data-size="13"></i></span></span><div class="nh"><span class="nt">Verification #6</span><span class="verdict">gates mode · <b>Verified · 3 fixed</b></span></div></div>
+                      </div>
+                    </details>
+                    <div class="lap-now" style="margin-top:8px">
+                      <div class="lap-head"><span class="n">Lap 2</span><span>reviewed 40m ago</span></div>
+                      <div class="tl" style="margin-left:24px">
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>1 ticket</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#7</span><span class="t">install:local prints the installed version and where it linked the CLI</span><span class="mt">1h ago</span></div></div></div>
+                        <div class="node ms tone-warning"><span class="mk"><span class="disc"><i data-icon="shield" data-size="13"></i></span></span><div class="nh"><span class="nt">Review #8</span><span class="verdict">drive mode · <b>Could not run</b></span><span class="r"><span style="font-size:12px;color:var(--text-3)">40m ago</span></span></div><p class="acct warn">Lap 2 · drive mode · DRIVE FAILED · nothing verified</p></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="discs">
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="terminal" data-size="14"></i>How to drive this app<span class="as"><a class="link" href="#unverified" onclick="return false">Edit in settings</a></span></summary><div class="db"><p>Runs <span class="mono">bun run dev</span> on the review branch's checkout.</p></div></details>
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="doc" data-size="14"></i>Full account<span class="as">digest</span></summary><div class="db"><p>The lap's write-up and #7's digest.</p></div></details>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Review · nothing verified</h2>
+        <ul>
+          <li><b>d3</b> The Review row now says "Unverified". Before, it read "Reviewed · this build" while the trail said "Unverified".</li>
+          <li><b>d3</b> The top-of-page warning stays. The trail keeps "nothing verified" on lap 2's pass node, as the record.</li>
+          <li><b>d5</b> Lap 1 is collapsed to one heading line that still carries its verdict and counts. Open it for the full timeline.</li>
+          <li><b>d8a</b> Test drive: "Lap 1 · not since" in amber. Lap 2 was never driven.</li>
+          <li><b>d6a</b> "Lap 2" appears once, in the header meta. There's no Laps row.</li>
+        </ul>
+        <div class="t">Left for you to judge</div>
+        <p>The bar's title ("Nothing was verified this lap") and the alert's title still say the same thing. Decision 3 kept the alert. The bar could drop its title and keep only the reason.</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============================================================ 7 SHIPPED -->
+  <section class="state" id="s-shipped" data-state="shipped">
+    <div class="stage-wrap">
+      <div class="app">
+        <aside class="sb" data-sidebar></aside>
+        <div class="panel">
+          <div class="topbar">
+            <div class="crumb"><i data-phase="shipped" data-size="14"></i><span>Install runcastle from local main without publishing</span></div>
+            <div class="tabs"><span class="tab on"><i data-icon="home" data-size="14"></i>Overview</span><span class="tab"><i data-icon="cube" data-size="14"></i>Tickets <span class="c">2</span></span></div>
+            <div class="tb-act">
+              <button class="btn ghost sm"><i data-icon="message" data-size="14"></i>Chat</button>
+              <button class="ibtn" aria-label="More"><i data-icon="more"></i></button>
+              <button class="ibtn" aria-label="Show details"><i data-icon="panel"></i></button>
+            </div>
+          </div>
+          <div class="page"><div class="col wide">
+            <div data-tier="1 · Now">
+              <h1 class="h1">Install runcastle from local main without publishing</h1>
+              <div class="meta">
+                <span class="mono"><i data-icon="branch" data-size="14"></i>feature/install-runcastle-from-local-main-without-publishing</span>
+                <span><span class="dot success"></span>Merged 1d ago</span>
+                <span>Lap 2</span>
+              </div>
+              <div class="stepper" data-stepper="shipped"></div>
+            </div>
+            <div class="body">
+              <div data-tier="2 · Status">
+                <dl class="props">
+                  <dt>Review</dt><dd><span class="g"><span class="dot success"></span></span><span class="v">Verified</span><span class="s">drive mode · this build</span></dd>
+                  <dt>Tickets</dt><dd><span class="g"><i data-icon="cube" data-size="14"></i></span><span class="v num">2 of 2 landed</span></dd>
+                  <dt>Test drive</dt><dd><span class="g"><span class="dot success"></span></span><span class="v">Lap 2</span></dd>
+                </dl>
+              </div>
+              <div data-tier="3 · Work">
+                <div class="sec-head"><h2 class="h2">What shipped</h2><span class="r"><button class="btn sm"><i data-icon="doc" data-size="14"></i>Outcome</button></span></div>
+                <div class="ev" style="margin-top:8px">
+                  <header><span>Lap 2 · Verification walkthrough · 1:42 · confirms 1 fix · this build</span><button class="ibtn" style="margin-left:auto" aria-label="Expand"><i data-icon="expand"></i></button></header>
+                  <div class="frame" role="img" aria-label="Walkthrough recording, paused at 0:39">
+                    <div class="shot"><div class="b" style="width:34%"></div><div class="b" style="width:72%;opacity:.7"></div><div class="b" style="width:58%;opacity:.7"></div><div style="flex:1;border-radius:4px;background:var(--inset);margin-top:6px;padding:10px;font:11px/16px var(--mono);color:var(--text-3)">$ bun run install:local<br>✓ built runcastle 0.14.0-local.3<br>✓ linked ~/.bun/bin/runcastle → 0.14.0-local.3</div></div>
+                    <div class="controls"><i data-icon="play" data-size="14"></i><span class="num">0:39</span><span class="scrub"></span><span class="num">1:42</span></div>
+                  </div>
+                </div>
+              </div>
+              <div data-tier="4 · Reference" style="display:flex;flex-direction:column;gap:16px">
+                <div>
+                  <div class="quiet-label">History</div>
+                  <div class="trail">
+                    <details class="lap">
+                      <summary><i data-icon="chev" class="chev" data-size="14"></i><div class="lap-head"><span class="n">Lap 1</span><span style="display:inline-flex;gap:6px;align-items:center"><span class="dot success"></span><span style="color:var(--text-2);font-weight:500">Verified</span> gates mode</span><span>4 tickets</span><span>3 defects found, 3 fixed</span><span>2d ago</span></div></summary>
+                      <div class="tl" style="margin-left:24px">
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>1 ticket</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#1</span><span class="t">Add scripts/install-local.ts and a root script "install:local"</span></div></div></div>
+                        <div class="node ms tone-success"><span class="mk"><span class="disc"><i data-icon="shield" data-size="13"></i></span></span><div class="nh"><span class="nt">Review #2</span><span class="verdict">gates mode · <b>3 defects found</b></span></div></div>
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>3 fixes</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#3</span><span class="t">--no-install always fails…</span></div><div class="wrow"><span class="seq">#4</span><span class="t">A local build ranks below its base tag…</span></div><div class="wrow"><span class="seq">#5</span><span class="t">The running-server guard probes a hardcoded 4512…</span></div></div></div>
+                        <div class="node ms tone-success"><span class="mk"><span class="disc"><i data-icon="check" data-size="13"></i></span></span><div class="nh"><span class="nt">Verification #6</span><span class="verdict">gates mode · <b>Verified · 3 fixed</b></span></div></div>
+                      </div>
+                    </details>
+                    <div class="lap-now" style="margin-top:8px">
+                      <div class="lap-head"><span class="n">Lap 2</span><span>1d ago</span></div>
+                      <div class="tl" style="margin-left:24px">
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>1 ticket</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#7</span><span class="t">install:local prints the installed version and where it linked the CLI</span><span class="mt">1d ago</span></div></div></div>
+                        <div class="node ms tone-warning"><span class="mk"><span class="disc"><i data-icon="shield" data-size="13"></i></span></span><div class="nh"><span class="nt">Review #8</span><span class="verdict">drive mode · <b>Could not run</b></span></div><p class="acct warn">The dev command exited before the app answered on :4513.</p></div>
+                        <div class="node"><span class="mk"><span class="ring"></span></span><div class="nh"><span class="nt">Burned <b>1 fix</b></span></div><div class="wrows"><div class="wrow"><span class="seq">#9</span><span class="t">The drive setup script builds the web bundle before starting the server</span><span class="mt">1d ago</span></div></div></div>
+                        <div class="node ms tone-success"><span class="mk"><span class="disc"><i data-icon="check" data-size="13"></i></span></span><div class="nh"><span class="nt">Verification #10</span><span class="verdict">drive mode · <b>Verified · confirms 1 fix</b></span><span class="r"><button class="btn ghost sm rec" aria-pressed="true"><i data-icon="play" data-size="14"></i>Recording</button></span></div><p class="acct">Walked the install from a clean checkout: the CLI links, the banner stays quiet, the server answers on the configured port.</p></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="discs">
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="message" data-size="14"></i>Questions asked<span class="as">2 conversations</span></summary><div class="db"><div class="list"><div class="row hov"><span class="g"><i data-icon="message" data-size="14"></i></span><span class="t">Does --no-install still work on a fresh clone?</span><span class="mt">4h ago</span></div><div class="row hov"><span class="g"><i data-icon="message" data-size="14"></i></span><span class="t">Conversation</span><span class="mt">1d ago</span></div></div></div></details>
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="terminal" data-size="14"></i>How to drive this app<span class="as"><a class="link" href="#shipped" onclick="return false">Edit in settings</a></span></summary><div class="db"><p>Runs <span class="mono">bun run dev</span> on the branch's checkout.</p></div></details>
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="doc" data-size="14"></i>Full account<span class="as">digest · 3 observations</span></summary><div class="db"><p>Each lap's write-up and the work tickets' digests. The review passes' own digests are not repeated.</p></div></details>
+                  <details class="disc"><summary><i data-icon="chev" class="chev" data-size="14"></i><i data-icon="list" data-size="14"></i>Deferred to a later lap<span class="as">1 item</span></summary><div class="db"><p>A --dry-run flag that prints what install:local would change.</p></div></details>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+      <aside class="notes">
+        <h2>Shipped · two laps</h2>
+        <ul>
+          <li><b>d4</b> There's no Checks row and no Check details. The screenshot's "2 of 3 passed" and "2/2 done" are gone.</li>
+          <li><b>d6a · d6b</b> There's no Laps row and no "Walkthrough · None recorded" row. The stage appears because this build has a walkthrough.</li>
+          <li><b>d2</b> "2 of 2 landed" is lap 2's work (#7, #9). Lap 1's four tickets live on its collapsed heading.</li>
+          <li><b>d5</b> Lap 2 shows two passes as milestones: a review that could not run, and the verification whose recording plays above.</li>
+          <li><b>d7</b> "Questions asked" is now a collapsed row showing its count. Every conversation is still one click away.</li>
+          <li><b>d8a</b> Test drive "Lap 2", the latest lap driven. The merge dialog uses the same formula.</li>
+        </ul>
+        <div class="t">Left for you to judge</div>
+        <p>The Work tier heading ("What shipped") and the Outcome button's place beside it are my reading of decision 7. Today the outcome link sits on its own.</p>
+      </aside>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var I = {
+    branch: '<circle cx="4.5" cy="3.8" r="1.7"/><circle cx="4.5" cy="12.2" r="1.7"/><circle cx="11.5" cy="5" r="1.7"/><path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6"/>',
+    cube: '<path d="M8 1.6l5.4 3v6.8L8 14.4l-5.4-3V4.6z"/><path d="M8 7.6l5.4-3M8 7.6L2.6 4.6M8 7.6v6.8"/>',
+    shield: '<path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z"/>',
+    check: '<path d="m3 8.4 3.2 3.2L13 5"/>',
+    play: '<path d="M5 3.2v9.6L13 8z" fill="currentColor" stroke="none"/>',
+    chev: '<path d="m6 4 4 4-4 4"/>',
+    doc: '<path d="M4 1.8h5.2L13 5.6v8.6H4z"/><path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4"/>',
+    terminal: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"/><path d="m4.5 6.2 2.3 2-2.3 2M8.5 10.4h3"/>',
+    message: '<path d="M2 4.4a1.6 1.6 0 0 1 1.6-1.6h8.8A1.6 1.6 0 0 1 14 4.4v5.2a1.6 1.6 0 0 1-1.6 1.6H6.4L3.2 14v-2.8A1.6 1.6 0 0 1 2 9.6z"/>',
+    list: '<path d="M5.8 4h7.7M5.8 8h7.7M5.8 12h7.7"/><circle cx="2.8" cy="4" r=".9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="8" r=".9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="12" r=".9" fill="currentColor" stroke="none"/>',
+    refresh: '<path d="M13.2 6.4A5.3 5.3 0 0 0 3.4 5.1M2.8 9.6a5.3 5.3 0 0 0 9.8 1.3"/><path d="M13.5 2.8v3.7H9.8M2.5 13.2V9.5h3.7"/>',
+    flame: '<path d="M8 14.4c2.7 0 4.7-2 4.7-4.7 0-2-1.3-3.4-2-4.7-.7 1.3-1.3 2-2 2 0-2-.7-4-2.7-5.4 0 2.7-2.7 4-2.7 8.1 0 2.7 2 4.7 4.7 4.7z"/>',
+    home: '<path d="M2.5 7 8 2.5 13.5 7v5.8c0 .7-.5 1.2-1.2 1.2H3.7c-.7 0-1.2-.5-1.2-1.2z"/><path d="M6.3 14v-3.8h3.4V14"/>',
+    search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 L14 14"/>',
+    settings: '<path d="M6.28 3.52L6.43 1.69A6.5 6.5 0 0 1 9.57 1.69L9.72 3.52A4.8 4.8 0 0 1 11.02 4.27L12.68 3.48A6.5 6.5 0 0 1 14.25 6.21L12.74 7.25A4.8 4.8 0 0 1 12.74 8.75L14.25 9.79A6.5 6.5 0 0 1 12.68 12.52L11.02 11.73A4.8 4.8 0 0 1 9.72 12.48L9.57 14.31A6.5 6.5 0 0 1 6.43 14.31L6.28 12.48A4.8 4.8 0 0 1 4.98 11.73L3.32 12.52A6.5 6.5 0 0 1 1.75 9.79L3.26 8.75A4.8 4.8 0 0 1 3.26 7.25L1.75 6.21A6.5 6.5 0 0 1 3.32 3.48L4.98 4.27A4.8 4.8 0 0 1 6.28 3.52Z"/><circle cx="8" cy="8" r="2"/>',
+    panel: '<rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6"/><path d="M10.2 2.8v10.4"/>',
+    alert: '<path d="M7.1 2.8a1 1 0 0 1 1.8 0l5.4 9.6a1 1 0 0 1-.9 1.5H2.6a1 1 0 0 1-.9-1.5z"/><path d="M8 6.4v3"/><circle cx="8" cy="11.5" r=".85" fill="currentColor" stroke="none"/>',
+    merge: '<circle cx="4.5" cy="3.8" r="1.7"/><circle cx="4.5" cy="12.2" r="1.7"/><circle cx="11.5" cy="9.6" r="1.7"/><path d="M4.5 5.5v5M4.5 5.5c0 2.6 2.4 4.1 5.3 4.1"/>',
+    undo: '<path d="M5 6h5a3 3 0 0 1 0 6H7"/><path d="M7 3.5 4.5 6 7 8.5"/>',
+    more: '<circle cx="3.2" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.8" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
+    expand: '<path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/>',
+    clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.2 1.4"/>'
+  };
+  function icon(name, size) {
+    size = size || 16;
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (I[name] || '') + '</svg>';
+  }
+  var FILL = { draft: 0, ideation: 0, planning: 25, building: 75, review: 0, shipped: 100 };
+  var HUE = { draft: 'var(--ph-draft)', ideation: 'var(--ph-ideation)', planning: 'var(--ph-planning)', building: 'var(--ph-building)', review: 'var(--ph-review)', shipped: 'var(--ph-shipped)' };
+  var uid = 0;
+  function phase(p, size, color) {
+    size = size || 16; uid++;
+    var m = 'pm' + uid, c = color || HUE[p];
+    var out = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" style="color:' + c + '">';
+    out += '<defs><mask id="' + m + '"><rect width="16" height="16" fill="white"/><path d="M5.2 8.2 7 10l3.8-3.8" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></mask></defs>';
+    out += '<g' + (p === 'shipped' ? ' mask="url(#' + m + ')"' : '') + '>';
+    out += '<circle cx="8" cy="8" r="6"' + (p === 'draft' ? ' stroke-dasharray="2.2 2.2"' : '') + '/>';
+    if (FILL[p] > 0 && p !== 'shipped') out += '<circle cx="8" cy="8" r="2" stroke-width="4" pathLength="100" transform="rotate(-90 8 8)" stroke-dasharray="' + FILL[p] + ' 100"/>';
+    if (p === 'review') out += '<circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none"/>';
+    if (p === 'shipped') out += '<circle cx="8" cy="8" r="7" fill="currentColor" stroke="none"/>';
+    out += '</g></svg>';
+    return out;
+  }
+  function stepper(cur) {
+    var steps = [['planning', 'Planning'], ['building', 'Build'], ['review', 'Review'], ['shipped', 'Shipped']];
+    var idx = steps.map(function (s) { return s[0]; }).indexOf(cur);
+    return steps.map(function (s, i) {
+      var st = i < idx ? 'done' : i === idx ? 'cur' : 'up';
+      var g = st === 'done' ? phase('shipped', 14) : st === 'cur' ? phase(s[0], 14) : phase('draft', 14, 'var(--text-3)');
+      return '<span class="step ' + st + '" style="--hue:' + HUE[s[0]] + '">' + g + '<span>' + s[1] + '</span></span>' + (i < steps.length - 1 ? '<span class="step-sep" aria-hidden="true"></span>' : '');
+    }).join('');
+  }
+
+  /* The sidebar per state: the decision-2 count (this lap's work tickets, landed/total), hidden once shipped. */
+  var SB = {
+    grilling:   { active: 'simplify', simplify: ['planning', '', 'live'], skel: ['building', '2/4', 'live'], install: ['review', '1/3', 'warning'] },
+    tickets:    { active: 'skel', simplify: ['planning', '', 'live'], skel: ['planning', '0/4', 'warning'], install: ['review', '1/3', 'warning'] },
+    burning:    { active: 'skel', simplify: ['planning', '', 'live'], skel: ['building', '2/4', 'live'], install: ['review', '1/3', 'warning'] },
+    failed:     { active: 'skel', simplify: ['planning', '', 'live'], skel: ['building', '2/4', 'danger'], install: ['review', '1/3', 'warning'] },
+    review:     { active: 'install', simplify: ['planning', '', 'live'], skel: ['building', '2/4', 'live'], install: ['review', '1/3', 'warning'] },
+    unverified: { active: 'install', simplify: ['planning', '', 'live'], skel: ['review', '4/4', 'warning'], install: ['review', '1/1', 'warning'] },
+    shipped:    { active: 'install', simplify: ['planning', '', 'live'], skel: ['review', '4/4', 'warning'], install: ['shipped', ''] }
+  };
+  var NAMES = { simplify: 'Simplify the pages — less repetition, more structure', skel: 'Skeletons for every loading state', install: 'Install runcastle from local main without publishing' };
+  function navRow(key, cfg, active) {
+    var r = cfg[key];
+    return '<div class="nav' + (active === key ? ' on' : '') + '">' + phase(r[0], 16) + '<span class="l">' + NAMES[key] + '</span>' +
+      (r[2] ? '<span class="dot ' + r[2] + '"></span>' : '') + (r[1] ? '<span class="m">' + r[1] + '</span>' : '') + '</div>';
+  }
+  function sidebar(state) {
+    var c = SB[state], a = c.active;
+    var needs = [], working = [], shipped = [];
+    ['install', 'skel', 'simplify'].forEach(function (k) {
+      var r = c[k];
+      if (r[0] === 'shipped') shipped.push(k);
+      else if (r[2] === 'live') working.push(k);
+      else needs.push(k);
+    });
+    var h = '<div class="sb-proj"><span class="sb-mark">' + icon('home', 12) + '</span>runcastle</div>';
+    h += '<div class="sb-search">' + icon('search', 14) + 'Search<kbd>Ctrl K</kbd></div>';
+    h += '<div class="nav">' + icon('home') + '<span class="l">Home</span></div>';
+    h += '<div class="nav">' + icon('message') + '<span class="l">Chats</span></div>';
+    h += '<div class="nav">' + icon('clock') + '<span class="l">Activity</span></div>';
+    if (needs.length) { h += '<div class="sec">Needs you <span class="c">' + needs.length + '</span></div>'; needs.forEach(function (k) { h += navRow(k, c, a); }); }
+    if (working.length) { h += '<div class="sec">Working <span class="c">' + working.length + '</span></div>'; working.forEach(function (k) { h += navRow(k, c, a); }); }
+    h += '<div class="sec">Shipped <span class="c">' + (104 + shipped.length) + '</span></div>';
+    shipped.forEach(function (k) { h += navRow(k, c, a); });
+    ['Skeletons for the settings dialog', 'Planning shows the tickets it already has', 'A failed burn says why it failed'].forEach(function (t) {
+      h += '<div class="nav">' + phase('shipped', 16) + '<span class="l">' + t + '</span></div>';
+    });
+    h += '<div style="flex:1"></div><div style="display:flex;align-items:center;gap:8px;padding:8px 10px;color:var(--text-3);font-size:12px;border-top:1px solid var(--border-subtle)"><span class="dot success"></span>server<span class="dot success" style="margin-left:6px"></span>docker<span style="margin-left:auto;color:var(--icon)">' + icon('settings') + '</span></div>';
+    return h;
+  }
+
+  document.querySelectorAll('[data-sidebar]').forEach(function (el) {
+    el.innerHTML = sidebar(el.closest('[data-state]').getAttribute('data-state'));
+  });
+  document.querySelectorAll('[data-stepper]').forEach(function (el) { el.innerHTML = stepper(el.getAttribute('data-stepper')); });
+  document.querySelectorAll('i[data-icon]').forEach(function (el) {
+    var s = document.createElement('span');
+    s.style.display = 'inline-flex'; s.className = el.className;
+    s.innerHTML = icon(el.getAttribute('data-icon'), +(el.getAttribute('data-size') || 16));
+    el.replaceWith(s);
+  });
+  document.querySelectorAll('i[data-phase]').forEach(function (el) {
+    var s = document.createElement('span');
+    s.style.display = 'inline-flex';
+    s.innerHTML = phase(el.getAttribute('data-phase'), +(el.getAttribute('data-size') || 16));
+    el.replaceWith(s);
+  });
+
+  var states = ['grilling', 'tickets', 'burning', 'failed', 'review', 'unverified', 'shipped'];
+  function show(name) {
+    if (states.indexOf(name) < 0) name = 'review';
+    states.forEach(function (s) { document.getElementById('s-' + s).hidden = s !== name; });
+    document.querySelectorAll('.switch a').forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('data-s') === name ? 'true' : 'false'); });
+  }
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+  show(location.hash.slice(1) || 'review');
+
+  var t = document.getElementById('tiers-toggle');
+  t.addEventListener('change', function () { document.getElementById('viewer').classList.toggle('show-tiers', t.checked); });
+})();
+</script>

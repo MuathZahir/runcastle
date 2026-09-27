@@ -108,7 +108,7 @@ scrolls).
 **Import every primitive from `src/ui.tsx`** — it holds the older ones and
 re-exports the rest from `src/ui/` (one concern per file: `button.tsx`,
 `status.tsx`, `list.tsx`, `tabs.tsx`, `field.tsx`, `page.tsx`, `kbd.tsx`,
-`tooltip.tsx`, `skeleton.tsx`, and the four floating ones). Icons and `PhaseIcon` are in
+`tooltip.tsx`, `skeleton.tsx`, `timeline.tsx`, and the four floating ones). Icons and `PhaseIcon` are in
 `src/icons.tsx`. Build a missing primitive there rather than styling the same
 thing twice in two surfaces; never hand-roll a button, row, chip, menu, dialog,
 tab set or empty state in a surface. What each should look like is `DESIGN.md`.
@@ -202,6 +202,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Checkbox` | `checked`, `onChange(checked)`, `label`, `disabled`, `size` `sm` · `md`, `id`, `aria-label`, `className`. | A native checkbox on the tokens (`border-strong` box; `primary` fill + check when on); the label toggles it. No raw `type="checkbox"` elsewhere. |
 | `Switch` | `checked`, `onChange(checked)`, `label`, `disabled`, `id`, `aria-label`, `className`. | `role="switch"`, a sliding thumb; on = `primary`. For a setting that applies at once. |
 | `EmptyState` | `title`, `icon`, `hint`, `action`, `compact`, `className`. | No frame, no icon chip. |
+| `Timeline` · `TimelineNode` | `Timeline`: `label`, `className`, children (the nodes). `TimelineNode`: `variant` `ring` (default) · `milestone`; `tone` `success` · `warning` · `danger` · `neutral` (milestone); `icon` (milestone); `title`; `meta` (quiet 12px after the title); `aside` (right-aligned); children (under the heading). | An ordered list on one `border-strong` connector. A ring for an ordinary step; a milestone is a 23px disc with a 16% tint of its tone. The lap trail. |
 
 **Fields**
 
@@ -289,6 +290,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel, the review drive's dirty-tree denial. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
 | `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
+| `timeline.ts` | A lap's timeline nodes in lap order: burns (work, then fixes) and review/verification passes. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
 | `map.ts` | Mapped features: `map.md` sections, waypoints and their groups. |
 | `session.ts` | Session lifecycle: done state, live-session blockers, shipped QA sessions, shipped-at. |

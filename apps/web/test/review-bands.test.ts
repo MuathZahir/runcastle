@@ -254,7 +254,7 @@ describe('the review page’s arrival bands', () => {
   it('opens on state and open work — no stage, no placeholder, no terminal', () => {
     const html = openWork()
     // The bands that are there.
-    expect(html).toContain('>Checks<')
+    expect(html).toContain('>Review</dt>')
     // Test drive is the next-step bar's (it is not repeated beside the facts).
     expect(html).not.toContain('Test drive</button>')
     expect(html).toContain('DLQ spill retention landed')
@@ -283,6 +283,41 @@ describe('the review page’s arrival bands', () => {
     expect(html.indexOf('the verify gate could not run')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html).not.toContain('1 observation ·')
     expect(html).not.toContain('defects found ·')
+  })
+
+  /**
+   * simplify-the-pages decision 7: Now (the alerts) → Status → Work → Reference,
+   * the work under a real heading and the history under a quiet label.
+   */
+  it('lays the page out in the four tiers, in order', () => {
+    const html = render({
+      sessions: [LIVE_CHAT],
+      notes: [NOTE],
+      findings: [DEFECT],
+      openDefects: [DEFECT],
+      recordings: [RECORDING],
+    })
+    const at = (needle: string) => {
+      const i = html.indexOf(needle)
+      expect(i, needle).toBeGreaterThanOrEqual(0)
+      return i
+    }
+    const order = [
+      at('data-tier="now"'),
+      at('Chat session still live from lap 1'),
+      at('data-tier="status"'),
+      at('>Review</dt>'),
+      at('data-tier="work"'),
+      at('id="evidence-stage"'),
+      at('Needs attention</h2>'),
+      at('data-tier="reference"'),
+      at('>History</span>'),
+      at('Full account'),
+    ]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    // The work keeps a real heading; the reference is introduced quietly.
+    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">Needs attention<\/h2>/)
+    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
   })
 
   /** State 2: the feature's lap-1 chat is still live. */
@@ -342,20 +377,20 @@ describe('the review page’s arrival bands', () => {
   /**
    * Decisions #5: the figures on the page are the server's, scoped to this lap.
    * Handed an earlier lap's finding among the rows, the review row and the
-   * counts line still report what THIS lap's pass found — the all-laps count is
-   * the inflated "N still open" that sent the human back through Iterate.
+   * lap's review pass still report what THIS lap's pass found — the all-laps
+   * count is the inflated "N still open" that sent the human back through
+   * Iterate.
    */
   it('reports the counts the server sends for this lap, never the rows it holds', () => {
     const html = render({
       findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
       openDefects: [DEFECT],
       summary: { found: 1, fixed: 0, open: 1, observations: 1 },
-      // No digest, so the counts line is what the lap says for itself.
       tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
     })
-    expect(html).toContain('2 findings')
     expect(html).not.toContain('3 findings')
-    expect(html).toContain('1 defect found · 1 still open')
+    expect(html).toMatch(/Review #\d+<\/span><span[^>]*>1 defect found</)
+    expect(html).not.toContain('2 defects found')
   })
 
   /**
@@ -374,8 +409,9 @@ describe('the review page’s arrival bands', () => {
     expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
     // The human's two verbs, and only the human's.
     expect(html).toContain('>Reopen<')
-    // The open work's tally still counts one defect, not two.
-    expect(html).toContain('1 open')
+    // The open work's heading carries no open count — that is the bar's
+    // (decision 8b) — so the carried defect cannot inflate one here.
+    expect(html).not.toContain('2 open')
     // The band sits between the open work and the laps: the next lap's agenda
     // before the history it came out of.
     const carriedAt = html.indexOf('Carried, still open')
@@ -479,20 +515,20 @@ describe('the review page’s arrival bands', () => {
     it('leads the page with "nothing verified this lap", above the stage', () => {
       const html = arrival()
       expect(html).toContain('Nothing verified this lap')
-      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('>Checks<'))
+      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('>Review</dt>'))
     })
 
     /** Runcastle's own words — the agent's prose stays in the Full account. */
     it('states the templated line and the declared reason, never the agent’s prose', () => {
       const html = arrival()
-      const banner = html.slice(0, html.indexOf('>Checks<'))
+      const banner = html.slice(0, html.indexOf('>Review</dt>'))
       expect(banner).toContain('Lap 1 · drive mode · DRIVE FAILED · nothing verified')
       expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
     })
 
     /** Decision 5: the banner's action slot favours another review pass. */
     it('offers the Agentic review mint as the banner’s action', () => {
-      const banner = arrival().slice(0, arrival().indexOf('>Checks<'))
+      const banner = arrival().slice(0, arrival().indexOf('>Review</dt>'))
       expect(banner).toContain('Agentic review')
     })
 
@@ -509,7 +545,7 @@ describe('the review page’s arrival bands', () => {
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('Nothing verified this lap')
       expect(primaryButtons(html)).toEqual([])
-      const notices = html.slice(0, html.indexOf('>Checks<'))
+      const notices = html.slice(0, html.indexOf('>Review</dt>'))
       expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
       // And it is this notice's: the denial above it steps down.
       expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
@@ -519,7 +555,7 @@ describe('the review page’s arrival bands', () => {
     it('leaves the denied-drive notice its hairline mint when nothing is unverified', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
-      const notices = html.slice(0, html.indexOf('>Checks<'))
+      const notices = html.slice(0, html.indexOf('>Review</dt>'))
       expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
       expect(primaryButtons(html)).toEqual([])
     })
@@ -654,7 +690,7 @@ describe('the review page as one document', () => {
     })
     const bands = [
       'Chat session still live from lap 1',
-      '>Checks<',
+      '>Review</dt>',
       'id="evidence-stage"',
       'id="open-work"',
       'Carried, still open',

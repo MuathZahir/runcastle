@@ -120,11 +120,13 @@ export function runHeadline(
   if (run.status === 'succeeded' && unverified) return 'Succeeded-unverified · nothing verified'
   const implementation = tickets.filter((t) => t.kind !== 'review' && !t.reviewFix).length
   const fixes = tickets.filter((t) => t.reviewFix).length
-  const counts = summaryCounts(tickets)
   // The all-green beat a run is held on screen for after it succeeds (#15a) —
   // and what a clean run's record says ever after.
-  if (run.status === 'succeeded' && tickets.length > 0 && counts.done === tickets.length)
+  if (run.status === 'succeeded' && tickets.length > 0 && summaryCounts(tickets).done === tickets.length)
     return `All ${tickets.length} ticket${tickets.length === 1 ? '' : 's'} landed`
+  // The review pass is not work (simplify-the-pages decision 2): its lane says
+  // its own state, so the counts below never restate it.
+  const counts = summaryCounts(tickets.filter((t) => t.kind !== 'review'))
   const verb = run.status && run.status !== 'running' ? 'Burned' : 'Burning'
   const parts = [`${verb} ${implementation} ticket${implementation === 1 ? '' : 's'}`]
   if (fixes) parts.push(`+${fixes} fixes from review`)

@@ -29,7 +29,6 @@ import {
   parseMapSections,
   PHASE_ORDER,
   phaseGlyph,
-  reviewChecks,
   reviewOutcome,
   reviewWalkthroughUrl,
   rowChip,
@@ -41,7 +40,7 @@ import {
   shippedChatSessions,
   sortForSidebar,
   startOpensChat,
-  testDriveTaken,
+  testDriveFigure,
   ticketConflictKickoff,
   ticketDurations,
   ticketModelChip,
@@ -51,7 +50,6 @@ import {
   triageOf,
   unresolvedMergeConflict,
   waypointGroups,
-  type CheckRow,
   type NextAction,
   type TriageGroup,
   type TriageKey,
@@ -274,6 +272,29 @@ describe('nextStep — the one Chat door, in all four states', () => {
     expect(ns.secondary[0]?.disabled).toBeUndefined()
   })
 
+  // d2: the burn bar counts this lap's work — a finished burn reads "3 done" of
+  // 3 while its review ticket still runs, and earlier laps stay out of it.
+  it('counts this lap’s work tickets while a burn runs, never the review ticket', () => {
+    const t = (seq: number, over: Record<string, unknown>) => ({ id: `t${seq}`, seq, status: 'done', lap: 2, goal: 'g', context: 'c', ...over })
+    const base = full({ phase: 'building' })
+    const burning = {
+      ...base,
+      feature: { ...base.feature, lap: 2 },
+      tickets: [
+        t(1, { lap: 1 }),
+        t(2, { lap: 1, kind: 'review' }),
+        t(3, {}),
+        t(4, {}),
+        t(5, {}),
+        t(6, { status: 'cancelled' }),
+        t(7, { kind: 'review', status: 'burning' }),
+      ],
+      runs: [{ id: 'r1', status: 'running', startedAt: 1 }],
+    } as FeatureFull
+
+    expect(nextStep(burning, { driving: false }).desc).toBe('Burning 3 tickets — 3 done.')
+  })
+
   // The vocabulary itself: a resolver can no longer name a door that the
   // dispatcher has no case for, and the three collapsed kinds are gone from it.
   it('knows chat and none of the three kinds it replaced', () => {
@@ -446,6 +467,21 @@ describe('nextStep after a server restart interrupted a burn', () => {
 
     expect(ns.title).toContain('1 ticket landed, 0 pending')
     expect(ns.primary).toEqual({ label: 'Resume burn', kind: 'burn' })
+    expect(ns.desc).toContain('hands off to review')
+  })
+
+  // The reconcile event counts every ticket on the feature, the orphaned review
+  // pass included; the bar states the one ticket count (decisions d2) instead,
+  // so it agrees with the Tickets row and the sidebar beside it.
+  it('counts only this lap’s work tickets, never the orphaned review pass', () => {
+    const full = interrupted(['done', 'done', 'done', 'done', 'burning'])
+    ;(full.tickets[4] as { kind: string }).kind = 'review'
+    const ns = nextStep(full, {
+      driving: false,
+      interruptedBurn: { runId: 'r1', landedTickets: 4, pendingTickets: 1 },
+    })
+
+    expect(ns.title).toBe('A burn was interrupted by a server restart: 4 tickets landed, 0 pending')
     expect(ns.desc).toContain('hands off to review')
   })
 })
@@ -787,8 +823,9 @@ describe('nextStep at review', () => {
       unverifiedReview: { reason: 'no browser could be attached' },
     })
     expect(ns.primary).toBeUndefined()
-    expect(ns.title).toBe('Nothing was verified this lap')
-    expect(ns.desc).toContain('no browser could be attached')
+    // The alert above the bar says nothing was verified, and why (decision 9d).
+    expect(ns.title).toBe('Run another review, or drive the branch yourself, before you ship')
+    expect(ns.desc).toBeUndefined()
     expect(labels(ns.secondary)).toEqual(['Merge & ship', 'Start test drive', 'Iterate'])
   })
 
@@ -1836,23 +1873,24 @@ describe('unresolvedMergeConflict', () => {
 })
 
 /**
- * Ticket 4 / findings F21 — a test drive is something that either happened on
- * this feature or did not, and the merge confirmation has to say which.
+ * simplify-the-pages decision 8a — "test-driven on lap N (the latest that
+ * was)", the one formula the status row and the merge dialog share.
  */
-describe('testDriveTaken', () => {
+describe('testDriveFigure', () => {
   const ev = (id: number, type: string): EventRow =>
     ({ id, projectId: 'p', ts: id, type, message: type }) as EventRow
 
-  it('is false for a feature that was never driven', () => {
-    expect(testDriveTaken([ev(1, 'burn.started'), ev(2, 'run.finished')])).toBe(false)
+  it('says "Not run" for a feature that was never driven', () => {
+    expect(testDriveFigure(null, 1)).toEqual({ value: 'Not run', tone: 'idle' })
   })
 
-  it('is true once a drive has started', () => {
-    expect(testDriveTaken([ev(1, 'testdrive.started')])).toBe(true)
+  it('names the lap, green when it is the current one', () => {
+    expect(testDriveFigure(2, 2)).toEqual({ value: 'Lap 2', tone: 'ok' })
   })
 
-  it('stays true after the drive stops — it still happened', () => {
-    expect(testDriveTaken([ev(1, 'testdrive.started'), ev(2, 'testdrive.stopped')])).toBe(true)
+  it('reads "Lap 1 · not since" in amber after an undriven lap 2', () => {
+    const feed = [ev(1, 'testdrive.started'), ev(2, 'lap.started')]
+    expect(testDriveFigure(lastTestDriveLap(feed), 2)).toEqual({ value: 'Lap 1', sub: 'not since', tone: 'warn' })
   })
 
   /**
@@ -2025,85 +2063,6 @@ describe('driveFailure', () => {
 })
 
 /**
- * Ticket 4 / findings F23 — the review SUMMARY card is the one surface meant to
- * inform the merge decision, and it painted missing data green. These are the
- * colour decisions: nothing absent is ever `ok`, and "cannot tell" is never `0`.
- */
-describe('reviewChecks', () => {
-  const row = (rows: CheckRow[], key: string) => rows.find((r) => r.key === key)
-  const checks = (over: Parameters<typeof reviewChecks>[0] = {}) => reviewChecks(over)
-
-  it('greys 0/0 tickets — nothing was ticketed, so nothing is all-clear', () => {
-    const t = row(checks({ tickets: [] }), 'tickets')
-    expect(t).toEqual({ key: 'tickets', value: '0/0 done', tone: 'idle' })
-  })
-
-  it('ambers 0-done tickets and never greens them', () => {
-    const t = row(checks({ tickets: [{ status: 'pending' }, { status: 'pending' }] }), 'tickets')
-    expect(t?.value).toBe('0/2 done')
-    expect(t?.tone).toBe('warn')
-  })
-
-  it('ambers a partly-done set', () => {
-    expect(row(checks({ tickets: [{ status: 'done' }, { status: 'pending' }] }), 'tickets')?.tone)
-      .toBe('warn')
-  })
-
-  it('greens tickets only when every one of them is done', () => {
-    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'done' }] }), 'tickets')
-    expect(t).toEqual({ key: 'tickets', value: '2/2 done', tone: 'ok' })
-  })
-
-  it('reds a set with a failed ticket, naming the count', () => {
-    const t = row(checks({ tickets: [{ status: 'done' }, { status: 'failed' }] }), 'tickets')
-    expect(t?.tone).toBe('danger')
-    expect(t?.value).toBe('1/2 done · 1 failed')
-  })
-
-  it('greys a missing run and never greens it', () => {
-    expect(row(checks({}), 'run')).toEqual({ key: 'run', value: 'no run recorded', tone: 'idle' })
-  })
-
-  it('greens a succeeded run, appending its summary', () => {
-    const r = row(checks({ run: { status: 'succeeded', summary: '3 tickets landed' } }), 'run')
-    expect(r).toEqual({ key: 'run', value: 'succeeded · 3 tickets landed', tone: 'ok' })
-  })
-
-  it('reds a failed run and ambers one that neither failed nor succeeded', () => {
-    expect(row(checks({ run: { status: 'failed' } }), 'run')?.tone).toBe('danger')
-    expect(row(checks({ run: { status: 'cancelled' } }), 'run')?.tone).toBe('warn')
-    expect(row(checks({ run: { status: 'running' } }), 'run')?.tone).toBe('warn')
-  })
-
-  it('greens the commit count only when git found commits', () => {
-    expect(row(checks({ commitCount: 3 }), 'changes')).toEqual({
-      key: 'changes',
-      value: '3 commits',
-      tone: 'ok',
-    })
-    expect(row(checks({ commitCount: 1 }), 'changes')?.value).toBe('1 commit')
-  })
-
-  it('ambers an empty branch — a review with no commits has nothing to merge', () => {
-    expect(row(checks({ commitCount: 0 }), 'changes')).toEqual({
-      key: 'changes',
-      value: '0 commits',
-      tone: 'warn',
-    })
-  })
-
-  it('greys an unknown commit count rather than reporting it as zero', () => {
-    const c = row(checks({}), 'changes')
-    expect(c?.tone).toBe('idle')
-    expect(c?.value).not.toContain('0')
-  })
-
-  it('keeps the card in one order: review agent, tickets, run, changes', () => {
-    expect(checks({}).map((r) => r.key)).toEqual(['review agent', 'tickets', 'run', 'changes'])
-  })
-})
-
-/**
  * The review agent's report, on the two surfaces that quote it (decisions #7).
  * The failure this covers is a silent one: findings that land as three more rows
  * in a notes list nobody scrolls to, leaving the human reviewing from zero
@@ -2192,67 +2151,6 @@ describe('reviewWalkthroughUrl', () => {
     expect(reviewWalkthroughUrl([recorded('t1'), silent])).toBe(
       '/api/reviews/ticket/t1/walkthrough.webm',
     )
-  })
-})
-
-describe('reviewChecks — the review agent row', () => {
-  const row = (over: Parameters<typeof reviewChecks>[0]) =>
-    reviewChecks(over).find((r) => r.key === 'review agent')
-  const reviewTicket = (over: { status: string; error?: string }) => [{ kind: 'review' as const, ...over }]
-
-  /**
-   * Ticket 5 / decisions #9 — the card used to OMIT this row when no review
-   * ticket ran, which is how "this lap was never reviewed" stayed invisible
-   * (only the merge dialog ever mentioned it). A review is a constant of the
-   * pipeline now, so its absence is a state, not a silence.
-   */
-  it('says outright that no review ran this lap, rather than omitting the row', () => {
-    const expected = { key: 'review agent', value: 'no review ran this lap', tone: 'warn' }
-    expect(row({ tickets: [{ kind: 'implementation', status: 'done' }] })).toEqual(expected)
-    expect(row({ tickets: [] })).toEqual(expected)
-    expect(row({})).toEqual(expected)
-  })
-
-  it('leads the card with the agent’s report, so it cannot be missed', () => {
-    const keys = reviewChecks({ tickets: reviewTicket({ status: 'done' }), findings: 0 }).map(
-      (r) => r.key,
-    )
-    expect(keys).toEqual(['review agent', 'tickets', 'run', 'changes'])
-  })
-
-  it('greens a review that found nothing — a clean pass is a positive signal', () => {
-    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 0 })).toEqual({
-      key: 'review agent',
-      value: 'no findings',
-      tone: 'ok',
-    })
-  })
-
-  it('ambers findings and pluralises them, without calling them a failure', () => {
-    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 1 })).toEqual({
-      key: 'review agent',
-      value: '1 finding',
-      tone: 'warn',
-    })
-    expect(row({ tickets: reviewTicket({ status: 'done' }), findings: 2 })?.value).toBe(
-      '2 findings',
-    )
-  })
-
-  it('says a review could not run, and why', () => {
-    expect(row({ tickets: reviewTicket({ status: 'failed', error: 'app never booted' }) })).toEqual(
-      { key: 'review agent', value: 'could not run · app never booted', tone: 'warn' },
-    )
-  })
-
-  it('still says it could not run when the ticket recorded no reason', () => {
-    expect(row({ tickets: reviewTicket({ status: 'failed' }) })?.value).toBe('could not run')
-  })
-
-  it('greys an uncounted findings tally rather than reporting a clean pass', () => {
-    const r = row({ tickets: reviewTicket({ status: 'done' }) })
-    expect(r?.tone).toBe('idle')
-    expect(r?.value).not.toContain('no findings')
   })
 })
 
@@ -2757,6 +2655,38 @@ describe('nextStep at building', () => {
       expect(ns.desc).not.toContain('The run failed')
       expect(ns.primary).toEqual(RESUME)
       expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
+    })
+
+    // The burner's summary counts the review ticket ("1/2 tickets done"); the
+    // bar restates it with the one ticket count (decisions d2), so it matches
+    // the Tickets row's "1 of 1 landed" and the sidebar's 1/1.
+    it('restates the runner’s ticket count with the lap’s work-ticket tally', () => {
+      const full = buildFull({
+        runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: '1/2 tickets done' }],
+        ticketStatuses: ['done', 'failed'],
+        completedAt: 200,
+      })
+      ;(full.tickets[1] as { kind: string }).kind = 'review'
+      const ns = nextStep(full, { driving: false })
+      expect(ns.desc).toContain('1 of 1 ticket done')
+      expect(ns.desc).not.toContain('1/2')
+    })
+
+    it('keeps the rest of a halted run’s summary, restating only its count', () => {
+      const full = buildFull({
+        runs: [
+          {
+            id: 'r1',
+            status: 'failed',
+            startedAt: 100,
+            summary: 'run halted at ticket 2: gate failed — 1/3 tickets done (1 cancelled)',
+          },
+        ],
+        ticketStatuses: ['done', 'failed', 'cancelled'],
+        completedAt: 200,
+      })
+      const ns = nextStep(full, { driving: false })
+      expect(ns.desc).toContain('run halted at ticket 2: gate failed — 1 of 2 tickets done · 1 waived')
     })
 
     it('keeps today’s copy for a failed run with no summary', () => {
@@ -3713,9 +3643,10 @@ describe.skip('turn-aware feature states', () => {
  * nothing, and the rail has one line's width to spend.
  */
 describe('ticketProgress', () => {
-  it('reads done over total', () => {
-    const counts = { total: 5, pending: 2, burning: 0, done: 3, failed: 0, cancelled: 0 }
-    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('3/5')
+  it('reads this lap’s landed over total, not the all-laps status counts', () => {
+    const allLaps = { total: 9, pending: 2, burning: 0, done: 7, failed: 0, cancelled: 0 }
+    const item = listItem({ ticketCounts: allLaps, lapTally: { landed: 3, total: 5, waived: 1 } })
+    expect(ticketProgress(item)).toBe('3/5')
   })
 
   it('is null when the feature has no tickets', () => {

@@ -30,7 +30,7 @@ const clean = {
   delta: { commits: 12, files: 9 },
   tickets: [...Array(8)].map(() => ticket('done')),
   lap: 2,
-  driveTaken: true,
+  driveLap: 2,
   freshness: FRESH,
 }
 
@@ -120,9 +120,22 @@ describe('mergeSummary', () => {
     })
 
     it('ambers a branch that was never test-driven', () => {
-      expect(row(mergeSummary({ ...clean, driveTaken: false }), 'test drive')).toEqual({
+      expect(row(mergeSummary({ ...clean, driveLap: null }), 'test drive')).toEqual({
         key: 'test drive',
-        value: 'never test-driven',
+        value: 'Not run',
+        tone: 'warn',
+      })
+    })
+
+    it('names the lap the drive was taken in, green when it is this lap', () => {
+      expect(row(mergeSummary(clean), 'test drive')).toEqual({ key: 'test drive', value: 'Lap 2', tone: 'ok' })
+    })
+
+    /** Decision 8a: "any lap" used to read "taken" after an undriven lap 2. */
+    it('ambers a drive an undriven later lap has left behind', () => {
+      expect(row(mergeSummary({ ...clean, lap: 2, driveLap: 1 }), 'test drive')).toEqual({
+        key: 'test drive',
+        value: 'Lap 1 · not since',
         tone: 'warn',
       })
     })

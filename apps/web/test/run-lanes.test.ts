@@ -380,25 +380,40 @@ describe('RunLanes', () => {
 })
 
 describe('RunHeader', () => {
-  it('leads with the honest counts and the elapsed clock', () => {
+  /**
+   * simplify-the-pages decision 9a: status, elapsed time and the landed and
+   * failed counts are the Status tier's rows, so the header keeps only what
+   * those rows do not say.
+   */
+  it('says only what the Status tier does not: fixes, stops, a retry', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burning 3 tickets · +2 fixes from review · 2 done · 1 stopped',
-        elapsed: '4m 10s',
+        headline: 'Burning 3 tickets · +2 fixes from review · 2 done · 1 failed · 1 stopped',
+        status: 'running',
         burning: 1,
         onCancelRun: () => {},
       }),
     )
-    expect(html).toContain('Burning 3 tickets · +2 fixes from review · 2 done · 1 stopped')
-    expect(html).toContain('4m 10s')
+    expect(html).toContain('+2 fixes from review, 1 stopped')
+    expect(html).not.toContain('Burning 3 tickets')
+    expect(html).not.toContain('2 done')
+    expect(html).not.toContain('1 failed')
+    expect(html).not.toContain('Running')
     expect(html).toContain('Cancel run')
+  })
+
+  it('draws no fact line at all when the counts were all it had', () => {
+    const html = renderToStaticMarkup(
+      createElement(RunHeader, { headline: 'All 3 tickets landed', status: 'succeeded', burning: 0 }),
+    )
+    expect(html).not.toContain('landed')
+    expect(html).not.toContain('Succeeded')
   })
 
   it('says Stopping… while the cancel waits for the run’s agents to die', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
         headline: 'Burning 3 tickets',
-        elapsed: '4m 10s',
         burning: 3,
         busy: true,
         cancelling: true,
@@ -411,11 +426,26 @@ describe('RunHeader', () => {
     expect(html).not.toContain('Cancel run')
   })
 
-  it('says a failed run’s recorded reason beside Failed, and only for a failure', () => {
+  /** simplify-the-pages decision 6d: the next-step bar says the latest run's reason, once. */
+  it('leaves the latest failed run’s reason to the next-step bar', () => {
+    const summary = 'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282'
+    const html = renderToStaticMarkup(
+      createElement(RunHeader, { headline: 'Burned 2 tickets', burning: 0, status: 'failed', summary }),
+    )
+    expect(html).not.toContain(summary)
+  })
+
+  it('says a past failed run’s recorded reason beside Failed, and only for a failure', () => {
     const summary = 'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282'
     const header = (status: 'failed' | 'cancelled') =>
       renderToStaticMarkup(
-        createElement(RunHeader, { headline: 'Burned 2 tickets', elapsed: '9s', burning: 0, status, summary }),
+        createElement(RunHeader, {
+          headline: 'Burned 2 tickets',
+          burning: 0,
+          status,
+          summary,
+          onBackToLatest: () => undefined,
+        }),
       )
     expect(header('failed')).toContain(summary)
     expect(header('cancelled')).not.toContain(summary)
@@ -425,7 +455,13 @@ describe('RunHeader', () => {
     const summary =
       'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burned 2 tickets', elapsed: '9s', burning: 0, status: 'failed', summary }),
+      createElement(RunHeader, {
+        headline: 'Burned 2 tickets',
+        burning: 0,
+        status: 'failed',
+        summary,
+        onBackToLatest: () => undefined,
+      }),
     )
     const line = html.match(/<p class="([^"]*)">([^<]*)<\/p>/)
     expect(line?.[2]).toBe(summary)
@@ -434,7 +470,7 @@ describe('RunHeader', () => {
 
   it('drops the cancel control when nothing is running', () => {
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burning 1 ticket · 1 done', elapsed: '1m', burning: 0 }),
+      createElement(RunHeader, { headline: 'Burning 1 ticket · 1 done', burning: 0 }),
     )
     expect(html).not.toContain('Cancel run')
   })

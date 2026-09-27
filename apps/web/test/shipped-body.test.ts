@@ -146,6 +146,34 @@ const renderUnrecorded = (): string => {
 }
 
 describe('ShippedBody', () => {
+  /**
+   * simplify-the-pages decisions 7 and 9c: Status → "What shipped" (the Outcome
+   * doc beside its heading, then the walkthrough) → Reference, under a quiet
+   * "History" label, then Questions asked and the closed long text.
+   */
+  it('lays the record out in tiers: status, what shipped, then reference', () => {
+    const html = render()
+    const at = (needle: string) => {
+      const i = html.indexOf(needle)
+      expect(i, needle).toBeGreaterThanOrEqual(0)
+      return i
+    }
+    const order = [
+      at('data-tier="status"'),
+      at('>Review<'),
+      at('data-tier="work"'),
+      at('What shipped</h2>'),
+      at('Outcome doc'),
+      at('aspect-video'),
+      at('data-tier="reference"'),
+      at('>History</span>'),
+      at('Questions asked'),
+    ]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">What shipped<\/h2>/)
+    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
+  })
+
   describe('the page top', () => {
     /**
      * DESIGN.md principle 5: the feature page's header and stepper already say
@@ -202,10 +230,11 @@ describe('ShippedBody', () => {
      * recording plays in — a screen of dead space between the hero and the
      * chips, on a page where no drive can ever fill it.
      */
-    it('says a walkthrough was never recorded as a quiet fact, not a stage', () => {
+    /** simplify-the-pages decision 6b: no "None recorded" row either — the stage appears when one exists. */
+    it('renders neither a stage nor a row when no walkthrough was recorded', () => {
       const html = renderUnrecorded()
-      expect(html).toContain('>Walkthrough<')
-      expect(html).toContain('None recorded')
+      expect(html).not.toContain('>Walkthrough<')
+      expect(html).not.toContain('None recorded')
       expect(html).not.toContain('aspect-video')
       expect(html).not.toContain('evidence-stage')
     })
@@ -216,20 +245,25 @@ describe('ShippedBody', () => {
   })
 
   describe('the facts', () => {
-    it('states them as a property list: review, checks, test drive, tickets, laps', () => {
+    it('states them as a property list: review, tickets, test drive', () => {
       const html = render()
       expect(html).toContain('<dl')
-      for (const key of ['>Review<', '>Checks<', '>Test drive<', '>Tickets<', '>Laps<']) {
+      for (const key of ['>Review<', '>Tickets<', '>Test drive<']) {
         expect(html).toContain(key)
       }
-      expect(html).not.toContain('>Burn<')
+      for (const key of ['>Checks<', '>Laps<', '>Burn<']) {
+        expect(html).not.toContain(key)
+      }
+    })
+
+    /** simplify-the-pages decision 4: every Check details row restated another row. */
+    it('has no Check details disclosure', () => {
+      expect(render()).not.toContain('Check details')
     })
 
     /** Decision 33a: the read-only drive line is a statement, never an instruction. */
-    it('states the test drive that was taken, and the lap it was taken in', () => {
-      const html = render()
-      expect(html).toContain('Taken')
-      expect(html).toContain('lap 2')
+    it('states the lap the test drive was taken in', () => {
+      expect(render()).toContain('Lap 2')
     })
 
     it('says plainly when the branch was never driven', () => {
@@ -252,6 +286,20 @@ describe('ShippedBody', () => {
         sessions: [session({ id: 'ses_2', ccSessionId: undefined, title: null, transcriptMissing: true })],
       } as unknown as Partial<FeatureFull>)
       expect(html).toContain('Session opened, nothing recorded')
+    })
+
+    /** simplify-the-pages decision 7: reference, one closed row with its count. */
+    it('folds every conversation into one closed "Questions asked" row with its count', () => {
+      const html = render({
+        sessions: [session(), session({ id: 'ses_2', title: 'Is lap 2 needed?' })],
+      } as unknown as Partial<FeatureFull>)
+      const qa = html.slice(html.lastIndexOf('<details', html.indexOf('Questions asked')))
+      expect(qa.startsWith('<details data-disclosure=""')).toBe(true)
+      expect(qa).not.toMatch(/^<details[^>]*\sopen/)
+      expect(qa).toContain('2 conversations')
+      expect(qa).toContain('Why does the drive need a dev command?')
+      expect(qa).toContain('Is lap 2 needed?')
+      expect(html).not.toMatch(/<h2[^>]*>Questions asked/)
     })
 
     it('says nothing at all when nobody ever asked', () => {

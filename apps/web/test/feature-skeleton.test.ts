@@ -20,12 +20,12 @@ describe('FeatureSkeleton', () => {
     expect(html).toContain('aria-hidden="true"')
   })
 
-  it('is shaped like the feature page: title, branch, one step per phase, five summary rows', () => {
+  it('is shaped like the feature page: title, branch, one step per phase, three summary rows', () => {
     expect(count('title')).toBe(1)
     expect(count('branch')).toBe(1)
     expect(count('step')).toBe(PHASE_ORDER.length)
-    // Review · Checks · Test drive · Tickets · Laps
-    expect(count('row')).toBe(5)
+    // Review · Tickets · Test drive
+    expect(count('row')).toBe(3)
   })
 
   it('waits 300ms before fading in, like the shared loading state', () => {

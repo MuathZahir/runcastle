@@ -39,6 +39,7 @@ import {
   freshness,
   isReadonlyView,
   lapTicketCount,
+  lastTestDriveLap,
   latestRun,
   mapDocPath,
   mergeSummary,
@@ -51,8 +52,6 @@ import {
   specDocPath,
   stampedReview,
   startOpensChat,
-  testDriveTaken,
-  ticketCountText,
   ticketsAreBody,
   unresolvedMergeConflict,
   unverifiedLap,
@@ -176,12 +175,12 @@ export function Workspace({
   const resumeFailed = useResumeFailedAlert(featureId)
   // The review bar has to know two things the feature row cannot tell it: whether
   // a merge conflict is standing (it must not recommend a merge that will fail
-  // again — findings F8) and whether this branch was ever test-driven (the merge
-  // confirmation reports it — F21). Both live in the event feed, same query key
-  // as every other reader, so this shares one poll.
+  // again — findings F8) and which lap this branch was last test-driven in (the
+  // merge confirmation reports it — F21, decision 8a). Both live in the event
+  // feed, same query key as every other reader, so this shares one poll.
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
-  const driveTaken = testDriveTaken(events)
+  const driveLap = lastTestDriveLap(events)
   // Commit and file scale from git, for the confirmation's "what lands" row
   // (decision 31a) — the base it reports is also the branch the dialog names.
   // Only at review, where the dialog that reports it is: every earlier phase
@@ -221,7 +220,7 @@ export function Workspace({
   // vouch for different builds — the walked bug was a green merge row over a
   // review of a build that fix tickets had already replaced.
   const artifacts = useReviewArtifacts(featureId, atReview)
-  const stamped = stampedReview(artifacts.data ?? [])
+  const stamped = stampedReview(artifacts.data ?? [], q.data?.tickets ?? [])
   const reviewFreshness = freshness(
     stamped,
     { landedSince: stamped?.landedSince ?? 0, lap: q.data?.feature.lap ?? 1 },
@@ -904,10 +903,8 @@ export function Workspace({
       : shipped
         ? { tone: 'success', text: `Merged ${relTimeAgo(shipped)}` }
         : { text: `Started ${relTimeAgo(feature.createdAt)}` },
-    // Said once per page: planning's ledger has no count line of its own, so
-    // the meta carries it; the run header (build) and the property list
-    // (review, shipped) state it everywhere after.
-    ticketCount.total > 0 && bodyPhase === 'planning' && { text: ticketCountText(ticketCount) },
+    // No ticket count here (d6e): the ticket ledger's own count line, next to
+    // the tickets, states it in planning; the status rows state it after.
     feature.status === 'archived' && { tone: 'neutral', text: 'Archived' },
     feature.lap > 1 && { text: `Lap ${feature.lap}`, title: lapExplainer(feature.lap) },
   ]
@@ -1157,7 +1154,7 @@ export function Workspace({
             ...(delta.data ? { delta: delta.data } : {}),
             tickets: full.tickets,
             lap: feature.lap,
-            driveTaken,
+            driveLap,
             openNotes,
             // A project drive of this project serves from the checkout the
             // merge commits in, so the server stops it first (decision 6).

@@ -90,12 +90,14 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
 
 /**
  * A feature's ticket progress as the row's trailing meta ("3/7"), or null when
- * it has no tickets. A tight row writes counts as fractions (DESIGN.md
- * §Content); null rather than "0/0", because a figure about nothing is noise.
+ * this lap has no tickets. It is this lap's `lapTally` — the same count the
+ * feature page states — not an all-laps total; earlier laps' totals live in the
+ * lap trail. A tight row writes counts as fractions (DESIGN.md §Content); null
+ * rather than "0/0", because a figure about nothing is noise.
  */
 export function ticketProgress(f: FeatureListItem): string | null {
-  const { total, done } = f.ticketCounts
-  return total > 0 ? `${done}/${total}` : null
+  const { total, landed } = f.lapTally
+  return total > 0 ? `${landed}/${total}` : null
 }
 
 /** Sidebar sort: needs-me first, then active, then parked drafts, then shipped

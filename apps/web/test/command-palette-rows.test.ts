@@ -44,6 +44,7 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     status: 'active',
     createdAt: 0,
     ticketCounts: { total: 0, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 0 },
+    lapTally: { landed: 0, total: 0, waived: 0 },
     activeRun: false,
     liveSession: null,
     lastActivityAt: 0,

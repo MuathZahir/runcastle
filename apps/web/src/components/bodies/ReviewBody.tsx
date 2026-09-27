@@ -9,17 +9,16 @@ import {
   conflictResolveEnded,
   deferredScope,
   driveFailure,
-  findingCountsLine,
   lapAccount,
-  lapAccountLine,
   lapChip,
-  latestReview,
+  lastTestDriveLap,
   latestRun,
   liveSessionLine,
-  reviewChecks,
   reviewDriveDenial,
   slotHeldReason,
   specDocPath,
+  stampedOutcome,
+  stampedReview,
   unverifiedLap,
   verificationState,
   type MergeConflictState,
@@ -39,9 +38,10 @@ import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { NothingVerifiedAlert } from '../review/NothingVerifiedAlert'
 import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
+import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { ReviewTrail } from '../review/ReviewTrail'
-import { CheckDetails, LapStory, StatusStrip } from '../review/StatusStrip'
+import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -109,13 +109,6 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
-  // Commits come from git, not from ticket commit rows (findings F23). Polled
-  // slower than the 1.5s shell: a `rev-list --count` is cheap but this figure
-  // only moves when a burn lands, and a human reads a page, not a ticker.
-  const commits = trpc.feature.commitCount.useQuery(
-    { featureId: feature.id },
-    { refetchInterval: useLivePoll(5000) },
-  )
   const drive = trpc.feature.driveInfo.useQuery(undefined, {
     refetchInterval: useLivePoll(),
   })
@@ -153,7 +146,7 @@ export function ReviewBody({
   // The stamp is the LATEST COMPLETED pass (decision 41a) — a pass still burning
   // vouches for nothing, and ordering on completion is what makes "latest" mean
   // latest rather than highest-numbered.
-  const stamped = latestReview(rows.filter((a) => a.completedAt !== null)) ?? null
+  const stamped = stampedReview(rows, tickets)
   // What a test drive is about to depend on that no dry run has ever proven
   // (decision 8) — the state line's amber chip. Same query key the next-step bar
   // reads, so the chip and the bar come out of one fetch of the project's
@@ -320,24 +313,6 @@ export function ReviewBody({
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const account = lapAccount(tickets, feature.lap)
-  // Every count on this page is the server's own, scoped to THIS lap
-  // (decisions #5) — the inflated all-laps figure is what sent the human back
-  // through Iterate over defects a later lap had already answered. So the review
-  // row's finding count is read off the summary rather than measured on the
-  // `findings` array, which spans every lap the feature has run.
-  const summary = findings.data?.summary
-  const lapFindings = summary ? summary.found + summary.observations : undefined
-  // The lap at one line (decision 8): the review agent's digest is written to
-  // open with exactly this line. With no digest, the counts say what happened
-  // instead — the same figures the bar is holding.
-  const accountLine = lapAccountLine(account) ?? findingCountsLine(summary)
-
-  const checks = reviewChecks({
-    tickets,
-    run,
-    commitCount: commits.data?.count,
-    findings: lapFindings,
-  })
   const lapFigure = lapChip(tickets, {
     lap: feature.lap,
     // The lap's own session has run once it has emitted this lap's tickets —
@@ -459,18 +434,26 @@ export function ReviewBody({
     // the body the whole panel instead, this is the scroller (in a page column
     // an auto-height block never scrolls, so it costs nothing there).
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      {/* The four tiers (simplify-the-pages decision 7): the alerts under the
+          header's Now, the status rows, the work this state exists for, then
+          the reference at lighter weight. */}
       <div className="flex flex-col gap-10">
-        {hasNotices && <div className="flex flex-col gap-4">{notices}</div>}
+        {hasNotices && (
+          <div data-tier="now" className="flex flex-col gap-4">
+            {notices}
+          </div>
+        )}
 
-        {
+        <div data-tier="status">
           <StatusStrip
             artifact={stamped}
+            outcome={stampedOutcome({ passes: rows, tickets })}
             currentLap={feature.lap}
             landedSince={stamped?.landedSince ?? 0}
             tickets={tickets}
-            checks={checks}
             runState={run?.status ?? 'no run recorded'}
             verification={verificationState(tickets)}
+            driveLap={lastTestDriveLap(events)}
             // History states what was; a caveat about the next drive is the live page's.
             {...(readonly ? {} : { unverifiedKeys })}
             {...(readonly ? {} : { driving: driveUp })}
@@ -481,65 +464,61 @@ export function ReviewBody({
             // Start / Stop test drive on every review state, and the same act
             // twice on one screen is one too many (DESIGN.md: say it once).
           />
-        }
+        </div>
 
-        {!expanded && stage}
+        <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
+          {!expanded && stage}
 
-        <OpenWork {...workProps} />
+          <OpenWork {...workProps} />
 
-        {/* What earlier laps parked instead of answering (decisions #5) —
-            outside the open count, since the server keeps carried defects out
-            of the summary the page leads with. */}
-        {
+          {/* What earlier laps parked instead of answering (decisions #5) —
+              outside the open count, since the server keeps carried defects out
+              of the summary the page leads with. */}
           <CarriedFindings
             featureId={feature.id}
             findings={findings.data?.carriedFindings ?? []}
             readonly={readonly}
           />
-        }
+        </div>
 
-        {/* The feature's laps, newest first (decisions 4–5) — history, below
-            the state and the open work it is the record behind. Clicking a
-            pass's recording stages it above. */}
-        {
-          <ReviewTrail
-            passes={rows}
-            tickets={tickets}
-            findings={findings.data?.findings ?? []}
-            notes={notes.data ?? []}
-            currentLap={feature.lap}
-            account={accountLine}
-            staged={staged?.ticketId ?? null}
-            onStage={stageRecording}
-            {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
-          />
-        }
-
-        {/* Read once, so closed (DESIGN.md principle 6). */}
-        {
-          <div className="flex flex-col [&>*:last-child]:border-b [&>*:last-child]:border-border-subtle">
-            <DriveInstructions text={project?.driveInstructions} />
-            <FullAccounts
-              account={account}
+        {/* The feature's laps, oldest first (decision 5) — history, below the
+            state and the open work it is the record behind. Clicking a pass's
+            recording stages it above. The long text is read once, so closed
+            (DESIGN.md principle 6). */}
+        <ReferenceTier
+          history={
+            <ReviewTrail
+              passes={rows}
               tickets={tickets}
-              observations={observations}
-              carried={
-                settled.length > 0 ? (
-                  <WorkList
-                    featureId={feature.id}
-                    rows={settled}
-                    readonly={readonly}
-                    onStage={stageMounted ? staged : null}
-                    onSeek={jumpTo}
-                    onViewLane={onViewLane}
-                  />
-                ) : null
-              }
+              findings={findings.data?.findings ?? []}
+              notes={notes.data ?? []}
+              currentLap={feature.lap}
+              staged={staged?.ticketId ?? null}
+              onStage={stageRecording}
+              {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
             />
-            <CheckDetails checks={checks} />
-            <LapStory lap={lapFigure} laterLaps={laterLaps} currentLap={feature.lap} readonly={readonly} />
-          </div>
-        }
+          }
+        >
+          <DriveInstructions text={project?.driveInstructions} />
+          <FullAccounts
+            account={account}
+            tickets={tickets}
+            observations={observations}
+            carried={
+              settled.length > 0 ? (
+                <WorkList
+                  featureId={feature.id}
+                  rows={settled}
+                  readonly={readonly}
+                  onStage={stageMounted ? staged : null}
+                  onSeek={jumpTo}
+                  onViewLane={onViewLane}
+                />
+              ) : null
+            }
+          />
+          <LapStory lap={lapFigure} laterLaps={laterLaps} currentLap={feature.lap} readonly={readonly} />
+        </ReferenceTier>
       </div>
       {overlay && (typeof document === 'undefined' ? overlay : createPortal(overlay, document.body))}
     </div>

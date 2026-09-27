@@ -1,13 +1,11 @@
 import { PHASE_ORDER } from '../../lib/feature-ui'
 import { Page, PageTopbar, Skeleton, SkeletonBar, cx } from '../../ui'
 
-/** Label and value widths for the summary rows: Review · Checks · Test drive · Tickets · Laps. */
+/** Label and value widths for the summary rows: Review · Tickets · Test drive. */
 const SUMMARY_ROWS = [
-  ['w-12', 'w-28'],
   ['w-12', 'w-40'],
-  ['w-16', 'w-24'],
   ['w-12', 'w-32'],
-  ['w-10', 'w-6'],
+  ['w-16', 'w-24'],
 ] as const
 
 /**

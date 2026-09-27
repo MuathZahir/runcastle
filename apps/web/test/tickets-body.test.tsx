@@ -132,4 +132,10 @@ describe('TicketsBody layout', () => {
     expect(stack.className).toMatch(/\bflex-1\b/)
     expect(stack.className).toMatch(/\bmin-w-0\b/)
   })
+
+  /** simplify-the-pages decision 9b: nothing has run yet, so there is no status and no history. */
+  it('lays planning out as Now then Work — no Status or Reference tier', () => {
+    const { container } = render(<TicketsBody featureId="f1" />)
+    expect(container.querySelector('[data-tier="status"], [data-tier="reference"], dl, #lap-trail')).toBeNull()
+  })
 })

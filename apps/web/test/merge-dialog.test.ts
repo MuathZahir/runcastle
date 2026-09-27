@@ -20,7 +20,7 @@ const summary = (over: Partial<Parameters<typeof mergeSummary>[0]> = {}) =>
     delta: { commits: 12, files: 9 },
     tickets: [{ kind: 'implementation', status: 'done', lap: 1 }],
     lap: 1,
-    driveTaken: true,
+    driveLap: 1,
     freshness: FRESH,
     ...over,
   })
@@ -55,7 +55,7 @@ describe('MergeFeatureDialog', () => {
       expect(html).toContain('What lands')
       expect(html).toContain('12 commits · 9 files')
       expect(html).toContain('1/1 tickets done')
-      expect(html).toContain('taken')
+      expect(html).toContain('Lap 1')
       expect(html).toContain('Reviewed ✓ · this build')
     })
 
@@ -66,9 +66,9 @@ describe('MergeFeatureDialog', () => {
     })
 
     it('enumerates the warnings box when there is something to ship over', () => {
-      const html = render({ summary: summary({ openNotes: 2, driveTaken: false }) })
+      const html = render({ summary: summary({ openNotes: 2, driveLap: null }) })
       expect(html).toContain('2 open test-drive notes.')
-      expect(html).toContain('never test-driven')
+      expect(html).toContain('Not run')
     })
 
     it('offers no resolve control when nothing is conflicted', () => {
