@@ -285,6 +285,41 @@ describe('the review page’s arrival bands', () => {
     expect(html).not.toContain('defects found ·')
   })
 
+  /**
+   * simplify-the-pages decision 7: Now (the alerts) → Status → Work → Reference,
+   * the work under a real heading and the history under a quiet label.
+   */
+  it('lays the page out in the four tiers, in order', () => {
+    const html = render({
+      sessions: [LIVE_CHAT],
+      notes: [NOTE],
+      findings: [DEFECT],
+      openDefects: [DEFECT],
+      recordings: [RECORDING],
+    })
+    const at = (needle: string) => {
+      const i = html.indexOf(needle)
+      expect(i, needle).toBeGreaterThanOrEqual(0)
+      return i
+    }
+    const order = [
+      at('data-tier="now"'),
+      at('Chat session still live from lap 1'),
+      at('data-tier="status"'),
+      at('>Review</dt>'),
+      at('data-tier="work"'),
+      at('id="evidence-stage"'),
+      at('Needs attention</h2>'),
+      at('data-tier="reference"'),
+      at('>History</span>'),
+      at('Full account'),
+    ]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    // The work keeps a real heading; the reference is introduced quietly.
+    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">Needs attention<\/h2>/)
+    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
+  })
+
   /** State 2: the feature's lap-1 chat is still live. */
   it('states a live session as one alert line instead of mounting its terminal', () => {
     const html = render({

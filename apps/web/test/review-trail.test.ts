@@ -167,11 +167,17 @@ describe('the lap trail', () => {
   it('carries the pass’s own one-line account, not a restatement of its name', () => {
     const html = render({
       tickets: [ticket({ digest: 'Lap 1: the filter landed · 0 defects · Drive mode\n\nThe long account.' })],
-      account: 'Lap 1: the filter landed.',
     })
     expect(html).toContain('The filter landed')
     expect(html).not.toContain('The long account')
     expect(html).not.toContain('Lap 1: the filter landed.')
+  })
+
+  /** simplify-the-pages decision 7: history is reference, under a quiet label. */
+  it('opens on a quiet "History" label, never a section heading', () => {
+    const html = render({})
+    expect(html).toMatch(/text-xs font-medium text-text-tertiary[^>]*><span[^>]*>History<\/span>/)
+    expect(html).not.toMatch(/<h2[^>]*>History/)
   })
 
   /** Decision 5: work, the review, the fixes under it, the verification. */

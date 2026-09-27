@@ -146,6 +146,34 @@ const renderUnrecorded = (): string => {
 }
 
 describe('ShippedBody', () => {
+  /**
+   * simplify-the-pages decisions 7 and 9c: Status → "What shipped" (the Outcome
+   * doc beside its heading, then the walkthrough) → Reference, under a quiet
+   * "History" label, then Questions asked and the closed long text.
+   */
+  it('lays the record out in tiers: status, what shipped, then reference', () => {
+    const html = render()
+    const at = (needle: string) => {
+      const i = html.indexOf(needle)
+      expect(i, needle).toBeGreaterThanOrEqual(0)
+      return i
+    }
+    const order = [
+      at('data-tier="status"'),
+      at('>Review<'),
+      at('data-tier="work"'),
+      at('What shipped</h2>'),
+      at('Outcome doc'),
+      at('aspect-video'),
+      at('data-tier="reference"'),
+      at('>History</span>'),
+      at('Questions asked'),
+    ]
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">What shipped<\/h2>/)
+    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
+  })
+
   describe('the page top', () => {
     /**
      * DESIGN.md principle 5: the feature page's header and stepper already say
@@ -258,6 +286,20 @@ describe('ShippedBody', () => {
         sessions: [session({ id: 'ses_2', ccSessionId: undefined, title: null, transcriptMissing: true })],
       } as unknown as Partial<FeatureFull>)
       expect(html).toContain('Session opened, nothing recorded')
+    })
+
+    /** simplify-the-pages decision 7: reference, one closed row with its count. */
+    it('folds every conversation into one closed "Questions asked" row with its count', () => {
+      const html = render({
+        sessions: [session(), session({ id: 'ses_2', title: 'Is lap 2 needed?' })],
+      } as unknown as Partial<FeatureFull>)
+      const qa = html.slice(html.lastIndexOf('<details', html.indexOf('Questions asked')))
+      expect(qa.startsWith('<details data-disclosure=""')).toBe(true)
+      expect(qa).not.toMatch(/^<details[^>]*\sopen/)
+      expect(qa).toContain('2 conversations')
+      expect(qa).toContain('Why does the drive need a dev command?')
+      expect(qa).toContain('Is lap 2 needed?')
+      expect(html).not.toMatch(/<h2[^>]*>Questions asked/)
     })
 
     it('says nothing at all when nobody ever asked', () => {

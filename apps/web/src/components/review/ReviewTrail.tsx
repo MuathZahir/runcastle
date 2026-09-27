@@ -4,6 +4,7 @@ import {
   List,
   ListRow,
   MetaLine,
+  SectionLabel,
   TicketStatusChip,
   TONE_TEXT,
   Timeline,
@@ -41,6 +42,9 @@ import { fmtDateTime, relTimeAgo } from '../../lib/format'
  * Recording button stages it there rather than opening a second player. The
  * open work is its own section; a defect count here is a figure, never a row
  * to act on, and observations render only in the Full account.
+ *
+ * It leads the page's Reference tier (decision 7), so it opens on a quiet
+ * "History" label rather than a heading as loud as the work above it.
  */
 
 /** The outcome as a dot and words on an earlier lap's heading, or null for no verdict. */
@@ -253,11 +257,6 @@ export function ReviewTrail({
   findings: readonly TimelineFinding[]
   notes: readonly { lap: number }[]
   currentLap: number
-  /**
-   * The current lap's account at one line. No longer rendered: each pass node
-   * carries its own account (decision 5), so this only restated it.
-   */
-  account?: string | null
   /** The recording the stage is playing, so its button reads as the pressed one. */
   staged: string | null
   /** Put this pass's recording on the stage — the page owns which one is up. */
@@ -296,6 +295,7 @@ export function ReviewTrail({
 
   return (
     <section id="lap-trail" className="flex flex-col gap-1">
+      <SectionLabel>History</SectionLabel>
       {earlier.map((entry) => (
         <Disclosure
           key={entry.lap}
