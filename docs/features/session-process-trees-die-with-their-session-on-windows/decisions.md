@@ -42,3 +42,7 @@
 
 The brief's real-Claude acceptance checks (expect-mcp session end; hard kill then `bun run install:local`) stay manual test-drive steps.
 **Why:** The logic is testable everywhere. The OS behaviour needs real processes and can only be proven on its own platform. A random port keeps the crash test from colliding with a live runcastle on :4512.
+
+## 10. A drive setup hook's job lives as long as the drive
+**Decision:** A drive's *setup* hook job is not closed when the hook exits. It is held for the drive's lifetime and closed only after the drive's teardown hook has finished (or when the drive stops without one). Whatever setup started in the background (say, a local Postgres) lives exactly as long as the drive, and still dies with the server on a crash. *Teardown* hooks and doctor execs close their job as soon as they exit. Host burn execs close theirs when the exec ends.
+**Why:** Setup hooks exist to bring an environment up, and on Windows that can mean leaving a process running. Closing the job on hook exit would kill it and break the drive. Leaving hooks out entirely would leave a leak path open.
