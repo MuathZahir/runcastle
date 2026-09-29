@@ -506,6 +506,32 @@ describe('a standing conflict clears once its base is in the feature branch', ()
     expect(standing()).toMatchObject({ base: 'main', files: ['vitest.config.ts'] })
     expect(resolved()).toHaveLength(0)
   })
+
+  describe('a legacy conflict recorded without its base', () => {
+    beforeEach(() => {
+      emit(ctx, featureId, {
+        type: 'merge.conflict',
+        message: 'merge conflict — resolve and retry',
+        data: { conflict: true },
+      })
+    })
+
+    it("clears once the feature's base branch is in it", async () => {
+      landTheMerge()
+      await createCallerFactory(appRouter)(ctx).feature.get({ id: featureId })
+
+      expect(standing()).toBeNull()
+      expect(resolved()).toHaveLength(1)
+      expect(resolved()[0]?.data).toMatchObject({ mergeFrom: 'main', mergeInto: 'feature/dark-mode' })
+    })
+
+    it('keeps standing while the branch still lacks the base branch', async () => {
+      await createCallerFactory(appRouter)(ctx).feature.get({ id: featureId })
+
+      expect(standing()).toMatchObject({ base: '' })
+      expect(resolved()).toHaveLength(0)
+    })
+  })
 })
 
 /**

@@ -45,14 +45,18 @@ export async function reconcileStandingConflict(ctx: AppCtx, feature: Feature): 
   probing.add(feature.id)
   try {
     const conflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
-    if (!conflict?.base) return
+    if (!conflict) return
+    // A conflict recorded before events carried `base` names none; the branch it
+    // failed to merge from was the feature's own base branch.
+    const base = conflict.base || feature.baseBranch
+    if (!base) return
     const project = getProjectById(ctx, feature.projectId)
     if (!project) return
-    if (!(await isAncestor(project.repoPath, conflict.base, feature.branch))) return
+    if (!(await isAncestor(project.repoPath, base, feature.branch))) return
     emit(ctx, feature.id, {
       type: 'merge.resolved',
-      message: `merge conflict resolved — ${conflict.base} is in ${feature.branch}`,
-      data: { mergeFrom: conflict.base, mergeInto: feature.branch },
+      message: `merge conflict resolved — ${base} is in ${feature.branch}`,
+      data: { mergeFrom: base, mergeInto: feature.branch },
     })
   } catch {
     // A timeline probe never breaks the hook or the read that asked it.
