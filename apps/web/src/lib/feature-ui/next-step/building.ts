@@ -139,8 +139,8 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       : undefined
   // Died before any ticket started (a setup or preflight failure): a resume
   // would meet the same wall, so the fix leads and Resume waits behind it.
+  const resume: NextAction = { label: 'Resume burn', kind: 'burn' }
   if (failure && !ticketsStartedIn(run, full.tickets)) {
-    const resume: NextAction = { label: 'Resume burn', kind: 'burn' }
     return {
       alert: true,
       kick: 'NEXT STEP',
@@ -149,6 +149,20 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       primary: settingsLocationFromMessage(failure)
         ? { label: 'Open Settings → Burns', kind: 'openBurnSettings' }
         : undefined,
+      secondary: [resume, CHAT_ACTION, mergeAction],
+      busy: false,
+    }
+  }
+  // Halted on a ticket by a fix that lives in Settings → Burns — a sandbox CLI
+  // too old for the model. Resume would meet the same wall, so the fix leads
+  // here too, even though tickets had started.
+  if (failure && settingsLocationFromMessage(failure)) {
+    return {
+      alert: true,
+      kick: 'NEXT STEP',
+      title: 'The burn stopped — rebuild the image',
+      desc: failure,
+      primary: { label: 'Open Settings → Burns', kind: 'openBurnSettings' },
       secondary: [resume, CHAT_ACTION, mergeAction],
       busy: false,
     }

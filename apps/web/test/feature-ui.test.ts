@@ -2660,6 +2660,25 @@ describe('nextStep at building', () => {
     // The burner's summary counts the review ticket ("1/2 tickets done"); the
     // bar restates it with the one ticket count (decisions d2), so it matches
     // the Tickets row's "1 of 1 landed" and the sidebar's 1/1.
+    it('leads a run halted mid-burn by a Settings → Burns fix with that fix, Resume behind it', () => {
+      const halted =
+        'run halted at ticket 1: Claude Code 2.1.280 is too old for model claude-opus-5-5 ' +
+        '(needs 2.1.290 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Burns. — 0/3 tickets done'
+      const ns = nextStep(
+        buildFull({
+          runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: halted }],
+          ticketStatuses: ['failed', 'pending', 'pending'],
+          completedAt: 200,
+        }),
+        { driving: false },
+      )
+      expect(ns.alert).toBe(true)
+      expect(ns.title).toBe('The burn stopped — rebuild the image')
+      expect(ns.desc).toContain('Rebuild from Settings → Burns')
+      expect(ns.primary).toEqual({ label: 'Open Settings → Burns', kind: 'openBurnSettings' })
+      expect(ns.secondary).toEqual([RESUME, CHAT_ACTION, MERGE_ACTION])
+    })
+
     it('restates the runner’s ticket count with the lap’s work-ticket tally', () => {
       const full = buildFull({
         runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: '1/2 tickets done' }],
