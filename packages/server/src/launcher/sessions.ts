@@ -225,8 +225,9 @@ export function lapKickoff(lap: number, carried?: CarriedWork): string {
  * The feature is still at review on lap `lap - 1` when this conversation runs,
  * and it stays there. The lap's tickets land `pending` and Burn from review is
  * what moves them onto lap `lap` (`carryPendingTicketsIntoLap`) and bumps the
- * counter — so there is no phase to complete, and a session told to
- * `complete_phase` here would be refused by the pipeline.
+ * counter — so there is no phase to complete, and the briefing forbids
+ * `complete_phase`. A stray call is not refused (the pipeline answers it as an
+ * `iterating` report, `toolCompletePhase`), which is why the ban is in the words.
  */
 export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
   return (
