@@ -303,8 +303,6 @@ describe('the review page’s arrival bands', () => {
       return i
     }
     const order = [
-      at('data-tier="now"'),
-      at('Chat session still live from lap 1'),
       at('data-tier="status"'),
       at('>Review</dt>'),
       at('data-tier="work"'),
@@ -320,19 +318,23 @@ describe('the review page’s arrival bands', () => {
     expect(html).not.toMatch(/<h[1-3][^>]*>History/)
   })
 
-  /** State 2: the feature's lap-1 chat is still live. */
-  it('states a live session as one alert line instead of mounting its terminal', () => {
+  /**
+   * State 2: the feature's lap-1 chat is still live. The page header states it
+   * once, in every state, and the session lives on the Chat tab
+   * (one-chat-layout-everywhere decisions 1 and 7) — so the review body says
+   * nothing about it and mounts no terminal.
+   */
+  it('leaves a live session to the header line and the Chat tab', () => {
     const html = render({
       sessions: [LIVE_CHAT],
       notes: [NOTE],
       findings: [DEFECT],
       openDefects: [DEFECT],
     })
-    expect(html).toContain('Chat session still live from lap 1')
-    expect(html).toContain('Open</button>')
-    expect(html).toContain('End session')
-    // The line replaces the panel — no terminal renders on this page at all.
-    expect(html).not.toContain('grill-term')
+    expect(html).not.toContain('live · lap')
+    expect(html).not.toContain('Open chat')
+    expect(html).not.toContain('End session')
+    expect(html).not.toContain('data-chat-terminal')
   })
 
   it('says nothing at all about a session that has already ended', () => {
@@ -689,7 +691,6 @@ describe('the review page as one document', () => {
       driveInstructions: 'Drive the sample project at ./examples/demo.',
     })
     const bands = [
-      'Chat session still live from lap 1',
       '>Review</dt>',
       'id="evidence-stage"',
       'id="open-work"',

@@ -2,14 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { FeatureFull } from '../../../lib/api'
 import { countDecisions } from '../../../lib/feature-ui'
 import { useFeatureDoc } from '../../../lib/use-feature-doc'
-import { IconDoc, IconPanelLeft } from '../../../icons'
-import { cx, DimLine, EmptyState, IconButton, PageSection, Skeleton, SkeletonBar, StatusLabel } from '../../../ui'
+import { IconDoc } from '../../../icons'
+import { cx, DimLine, EmptyState, PageSection, Skeleton, SkeletonBar, StatusLabel } from '../../../ui'
 import { DocsMenu } from '../../DocsMenu'
 import { Markdown } from '../../Markdown'
 
 /**
- * `live` is the artifact beside a running session — it polls, it collapses to a
- * strip, and its header carries the docs menu. `static` is the same document in
+ * `live` is live planning's body — it polls, and its header carries the docs
+ * menu. `static` is the same document in
  * a pinned phase (decision 10): read once, no controls, as a section of the
  * page, and empty copy that says what happened instead of what to do.
  */
@@ -19,8 +19,6 @@ export function ArtifactPane({
   featureId,
   kind,
   docs,
-  collapsed = false,
-  onToggle,
   mapped = false,
   mode = 'live',
   children,
@@ -28,8 +26,6 @@ export function ArtifactPane({
   featureId: string
   kind: 'decisions' | 'spec'
   docs: FeatureFull['docs']
-  collapsed?: boolean
-  onToggle?: () => void
   mapped?: boolean
   mode?: ArtifactPaneMode
   children?: ReactNode
@@ -53,16 +49,6 @@ export function ArtifactPane({
     previousContent.current = content
   }, [content, doc.content, kind])
   const count = countDecisions(content)
-
-  if (collapsed && onToggle)
-    return (
-      <div className="flex w-9 flex-none flex-col items-center gap-2 pt-0.5">
-        <IconButton label={`Expand the ${kind} pane`} icon={<IconPanelLeft />} onClick={onToggle} tooltipSide="right" />
-        <span className="text-xs text-text-tertiary tabular-nums [writing-mode:vertical-rl]">
-          {kind === 'decisions' ? `${count} decisions` : 'Spec'}
-        </span>
-      </div>
-    )
 
   // A frozen pane has no docs menu, so it always shows the phase's own document.
   const showingPrimary = frozen || selectedPath === defaultPath
@@ -100,7 +86,7 @@ export function ArtifactPane({
   return (
     <section
       aria-label={showingPrimary ? title : selectedPath}
-      className="flex min-h-0 w-(--artifact-w) flex-none flex-col"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
       <div className="flex h-8 shrink-0 items-center gap-2">
         <h2 className="m-0 min-w-0 truncate text-sm font-medium text-text">
@@ -116,9 +102,6 @@ export function ArtifactPane({
         )}
         <span className="ml-auto flex items-center gap-0.5">
           <DocsMenu docs={docs} value={selectedPath} onPick={setSelectedPath} />
-          {onToggle && (
-            <IconButton label={`Collapse the ${kind} pane`} size="sm" icon={<IconPanelLeft />} onClick={onToggle} />
-          )}
         </span>
       </div>
       <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-border-subtle pt-4 pr-3">{prose}</div>

@@ -8,9 +8,6 @@ import { IconArrowRight, IconBranch, IconFolder, IconPanelRight } from '../icons
 import { useLivePoll } from '../lib/live'
 import { Aside, AsideLayout, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
 import { ConversationTranscript } from './ConversationTranscript'
-import { EndSessionButton } from './EndSessionButton'
-import { ErrorBoundary } from './ErrorBoundary'
-import { TerminalView } from './TerminalView'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
@@ -346,20 +343,11 @@ export function ProjectWorkspace({
             setShowOpenNotice(false)
             setShowList(true)
           }}
-          endControl={
-            <EndSessionButton
-              sessionId={session.id}
-              onEnded={() => {
-                void utils.project.projectSession.invalidate()
-                void utils.project.conversations.invalidate()
-              }}
-            />
-          }
-        >
-          <ErrorBoundary label="terminal">
-            <TerminalView sessionId={session.id} />
-          </ErrorBoundary>
-        </LiveChat>
+          onEnded={() => {
+            void utils.project.projectSession.invalidate()
+            void utils.project.conversations.invalidate()
+          }}
+        />
       )}
     </section>
   )

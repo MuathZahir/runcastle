@@ -7,7 +7,6 @@ import { useToast } from '../../lib/toast'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import {
-  bodySessions,
   laneFacts,
   sessionActive,
   soloRetrySeq,
@@ -27,7 +26,6 @@ import { Disclosure, EmptyState } from '../../ui'
 import { IconDoc, IconFlame } from '../../icons'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { Markdown } from '../Markdown'
-import { SessionPanel } from '../SessionPanel'
 import { Lane } from '../run/Lane'
 import { LaneDigest } from '../run/LaneDigest'
 import { LaneTranscript } from '../run/LaneTranscript'
@@ -61,13 +59,10 @@ export function RunBody({
   featureId,
   runId,
   readonly = false,
-  chatDocked = false,
 }: {
   featureId: string
   runId: string | null
   readonly?: boolean
-  /** The chat panel holds the chat's terminal, so this body does not (decision 16). */
-  chatDocked?: boolean
 }) {
   const poll = useLivePoll()
   const toast = useToast()
@@ -339,14 +334,6 @@ export function RunBody({
 
   return (
     <div className="flex flex-col">
-      {/* A read-only retrospective view is history: it must not offer to reopen
-          a conversation from a phase the feature has already left (F10.6). */}
-      <SessionPanel
-        featureId={featureId}
-        sessions={bodySessions(sessions, chatDocked)}
-        className="mb-10 h-[clamp(320px,calc(100dvh-360px),960px)]"
-      />
-
       {/* The Status tier (simplify-the-pages decision 9a): the burn on screen,
           its tickets and the lap's review, as the review page states them. */}
       {run.data && (

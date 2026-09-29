@@ -25,8 +25,6 @@ const SELECTED_KEY = 'runcastle.selected.v1'
 const PREPARING_KEY = 'runcastle.preparing.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
-const ARTIFACT_KEY = 'runcastle.artifact.collapsed'
-const CHATPANEL_KEY = 'runcastle.chatpanel.open'
 const GUIDANCE_KEY = 'runcastle.guidance'
 
 /**
@@ -108,17 +106,6 @@ export interface WorkspaceApi {
   inspectorPreference: boolean | null
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
   mapRailCollapsed: boolean
-  artifactPaneCollapsed: boolean
-  /**
-   * The feature chat docked beside the phase body (decision 16).
-   *
-   * Collapsed is the resting state and costs nothing: the workspace renders the
-   * body exactly as it did before the panel existed. Persisted and global, like
-   * the two rail collapses beside it — where the human keeps the conversation is
-   * a preference about the screen, not about one feature, and it has to survive
-   * both a pinned phase and a hop to another feature.
-   */
-  chatPanelOpen: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -148,9 +135,6 @@ export interface WorkspaceApi {
   closePreparation: () => void
   toggleInspector: (current?: boolean) => void
   toggleMapRail: () => void
-  toggleArtifactPane: () => void
-  /** Dock the feature chat beside the body, or send it away again. */
-  toggleChatPanel: () => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -180,10 +164,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [mapRailCollapsed, setMapRailCollapsed] = useState(
     () => readLS(MAPRAIL_KEY) === '1',
   )
-  const [artifactPaneCollapsed, setArtifactPaneCollapsed] = useState(
-    () => readLS(ARTIFACT_KEY) === '1',
-  )
-  const [chatPanelOpen, setChatPanelOpen] = useState(() => readLS(CHATPANEL_KEY) === '1')
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -202,12 +182,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   useEffect(() => {
     writeLS(MAPRAIL_KEY, mapRailCollapsed ? '1' : '0')
   }, [mapRailCollapsed])
-  useEffect(() => {
-    writeLS(ARTIFACT_KEY, artifactPaneCollapsed ? '1' : '0')
-  }, [artifactPaneCollapsed])
-  useEffect(() => {
-    writeLS(CHATPANEL_KEY, chatPanelOpen ? '1' : '0')
-  }, [chatPanelOpen])
   useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
@@ -259,8 +233,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     [],
   )
   const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
-  const toggleArtifactPane = useCallback(() => setArtifactPaneCollapsed((v) => !v), [])
-  const toggleChatPanel = useCallback(() => setChatPanelOpen((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -272,8 +244,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     inspectorCollapsed: inspectorPreference ?? true,
     inspectorPreference,
     mapRailCollapsed,
-    artifactPaneCollapsed,
-    chatPanelOpen,
     cmdkOpen,
     settings,
     guidance,
@@ -286,8 +256,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     closePreparation,
     toggleInspector,
     toggleMapRail,
-    toggleArtifactPane,
-    toggleChatPanel,
     setCmdk,
     openSettings,
     closeSettings,
