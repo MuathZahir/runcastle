@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createNativePtySession, createPtySession, type PtySession } from '../src/pty/pty'
+import {
+  chooseBackend,
+  createNativePtySession,
+  createPtySession,
+  type PtySession,
+} from '../src/pty/pty'
 import { createSidecarPtySession } from '../src/pty/pty-sidecar'
 import { ptyRegistry, type ControlFrame } from '../src/pty/registry'
 import { RingBuffer } from '../src/pty/ring-buffer'
@@ -15,9 +20,9 @@ import { RingBuffer } from '../src/pty/ring-buffer'
  *  3. kill of a long-lived process,
  *  4. ring-buffer replay through the registry.
  *
- * Two backends are exercised: `native` (in-process node-pty — what runs off-win32)
- * and `sidecar` (node-pty hosted in a system `node` child — what ships under Bun
- * on win32, where the native write path throws `ERR_SOCKET_CLOSED`). Both must
+ * Two backends are exercised: `native` (in-process node-pty — what runs under a
+ * node runtime) and `sidecar` (node-pty hosted in a system `node` child — what
+ * ships under Bun on every platform, where in-process node-pty breaks). Both must
  * pass the WRITE→ECHO assertion wherever they are the shipped backend. Cases skip
  * gracefully where the native addon cannot load (CI without prebuilds).
  *
@@ -206,6 +211,36 @@ describe.skipIf(!AVAILABLE)('createSidecarPtySession (node sidecar backend)', ()
     },
     20000,
   )
+})
+
+describe('chooseBackend', () => {
+  it.each(['linux', 'darwin', 'win32'] as const)('picks the sidecar for any Bun runtime (%s)', (platform) => {
+    expect(chooseBackend({ isBun: true, platform, override: undefined }).backend).toBe('sidecar')
+  })
+
+  it('picks native for a node runtime', () => {
+    expect(chooseBackend({ isBun: false, platform: 'linux', override: undefined })).toEqual({
+      backend: 'native',
+      why: 'node runtime',
+    })
+  })
+
+  it('lets RUNCASTLE_PTY_BACKEND override either runtime', () => {
+    expect(chooseBackend({ isBun: true, platform: 'linux', override: 'native' }).backend).toBe('native')
+    expect(chooseBackend({ isBun: false, platform: 'linux', override: 'sidecar' }).backend).toBe('sidecar')
+  })
+
+  it('ignores an unrecognised override value', () => {
+    expect(chooseBackend({ isBun: true, platform: 'darwin', override: 'bogus' }).backend).toBe('sidecar')
+  })
+
+  it('logs why Bun gets the sidecar off win32', () => {
+    const { why } = chooseBackend({ isBun: true, platform: 'linux', override: undefined })
+    expect(why).toBe(
+      'Bun on linux: node-pty is unusable in-process under Bun ' +
+        '(win32 ConPTY input pipe throws; posix PTY hangs up after first output)',
+    )
+  })
 })
 
 describe.skipIf(!AVAILABLE)('createPtySession backend dispatch', () => {

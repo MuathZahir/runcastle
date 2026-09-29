@@ -12,19 +12,27 @@ import { createSidecarPtySession } from './pty-sidecar'
  * SHIPPED PATH — TWO BACKENDS, selected at spawn time (`selectBackend`):
  *
  * - **sidecar** (`pty-sidecar.ts` + `pty-host.cjs` under system `node`): the
- *   default under **Bun on win32**. node-pty v1.1.0's Windows ConPTY backend
- *   writes keystrokes to the child through a Node `net.Socket` input pipe; under
- *   Bun that socket is unusable and `write()` throws `ERR_SOCKET_CLOSED`, so
- *   INPUT is silently dropped (OUTPUT works — it uses a different read path).
- *   Hosting node-pty in a real `node` process restores input. Reproduced: under
- *   Bun `write()` threw and echo delta was 0; under Node the same write echoed.
+ *   default under **Bun, on every platform** — node-pty does not work
+ *   in-process under Bun anywhere:
+ *   - win32: node-pty v1.1.0's ConPTY backend writes keystrokes to the child
+ *     through a Node `net.Socket` input pipe; under Bun that socket is unusable
+ *     and `write()` throws `ERR_SOCKET_CLOSED`, so INPUT is silently dropped
+ *     (OUTPUT works — it uses a different read path). Reproduced: under Bun
+ *     `write()` threw and echo delta was 0; under Node the same write echoed.
+ *   - Linux: the PTY exits with SIGHUP ~14ms after its first output, so every
+ *     terminal dies at once (Bun 1.3.14–1.4.2, with or without a TTY; see
+ *     `docs/features/session-process-trees-die-with-their-session-on-windows/
+ *     prototypes/linux-probe/FINDINGS.md`). macOS shares node-pty's Unix read
+ *     side, so it gets the sidecar too (unverified there).
+ *   Hosting node-pty in a real `node` process fixes both, which is why Node 22+
+ *   is a prerequisite on every platform.
  *
- * - **native** (bun/node-native `node-pty`, below): used off-win32, and under a
- *   `node` runtime (e.g. the vitest suite) where the input pipe works fine. Kept
- *   present and exercised by tests so it never bit-rots.
+ * - **native** (in-process `node-pty`, below): used under a `node` runtime (e.g.
+ *   the vitest suite), where node-pty works fine. Kept present and exercised by
+ *   tests so it never bit-rots.
  *
- * Selection is deterministic (no async probe — the write failure is not flaky
- * but a fixed Bun↔node-pty incompatibility) and overridable via
+ * Selection is deterministic (`chooseBackend` — no async probe; the failures are
+ * not flaky but a fixed Bun↔node-pty incompatibility) and overridable via
  * `RUNCASTLE_PTY_BACKEND=sidecar|native`. `node-pty` is a native CommonJS addon
  * loaded lazily via `createRequire` on first native spawn (not at import time),
  * so importing the launcher/index — as the tests and `buildApp` do — never
@@ -112,7 +120,7 @@ function cleanEnv(env: Record<string, string | undefined>): Record<string, strin
   return out
 }
 
-type Backend = 'native' | 'sidecar'
+export type Backend = 'native' | 'sidecar'
 
 function isBun(): boolean {
   return typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
@@ -120,26 +128,45 @@ function isBun(): boolean {
 
 const BACKEND_LOGGED = Symbol.for('runcastle.pty.backend.logged')
 
+/** What the backend choice depends on — the runtime and the override env var. */
+export interface BackendInputs {
+  isBun: boolean
+  platform: NodeJS.Platform
+  /** Raw `RUNCASTLE_PTY_BACKEND`; anything but `sidecar`/`native` is ignored. */
+  override: string | undefined
+}
+
 /**
- * Pick a PTY backend. Sidecar is the default under Bun on win32 (node-pty's
- * ConPTY input pipe is unusable there — see the file header); native everywhere
- * else. `RUNCASTLE_PTY_BACKEND` overrides for tests / escape hatch. The choice is
+ * Pure backend choice (see the file header). `RUNCASTLE_PTY_BACKEND` wins; any
+ * Bun runtime gets the sidecar, on every platform; a node runtime gets native.
+ * `why` is the reason the `[pty] backend=` log line prints.
+ */
+export function chooseBackend(inputs: BackendInputs): { backend: Backend; why: string } {
+  const { override } = inputs
+  if (override === 'sidecar' || override === 'native') {
+    return { backend: override, why: 'RUNCASTLE_PTY_BACKEND override' }
+  }
+  if (inputs.isBun) {
+    return {
+      backend: 'sidecar',
+      why:
+        `Bun on ${inputs.platform}: node-pty is unusable in-process under Bun ` +
+        '(win32 ConPTY input pipe throws; posix PTY hangs up after first output)',
+    }
+  }
+  return { backend: 'native', why: 'node runtime' }
+}
+
+/**
+ * Pick a PTY backend for this process via {@link chooseBackend}. The choice is
  * logged exactly once per process (survives `bun --hot` via a global symbol).
  */
 function selectBackend(): Backend {
-  const override = process.env.RUNCASTLE_PTY_BACKEND
-  let backend: Backend
-  let why: string
-  if (override === 'sidecar' || override === 'native') {
-    backend = override
-    why = 'RUNCASTLE_PTY_BACKEND override'
-  } else if (isBun() && process.platform === 'win32') {
-    backend = 'sidecar'
-    why = 'Bun+win32: node-pty ConPTY input pipe (node:net socket) unusable under Bun'
-  } else {
-    backend = 'native'
-    why = isBun() ? 'Bun off-win32' : 'node runtime'
-  }
+  const { backend, why } = chooseBackend({
+    isBun: isBun(),
+    platform: process.platform,
+    override: process.env.RUNCASTLE_PTY_BACKEND,
+  })
   const g = globalThis as typeof globalThis & { [BACKEND_LOGGED]?: boolean }
   if (!g[BACKEND_LOGGED]) {
     g[BACKEND_LOGGED] = true
@@ -167,8 +194,9 @@ export function createPtySession(
  * Native (in-process `node-pty`) backend. Output listeners always receive a
  * `Buffer` (node-pty is spawned WITHOUT an encoding so bytes pass through
  * untouched — the consumer's UTF-8 decoder owns reassembly). Works fully under a
- * `node` runtime; under Bun on win32 its `write()` throws `ERR_SOCKET_CLOSED`,
- * which is why `selectBackend` routes Bun+win32 to the sidecar instead.
+ * `node` runtime; under Bun it breaks (win32 `write()` throws
+ * `ERR_SOCKET_CLOSED`; posix hangs up after first output), which is why
+ * `selectBackend` routes every Bun runtime to the sidecar instead.
  */
 export function createNativePtySession(
   cmd: string,
