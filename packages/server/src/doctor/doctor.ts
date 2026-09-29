@@ -217,7 +217,7 @@ async function nodeProbe(exec: ExecFn): Promise<ProbeResult> {
     'node',
     'Node.js (PTY sidecar backend)',
     'node',
-    'Install Node.js 22+ — required for the PTY sidecar on Windows and node-pty builds on Linux.',
+    'Install Node.js 22+ — required on every platform: the embedded terminal runs in a node-hosted PTY sidecar, and without node it exits instantly.',
   )
 }
 

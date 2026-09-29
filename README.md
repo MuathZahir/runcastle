@@ -68,7 +68,7 @@ stricter pre-boot gate that stops only on the must-haves.)
 | **[Bun](https://bun.sh) 1.3.14+** | The runtime. `curl -fsSL https://bun.sh/install \| bash`, or `irm bun.sh/install.ps1 \| iex` on Windows. |
 | **[Claude Code](https://claude.com/claude-code)** | The engine runcastle drives. Install, then log in with `claude`. **Requires a paid Claude plan** (Pro, Max, Team, Enterprise, or Console); the free Claude.ai plan has no Claude Code access. |
 | **[Git](https://git-scm.com)** | runcastle branches, worktrees, commits, and merges on your behalf. It also needs a commit identity: the first-run wizard collects one, or set it yourself. |
-| **[Node.js](https://nodejs.org) 22+** | **Windows only.** The embedded terminal uses a `node`-hosted PTY sidecar, because node-pty's ConPTY pipe misbehaves under Bun. Windows without `node` on PATH gets terminals that instantly exit. Not needed on macOS. On Linux it is only needed to build node-pty from source if the vendored prebuild does not apply. |
+| **[Node.js](https://nodejs.org) 22+** | **Every platform.** The embedded terminal runs in a `node`-hosted PTY sidecar whenever runcastle runs under Bun, because node-pty does not work in-process under Bun (its Windows ConPTY input pipe breaks, and on Linux the terminal hangs up after its first output). Without `node` on PATH, terminals exit instantly. |
 
 Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
 
@@ -353,8 +353,9 @@ the binary is actually on disk. A repeat `bun install` exits `0` even when it is
 still missing, so the disk check is what catches it. Re-run `bun install`. If it
 still fails you are either without a C++ toolchain, or on musl (below).
 
-On Windows, this is almost always a missing system `node`. See
-[Prerequisites](#prerequisites).
+It can also be a missing system `node`, on any platform: the terminal runs in a
+`node`-hosted sidecar, so Node.js 22+ must be on PATH. This is the usual cause
+on Windows. See [Prerequisites](#prerequisites).
 
 </details>
 
