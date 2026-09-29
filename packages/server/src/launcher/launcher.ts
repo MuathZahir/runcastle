@@ -23,7 +23,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { currentLapReviewEvidence } from '../services/carried-work'
+import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -70,6 +70,7 @@ import {
   reportProjectLanding,
   resumeCapExceeded,
   transcriptBytes,
+  type KickoffPlan,
   type ResumeCapVerdict,
 } from './sessions'
 
@@ -390,6 +391,25 @@ function applyResumeCap(
 }
 
 /**
+ * A feature launch's kickoff plan, read off FEATURE STATE and the door it came
+ * through — shared by a fresh launch and the live-chat answer, so both brief
+ * alike. A `start-lap` launch at review is the "Start lap N+1" door, whose lap
+ * briefing is built here from `carried` rather than by the web.
+ */
+function planLaunchKickoff(
+  feature: Feature,
+  input: LaunchSessionInput,
+  carried: CarriedWork,
+): KickoffPlan {
+  const startLap = input.purpose === 'start-lap' && feature.phase === 'review'
+  return planKickoff({
+    kind: input.kind,
+    kickoffLine: input.kickoffLine,
+    ...(startLap ? { startLap: feature.lap, carried } : {}),
+  })
+}
+
+/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -404,7 +424,8 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine` ({@link planKickoff}) — and
+ * `kickoffLine`, and the Start-lap door briefs the lap it opens
+ * ({@link planKickoff}) — and
  * losing it is the whole defect this closes: the door foregrounded the terminal
  * and silently dropped the reason the human opened it.
  *
@@ -420,9 +441,9 @@ function briefLiveChat(
   ctx: AppCtx,
   feature: Feature,
   liveChat: SessionRow,
-  kickoffLine: string | undefined,
+  input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planKickoff({ kind: 'chat', kickoffLine })
+  const plan = planLaunchKickoff(feature, input, carriedWork(ctx, feature.id))
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -490,7 +511,7 @@ export async function launchSession(
   // one-terminal-per-feature refusal below.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
+    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
   const project = projectForFeature(ctx, feature)
@@ -515,8 +536,13 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else. An explicit
   // briefing makes non-chat sessions fresh; chat briefings ride the persistent
-  // conversation's resume.
-  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
+  // conversation's resume. A lap planned from review (the Start-lap door)
+  // additionally tells the artifacts which lap they are rendering for.
+  //
+  // What the last lap handed this one rides along with it: the same counts brief
+  // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
+  const carried = carriedWork(ctx, feature.id)
+  const plan = planLaunchKickoff(feature, input, carried)
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
@@ -684,6 +710,8 @@ export async function launchSession(
     project,
     config: ctx.config,
     waypoint,
+    lap: plan.lap,
+    carried: plan.lap === undefined ? undefined : carried,
     // Which of the chat's two openings its brief renders (see `chatOpening`).
     planning: planningFacts(ctx, feature),
     purpose: input.purpose,
