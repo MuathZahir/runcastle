@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process'
+import type { Containment } from '../pty/job-object'
 import { killProcessTree } from '../pty/kill-tree'
+import { containHostProcess } from '../util/contain-host'
 import { resolveSpawnTarget } from '../util/resolve-executable'
 import type { ExecFn, ExecOutcome } from './doctor'
 
@@ -31,9 +33,15 @@ export const DEFAULT_EXEC_TIMEOUT_MS = 60_000
  * the launcher must never disagree about whether a tool is present.
  */
 export function createSystemExec(
-  opts: { cwd?: string; timeoutMs?: number } = {},
+  opts: {
+    cwd?: string
+    timeoutMs?: number
+    /** Injected in tests; production puts each command in a kill-on-close Job Object on win32. */
+    containFn?: (pid: number) => Containment | null
+  } = {},
 ): ExecFn {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS
+  const containFn = opts.containFn ?? containHostProcess
   return (command, args) =>
     new Promise<ExecOutcome>((resolve) => {
       // A `.cmd`/`.bat`/`.ps1` shim can't be exec'd directly on Windows — each
@@ -51,8 +59,12 @@ export function createSystemExec(
         resolve(outcome)
       }
       const child = spawn(file, spawnArgs, { cwd: opts.cwd, windowsHide: true })
+      // Straight after spawn, no await between (decision 4). The job is closed
+      // however the command ends, so nothing a probe started outlives it.
+      const containment = child.pid === undefined ? null : containFn(child.pid)
       const timer = setTimeout(() => {
-        if (child.pid !== undefined) void killProcessTree(child.pid)
+        if (containment) void containment.kill()
+        else if (child.pid !== undefined) void killProcessTree(child.pid)
         const note = `${command} ${args.join(' ')} timed out after ${Math.round(timeoutMs / 1000)}s`
         settle({
           ok: true,
@@ -70,9 +82,11 @@ export function createSystemExec(
       })
       child.on('error', (err) => {
         // ENOENT and friends: the binary is not runnable — treat as not present.
+        void containment?.kill()
         settle({ ok: false, code: null, stdout, stderr: stderr || String(err) })
       })
       child.on('close', (code) => {
+        void containment?.kill()
         settle({ ok: true, code: code ?? 0, stdout, stderr })
       })
     })

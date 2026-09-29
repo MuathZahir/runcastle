@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { ASSET_ENV, resolveAsset } from '../launcher/asset-paths'
 import { explainSpawnFailure, resolveTool } from '../util/resolve-executable'
+import { contain } from './job-object'
 import { killProcessTree } from './kill-tree'
 import type { CreatePtyOptions, PtySession } from './pty'
 
@@ -84,6 +85,14 @@ export function createSidecarPtySession(
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   })
+
+  // Contain the host in its own kill-on-close job NOW, before the first `spawn`
+  // frame below is written: the host starts nothing until that frame arrives, so
+  // every descendant (claude.exe, its stdio MCP servers, dev servers) is born
+  // inside the job — and dies with it, even once its parent has exited. Null off
+  // win32, or when setup failed; teardown then keeps the `taskkill /T` path.
+  const containment =
+    process.platform === 'win32' && child.pid !== undefined ? contain(child.pid) : null
 
   const dataListeners = new Set<DataListener>()
   const exitListeners = new Set<ExitListener>()
@@ -169,6 +178,9 @@ export function createSidecarPtySession(
     fireExit(1)
   })
   child.on('exit', (code, signal) => {
+    // A host that ended on its own releases its job too: whatever it left behind
+    // (an MCP server orphaned by an exited claude.exe) dies, and no handle leaks.
+    void containment?.kill()
     fireExit(code ?? 0, signal ? 1 : undefined)
   })
 
@@ -243,14 +255,21 @@ export function createSidecarPtySession(
         }
       }, 500)
     },
-    killTree() {
+    async killTree() {
       // On win32 the tree is rooted at the host process WE spawned: its pid is
       // known synchronously here, so it is never the inner node-pty pid the
-      // async `ready` frame swaps into `pid`, and one `taskkill /T` sweeps host
-      // → cmd shim → dev server. The host is not asked to do this over stdin —
-      // teardown must not depend on it being alive and responsive. Off-win32
-      // (only reachable via RUNCASTLE_PTY_BACKEND=sidecar) there is no tree
-      // walk, so signal the group node-pty's pid leads instead, best-effort.
+      // async `ready` frame swaps into `pid`. Its job holds host → cmd shim →
+      // dev server / claude → MCP servers, orphans included, so closing it ends
+      // them all and resolves once the host is observed dead. Without a job,
+      // one `taskkill /T` sweeps whatever the parent chain still reaches. The
+      // host is not asked to do this over stdin — teardown must not depend on
+      // it being alive and responsive. Off-win32 (only reachable via
+      // RUNCASTLE_PTY_BACKEND=sidecar) there is no tree walk, so signal the
+      // group node-pty's pid leads instead, best-effort.
+      if (containment) {
+        await containment.kill()
+        return
+      }
       return killProcessTree(process.platform === 'win32' ? (child.pid ?? pid) : pid)
     },
     get pid() {

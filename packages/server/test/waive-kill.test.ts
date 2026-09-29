@@ -87,6 +87,7 @@ describe('waive kills a live agent before it flips the row', () => {
       killTree: async () => {
         throw new Error('taskkill: access denied')
       },
+      contain: () => null,
     }
     const registry = createKillRegistry(deps)
     registry.registerHostPid(ticketId, 4242)
@@ -116,6 +117,7 @@ describe('waive kills a live agent before it flips the row', () => {
         return args[0] !== 'inspect'
       },
       killTree: async () => {},
+      contain: () => null,
     }
     const registry = createKillRegistry(deps)
     registry.registerContainer(ticketId, 'runcastle-run1-t1')

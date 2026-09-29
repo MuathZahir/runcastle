@@ -122,6 +122,22 @@ describe('runDoctor — canned environments', () => {
     expect(report.tier1Ok).toBe(false)
   })
 
+  it.each(['linux', 'darwin', 'win32'] as const)(
+    'treats a missing node as a Tier-1 error on %s — the terminal needs it everywhere',
+    async (platform) => {
+      const table = { ...ALL_HEALTHY }
+      delete table['node --version']
+      const report = await runDoctor({ ...base, platform, exec: cannedExec(table) })
+      const node = byId(report.results, 'node')
+      expect(node.status).toBe('missing')
+      expect(node.severity).toBe('error')
+      expect(node.fix).toBe(
+        'Install Node.js 22+ — required on every platform: the embedded terminal runs in a node-hosted PTY sidecar, and without node it exits instantly.',
+      )
+      expect(report.tier1Ok).toBe(false)
+    },
+  )
+
   it('distinguishes a dead docker daemon from a missing binary', async () => {
     const table = { ...ALL_HEALTHY }
     delete table['docker info'] // CLI present, daemon not responding

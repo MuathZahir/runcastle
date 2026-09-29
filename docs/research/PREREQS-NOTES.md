@@ -56,7 +56,7 @@ burns (`config.sandbox: 'docker'`, the default — `packages/core/src/config.ts:
 | 4 | **Claude paid account** | 1 | Pro/Max/Team/Enterprise/Console — **the free Claude.ai plan has no Claude Code access** | all |
 | 5 | **Git** | 1 | `simple-git` shells out; worktrees, commits, merges (`git.ts` throughout) | all |
 | 6 | **Git identity** | 1 | `commitDocs` (`git.ts:470-484`) relies on ambient `user.name`/`user.email` — never set or checked | all |
-| 7 | **`node`** | 1 | PTY sidecar is the **default backend under Bun on win32** (`pty.ts:119-139`) — node-pty v1.1.0's ConPTY input pipe throws `ERR_SOCKET_CLOSED` under Bun, silently dropping keystrokes (`pty.ts:10-19`) | **win32** (+ Linux, see #9) |
+| 7 | **`node`** | 1 | PTY sidecar is the **default backend under Bun on every platform** (`pty.ts` `chooseBackend`) — node-pty v1.1.0's ConPTY input pipe throws `ERR_SOCKET_CLOSED` under Bun on win32, and on Linux the in-process PTY hangs up after its first output | **all** |
 | 8 | **Container runtime** | 2 | sandcastle shells out to the `docker`/`podman` CLI on PATH — no npm peer dep, no SDK, no socket (`SANDCASTLE-NOTES.md:10`) | all |
 | 9 | **C++ toolchain + python3** | 1 | **Linux only** — node-pty has no linux prebuild; see §7 | **linux** |
 
