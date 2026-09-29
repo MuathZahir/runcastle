@@ -2,6 +2,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { ptyRegistry } from '../../src/pty/registry'
 import { resolveTool } from '../../src/util/resolve-executable'
+import { terminalText } from './terminal-text'
 
 /**
  * Shared by the Job Object Bun fixtures (`job-object-session-end.ts`,
@@ -67,13 +68,10 @@ export async function openStubTerminal(sessionId: string, mode: 'exit' | 'nest')
   const started = Date.now()
   let output = ''
   for (;;) {
-    // Strip CSI sequences: node colours the numbers on a TTY, and ConPTY adds its own.
-    output = entry.buffer
-      .snapshot()
-      .toString('utf8')
-      .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
-    const stub = output.match(/claude-stub pid (\d+) mcp pid (\d+)/)
-    const nest = output.match(/nest pid (\d+)/)
+    // Node colours the numbers on a TTY, and ConPTY adds its own escapes.
+    output = terminalText(entry.buffer.snapshot().toString('utf8'))
+    const stub = output.match(/claude-stub pid\s*(\d+) mcp pid\s*(\d+)/)
+    const nest = output.match(/nest pid\s*(\d+)/)
     if (stub && (mode === 'exit' || nest)) {
       return {
         hostPid,
