@@ -401,12 +401,16 @@ function planLaunchKickoff(
   input: LaunchSessionInput,
   carried: CarriedWork,
 ): KickoffPlan {
-  const startLap = input.purpose === 'start-lap' && feature.phase === 'review'
   return planKickoff({
     kind: input.kind,
     kickoffLine: input.kickoffLine,
-    ...(startLap ? { startLap: feature.lap, carried } : {}),
+    ...(isStartLap(feature, input) ? { startLap: feature.lap, carried } : {}),
   })
+}
+
+/** Whether this launch came through the review page's "Start lap N+1" door. */
+function isStartLap(feature: Feature, input: LaunchSessionInput): boolean {
+  return input.purpose === 'start-lap' && feature.phase === 'review'
 }
 
 /**
@@ -424,8 +428,8 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine`, and the Start-lap door briefs the lap it opens
- * ({@link planKickoff}) — and
+ * `kickoffLine` (the Start-lap door never lands here: its lap needs a fresh
+ * injected prompt, so {@link launchSession} relaunches the chat instead) — and
  * losing it is the whole defect this closes: the door foregrounded the terminal
  * and silently dropped the reason the human opened it.
  *
@@ -509,9 +513,17 @@ export async function launchSession(
   // the one door that is constant in every state and never disabled. A live
   // session of any OTHER kind is still `assertSpawnable`'s
   // one-terminal-per-feature refusal below.
+  //
+  // The Start-lap door is the exception: its lap changes the session's injected
+  // prompt, not just its opening line, and a live chat's prompt was rendered for
+  // whatever opened it — at review, the plain Chat toggle's fix-ticket "Review
+  // iteration". Typing the lap briefing in would leave both framings in one
+  // session, so the live chat is ended and the conversation relaunched below
+  // with the lap prompt, as the carry road does from the web.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
+    if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
+    else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
   const project = projectForFeature(ctx, feature)
