@@ -161,26 +161,78 @@ export function describeHealthFailure(health: ExecutableHealth): string {
   return `${health.path} --version: ${cause} after ${health.elapsedMs}ms`
 }
 
-/** Every piece a drive needs that this host does not have, in prompt prose. */
-function missingDrivePieces(
+/** One thing a drive needs: the browser, the recorder, or the app to boot. */
+export type DrivePiece = 'agent-browser' | 'agent-browser-unhealthy' | 'ffmpeg' | 'dev-command'
+
+/** A piece this host is missing, with the prompt prose that names it. */
+export interface MissingDrivePiece {
+  piece: DrivePiece
+  reason: string
+}
+
+/**
+ * Every piece a drive needs that this host does not have, each with its prompt
+ * prose — the one probe reading behind the prompt, the recorded withheld
+ * reason, and the review page's standing notice.
+ */
+export function missingDrivePieces(
   browserPath: string | undefined,
   devCommand: string | undefined,
   browserFailure: string | undefined,
   ffmpegPath: string | null | undefined,
-): string[] {
-  const missing: string[] = []
+): MissingDrivePiece[] {
+  const missing: MissingDrivePiece[] = []
   if (!browserPath) {
-    missing.push(
-      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
-    )
+    missing.push({
+      piece: 'agent-browser',
+      reason:
+        `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with ` +
+        `(install ${AGENT_BROWSER_BIN} to get driven reviews)`,
+    })
   } else if (browserFailure) {
-    missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check (${browserFailure})`)
+    missing.push({
+      piece: 'agent-browser-unhealthy',
+      reason: `\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check (${browserFailure})`,
+    })
   }
-  if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
+  if (!ffmpegPath) {
+    missing.push({
+      piece: 'ffmpeg',
+      reason:
+        `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded ` +
+        `(install ${FFMPEG_BIN} to get walkthrough videos)`,
+    })
+  }
   if (!devCommand?.trim()) {
-    missing.push('this project has no dev command configured, so a drive has no app to boot')
+    missing.push({
+      piece: 'dev-command',
+      reason: 'this project has no dev command configured, so a drive has no app to boot',
+    })
   }
   return missing
+}
+
+/** What this host's PATH and `agent-browser` health check say about driving. */
+export interface DriveHostProbe {
+  browserPath: string | undefined
+  browserFailure: string | undefined
+  ffmpegPath: string | undefined
+}
+
+/** The host half of the drive probe: the two binaries on PATH, and the browser's health. */
+export function probeDriveHost(): DriveHostProbe {
+  const browserPath = findOnPath(AGENT_BROWSER_BIN)
+  const browserHealth = browserPath ? checkExecutableHealth(browserPath) : undefined
+  return {
+    browserPath,
+    browserFailure: browserHealth && !browserHealth.ok ? describeHealthFailure(browserHealth) : undefined,
+    ffmpegPath: findOnPath(FFMPEG_BIN),
+  }
+}
+
+/** The pieces' prose, joined the way the prompt and the withheld reason state it. */
+function joinReasons(missing: readonly MissingDrivePiece[]): string {
+  return missing.map((m) => m.reason).join(', and ')
 }
 
 /**
@@ -207,7 +259,27 @@ export function driveWithheldReason(
 ): string | undefined {
   const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
   if (missing.length === 0) return undefined
-  return `Drive was unavailable: ${missing.join(', and ')}.`
+  return `Drive was unavailable: ${joinReasons(missing)}.`
+}
+
+/**
+ * The withheld-drive reason of each run's review pass in flight, keyed by run
+ * id — what `review_drive` refuses with, so a pass told Drive is closed cannot
+ * boot the app off the record anyway.
+ */
+const withheldDrives = new Map<string, string>()
+
+/** Close the drive to this run's review pass for `reason`; the returned function reopens it. */
+export function withholdDrive(runId: string, reason: string): () => void {
+  withheldDrives.set(runId, reason)
+  return () => {
+    withheldDrives.delete(runId)
+  }
+}
+
+/** Why this run's review pass may not drive, or undefined when it may. */
+export function withheldDriveFor(runId: string): string | undefined {
+  return withheldDrives.get(runId)
 }
 
 /**
@@ -244,7 +316,7 @@ export function buildDriveAvailability(
     )
   }
   return (
-    `A drive is **not** available: ${missing.join(', and ')}. So the mode is already decided — ` +
+    `A drive is **not** available: ${joinReasons(missing)}. So the mode is already decided — ` +
     'run Gates mode, whatever this lap touched, and do not call `review_drive`. This is not a ' +
     'degraded review; it is the whole review this lap gets.'
   )
@@ -290,10 +362,14 @@ export function resolveReviewDeclaration(
     }
   }
   if (reviewMode === 'drive' && facts.offeredMode !== 'drive') {
+    // Still unverified — no recording is no evidence — but when the host knew
+    // which prerequisite was missing, the trail names it (decision 8).
     return {
       reviewMode,
       reviewVerdict: 'unverified',
-      reason: 'Drive was declared even though Drive mode was unavailable.',
+      reason: facts.driveWithheldReason
+        ? `${facts.driveWithheldReason} The reviewer drove anyway, so nothing was recorded.`
+        : 'Drive was declared even though Drive mode was unavailable.',
     }
   }
   if (reviewMode === 'drive' && !facts.webmExists) {
@@ -665,10 +741,7 @@ async function reviewTicketOutcome(
     .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.seq - b.seq)
     .at(-1)
   const inheritedMode = ticket.passKind === 'verification' ? inheritedReviewMode(verifies?.reviewMode) : undefined
-  const browserPath = findOnPath(AGENT_BROWSER_BIN)
-  const ffmpegPath = findOnPath(FFMPEG_BIN)
-  const browserHealth = browserPath ? checkExecutableHealth(browserPath) : undefined
-  const browserFailure = browserHealth && !browserHealth.ok ? describeHealthFailure(browserHealth) : undefined
+  const { browserPath, browserFailure, ffmpegPath } = probeDriveHost()
   if (browserFailure) console.error(`[review] ${AGENT_BROWSER_BIN} failed its health check: ${browserFailure}`)
   // The one sentence that serves both the prompt and the pass's record: the
   // agent is told why Drive is closed, and the ticket row keeps the same reason
@@ -760,12 +833,14 @@ async function reviewTicketOutcome(
   let runError: unknown
   let cancellationError: unknown
   let recorderConfirmed = true
+  const reopenDrive = withheldReason ? withholdDrive(ctx.runId, withheldReason) : undefined
   try {
     await (deps.runAgent ?? run)(options)
   } catch (err) {
     if (ctx.signal.aborted) cancellationError = err // run cancelled — the runner finalizes it
     else runError = err
   } finally {
+    reopenDrive?.()
     releaseTicketAbort(ticket.id)
     killRegistry().release(ticket.id)
     throttle.flush()

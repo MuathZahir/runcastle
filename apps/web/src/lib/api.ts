@@ -20,6 +20,8 @@ export type SettingsView = RouterOutputs['settings']['get']
 export type SettingField = SettingsView['fields'][number]
 export type PrepView = RouterOutputs['project']['prep']
 export type ProjectFinding = PrepView['findings'][number]
+/** A drive prerequisite this host is missing — the review page's standing notice. */
+export type DrivePrerequisite = RouterOutputs['project']['drivePrerequisites']['missing'][number]
 /** The live project conversation (decision 20), or null when none is open. */
 export type ProjectSession = RouterOutputs['project']['projectSession']
 /** One row of the project's conversation list (decision 5). */

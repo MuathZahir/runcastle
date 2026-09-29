@@ -73,6 +73,7 @@ vi.mock('../src/trpc', () => {
       docs: { read: { useQuery: () => ({ data: undefined }) } },
       project: {
         prep: { useQuery: () => ({ data: { findings: [] } }) },
+        drivePrerequisites: { useQuery: () => ({ data: { missing: [] } }) },
         list: { useQuery: () => ({ data: [{ id: 'proj_1' }] }) },
         testDrive: {
           useMutation: (opts: { onSuccess?: () => void }) => ({

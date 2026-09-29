@@ -109,6 +109,7 @@ import {
   resolve as resolveWaypoint,
   storeWaypoints,
 } from '../services/waypoints'
+import { withheldDriveFor } from '../workflows/review-ticket'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
@@ -1404,6 +1405,10 @@ export async function toolReviewDrive(
   input: { action: 'start' | 'status' | 'stop' },
 ): Promise<git.ReviewDriveResult> {
   const identity = requireRunIdentity(ctx, caller, 'the review drive')
+  // A pass told Drive is closed must not drive off the record: the reason the
+  // host withheld it is the refusal, final like any missing prerequisite.
+  const withheld = withheldDriveFor(identity.runId)
+  if (withheld) return { ok: false, action: input.action, deniedReason: withheld, retriable: false, drive: null }
   const feature = getFeatureRow(ctx, identity.featureId)
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
@@ -2319,7 +2324,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'finish, so call `start` again about ten times roughly thirty seconds apart before you ' +
           'give up on it. `deniedCode: "dirty"` (`retriable: false`) is final — the uncommitted ' +
           "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
-          'and review without the app. Refused unless your call carries a live run identity.',
+          'and review without the app. When your prompt said a drive is not available, every ' +
+          'action is refused (`retriable: false`) with the missing prerequisite as `deniedReason`. ' +
+          'Refused unless your call carries a live run identity.',
         inputSchema: {
           action: z
             .enum(['start', 'status', 'stop'])

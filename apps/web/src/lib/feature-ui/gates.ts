@@ -83,14 +83,39 @@ export const ONE_TERMINAL_WARNING =
  * `merge.conflict` event carries the base branch + conflicting files; two later
  * events supersede it. `burn.started` — burning re-runs implementation and the
  * recorded file list no longer applies, so the card clears once the loop moves
- * on. `merge.resolved` — the server watched a resolve session land the merge
- * (decision 2a), which is how a resolved conflict stops disabling the pipeline's
- * last step instead of standing forever.
+ * on. `merge.resolved` — the server saw the base land in the feature branch (at
+ * a resolve session's end, a chat turn's end, or a review read — decision 2a),
+ * which is how a resolved conflict stops disabling the pipeline's last step
+ * instead of standing forever.
  * Returns null when there is no standing conflict. `events` must be in id order.
  */
 
 /** The events that supersede a recorded conflict — see `unresolvedMergeConflict`. */
 const CONFLICT_CLEARED = ['burn.started', 'merge.resolved', 'feature.shipped']
+
+/**
+ * Whether the last recorded conflict was RESOLVED — `merge.resolved` came after
+ * it and nothing has moved the feature on since. What the conflict card steps
+ * down to (a short "resolved" line), so the red panel does not simply vanish
+ * with no word on where the conflict went. A burn or a ship retires the
+ * conflict rather than resolving it, and ends the line. `events` in id order.
+ */
+export function mergeConflictResolved(events: EventRow[]): boolean {
+  let conflicted = false
+  let resolved = false
+  for (const event of events) {
+    if (event.type === 'merge.conflict') {
+      conflicted = true
+      resolved = false
+    } else if (event.type === 'merge.resolved') {
+      resolved = conflicted
+    } else if (CONFLICT_CLEARED.includes(event.type)) {
+      conflicted = false
+      resolved = false
+    }
+  }
+  return resolved
+}
 
 /** How a session's lifecycle events name the session they are about. */
 function eventSessionId(event: EventRow): string | undefined {
@@ -102,8 +127,8 @@ function eventSessionId(event: EventRow): string | undefined {
  * Whether a resolve-conflict session has ENDED since the standing conflict was
  * recorded, without the merge landing (decision 30d).
  *
- * `merge.resolved` is emitted at session end only when the server's own probe
- * finds the base already merged in, and that probe is best-effort by design — a
+ * `merge.resolved` is emitted only when the server's own probe finds the base
+ * already merged in, and that probe is best-effort by design — a
  * worktree that has gone, a branch renamed, an agent that quit halfway. So the
  * card used to sit there unchanged after a resolve session came and went, which
  * reads as the button having done nothing at all. This is what lets it say so.

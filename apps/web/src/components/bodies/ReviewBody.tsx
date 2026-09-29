@@ -14,6 +14,7 @@ import {
   lastTestDriveLap,
   latestRun,
   liveSessionLine,
+  mergeConflictResolved,
   reviewDriveDenial,
   slotHeldReason,
   specDocPath,
@@ -30,7 +31,7 @@ import type { StageExpand } from '../../lib/stage-expand'
 import { AsideLayout } from '../../ui'
 import { useToast } from '../../lib/toast'
 import { CarriedFindings } from '../review/CarriedFindings'
-import { ConflictAlert } from '../review/ConflictCard'
+import { ConflictAlert, ConflictResolvedLine } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
@@ -41,6 +42,7 @@ import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { ReviewTrail } from '../review/ReviewTrail'
+import { DrivePrerequisitesNotice } from '../review/DrivePrerequisitesNotice'
 import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
@@ -109,6 +111,7 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
+  const conflictResolved = !conflict && mergeConflictResolved(events)
   const drive = trpc.feature.driveInfo.useQuery(undefined, {
     refetchInterval: useLivePoll(),
   })
@@ -159,6 +162,13 @@ export function ReviewBody({
   // key, so the page pays nothing for it.
   const projects = trpc.project.list.useQuery()
   const project = projects.data?.find((p) => p.id === feature.projectId)
+  // What this host is missing to offer the next review a drive, said before the
+  // burn rather than on the trail after it. The server caches the probe, and a
+  // history view has no next review to warn about.
+  const drivePrereqs = trpc.project.drivePrerequisites.useQuery(
+    { projectId: feature.projectId },
+    { enabled: !readonly },
+  )
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -358,6 +368,7 @@ export function ReviewBody({
           resolveEnded={conflictResolveEnded(events, full.sessions)}
         />
       )}
+      {conflictResolved && <ConflictResolvedLine readonly={readonly} />}
       {/* The refusal the human can still act on, at the moment they can act
           on it — the digest that used to carry it is read long afterwards. */}
       {denial && (
@@ -408,6 +419,7 @@ export function ReviewBody({
   const expanded = expand.expanded
   const hasNotices =
     !!conflict ||
+    (conflictResolved && !readonly) ||
     !!denial ||
     !!unverified ||
     (!!live && !readonly) ||
@@ -444,7 +456,7 @@ export function ReviewBody({
           </div>
         )}
 
-        <div data-tier="status">
+        <div data-tier="status" className="flex flex-col gap-4">
           <StatusStrip
             artifact={stamped}
             outcome={stampedOutcome({ passes: rows, tickets })}
@@ -464,6 +476,7 @@ export function ReviewBody({
             // Start / Stop test drive on every review state, and the same act
             // twice on one screen is one too many (DESIGN.md: say it once).
           />
+          {!readonly && <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />}
         </div>
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">

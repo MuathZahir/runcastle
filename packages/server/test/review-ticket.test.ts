@@ -53,6 +53,7 @@ import {
   renderReviewPrompt,
   reviewTemplatePath,
   shouldStopAfterDigest,
+  withheldDriveFor,
 } from '../src/workflows/review-ticket'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import { buildBurnAgent, buildLapDigestsBlock, burnRun } from '../src/workflows/ticket-burner'
@@ -921,6 +922,12 @@ describe('the mode the review is handed', () => {
     expect(driveWithheldReason('/browser', 'bun dev', 'probe failed', '/ffmpeg')).toContain('failed its health check')
     expect(driveWithheldReason(undefined, undefined, undefined, undefined)).toContain('no dev command configured')
 
+    // A missing binary comes with what to install.
+    expect(noFfmpeg).toContain('(install ffmpeg to get walkthrough videos)')
+    expect(driveWithheldReason(undefined, 'bun dev', undefined, '/ffmpeg')).toContain(
+      `(install ${AGENT_BROWSER_BIN} to get driven reviews)`,
+    )
+
     // One list, one wording: the availability block quotes the same pieces.
     expect(buildDriveAvailability('/browser', 'bun dev', undefined, undefined, null)).toContain(
       `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`,
@@ -1086,6 +1093,28 @@ describe('review declaration resolution', () => {
         driveWithheldReason: 'Drive was unavailable: `ffmpeg` is missing.',
       }).reason,
     ).toBe('Drive failed: browser could not attach.')
+  })
+
+  it('names the missing prerequisite when Drive is declared while withheld', () => {
+    // Still unverified — no recording, no evidence — but the trail says which
+    // piece was missing instead of a generic "Drive mode was unavailable".
+    const withheld = driveWithheldReason('/browser', 'bun dev', undefined, null)!
+    const resolution = resolveReviewDeclaration(digest('drive', 'verified'), {
+      webmExists: false,
+      offeredMode: 'gates',
+      driveWithheldReason: withheld,
+    })
+    expect(resolution).toEqual({
+      reviewMode: 'drive',
+      reviewVerdict: 'unverified',
+      reason: `${withheld} The reviewer drove anyway, so nothing was recorded.`,
+    })
+    expect(resolution.reason).toContain('install ffmpeg to get walkthrough videos')
+
+    // An inherited Gates pass has no missing piece to name.
+    expect(resolveReviewDeclaration(digest('drive', 'verified'), { webmExists: true, offeredMode: 'gates' }).reason).toBe(
+      'Drive was declared even though Drive mode was unavailable.',
+    )
   })
 
   it('defaults missing and malformed declarations to unverified', () => {
@@ -1272,6 +1301,24 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
     finishReap?.()
     expect(await outcome).toMatchObject({ status: 'done' })
     expect(order).toEqual(['pre-wipe-reap', 'agent', 'reap-start', 'reap-end', 'drive-release'])
+  })
+
+  it('closes review_drive to the pass for exactly as long as it runs when the host withheld the drive', async () => {
+    // An empty PATH: neither agent-browser nor ffmpeg is here.
+    const previousPath = process.env.PATH
+    process.env.PATH = dataDir
+    let seen: string | undefined
+    try {
+      await executeReviewTicket(makeCtx([review(6)]), review(6), reviewDeps({
+        runAgent: async () => { seen = withheldDriveFor('run_1') },
+        recorderReap: async () => ({ confirmed: true }),
+      }))
+    } finally {
+      process.env.PATH = previousPath
+    }
+    expect(seen).toContain('Drive was unavailable')
+    expect(seen).toContain(FFMPEG_BIN)
+    expect(withheldDriveFor('run_1')).toBeUndefined()
   })
 
   it('names an unconfirmed recorder on failed and cancelled lane exits', async () => {
