@@ -99,8 +99,13 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * Its briefing tells the agent to merge, resolve and commit, so the edit guard
  * lets it write files while that merge is actually in progress in its worktree
  * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
+ *
+ * `start-lap` — the feature chat opened by the review page's "Start lap N+1"
+ * door (empty-handed, or after a triage that carried work). At review it tells
+ * the launcher to brief the conversation to plan lap N+1 (`reviewLapKickoff`);
+ * the lap counter itself only moves at Burn from review.
  */
-export const SessionPurpose = z.enum(['resolve-conflict'])
+export const SessionPurpose = z.enum(['resolve-conflict', 'start-lap'])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
 /**

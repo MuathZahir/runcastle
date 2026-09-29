@@ -209,6 +209,21 @@ describe('the Chat door on a live chat', () => {
     expect(typed[0]).toContain('LAP 2 REVIEW ITERATION')
   })
 
+  it('delivers the Start-lap door’s lap briefing into a live review chat', async () => {
+    const feature = await featureIn('review', 'start-lap-chat')
+    const first = await openChat(feature)
+    const typed = terminalFor(first)
+
+    const again = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'chat', purpose: 'start-lap' },
+      { spawn: false },
+    )
+
+    expect(again.sessionId).toBe(first)
+    expect(typed[0]).toContain('PLAN LAP 2 FROM REVIEW')
+  })
+
   it('types nothing into a conversation the door merely returns to', async () => {
     const feature = await featureIn('shipped', 'quiet-chat')
     const first = await openChat(feature)

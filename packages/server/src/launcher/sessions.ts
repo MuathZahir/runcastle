@@ -212,10 +212,53 @@ export const SESSION_READY_TIMEOUT_MS = 25_000
  * procedure for those to `revisit/SKILL.md`.
  */
 export function lapKickoff(lap: number, carried?: CarriedWork): string {
+  return (
+    `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
+    lapAgenda(carried) +
+    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
+    '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
+    `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
+    'tell me to review the cards and click Burn.'
+  )
+}
+
+/**
+ * The lap briefing for a lap planned FROM REVIEW — what the review page's
+ * "Start lap N+1" door opens the feature chat with (the `start-lap` purpose),
+ * whether it comes empty-handed or after a triage that carried work.
+ *
+ * The same agenda as {@link lapKickoff}, with the other ending: the feature is
+ * still at review on lap `lap - 1` when this conversation runs, and it stays
+ * there. The lap's tickets land `pending` and Burn from review is what moves
+ * them onto lap `lap` (`carryPendingTicketsIntoLap`) and bumps the counter — so
+ * there is no phase to complete, and a session told to `complete_phase` here
+ * would be refused by the pipeline.
+ */
+export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
+  return (
+    `Proceed with your task: invoke the /runcastle:revisit skill to PLAN LAP ${lap} FROM REVIEW. ` +
+    `This conversation plans lap ${lap}; the feature stays at review until I click Burn. ` +
+    lapAgenda(carried) +
+    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    `what I want next. Write what we settle on into decisions.md under "## Lap ${lap}" and amend ` +
+    'spec.md for this lap (pruning anything you promote out of "## Later laps"), then call ' +
+    `emit_tickets for lap ${lap}'s work — they land pending, and Burn from review moves them onto ` +
+    `lap ${lap}. Do NOT call complete_phase: the feature stays at review. Finish by telling me to ` +
+    'review the cards and click Burn.'
+  )
+}
+
+/**
+ * What a lap briefing sets as the lap's agenda — the carried notes, the open
+ * defects and `## Later laps` — plus the two things a lap session has been
+ * observed skipping. Shared by both lap briefings, which differ only in how the
+ * lap ends.
+ */
+function lapAgenda(carried?: CarriedWork): string {
   const summary = carriedWorkSummary(carried)
   const evidence = reviewEvidenceSentence(carried)
   return (
-    `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
     (summary ? `${summary} — address them. ` : '') +
     `Call get_feature_context, then read this feature's test-notes.md (its "## Carried, still ` +
     'open" section — every note carried and not yet done, whatever lap captured it), the open ' +
@@ -228,12 +271,7 @@ export function lapKickoff(lap: number, carried?: CarriedWork): string {
     'Before you offer me a test drive, grep spec.md and the tickets for "not demonstrable", ' +
     '"do not demo" and "later laps" and tell me what they say. For every bug I report, stand on ' +
     'the failure: reproduce it, or trace it to a file and line, or say plainly you could not — ' +
-    "and then make reproduction the fix ticket's first acceptance criterion. " +
-    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
-    'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
-    '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
-    `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
-    'tell me to review the cards and click Burn.'
+    "and then make reproduction the fix ticket's first acceptance criterion. "
   )
 }
 
@@ -323,7 +361,9 @@ export function lapInFlight(input: {
  * review Iterate click passes `lapKickoff`), and a lap that is in flight — which
  * covers both the lap-N grill (the ideation next-step's "Start/Resume grill
  * session" on a feature past lap 1 used to open with the generic ideate line and
- * no lap framing at all, F4) and the re-entry after a lap terminal died.
+ * no lap framing at all, F4) and the re-entry after a lap terminal died. A third
+ * is the review page's "Start lap N+1" door, which briefs lap N+1's planning
+ * while the feature is still at review ({@link reviewLapKickoff}).
  *
  * `lap` on the plan is set from {@link lapInFlight}, never from what the line
  * happens to equal — that is the whole fix. It drives the artifacts, so a lap
@@ -338,10 +378,20 @@ export function planKickoff(input: {
   lapInFlight?: boolean
   /** What the last lap handed this one — stated in the briefing this plans. */
   carried?: CarriedWork
+  /**
+   * Opened by the review page's "Start lap N+1" door at review: brief the next
+   * lap's planning ({@link reviewLapKickoff}). Not a lap in flight — the counter
+   * has not moved yet — so it sets no `lap` on the plan.
+   */
+  startLapFromReview?: boolean
 }): KickoffPlan {
   const running = input.lapInFlight === true
-  const lapBriefing = input.lap > 1 ? lapKickoff(input.lap, input.carried) : undefined
-  const line = input.kickoffLine ?? (running ? lapBriefing : undefined)
+  const lapBriefing = running
+    ? input.lap > 1 ? lapKickoff(input.lap, input.carried) : undefined
+    : input.startLapFromReview
+      ? reviewLapKickoff(input.lap + 1, input.carried)
+      : undefined
+  const line = input.kickoffLine ?? lapBriefing
   const lap = running ? input.lap : undefined
   if (!line) return { explicit: false, ...(lap !== undefined ? { lap } : {}) }
   return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }

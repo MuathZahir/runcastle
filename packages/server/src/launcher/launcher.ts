@@ -23,7 +23,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
+import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -71,6 +71,7 @@ import {
   reportProjectLanding,
   resumeCapExceeded,
   transcriptBytes,
+  type KickoffPlan,
   type ResumeCapVerdict,
 } from './sessions'
 
@@ -391,6 +392,33 @@ function applyResumeCap(
 }
 
 /**
+ * A feature launch's kickoff plan, read off FEATURE STATE and the door it came
+ * through — shared by a fresh launch and the live-chat answer, so both brief
+ * alike. `listTicketsByFeature` says whether lap N has tickets yet (see
+ * `lapInFlight`), and a `start-lap` launch at review is the "Start lap N+1"
+ * door, whose lap briefing is built here from `carried` rather than by the web.
+ */
+function planLaunchKickoff(
+  ctx: AppCtx,
+  feature: Feature,
+  input: LaunchSessionInput,
+  carried: CarriedWork,
+): KickoffPlan {
+  return planKickoff({
+    kind: input.kind,
+    lap: feature.lap,
+    kickoffLine: input.kickoffLine,
+    lapInFlight: lapInFlight({
+      lap: feature.lap,
+      phase: feature.phase,
+      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
+    }),
+    carried,
+    startLapFromReview: input.purpose === 'start-lap' && feature.phase === 'review',
+  })
+}
+
+/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -421,19 +449,9 @@ function briefLiveChat(
   ctx: AppCtx,
   feature: Feature,
   liveChat: SessionRow,
-  kickoffLine: string | undefined,
+  input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planKickoff({
-    kind: 'chat',
-    lap: feature.lap,
-    kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried: carriedWork(ctx, feature.id),
-  })
+  const plan = planLaunchKickoff(ctx, feature, input, carriedWork(ctx, feature.id))
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -501,7 +519,7 @@ export async function launchSession(
   // one-terminal-per-feature refusal below.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
+    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
   const project = projectForFeature(ctx, feature)
@@ -539,17 +557,7 @@ export async function launchSession(
   // the kickoff line and the injected prompt, so a lap opens knowing its agenda
   // whichever door it came through.
   const carried = carriedWork(ctx, feature.id)
-  const plan = planKickoff({
-    kind: input.kind,
-    lap: feature.lap,
-    kickoffLine: input.kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried,
-  })
+  const plan = planLaunchKickoff(ctx, feature, input, carried)
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
