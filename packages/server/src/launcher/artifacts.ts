@@ -521,7 +521,7 @@ export function renderRevisitPrompt(
   const lapIteration = lap
     ? [
         // Per-session FACTS only — which lap, which work it carries, where that
-        // work is written, and the licence to advance. The lap procedure itself
+        // work is written, and that Burn — not this session — starts it. The lap procedure itself
         // lives in `revisit/SKILL.md`, which is loaded before any of this is
         // acted on; a second copy here is a second thing to keep true.
         `## This is lap ${lap}`,
