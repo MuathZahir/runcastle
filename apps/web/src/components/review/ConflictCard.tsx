@@ -1,5 +1,5 @@
 import { Button } from '../../ui'
-import { IconGitMerge } from '../../icons'
+import { IconCheck, IconGitMerge } from '../../icons'
 import { Notice } from './Notice'
 import { ONE_TERMINAL_WARNING, type MergeConflictState } from '../../lib/feature-ui'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
@@ -89,6 +89,23 @@ export function ConflictCard({
           replaces the button hiding itself. */}
       {liveSessionId && <p className="m-0 mt-2 text-xs text-text-tertiary">{ONE_TERMINAL_WARNING}</p>}
     </Notice>
+  )
+}
+
+/**
+ * What the card steps down to once the conflict is resolved: one quiet line, so
+ * the red panel does not vanish without a word on where the conflict went.
+ * Merge & ship is back on the bar as the plain act, so this carries no button.
+ */
+export function ConflictResolvedLine({ readonly }: { readonly: boolean }) {
+  if (readonly) return null
+  return (
+    <Notice
+      tone="quiet"
+      role="status"
+      icon={<IconCheck className="text-success" />}
+      title="Conflict resolved — ready to merge"
+    />
   )
 }
 
