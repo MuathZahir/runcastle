@@ -22,23 +22,23 @@ const MAP_SECTIONS = ['Destination', 'Notes', 'Not yet specified', 'Out of scope
 
 /**
  * A mapped feature's waypoints, grouped by what they are waiting on. `rail`
- * (default) is the column beside the live session: its own header, its own
- * scroll, collapsible to a strip. `section` is the same map as a section of a
- * pinned page: no header of its own (the page section titles it), no scroll,
- * no collapse.
+ * (default) is live planning's body: its own header, its own scroll, and —
+ * given `onToggle` — collapsible to a strip. `section` is the same map as a
+ * section of a pinned page: no header of its own (the page section titles it),
+ * no scroll, no collapse.
  */
 export function MapRail({
   full,
   relPath,
-  collapsed,
+  collapsed = false,
   onToggle,
   readonly = false,
   layout = 'rail',
 }: {
   full: FeatureFull
   relPath?: string
-  collapsed: boolean
-  onToggle: () => void
+  collapsed?: boolean
+  onToggle?: () => void
   readonly?: boolean
   layout?: 'rail' | 'section'
 }) {
@@ -52,7 +52,7 @@ export function MapRail({
   const rail = layout === 'rail'
   const progressText = `${progress.done}/${progress.total} done`
 
-  if (rail && collapsed)
+  if (rail && collapsed && onToggle)
     return (
       <div className="flex w-9 flex-none flex-col items-center gap-2 pt-0.5">
         <IconButton label="Expand the map" icon={<IconPanelLeft />} onClick={onToggle} tooltipSide="right" />
@@ -91,7 +91,7 @@ export function MapRail({
   return (
     <section
       aria-label="Map"
-      className={cx('flex min-h-0 flex-col', rail ? 'w-(--maprail-w) flex-none' : 'min-w-0')}
+      className={cx('flex min-h-0 flex-col', rail ? 'min-w-0 flex-1' : 'min-w-0')}
     >
       {rail ? (
         <>
@@ -106,12 +106,14 @@ export function MapRail({
             <IconButton label={WAYPOINT_EXPLAINER} size="sm" icon={<IconInfo />} className="-ml-1" />
             <span className="ml-auto flex items-center gap-0.5">
               <DocsMenu docs={full.docs} value={relPath} onPick={setPeekPath} />
-              <IconButton
-                label="Collapse the map"
-                size="sm"
-                icon={<IconPanelLeft />}
-                onClick={onToggle}
-              />
+              {onToggle && (
+                <IconButton
+                  label="Collapse the map"
+                  size="sm"
+                  icon={<IconPanelLeft />}
+                  onClick={onToggle}
+                />
+              )}
             </span>
           </div>
           <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-2">{content}</div>

@@ -17,14 +17,6 @@ describe('useWorkspace — pane preferences', () => {
     expect(localStorage.getItem('runcastle.inspector.collapsed')).toBe('1')
   })
 
-  it('persists the artifact pane collapse choice', () => {
-    const { result } = renderHook(() => useWorkspace('proj_1'))
-    expect(result.current.artifactPaneCollapsed).toBe(false)
-    act(() => result.current.toggleArtifactPane())
-    expect(result.current.artifactPaneCollapsed).toBe(true)
-    expect(localStorage.getItem('runcastle.artifact.collapsed')).toBe('1')
-  })
-
   it('defaults Details closed in every phase until the human opens it', () => {
     expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)
     expect(inspectorCollapsedForPhase(null, 'planning')).toBe(true)

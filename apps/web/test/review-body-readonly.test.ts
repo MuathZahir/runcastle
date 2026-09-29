@@ -48,7 +48,6 @@ vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 const { ConflictAlert } = await import('../src/components/review/ConflictCard')
 const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
-const { LiveSessionAlert } = await import('../src/components/review/LiveSessionAlert')
 const { OpenWork } = await import('../src/components/review/OpenWork')
 const { LapStory, StatusStrip } = await import('../src/components/review/StatusStrip')
 const { WorkList, partitionWork } = await import('../src/components/review/WorkList')
@@ -110,13 +109,6 @@ function bands(readonly: boolean): ReactNode[] {
     openDefects: [DEFECT],
   })
   return [
-    createElement(LiveSessionAlert, {
-      key: 'session',
-      featureId: 'ftr_1',
-      line: { sessionId: 'ses_1', text: 'Ideation session still live from lap 1', phase: 'planning' },
-      readonly,
-      onOpen: () => undefined,
-    }),
     createElement(EvidenceStage, {
       key: 'stage',
       featureId: 'ftr_1',
@@ -185,8 +177,6 @@ const LIVE_CONTROLS = [
   'Resolve with agent</button>',
   'Annotate</button>',
   'Test drive</button>',
-  'End session</button>',
-  'Open</button>',
   'Dismiss</button>',
   'Add note</button>',
   // A note's own verbs: Done, and Edit/Delete behind its "…" menu.

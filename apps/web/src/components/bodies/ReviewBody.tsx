@@ -34,7 +34,6 @@ import { ConflictAlert } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
-import { LiveSessionAlert } from '../review/LiveSessionAlert'
 import { NothingVerifiedAlert } from '../review/NothingVerifiedAlert'
 import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
@@ -92,18 +91,15 @@ export function ReviewBody({
   conflict: MergeConflictState | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
-  /**
-   * Go and look at another phase — how a defect reaches the lane fixing it, and
-   * where the alert line's Open sends a session that is still up.
-   */
+  /** Go and look at another phase — how a defect reaches the lane fixing it. */
   onViewPhase?: (phase: Phase) => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
   const utils = trpc.useUtils()
-  // No terminal renders here any more (decision 5): a session that is still up
-  // is one line in the alerts band, whatever kind it is, and an ended one says
-  // nothing at all.
+  // No terminal renders here (one-chat-layout-everywhere decision 1): a session
+  // that is still up is the page header's live line, and lives on the Chat tab.
+  // The drive and conflict bands below still need to know it is up.
   const live = liveSessionLine(full.sessions)
   const run = latestRun(runs)
   // The same query key the workspace shell reads, so the conflict card's state
@@ -380,11 +376,6 @@ export function ReviewBody({
       {unverified && (
         <NothingVerifiedAlert lap={feature.lap} outcome={unverified} agenticReview={agenticReviewControl} />
       )}
-      {/* One line for a session that is still up, wherever it belongs, with
-          the way to it and the way out of it (decision 5). */}
-      {live && (
-        <LiveSessionAlert featureId={feature.id} line={live} readonly={readonly} onOpen={onViewPhase} />
-      )}
       {!readonly && !driveUp && slotHolder && blockingProjectDrive && (
         <ProjectDriveBlocking projectId={blockingProjectDrive} holderLabel={slotHolder.holderLabel} />
       )}
@@ -410,7 +401,6 @@ export function ReviewBody({
     !!conflict ||
     !!denial ||
     !!unverified ||
-    (!!live && !readonly) ||
     (!readonly && !driveUp && !!blockingProjectDrive)
 
   // Expanded, the stage and the notes ARE the window (decision 3): a plain CSS

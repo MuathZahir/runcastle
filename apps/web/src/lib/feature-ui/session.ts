@@ -1,4 +1,4 @@
-import type { EventRow, Phase, SessionKind } from '@runcastle/core'
+import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { activeSession } from './gates'
 import { isTerminal, type Waypoint } from './map'
@@ -74,35 +74,42 @@ export function liveSessionBlocker(
   return { sessionId: live.id, kind: live.kind, waypointTitle: held?.title }
 }
 
-// --- the docked chat panel ---------------------------------------------------
+// --- the Chat tab -------------------------------------------------------------
 
 /**
- * The feature's one conversation, as the docked panel has to show it
- * (decision 16): the chat that is up, or — with none up — the newest chat row,
- * whose transcript is what "one transcript, resumed" means when nothing is live.
+ * The feature's one conversation, as the Chat tab reads it back when nothing is
+ * live (one-chat-layout-everywhere decision 5): the chat that is up, or — with
+ * none up — the newest chat row, whose transcript is what Resume picks up.
  *
- * `undefined` is a feature nobody has talked to yet, which the panel answers
- * with its own door rather than an empty transcript.
+ * `undefined` is a feature nobody has talked to yet, which the tab answers with
+ * Start rather than an empty transcript.
  */
-export function dockedChat(sessions: FeatureFull['sessions']): FeatureFull['sessions'][number] | undefined {
+export function featureChat(sessions: FeatureFull['sessions']): FeatureFull['sessions'][number] | undefined {
   const chats = sessions.filter((s) => s.kind === 'chat')
   const ordered = [...chats].reverse()
   return ordered.find((s) => s.status !== 'ended') ?? ordered[0]
 }
 
 /**
- * The sessions a phase body may still raise a terminal for (decision 16).
- *
- * With the chat docked beside the body, the chat's terminal lives THERE — a body
- * that mounted it too would put one PTY on screen twice, and the two xterms
- * would then fight over the single grid size the pty is resized to. Collapsed,
- * this is the identity function and every body behaves exactly as it did.
+ * The Chat tab strip's context line for whichever session is live
+ * (decision 9): "Chat · lap 2", "Waypoint · <title>", "Converge", "Drive fix".
+ * A waypoint session is named by the waypoint it holds — its claim while open,
+ * its `lastSessionId` once resolved — and by its kind alone when it holds none.
  */
-export function bodySessions<T extends { kind: SessionKind }>(
-  sessions: readonly T[],
-  chatDocked: boolean,
-): T[] {
-  return chatDocked ? sessions.filter((s) => s.kind !== 'chat') : [...sessions]
+export function chatContextLine(
+  session: Pick<FeatureFull['sessions'][number], 'id' | 'kind' | 'lap'>,
+  waypoints: readonly Waypoint[],
+): string {
+  switch (session.kind) {
+    case 'chat':
+      return `Chat · lap ${session.lap}`
+    case 'waypoint': {
+      const held = waypoints.find((w) => w.claimedBy === session.id || w.lastSessionId === session.id)
+      return held ? `Waypoint · ${held.title}` : 'Waypoint'
+    }
+    default:
+      return sessionKindName(session)
+  }
 }
 
 // --- the shipped body's chat terminal ---------------------------------------
@@ -145,52 +152,21 @@ export function shippedAt(events: EventRow[]): number | null {
 }
 
 /**
- * The one line a still-live session gets on the review page (decision 5).
- *
- * Review renders no terminal at all any more: a session of any kind that is
- * still up is honest state, not a workspace, so it is an alert line with two
- * verbs — Open, which goes to the phase whose view actually holds it, and End.
- * An ended session says nothing.
+ * The one line a live session gets on Overview, in every state
+ * (one-chat-layout-everywhere decision 7): "● Chat live · lap 2", with Open
+ * chat — which switches to the Chat tab, where every session kind lives — and
+ * End session. An ended session says nothing.
  */
 export interface LiveSessionLine {
   sessionId: string
-  /** "Ideation session still live from lap 1" — what it is and where it began. */
+  /** "Chat live · lap 1" — what is up, and the lap it opened in. */
   text: string
-  /** The phase view Open goes to, or null when no other phase's view holds it. */
-  phase: Phase | null
-}
-
-/**
- * Which phase's view a session's terminal lives in, or null when none does —
- * a Q&A, a drive fix or a project-scoped session has no earlier phase to send
- * the human back to, so its line offers End alone rather than a trip to nowhere.
- */
-function sessionHome(kind: SessionKind): Phase | null {
-  switch (kind) {
-    case 'chat':
-    case 'waypoint':
-      return 'planning'
-    case 'converge':
-      return 'planning'
-    case 'drive-fix':
-    case 'prepare':
-    case 'project':
-      return null
-  }
 }
 
 export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
   const live = activeSession(sessions)
   if (!live) return null
-  const name = sessionKindName(live)
-  return {
-    sessionId: live.id,
-    // The kind names itself and the lap is named once: the lap-numbered names
-    // ("Lap 3") went with the `revisit` kind, which read "Lap 3 session still
-    // live from lap 3".
-    text: `${name} session still live from lap ${live.lap}`,
-    phase: sessionHome(live.kind),
-  }
+  return { sessionId: live.id, text: `${sessionKindName(live)} live · lap ${live.lap}` }
 }
 
 /**

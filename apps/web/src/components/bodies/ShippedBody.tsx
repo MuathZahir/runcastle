@@ -3,14 +3,12 @@ import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import {
-  bodySessions,
   deferredScope,
   lapAccount,
   lapChip,
   lastTestDriveLap,
   latestRun,
   outcomeDocPath,
-  sessionActive,
   shippedChatSessions,
   specDocPath,
   stampedOutcome,
@@ -28,7 +26,6 @@ import { ReviewTrail } from '../review/ReviewTrail'
 import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { DocPeek } from '../DocPeek'
-import { SessionPanel } from '../SessionPanel'
 
 /**
  * The shipped phase body: the record of a feature that landed (decisions 32c and
@@ -44,14 +41,7 @@ import { SessionPanel } from '../SessionPanel'
  * agent (decision 33a); the stage plays with Annotate gone, and the facts state
  * what WAS done (Test drive "Lap 2") rather than instructing anyone to do it.
  */
-export function ShippedBody({
-  full,
-  chatDocked = false,
-}: {
-  full: FeatureFull
-  /** The chat panel holds the chat's terminal, so this body does not (decision 16). */
-  chatDocked?: boolean
-}) {
+export function ShippedBody({ full }: { full: FeatureFull }) {
   const { feature, tickets, runs } = full
   const events = useEventLog(feature.id)
   const [peekingOutcome, setPeekingOutcome] = useState(false)
@@ -76,14 +66,13 @@ export function ShippedBody({
   const project = projects.data?.find((p) => p.id === feature.projectId)
 
   const chats = shippedChatSessions(full.sessions)
-  const liveChats = bodySessions(chats.filter(sessionActive), chatDocked)
   const run = latestRun(runs)
   const account = lapAccount(tickets, feature.lap)
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const [staged, setStaged] = useState<string | null>(null)
-  // "What shipped" heads the record, the Outcome doc and the live chat; with
-  // none of them there is nothing for the heading to stand over.
-  const hasWork = !!outcomeRelPath || recordings.length > 0 || liveChats.length > 0
+  // "What shipped" heads the record and the Outcome doc; with neither there is
+  // nothing for the heading to stand over.
+  const hasWork = !!outcomeRelPath || recordings.length > 0
 
   return (
     // The four tiers (simplify-the-pages decision 7), with the header above as
@@ -134,16 +123,6 @@ export function ShippedBody({
               dryRun={false}
               failure={null}
             />
-          )}
-
-          {/* A live chat terminal is the one thing on this page that is not
-              history, so it keeps the panel; every ended conversation is a row
-              under Questions asked. In the page's flow the wrapper is what
-              gives the terminal its height. */}
-          {liveChats.length > 0 && (
-            <div className="flex h-[clamp(300px,calc(100dvh-420px),1200px)] flex-col">
-              <SessionPanel featureId={feature.id} sessions={liveChats} />
-            </div>
           )}
         </section>
       )}
