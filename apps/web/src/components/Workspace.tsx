@@ -15,13 +15,11 @@ import {
   Page,
   PageSection,
   PageTopbar,
-  StatusDot,
   StatusLabel,
-  Tabs,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconCube, IconHome, IconMessage, IconPanelRight, IconX, PhaseIcon } from '../icons'
+import { IconPanelRight, IconX, PhaseIcon } from '../icons'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
 import { effectiveStepModel, settingsLocationFromMessage } from '../lib/settings'
@@ -79,6 +77,7 @@ import { RunBody } from './bodies/RunBody'
 import { Inspector } from './inspector/Inspector'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
+import { FeatureViewTabs, type FeatureView } from './workspace/FeatureViewTabs'
 import { LiveSessionBar } from './workspace/LiveSessionBar'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
@@ -88,9 +87,6 @@ import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
-
-/** The views a feature page switches between with its topbar Tabs. */
-type FeatureView = 'overview' | 'tickets' | 'chat'
 
 /** The page's root: a column filling the content panel. */
 const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
@@ -969,7 +965,7 @@ export function Workspace({
         </div>
       )}
       {nextRow}
-      {!readonly && liveLine && (
+      {view === 'overview' && !readonly && liveLine && (
         <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => setView('chat')} />
       )}
     </FeatureHeader>
@@ -1024,35 +1020,13 @@ export function Workspace({
             },
           ]}
           tabs={
-            isDraft ? undefined : (
-              <Tabs<FeatureView>
-                label="Feature views"
-                size="sm"
-                value={view}
-                onChange={setView}
-                items={[
-                  { id: 'overview', label: 'Overview', icon: <IconHome /> },
-                  {
-                    id: 'tickets',
-                    label: 'Tickets',
-                    icon: <IconCube />,
-                    ...(ticketCount.total > 0 ? { count: ticketCount.total } : {}),
-                  },
-                  // The top bar's old Chat toggle, in the same place with the
-                  // same word — a view now, which never launches (decision 5).
-                  {
-                    id: 'chat',
-                    label: (
-                      <span className="inline-flex items-center gap-1.5">
-                        Chat
-                        {liveSession && <StatusDot tone="live" label="Session live" />}
-                      </span>
-                    ),
-                    icon: <IconMessage />,
-                  },
-                ]}
-              />
-            )
+            <FeatureViewTabs
+              isDraft={isDraft}
+              value={view}
+              onChange={setView}
+              ticketCount={ticketCount.total}
+              sessionLive={!!liveSession}
+            />
           }
           actions={
             <>

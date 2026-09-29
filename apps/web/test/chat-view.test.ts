@@ -36,6 +36,7 @@ import { ToastProvider } from '../src/lib/toast'
 import { ChatView } from '../src/components/chat/ChatView'
 import { LiveChat } from '../src/components/project/LiveChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
+import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
 import { LiveSessionBar } from '../src/components/workspace/LiveSessionBar'
 import { full as fixture } from './fixtures'
 
@@ -209,6 +210,38 @@ describe('the project chat', () => {
     expect(out).toContain('Project chat')
     expect(out).toContain('data-terminal="ps_1"')
     expect(out).toContain('End session')
+  })
+})
+
+/** Overview | Tickets | Chat on every non-draft feature (decisions 1, 11). */
+describe('FeatureViewTabs', () => {
+  const tabs = (props: Partial<Parameters<typeof FeatureViewTabs>[0]> = {}) =>
+    html(
+      createElement(FeatureViewTabs, {
+        isDraft: false,
+        value: 'overview',
+        onChange: () => undefined,
+        ticketCount: 0,
+        sessionLive: false,
+        ...props,
+      }),
+    )
+
+  it('shows the three views, Chat last, with the ticket count', () => {
+    const out = tabs({ ticketCount: 4 })
+    const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
+      m[1]!.replace(/<[^>]+>/g, ''),
+    )
+    expect(labels).toEqual(['Overview', 'Tickets4', 'Chat'])
+    expect(out).not.toContain('Session live')
+  })
+
+  it('puts a live dot on Chat while a session is live', () => {
+    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Chat[\s\S]*aria-label="Session live"/)
+  })
+
+  it('gives a draft no views at all', () => {
+    expect(tabs({ isDraft: true })).not.toContain('role="tab"')
   })
 })
 
