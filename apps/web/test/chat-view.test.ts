@@ -34,7 +34,7 @@ import type { FeatureFull, ProjectSession } from '../src/lib/api'
 import { chatContextLine, featureChat, liveSessionLine } from '../src/lib/feature-ui'
 import { ToastProvider } from '../src/lib/toast'
 import { ChatView } from '../src/components/chat/ChatView'
-import { LiveChat } from '../src/components/project/LiveChat'
+import { ProjectChat } from '../src/components/project/ProjectChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
 import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
 import { LiveSessionBar } from '../src/components/workspace/LiveSessionBar'
@@ -203,7 +203,7 @@ describe('FeatureChat', () => {
 describe('the project chat', () => {
   it('renders through the same ChatView', () => {
     const out = html(
-      createElement(LiveChat, {
+      createElement(ProjectChat, {
         session: { id: 'ps_1', ccSessionId: 'f5b41d9e-rest', status: 'live' } as NonNullable<ProjectSession>,
         title: 'Untitled',
         branch: 'main',

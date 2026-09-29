@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { TranscriptBubbles } from '../src/components/ConversationTranscript'
 import { ConversationList } from '../src/components/project/ConversationList'
 import { NewChatCard } from '../src/components/project/NewChatCard'
-import { TranscriptPane } from '../src/components/project/TranscriptPane'
 import type { ProjectConversation } from '../src/lib/api'
 import type { SessionBranchApi } from '../src/lib/use-session-branch'
 
@@ -176,32 +175,6 @@ describe('ConversationList', () => {
 
   it('shows nothing at all while the list is still in flight', () => {
     expect(render([], true)).toBe('')
-  })
-})
-
-describe('TranscriptPane', () => {
-  const html = renderToStaticMarkup(
-    <TranscriptPane
-      conversation={conversation()}
-      onBack={() => {}}
-      onReopen={() => {}}
-      reopening={false}
-    >
-      <div>the turns</div>
-    </TranscriptPane>,
-  )
-
-  it('carries the way out, the name, the date and the way in', () => {
-    // the way out is the parent crumb: the project
-    expect(html).toContain('aria-label="Breadcrumb"')
-    expect(html).toMatch(/<button[^>]*>.*Project<\/span><\/button>/)
-    expect(html).toContain('Read the audit handoff and turn it into features')
-    expect(html).toContain('Started 3h ago')
-    expect(html).toContain('Reopen')
-  })
-
-  it('renders whatever reads the transcript inside it', () => {
-    expect(html).toContain('<div>the turns</div>')
   })
 })
 

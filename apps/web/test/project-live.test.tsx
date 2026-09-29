@@ -15,7 +15,7 @@ vi.mock('../src/components/TerminalView', () => ({
 }))
 
 import { ConversationList } from '../src/components/project/ConversationList'
-import { LiveChat } from '../src/components/project/LiveChat'
+import { ProjectChat } from '../src/components/project/ProjectChat'
 import { NewChatCard } from '../src/components/project/NewChatCard'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { SessionBranchApi } from '../src/lib/use-session-branch'
@@ -55,7 +55,7 @@ describe('live project chat', () => {
 
   it('renders the complete live strip', () => {
     render(
-      <LiveChat
+      <ProjectChat
         session={session}
         title="Untitled"
         branch="main"
@@ -83,7 +83,7 @@ describe('live project chat', () => {
       const [list, setList] = useState(false)
       return (
         <>
-          <LiveChat
+          <ProjectChat
             session={session}
             title="Untitled"
             branch="main"
