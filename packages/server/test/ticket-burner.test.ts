@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import {
   burnRun,
+  cliTooOldMessage,
   registerTicketAbort,
   releaseTicketAbort,
   ticketStopReason,
@@ -458,29 +459,75 @@ describe('burnRun — scheduling and summary', () => {
       )
     })
 
-    it('aborts before any ticket when the image’s Claude Code differs from the host', async () => {
+    it('warns and burns on when the managed image’s Claude Code differs from the host', async () => {
       const { ctx, events } = makeCtx([ticket(1), ticket(2)])
       const calls: number[] = []
       const probes: string[][] = []
 
       const res = await burnRun(
         ctx,
-        deps(fakeExecute({}, calls), {
-          config: dockerConfig,
-          hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
-          exec: imageAnswers('@@runcastle-cli-version claude-code\n2.1.270 (Claude Code)\n', probes),
-        }),
+        deps(
+          fakeExecute(
+            { 1: { status: 'done', commits: ['a'] }, 2: { status: 'done', commits: ['b'] } },
+            calls,
+          ),
+          {
+            config: dockerConfig,
+            hostAgentVersions: { 'claude-code': '2.1.280', codex: null },
+            exec: imageAnswers(
+              '@@runcastle-cli-version claude-code\n2.1.270 (Claude Code)\n',
+              probes,
+            ),
+          },
+        ),
       )
 
-      const message =
-        'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
       expect(probes.find((args) => args[0] === 'run')?.at(-1)).toBe(
         'for c in claude; do command -v "$c" >/dev/null 2>&1 || echo "$c"; done; echo "@@runcastle-cli-version claude-code"; claude --version 2>/dev/null || true',
       )
-      expect(calls).toEqual([])
-      expect(res).toEqual({ status: 'failed', summary: message })
-      expect(events).toContainEqual(
-        expect.objectContaining({ type: 'burn.image_runtime_missing', message }),
+      // Burns never build: the probe is the only container command run.
+      expect(probes.some((args) => args[0] === 'build')).toBe(false)
+      expect(res.status).toBe('succeeded')
+      expect(calls).toEqual([1, 2])
+      expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
+        expect.objectContaining({
+          message:
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Burns to catch up.',
+          data: {
+            warning: true,
+            managed: true,
+            runtime: 'claude-code',
+            image: 'sandcastle:runcastle',
+            imageVersion: '2.1.270',
+            hostVersion: '2.1.280',
+          },
+        }),
+      ])
+      expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
+    })
+
+    it('leads a "CLI too old" halt’s summary with the Settings → Burns fix', async () => {
+      const { ctx } = makeCtx([ticket(1)])
+      const error = cliTooOldMessage(
+        new Error(
+          'API Error: 400 Claude Code 2.1.270 does not support this model; version 2.1.280 or newer is required.',
+        ),
+        'claude-opus-5-5',
+        '2.1.290',
+      )
+
+      const res = await burnRun(
+        ctx,
+        deps(
+          fakeExecute({
+            1: { status: 'failed', error: error ?? '', runFatal: { runtime: 'claude-code' } },
+          }),
+        ),
+      )
+
+      expect(res.status).toBe('failed')
+      expect(res.summary).toContain(
+        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Burns.',
       )
     })
 
@@ -510,6 +557,7 @@ describe('burnRun — scheduling and summary', () => {
             'sandcastle:runcastle-bl has Claude Code 2.1.215, the host has 2.1.280 — it is a ' +
             'custom image managed outside runcastle, so rebuild it with the tool that built it; ' +
             'this burn runs on it as it is.',
+          data: expect.objectContaining({ warning: true, managed: false }),
         }),
       )
       expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
@@ -557,31 +605,38 @@ describe('burnRun — scheduling and summary', () => {
 
       const res = await burnRun(
         ctx,
-        deps(fakeExecute({}, calls), {
-          config: dockerConfig,
-          runtime: 'claude-code',
-          hostAgentVersions: { 'claude-code': '2.1.280', codex: '0.46.0' },
-          ticketRuntime: (t): AgentRuntime => (t.seq === 2 ? 'codex' : 'claude-code'),
-          exec: imageAnswers(
-            '@@runcastle-cli-version claude-code\n2.1.280 (Claude Code)\n' +
-              '@@runcastle-cli-version codex\ncodex-cli 0.45.0\n',
-            probes,
+        deps(
+          fakeExecute(
+            { 1: { status: 'done', commits: ['a'] }, 2: { status: 'done', commits: ['b'] } },
+            calls,
           ),
-        }),
+          {
+            config: dockerConfig,
+            runtime: 'claude-code',
+            hostAgentVersions: { 'claude-code': '2.1.280', codex: '0.46.0' },
+            ticketRuntime: (t): AgentRuntime => (t.seq === 2 ? 'codex' : 'claude-code'),
+            exec: imageAnswers(
+              '@@runcastle-cli-version claude-code\n2.1.280 (Claude Code)\n' +
+                '@@runcastle-cli-version codex\ncodex-cli 0.45.0\n',
+              probes,
+            ),
+          },
+        ),
       )
 
       expect(probes.find((args) => args[0] === 'run')?.at(-1)).toContain(
         'echo "@@runcastle-cli-version codex"; codex --version',
       )
-      expect(calls).toEqual([])
-      expect(res.status).toBe('failed')
-      expect(events).toContainEqual(
+      expect(calls).toEqual([1, 2])
+      expect(res.status).toBe('succeeded')
+      // Only the drifted runtime warns — Claude Code matches the host.
+      expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
-          type: 'burn.image_runtime_missing',
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — Rebuild from Settings → Burns (only the CLI layer rebuilds).',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Burns to catch up.',
+          data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
-      )
+      ])
     })
   })
 

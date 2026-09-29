@@ -65,11 +65,33 @@ describe('classifyTicketRunError', () => {
     expect(classifyTicketRunError(new Error(CLI_TOO_OLD_400))).toBe('run-fatal')
   })
 
-  it('tells the operator to update the host CLI, then Rebuild', () => {
-    expect(cliTooOldMessage(new Error(CLI_TOO_OLD_400), 'claude-opus-5-5')).toBe(
-      'Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Run `claude update` on the host, then Rebuild from Settings → Burns.',
+  const UPDATE_THEN_REBUILD =
+    'Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Run `claude update` on the host, then Rebuild from Settings → Burns.'
+
+  it.each([
+    ['unknown', undefined],
+    ['unknown', null],
+    ['older than required', '2.1.279'],
+    ['unparsable', 'latest'],
+  ])('tells the operator to update the host CLI, then Rebuild, when the host is %s', (_, host) => {
+    expect(cliTooOldMessage(new Error(CLI_TOO_OLD_400), 'claude-opus-5-5', host)).toBe(
+      UPDATE_THEN_REBUILD,
     )
-    expect(cliTooOldMessage(new Error('API Error: 400 overloaded'))).toBeUndefined()
+  })
+
+  it.each(['2.1.280', '2.1.1000', '3.0.0'])(
+    'says only Rebuild when the host (%s) already meets the required version',
+    (host) => {
+      expect(cliTooOldMessage(new Error(CLI_TOO_OLD_400), 'claude-opus-5-5', host)).toBe(
+        `Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has ${host} — Rebuild from Settings → Burns.`,
+      )
+    },
+  )
+
+  it('ignores an error that is not "CLI too old"', () => {
+    expect(cliTooOldMessage(new Error('API Error: 400 overloaded'), undefined, '2.1.290')).toBe(
+      undefined,
+    )
   })
 
   it.each(['codex', 'claude-code'] as const)(
