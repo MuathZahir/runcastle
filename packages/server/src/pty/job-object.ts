@@ -1,8 +1,5 @@
 import { createRequire } from 'node:module'
 
-/** Type-only; `bun:ffi` itself is loaded lazily inside {@link loadKernel32}. */
-type BunFfi = typeof import('bun:ffi')
-type Pointer = import('bun:ffi').Pointer
 
 /**
  * Windows Job Objects for the process trees the server spawns (decisions 2–6 of
@@ -182,15 +179,39 @@ const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9
 const WAIT_OBJECT_0 = 0
 
 /**
+ * The slice of `bun:ffi` used here, typed locally: `apps/web` typechecks this
+ * file without bun-types, so the module's own declarations are out of reach.
+ */
+interface BunFfi {
+  dlopen(
+    path: string,
+    defs: Record<string, { args: string[]; returns: string }>,
+  ): { symbols: unknown }
+}
+
+/** The kernel32 exports as bound above: `ptr` args/returns are numbers (null for NULL). */
+interface Kernel32Symbols {
+  CreateJobObjectW(attributes: null, name: null): Handle | null
+  SetInformationJobObject(job: Handle, infoClass: number, info: Uint8Array, cb: number): number
+  OpenProcess(access: number, inheritHandle: number, pid: number): Handle | null
+  AssignProcessToJobObject(job: Handle, process: Handle): number
+  TerminateJobObject(job: Handle, exitCode: number): number
+  CloseHandle(handle: Handle): number
+  WaitForSingleObject(handle: Handle, ms: number): number
+}
+
+/**
  * The real kernel32, bound through `bun:ffi` — or null off win32, under node, or
  * when the load fails. Loaded synchronously (contain() must be sync) and lazily,
  * via `createRequire`, so Linux/macOS/vitest never so much as resolve `bun:ffi`.
  */
 function loadKernel32(): Kernel32 | null {
-  if (process.platform !== 'win32' || typeof Bun === 'undefined') return null
+  if (process.platform !== 'win32' || typeof (globalThis as { Bun?: unknown }).Bun === 'undefined') {
+    return null
+  }
   try {
     const ffi = createRequire(import.meta.url)('bun:ffi') as BunFfi
-    const { symbols: k } = ffi.dlopen('kernel32.dll', {
+    const { symbols } = ffi.dlopen('kernel32.dll', {
       CreateJobObjectW: { args: ['ptr', 'ptr'], returns: 'ptr' },
       SetInformationJobObject: { args: ['ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
       OpenProcess: { args: ['u32', 'i32', 'u32'], returns: 'ptr' },
@@ -199,23 +220,23 @@ function loadKernel32(): Kernel32 | null {
       CloseHandle: { args: ['ptr'], returns: 'i32' },
       WaitForSingleObject: { args: ['ptr', 'u32'], returns: 'u32' },
     })
-    const h = (handle: Handle): Pointer => handle as Pointer
+    const k = symbols as Kernel32Symbols
     return {
       // Null security attributes: the job handle is NOT inheritable. An inherited
       // copy in a child would keep the job alive past the server.
       createJob: () => k.CreateJobObjectW(null, null),
       setKillOnClose: (job, info) =>
-        k.SetInformationJobObject(h(job), JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS, info, info.length) !== 0,
+        k.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS, info, info.length) !== 0,
       openProcess: (pid) =>
         k.OpenProcess(
           PROCESS_SET_QUOTA | PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
           0,
           pid,
         ),
-      assign: (job, proc) => k.AssignProcessToJobObject(h(job), h(proc)) !== 0,
-      terminateJob: (job) => k.TerminateJobObject(h(job), 1) !== 0,
-      closeHandle: (handle) => k.CloseHandle(h(handle)) !== 0,
-      isProcessExited: (proc) => k.WaitForSingleObject(h(proc), 0) === WAIT_OBJECT_0,
+      assign: (job, proc) => k.AssignProcessToJobObject(job, proc) !== 0,
+      terminateJob: (job) => k.TerminateJobObject(job, 1) !== 0,
+      closeHandle: (handle) => k.CloseHandle(handle) !== 0,
+      isProcessExited: (proc) => k.WaitForSingleObject(proc, 0) === WAIT_OBJECT_0,
     }
   } catch (err) {
     defaultLog(`[pty-teardown] job: kernel32 load failed (${err instanceof Error ? err.message : String(err)})`)
