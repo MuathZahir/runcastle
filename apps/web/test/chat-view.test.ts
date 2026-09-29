@@ -160,9 +160,11 @@ describe('FeatureChat', () => {
     return html(
       createElement(FeatureChat, {
         full: { ...f, feature: { ...f.feature, lap }, sessions },
+        events: [],
         hidden: false,
         launching: false,
         onLaunch: () => undefined,
+        onView: () => undefined,
       }),
     )
   }
@@ -192,6 +194,10 @@ describe('FeatureChat', () => {
     const out = tab([session({ kind: 'converge', status: 'ended' })])
     expect(out).toContain('Start the conversation')
   })
+
+  it('carries the notice deck over the chat', () => {
+    expect(tab([session({ id: 'sess_1' })])).toContain('aria-label="Chat notifications"')
+  })
 })
 
 describe('the project chat', () => {
@@ -209,6 +215,8 @@ describe('the project chat', () => {
     expect(out).toContain('data-chat-view')
     expect(out).toContain('Project chat')
     expect(out).toContain('data-terminal="ps_1"')
+    // The deck is the feature Chat tab's; the project chat has none.
+    expect(out).not.toContain('Chat notifications')
     expect(out).toContain('End session')
   })
 })

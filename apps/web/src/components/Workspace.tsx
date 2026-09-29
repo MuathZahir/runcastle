@@ -1073,9 +1073,11 @@ export function Workspace({
         {!isDraft && (
           <FeatureChat
             full={full}
+            events={events}
             hidden={view !== 'chat'}
             launching={launch.isPending}
             onLaunch={launchChat}
+            onView={onViewChange}
           />
         )}
       </AsideLayout>
