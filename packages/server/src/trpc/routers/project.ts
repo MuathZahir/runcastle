@@ -1,5 +1,6 @@
 import * as z from 'zod'
 import { ProjectName } from '@runcastle/core'
+import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
 import { prepView } from '../../services/prep'
@@ -163,6 +164,15 @@ export const projectRouter = router({
   prep: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => prepView(ctx, requireProjectById(ctx, input.projectId))),
+
+  /**
+   * What this host is missing to offer a review a drive — agent-browser,
+   * ffmpeg, the project's dev command — so the review page can say so before
+   * the next burn rather than on the trail after it. The host probe is cached.
+   */
+  drivePrerequisites: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => drivePrerequisites(requireProjectById(ctx, input.projectId))),
 
   /**
    * Tear down a preparation dry-run drive by hand (decision 9). The prep session
