@@ -9,7 +9,6 @@ import { launchSession } from '../src/launcher/launcher'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import {
   createSessionRow,
-  lapInFlight,
   lapKickoff,
   markSessionEnded,
   markSessionLive,
@@ -37,77 +36,22 @@ function git(cwd: string, ...args: string[]): string {
 
 describe('planKickoff', () => {
   it('treats a caller-supplied briefing as the opening move (fresh, no resume)', () => {
-    const plan = planKickoff({ kind: 'chat', lap: 1, kickoffLine: 'Resolve the merge conflict.' })
+    const plan = planKickoff({ kind: 'chat', kickoffLine: 'Resolve the merge conflict.' })
     expect(plan).toEqual({ line: 'Resolve the merge conflict.', explicit: true })
   })
 
-  it('reports which lap it is running from feature state, not the briefing string', () => {
-    const plan = planKickoff({
-      kind: 'chat',
-      lap: 4,
-      kickoffLine: lapKickoff(4),
-      lapInFlight: true,
-    })
-    expect(plan.explicit).toBe(true)
-    expect(plan.lap).toBe(4)
-  })
-
-  it('gives a lap-N grill the lap briefing instead of the generic ideate line', () => {
-    const plan = planKickoff({ kind: 'chat', lap: 2, lapInFlight: true })
-    expect(plan.line).toBe(lapKickoff(2))
-    expect(plan.lap).toBe(2)
-    expect(plan.explicit).toBe(true)
-  })
-
-  /**
-   * THE STRANDING BUG. `lap` used to be derived by `line === lapKickoff(lap)` —
-   * JS string equality, three call frames from the renderer that depends on it.
-   * That works exactly once, on the launch that passes the line. A terminal
-   * that died mid-lap left the feature at `planning`/lap N with no lap tickets
-   * and no way back to the door that had briefed it, and Revisit — the only
-   * door left — passes no `kickoffLine`, so the comparison failed and `lap`
-   * came back undefined. Deriving it from state makes the SAME re-entry produce
-   * the lap plan.
-   */
-  it('recovers a lap that died mid-flight, with no kickoffLine to compare against', () => {
-    const plan = planKickoff({ kind: 'chat', lap: 4, lapInFlight: true })
-    expect(plan.lap).toBe(4)
-    expect(plan.line).toBe(lapKickoff(4))
-    // and it launches FRESH — the dead lap's transcript argues with the briefing
-    expect(plan.explicit).toBe(true)
-  })
-
-  it('leaves an ordinary launch alone — no line, no lap, resume as before', () => {
-    expect(planKickoff({ kind: 'chat', lap: 1 })).toEqual({ explicit: false })
-    // an ordinary revisit on a lap-3 feature is NOT running a lap
-    expect(planKickoff({ kind: 'chat', lap: 3, lapInFlight: false })).toEqual({
-      explicit: false,
-    })
+  it('leaves an ordinary launch alone — no line, resume as before', () => {
+    expect(planKickoff({ kind: 'chat' })).toEqual({ explicit: false })
   })
 })
 
-/**
- * The state predicate itself. A lap is in flight when the feature is parked at
- * `ideation` on a lap past the first with no tickets emitted for that lap — the
- * exact shape Rethink creates and a lap session is the only thing that clears.
- */
-describe('lapInFlight', () => {
-  it('is true at planning on lap N with no lap-N tickets', () => {
-    expect(lapInFlight({ lap: 2, phase: 'planning', ticketLaps: [1, 1] })).toBe(true)
-  })
-
-  it('is false once the lap has emitted its tickets', () => {
-    expect(lapInFlight({ lap: 2, phase: 'planning', ticketLaps: [1, 2] })).toBe(false)
-  })
-
-  it('is false on lap 1 — there is no lap to be running', () => {
-    expect(lapInFlight({ lap: 1, phase: 'planning', ticketLaps: [] })).toBe(false)
-  })
-
-  it('is false anywhere but planning — a lap-3 feature at review is not mid-lap', () => {
-    for (const phase of ['building', 'review', 'shipped']) {
-      expect(lapInFlight({ lap: 3, phase, ticketLaps: [1, 2] })).toBe(false)
-    }
+describe('the lap briefing', () => {
+  it('plans the lap at review: no complete_phase, and hands back to Burn', () => {
+    const line = lapKickoff(2)
+    expect(line).toContain('LAP 2')
+    expect(line).toMatch(/Do NOT call complete_phase/)
+    expect(line).not.toMatch(/ideation → spec → tickets/)
+    expect(line).toMatch(/review the cards and click Burn/)
   })
 })
 
@@ -166,7 +110,7 @@ describe('launchSession — lap briefings', () => {
   }
 
   it('delivers a chat kickoff override into the resumed conversation', async () => {
-    const { featureId } = await seedResumable('with-briefing', { phase: 'planning', lap: 2 })
+    const { featureId } = await seedResumable('with-briefing', { phase: 'review', lap: 1 })
     const { command } = await launchAndRead(featureId, {
       kind: 'chat',
       kickoffLine: lapKickoff(2),
@@ -192,52 +136,11 @@ describe('launchSession — lap briefings', () => {
     expect(events.map((e) => e.type)).toContain('session.resumed')
   })
 
-  it('renders the lap framing into the prompt of a lap launch, not the revisit ban', async () => {
-    const { featureId } = await seedResumable('lap-prompt', { phase: 'planning', lap: 3 })
-    const { prompt } = await launchAndRead(featureId, {
-      kind: 'chat',
-      kickoffLine: lapKickoff(3),
-    })
-
-    expect(prompt).toContain('This is lap 3')
-    expect(prompt).toContain('ideation → spec → tickets')
-    expect(prompt).toContain('test-notes.md')
-    expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
-  })
-
-  it('a lap-N grill opens on the lap briefing, not the generic ideate line', async () => {
-    const { featureId } = await seedResumable('lap-grill', { phase: 'planning', lap: 2 })
-    const { sessionId, command } = await launchAndRead(featureId, { kind: 'chat' })
-
-    expect(command).toContain('--resume cc-prior')
-    expect(command).toContain('Feature state:')
-    expect(command).toContain('LAP 2 REVIEW ITERATION')
-  })
-
-  it('a lap-1 grill keeps the chat’s own opening line', () => {
-    expect(planKickoff({ kind: 'chat', lap: 1 }).line).toBeUndefined()
+  it('a chat with no briefing keeps its own opening line', () => {
+    expect(planKickoff({ kind: 'chat' }).line).toBeUndefined()
     // no lap briefing, so the table's state-unknown default stands: the chat's
     // own opening skill, not a lap framing
     expect(KICKOFF_LINES.chat).toContain('/runcastle:revisit')
     expect(KICKOFF_LINES.chat).not.toContain('REVIEW ITERATION')
-  })
-
-  /**
-   * End-to-end re-entry: a feature parked mid-lap by a dead terminal, reopened
-   * through Revisit with NO kickoffLine — the only door the UI leaves once
-   * Rethink has refused. It used to resume the dead lap conversation and render
-   * "Do NOT call `complete_phase` — a revisit never moves the pipeline" into a
-   * transcript whose own earlier turn said to complete_phase through to tickets.
-   */
-  it('re-enters a stranded lap through plain Revisit and rebuilds the lap briefing', async () => {
-    const { featureId } = await seedResumable('stranded-lap', { phase: 'planning', lap: 2 })
-    const { sessionId, command, prompt } = await launchAndRead(featureId, { kind: 'chat' })
-
-    expect(prompt).toContain('This is lap 2')
-    expect(prompt).toMatch(/DO call `complete_phase`/)
-    expect(prompt).not.toMatch(/Do NOT call `complete_phase`/i)
-    expect(command).toContain('--resume cc-prior')
-    expect(command).toContain('Feature state:')
-    expect(command).toContain('LAP 2 REVIEW ITERATION')
   })
 })

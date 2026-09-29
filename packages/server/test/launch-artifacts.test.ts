@@ -422,25 +422,54 @@ describe('renderSystemPrompt', () => {
   })
 
   /**
-   * A lap is passed in, never inferred: by the time the artifacts are written
-   * the rethink route has already flipped the phase back to `ideation`, so the
-   * old `phase === 'review'` test rendered a lap session the plain revisit
-   * prompt — complete with a "never call complete_phase" rule contradicting the
-   * lap briefing the same session was about to be typed (F2).
+   * A lap is planned at review, from the Start-lap door: the feature stays at
+   * review and the Burn click starts the lap. The session used to be told a lap
+   * reports ideation → spec → tickets through `complete_phase` — a planning-phase
+   * model no road reaches — and, rendered at review, got the fix-ticket
+   * interview beside it, which is how one told the human to "start the next lap
+   * from the UI" when that was the door it came through.
    */
-  it('renders the lap framing when a lap is passed, and drops the complete_phase ban', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2)
+  it('renders a lap planned at review as a lap: agenda, no complete_phase, hand to Burn', () => {
+    const p = renderSystemPrompt(feature({ phase: 'review', lap: 1 }), 'chat', undefined, 2)
     expect(p).toContain('This is lap 2')
-    expect(p).toContain('ideation → spec → tickets')
-    // its two optional inputs, and that missing ones are normal
+    expect(p).toContain('Start lap 2')
+    // the agenda: carried notes, later laps, and where the decisions go
     expect(p).toContain('test-notes.md')
     expect(p).toContain('## Carried, still open')
-    expect(p).not.toContain('## Lap 1')
     expect(p).toContain('## Later laps')
+    expect(p).toContain('## Lap 2')
     expect(p).toMatch(/OPTIONAL/i)
-    // the rule that used to contradict the briefing is inverted, not merely dropped
-    expect(p).not.toMatch(/Do NOT call `complete_phase`/i)
-    expect(p).toMatch(/DO call `complete_phase`/)
+    expect(p).toContain('emit_tickets')
+    // the feature stays at review: no planning steps, and Burn starts the lap
+    expect(p).toMatch(/Do NOT call `complete_phase`/)
+    expect(p).not.toMatch(/DO call `complete_phase`/)
+    expect(p).not.toContain('ideation → spec → tickets')
+    expect(p).toMatch(/review the cards\s+and click Burn/)
+    // and never the fix-ticket interview alongside it
+    expect(p).not.toContain('Review iteration')
+    expect(p).not.toMatch(/fix-ticket interview/)
+  })
+
+  it('names the open defects a lap planned at review must disposition', () => {
+    const carried = {
+      carriedNotes: 1,
+      openDefects: [{ id: 'fnd_1', title: 't', location: 'l', detail: 'd', reproStep: 'r' }],
+      carriedDefects: [],
+      reviewEvidence: [],
+    }
+    const p = renderSystemPrompt(
+      feature({ phase: 'review', lap: 1 }),
+      'chat',
+      undefined,
+      2,
+      undefined,
+      undefined,
+      carried,
+    )
+    expect(p).toContain('1 note carried and 1 defect open from earlier laps')
+    expect(p).toContain('`openDefects`')
+    expect(p).toContain('`resolve_finding`')
+    expect(p).not.toContain('complete_phase("tickets")')
   })
 
   it('leaves a plain revisit exactly as it was — no lap framing, ban intact', () => {
@@ -453,7 +482,7 @@ describe('renderSystemPrompt', () => {
     for (const p of [
       renderSystemPrompt(feature(), 'chat'),
       renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2),
+      renderSystemPrompt(feature({ phase: 'review', lap: 1 }), 'chat', undefined, 2),
     ]) {
       expect(p).toMatch(/Talk sessions do not write code/)
       // and it says where the line is, and where the change goes instead
@@ -503,25 +532,6 @@ describe('renderSystemPrompt', () => {
   })
 
   /**
-   * The lap owns the entry skill, then the kind. A lap-N grill is created as
-   * `kind: 'chat'` and used to render the generic feature brief ("invoke
-   * `/runcastle:ideate`") while the lap kickoff typed into the same terminal
-   * said "invoke `/runcastle:revisit` for LAP N" — two entry skills, no defined
-   * precedence, and the `lap` parameter never read on that path.
-   */
-  it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3)
-    expect(p).toContain('This is lap 3')
-    expect(p).toContain('/runcastle:revisit')
-    expect(p).not.toContain('/runcastle:ideate')
-    expect(p).toMatch(/DO call `complete_phase`/)
-    // and it is byte-identical to the revisit rendering of the same lap
-    expect(p).toBe(
-      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3),
-    )
-  })
-
-  /**
    * A conflict-resolution revisit is ALWAYS at `review` (its only launch site is
    * the review body's conflict card), and its whole job is a `git merge`. It was
    * also getting 591 chars of fix-ticket interview — the same failure shape as
@@ -545,15 +555,15 @@ describe('renderSystemPrompt', () => {
   })
 
   /**
-   * A lap advances the pipeline and writes no code; a conflict resolution writes
-   * code and advances nothing. One session cannot be both, and the tRPC route
-   * takes `kickoffLine` and `purpose` as free parameters — so the exclusion is
-   * asserted where the two meet rather than left to call-site luck.
+   * A lap plans tickets and writes no code; a conflict resolution writes code
+   * and plans nothing. One session cannot be both, and the tRPC route takes
+   * `purpose` as a free parameter — so the exclusion is asserted where the two
+   * meet rather than left to call-site luck.
    */
   it('refuses to render one revisit as both a lap and a conflict resolution', () => {
     expect(() =>
       renderSystemPrompt(
-        feature({ phase: 'planning', lap: 2 }),
+        feature({ phase: 'review', lap: 1 }),
         'chat',
         undefined,
         2,

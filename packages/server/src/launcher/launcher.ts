@@ -23,7 +23,7 @@ import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
+import { currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -62,7 +62,6 @@ import {
   hasCompletedProjectSession,
   kickoffLineFor,
   landProjectSession,
-  lapInFlight,
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
@@ -405,7 +404,7 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine`, and a lap in flight briefs itself ({@link planKickoff}) — and
+ * `kickoffLine` ({@link planKickoff}) — and
  * losing it is the whole defect this closes: the door foregrounded the terminal
  * and silently dropped the reason the human opened it.
  *
@@ -423,17 +422,7 @@ function briefLiveChat(
   liveChat: SessionRow,
   kickoffLine: string | undefined,
 ): LaunchSessionResult {
-  const plan = planKickoff({
-    kind: 'chat',
-    lap: feature.lap,
-    kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried: carriedWork(ctx, feature.id),
-  })
+  const plan = planKickoff({ kind: 'chat', kickoffLine })
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -526,30 +515,8 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else. An explicit
   // briefing makes non-chat sessions fresh; chat briefings ride the persistent
-  // conversation's resume. A lap in flight additionally tells the artifacts
-  // which lap they are rendering for.
-  //
-  // The lap is read off FEATURE STATE — phase, lap number, and whether tickets
-  // exist at that lap — not off what the caller typed. `listTicketsByFeature` is
-  // already this module's import, so "does lap N have tickets" costs nothing
-  // extra and, unlike a kickoff string, it is still true tomorrow. See
-  // `lapInFlight` for the stranding bug this closes.
-  //
-  // What the last lap handed this one rides along with it: the same counts brief
-  // the kickoff line and the injected prompt, so a lap opens knowing its agenda
-  // whichever door it came through.
-  const carried = carriedWork(ctx, feature.id)
-  const plan = planKickoff({
-    kind: input.kind,
-    lap: feature.lap,
-    kickoffLine: input.kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried,
-  })
+  // conversation's resume.
+  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
@@ -717,8 +684,6 @@ export async function launchSession(
     project,
     config: ctx.config,
     waypoint,
-    lap: plan.lap,
-    carried: plan.lap === undefined ? undefined : carried,
     // Which of the chat's two openings its brief renders (see `chatOpening`).
     planning: planningFacts(ctx, feature),
     purpose: input.purpose,

@@ -60,13 +60,12 @@ export interface WriteArtifactsInput {
    */
   purpose?: SessionPurpose
   /**
-   * The lap this session was opened to run (a lap briefing, or a lap-N grill).
-   * Passed EXPLICITLY rather than read off `feature.lap`, because a lap is not
-   * something the feature row can be asked about: an ordinary revisit on a
-   * lap-3 feature is not running a lap, and `lap` is stamped by Burn from the
-   * runs behind it rather than by anything the session does — which is how the
-   * lap framing used to be lost entirely (F2, `renderRevisitPrompt` keyed on
-   * `phase === 'review'` and by then the phase had moved).
+   * The lap this session was opened to PLAN — `feature.lap + 1`, planned at
+   * review from the Start-lap briefing. Passed EXPLICITLY rather than read off
+   * the feature row, because a lap is not something the row can be asked about:
+   * the plain Chat toggle on a lap-3 feature at review is an ordinary revisit,
+   * and the lap counter only moves at Burn from review, after this session is
+   * done.
    */
   lap?: number
   /**
@@ -184,16 +183,10 @@ export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts):
  * entry skill and lists the on-disk knowledge paths.
  *
  * PRECEDENCE — which layer owns "which skill opens this session":
- * **the LAP owns it, then the kind.** A session is a lap iff `lap` is set (the
- * launcher derives that from feature state, not from a kickoff string — see
+ * **the LAP owns it, then the kind.** A session is a lap iff `lap` is set (see
  * {@link WriteArtifactsInput.lap}), and a lap's opening move is always
- * `/runcastle:revisit`, whatever kind row it rides. That is why the `lap` test
- * comes FIRST here rather than only inside the `revisit` branch: a lap-N grill
- * is created as `kind: 'ideation'`, and it used to fall through to the generic
- * feature brief, which said "invoke `/runcastle:ideate`" while the lap kickoff
- * line typed into the same terminal said "invoke `/runcastle:revisit` for LAP N".
- * Two entry skills, no defined precedence. There is exactly one now, and it is
- * the same one `lapKickoff` names.
+ * `/runcastle:revisit`, whatever kind row it rides — the same one `lapKickoff`
+ * names.
  *
  * Below the lap, `chat` splits on {@link chatOpening}: a feature whose planning
  * artifacts do not exist yet gets the ideation brief (the generic feature brief
@@ -496,9 +489,12 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
  * interview is not a smaller version of that, it is a different job.
  *
  * `lap` — passed explicitly by the launcher, never inferred from the phase (see
- * {@link WriteArtifactsInput.lap}) — turns this into the LAP prompt: the session
- * is running the front half of the pipeline again, so it not only may call
- * `complete_phase`, it is the only thing that will.
+ * {@link WriteArtifactsInput.lap}) — turns this into the LAP prompt: the human
+ * clicked Start lap on the review page and this session plans that lap there.
+ * The two review briefings are exclusive — a lap is not a fix-ticket interview
+ * with extra steps, it is the whole of the next lap's planning. Neither calls
+ * `complete_phase`: the feature stays at review until the human's Burn click,
+ * which carries the pending tickets onto the new lap itself.
  */
 export function renderRevisitPrompt(
   feature: Feature,
@@ -507,17 +503,17 @@ export function renderRevisitPrompt(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
 ): string {
-  // Mutually exclusive briefings: a lap says "complete_phase through ideation →
-  // spec → tickets", a conflict resolution says "you DO write code here and the
-  // pipeline does not move". Rendering both produces a session instructed to do
-  // two incompatible jobs. Unreachable through the UI today, but the tRPC route
-  // takes `kickoffLine` and `purpose` as free parameters, so the exclusion is
-  // asserted where the two actually meet rather than left to call-site luck.
+  // Mutually exclusive briefings: a lap says "interview, amend the docs, emit
+  // the lap's tickets", a conflict resolution says "you DO write code here and
+  // your whole job is the merge". Rendering both produces a session instructed
+  // to do two incompatible jobs. Unreachable through the UI today, but the tRPC
+  // route takes `purpose` as a free parameter, so the exclusion is asserted
+  // where the two actually meet rather than left to call-site luck.
   if (lap !== undefined && purpose === 'resolve-conflict') {
     throw new Error(
       `cannot brief one revisit session as both lap ${lap} and a conflict resolution — ` +
-        'a lap advances the pipeline and writes no code; resolving a conflict writes code ' +
-        'and advances nothing. Launch them as separate sessions.',
+        'a lap plans tickets and writes no code; resolving a conflict writes code ' +
+        'and plans nothing. Launch them as separate sessions.',
     )
   }
   const docs = featureDocsRel(feature.slug)
@@ -529,8 +525,10 @@ export function renderRevisitPrompt(
         // lives in `revisit/SKILL.md`, which is loaded before any of this is
         // acted on; a second copy here is a second thing to keep true.
         `## This is lap ${lap}`,
-        `You are running **lap ${lap}** of this feature (ADR-0010): the human test-drove what`,
-        `lap ${lap - 1} burned and came back with what it taught them.`,
+        `This conversation plans **lap ${lap}** of this feature (ADR-0010). The human test-drove`,
+        `what lap ${lap - 1} burned and clicked **Start lap ${lap}** on the review page to get`,
+        'here — that door IS the start of the lap, so there is no other one to send them to.',
+        `The feature stays at **review** while you plan; lap ${lap} starts when they click Burn.`,
         ...(carriedSummary
           ? [
               // The counts before the pointers: a session that knows how much is
@@ -544,8 +542,8 @@ export function renderRevisitPrompt(
               '  parked (agenda, never an obligation to re-carry). Every open defect from an',
               '  EARLIER lap wants one of three answers: **link** it (emit this lap\'s ticket for',
               '  it with `originFindingId` set), **carry** it, or **close it as addressed** — the',
-              '  last two are `resolve_finding`. Nothing refuses over the ones you leave;',
-              '  `complete_phase("tickets")` warns you, and the human hears it again at Burn.',
+              '  last two are `resolve_finding`. Nothing refuses over the ones you leave; the',
+              '  human reads them back as warnings in the Burn dialog.',
               `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps,`,
               '  OPTIONAL; a missing one is normal, not an error.',
             ]
@@ -557,13 +555,15 @@ export function renderRevisitPrompt(
             ]),
         '',
         ...reviewEvidenceSection(lap, docs, carried),
-        `New decisions go under a \`## Lap ${lap}\` heading in \`${docs}/decisions.md\`.`,
+        'Interview the human about what the drive taught. New decisions go under a',
+        `\`## Lap ${lap}\` heading in \`${docs}/decisions.md\`; amend \`${docs}/spec.md\` for this`,
+        'lap, pruning whatever you promote out of `## Later laps`. Then `emit_tickets` for',
+        `this lap's work: the cards land \`pending\`, and the Burn click moves them onto lap ${lap}.`,
         '',
-        'Unlike an ordinary revisit a lap reports the planning steps, and only this session',
-        'will: you `complete_phase` through **ideation → spec → tickets** in THIS window.',
-        'None of the three moves the feature — it waits in Planning for the human\'s Burn',
-        'click either way — but stop early and the lap has no tickets and nothing to burn.',
-        'The `/runcastle:revisit` skill carries the rest of the procedure — follow it.',
+        'Do NOT call `complete_phase` — there are no planning steps to report at review, and',
+        'the Burn click is what starts the lap. Finish by telling the human to review the cards',
+        'and click Burn. The `/runcastle:revisit` skill carries the rest of the procedure —',
+        'follow its Lap mode.',
         '',
       ]
     : []
@@ -615,12 +615,7 @@ export function renderRevisitPrompt(
     `- \`${docs}/map.md\` — if the feature is mapped, keep the map honest too.`,
     '',
     '## Rules',
-    // A lap is the one revisit that MUST move the pipeline — the blanket ban
-    // used to be rendered into lap sessions too, flatly contradicting the lap
-    // briefing that had just told them to complete_phase through to tickets (F2).
-    lap
-      ? '- DO call `complete_phase` — this lap advances ideation → spec → tickets, and only you can.'
-      : '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
+    '- Do NOT call `complete_phase` — a revisit never moves the pipeline, and neither does a lap planned at review.',
     '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
     // The conflict-resolution revisit is briefed to resolve the merge, so the

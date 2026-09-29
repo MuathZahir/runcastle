@@ -63,8 +63,8 @@ describe('the Chat door on a live chat', () => {
   })
 
   /** A feature on a real branch, in whichever state the door is clicked from. */
-  async function featureIn(phase: Phase, slug: string, lap = 1): Promise<Feature> {
-    const feature = seedFeature(ctx, projectId, { slug, phase, lap })
+  async function featureIn(phase: Phase, slug: string): Promise<Feature> {
+    const feature = seedFeature(ctx, projectId, { slug, phase })
     const docsDir = join(repoPath, ...featureDocsRel(slug).split('/'))
     mkdirSync(docsDir, { recursive: true })
     writeFileSync(join(docsDir, 'brief.md'), '# brief.md\n', 'utf8')
@@ -151,7 +151,7 @@ describe('the Chat door on a live chat', () => {
   /**
    * Decision 13: a purpose-specific briefing rides the conversation it is
    * headed for. Answering with the live chat used to answer with ONLY the live
-   * chat — resolve-conflict, stop-drive-and-iterate and a lap in flight all
+   * chat — resolve-conflict, stop-drive-and-iterate and a lap briefing all
    * foregrounded the terminal and dropped the reason the human opened it.
    */
   it('delivers a purpose-specific briefing into the live conversation', async () => {
@@ -196,17 +196,6 @@ describe('the Chat door on a live chat', () => {
     ).rejects.toThrow(/terminal.*not available/i)
 
     expect(kickoffs(feature.id)).toEqual(kickoffsBefore)
-  })
-
-  it('delivers the briefing a lap in flight writes for itself', async () => {
-    const feature = await featureIn('planning', 'lap-chat', 2)
-    const first = await openChat(feature)
-    const typed = terminalFor(first)
-
-    const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
-
-    expect(again.sessionId).toBe(first)
-    expect(typed[0]).toContain('LAP 2 REVIEW ITERATION')
   })
 
   it('types nothing into a conversation the door merely returns to', async () => {
