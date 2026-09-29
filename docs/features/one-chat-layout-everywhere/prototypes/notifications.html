@@ -1,0 +1,213 @@
+<title>Chat Notifications</title>
+<style>
+/* Layout: a two-part design sheet — every notification at rest (gallery), then the same cards live over the Chat tab (in context). Tokens are runcastle's theme.css, dark first. */
+:root{
+  --canvas:#0a0c11;--surface:#10131a;--raised:#161a24;--hover:#1a1e29;--selected:#212636;--inset:#0c0e14;
+  --border:#222837;--border-subtle:rgba(200,215,255,.06);--text:#eceef4;--text2:#a2a8b9;--text3:#8a91a5;
+  --ph-planning:#35c2b8;--ph-tickets:#e2a53b;--ph-building:#f08a4b;--ph-review:#4f8ef7;--ph-shipped:#46b67a;--ph-danger:#f06363;
+  --term-text:#cfd3de;--term-user:#262b38;
+  --elev:0 0 0 1px rgba(200,215,255,.07),0 12px 32px -8px rgba(0,0,0,.6);
+  --sans:"Inter var",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --canvas:#f4f6f9;--surface:#ffffff;--raised:#ffffff;--hover:#eef1f6;--selected:#e4e8f1;--inset:#f4f6f9;
+  --border:#dfe3ec;--border-subtle:rgba(22,30,50,.07);--text:#161a24;--text2:#4c5366;--text3:#5c6377;
+  --ph-planning:#0b7f78;--ph-tickets:#a86a06;--ph-building:#b44f0c;--ph-review:#2f6fe4;--ph-shipped:#1e8e53;--ph-danger:#c42828;
+  --term-text:#2a3040;--term-user:#e4e8f1;
+  --elev:0 0 0 1px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.16);color-scheme:light}}
+:root[data-theme="light"]{
+  --canvas:#f4f6f9;--surface:#ffffff;--raised:#ffffff;--hover:#eef1f6;--selected:#e4e8f1;--inset:#f4f6f9;
+  --border:#dfe3ec;--border-subtle:rgba(22,30,50,.07);--text:#161a24;--text2:#4c5366;--text3:#5c6377;
+  --ph-planning:#0b7f78;--ph-tickets:#a86a06;--ph-building:#b44f0c;--ph-review:#2f6fe4;--ph-shipped:#1e8e53;--ph-danger:#c42828;
+  --term-text:#2a3040;--term-user:#e4e8f1;
+  --elev:0 0 0 1px rgba(0,0,0,.06),0 8px 24px -8px rgba(0,0,0,.16);color-scheme:light}
+body{background:var(--canvas);color:var(--text);font:13px/1.5 var(--sans);margin:0}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ph-review);outline-offset:2px;border-radius:6px}
+
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:28px}
+.head{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between}
+.head h1{margin:0;font-size:18px;text-wrap:balance}
+.head p{margin:2px 0 0;color:var(--text2);max-width:62ch}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+.seg button{padding:4px 12px;color:var(--text2)}
+.seg button[aria-pressed="true"]{background:var(--selected);color:var(--text)}
+h2{margin:0 0 10px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text3)}
+
+/* gallery */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:22px 20px}
+.spec{display:flex;flex-direction:column;gap:8px;min-width:0}
+.spec .cap{color:var(--text3);font-size:12px}
+.spec .cap b{color:var(--text2);font-weight:500}
+
+/* the notification */
+.note{--ph:var(--ph-review);position:relative;width:360px;max-width:100%;display:grid;grid-template-columns:32px 1fr 22px;column-gap:12px;padding:12px 12px 12px 14px;border-radius:10px;background:var(--raised);box-shadow:var(--elev);overflow:hidden}
+.note::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 0% 0%,color-mix(in srgb,var(--ph) 11%,transparent),transparent 60%);pointer-events:none}
+.chip{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--ph);background:color-mix(in srgb,var(--ph) 15%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ph) 28%,transparent)}
+.chip svg{width:16px;height:16px}
+.body{min-width:0;display:flex;flex-direction:column;gap:1px}
+.eyebrow{display:flex;gap:6px;align-items:center;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ph)}
+.eyebrow span{color:var(--text3);font-weight:400;letter-spacing:0;text-transform:none;font-size:11px}
+.ttl{font-weight:600;font-size:13.5px;color:var(--text);display:flex;gap:8px;align-items:center}
+.count{font-size:11px;font-weight:600;padding:0 6px;border-radius:99px;color:var(--ph);background:color-mix(in srgb,var(--ph) 15%,transparent);font-variant-numeric:tabular-nums}
+.sub{color:var(--text2);font-size:12.5px;overflow-wrap:anywhere}
+.go{margin-top:8px;justify-self:start;align-self:flex-start;display:inline-flex;gap:6px;align-items:center;padding:4px 10px;border-radius:6px;font-weight:600;font-size:12px;color:var(--ph);background:color-mix(in srgb,var(--ph) 13%,transparent);transition:background .12s}
+.go:hover{background:color-mix(in srgb,var(--ph) 24%,transparent)}
+.x{width:22px;height:22px;border-radius:5px;color:var(--text3);display:grid;place-items:center;position:relative}
+.x:hover{background:var(--hover);color:var(--text)}
+.x svg{width:12px;height:12px}
+
+/* in context */
+.stage{position:relative;height:560px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column}
+.topbar{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px 0 16px;border-bottom:1px solid var(--border)}
+.topbar b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabs{margin-left:auto;display:flex;gap:2px}
+.tab{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;color:var(--text2)}
+.tab:hover{background:var(--hover)}
+.tab[aria-selected="true"]{background:var(--selected);color:var(--text)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ph-review)}
+.strip{height:36px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text3)}
+.strip b{color:var(--text);font-weight:500;display:flex;gap:6px;align-items:center}
+.term{flex:1;min-height:0;background:var(--inset);font:12.5px/1.65 var(--mono);color:var(--term-text);padding:16px 20px;overflow:hidden}
+.term .u{background:var(--term-user);padding:4px 8px;margin:6px 0;display:inline-block}
+.term .d{color:var(--text3)}
+.pane{flex:1;min-height:0;padding:28px;color:var(--text2)}
+.pane h3{margin:0 0 6px;color:var(--text);font-size:16px}
+/* the deck: collapsed = newest in front, up to two edges peeking behind; hover/focus = fan out, max 4 */
+.stack{position:absolute;right:16px;bottom:16px;width:360px;max-width:calc(100% - 32px);transition:height .25s cubic-bezier(.2,.8,.2,1)}
+.stack .note{position:absolute;right:0;bottom:0;transform-origin:50% 100%;transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s}
+.stack .note.new{animation:up .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{opacity:0;translate:0 14px}to{opacity:1;translate:0 0}}
+.stack .note .body,.stack .note .chip,.stack .note .x{transition:opacity .2s}
+.stack:not(.open) .note:not(:first-child) .body,.stack:not(.open) .note:not(:first-child) .chip,.stack:not(.open) .note:not(:first-child) .x{opacity:0}
+.stack .more{position:absolute;right:4px;top:-22px;font-size:11px;color:var(--text3);opacity:0;transition:opacity .2s;pointer-events:none}
+.stack:not(.open) .more{opacity:1}
+@media (prefers-reduced-motion:reduce){.stack,.stack .note,.stack .note.new{transition:none;animation:none}}
+.fire{display:flex;flex-wrap:wrap;gap:6px;align-items:center;color:var(--text3);font-size:12px}
+.fire button{padding:4px 10px;border:1px solid var(--border);border-radius:7px;color:var(--text2)}
+.fire button:hover{background:var(--hover);color:var(--text)}
+.ctxnote{color:var(--text3);font-size:12px;margin:8px 0 0}
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>Chat notifications</h1>
+      <p>What the Chat tab raises when something elsewhere in the feature changes. The phase hue is on the icon, the label and the button; the card stays neutral. Nothing switches tabs on its own.</p>
+    </div>
+    <span class="seg" id="theme"><button data-t="dark">Dark</button><button data-t="light">Light</button></span>
+  </div>
+
+  <section>
+    <h2>Every notification, at rest</h2>
+    <div class="gallery" id="gallery"></div>
+  </section>
+
+  <section>
+    <h2>In context</h2>
+    <div class="fire" id="fire">Fire an event:</div>
+    <p class="ctxnote">Only the newest card shows; older ones peek behind it. Hover the deck to fan out the last 4. A fifth pushes the oldest out. Fire "Tickets updated" twice and it counts up on one card instead of adding another. "View" switches tabs; ✕ dismisses.</p>
+    <div class="stage" id="stage" style="margin-top:10px"></div>
+  </section>
+</div>
+
+<script>
+const IC={
+ planning:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg>',
+ tickets:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 1.8 13.5 5v6L8 14.2 2.5 11V5z"/><path d="M2.5 5 8 8.2 13.5 5M8 8.2v6"/></svg>',
+ building:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6" stroke-dasharray="3 2.2"/><path d="m6.6 5.4 4 2.6-4 2.6z" fill="currentColor" stroke="none"/></svg>',
+ review:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.4" fill="currentColor" stroke="none"/></svg>',
+ danger:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1" stroke-linecap="round"/></svg>',
+ x:'<svg viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m3 3 6 6M9 3 3 9"/></svg>',
+ arrow:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h7M6.5 3l3 3-3 3"/></svg>'
+};
+const PH={planning:'Planning',tickets:'Tickets',building:'Build',review:'Review',danger:'Build'};
+const EV=[
+ {k:'spec',ph:'planning',ttl:'Spec written',sub:'spec.md · 9 decisions folded in',go:'View spec',tab:'Overview',cap:'<b>Spec written</b> → Overview (planning body)'},
+ {k:'tickets',ph:'tickets',ttl:'Tickets updated',sub:'6 tickets stored for lap 1',go:'View tickets',tab:'Tickets',cap:'<b>Tickets stored, edited or cancelled</b> → Tickets tab'},
+ {k:'tickets-burst',ph:'tickets',ttl:'Tickets updated',sub:'#3, #5 and #7 edited',go:'View tickets',tab:'Tickets',count:3,cap:'<b>A burst</b> of ticket changes collapses into one card'},
+ {k:'fail',ph:'danger',ttl:'Ticket #4 failed',sub:'Typecheck failed after 2 retries',go:'View run',tab:'Overview',cap:'<b>A ticket fails mid-run</b> → Overview (run body)'},
+ {k:'run',ph:'building',ttl:'Run finished',sub:'6 of 6 landed · 38 min',go:'View run',tab:'Overview',cap:'<b>Run finished</b> → Overview (run body)'},
+ {k:'run-failed',ph:'danger',ttl:'Run finished with failures',sub:'4 of 6 landed · 2 failed',go:'View run',tab:'Overview',cap:'<b>Run finished, some failed</b>: danger instead of build hue'},
+ {k:'review',ph:'review',ttl:'Review ready',sub:'Agentic review · 2 findings',go:'View review',tab:'Overview',cap:'<b>Review ready</b> → Overview (review body)'},
+ {k:'drive',ph:'review',ttl:'Test drive running',sub:'localhost:4613 · seeded dev database',go:'Open',tab:'Overview',cap:'<b>Test drive comes up</b> → Overview (drive panel)'}
+];
+const $=id=>document.getElementById(id);
+function card(e,i,live){
+  return `<div class="note${e.bump||e.fresh?' new':''}" style="--ph:var(--ph-${e.ph})" ${live?`data-i="${i}"`:''}>
+    <span class="chip">${IC[e.ph]}</span>
+    <div class="body">
+      <span class="eyebrow">${PH[e.ph]}<span>· ${live?'just now':'2m ago'}</span></span>
+      <span class="ttl">${e.ttl}${(e.count||1)>1?`<span class="count">×${e.count}</span>`:''}</span>
+      <span class="sub">${e.sub}</span>
+      <button class="go" ${live?`data-go="${i}"`:''}>${e.go} ${IC.arrow}</button>
+    </div>
+    <button class="x" aria-label="Dismiss" ${live?`data-x="${i}"`:''}>${IC.x}</button>
+  </div>`;
+}
+$('gallery').innerHTML=EV.map(e=>`<div class="spec">${card(e)}<span class="cap">${e.cap}</span></div>`).join('');
+
+/* theme */
+function theme(t){try{localStorage.setItem('proto-theme',t)}catch(_){}
+  document.documentElement.setAttribute('data-theme',t);
+  $('theme').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.t===t)))}
+let saved=null;try{saved=localStorage.getItem('proto-theme')}catch(_){}
+theme(saved||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));
+$('theme').querySelectorAll('button').forEach(b=>b.onclick=()=>theme(b.dataset.t));
+
+/* in context */
+const S={tab:'Chat',notes:[]};
+function stage(){
+  const tabs=['Overview','Tickets','Chat'].map(t=>`<button class="tab" data-tab="${t}" aria-selected="${S.tab===t}">${t==='Chat'?'<span class="dot"></span>':''}${t}</button>`).join('');
+  const body=S.tab==='Chat'
+    ?`<div class="strip"><b><span class="dot"></span>Chat</b>lap 1 · one transcript per feature</div>
+      <div class="term"><div class="d">Claude Code v2.1.283 · Opus 5.5 (1M context)</div><div class="u">&gt; Let's talk through the review findings once the run is done.</div><div>Sure. While the burn runs I'll stay here; when it finishes you'll see it in the corner.</div><div class="d" style="margin-top:10px">› ▍</div></div>`
+    :`<div class="pane"><h3>${S.tab}</h3>You followed a notification here. The chat keeps running behind the Chat tab; its dot stays lit.</div>`;
+  // newest first in the DOM so :first-child is the front card
+  const order=S.notes.map((n,i)=>[n,i]).reverse();
+  $('stage').innerHTML=`<div class="topbar"><b>One chat layout everywhere</b><div class="tabs">${tabs}</div></div>${body}<div class="stack" id="stack" role="status" aria-live="polite">${S.tab==='Chat'?order.map(([n,i])=>card(n,i,true)).join('')+(S.notes.length>1?`<span class="more">${S.notes.length} notifications · hover to see all</span>`:''):''}</div>`;
+  layout();
+  const st=$('stack');
+  st.onmouseenter=()=>{S.open=true;layout()};st.onmouseleave=()=>{S.open=false;layout()};
+  st.addEventListener('focusin',()=>{S.open=true;layout()});st.addEventListener('focusout',e=>{if(!st.contains(e.relatedTarget)){S.open=false;layout()}});
+  $('stage').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;stage()});
+  $('stage').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{S.notes.splice(+b.dataset.x,1);stage()});
+  $('stage').querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{const n=S.notes.splice(+b.dataset.go,1)[0];S.tab=n.tab;stage()});
+  S.notes.forEach(n=>{n.bump=false;n.fresh=false});
+}
+function layout(){
+  const st=$('stack');if(!st)return;
+  const cards=[...st.querySelectorAll('.note')];
+  st.classList.toggle('open',!!S.open);
+  if(!cards.length){st.style.height='0px';return}
+  cards.forEach(c=>c.style.height='');
+  const hs=cards.map(c=>c.offsetHeight);
+  if(S.open){
+    let y=0;
+    cards.forEach((c,j)=>{c.style.transform=`translateY(${-y}px)`;c.style.opacity='1';c.style.zIndex=String(10-j);y+=hs[j]+8});
+    st.style.height=(y-8)+'px';
+  }else{
+    // the back cards take the front card's height so only a clean edge peeks
+    cards.forEach((c,j)=>{
+      const s=1-j*0.05;
+      c.style.transform=`translateY(${-j*9}px) scale(${s})`;
+      c.style.opacity=j<3?'1':'0';c.style.zIndex=String(10-j);
+      c.style.height=j===0?'':hs[0]+'px';
+    });
+    st.style.height=(hs[0]+Math.min(cards.length-1,2)*9)+'px';
+  }
+  if(S.open)cards.forEach(c=>c.style.height='');
+}
+const FIRE=EV.filter(e=>!['tickets-burst','run-failed'].includes(e.k));
+FIRE.forEach(e=>{const b=document.createElement('button');b.textContent=e.ttl;b.onclick=()=>{
+  if(S.tab!=='Chat'){const p=document.querySelector('.ctxnote');p.textContent='You are on '+S.tab+', not Chat, so nothing is raised: that page already updates live. Switch back to Chat and fire again.';return}
+  const same=S.notes.find(n=>n.k===e.k);
+  if(same){S.notes.splice(S.notes.indexOf(same),1);same.count=(same.count||1)+1;same.bump=true;if(e.k==='tickets')same.sub=same.count+' changes · #3, #5 and #7 edited';S.notes.push(same)}
+  else{S.notes.push({...e,count:1,fresh:true});if(S.notes.length>4)S.notes.shift()}
+  stage()};$('fire').appendChild(b)});
+S.notes.push({...EV[0],count:1},{...EV[2]},{...EV[4],count:1});
+stage();
+</script>

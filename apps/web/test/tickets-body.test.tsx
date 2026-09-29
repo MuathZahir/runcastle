@@ -11,8 +11,6 @@ const rows = [
 ] as Ticket[]
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: (message: string) => server.toasts.push(message) }) }))
-vi.mock('../src/components/SessionPanel', () => ({ SessionPanel: ({ right }: { right?: unknown }) => <div data-testid="terminal">terminal {right as never}</div> }))
-vi.mock('../src/components/EndSessionButton', () => ({ EndSessionButton: () => <button>End session</button> }))
 vi.mock('../src/trpc', () => ({ trpc: {
   useUtils: () => ({
     client: { ticket: { edit: { mutate: async (input: Record<string, unknown>) => { server.directEdits.push(input) } } } },
@@ -33,28 +31,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
 const { TicketsBody } = await import('../src/components/bodies/tickets/TicketsBody')
 
 beforeEach(() => { server.edits = []; server.directEdits = []; server.cancels = []; server.toasts = []; server.sessions = []; server.tickets = rows })
-afterEach(() => { cleanup(); sessionStorage.clear() })
-
-const liveSession = { id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status: 'live', createdAt: Date.now() }
-
-/** The body's own scroll column — the element the layout below is measured on. */
-function bodyColumn(container: HTMLElement): HTMLElement {
-  const column = container.firstElementChild as HTMLElement
-  expect(column.className).toBe('flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto')
-  return column
-}
-
-/**
- * Decision 6: an open terminal takes the whole body height and the ledger
- * scrolls in beneath it, so neither may shrink to share the space. Layout is
- * not computed in happy-dom, so the sizing contract is asserted on the classes.
- */
-function expectFullHeightTerminal(container: HTMLElement) {
-  const [panel, ledger] = [...bodyColumn(container).children]
-  expect(panel!.className).toContain('h-full')
-  expect(panel!.className).toContain('shrink-0')
-  expect(ledger!.className).toContain('shrink-0')
-}
+afterEach(() => { cleanup() })
 
 describe('TicketsBody wire actions', () => {
   it('sends a model-only partial edit from the row menu', () => {
@@ -73,43 +50,16 @@ describe('TicketsBody wire actions', () => {
     await vi.waitFor(() => expect(server.toasts).toContain('1 tickets set to gpt-5.6-sol'))
   })
 
-  it('shows an ended session as one quiet line, with no terminal and no doors', () => {
-    server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status: 'ended', createdAt: Date.now() }]
-    render(<TicketsBody featureId="f1" />)
-    expect(screen.getByText(/Chat session/)).toBeTruthy()
-    expect(screen.getByText(/ended/i)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Show terminal/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /End session/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Resume/ })).toBeNull()
-  })
-
-  it('holds the terminal open at full body height before tickets are emitted', () => {
-    server.tickets = []
-    server.sessions = [liveSession]
-    const { container } = render(<TicketsBody featureId="f1" />)
-    expect(screen.getByTestId('terminal')).toBeTruthy()
-    expectFullHeightTerminal(container)
-  })
-
-  it('starts collapsed once tickets exist, and Show terminal reopens it at full body height', () => {
-    server.sessions = [liveSession]
-    const first = render(<TicketsBody featureId="f1" />)
-    expect(screen.queryByTestId('terminal')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Show terminal/ }))
-    expect(screen.getByTestId('terminal')).toBeTruthy()
-    expectFullHeightTerminal(first.container)
-    first.unmount()
-    // The choice is remembered per session, so the panel comes back open.
-    const again = render(<TicketsBody featureId="f1" />)
-    expect(screen.getByTestId('terminal')).toBeTruthy()
-    expectFullHeightTerminal(again.container)
-  })
-
-  it('lets the ledger own the body while the terminal is collapsed', () => {
-    server.sessions = [liveSession]
-    const { container } = render(<TicketsBody featureId="f1" />)
-    const [, ledger] = [...bodyColumn(container).children]
-    expect(ledger!.className).not.toContain('shrink-0')
+  /** one-chat-layout-everywhere decision 1: every session lives on the Chat tab. */
+  it('holds no terminal and no session strip, live or ended — the ledger owns the body', () => {
+    for (const status of ['live', 'ended']) {
+      server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status, createdAt: Date.now() }]
+      const { container, unmount } = render(<TicketsBody featureId="f1" />)
+      expect(screen.queryByText(/Chat session/)).toBeNull()
+      expect(screen.queryByRole('button', { name: /Show terminal|Hide terminal|End session/ })).toBeNull()
+      expect([...container.firstElementChild!.children].map((c) => c.getAttribute('aria-label'))).toEqual(['Tickets'])
+      unmount()
+    }
   })
 
   it('calls ticket.cancel after the row confirmation', () => {

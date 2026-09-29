@@ -15,18 +15,38 @@
  * URL and out of history, so Back never means "close the popup".
  */
 
+/** The views a feature page switches between with its topbar tabs. */
+export type FeatureView = 'overview' | 'tickets' | 'chat'
+
+/**
+ * The feature views that carry a path segment of their own
+ * (one-chat-layout-everywhere decision 8). Overview is the feature's bare path.
+ */
+export type FeatureTab = Exclude<FeatureView, 'overview'>
+
+const FEATURE_TABS: readonly FeatureTab[] = ['tickets', 'chat']
+
+function isFeatureTab(segment: string): segment is FeatureTab {
+  return (FEATURE_TABS as readonly string[]).includes(segment)
+}
+
 /** Everywhere the app can be, in a form that survives a reload. */
 export type AppLocation =
   /** The portfolio home — every open project as a card. */
   | { kind: 'home' }
   /** A project, landing on its restored feature (or its home). */
   | { kind: 'project'; projectId: string }
-  /** A feature inside a project, addressed by slug. */
-  | { kind: 'feature'; projectId: string; featureSlug: string }
+  /** A feature inside a project, addressed by slug; no `tab` is its Overview. */
+  | { kind: 'feature'; projectId: string; featureSlug: string; tab?: FeatureTab }
   /** A project's conversation. */
   | { kind: 'chat'; projectId: string }
   /** A project's preparation. */
   | { kind: 'prepare'; projectId: string }
+
+/** The view a feature location names — its tab, or Overview for none. */
+export function featureViewOf(location: { tab?: FeatureTab }): FeatureView {
+  return location.tab ?? 'overview'
+}
 
 /** The project a location is inside, or null for the portfolio home. */
 export function projectIdOf(location: AppLocation): string | null {
@@ -44,8 +64,10 @@ export function pathFor(location: AppLocation): string {
       return `${project}/chat`
     case 'prepare':
       return `${project}/prepare`
-    case 'feature':
-      return `${project}/f/${encodeURIComponent(location.featureSlug)}`
+    case 'feature': {
+      const feature = `${project}/f/${encodeURIComponent(location.featureSlug)}`
+      return location.tab ? `${feature}/${location.tab}` : feature
+    }
   }
 }
 
@@ -79,6 +101,10 @@ export function parsePath(path: string): AppLocation | null {
   if (parts.length === 3 && parts[2] === 'prepare') return { kind: 'prepare', projectId }
   if (parts.length === 4 && parts[2] === 'f' && parts[3]) {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
+  }
+  const tab = parts[4]
+  if (parts.length === 5 && parts[2] === 'f' && parts[3] && tab && isFeatureTab(tab)) {
+    return { kind: 'feature', projectId, featureSlug: parts[3], tab }
   }
   return null
 }
@@ -120,10 +146,15 @@ export function locationFor(state: {
   projectSelected: boolean
   /** The selected feature's slug, or null when none is selected. */
   featureSlug: string | null
+  /** The selected feature's view; Overview when omitted. */
+  featureView?: FeatureView
 }): AppLocation {
-  const { projectId } = state
+  const { projectId, featureView = 'overview' } = state
   if (state.preparing) return { kind: 'prepare', projectId }
   if (state.projectSelected) return { kind: 'chat', projectId }
-  if (state.featureSlug) return { kind: 'feature', projectId, featureSlug: state.featureSlug }
+  if (state.featureSlug) {
+    const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const
+    return featureView === 'overview' ? feature : { ...feature, tab: featureView }
+  }
   return { kind: 'project', projectId }
 }

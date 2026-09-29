@@ -70,14 +70,15 @@ describe('the next-step bar’s count line', () => {
   })
 
   it('renders nothing when there is nothing to do and nothing happening', () => {
+    // The constant Chat door is always something to do (one-chat-per-feature
+    // decision 8), so a shipped bar keeps it.
     expect(bar({ primary: undefined, secondary: [{ label: 'Chat', kind: 'chat' }], title: 'Shipped to main' })).toContain('Chat')
     expect(
       renderToStaticMarkup(
         createElement(NextStepBar, {
-          ns: { kick: 'SHIPPED', title: 'Shipped to main', secondary: [{ label: 'Chat', kind: 'chat' }], busy: false },
+          ns: { kick: 'SHIPPED', title: 'Shipped to main', secondary: [], busy: false },
           guidance: true,
           busy: false,
-          hideChat: true,
           onAction: () => undefined,
         }),
       ),

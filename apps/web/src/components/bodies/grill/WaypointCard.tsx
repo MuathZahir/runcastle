@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trpc } from '../../../trpc'
 import { useToast } from '../../../lib/toast'
+import { useLandOnChat } from '../../../lib/land-on-chat'
 import type { LiveSessionBlocker, RailWaypoint, WaypointGroupKey } from '../../../lib/feature-ui'
 import { IconChevronRight, IconPlay, IconRefresh } from '../../../icons'
 import { Button, StatusDot, cx } from '../../../ui'
@@ -41,11 +42,14 @@ export function WaypointCard({
   const resuming = !research && !!waypoint.lastSessionId
   const byRun = waypoint.claimedBy?.startsWith('run_') ?? false
   const shownOpen = readonly || open
+  const landOnChat = useLandOnChat(featureId)
   const work = trpc.feature.workWaypoint.useMutation({
-    onSuccess: () => {
+    onSuccess: (res) => {
       setConfirming(false)
       void utils.feature.get.invalidate({ id: featureId })
       void utils.feature.list.invalidate()
+      // A research waypoint starts a headless run; only a session lands on Chat.
+      if ('sessionId' in res) landOnChat()
     },
     onError: (error, variables) => {
       if (!research && !variables.endLive && blocker && error.data?.code === 'PRECONDITION_FAILED') setConfirming(true)

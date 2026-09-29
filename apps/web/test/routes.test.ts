@@ -21,6 +21,8 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'chat', projectId: 'proj_a' },
   { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
+  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'tickets' },
+  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'chat' },
 ]
 
 describe('pathFor', () => {
@@ -31,6 +33,8 @@ describe('pathFor', () => {
       '/p/proj_a/chat',
       '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
+      '/p/proj_a/f/flow-redesign-shell/tickets',
+      '/p/proj_a/f/flow-redesign-shell/chat',
     ])
   })
 
@@ -64,6 +68,8 @@ describe('parsePath', () => {
     expect(parsePath('/p/proj_a/settings')).toBeNull()
     expect(parsePath('/p/proj_a/f')).toBeNull()
     expect(parsePath('/p/proj_a/f/slug/extra')).toBeNull()
+    expect(parsePath('/p/proj_a/f/slug/overview')).toBeNull()
+    expect(parsePath('/p/proj_a/f/slug/chat/more')).toBeNull()
   })
 
   it('treats a malformed escape as an unknown path rather than throwing', () => {
@@ -117,6 +123,24 @@ describe('locationFor', () => {
       kind: 'feature',
       projectId: 'proj_a',
       featureSlug: 'x',
+    })
+  })
+
+  it("carries the selected feature's tab, and none for its Overview", () => {
+    const feature = { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }
+    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'overview' })).toEqual(feature)
+    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'tickets' })).toEqual({
+      ...feature,
+      tab: 'tickets',
+    })
+    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'chat' })).toEqual({
+      ...feature,
+      tab: 'chat',
+    })
+    // A tab is the feature's; the project chat and preparation have none.
+    expect(locationFor({ ...base, projectSelected: true, featureSlug: 'x', featureView: 'chat' })).toEqual({
+      kind: 'chat',
+      projectId: 'proj_a',
     })
   })
 

@@ -27,7 +27,6 @@ const record = (call: string) => (input: Record<string, unknown>, options?: { on
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: (message: string) => server.toasts.push(message) }) }))
 vi.mock('../src/lib/events', () => ({ useEventLog: () => [] }))
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false }))
-vi.mock('../src/components/SessionPanel', () => ({ SessionPanel: () => null }))
 vi.mock('../src/components/run/LaneTranscript', () => ({ LaneTranscript: () => null }))
 vi.mock('../src/lib/reviews', () => ({ useReviewArtifacts: () => ({ data: [] }) }))
 vi.mock('../src/trpc', () => ({ trpc: {

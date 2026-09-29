@@ -61,10 +61,6 @@ function sentence(text: string): string {
  * and when there is a way out of that reason (decision 20) the caption carries
  * the one click that takes it.
  *
- * `hideChat` drops the constant Chat door from the secondaries when the page's
- * topbar already carries it — the same action, said once. A Chat the resolver
- * promoted to the primary stays: there, talking IS the next step.
- *
  * With nothing to do and nothing happening (a shipped feature), it renders
  * nothing — the stepper already says where the feature is.
  */
@@ -74,7 +70,6 @@ export function NextStepBar({
   busy,
   onAction,
   draftBranch,
-  hideChat = false,
   demote,
 }: {
   ns: NextStep
@@ -88,7 +83,6 @@ export function NextStepBar({
     missing: boolean
     onPick: (branch: string) => void
   }
-  hideChat?: boolean
   /**
    * Secondaries that are reachable here but not this state's real next step
    * (Merge & ship before review): they go straight to the "More" menu, with
@@ -96,7 +90,7 @@ export function NextStepBar({
    */
   demote?: readonly ActionKind[]
 }) {
-  const secondary = hideChat ? ns.secondary.filter((a) => a.kind !== 'chat') : ns.secondary
+  const secondary = ns.secondary
   // Disabled actions, in button order, each with the reason it cannot fire.
   const refused = [...secondary, ns.primary].filter(
     (a): a is NextAction & { disabled: string } => !!a?.disabled,

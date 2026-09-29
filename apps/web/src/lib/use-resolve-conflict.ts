@@ -1,6 +1,7 @@
 import { trpc } from '../trpc'
 import { mergeConflictKickoff, type MergeConflictState } from './feature-ui'
 import { useToast } from './toast'
+import { useLandOnChat } from './land-on-chat'
 
 /**
  * Launching the agent that resolves a standing merge conflict — the one
@@ -31,7 +32,15 @@ export function useResolveConflict(featureId: string, branch: string) {
   }
 
   const end = trpc.feature.endSession.useMutation({ onError })
-  const launch = trpc.feature.launchSession.useMutation({ onSuccess: refresh, onError })
+  // Every entry lands on the Chat tab, where the resolving session is.
+  const landOnChat = useLandOnChat(featureId)
+  const launch = trpc.feature.launchSession.useMutation({
+    onSuccess: () => {
+      refresh()
+      landOnChat()
+    },
+    onError,
+  })
 
   return {
     pending: end.isPending || launch.isPending,

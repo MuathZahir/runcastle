@@ -224,7 +224,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `PageHeader` | `title`, `meta` (MetaLine items or a node), `actions`, children. | Title once, 22/28. |
 | `PageSection` | `title`, `action`, `id`, `className`, children. | 16/24 heading; separated by 40px of air. |
 | `Aside` | `title`, `label` (names the region when `title` is not a string), `onClose`, `actions`, `className`, `bodyClassName`, children. | The one right panel; slides in. |
-| `AsideLayout` | `aside` (the `Aside`, or falsy), `className` (the page column), children (the page). | The row a page and its aside share: without an aside it renders the page alone; with one, beside it — and **floating over** the page (`shadow-dialog`) when the content panel is under 56rem. Every aside (chat, details, notes, review notes, preparation) goes through it. |
+| `AsideLayout` | `aside` (the `Aside`, or falsy), `className` (the page column), children (the page). | The row a page and its aside share: without an aside it renders the page alone; with one, beside it — and **floating over** the page (`shadow-dialog`) when the content panel is under 56rem. Every aside (details, notes, review notes, preparation) goes through it. |
 | `Card` | `header`, `className`, children. | Quiet bordered surface — **prefer no card**. |
 | `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
 
@@ -313,6 +313,13 @@ the phase-body dispatch and the action switch; these moved out:
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
+| `FeatureViewTabs.tsx` | Overview \| Tickets \| Chat, with the Chat tab's live dot; none on a draft. |
+| `FeatureChat.tsx` | The Chat tab: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
+| `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
+
+Every chat surface — the project's chat and each feature's Chat tab — renders
+through `src/components/chat/ChatView.tsx` (the strip, the full-area terminal,
+the at-rest state). No phase body holds a terminal.
 
 ## Testing
 

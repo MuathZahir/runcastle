@@ -5,6 +5,7 @@ import { trpc } from '../../trpc'
 import { openApp, openAppWaitingLabel, type DriveFailure } from '../../lib/feature-ui'
 import { DRIVE_INSTRUCTIONS_SCOPE_NOTE } from '../../lib/settings'
 import { useToast } from '../../lib/toast'
+import { useLandOnChat } from '../../lib/land-on-chat'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { Markdown } from '../Markdown'
@@ -107,10 +108,13 @@ export function DriveSetupFailed({
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
+  // The fix session lands on the Chat tab, like every session launch.
+  const landOnChat = useLandOnChat(featureId)
   const fix = trpc.feature.fixDrive.useMutation({
     onSuccess: () => {
       void utils.feature.get.invalidate({ id: featureId })
       void utils.events.invalidate()
+      landOnChat()
     },
     onError: (e) => toast.push(e.message),
   })

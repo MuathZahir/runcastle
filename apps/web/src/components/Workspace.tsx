@@ -7,22 +7,20 @@ import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { STOP_TIMEOUT, lapExplainer } from '../lib/vocabulary'
 import { relTimeAgo } from '../lib/format'
-import { pathFor } from '../lib/routes'
+import { pathFor, type FeatureView } from '../lib/routes'
+import { useLandOnChat } from '../lib/land-on-chat'
 import {
   AsideLayout,
-  Button,
   DimLine,
   IconButton,
   Page,
   PageSection,
   PageTopbar,
-  StatusDot,
   StatusLabel,
-  Tabs,
   cx,
   type MetaItem,
 } from '../ui'
-import { IconCube, IconHome, IconMessage, IconPanelRight, IconX, PhaseIcon } from '../icons'
+import { IconPanelRight, IconX, PhaseIcon } from '../icons'
 import type { FeatureFull, PrepView } from '../lib/api'
 import { unverifiedDriveKeys } from '../lib/prep-findings'
 import { effectiveStepModel, settingsLocationFromMessage } from '../lib/settings'
@@ -41,6 +39,7 @@ import {
   lapTicketCount,
   lastTestDriveLap,
   latestRun,
+  liveSessionLine,
   mapDocPath,
   mergeSummary,
   nextStep,
@@ -77,8 +76,10 @@ import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
 import { Inspector } from './inspector/Inspector'
-import { ChatPanel } from './workspace/ChatPanel'
 import { copyText } from './workspace/copy-text'
+import { FeatureChat } from './workspace/FeatureChat'
+import { FeatureViewTabs } from './workspace/FeatureViewTabs'
+import { LiveSessionBar } from './workspace/LiveSessionBar'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
@@ -87,9 +88,6 @@ import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
 export { FeatureCrash } from './workspace/FeaturePanes'
-
-/** The views a feature page switches between with its topbar Tabs. */
-type FeatureView = 'overview' | 'tickets'
 
 /** The page's root: a column filling the content panel. */
 const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
@@ -116,27 +114,28 @@ function writeSession(key: string, value: string) {
  * The feature page — the page every feature lives on (DESIGN.md §Frame, §Page
  * anatomy), rendered inside the shell's content panel:
  *
- *   PageTopbar — phase glyph + title · view Tabs · Chat · "…" · details toggle
+ *   PageTopbar — phase glyph + title · Overview | Tickets | Chat · "…" · details
  *   the page — title once, a meta line, the pipeline stepper, the next-step
  *              row (one primary), then the body for the phase in view
- *   one Aside — the feature chat or the details, never both
+ *   the Chat tab — the feature's live session full-area (`FeatureChat`), kept
+ *              mounted but hidden behind the other tabs
+ *   one Aside — the details
  *
  * Clicking an earlier step pins a read-only view of that phase; the next-step
- * row becomes one quiet line and a way back. A body that holds a terminal
- * (live planning, review) fills the panel and scrolls itself; every other body
- * is a document in the centred page column.
+ * row becomes one quiet line and a way back. Live planning's panes fill the
+ * panel and scroll themselves; every other body is a document in the centred
+ * page column. No body holds a terminal: every session lives on the Chat tab
+ * (one-chat-layout-everywhere decision 1).
  */
 export function Workspace({
   featureId,
+  view: viewProp,
+  onViewChange,
   viewedPhase,
   onViewPhase,
   guidance,
   mapRailCollapsed,
   onToggleMapRail,
-  artifactPaneCollapsed,
-  onToggleArtifactPane,
-  chatPanelOpen,
-  onToggleChatPanel,
   driving,
   onDriveChange,
   onDeleted,
@@ -144,15 +143,14 @@ export function Workspace({
   onToggleDetails,
 }: {
   featureId: string
+  /** The view tab in front — the shell's, so the address bar can name it. */
+  view: FeatureView
+  onViewChange: (view: FeatureView) => void
   viewedPhase: Phase | null
   onViewPhase: (phase: Phase | null) => void
   guidance: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
-  artifactPaneCollapsed: boolean
-  onToggleArtifactPane: () => void
-  chatPanelOpen: boolean
-  onToggleChatPanel: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
   /**
@@ -355,7 +353,15 @@ export function Workspace({
     void utils.events.invalidate()
   }
 
-  const launch = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: (e) => toast.push(e.message) })
+  // Every session this page launches lands on the Chat tab once it is up
+  // (one-chat-layout-everywhere decision 3) — the bar's Chat, a draft's Start,
+  // every road into the next lap, converge, work waypoint and fix drive.
+  const landOnChat = useLandOnChat(featureId)
+  const launched = () => {
+    invalidate()
+    landOnChat()
+  }
+  const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
   const burn = trpc.feature.burn.useMutation({
     onSuccess: () => {
       invalidate()
@@ -365,16 +371,15 @@ export function Workspace({
   })
   // Convergence is the bar's own action on a mapped feature (decision #4): it
   // crosses G1 — with an override reason when waypoints are still open — and
-  // spawns the converge session, which lands the feature at `spec`.
+  // spawns the converge session, which lands the feature at `spec`. Landing on
+  // Chat also drops any phase pin, so the page follows the phase it lands at.
   const converge = trpc.feature.converge.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
+    onSuccess: launched,
     onError: (e) => toast.push(e.message),
   })
+  // A research waypoint starts a headless run, not a session: nothing to land on.
   const workWaypoint = trpc.feature.workWaypoint.useMutation({
-    onSuccess: invalidate,
+    onSuccess: (res) => ('sessionId' in res ? launched() : invalidate()),
     onError: (e) => toast.push(e.message),
   })
   // The end half of every end-and-proceed compound (decision 4). No surface
@@ -405,7 +410,7 @@ export function Workspace({
   // An agent sent at the environment a drive's setup command died in — the
   // stage offers the same launch from inside the failure it explains.
   const fixDrive = trpc.feature.fixDrive.useMutation({
-    onSuccess: invalidate,
+    onSuccess: launched,
     onError: (e) => toast.push(e.message),
   })
   const testDrive = trpc.feature.testDrive.useMutation({
@@ -482,13 +487,8 @@ export function Workspace({
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
-  // The page's views of this feature (Overview · Tickets), stamped with the
-  // feature it was chosen on — this component is not remounted between
-  // features, so an unstamped choice would follow the user to the next one.
-  const [viewPick, setViewPick] = useState<{ featureId: string; view: FeatureView } | null>(null)
-  // The details aside (knowledge + activity). It shares the page's one aside
-  // slot with the chat: opening one closes the other (DESIGN.md principle 1).
-  // Remembered for the browser session — the chat's own choice is the shell's.
+  // The details aside (knowledge + activity), the page's one aside.
+  // Remembered for the browser session.
   const [ownDetailsOpen, setOwnDetailsOpen] = useState(() => readSession(DETAILS_KEY) === '1')
   const detailsControlled = detailsOpenProp !== undefined
   const detailsOpen = detailsControlled ? detailsOpenProp : ownDetailsOpen
@@ -595,9 +595,6 @@ export function Workspace({
   // the bar's "End session & resolve" and the click that follows it can never be
   // about different sessions.
   const liveSession = activeSession(full.sessions)
-  // The conversation is the session that is up — what the Chat door consults
-  // before launching, so it never re-briefs a chat the human is already in.
-  const liveChat = liveSession?.kind === 'chat' ? liveSession : undefined
   // An Iterate whose lap session could not be opened (decision 26g), from the
   // same event feed as the conflict — one poll for all of it. Handed to the
   // review body, which renders it in the alert slot beside the conflict card.
@@ -680,35 +677,26 @@ export function Workspace({
   }
 
   /**
-   * The feature's one conversation, from whichever state the bar was in
-   * (decisions 8 and 12). The launch resumes the newest chat transcript, starts
-   * the first one, or — with the chat already live — answers with the session
-   * that is up rather than refusing; the door never has to know which.
-   *
-   * It no longer has to land the human anywhere: the conversation shows up in
-   * the docked panel beside whatever body is up (decision 16), so the door that
-   * used to pin review's view onto planning now opens the panel in place.
+   * Resume the feature's one conversation, or start the first one (decisions 8
+   * and 12) — the Chat tab's own Resume / Start button.
    */
-  const openChat = () => {
+  const launchChat = () => {
     launch.mutate({ featureId, kind: 'chat' })
   }
 
   /**
-   * The bar's constant Chat door, which is now a toggle (decision 16): away, it
-   * docks the panel and resumes the conversation; docked, it sends the panel
-   * back without touching the session — collapsing the chat is not ending it.
+   * The bar's constant Chat door: it starts or resumes the conversation and
+   * lands on the Chat tab (one-chat-layout-everywhere decision 5).
    *
-   * A chat that is already up is not re-launched on the way in. The server would
-   * answer with that same session (decision 12), but it would also write a fresh
-   * state header into its terminal on every click (decision 13) — and a header
-   * is for a human arriving at a conversation they had lost sight of, not for
-   * one that is on screen already and one toggle away.
+   * A session that is already up is not re-launched on the way in — the tab
+   * hosts whichever one is live (decision 9). The server would answer a chat
+   * launch with that same session (decision 12), but it would also write a fresh
+   * state header into its terminal on every click (decision 13), which is for a
+   * human arriving at a conversation they had lost sight of.
    */
-  const toggleChat = () => {
-    if (!chatPanelOpen && !liveChat) openChat()
-    // One aside at a time: the chat coming in sends the details away.
-    if (!chatPanelOpen) setDetailsOpen(false)
-    onToggleChatPanel()
+  const openChat = () => {
+    if (liveSession) landOnChat()
+    else launchChat()
   }
 
   const runAction = (kind: ActionKind, waypointId?: string) => {
@@ -721,7 +709,7 @@ export function Workspace({
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
         break
       case 'chat':
-        toggleChat()
+        openChat()
         break
       case 'iterate':
         enterIterate()
@@ -859,24 +847,22 @@ export function Workspace({
 
   // ---- the frame (DESIGN.md §Frame, §Page anatomy) ----
 
-  // The page's views of the feature. Tickets is a view only where it is not
-  // already the body (the ledger before the first burn IS the overview).
+  // The page's views of the feature: Overview | Tickets | Chat in every state
+  // (one-chat-layout-everywhere decision 1). A draft has no branch to chat on
+  // and nothing to ticket, so it has no views at all (decision 11).
   const ticketsIsBody = ticketsAreBody({ full, phase: bodyPhase, readonly, hasRun: !!run })
-  const hasTicketsView = !isDraft && full.tickets.length > 0 && !ticketsIsBody
-  const view: FeatureView =
-    hasTicketsView && viewPick?.featureId === featureId ? viewPick.view : 'overview'
-  const setView = (v: FeatureView) => setViewPick({ featureId, view: v })
+  const view: FeatureView = isDraft ? 'overview' : viewProp
   // Pinning a phase is a different overview; it always lands on it.
   const viewPhase = (p: Phase | null) => {
-    setView('overview')
+    onViewChange('overview')
     onViewPhase(p)
   }
   // The one count every surface states (implementation tickets of this lap) —
   // see `lapTicketCount`.
   const ticketCount = lapTicketCount(full.tickets, feature.lap)
 
-  // Live planning holds a terminal beside its artifact, so it fills the panel
-  // and each pane scrolls itself; every other body is a document in the page
+  // Live planning's artifact scrolls itself, so it fills the panel; every
+  // other body is a document in the page
   // column, the header scrolling away with it. The data-heavy ones (the run's
   // lanes, the review's evidence, the ledger) take the wide column.
   const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly && !ticketsIsBody
@@ -888,13 +874,8 @@ export function Workspace({
   // Rises in once per navigation — feature, pinned phase, view — never on a refetch.
   const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}:${view}`
 
-  // One aside at a time: the chat or the details, never both.
-  const aside: 'chat' | 'details' | null = chatPanelOpen ? 'chat' : detailsOpen ? 'details' : null
-  const toggleDetails = () => {
-    if (aside === 'details') return setDetailsOpen(false)
-    if (chatPanelOpen) onToggleChatPanel()
-    setDetailsOpen(true)
-  }
+  // The whole live-session line on Overview (decision 7), in every state.
+  const liveLine = liveSessionLine(full.sessions)
 
   const shipped = feature.status === 'shipped' ? shippedAt([...events]) : null
   const factList: Array<MetaItem | false> = [
@@ -957,7 +938,6 @@ export function Workspace({
       guidance={guidance}
       busy={busy}
       onAction={runAction}
-      hideChat
       // Merge is reachable from every state (decision 3) but it is review's
       // step: before that it waits in the row's "More" menu.
       {...(bodyPhase === 'planning' || bodyPhase === 'building' ? { demote: ['merge'] as const } : {})}
@@ -993,6 +973,9 @@ export function Workspace({
         </div>
       )}
       {nextRow}
+      {view === 'overview' && !readonly && liveLine && (
+        <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => onViewChange('chat')} />
+      )}
     </FeatureHeader>
   )
 
@@ -1016,12 +999,9 @@ export function Workspace({
         runId={run?.id ?? null}
         ticketsIsBody={ticketsIsBody}
         readonly={readonly}
-        chatDocked={chatPanelOpen}
         mapRailCollapsed={mapRailCollapsed}
         onToggleMapRail={onToggleMapRail}
         onViewPhase={viewPhase}
-        artifactPaneCollapsed={artifactPaneCollapsed}
-        onToggleArtifactPane={onToggleArtifactPane}
       />
     )
 
@@ -1036,21 +1016,9 @@ export function Workspace({
           own 44px header lines up with the topbar rather than stacking under it. */}
       <AsideLayout
         // Floating over a narrow panel, the aside starts under the topbar so
-        // the tabs, Chat, "…" and the aside's own toggle stay reachable.
+        // the tabs, "…" and the aside's own toggle stay reachable.
         asideClassName="@max-4xl:top-(--topbar-h)"
-        aside={
-          aside === null ? null : aside === 'chat' ? (
-            <ChatPanel
-              featureId={featureId}
-              sessions={full.sessions}
-              busy={launch.isPending}
-              onOpenChat={openChat}
-              onCollapse={onToggleChatPanel}
-            />
-          ) : (
-            <Inspector featureId={featureId} onClose={() => setDetailsOpen(false)} />
-          )
-        }
+        aside={detailsOpen && <Inspector featureId={featureId} onClose={() => setDetailsOpen(false)} />}
       >
         <PageTopbar
           crumbs={[
@@ -1060,23 +1028,13 @@ export function Workspace({
             },
           ]}
           tabs={
-            hasTicketsView ? (
-              <Tabs<FeatureView>
-                label="Feature views"
-                size="sm"
-                value={view}
-                onChange={setView}
-                items={[
-                  { id: 'overview', label: 'Overview', icon: <IconHome /> },
-                  {
-                    id: 'tickets',
-                    label: 'Tickets',
-                    icon: <IconCube />,
-                    ...(ticketCount.total > 0 ? { count: ticketCount.total } : {}),
-                  },
-                ]}
-              />
-            ) : undefined
+            <FeatureViewTabs
+              isDraft={isDraft}
+              value={view}
+              onChange={onViewChange}
+              ticketCount={ticketCount.total}
+              sessionLive={!!liveSession}
+            />
           }
           actions={
             <>
@@ -1085,30 +1043,17 @@ export function Workspace({
                   Offline, retrying
                 </StatusLabel>
               )}
-              {!isDraft && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={<IconMessage />}
-                  aria-pressed={aside === 'chat'}
-                  onClick={toggleChat}
-                  disabled={launch.isPending}
-                >
-                  Chat
-                  {liveChat && <StatusDot tone="live" label="Chat session live" />}
-                </Button>
-              )}
               <FeatureActionsMenu actions={menuActions} size="md" />
               <IconButton
-                label={aside === 'details' ? 'Hide details' : 'Show details'}
+                label={detailsOpen ? 'Hide details' : 'Show details'}
                 icon={<IconPanelRight />}
-                active={aside === 'details'}
-                onClick={toggleDetails}
+                active={detailsOpen}
+                onClick={() => setDetailsOpen(!detailsOpen)}
               />
             </>
           }
         />
-        {fill ? (
+        {view === 'chat' ? null : fill ? (
           // The same column, padding and entrance as `Page width="wide"`, so
           // the title never moves between planning and any other phase or tab.
           <div key={routeKey} className="mx-auto flex min-h-0 w-full max-w-(--content-wide) min-w-0 flex-1 flex-col px-8 pt-12 animate-rise-in">
@@ -1122,6 +1067,18 @@ export function Workspace({
             {header}
             <div className="mt-10">{body}</div>
           </Page>
+        )}
+        {/* Mounted behind the other tabs, never unmounted by them: xterm keeps
+            its buffer and the pty keeps one grid size. */}
+        {!isDraft && (
+          <FeatureChat
+            full={full}
+            events={events}
+            hidden={view !== 'chat'}
+            launching={launch.isPending}
+            onLaunch={launchChat}
+            onView={onViewChange}
+          />
         )}
       </AsideLayout>
 
@@ -1220,12 +1177,9 @@ function PhaseBody({
   runId,
   ticketsIsBody,
   readonly,
-  chatDocked,
   mapRailCollapsed,
   onToggleMapRail,
   onViewPhase,
-  artifactPaneCollapsed,
-  onToggleArtifactPane,
 }: {
   effective: Phase
   full: FeatureFull
@@ -1236,13 +1190,9 @@ function PhaseBody({
   /** The ledger is this body — see `ticketsAreBody`. */
   ticketsIsBody: boolean
   readonly: boolean
-  /** The chat panel is up beside this body, so the chat's terminal is not ours. */
-  chatDocked: boolean
   mapRailCollapsed: boolean
   onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
-  artifactPaneCollapsed: boolean
-  onToggleArtifactPane: () => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether.
@@ -1263,17 +1213,9 @@ function PhaseBody({
       // lap has tickets, they are what the human reviews and corrects before
       // Burn — and a quick change never had a conversation to show.
       return ticketsIsBody ? (
-        <TicketsBody featureId={full.feature.id} chatDocked={chatDocked} />
+        <TicketsBody featureId={full.feature.id} />
       ) : (
-        <GrillBody
-          full={full}
-          effective={effective}
-          chatDocked={chatDocked}
-          mapRailCollapsed={mapRailCollapsed}
-          onToggleMapRail={onToggleMapRail}
-          artifactPaneCollapsed={artifactPaneCollapsed}
-          onToggleArtifactPane={onToggleArtifactPane}
-        />
+        <GrillBody full={full} effective={effective} />
       )
     case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane
@@ -1282,14 +1224,9 @@ function PhaseBody({
       // (decision 21: review the one card, then Burn), and it also rescues a
       // feature whose G3 was overridden.
       return runId ? (
-        <RunBody
-          featureId={full.feature.id}
-          runId={runId}
-          readonly={readonly}
-          chatDocked={chatDocked}
-        />
+        <RunBody featureId={full.feature.id} runId={runId} readonly={readonly} />
       ) : (
-        <TicketsBody featureId={full.feature.id} chatDocked={chatDocked} />
+        <TicketsBody featureId={full.feature.id} />
       )
     case 'review':
       return (
@@ -1304,6 +1241,6 @@ function PhaseBody({
         />
       )
     case 'shipped':
-      return <ShippedBody full={full} chatDocked={chatDocked} />
+      return <ShippedBody full={full} />
   }
 }

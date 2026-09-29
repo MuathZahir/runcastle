@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote } from '@runcastle/core'
-import type { ProjectSession } from '../src/lib/api'
+import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 
 /**
@@ -57,6 +57,12 @@ vi.mock('../src/trpc', () => {
       project: {
         list: { useQuery: () => ({ data: [project] }) },
         branches: { useQuery: () => ({ data: { current: 'main', detected: 'main', branches: [] } }) },
+        conversationTranscript: {
+          useQuery: () => ({
+            isPending: false,
+            data: { status: 'ok', runtime: 'claude-code', turns: [{ role: 'user', text: 'plan the audit' }] },
+          }),
+        },
         testDrive: {
           useMutation: () => ({
             isPending: false,
@@ -307,6 +313,56 @@ describe('driving from the project page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
     expect(screen.getByText('Setup ran — nothing started.')).toBeTruthy()
     expect(screen.getByRole('textbox', { name: 'New note' })).toBeTruthy()
+  })
+})
+
+/**
+ * An ended project chat is ChatView at rest, as a feature's ended Chat tab is
+ * (one-chat-layout-everywhere decision 6) — not a read-back page of its own.
+ */
+describe('an ended project chat', () => {
+  const ended = (over: Partial<ProjectConversation> = {}): ProjectConversation => ({
+    id: 'sess_old',
+    title: null,
+    createdAt: 1_000,
+    status: 'ended',
+    resumable: true,
+    ...over,
+  }) as ProjectConversation
+
+  it('opens as the shared chat surface: the strip, the transcript, Resume at the bottom', () => {
+    const api = talk({ conversations: [ended()] })
+    mount(api)
+    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
+
+    const chat = screen.getByRole('region', { name: 'Project chat' })
+    expect(chat.hasAttribute('data-chat-view')).toBe(true)
+    expect(within(chat).getByText('Project chat')).toBeTruthy()
+    expect(within(chat).getByText('plan the audit')).toBeTruthy()
+    // nothing live: no dot, nothing to end, and no page-level Reopen
+    expect(within(chat).queryByRole('img', { name: 'Live' })).toBeNull()
+    expect(within(chat).queryByRole('button', { name: 'End session' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reopen' })).toBeNull()
+    expect(screen.queryByText(/^Started /)).toBeNull()
+
+    fireEvent.click(within(chat).getByRole('button', { name: 'Resume the conversation' }))
+    expect(api.resume).toHaveBeenCalledWith('sess_old')
+  })
+
+  it('offers no Resume on a chat the agent never picked up', () => {
+    mount(talk({ conversations: [ended({ resumable: false })] }))
+    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
+
+    const chat = screen.getByRole('region', { name: 'Project chat' })
+    expect(within(chat).getByText('plan the audit')).toBeTruthy()
+    expect(within(chat).queryByRole('button', { name: 'Resume the conversation' })).toBeNull()
+  })
+
+  it('steps back to the project page from its crumb', () => {
+    mount(talk({ conversations: [ended()] }))
+    fireEvent.click(screen.getByRole('button', { name: /Untitled chat/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'journal-app' }))
+    expect(restShown()).toBe(true)
   })
 })
 

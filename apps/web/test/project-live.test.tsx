@@ -1,9 +1,21 @@
 // @vitest-environment happy-dom
 import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('../src/trpc', () => ({
+  trpc: {
+    feature: { endSession: { useMutation: () => ({ mutate: () => undefined, isPending: false }) } },
+    useUtils: () => ({}),
+  },
+}))
+vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
+vi.mock('../src/components/TerminalView', () => ({
+  TerminalView: () => <div data-testid="terminal">terminal</div>,
+}))
+
 import { ConversationList } from '../src/components/project/ConversationList'
-import { LiveChat } from '../src/components/project/LiveChat'
+import { ProjectChat } from '../src/components/project/ProjectChat'
 import { NewChatCard } from '../src/components/project/NewChatCard'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { SessionBranchApi } from '../src/lib/use-session-branch'
@@ -43,23 +55,23 @@ describe('live project chat', () => {
 
   it('renders the complete live strip', () => {
     render(
-      <LiveChat
+      <ProjectChat
         session={session}
         title="Untitled"
         branch="main"
         hidden={false}
         onBack={() => {}}
-        endControl={<button>End session</button>}
-      >
-        <div>terminal</div>
-      </LiveChat>,
+        onEnded={() => {}}
+      />,
     )
 
     // the way back is the parent crumb; the chat is the current one, its
     // server placeholder title read as a name
     expect(screen.getByRole('button', { name: 'Project' })).toBeTruthy()
     expect(screen.getByText('Untitled chat').closest('[aria-current="page"]')).toBeTruthy()
-    expect(screen.getByText('Live')).toBeTruthy()
+    // the strip is the one every chat surface shares (ChatView)
+    expect(screen.getByText('Project chat').closest('[data-chat-view]')).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Live' })).toBeTruthy()
     expect(screen.getByText('main').parentElement?.textContent).toBe('lands on main')
     expect(screen.getByText('f5b41d9e')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'End session' })).toBeTruthy()
@@ -71,16 +83,14 @@ describe('live project chat', () => {
       const [list, setList] = useState(false)
       return (
         <>
-          <LiveChat
+          <ProjectChat
             session={session}
             title="Untitled"
             branch="main"
             hidden={list}
             onBack={() => setList(true)}
-            endControl={<button>End session</button>}
-          >
-            <div data-testid="terminal">terminal</div>
-          </LiveChat>
+            onEnded={() => {}}
+          />
           {list && (
             <>
               <NewChatCard

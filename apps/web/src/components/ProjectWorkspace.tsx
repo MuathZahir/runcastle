@@ -7,15 +7,10 @@ import { useSessionBranch } from '../lib/use-session-branch'
 import { IconArrowRight, IconBranch, IconFolder, IconPanelRight } from '../icons'
 import { useLivePoll } from '../lib/live'
 import { Aside, AsideLayout, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
-import { ConversationTranscript } from './ConversationTranscript'
-import { EndSessionButton } from './EndSessionButton'
-import { ErrorBoundary } from './ErrorBoundary'
-import { TerminalView } from './TerminalView'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
-import { TranscriptPane } from './project/TranscriptPane'
-import { LiveChat } from './project/LiveChat'
+import { ProjectChat } from './project/ProjectChat'
 import { ProjectDriveView, ProjectViewSwitch, type ProjectView } from './project/ProjectDriveView'
 import { TestDriveCard } from './project/TestDriveCard'
 import { projectDriveCard } from '../lib/project-drive'
@@ -175,7 +170,7 @@ export function ProjectWorkspace({
         onPick={pickView}
       />
     ) : undefined
-  // Reopening leaves the read-only pane behind: what comes back is the terminal,
+  // Reopening leaves the read-back chat behind: what comes back is the terminal,
   // and closing that should land on the list, not on the transcript of the
   // conversation you have just been having.
   const reopen = (sessionId: string): void => {
@@ -195,21 +190,19 @@ export function ProjectWorkspace({
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       <div className={resting ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting}>
         {reading ? (
-          <TranscriptPane
-            conversation={reading}
+          // An ended chat is the project chat at rest — the same ChatView a
+          // feature's ended Chat tab shows, never a page of its own.
+          <ProjectChat
+            session={null}
+            transcriptId={reading.id}
+            onResume={reading.resumable ? () => reopen(reading.id) : undefined}
+            resuming={talk.starting}
             projectName={projectName}
+            title={reading.title ?? 'project'}
+            branch={landing.value}
+            hidden={false}
             onBack={() => setViewing(null)}
-            onReopen={() => {
-              if (reading.status === 'ended') reopen(reading.id)
-              else {
-                setViewing(null)
-                showChat()
-              }
-            }}
-            reopening={talk.starting}
-          >
-            <ConversationTranscript sessionId={reading.id} />
-          </TranscriptPane>
+          />
         ) : (
           <>
             <PageTopbar
@@ -311,7 +304,9 @@ export function ProjectWorkspace({
                   busy={talk.starting}
                   onResume={reopen}
                   onOpen={showChat}
-                  onView={setViewing}
+                  // The live conversation is the one live chat, so reading it
+                  // is opening it; only an ended one is read back.
+                  onView={(c) => (c.status === 'ended' ? setViewing(c) : showChat())}
                 />
               </Page>
             </AsideLayout>
@@ -335,7 +330,7 @@ export function ProjectWorkspace({
         />
       )}
       {session && (
-        <LiveChat
+        <ProjectChat
           session={session}
           projectName={projectName}
           title={titleFor(talk.conversations, session.id) ?? 'project'}
@@ -346,20 +341,11 @@ export function ProjectWorkspace({
             setShowOpenNotice(false)
             setShowList(true)
           }}
-          endControl={
-            <EndSessionButton
-              sessionId={session.id}
-              onEnded={() => {
-                void utils.project.projectSession.invalidate()
-                void utils.project.conversations.invalidate()
-              }}
-            />
-          }
-        >
-          <ErrorBoundary label="terminal">
-            <TerminalView sessionId={session.id} />
-          </ErrorBoundary>
-        </LiveChat>
+          onEnded={() => {
+            void utils.project.projectSession.invalidate()
+            void utils.project.conversations.invalidate()
+          }}
+        />
       )}
     </section>
   )

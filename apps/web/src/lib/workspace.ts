@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Phase } from '@runcastle/core'
+import type { FeatureView } from './routes'
 import type { SettingsLocation } from './settings'
 
 /**
@@ -11,7 +12,7 @@ import type { SettingsLocation } from './settings'
  * feature clears the pin so the workspace snaps back to following the live phase.
  *
  * Only `selectedFeatureId`, an open preparation, the two rail-collapse flags, the
- * docked chat panel and the guidance toggle persist across reloads — the viewed
+ * guidance toggle and each feature's last view tab persist across reloads — the viewed
  * phase, command palette, and Draft overlay are ephemeral session state.
  */
 
@@ -25,9 +26,8 @@ const SELECTED_KEY = 'runcastle.selected.v1'
 const PREPARING_KEY = 'runcastle.preparing.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
-const ARTIFACT_KEY = 'runcastle.artifact.collapsed'
-const CHATPANEL_KEY = 'runcastle.chatpanel.open'
 const GUIDANCE_KEY = 'runcastle.guidance'
+const FEATURE_VIEW_KEY = 'runcastle.feature.tab'
 
 /**
  * Whether the details aside starts collapsed. It is closed by default in every
@@ -51,6 +51,53 @@ function selectedKeyFor(projectId: string): string {
 /** Per-project too, and for the same reason: preparation is a project's job. */
 function preparingKeyFor(projectId: string): string {
   return `${PREPARING_KEY}:${projectId}`
+}
+
+/** Per-feature, so each feature reopens on the view it was left on (decision 8). */
+function featureViewKeyFor(featureId: string): string {
+  return `${FEATURE_VIEW_KEY}:${featureId}`
+}
+
+function parseFeatureView(value: string | null): FeatureView | null {
+  return value === 'overview' || value === 'tickets' || value === 'chat' ? value : null
+}
+
+/**
+ * Which view a feature opens on when nothing names one (one-chat-layout-everywhere
+ * decision 8): the view it was left on, if that is still a view it has; else
+ * Chat when a session is live, since that is what is happening on it; else
+ * Overview. A draft has no Chat tab (decision 11), so it never lands there.
+ */
+export function initialTab({
+  stored,
+  hasLiveSession,
+  isDraft,
+}: {
+  /** The raw remembered value — anything unrecognised is treated as nothing. */
+  stored: string | null
+  hasLiveSession: boolean
+  isDraft: boolean
+}): FeatureView {
+  const remembered = parseFeatureView(stored)
+  if (remembered && !(isDraft && remembered === 'chat')) return remembered
+  if (hasLiveSession && !isDraft) return 'chat'
+  return 'overview'
+}
+
+/**
+ * {@link initialTab} for a feature row, read against what this browser
+ * remembers for it. A feature the list does not know (yet) opens on whatever
+ * was remembered, else Overview.
+ */
+export function rememberedView(
+  featureId: string,
+  feature?: { status: string; liveSession: unknown } | undefined,
+): FeatureView {
+  return initialTab({
+    stored: readLS(featureViewKeyFor(featureId)),
+    hasLiveSession: !!feature?.liveSession,
+    isDraft: feature?.status === 'draft',
+  })
 }
 
 function readLS(key: string): string | null {
@@ -88,6 +135,12 @@ export interface WorkspaceApi {
   projectSelected: boolean
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
+  /**
+   * The selected feature's view tab (Overview | Tickets | Chat). Shell state
+   * rather than the page's, so the address bar can name it and drive it
+   * (one-chat-layout-everywhere decision 8).
+   */
+  featureView: FeatureView
   /** Whether the Draft door's overlay owns the workspace (decisions.md #12). */
   creating: boolean
   /**
@@ -108,17 +161,6 @@ export interface WorkspaceApi {
   inspectorPreference: boolean | null
   /** Mapped-ideation map rail collapsed to its frontier-count stub. */
   mapRailCollapsed: boolean
-  artifactPaneCollapsed: boolean
-  /**
-   * The feature chat docked beside the phase body (decision 16).
-   *
-   * Collapsed is the resting state and costs nothing: the workspace renders the
-   * body exactly as it did before the panel existed. Persisted and global, like
-   * the two rail collapses beside it — where the human keeps the conversation is
-   * a preference about the screen, not about one feature, and it has to survive
-   * both a pinned phase and a hop to another feature.
-   */
-  chatPanelOpen: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -131,9 +173,12 @@ export interface WorkspaceApi {
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
-  /** Select a feature, or `null` to return to the project home (clears the
-   *  phase pin, the project row, and closes the create form). */
-  select: (featureId: string | null) => void
+  /** Select a feature on `view` (Overview when omitted), or `null` to return to
+   *  the project home (clears the phase pin, the project row, and closes the
+   *  create form). The view is remembered for that feature. */
+  select: (featureId: string | null, view?: FeatureView) => void
+  /** Switch the selected feature's view tab, remembered for that feature. */
+  selectView: (view: FeatureView) => void
   /** Select the pinned project row — the project workspace fills the body. */
   selectProject: () => void
   /** Pin a phase to view (null = follow live phase). */
@@ -148,9 +193,6 @@ export interface WorkspaceApi {
   closePreparation: () => void
   toggleInspector: (current?: boolean) => void
   toggleMapRail: () => void
-  toggleArtifactPane: () => void
-  /** Dock the feature chat beside the body, or send it away again. */
-  toggleChatPanel: () => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -163,6 +205,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const preparingKey = preparingKeyFor(projectId)
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
+  // A first guess from storage; the shell's landing settles it once the feature
+  // list says whether a session is live.
+  const [featureView, setFeatureView] = useState<FeatureView>(() => {
+    const selected = readLS(selectedKey)
+    return (selected && parseFeatureView(readLS(featureViewKeyFor(selected)))) || 'overview'
+  })
   const [creating, setCreating] = useState(false)
   // Persisted, unlike the create form beside it: a preparation you opened is a
   // conversation in progress, often a live terminal, and a reload used to drop
@@ -180,10 +228,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [mapRailCollapsed, setMapRailCollapsed] = useState(
     () => readLS(MAPRAIL_KEY) === '1',
   )
-  const [artifactPaneCollapsed, setArtifactPaneCollapsed] = useState(
-    () => readLS(ARTIFACT_KEY) === '1',
-  )
-  const [chatPanelOpen, setChatPanelOpen] = useState(() => readLS(CHATPANEL_KEY) === '1')
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -203,19 +247,19 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(MAPRAIL_KEY, mapRailCollapsed ? '1' : '0')
   }, [mapRailCollapsed])
   useEffect(() => {
-    writeLS(ARTIFACT_KEY, artifactPaneCollapsed ? '1' : '0')
-  }, [artifactPaneCollapsed])
-  useEffect(() => {
-    writeLS(CHATPANEL_KEY, chatPanelOpen ? '1' : '0')
-  }, [chatPanelOpen])
-  useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
 
   // `null` deselects, which is how the project home is reached without leaving
   // the project.
-  const select = useCallback((featureId: string | null) => {
+  //
+  // The view is remembered here, on the deliberate act, rather than by an effect
+  // over the state: the state's first value is only a guess, and an effect would
+  // overwrite what was remembered with it before the landing had a say.
+  const select = useCallback((featureId: string | null, view: FeatureView = 'overview') => {
     setSelected(featureId)
+    setFeatureView(view)
+    if (featureId) writeLS(featureViewKeyFor(featureId), view)
     setViewedPhase(null)
     setCreating(false)
     setPreparing(false)
@@ -232,6 +276,14 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setPreparing(false)
     setCmdk(false)
   }, [])
+
+  const selectView = useCallback(
+    (view: FeatureView) => {
+      setFeatureView(view)
+      if (selectedFeatureId) writeLS(featureViewKeyFor(selectedFeatureId), view)
+    },
+    [selectedFeatureId],
+  )
 
   const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
   const startDraft = useCallback(() => {
@@ -259,25 +311,23 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     [],
   )
   const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
-  const toggleArtifactPane = useCallback(() => setArtifactPaneCollapsed((v) => !v), [])
-  const toggleChatPanel = useCallback(() => setChatPanelOpen((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
     selectedFeatureId,
     projectSelected,
     viewedPhase,
+    featureView,
     creating,
     preparing,
     inspectorCollapsed: inspectorPreference ?? true,
     inspectorPreference,
     mapRailCollapsed,
-    artifactPaneCollapsed,
-    chatPanelOpen,
     cmdkOpen,
     settings,
     guidance,
     select,
+    selectView,
     selectProject,
     viewPhase,
     startDraft,
@@ -286,8 +336,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     closePreparation,
     toggleInspector,
     toggleMapRail,
-    toggleArtifactPane,
-    toggleChatPanel,
     setCmdk,
     openSettings,
     closeSettings,

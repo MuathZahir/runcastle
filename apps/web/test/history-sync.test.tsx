@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useHistorySync } from '../src/lib/use-history-sync'
-import type { AppLocation } from '../src/lib/routes'
+import { featureViewOf, locationFor, parsePath, type AppLocation } from '../src/lib/routes'
+import { useWorkspace } from '../src/lib/workspace'
 
 /**
  * Ticket 1 / decision 1 — the browser becomes a full citizen. Tier 2, because
@@ -155,6 +156,68 @@ describe('useHistorySync', () => {
 
     expect(path()).toBe('/p/p1/f/alpha')
     expect(window.history.length).toBe(depth)
+  })
+
+  /**
+   * one-chat-layout-everywhere decision 8: a feature's view tabs are places.
+   * The shell's own wiring — the workspace's view state projected through
+   * `locationFor`, and a popped path driven back into it — in miniature.
+   */
+  describe('feature view tabs', () => {
+    afterEach(() => localStorage.clear())
+
+    function Tabbed() {
+      const ws = useWorkspace('p1')
+      const location = locationFor({
+        projectId: 'p1',
+        preparing: false,
+        projectSelected: false,
+        featureSlug: ws.selectedFeatureId,
+        featureView: ws.featureView,
+      })
+      useHistorySync(location, (popped) => {
+        if (popped?.kind === 'feature') ws.select(popped.featureSlug, featureViewOf(popped))
+      })
+      return (
+        <>
+          <button onClick={() => ws.select('alpha')}>alpha</button>
+          <button onClick={() => ws.selectView('tickets')}>tickets</button>
+          <button onClick={() => ws.selectView('chat')}>chat</button>
+          <span data-testid="view">{ws.featureView}</span>
+        </>
+      )
+    }
+
+    it('pushes an entry per tab switch, and Back returns to the previous tab', () => {
+      render(<Tabbed />)
+      go('alpha')
+      expect(path()).toBe('/p/p1/f/alpha')
+      const depth = window.history.length
+
+      go('tickets')
+      expect(path()).toBe('/p/p1/f/alpha/tickets')
+      go('chat')
+      expect(path()).toBe('/p/p1/f/alpha/chat')
+      expect(window.history.length).toBe(depth + 2)
+
+      back('/p/p1/f/alpha/tickets')
+      expect(screen.getByTestId('view').textContent).toBe('tickets')
+      back('/p/p1/f/alpha')
+      expect(screen.getByTestId('view').textContent).toBe('overview')
+    })
+
+    it('keeps the tab across a reload — the address names it', () => {
+      const { unmount } = render(<Tabbed />)
+      go('alpha')
+      go('chat')
+      unmount()
+      expect(parsePath(path())).toEqual({
+        kind: 'feature',
+        projectId: 'p1',
+        featureSlug: 'alpha',
+        tab: 'chat',
+      })
+    })
   })
 
   it('stops listening once unmounted', () => {
