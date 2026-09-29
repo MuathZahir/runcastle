@@ -405,14 +405,17 @@ same style as §13.
   - `feature.burn` G3 wording updated: requires ≥1 pending ticket **in the
     current lap** (both the `tickets`-phase crossing and the review-phase
     Fix restart).
-- Kickoff registry: `revisit` gains the `lap` purpose —
-  `LAP <n> REVIEW ITERATION`: read `test-notes.md` (previous lap's section)
-  + spec `## Later laps`; promoted notes are ALREADY tickets (ids injected —
-  never re-emit them); interview the human, update `decisions.md` + spec,
-  `emit_tickets` for this lap, `complete_phase` through ideation/spec/tickets
-  in this one session. Session-start context injection for a lap revisit
-  carries the same: previous lap's notes + promoted-ticket ids + `## Later
-  laps` content.
+- Kickoff registry: the `start-lap` launch purpose — the review page's
+  "Start lap N+1" door opens the feature chat at review with
+  `PLAN LAP <n> FROM REVIEW` (`reviewLapKickoff`, built server-side from
+  `carriedWork`): the agenda is `test-notes.md` `## Carried, still open`, the
+  open defects from `get_feature_context`, and spec `## Later laps`; promoted
+  notes are ALREADY tickets (never re-emit them); interview the human, write
+  decisions under `## Lap <n>` + amend spec, `emit_tickets` for this lap (they
+  land `pending`; Burn from review moves them onto lap n through
+  `carryPendingTicketsIntoLap`). The feature stays at review, so the session
+  never calls `complete_phase`; it finishes by telling the human to review the
+  cards and click Burn. The plain Chat toggle at review gets no lap framing.
 
 ### 15.3 MCP amendments (§6) — no new tools
 
@@ -439,10 +442,11 @@ machinery).
   so out loud — the human decides. Orthogonal to the map escalation branch
   (§13.5): mapping is for ideation too big to *think*; laps are for features
   too uncertain to *spec whole*.
-- `revisit` gains the lap mode (triggered by the lap kickoff): digest notes →
-  amend `decisions.md` + spec (including pruning `## Later laps`) →
-  `emit_tickets` → `complete_phase` through tickets → tell the human to Burn.
-  Never re-emit promoted tickets.
+- `revisit` gains the lap mode (triggered by the `PLAN LAP <n> FROM REVIEW`
+  kickoff, at review): digest notes and open defects → amend `decisions.md` +
+  spec (including pruning `## Later laps`) → `emit_tickets` → tell the human
+  to review the cards and click Burn. Never calls `complete_phase` (the
+  feature stays at review); never re-emits promoted tickets.
 
 ### 15.6 UI amendments (§10)
 
