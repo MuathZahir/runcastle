@@ -14,6 +14,7 @@ import {
   lastTestDriveLap,
   latestRun,
   liveSessionLine,
+  mergeConflictResolved,
   reviewDriveDenial,
   slotHeldReason,
   specDocPath,
@@ -30,7 +31,7 @@ import type { StageExpand } from '../../lib/stage-expand'
 import { AsideLayout } from '../../ui'
 import { useToast } from '../../lib/toast'
 import { CarriedFindings } from '../review/CarriedFindings'
-import { ConflictAlert } from '../review/ConflictCard'
+import { ConflictAlert, ConflictResolvedLine } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
@@ -110,6 +111,7 @@ export function ReviewBody({
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
+  const conflictResolved = !conflict && mergeConflictResolved(events)
   const drive = trpc.feature.driveInfo.useQuery(undefined, {
     refetchInterval: useLivePoll(),
   })
@@ -366,6 +368,7 @@ export function ReviewBody({
           resolveEnded={conflictResolveEnded(events, full.sessions)}
         />
       )}
+      {conflictResolved && <ConflictResolvedLine readonly={readonly} />}
       {/* The refusal the human can still act on, at the moment they can act
           on it — the digest that used to carry it is read long afterwards. */}
       {denial && (
@@ -416,6 +419,7 @@ export function ReviewBody({
   const expanded = expand.expanded
   const hasNotices =
     !!conflict ||
+    (conflictResolved && !readonly) ||
     !!denial ||
     !!unverified ||
     (!!live && !readonly) ||

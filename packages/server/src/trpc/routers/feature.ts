@@ -13,7 +13,14 @@ import { retireShippedWorktree } from '../../services/feature-worktrees'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
 import { promoteOutcomeDoc } from '../../services/outcome'
-import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from '../../services/repo'
+import {
+  getFeatureRow,
+  projectForFeature,
+  setFeatureStatus,
+  setPhase,
+  tryGetFeature,
+} from '../../services/repo'
+import { reconcileStandingConflict } from '../../services/resolved-merge'
 import { publicProcedure, router } from '../context'
 
 export const featureRouter = router({
@@ -67,7 +74,14 @@ export const featureRouter = router({
 
   get: publicProcedure
     .input(z.object({ id: z.string() }))
-    .query(({ ctx, input }) => features.getFeatureFull(ctx, input.id)),
+    .query(async ({ ctx, input }) => {
+      // Reading review is when a stale conflict card would be seen, so a merge
+      // committed outside any hook (by hand, or in a chat still live) retires it
+      // here. Only at review, where a merge conflict can stand.
+      const feature = tryGetFeature(ctx, input.id)
+      if (feature?.phase === 'review') await reconcileStandingConflict(ctx, feature)
+      return features.getFeatureFull(ctx, input.id)
+    }),
 
   // B1 behavior — the stub throws NotImplementedError('B1').
   // `kickoffLine` is the per-purpose kickoff override (ticket 3 mechanism): the

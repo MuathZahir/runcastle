@@ -32,6 +32,7 @@ import { addNote, listByFeature as listNotes, promoteNote } from '../src/service
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
+import { withholdDrive } from '../src/workflows/review-ticket'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
 
@@ -171,6 +172,30 @@ describe('the review agent wires', () => {
     expect(stop).toMatchObject({ ok: true, drive: null })
     expect(await currentBranch()).toBe('main')
     expect(activeDriveInfo()).toBeNull()
+  })
+
+  it('refuses to drive a pass whose drive the host withheld, naming why', async () => {
+    const reason =
+      "Drive was unavailable: `ffmpeg` is not on this machine's PATH, so a drive cannot be recorded " +
+      '(install ffmpeg to get walkthrough videos).'
+    const reopen = withholdDrive(run.id, reason)
+    try {
+      expect(await drive('start')).toEqual({
+        ok: false,
+        action: 'start',
+        deniedReason: reason,
+        retriable: false,
+        drive: null,
+      })
+      expect(await currentBranch()).toBe('main')
+      expect(activeDriveInfo()).toBeNull()
+    } finally {
+      reopen()
+    }
+
+    // Once the pass ends the run's drive is open again.
+    expect(await drive('start')).toMatchObject({ ok: true, action: 'start' })
+    await drive('stop')
   })
 
   it('tells the wire the UI polls that a review agent — not a human — is driving', async () => {

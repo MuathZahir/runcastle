@@ -33,7 +33,9 @@ describe('drivePrerequisites', () => {
     expect(missing).toEqual([
       {
         piece: 'ffmpeg',
-        reason: "`ffmpeg` is not on this machine's PATH, so a drive cannot be recorded",
+        reason:
+          "`ffmpeg` is not on this machine's PATH, so a drive cannot be recorded " +
+          '(install ffmpeg to get walkthrough videos)',
         notice: 'ffmpeg not installed — install it and restart runcastle',
       },
     ])

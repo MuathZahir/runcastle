@@ -2,9 +2,13 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { ConflictCard } from '../src/components/review/ConflictCard'
+import { ConflictCard, ConflictResolvedLine } from '../src/components/review/ConflictCard'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
-import { conflictResolveEnded } from '../src/lib/feature-ui'
+import {
+  conflictResolveEnded,
+  mergeConflictResolved,
+  unresolvedMergeConflict,
+} from '../src/lib/feature-ui'
 
 /**
  * The alert slot's resident (decisions 30b/30d). Tier 1: everything the card
@@ -129,6 +133,52 @@ describe('conflictResolveEnded', () => {
   it('is false after a burn, which retires the conflict the resolve was for', () => {
     const burn = event(3, 'burn.started')
     expect(conflictResolveEnded([conflicted, resolveEnded, burn], sessions)).toBe(false)
+  })
+})
+
+/** What the card steps down to once git says the conflict is resolved. */
+describe('ConflictResolvedLine', () => {
+  it('reads as one short line with nothing to click', () => {
+    const html = renderToStaticMarkup(createElement(ConflictResolvedLine, { readonly: false }))
+    expect(html).toContain('Conflict resolved — ready to merge')
+    expect(html).not.toContain('<button')
+  })
+
+  it('renders nothing under readonly', () => {
+    expect(renderToStaticMarkup(createElement(ConflictResolvedLine, { readonly: true }))).toBe('')
+  })
+})
+
+describe('mergeConflictResolved', () => {
+  const event = (id: number, type: string): EventRow => ({
+    id,
+    projectId: 'prj_1',
+    featureId: 'ftr_1',
+    ts: 1_000 + id,
+    type,
+    message: type,
+    ...(type === 'merge.conflict' ? { data: { base: 'main', files: ['index.html'] } } : {}),
+  })
+
+  it('is true once merge.resolved follows the conflict — and the card has cleared', () => {
+    const events = [event(1, 'merge.conflict'), event(2, 'merge.resolved')]
+    expect(mergeConflictResolved(events)).toBe(true)
+    expect(unresolvedMergeConflict(events)).toBeNull()
+  })
+
+  it('is false while the conflict still stands', () => {
+    expect(mergeConflictResolved([event(1, 'merge.conflict')])).toBe(false)
+  })
+
+  it('is false with no conflict ever recorded', () => {
+    expect(mergeConflictResolved([event(1, 'merge.resolved')])).toBe(false)
+  })
+
+  it('is false again on a fresh conflict, or once a burn or a ship moved on', () => {
+    const resolved = [event(1, 'merge.conflict'), event(2, 'merge.resolved')]
+    expect(mergeConflictResolved([...resolved, event(3, 'merge.conflict')])).toBe(false)
+    expect(mergeConflictResolved([...resolved, event(3, 'burn.started')])).toBe(false)
+    expect(mergeConflictResolved([...resolved, event(3, 'feature.shipped')])).toBe(false)
   })
 })
 
