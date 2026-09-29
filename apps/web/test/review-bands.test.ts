@@ -27,6 +27,7 @@ const state = vi.hoisted(() => ({
   drive: undefined as { featureId: string; state: string; dryRun: boolean; holderLabel: string } | undefined,
   driveInstructions: undefined as string | undefined,
   events: [] as EventRow[],
+  driveMissing: [] as { piece: string; reason: string; notice: string }[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
@@ -72,6 +73,7 @@ vi.mock('../src/trpc', () => {
       docs: { read: { useQuery: () => ({ data: undefined }) } },
       project: {
         prep: { useQuery: () => ({ data: { findings: [] } }) },
+        drivePrerequisites: { useQuery: () => ({ data: { missing: state.driveMissing } }) },
         list: {
           useQuery: () => ({
             data: [{ id: 'proj_1', driveInstructions: state.driveInstructions }],
@@ -217,8 +219,10 @@ function render(
     events?: EventRow[]
     runs?: FeatureFull['runs']
     phase?: FeatureFull['feature']['phase']
+    driveMissing?: { piece: string; reason: string; notice: string }[]
   } = {},
 ): string {
+  state.driveMissing = over.driveMissing ?? []
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
   state.openDefects = over.openDefects ?? []
@@ -745,5 +749,29 @@ describe('the review page’s drive instructions', () => {
       expect(html).not.toContain('Applies inside the app under test only')
       expect(html).not.toContain('Edit in settings')
     }
+  })
+})
+
+/**
+ * What this host is missing to drive, standing in the status tier before the
+ * next burn — and silent when nothing is missing or the page is history.
+ */
+describe('the review page’s drive-prerequisite notice', () => {
+  const FFMPEG = {
+    piece: 'ffmpeg',
+    reason: "`ffmpeg` is not on this machine's PATH, so a drive cannot be recorded",
+    notice: 'ffmpeg not installed — install it and restart runcastle',
+  }
+  const statusTier = (html: string) => html.slice(html.indexOf('data-tier="status"'), html.indexOf('data-tier="work"'))
+
+  it('names the missing piece under the status rows', () => {
+    expect(statusTier(render({ driveMissing: [FFMPEG] }))).toContain(
+      'Walkthrough videos off on this machine: ffmpeg not installed — install it and restart runcastle',
+    )
+  })
+
+  it('says nothing when every piece is present, or on a history view', () => {
+    expect(render({})).not.toContain('Walkthrough videos off')
+    expect(render({ driveMissing: [FFMPEG], readonly: true })).not.toContain('Walkthrough videos off')
   })
 })

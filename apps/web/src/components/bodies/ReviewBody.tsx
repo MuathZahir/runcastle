@@ -41,6 +41,7 @@ import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { ReviewTrail } from '../review/ReviewTrail'
+import { DrivePrerequisitesNotice } from '../review/DrivePrerequisitesNotice'
 import { LapStory, StatusStrip } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
@@ -159,6 +160,13 @@ export function ReviewBody({
   // key, so the page pays nothing for it.
   const projects = trpc.project.list.useQuery()
   const project = projects.data?.find((p) => p.id === feature.projectId)
+  // What this host is missing to offer the next review a drive, said before the
+  // burn rather than on the trail after it. The server caches the probe, and a
+  // history view has no next review to warn about.
+  const drivePrereqs = trpc.project.drivePrerequisites.useQuery(
+    { projectId: feature.projectId },
+    { enabled: !readonly },
+  )
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -444,7 +452,7 @@ export function ReviewBody({
           </div>
         )}
 
-        <div data-tier="status">
+        <div data-tier="status" className="flex flex-col gap-4">
           <StatusStrip
             artifact={stamped}
             outcome={stampedOutcome({ passes: rows, tickets })}
@@ -464,6 +472,7 @@ export function ReviewBody({
             // Start / Stop test drive on every review state, and the same act
             // twice on one screen is one too many (DESIGN.md: say it once).
           />
+          {!readonly && <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />}
         </div>
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
