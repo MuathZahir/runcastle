@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
-import { contain, type Containment } from '../pty/job-object'
+import type { Containment } from '../pty/job-object'
 import { killProcessTree } from '../pty/kill-tree'
+import { containHostProcess } from '../util/contain-host'
 
 /**
  * The kill-handle registry — what a running headless agent is killable BY.
@@ -140,8 +141,7 @@ export interface KillRegistryDeps {
 const REAL_DEPS: KillRegistryDeps = {
   runDocker: runDockerCommand,
   killTree: killProcessTree,
-  // Jobs are a win32 thing; elsewhere skip the call and its per-pid "unavailable" line.
-  contain: (pid) => (process.platform === 'win32' ? contain(pid) : null),
+  contain: containHostProcess,
 }
 
 /**

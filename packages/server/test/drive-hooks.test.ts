@@ -1,13 +1,21 @@
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { Containment } from '../src/pty/job-object'
+import { killProcessTree } from '../src/pty/kill-tree'
 import {
   DRIVE_HOOK_TIMEOUT_MS,
   describeHookResult,
   runDriveHook,
   tailLines,
 } from '../src/services/drive-hooks'
+
+// The real tree walk, observed: which kill path a timed-out hook took.
+vi.mock('../src/pty/kill-tree', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/pty/kill-tree')>()
+  return { ...actual, killProcessTree: vi.fn(actual.killProcessTree) }
+})
 
 /**
  * Test-drive hooks: the project's own "bring my environment up" command.
@@ -147,6 +155,77 @@ describe('runDriveHook', () => {
   it('gives a cold image pull room to finish by default', () => {
     expect(DRIVE_HOOK_TIMEOUT_MS).toBeGreaterThanOrEqual(5 * 60_000)
   })
+})
+
+describe('runDriveHook — the Job Object a hook runs in (win32)', () => {
+  /**
+   * On Windows the hook's shell goes into a kill-on-close job straight after
+   * spawn, so whatever it starts is reachable even once its parent exited. The
+   * job is faked: it records its kill, and `killsRoot` makes it end the shell
+   * the way a real job would.
+   */
+  function fakeJobs(opts: { killsRoot?: boolean } = {}): {
+    containFn: (pid: number) => Containment
+    contained: number[]
+    killed: number[]
+  } {
+    const contained: number[] = []
+    const killed: number[] = []
+    const containFn = (pid: number): Containment => {
+      contained.push(pid)
+      let killing: Promise<boolean> | undefined
+      return {
+        pid,
+        // Idempotent, like the real one: a second kill resolves the first's result.
+        kill: () =>
+          (killing ??= (async () => {
+            killed.push(pid)
+            if (opts.killsRoot) process.kill(pid, 'SIGKILL')
+            return true
+          })()),
+      }
+    }
+    return { containFn, contained, killed }
+  }
+
+  it('contains the hook shell by its pid', async () => {
+    const jobs = fakeJobs()
+    await runDriveHook('echo hook-ran', { cwd: cwd(), containFn: jobs.containFn })
+    expect(jobs.contained).toHaveLength(1)
+    expect(jobs.contained[0]).toBeGreaterThan(0)
+  })
+
+  it('kills the job when the hook finishes, so nothing it started outlives it', async () => {
+    const jobs = fakeJobs()
+    const res = await runDriveHook('exit 3', { cwd: cwd(), containFn: jobs.containFn })
+    expect(res.exitCode).toBe(3)
+    expect(jobs.killed).toEqual(jobs.contained)
+    expect(res.containment).toBeUndefined()
+  })
+
+  it('holds the job open and hands it back when asked — a setup hook lives as long as the drive', async () => {
+    const jobs = fakeJobs()
+    const res = await runDriveHook('echo up', { cwd: cwd(), containFn: jobs.containFn, holdJob: true })
+    expect(res.ok).toBe(true)
+    expect(jobs.killed).toEqual([])
+    expect(res.containment?.pid).toBe(jobs.contained[0])
+  })
+
+  it('kills an overrunning hook through its job, not the tree walk', async () => {
+    const jobs = fakeJobs({ killsRoot: true })
+    vi.mocked(killProcessTree).mockClear()
+    const res = await runDriveHook(HANG, { cwd: cwd(), timeoutMs: 300, containFn: jobs.containFn })
+    expect(res.timedOut).toBe(true)
+    expect(jobs.killed[0]).toBe(jobs.contained[0])
+    expect(killProcessTree).not.toHaveBeenCalled()
+  }, 15_000)
+
+  it('falls back to the tree walk when the hook could not be contained', async () => {
+    vi.mocked(killProcessTree).mockClear()
+    const res = await runDriveHook(HANG, { cwd: cwd(), timeoutMs: 300, containFn: () => null })
+    expect(res.timedOut).toBe(true)
+    expect(killProcessTree).toHaveBeenCalledTimes(1)
+  }, 15_000)
 })
 
 describe('describeHookResult', () => {

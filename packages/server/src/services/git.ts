@@ -18,6 +18,7 @@ import type { SimpleGit } from 'simple-git'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
 import { devPaneLive, startDevPane, stopDevPane } from '../pty/dev-pane'
+import type { Containment } from '../pty/job-object'
 import type { AppReadyTiming } from './app-readiness'
 import { pollAppReady } from './app-readiness'
 import type { DriveHookFailure, DriveHookResult } from './drive-hooks'
@@ -2112,6 +2113,8 @@ type DriveState =
       hookFailure?: DriveHookFailure
       /** Names of the variables setup handed back (see {@link DriveInfo}). */
       envKeys?: string[]
+      /** The setup hook's Job Object, held for the drive's life (see {@link holdSetupJob}). */
+      setupJob?: Containment
     }
   | {
       kind: 'dryRun'
@@ -2125,6 +2128,7 @@ type DriveState =
       devConfigured: boolean
       /** What the machinery observed, which is all the verification stamp reads. */
       observed: DryRunObservables
+      setupJob?: Containment
     }
   | {
       kind: 'project'
@@ -2141,6 +2145,7 @@ type DriveState =
       devConfigured: boolean
       hookFailure?: DriveHookFailure
       envKeys?: string[]
+      setupJob?: Containment
     }
 
 /**
@@ -2181,6 +2186,7 @@ interface DryRunObservables {
 /** Test-only: clear the in-memory test-drive state (not called by any router). */
 export function __resetTestDriveState(): void {
   testDriveState?.readyPoll?.abort()
+  void testDriveState?.setupJob?.kill()
   testDriveState = undefined
   reviewDriveRelease = undefined
 }
@@ -2360,6 +2366,7 @@ export async function testDrive(
     const detachedWorktree = testDriveState.detachedWorktree
     const devPaneId = testDriveState.devPaneId
     const stoppedPurpose = testDriveState.purpose
+    const setupJob = testDriveState.setupJob
     // Cancel any in-flight readiness poll: the app is about to stop answering,
     // and a timer still ticking against a dead drive is an orphan by definition.
     testDriveState.readyPoll?.abort()
@@ -2381,6 +2388,8 @@ export async function testDrive(
       project.driveStopCommand,
       driveOverlay({ slug: feature.slug, branch }, readDriveEnvFile(project.repoPath)),
     )
+    // Only now, with teardown done, may what setup left running die with its job.
+    await setupJob?.kill()
     // The drive's own scratch artifact, gone with the drive: left behind it
     // would ride back to the branch you return to as a carried change, and deny
     // the next start on a dirty tree.
@@ -2508,6 +2517,7 @@ export async function testDrive(
   // project's business — we hand it the drive's identity, run its string and
   // report the exit code.
   const identity: DriveIdentity = { slug: feature.slug, branch }
+  const driving = testDriveState
   const setup = await runDriveHookStep(
     ctx,
     scope,
@@ -2516,6 +2526,7 @@ export async function testDrive(
     project.driveSetupCommand,
     driveProcessEnv(driveIdentityEnv(identity)),
   )
+  holdSetupJob(driving, setup)
 
   // Whatever the setup script computed — ports, database names, a compose
   // project name — comes back through `.runcastle/drive.env`, and the dev pane
@@ -2796,6 +2807,7 @@ async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult>
     project.driveSetupCommand,
     driveProcessEnv(driveIdentityEnv(identity)),
   )
+  holdSetupJob(state, setup)
   state.observed.setupOk = setup?.result.ok
 
   const fileVars = readDriveEnvFile(project.repoPath)
@@ -2857,6 +2869,7 @@ async function stopDryRun(
     driveOverlay({ slug: DRY_RUN_SLUG, branch: state.branch }, readDriveEnvFile(project.repoPath)),
   )
   state.observed.teardownOk = teardown?.result.ok
+  await state.setupJob?.kill()
   // As a feature drive does: the file belongs to the drive, not to the repo.
   rmSync(driveEnvFilePath(project.repoPath), { force: true })
   testDriveState = undefined
@@ -3031,6 +3044,7 @@ export async function projectDrive(
     project.driveSetupCommand,
     driveProcessEnv(driveIdentityEnv(identity)),
   )
+  holdSetupJob(state, setup)
 
   // As a feature drive does: read even after a failing hook, and keep both the
   // failure and the key names on the drive for as long as it lives.
@@ -3072,6 +3086,7 @@ async function stopProjectDrive(
     project.driveStopCommand,
     driveOverlay({ slug: PROJECT_DRIVE_SLUG, branch: state.branch }, readDriveEnvFile(project.repoPath)),
   )
+  await state.setupJob?.kill()
   rmSync(driveEnvFilePath(project.repoPath), { force: true })
   testDriveState = undefined
 
@@ -3159,6 +3174,20 @@ interface DriveHookRun {
 }
 
 /**
+ * Keep the setup hook's Job Object on the drive it brought up, so whatever the
+ * hook left running (a local Postgres) lives exactly as long as that drive: each
+ * stop path kills it once teardown has finished. A drive already gone by the
+ * time setup returned — stopped while the hook ran — has no stop left to come,
+ * so the job dies now instead.
+ */
+function holdSetupJob(state: DriveState, setup: DriveHookRun | undefined): void {
+  const job = setup?.result.containment
+  if (!job) return
+  if (testDriveState === state) state.setupJob = job
+  else void job.kill()
+}
+
+/**
  * Run one drive hook, narrating it into the timeline the drive belongs to.
  * Returns `undefined` when the project configured no hook for this phase.
  *
@@ -3186,7 +3215,9 @@ async function runDriveHookStep(
     data: { command: cmd },
   })
 
-  const result = await runDriveHook(cmd, { cwd: repoPath, env })
+  // A setup hook's job is held and handed back on `result.containment`: what it
+  // brought up in the background lives as long as the drive (decision 10).
+  const result = await runDriveHook(cmd, { cwd: repoPath, env, holdJob: phase === 'setup' })
   if (result.ok) {
     emitScoped(ctx, scope, {
       type: `testdrive.${phase}_ok`,
