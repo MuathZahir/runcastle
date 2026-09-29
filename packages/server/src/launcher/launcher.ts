@@ -414,6 +414,19 @@ function isStartLap(feature: Feature, input: LaunchSessionInput): boolean {
 }
 
 /**
+ * What a lap planned from review is handed: the carry channel, with the review
+ * evidence of the lap the feature is still ON. At review the feature sits on lap
+ * N and this session plans N+1, so the review to read is lap N's — the build the
+ * human just drove — not the carry channel's lap N-1, which on lap 1 is nothing.
+ */
+function startLapCarriedWork(ctx: AppCtx, featureId: string): CarriedWork {
+  return {
+    ...carriedWork(ctx, featureId),
+    reviewEvidence: currentLapReviewEvidence(ctx, featureId),
+  }
+}
+
+/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -447,7 +460,7 @@ function briefLiveChat(
   liveChat: SessionRow,
   input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planLaunchKickoff(feature, input, carriedWork(ctx, feature.id))
+  const plan = planLaunchKickoff(feature, input, startLapCarriedWork(ctx, feature.id))
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -553,7 +566,7 @@ export async function launchSession(
   //
   // What the last lap handed this one rides along with it: the same counts brief
   // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
-  const carried = carriedWork(ctx, feature.id)
+  const carried = startLapCarriedWork(ctx, feature.id)
   const plan = planLaunchKickoff(feature, input, carried)
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific

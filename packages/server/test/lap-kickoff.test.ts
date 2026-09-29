@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SessionPurpose } from '@runcastle/core'
-import { sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { reviewDir, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { launchSession } from '../src/launcher/launcher'
@@ -18,6 +18,7 @@ import {
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { addNote, carryNotes } from '../src/services/test-notes'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -154,6 +155,37 @@ describe('launchSession — lap briefings', () => {
 
       expect(command).toContain('PLAN LAP 4 FROM REVIEW')
       expect(command).toContain('1 note carried from earlier laps — address them.')
+    })
+
+    /**
+     * At review the feature is still ON lap N, planning N+1 — so the review the
+     * planner must read is lap N's own, the one the human just drove, not the
+     * carry channel's lap N-1 (nothing at all, on lap 1).
+     */
+    it('hands the planner the review of the lap it is standing on', async () => {
+      const { featureId } = await seedResumable('start-lap-evidence', { phase: 'review', lap: 1 })
+      const [review] = storeTickets(ctx, featureId, [
+        {
+          title: 'Review the integrated change', goal: 'Review', context: '',
+          acceptanceCriteria: [], seams: [], blockedBy: [], kind: 'review',
+        },
+      ])
+      updateTicket(ctx, review.id, { status: 'done' })
+      const digestPath = join(reviewDir(review.id), 'DIGEST.md')
+      mkdirSync(reviewDir(review.id), { recursive: true })
+      cleanup.push(reviewDir(review.id))
+      writeFileSync(digestPath, '# Lap 1 review\n')
+
+      const { command, prompt } = await launchAndRead(featureId, {
+        kind: 'chat',
+        purpose: 'start-lap',
+      })
+
+      expect(prompt).not.toContain('Lap 1 left NO review evidence on disk')
+      expect(prompt).toContain("Lap 1's review left this on disk")
+      expect(prompt).toContain(digestPath)
+      expect(command).toContain("read lap 1's review evidence")
+      expect(command).toContain(digestPath)
     })
 
     it('leaves the plain Chat toggle on a review feature without lap framing', async () => {
