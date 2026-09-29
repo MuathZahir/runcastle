@@ -154,7 +154,11 @@ export const AUTH_MISSING_EVENT = 'auth.missing'
 export const IMAGE_RUNTIME_MISSING_EVENT = 'burn.image_runtime_missing'
 /** The burn's container runtime (docker/podman) is down — no image can start. */
 export const CONTAINER_RUNTIME_DOWN_EVENT = 'burn.container_runtime_down'
-/** A custom image's agent CLI drifted from the host's — warned, never fatal. */
+/**
+ * The image's agent CLI drifted from the host's — a warning for every image,
+ * never fatal. Burns never build: a managed image's message points at Rebuild,
+ * a custom image's names who owns it. `data.warning` flags it for the run page.
+ */
 export const IMAGE_CLI_DRIFT_EVENT = 'burn.image_cli_drift'
 
 const RUNTIME_BINARY: Record<AgentRuntime, string> = {
@@ -365,8 +369,11 @@ function agentCliDrift(
 }
 
 /**
- * The image's agent CLI differs from the host's — the drift a Rebuild fixes by
- * re-running only the install layer, which the host version is pinned into.
+ * The image's agent CLI differs from the host's — warned, and the burn goes on
+ * with the older CLI, which almost always serves the model (the one case it
+ * does not is run-fatal on the first ticket, {@link cliTooOldMessage}). The fix
+ * is a Rebuild, which re-runs only the install layer the host version is
+ * pinned into.
  */
 export function agentCliDriftMessage(
   image: string,
@@ -374,7 +381,9 @@ export function agentCliDriftMessage(
   imageVersion: string | null,
   hostVersion: string,
 ): string {
-  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — Rebuild from Settings → Burns (only the CLI layer rebuilds).`
+  const { label } = RUNTIME_SPECS[runtime]
+  const burningOn = imageVersion ? `${label} ${imageVersion}` : `its ${label}`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Burns to catch up.`
 }
 
 /**
@@ -503,8 +512,9 @@ export interface BurnDeps {
   /** Doctor-style injected command runner used for the pre-container image probe. */
   exec?: ExecFn
   /**
-   * The host's agent CLI versions, which the image probe holds the image's to
-   * (decision 5). Omitted, or `null` for a runtime, skips that runtime's check.
+   * The host's agent CLI versions, which the image probe compares the image's
+   * with — a difference is warned about, never fatal. Omitted, or `null` for a
+   * runtime, skips that runtime's check.
    */
   hostAgentVersions?: HostAgentVersions
   /**
@@ -2642,19 +2652,45 @@ export function missingAgentBinaryMessage(
 }
 
 /**
- * Turn the "CLI too old for this model" 400 into the operator's fix. The burn
- * preflight has already proven the image matches the host, so the host CLI is
- * too old as well — Rebuild alone would bake the same version again, and the
- * host update comes first (decision 7).
+ * Turn the "CLI too old for this model" 400 into the operator's fix. A drifted
+ * image is burned on rather than aborted, so the image can lag a host that is
+ * already new enough — then Rebuild alone is the fix. Otherwise, or when the
+ * host version is unknown, the host update comes first: Rebuild alone would
+ * bake the same too-old version again (decision 7).
  */
-export function cliTooOldMessage(err: unknown, model?: string): string | undefined {
+export function cliTooOldMessage(
+  err: unknown,
+  model?: string,
+  hostVersion?: string | null,
+): string | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const match = CLI_TOO_OLD.exec(msg)
   if (!match) return undefined
-  const [, inUse, required] = match
+  const [, inUse, required = ''] = match
   const cli = inUse ? `Claude Code ${inUse}` : 'Claude Code'
   const target = model ? `model ${model}` : 'this model'
-  return `${cli} is too old for ${target} (needs ${required} or newer). Run \`claude update\` on the host, then Rebuild from Settings → Burns.`
+  const tooOld = `${cli} is too old for ${target} (needs ${required} or newer).`
+  const hostVsRequired = hostVersion ? compareDottedVersions(hostVersion, required) : undefined
+  return hostVsRequired !== undefined && hostVsRequired >= 0
+    ? `${tooOld} Your machine already has ${hostVersion} — Rebuild from Settings → Burns.`
+    : `${tooOld} Run \`claude update\` on the host, then Rebuild from Settings → Burns.`
+}
+
+/**
+ * Numeric dotted-version comparison (`2.1.290` vs `2.1.280`), signed like a
+ * sort comparator — or `undefined` when either side is not purely dotted
+ * integers: an unparsable version is an unknown one, never a guess.
+ */
+function compareDottedVersions(a: string, b: string): number | undefined {
+  const parse = (v: string) => (/^\d+(?:\.\d+)*$/.test(v) ? v.split('.').map(Number) : undefined)
+  const left = parse(a)
+  const right = parse(b)
+  if (!left || !right) return undefined
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
 }
 
 /** What a failed attempt means: retry it, fail the ticket, or halt the run. */
@@ -3684,25 +3720,23 @@ export async function burnRun(
           : missingToolchainMessage(missing, image),
       )
     }
-    // Strict equality: the image runs whatever the host runs (decision 5).
-    // Burns never build — the fix is a human's one-click Rebuild, which exists
-    // only for an image runcastle builds. A custom tag's Rebuild is `refused`,
-    // so its drift is warned about and burned through (decision 3) rather than
-    // aborted with a fix nobody can apply.
+    // Strict equality detects drift, but drift is a warning for every image:
+    // the burn runs on the CLI the image has, which almost always serves the
+    // model. Burns never build — the fix is a human's one-click Rebuild, which
+    // exists only for an image runcastle builds. A custom tag's Rebuild is
+    // `refused`, so its message names who owns the image instead.
     const managed = isManagedImage(image, ctx.project)
     const inImage = parseProbedVersions(probe.stdout)
     for (const runtime of versionsOf) {
       const hostVersion = hostVersions?.[runtime]
       const imageVersion = inImage[runtime] ?? null
       if (!hostVersion || imageVersion === hostVersion) continue
-      if (!managed) {
-        ctx.emitEvent({
-          type: IMAGE_CLI_DRIFT_EVENT,
-          message: customImageCliDriftMessage(image, runtime, imageVersion, hostVersion),
-        })
-        continue
-      }
-      return fail(agentCliDriftMessage(image, runtime, imageVersion, hostVersion))
+      const driftMessage = managed ? agentCliDriftMessage : customImageCliDriftMessage
+      ctx.emitEvent({
+        type: IMAGE_CLI_DRIFT_EVENT,
+        message: driftMessage(image, runtime, imageVersion, hostVersion),
+        data: { warning: true, managed, runtime, image, imageVersion, hostVersion },
+      })
     }
   }
 
@@ -4281,6 +4315,7 @@ async function realExecuteTicketRun(
   config: RuncastleConfig,
   token: string | undefined,
   model: ModelEntry,
+  hostAgentVersions: HostAgentVersions | undefined,
   land: <T>(task: () => Promise<T>) => Promise<T>,
   ensureIsolatedPushTarget: () => Promise<void>,
   ensureCacheVolume: () => Promise<void>,
@@ -4301,6 +4336,7 @@ async function realExecuteTicketRun(
       config,
       token,
       model,
+      hostAgentVersions,
       land,
       ensureIsolatedPushTarget,
       blocks,
@@ -4354,6 +4390,8 @@ async function burnTicket(
   config: RuncastleConfig,
   token: string | undefined,
   model: ModelEntry,
+  /** The host's agent CLI versions — what a "CLI too old" halt holds the model to. */
+  hostAgentVersions: HostAgentVersions | undefined,
   land: <T>(task: () => Promise<T>) => Promise<T>,
   ensureIsolatedPushTarget: () => Promise<void>,
   blocks: BurnPromptBlocks,
@@ -5104,7 +5142,7 @@ async function burnTicket(
         if (verdict === 'run-fatal') {
           return {
             status: 'failed',
-            error: cliTooOldMessage(msg, model.id) ?? msg,
+            error: cliTooOldMessage(msg, model.id, hostAgentVersions?.[model.runtime]) ?? msg,
             runFatal: { runtime: model.runtime },
           }
         }
@@ -5308,6 +5346,7 @@ async function resolveBurnDeps(ctx: WorkflowCtx): Promise<BurnDeps> {
             config,
             ticketToken,
             ticketModel,
+            hostAgentVersions,
             land,
             ensureIsolatedPushTarget,
             ensureCacheVolume,

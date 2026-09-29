@@ -4,6 +4,7 @@ import { fmtTime } from '../../lib/format'
 import { DimLine, Disclosure, StatusDot, cx } from '../../ui'
 import type { StatusTone } from '../../ui'
 import { IconActivity } from '../../icons'
+import { MessageWithSettingsLink } from '../settings/MessageWithSettingsLink'
 
 /** An event's level as a 6px dot — colour confirms, the words say it. */
 const LEVEL_TONE: Record<string, StatusTone> = {
@@ -54,7 +55,9 @@ export function RunTimeline({ events }: { events: readonly EventRow[] }) {
               <span
                 className={cx('min-w-0 flex-1', warns ? 'break-words text-warning' : 'truncate text-text-secondary')}
               >
-                {e.message}
+                {/* A warning's fix is often a Settings → Burns pointer (the
+                    drifted sandbox CLI's Rebuild); make it the link there. */}
+                {warns ? <MessageWithSettingsLink text={e.message} /> : e.message}
               </span>
               <span className="hidden w-40 shrink-0 truncate pt-px text-right font-mono text-xs text-text-tertiary @xl:block">
                 {e.type}

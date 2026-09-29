@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import { RunTimeline } from '../src/components/run/RunTimeline'
+import { OpenSettingsProvider } from '../src/components/settings/MessageWithSettingsLink'
+import { eventWarns } from '../src/lib/activity'
 
 /**
  * The run's coarse record, and the one thing it has to do besides record:
@@ -60,5 +62,49 @@ describe('RunTimeline', () => {
 
   it('opens the panel when it holds a warning, so it is read without a click', () => {
     expect(html([event({ id: 1 }), oversized])).toContain('open=""')
+  })
+
+  describe('a drifted sandbox CLI', () => {
+    const drift = event({
+      id: 3,
+      type: 'burn.image_cli_drift',
+      message:
+        'Sandbox has Claude Code 2.1.280, your machine has 2.1.290 — burning on 2.1.280. ' +
+        'Rebuild from Settings → Burns to catch up.',
+      data: { warning: true, runtime: 'claude-code', managed: true },
+    })
+
+    const inProvider = (events: EventRow[]): string =>
+      renderToStaticMarkup(
+        createElement(OpenSettingsProvider, {
+          open: () => {},
+          children: createElement(RunTimeline, { events }),
+        }),
+      )
+
+    it('opens the panel on the warning', () => {
+      expect(html([event({ id: 1 }), drift])).toContain('open=""')
+    })
+
+    it('links its Settings → Burns to the Rebuild row inside the settings provider', () => {
+      const markup = inProvider([event({ id: 1 }), drift])
+      expect(markup).toMatch(/<button[^>]*>Settings → Burns<\/button>/)
+      expect(markup).toContain('Rebuild from ')
+      // The ordinary row stays plain and clipped.
+      expect(messageClass(markup, 'docs digest: 2400 bytes')).toContain('truncate')
+    })
+
+    it('stays plain text outside the provider', () => {
+      expect(html([drift])).not.toContain('<button')
+    })
+  })
+})
+
+describe('eventWarns', () => {
+  it('flags an oversized payload and a warning payload, nothing else', () => {
+    expect(eventWarns({ data: { warning: true } })).toBe(true)
+    expect(eventWarns({ data: { oversized: true } })).toBe(true)
+    expect(eventWarns({ data: { warning: false, bytes: 1 } })).toBe(false)
+    expect(eventWarns({ data: undefined })).toBe(false)
   })
 })
