@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Phase } from '@runcastle/core'
@@ -198,19 +198,33 @@ describe('the Chat door on a live chat', () => {
     expect(kickoffs(feature.id)).toEqual(kickoffsBefore)
   })
 
-  it('delivers the Start-lap door’s lap briefing into a live review chat', async () => {
+  /**
+   * A live chat's system prompt was rendered when it launched — for the plain
+   * Chat toggle, a fix-ticket "Review iteration". Typing the lap briefing into it
+   * would leave the session holding both, so the Start-lap door ends it and
+   * relaunches the conversation with the lap prompt, as the carry road does.
+   */
+  it('relaunches a live review chat so the Start-lap door’s lap prompt replaces the fix-ticket one', async () => {
     const feature = await featureIn('review', 'start-lap-chat')
     const first = await openChat(feature)
     const typed = terminalFor(first)
+    expect(readFileSync(join(sessionDir(first), 'system-prompt.md'), 'utf8')).toContain(
+      '## Review iteration',
+    )
 
     const again = await launchSession(
       ctx,
       { featureId: feature.id, kind: 'chat', purpose: 'start-lap' },
       { spawn: false },
     )
+    cleanup.push(sessionDir(again.sessionId))
 
-    expect(again.sessionId).toBe(first)
-    expect(typed[0]).toContain('PLAN LAP 2 FROM REVIEW')
+    expect(again.sessionId).not.toBe(first)
+    expect(typed).toEqual([])
+    expect(activeSessionsForFeature(ctx, feature.id).map((s) => s.id)).toEqual([again.sessionId])
+    const prompt = readFileSync(join(sessionDir(again.sessionId), 'system-prompt.md'), 'utf8')
+    expect(prompt).toContain('## This is lap 2')
+    expect(prompt).not.toContain('## Review iteration')
   })
 
   it('types nothing into a conversation the door merely returns to', async () => {
