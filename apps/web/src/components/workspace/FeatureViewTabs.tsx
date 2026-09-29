@@ -1,8 +1,6 @@
 import { IconCube, IconHome, IconMessage } from '../../icons'
 import { StatusDot, Tabs } from '../../ui'
-
-/** The views a feature page switches between with its topbar Tabs. */
-export type FeatureView = 'overview' | 'tickets' | 'chat'
+import type { FeatureView } from '../../lib/routes'
 
 /**
  * A feature's view tabs: Overview | Tickets | Chat, the same in every state

@@ -7,7 +7,8 @@ import { useLivePoll } from '../lib/live'
 import { useToast } from '../lib/toast'
 import { STOP_TIMEOUT, lapExplainer } from '../lib/vocabulary'
 import { relTimeAgo } from '../lib/format'
-import { pathFor } from '../lib/routes'
+import { pathFor, type FeatureView } from '../lib/routes'
+import { useLandOnChat } from '../lib/land-on-chat'
 import {
   AsideLayout,
   DimLine,
@@ -77,7 +78,7 @@ import { RunBody } from './bodies/RunBody'
 import { Inspector } from './inspector/Inspector'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
-import { FeatureViewTabs, type FeatureView } from './workspace/FeatureViewTabs'
+import { FeatureViewTabs } from './workspace/FeatureViewTabs'
 import { LiveSessionBar } from './workspace/LiveSessionBar'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { FeatureHeader } from './workspace/FeatureHeader'
@@ -128,6 +129,8 @@ function writeSession(key: string, value: string) {
  */
 export function Workspace({
   featureId,
+  view: viewProp,
+  onViewChange,
   viewedPhase,
   onViewPhase,
   guidance,
@@ -140,6 +143,9 @@ export function Workspace({
   onToggleDetails,
 }: {
   featureId: string
+  /** The view tab in front — the shell's, so the address bar can name it. */
+  view: FeatureView
+  onViewChange: (view: FeatureView) => void
   viewedPhase: Phase | null
   onViewPhase: (phase: Phase | null) => void
   guidance: boolean
@@ -347,7 +353,15 @@ export function Workspace({
     void utils.events.invalidate()
   }
 
-  const launch = trpc.feature.launchSession.useMutation({ onSuccess: invalidate, onError: (e) => toast.push(e.message) })
+  // Every session this page launches lands on the Chat tab once it is up
+  // (one-chat-layout-everywhere decision 3) — the bar's Chat, a draft's Start,
+  // every road into the next lap, converge, work waypoint and fix drive.
+  const landOnChat = useLandOnChat(featureId)
+  const launched = () => {
+    invalidate()
+    landOnChat()
+  }
+  const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
   const burn = trpc.feature.burn.useMutation({
     onSuccess: () => {
       invalidate()
@@ -357,16 +371,15 @@ export function Workspace({
   })
   // Convergence is the bar's own action on a mapped feature (decision #4): it
   // crosses G1 — with an override reason when waypoints are still open — and
-  // spawns the converge session, which lands the feature at `spec`.
+  // spawns the converge session, which lands the feature at `spec`. Landing on
+  // Chat also drops any phase pin, so the page follows the phase it lands at.
   const converge = trpc.feature.converge.useMutation({
-    onSuccess: () => {
-      invalidate()
-      onViewPhase(null)
-    },
+    onSuccess: launched,
     onError: (e) => toast.push(e.message),
   })
+  // A research waypoint starts a headless run, not a session: nothing to land on.
   const workWaypoint = trpc.feature.workWaypoint.useMutation({
-    onSuccess: invalidate,
+    onSuccess: (res) => ('sessionId' in res ? launched() : invalidate()),
     onError: (e) => toast.push(e.message),
   })
   // The end half of every end-and-proceed compound (decision 4). No surface
@@ -397,7 +410,7 @@ export function Workspace({
   // An agent sent at the environment a drive's setup command died in — the
   // stage offers the same launch from inside the failure it explains.
   const fixDrive = trpc.feature.fixDrive.useMutation({
-    onSuccess: invalidate,
+    onSuccess: launched,
     onError: (e) => toast.push(e.message),
   })
   const testDrive = trpc.feature.testDrive.useMutation({
@@ -474,10 +487,6 @@ export function Workspace({
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
-  // The page's views of this feature (Overview · Tickets), stamped with the
-  // feature it was chosen on — this component is not remounted between
-  // features, so an unstamped choice would follow the user to the next one.
-  const [viewPick, setViewPick] = useState<{ featureId: string; view: FeatureView } | null>(null)
   // The details aside (knowledge + activity), the page's one aside.
   // Remembered for the browser session.
   const [ownDetailsOpen, setOwnDetailsOpen] = useState(() => readSession(DETAILS_KEY) === '1')
@@ -686,8 +695,8 @@ export function Workspace({
    * human arriving at a conversation they had lost sight of.
    */
   const openChat = () => {
-    if (!liveSession) launchChat()
-    setView('chat')
+    if (liveSession) landOnChat()
+    else launchChat()
   }
 
   const runAction = (kind: ActionKind, waypointId?: string) => {
@@ -842,11 +851,10 @@ export function Workspace({
   // (one-chat-layout-everywhere decision 1). A draft has no branch to chat on
   // and nothing to ticket, so it has no views at all (decision 11).
   const ticketsIsBody = ticketsAreBody({ full, phase: bodyPhase, readonly, hasRun: !!run })
-  const view: FeatureView = !isDraft && viewPick?.featureId === featureId ? viewPick.view : 'overview'
-  const setView = (v: FeatureView) => setViewPick({ featureId, view: v })
+  const view: FeatureView = isDraft ? 'overview' : viewProp
   // Pinning a phase is a different overview; it always lands on it.
   const viewPhase = (p: Phase | null) => {
-    setView('overview')
+    onViewChange('overview')
     onViewPhase(p)
   }
   // The one count every surface states (implementation tickets of this lap) —
@@ -966,7 +974,7 @@ export function Workspace({
       )}
       {nextRow}
       {view === 'overview' && !readonly && liveLine && (
-        <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => setView('chat')} />
+        <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => onViewChange('chat')} />
       )}
     </FeatureHeader>
   )
@@ -1023,7 +1031,7 @@ export function Workspace({
             <FeatureViewTabs
               isDraft={isDraft}
               value={view}
-              onChange={setView}
+              onChange={onViewChange}
               ticketCount={ticketCount.total}
               sessionLive={!!liveSession}
             />

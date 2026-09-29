@@ -4,6 +4,7 @@ import { trpc } from '../../trpc'
 import type { SettingsView } from '../../lib/api'
 import { effectiveStepModel, rosterFromView } from '../../lib/settings'
 import { useToast } from '../../lib/toast'
+import { useLandOnChat } from '../../lib/land-on-chat'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
 import {
@@ -103,7 +104,15 @@ export function RunBody({
   const edit = trpc.ticket.edit.useMutation(onMutated)
   const stop = trpc.ticket.stop.useMutation(onMutated)
   const waive = trpc.ticket.cancel.useMutation(onMutated)
-  const launch = trpc.feature.launchSession.useMutation(onMutated)
+  // Resolve in terminal lands on the Chat tab, where the session it opens is.
+  const landOnChat = useLandOnChat(featureId)
+  const launch = trpc.feature.launchSession.useMutation({
+    ...onMutated,
+    onSuccess: () => {
+      void onMutated.onSuccess()
+      landOnChat()
+    },
+  })
   const cancelRun = trpc.run.cancel.useMutation(onMutated)
   const busy =
     retry.isPending ||

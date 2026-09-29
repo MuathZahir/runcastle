@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
-import { inspectorCollapsedForPhase, useWorkspace, type DriveState } from '../lib/workspace'
+import { inspectorCollapsedForPhase, rememberedView, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
@@ -10,12 +10,15 @@ import { showsInspector, workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
   insideProject,
+  featureViewOf,
   locationFor,
   parsePath,
   projectIdOf,
   type AppLocation,
+  type FeatureView,
 } from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
+import { LandOnChatProvider } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar, SidebarRail } from './Sidebar'
 import { Frame, useFrame } from './Frame'
@@ -50,6 +53,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     projectSelected,
     preparing,
     select,
+    selectView,
     selectProject,
     startPreparation,
     setCmdk,
@@ -103,6 +107,24 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const features = list.data
 
   /**
+   * Open a feature on `view`, or — when nothing names one (the rail, the
+   * palette, a link that only says "this feature") — on the view it was left
+   * on, else Chat when a session is live, else Overview
+   * (one-chat-layout-everywhere decision 8). `null` is the project home.
+   */
+  const openFeature = useCallback(
+    (featureId: string | null, view?: FeatureView) => {
+      if (!featureId) return select(null)
+      select(featureId, view ?? rememberedView(featureId, features?.find((f) => f.id === featureId)))
+    },
+    [select, features],
+  )
+
+  // Every session launch under this shell lands on its feature's Chat tab — a
+  // view switch like any other, so it is remembered and Back undoes it.
+  const landOnChat = useCallback((featureId: string) => select(featureId, 'chat'), [select])
+
+  /**
    * Where to land, once and only once, when the feature list first arrives
    * (decision 1 + decision 4). Three sources in order: the address bar, then
    * what this project stored, then the rail's own triage order — the rule that
@@ -122,11 +144,18 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
+      // A tab in the address wins; a bare feature path restores the remembered
+      // one — which, after a reload, is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
-      select(named?.id ?? landingFeature(features)?.id ?? null)
+      if (named) openFeature(named.id, addressed.tab)
+      else openFeature(landingFeature(features)?.id ?? null)
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)
-      if (target) select(target.id)
+      if (target) openFeature(target.id)
+    } else if (selectedFeatureId && !projectSelected && !preparing) {
+      // The restored selection: settle the storage guess now the list can say
+      // whether a session is live.
+      selectView(rememberedView(selectedFeatureId, features.find((f) => f.id === selectedFeatureId)))
     }
     setLanded(true)
   }, [
@@ -137,7 +166,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     selectedFeatureId,
     projectSelected,
     preparing,
-    select,
+    openFeature,
+    selectView,
     selectProject,
     startPreparation,
   ])
@@ -153,9 +183,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // third breadcrumb level wants its title (decision 11).
   const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
   const selectedSlug = selectedFeature?.slug ?? null
+  // A draft has no view tabs (decision 11), so it is only ever at its Overview.
+  const featureView = selectedFeature?.status === 'draft' ? 'overview' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
-      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug })
+      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
       : null
 
   useHistorySync(location, (popped) => {
@@ -168,8 +200,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'prepare') startPreparation()
     else {
+      // The popped path says exactly which view — a bare one is Overview, not
+      // "whatever was remembered", or Back from a tab could never reach it.
       const named = features?.find((f) => f.slug === inside.featureSlug)
-      select(named?.id ?? landingFeature(features ?? [])?.id ?? null)
+      if (named) select(named.id, featureViewOf(inside))
+      else openFeature(landingFeature(features ?? [])?.id ?? null)
     }
   })
 
@@ -218,7 +253,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const body =
     view === 'create' ? (
       <section className="relative flex min-h-0 min-w-0 flex-col">
-        <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={ws.select} />
+        <QuickForm projectId={projectId} onCancel={ws.cancelCreate} onCreated={openFeature} />
       </section>
     ) : view === 'prepare' ? (
       // `onClose` only when there is somewhere to go back to: the automatic
@@ -254,6 +289,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
       >
         <Workspace
           featureId={selectedFeatureId}
+          view={featureView}
+          onViewChange={ws.selectView}
           viewedPhase={ws.viewedPhase}
           onViewPhase={ws.viewPhase}
           guidance={ws.guidance}
@@ -283,7 +320,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             view={view}
             selectedFeatureId={ws.selectedFeatureId}
             talk={talk}
-            onSelect={ws.select}
+            onSelect={openFeature}
             onSelectProject={ws.selectProject}
             onNewChat={newChat}
             onDraft={ws.startDraft}
@@ -311,7 +348,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         onClose={() => ws.setCmdk(false)}
         features={features ?? []}
         selectedFeatureId={ws.selectedFeatureId}
-        onSelect={ws.select}
+        onSelect={openFeature}
         onOpenSettings={() => ws.openSettings()}
         onOpenPreparation={ws.startPreparation}
         // The palette navigates, it never launches: this opens the project
@@ -347,6 +384,11 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   // Anything under the shell — a ticket's error, a burn lane — can turn a
   // "Settings → Burns" pointer into a link that lands on the row it names.
-  return <OpenSettingsProvider open={ws.openSettings}>{shell}</OpenSettingsProvider>
+  // And any session launch under it lands on that feature's Chat tab.
+  return (
+    <OpenSettingsProvider open={ws.openSettings}>
+      <LandOnChatProvider value={landOnChat}>{shell}</LandOnChatProvider>
+    </OpenSettingsProvider>
+  )
 }
 
