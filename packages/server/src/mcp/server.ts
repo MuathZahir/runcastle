@@ -1057,10 +1057,10 @@ export function toolCompletePhase(
   // An iterate lap is the next lap being planned FROM Review. With `rethink`
   // gone nothing moves a feature backwards, so the session that writes lap N+1's
   // fix tickets does it while the feature stands at `review` — the same road
-  // `burn` already recognises (`iterating`, services/features.ts). That session
-  // is precisely the audience decisions §5 wrote the warnings for, so it falls
-  // through to the full answer below instead of being told there is nothing left
-  // to do for work it has just legitimately done.
+  // `burn` already recognises (`iterating`, services/features.ts). Its briefing
+  // forbids this call — Burn from review is what starts the lap — but a stray one
+  // is not refused: it falls through to the full answer below, Burn warnings
+  // included, instead of being told there is nothing left to do.
   const iterating = feature.phase === 'review' && pendingTickets(ctx, feature.id).length > 0
 
   // The human clicked Burn while this session was still closing out: the work
@@ -2930,8 +2930,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
           'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
           'then closes the finding itself when that ticket lands. An earlier-lap open defect you ' +
-          'leave un-dispositioned is not refused — it comes back as a warning from ' +
-          '`complete_phase("tickets")` and again at the human’s Burn click.',
+          'leave un-dispositioned is not refused — it comes back as a warning at the human’s Burn ' +
+          'click, so disposition each one before you hand over.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {
