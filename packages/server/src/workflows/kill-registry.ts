@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { contain, type Containment } from '../pty/job-object'
 import { killProcessTree } from '../pty/kill-tree'
 
 /**
@@ -124,7 +125,7 @@ function runDockerCommand(args: string[]): Promise<boolean> {
 }
 
 /**
- * The two system calls the registry makes, injectable so its behaviour can be
+ * The system calls the registry makes, injectable so its behaviour can be
  * driven without a container engine or a real process to kill.
  */
 export interface KillRegistryDeps {
@@ -132,9 +133,16 @@ export interface KillRegistryDeps {
   readonly runDocker: (args: string[]) => Promise<boolean>
   /** Kill the process tree rooted at `pid`; resolves once it settles. Never rejects. */
   readonly killTree: (pid: number) => Promise<void>
+  /** Put a host child in a kill-on-close Job Object; null when there is none (off win32, or setup failed). */
+  readonly contain: (pid: number) => Containment | null
 }
 
-const REAL_DEPS: KillRegistryDeps = { runDocker: runDockerCommand, killTree: killProcessTree }
+const REAL_DEPS: KillRegistryDeps = {
+  runDocker: runDockerCommand,
+  killTree: killProcessTree,
+  // Jobs are a win32 thing; elsewhere skip the call and its per-pid "unavailable" line.
+  contain: (pid) => (process.platform === 'win32' ? contain(pid) : null),
+}
 
 /**
  * Resolve whether `body` reported death, or false if `ms` elapses first — in
@@ -169,6 +177,14 @@ class KillRegistry {
   private readonly handles = new Map<string, KillHandle>()
   /** Lanes whose kill has been ordered and is still waiting to see death. */
   private readonly killsInFlight = new Map<string, InFlightKill>()
+  /**
+   * Every Job Object a host lane's execs were contained in, oldest first. All of
+   * them live until the lane is released or killed — never closed when a newer
+   * exec registers, since execs can overlap and a live agent must not be killed
+   * by its successor. Closing them is what reaches a finished exec's orphans
+   * (a claude's MCP servers) that `taskkill /T` cannot.
+   */
+  private readonly containments = new Map<string, Containment[]>()
 
   constructor(private readonly deps: KillRegistryDeps = REAL_DEPS) {}
 
@@ -179,15 +195,27 @@ class KillRegistry {
 
   /**
    * The lane's newest host child. Overwrites: the host provider spawns a fresh
-   * child per exec, so only the latest pid names a process still alive.
+   * child per exec, so only the latest pid names a process still alive. Each pid
+   * is contained synchronously, in the spawn callback's own tick (decision 4).
    */
   registerHostPid(laneKey: string, pid: number, owner: LaneOwner = {}): void {
+    const containment = this.deps.contain(pid)
+    if (containment) {
+      const lane = this.containments.get(laneKey)
+      if (lane) lane.push(containment)
+      else this.containments.set(laneKey, [containment])
+    }
     this.handles.set(laneKey, { kind: 'host', pid, ...owner })
   }
 
-  /** Forget the lane — its run settled and there is nothing left to kill. */
+  /**
+   * Forget the lane — its run settled and there is nothing left to kill but
+   * whatever its execs left behind, which dies with their jobs here.
+   */
   release(laneKey: string): void {
     this.handles.delete(laneKey)
+    for (const containment of this.containments.get(laneKey) ?? []) void containment.kill()
+    this.containments.delete(laneKey)
   }
 
   /**
@@ -245,8 +273,11 @@ class KillRegistry {
   ): Promise<KillOutcome> {
     const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
     const started = Date.now()
-    const confirmed = await withDeadline(this.kill(handle, started + timeoutMs), timeoutMs)
-    if (confirmed) this.handles.delete(laneKey)
+    const confirmed = await withDeadline(this.kill(laneKey, handle, started + timeoutMs), timeoutMs)
+    if (confirmed) {
+      this.handles.delete(laneKey)
+      this.containments.delete(laneKey)
+    }
 
     const target = handle.kind === 'container' ? handle.containerName : `pid=${handle.pid}`
     log(
@@ -283,12 +314,17 @@ class KillRegistry {
    * the caller; {@link killAndWait}'s own timer is the backstop for a step that
    * never settles at all.
    */
-  private async kill(handle: KillHandle, deadline: number): Promise<boolean> {
+  private async kill(laneKey: string, handle: KillHandle, deadline: number): Promise<boolean> {
     if (handle.kind === 'host') {
+      const lane = this.containments.get(laneKey) ?? []
+      // Each job's kill resolves true once its root is seen to exit.
+      const jobs = Promise.all(lane.map((job) => job.kill({ timeoutMs: deadline - Date.now() })))
+      // The newest pid was not contained (setup failed): reap it as today too.
       // The tree-kill settling IS the death: `taskkill /T /F` has reaped the
       // whole tree by the time it exits, and a process group signal likewise.
-      await this.deps.killTree(handle.pid)
-      return true
+      const tree = lane.at(-1)?.pid === handle.pid ? undefined : this.deps.killTree(handle.pid)
+      const [exited] = await Promise.all([jobs, tree])
+      return exited.every(Boolean)
     }
 
     // `rm -f`, not `stop`: an immediate SIGKILL and removal, no 10s grace period

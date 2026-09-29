@@ -39,6 +39,7 @@ function withHeldContainer(): {
   const deps: KillRegistryDeps = {
     runDocker: async (args) => (args[0] === 'inspect' ? alive : true),
     killTree: async () => {},
+    contain: () => null,
   }
   return { registry: createKillRegistry(deps), letItDie: () => (alive = false) }
 }

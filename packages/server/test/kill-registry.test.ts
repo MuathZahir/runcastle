@@ -42,6 +42,7 @@ function withDocker(opts: {
       return false
     },
     killTree: async () => {},
+    contain: () => null,
   }
   return { registry: createKillRegistry(deps), calls }
 }
@@ -60,6 +61,7 @@ function withHost(killTree?: (pid: number) => Promise<void>): {
       killed.push(pid)
       await killTree?.(pid)
     },
+    contain: () => null,
   }
   return { registry: createKillRegistry(deps), killed }
 }
@@ -274,6 +276,7 @@ describe('whenKillSettled — the gate a terminal write waits behind', () => {
     const deps: KillRegistryDeps = {
       runDocker: async (args) => (args[0] === 'inspect' ? alive : true),
       killTree: async () => {},
+      contain: () => null,
     }
     return { registry: createKillRegistry(deps), letItDie: () => (alive = false) }
   }
@@ -350,6 +353,126 @@ describe('whenKillSettled — the gate a terminal write waits behind', () => {
     await expect(registry.whenRunKillsSettled('run_other')).resolves.toBeUndefined()
 
     await kill
+  })
+})
+
+describe('a host lane in Job Objects (win32)', () => {
+  /**
+   * On Windows each exec's pid goes into a kill-on-close job, because a
+   * finished claude's MCP servers are orphans `taskkill /T` cannot reach. The
+   * job is faked here: it records its kill and answers with `exits`.
+   */
+  function withJobs(opts: { uncontained?: number[]; exits?: (pid: number) => boolean } = {}): {
+    registry: ReturnType<typeof createKillRegistry>
+    contained: number[]
+    jobKills: { pid: number; timeoutMs?: number }[]
+    treeKills: number[]
+  } {
+    const contained: number[] = []
+    const jobKills: { pid: number; timeoutMs?: number }[] = []
+    const treeKills: number[] = []
+    const deps: KillRegistryDeps = {
+      runDocker: async () => true,
+      killTree: async (pid) => {
+        treeKills.push(pid)
+      },
+      contain: (pid) => {
+        if (opts.uncontained?.includes(pid)) return null
+        contained.push(pid)
+        return {
+          pid,
+          kill: async (killOpts) => {
+            jobKills.push({ pid, timeoutMs: killOpts?.timeoutMs })
+            return opts.exits?.(pid) ?? true
+          },
+        }
+      },
+    }
+    return { registry: createKillRegistry(deps), contained, jobKills, treeKills }
+  }
+
+  it('contains every pid the lane registers, and a newer exec never kills an earlier one', () => {
+    const { registry, contained, jobKills } = withJobs()
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+    registry.registerHostPid('tkt_1', 333)
+
+    expect(contained).toEqual([111, 222, 333])
+    expect(jobKills).toEqual([])
+  })
+
+  it('release kills every job the lane collected', () => {
+    const { registry, jobKills, treeKills } = withJobs()
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+    registry.registerHostPid('tkt_2', 999)
+
+    registry.release('tkt_1')
+
+    expect(jobKills.map((kill) => kill.pid)).toEqual([111, 222])
+    expect(treeKills).toEqual([])
+    expect(registry.keys()).toEqual(['tkt_2'])
+
+    // Released means gone: a second release has nothing left to kill.
+    registry.release('tkt_1')
+    expect(jobKills).toHaveLength(2)
+  })
+
+  it('killAndWait kills through every job, bounded by the deadline, and confirms when all exited', async () => {
+    const { registry, jobKills, treeKills } = withJobs()
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+
+    await expect(registry.killAndWait('tkt_1', { timeoutMs: 5000 })).resolves.toEqual({ confirmed: true })
+
+    expect(jobKills.map((kill) => kill.pid)).toEqual([111, 222])
+    for (const kill of jobKills) {
+      expect(kill.timeoutMs).toBeGreaterThan(0)
+      expect(kill.timeoutMs).toBeLessThanOrEqual(5000)
+    }
+    // The job IS the tree-kill: taskkill never runs for a contained lane.
+    expect(treeKills).toEqual([])
+    expect(registry.keys()).toEqual([])
+  })
+
+  it('is unconfirmed when any job root outlived its kill, and keeps the lane for a retry', async () => {
+    const { registry } = withJobs({ exits: (pid) => pid !== 111 })
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+
+    await expect(registry.killAndWait('tkt_1')).resolves.toEqual({ confirmed: false })
+    expect(registry.keys()).toEqual(['tkt_1'])
+  })
+
+  it('killAllForRun kills a host lane through its jobs', async () => {
+    const { registry, jobKills } = withJobs()
+    registry.registerHostPid('tkt_1', 111, { runId: 'run_1' })
+    registry.registerHostPid('tkt_2', 222, { runId: 'run_1' })
+
+    await expect(registry.killAllForRun('run_1')).resolves.toEqual({ confirmed: true })
+    expect(jobKills.map((kill) => kill.pid).sort()).toEqual([111, 222])
+  })
+
+  it('falls back to the tree-kill for a newest pid whose job setup failed', async () => {
+    const { registry, jobKills, treeKills } = withJobs({ uncontained: [222] })
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+
+    await expect(registry.killAndWait('tkt_1')).resolves.toEqual({ confirmed: true })
+
+    expect(jobKills.map((kill) => kill.pid)).toEqual([111])
+    expect(treeKills).toEqual([222])
+  })
+
+  it('with no job at all, is exactly the tree-kill of the newest pid', async () => {
+    const { registry, jobKills, treeKills } = withJobs({ uncontained: [111, 222] })
+    registry.registerHostPid('tkt_1', 111)
+    registry.registerHostPid('tkt_1', 222)
+
+    await expect(registry.killAndWait('tkt_1')).resolves.toEqual({ confirmed: true })
+
+    expect(jobKills).toEqual([])
+    expect(treeKills).toEqual([222])
   })
 })
 
