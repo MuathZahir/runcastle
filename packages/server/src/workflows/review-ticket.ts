@@ -171,12 +171,18 @@ function missingDrivePieces(
   const missing: string[] = []
   if (!browserPath) {
     missing.push(
-      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with`,
+      `\`${AGENT_BROWSER_BIN}\` is not on this machine's PATH, so there is no browser to walk the app with ` +
+        `(install ${AGENT_BROWSER_BIN} to get driven reviews)`,
     )
   } else if (browserFailure) {
     missing.push(`\`${AGENT_BROWSER_BIN}\` is on PATH but failed its health check (${browserFailure})`)
   }
-  if (!ffmpegPath) missing.push(`\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded`)
+  if (!ffmpegPath) {
+    missing.push(
+      `\`${FFMPEG_BIN}\` is not on this machine's PATH, so a drive cannot be recorded ` +
+        `(install ${FFMPEG_BIN} to get walkthrough videos)`,
+    )
+  }
   if (!devCommand?.trim()) {
     missing.push('this project has no dev command configured, so a drive has no app to boot')
   }
@@ -208,6 +214,26 @@ export function driveWithheldReason(
   const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
   if (missing.length === 0) return undefined
   return `Drive was unavailable: ${missing.join(', and ')}.`
+}
+
+/**
+ * The withheld-drive reason of each run's review pass in flight, keyed by run
+ * id — what `review_drive` refuses with, so a pass told Drive is closed cannot
+ * boot the app off the record anyway.
+ */
+const withheldDrives = new Map<string, string>()
+
+/** Close the drive to this run's review pass for `reason`; the returned function reopens it. */
+export function withholdDrive(runId: string, reason: string): () => void {
+  withheldDrives.set(runId, reason)
+  return () => {
+    withheldDrives.delete(runId)
+  }
+}
+
+/** Why this run's review pass may not drive, or undefined when it may. */
+export function withheldDriveFor(runId: string): string | undefined {
+  return withheldDrives.get(runId)
 }
 
 /**
@@ -290,10 +316,14 @@ export function resolveReviewDeclaration(
     }
   }
   if (reviewMode === 'drive' && facts.offeredMode !== 'drive') {
+    // Still unverified — no recording is no evidence — but when the host knew
+    // which prerequisite was missing, the trail names it (decision 8).
     return {
       reviewMode,
       reviewVerdict: 'unverified',
-      reason: 'Drive was declared even though Drive mode was unavailable.',
+      reason: facts.driveWithheldReason
+        ? `${facts.driveWithheldReason} The reviewer drove anyway, so nothing was recorded.`
+        : 'Drive was declared even though Drive mode was unavailable.',
     }
   }
   if (reviewMode === 'drive' && !facts.webmExists) {
@@ -760,12 +790,14 @@ async function reviewTicketOutcome(
   let runError: unknown
   let cancellationError: unknown
   let recorderConfirmed = true
+  const reopenDrive = withheldReason ? withholdDrive(ctx.runId, withheldReason) : undefined
   try {
     await (deps.runAgent ?? run)(options)
   } catch (err) {
     if (ctx.signal.aborted) cancellationError = err // run cancelled — the runner finalizes it
     else runError = err
   } finally {
+    reopenDrive?.()
     releaseTicketAbort(ticket.id)
     killRegistry().release(ticket.id)
     throttle.flush()
