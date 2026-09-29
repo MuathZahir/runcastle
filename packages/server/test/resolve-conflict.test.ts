@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { unresolvedMergeConflict } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,11 +10,13 @@ import type { AppCtx } from '../src/db/types'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { handlePtyExit, launchSession } from '../src/launcher/launcher'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { createFeatureBranch, isAncestor } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -405,6 +408,103 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     expect(getSessionRow(ctx, id)?.status).toBe('ended')
     expect(resolved()).toHaveLength(0)
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.ended')).toHaveLength(1)
+  })
+})
+
+/**
+ * A standing conflict retired while the chat is still live. One chat per
+ * feature means the resolve session never ends after it commits the merge, so
+ * teardown is too late: the turn's Stop hook and the review read ask git
+ * instead, off the base the conflict event recorded.
+ */
+describe('a standing conflict clears once its base is in the feature branch', () => {
+  let ctx: AppCtx
+  let featureId: string
+  let worktree: string
+  let sessionId: string
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    const repo = mkTmp('runcastle-standing-repo-')
+    git(repo, 'init', '-b', 'main')
+    git(repo, 'config', 'user.email', 'test@runcastle.dev')
+    git(repo, 'config', 'user.name', 'Runcastle Test')
+    git(repo, 'config', 'core.autocrlf', 'false')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default {}\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'initial commit')
+
+    git(repo, 'branch', 'feature/dark-mode')
+    writeFileSync(join(repo, 'vitest.config.ts'), 'export default { main: true }\n')
+    git(repo, 'commit', '-am', 'main moves')
+
+    worktree = join(mkTmp('runcastle-standing-wt-'), 'dark-mode')
+    git(repo, 'worktree', 'add', worktree, 'feature/dark-mode')
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
+    git(worktree, 'commit', '-am', 'feature moves')
+
+    const project = seedProject(ctx, repo)
+    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' }).id
+    emit(ctx, featureId, {
+      type: 'merge.conflict',
+      message: 'merge conflict — resolve and retry',
+      data: { base: 'main', files: ['vitest.config.ts'] },
+    })
+    // The feature's one chat, live, and never ended in these tests.
+    sessionId = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: worktree }).id
+    markSessionLive(ctx, sessionId)
+    setRuntimeCtx(ctx)
+  })
+
+  afterEach(() => clearRuntimeCtx())
+
+  async function turnEnds(): Promise<any> {
+    const app = new Hono()
+    app.route('/api/hooks', hooksApp)
+    const res = await app.request('/api/hooks/stop', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, payload: { hook_event_name: 'Stop' } }),
+    })
+    return res.json()
+  }
+
+  const standing = () => unresolvedMergeConflict(listAfter(ctx, featureId, 0))
+  const resolved = () => listAfter(ctx, featureId, 0).filter((e) => e.type === 'merge.resolved')
+
+  function landTheMerge(): void {
+    expect(() => git(worktree, 'merge', 'main')).toThrow()
+    writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { both: true }\n')
+    git(worktree, 'commit', '-am', 'resolve the merge')
+  }
+
+  it('reports no unresolved conflict after the turn that landed the merge', async () => {
+    landTheMerge()
+    expect(await turnEnds()).toEqual({})
+
+    expect(standing()).toBeNull()
+    expect(resolved()).toHaveLength(1)
+    expect(resolved()[0]?.data).toMatchObject({ mergeFrom: 'main', mergeInto: 'feature/dark-mode' })
+    expect(getSessionRow(ctx, sessionId)?.status).toBe('live')
+  })
+
+  it('clears it when the review state is read, emitting merge.resolved only once', async () => {
+    landTheMerge()
+    const caller = createCallerFactory(appRouter)(ctx)
+    await caller.feature.get({ id: featureId })
+    await Promise.all([caller.feature.get({ id: featureId }), turnEnds()])
+
+    expect(standing()).toBeNull()
+    expect(resolved()).toHaveLength(1)
+  })
+
+  it('keeps the conflict while the branch still lacks the base', async () => {
+    expect(() => git(worktree, 'merge', 'main')).toThrow()
+    await turnEnds()
+    await createCallerFactory(appRouter)(ctx).feature.get({ id: featureId })
+
+    expect(standing()).toMatchObject({ base: 'main', files: ['vitest.config.ts'] })
+    expect(resolved()).toHaveLength(0)
   })
 })
 

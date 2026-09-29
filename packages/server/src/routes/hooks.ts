@@ -16,7 +16,7 @@ import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
-import { noteResolvedMerge } from '../services/resolved-merge'
+import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
 import { releaseForSession } from '../services/waypoints'
 
@@ -68,6 +68,10 @@ hooks.post('/:event', async (c) => {
     if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
+      // The turn that just ended may have committed a conflict's merge, and the
+      // feature's one chat stays live after it — so ask git now, not at teardown.
+      const feature = session.featureId ? tryGetFeature(ctx, session.featureId) : null
+      if (feature) await reconcileStandingConflict(ctx, feature)
       return c.json({})
     }
 
