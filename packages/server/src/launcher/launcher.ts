@@ -20,7 +20,6 @@ import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } f
 import { chatKickoffFor, prepareConfirmKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
-import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
 import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
