@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createSandbox } from '@ai-hero/sandcastle'
 import {
   type GateCommandResult,
@@ -123,6 +123,9 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
   const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(config, project)
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
   const branch = reviewGateBranch(ticketId)
+  // Fresh logs only: a re-run of this pass must not leave an older run's
+  // `run.log` or surplus `<i>.log` beside the record it replaces.
+  rmSync(reviewGateLogDir(ticketId), { recursive: true, force: true })
   mkdirSync(reviewGateLogDir(ticketId), { recursive: true })
 
   const discardBranch = async (): Promise<void> => {
