@@ -123,10 +123,6 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
   const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(config, project)
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
   const branch = reviewGateBranch(ticketId)
-  // Fresh logs only: a re-run of this pass must not leave an older run's
-  // `run.log` or surplus `<i>.log` beside the record it replaces.
-  rmSync(reviewGateLogDir(ticketId), { recursive: true, force: true })
-  mkdirSync(reviewGateLogDir(ticketId), { recursive: true })
 
   const discardBranch = async (): Promise<void> => {
     await cleanupBurnWorktree(project.repoPath, branch)
@@ -134,6 +130,11 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
   }
 
   try {
+    // Fresh logs only: a re-run of this pass must not leave an older run's
+    // `run.log` or surplus `<i>.log` beside the record it replaces. Inside the
+    // try because a log held open (EBUSY/EPERM on Windows) must not escape.
+    rmSync(reviewGateLogDir(ticketId), { recursive: true, force: true })
+    mkdirSync(reviewGateLogDir(ticketId), { recursive: true })
     // A crashed earlier run may have left the branch pinned by its worktree,
     // which would refuse the move below.
     await discardBranch()
@@ -147,16 +148,28 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
     })
     return { status: 'ran', commit: sha, commands: commandResults }
   } catch (err) {
-    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
-    writeFileSync(reviewGateLogPath(ticketId, 'run.log'), `${detail}\n`)
     return {
       status: 'couldnt_run',
       commit: sha,
       reason: `the gate sandbox could not be set up: ${headline(errorText(err))}`,
-      log: 'run.log',
+      log: writeRunLog(ticketId, err),
     }
   } finally {
     await discardBranch()
+  }
+}
+
+/**
+ * Keep a failed run's full error as `run.log`, and name it — or `null` when the
+ * log dir is itself what failed, so the record still comes back.
+ */
+function writeRunLog(ticketId: string, err: unknown): 'run.log' | null {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  try {
+    writeFileSync(reviewGateLogPath(ticketId, 'run.log'), `${detail}\n`)
+    return 'run.log'
+  } catch {
+    return null
   }
 }
 
