@@ -747,8 +747,19 @@ async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps
   // Loaded lazily: review-gates imports ticket-burner, which imports this file,
   // so a static import evaluates review-gates before ticket-burner's constants
   // exist whenever ticket-burner is the one loaded first (as at server boot).
-  const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
-  return runGates({ config: deps.config, project, ticketId: ticket.id, sha })
+  try {
+    const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
+    return await runGates({ config: deps.config, project, ticketId: ticket.id, sha })
+  } catch (err) {
+    // The runner records its own failures; anything that still escapes it is
+    // no less an environment fault, and must not stop the reviewer launching.
+    return {
+      status: 'couldnt_run',
+      commit: sha,
+      reason: `the gate run failed: ${err instanceof Error ? err.message : String(err)}`,
+      log: null,
+    }
+  }
 }
 
 /**

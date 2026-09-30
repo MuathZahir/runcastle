@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { type Project, RuncastleConfig } from '@runcastle/core'
-import { reviewGateLogPath } from '@runcastle/core/paths'
+import { reviewGateLogDir, reviewGateLogPath } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   type GateExecResult,
@@ -175,6 +175,23 @@ describe('runReviewGates', () => {
       log: 'run.log',
     })
     expect(readFileSync(reviewGateLogPath(TICKET, 'run.log'), 'utf8')).toContain('lockfile had changes')
+  })
+
+  it('reports couldnt_run without a log when the log directory cannot be written — never throws', async () => {
+    const fake = fakeSandbox(repo, {})
+    // A file where the log directory's parent should be: every write under it fails.
+    const reviewDir = dirname(reviewGateLogDir(TICKET))
+    mkdirSync(dirname(reviewDir), { recursive: true })
+    writeFileSync(reviewDir, 'in the way')
+
+    const run = await runReviewGates({
+      config, project: project('bun run test'), ticketId: TICKET, sha: tip,
+      deps: { withSandbox: fake.withSandbox },
+    })
+
+    expect(run).toMatchObject({ status: 'couldnt_run', commit: tip, log: null })
+    expect(fake.ran).toEqual([])
+    expect(git(repo, 'branch', '--list', reviewGateBranch(TICKET))).toBe('')
   })
 
   it('removes the throwaway branch on every path and never touches the feature branch or the checkout', async () => {
