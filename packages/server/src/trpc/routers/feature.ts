@@ -1,12 +1,7 @@
 import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict } from '@runcastle/core'
 import * as z from 'zod'
-import {
-  converge,
-  endSession,
-  launchDriveFixSession,
-  launchSession,
-  workWaypoint,
-} from '../../launcher/launcher'
+import { GateError } from '../../errors'
+import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
 import { retireShippedWorktree } from '../../services/feature-worktrees'
@@ -22,6 +17,8 @@ import {
 } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
 import { publicProcedure, router } from '../context'
+
+const MAPPED_IDEATION_RETIRED = 'mapped ideation was retired (ADR-0012)'
 
 export const featureRouter = router({
   create: publicProcedure
@@ -110,23 +107,21 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
 
-  // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
-  // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
-  // or when a waypoint session is already live (one HITL session per feature).
-  // A finished live session is ended for us; `endLive` — set only after the human
-  // confirms — additionally abandons one that is still mid-work (decision #8).
+  // Mapped ideation was retired (ADR-0012): both doors refuse until the contract
+  // change deletes them along with their last web callers.
   workWaypoint: publicProcedure
     .input(
       z.object({ featureId: z.string(), waypointId: z.string(), endLive: z.boolean().optional() }),
     )
-    .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
+    .mutation((): never => {
+      throw new GateError(MAPPED_IDEATION_RETIRED)
+    }),
 
-  // Converge a mapped feature (ADR-0001 §13.2): spawns a fresh kind=converge
-  // session that runs the existing spec → tickets skills over the compressed
-  // knowledge. The feature remains in Planning throughout.
   converge: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => converge(ctx, { featureId: input.featureId })),
+    .mutation((): never => {
+      throw new GateError(MAPPED_IDEATION_RETIRED)
+    }),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

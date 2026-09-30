@@ -7,24 +7,23 @@ import { emit } from '../services/events'
 import { cleanupTempBranches } from '../services/git'
 import { allProjects, getProjectById, rowToRun, tryGetFeature } from '../services/repo'
 import { listByFeature, sweepOrphanedBurning } from '../services/tickets'
-import { releaseForSession } from '../services/waypoints'
 import { isRunActive, workflowClaimsFeatureBranch } from './runner'
 
 /**
  * Boot reconciliation for runs (mirror of `launcher/reconcile.ts` for
  * sessions). Run promises live in-process, so after a cold server start every
  * `running` run row is stale by definition — its workflow died with the old
- * server. Left alone, those rows wedge the launcher's active-run guard forever,
- * keep their claimed waypoints off the frontier, and (for branch-claiming
- * workflows) leave the talk worktree parked on a detached HEAD.
+ * server. Left alone, those rows wedge the launcher's active-run guard forever
+ * and (for branch-claiming workflows) leave the talk worktree parked on a
+ * detached HEAD.
  *
  * For each stale run this mirrors the finalizer minus the workflow itself:
- * mark the row `failed` (summary "orphaned by server restart"), auto-release
- * any waypoint it still claims, fail the ticket lanes it left `burning` (their
- * agents died with it — see `sweepOrphanedBurning`), best-effort hand back the
- * talk worktree a branch-claiming run parked on a chat branch, and emit ONE
- * `run.reconciled` event per run.
- * Afterwards it sweeps leftover research temp branches — deleting only those
+ * mark the row `failed` (summary "orphaned by server restart"), fail the ticket
+ * lanes it left `burning` (their agents died with it — see
+ * `sweepOrphanedBurning`), best-effort hand back the talk worktree a
+ * branch-claiming run parked on a chat branch, and emit ONE `run.reconciled`
+ * event per run.
+ * Afterwards it sweeps leftover ticket temp branches — deleting only those
  * fully merged into their feature branch; unmerged ones hold unlanded commits
  * (mid-run crash or a conflict preserved for manual recovery) and are kept.
  *
@@ -49,7 +48,6 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       .set({ status: 'failed', endedAt: Date.now(), summary: 'orphaned by server restart' })
       .where(eq(runs.id, run.id))
       .run()
-    const released = releaseForSession(ctx, run.id)
     // The run's in-flight ticket lanes died with it. Their `burning` rows would
     // otherwise survive forever — non-terminal, unretryable, and invisible to
     // the next burn's scheduler (see `sweepOrphanedBurning`).
@@ -90,7 +88,6 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
       data: {
         runId: run.id,
         workflow: run.workflow,
-        releasedWaypointIds: released.map((w) => w.id),
         sweptTicketSeqs: swept.map((t) => t.seq),
         ...(run.workflow === 'ticket-burner' ? { landedTickets, pendingTickets } : {}),
       },
@@ -98,7 +95,7 @@ export async function reconcileStaleRuns(ctx: AppCtx): Promise<Run[]> {
     reconciled.push(run)
   }
 
-  // Sweep runcastle temp branches (research + ticket) orphaned by crashed runs
+  // Sweep runcastle ticket temp branches orphaned by crashed runs
   // (merged-only; see `cleanupTempBranches`). Best-effort: a missing/broken repo
   // never blocks boot. Project-wide (multi-project, issue #43): every project.
   for (const project of allProjects(ctx)) {

@@ -9,7 +9,6 @@ import { emit } from '../services/events'
 import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
-import { claim as claimWaypoint, releaseForSession, resolve as resolveWaypoint } from '../services/waypoints'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
@@ -32,10 +31,7 @@ const controllers = new Map<string, AbortController>()
  * Workflows that CLAIM the feature branch for the run's whole duration: their
  * sandcastle branch strategy checks `feature/<slug>` out in its own worktree,
  * so the talk worktree must be detached first (git forbids one branch in two
- * worktrees) and HITL terminals are refused while such a run is live. The
- * `research` workflow works on a per-run temp branch (`runcastle/research/...`)
- * merged back at finalize, so it claims nothing — the talk worktree stays
- * attached and HITL runs in parallel (ADR-0001 §7 "serial HITL, PARALLEL AFK").
+ * worktrees) and HITL terminals are refused while such a run is live.
  *
  * This flag arguably belongs on `WorkflowDef` itself (core-owned `workflow.ts`);
  * kept as a server-side map until core can change.
@@ -62,19 +58,8 @@ export interface StartRunResult {
 }
 
 export interface StartRunOptions {
-  /**
-   * Per-run payload exposed to the workflow as `ctx.input` (SPEC §13.1). The
-   * research workflow receives the `Waypoint` it works here.
-   */
+  /** Per-run payload exposed to the workflow as `ctx.input`. */
   input?: unknown
-  /**
-   * Claim this waypoint for the run before it starts (SPEC §13.2 research path):
-   * the claim uses the fresh `runId` as claimant, is transactional (a waypoint no
-   * longer on the frontier throws), and is auto-released by the finalizer if the
-   * workflow does not resolve it. On a failed claim the run row is finalized as
-   * failed and the error rethrown, so no orphaned run lingers.
-   */
-  claimWaypointId?: string
   /**
    * Per-run model override (issue #48) exposed to the workflow as
    * `ctx.modelOverride`; wins the `resolveModel` chain for the run's AFK agent.
@@ -130,18 +115,6 @@ export async function startRun(
     })
     .run()
 
-  // A research run claims its waypoint with the run id as claimant BEFORE any
-  // work starts (SPEC §13.2). A failed claim (no longer on the frontier) must not
-  // leave a dangling `running` row: finalize it failed and rethrow.
-  if (opts.claimWaypointId) {
-    try {
-      claimWaypoint(ctx, opts.claimWaypointId, runId)
-    } catch (e) {
-      const summary = e instanceof Error ? e.message : 'claim failed'
-      ctx.db.update(runs).set({ status: 'failed', endedAt: Date.now(), summary }).where(eq(runs.id, runId)).run()
-      throw e
-    }
-  }
 
   emit(ctx, featureId, {
     type: 'run.started',
@@ -200,9 +173,6 @@ export async function startRun(
     },
     input: opts.input,
     modelOverride: opts.modelOverride,
-    resolveWaypoint: (id, disposition, summary) => {
-      resolveWaypoint(ctx, id, disposition, summary)
-    },
     signal: controller.signal,
   }
 
@@ -279,10 +249,7 @@ async function executeRun(
     .set({ status, endedAt: Date.now(), summary, ...(digest ? { digest } : {}) })
     .where(eq(runs.id, runId))
     .run()
-  // A run that worked a waypoint (research) auto-releases it if it did not resolve
-  // it itself (SPEC §13.2 run finalizer); no-op for ticket-burner runs.
-  releaseForSession(ctx, runId)
-  // Mirror for tickets: the burner normally lands every lane itself, but a
+  // The burner normally lands every lane itself, but a
   // workflow that threw between "mark burning" and the outcome write (or an
   // abort that raced the ticket's own handler) leaves a `burning` row with no
   // agent behind it — a state nothing else can move (see `sweepOrphanedBurning`).

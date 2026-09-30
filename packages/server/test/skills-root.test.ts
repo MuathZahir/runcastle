@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 import { SKILLS_DIR_ENV, resolveSkillsRoot } from '../src/launcher/skills-root'
 import { burnerTemplatePath } from '../src/workflows/ticket-burner'
-import { researchTemplatePath } from '../src/workflows/research'
 
 /**
  * Issue #51 — a published `runcastle` ships skills as real files, so the runtime
@@ -59,10 +58,9 @@ describe('vendored-location resolution', () => {
     expect(resolvePluginDir()).toBe(join(root, 'packs', 'runcastle'))
   })
 
-  it('burner + research templates read from RUNCASTLE_SKILLS_DIR', () => {
+  it('the burner template reads from RUNCASTLE_SKILLS_DIR', () => {
     const root = fakeSkillsRoot()
     process.env[SKILLS_DIR_ENV] = root
     expect(burnerTemplatePath()).toBe(join(root, 'burner', 'implement-ticket.md'))
-    expect(researchTemplatePath()).toBe(join(root, 'burner', 'research-waypoint.md'))
   })
 })
