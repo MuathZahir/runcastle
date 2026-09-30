@@ -47,7 +47,7 @@ export function ChatView({
 }: {
   /** The live or launching session, or null when nothing is up. */
   session: ChatViewSession | null
-  /** What this conversation is — "Chat · lap 2", "Converge", the project's own. */
+  /** What this conversation is — "Chat · lap 2", "Drive fix", the project's own. */
   contextLine: ReactNode
   /** Quiet facts after the context line (a landing branch, a done state). */
   meta?: ReactNode

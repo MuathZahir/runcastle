@@ -267,14 +267,6 @@ export function burnLabel(
   return `${base} — ${current} from lap ${lap}${carriedLabel}`
 }
 
-// --- the map rail (mapped ideation) ----------------------------------------
-
-/**
- * The map doc's path, or undefined when the feature isn't mapped or nothing is
- * charted yet. One implementation so the rail's read and the next-step bar's fog
- * read resolve the SAME `docs.read` query key and share a single fetch.
- */
-
 /**
  * The one ticket count every surface states, in the web's "done" wording — a
  * thin reading of core's `ticketTally`, which owns the definition: this lap's

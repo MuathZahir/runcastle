@@ -22,7 +22,6 @@ export interface NextStepContext {
    * timeline event reports rather than a second estimate of it.
    */
   docsDigestBytes?: number
-  mapContent?: string
   conflict?: MergeConflictState | null
   unverifiedDriveKeys?: string[]
   /**

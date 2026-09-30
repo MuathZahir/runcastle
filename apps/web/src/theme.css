@@ -159,7 +159,6 @@
   --aside-w: 380px; /* the one right-hand aside */
   --content-max: 760px; /* document-like page column */
   --content-wide: 1040px; /* data-heavy page column */
-  --maprail-w: 300px;
   --artifact-w: 380px;
   --chat-panel-w: 400px;
   --notes-rail-w: 360px; /* the review page's notes rail; the rail overrides it as you drag */

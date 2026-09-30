@@ -5,7 +5,6 @@ import {
   BURN_EXPLAINER,
   lapExplainer,
   sessionAgentName,
-  WAYPOINT_EXPLAINER,
 } from '../src/lib/vocabulary'
 
 /**
@@ -23,7 +22,6 @@ describe('the explainers', () => {
   // The surfaces that show these have not launched anything, so they cannot
   // know which runtime the session will open on (decision 11).
   it('does not name a runtime it cannot know yet', () => {
-    expect(WAYPOINT_EXPLAINER).not.toMatch(/Claude|Codex/)
     expect(BURN_EXPLAINER).not.toMatch(/Claude|Codex/)
   })
 

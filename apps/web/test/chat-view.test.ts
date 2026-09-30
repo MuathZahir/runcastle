@@ -41,7 +41,6 @@ import { LiveSessionBar } from '../src/components/workspace/LiveSessionBar'
 import { full as fixture } from './fixtures'
 
 type Session = FeatureFull['sessions'][number]
-type Waypoint = FeatureFull['waypoints'][number]
 
 function session(over: Partial<Session> = {}): Session {
   return {
@@ -125,19 +124,9 @@ describe('ChatView', () => {
 
 /** The strip names whichever session kind the Chat tab is hosting (decision 9). */
 describe('chatContextLine', () => {
-  const waypoint = { id: 'wp_1', title: 'Map the auth flow', claimedBy: 'sess_wp' } as Waypoint
-
   it('names each kind of feature session', () => {
-    expect(chatContextLine(session({ kind: 'chat', lap: 2 }), [])).toBe('Chat · lap 2')
-    expect(chatContextLine(session({ id: 'sess_wp', kind: 'waypoint' }), [waypoint])).toBe(
-      'Waypoint · Map the auth flow',
-    )
-    expect(chatContextLine(session({ kind: 'converge' }), [])).toBe('Converge')
-    expect(chatContextLine(session({ kind: 'drive-fix' }), [])).toBe('Drive fix')
-  })
-
-  it('names a waypoint session by its kind alone when it holds no waypoint', () => {
-    expect(chatContextLine(session({ id: 'sess_other', kind: 'waypoint' }), [waypoint])).toBe('Waypoint')
+    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat · lap 2')
+    expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
   })
 })
 
@@ -149,7 +138,7 @@ describe('featureChat', () => {
     expect(
       featureChat([session({ id: 'a', status: 'ended' }), session({ id: 'b', status: 'ended' })])?.id,
     ).toBe('b')
-    expect(featureChat([session({ kind: 'waypoint' })])).toBeUndefined()
+    expect(featureChat([session({ kind: 'drive-fix' })])).toBeUndefined()
   })
 })
 
@@ -171,8 +160,6 @@ describe('FeatureChat', () => {
 
   for (const [kind, line] of [
     ['chat', 'Chat · lap 1'],
-    ['waypoint', 'Waypoint'],
-    ['converge', 'Converge'],
     ['drive-fix', 'Drive fix'],
   ] as const) {
     it(`hosts a live ${kind} session full-area`, () => {
@@ -191,7 +178,7 @@ describe('FeatureChat', () => {
   })
 
   it('offers Start when the feature never had a chat', () => {
-    const out = tab([session({ kind: 'converge', status: 'ended' })])
+    const out = tab([session({ kind: 'drive-fix', status: 'ended' })])
     expect(out).toContain('Start the conversation')
   })
 
@@ -256,9 +243,9 @@ describe('FeatureViewTabs', () => {
 /** One line on Overview, in every state, whenever a session is live (decision 7). */
 describe('the live-session line', () => {
   it('names the live session and its lap', () => {
-    expect(liveSessionLine([session({ kind: 'converge', lap: 3 })])).toEqual({
+    expect(liveSessionLine([session({ kind: 'drive-fix', lap: 3 })])).toEqual({
       sessionId: 'sess_1',
-      text: 'Converge live · lap 3',
+      text: 'Drive fix live · lap 3',
     })
     // A launching terminal is as live as a live one — it is holding the seat.
     expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Chat live · lap 1')

@@ -1,7 +1,6 @@
 import { nextPlanningStep, type PlanningArtifactFacts, type PlanningStep } from '@runcastle/core'
 import { hasResumable } from '../internal'
 import { burnLabel } from '../laps'
-import { isTerminal, nextReadyWaypoint, parseMapSections } from '../map'
 import { sessionAgentName } from '../../vocabulary'
 import { burnWarningLine } from './burn-warnings'
 import { CHAT_ACTION } from './chat'
@@ -23,8 +22,8 @@ import type { ResolverInput } from './resolver-input'
  * instead of showing a button that would do nothing.
  */
 export function resolvePlanning(input: ResolverInput): NextStep {
-  const { full, ctx, live, pending, pendingTickets } = input
-  const { feature, sessions, waypoints, frontierIds } = full
+  const { full, live, pending, pendingTickets } = input
+  const { feature, sessions } = full
   // Merge is reachable from every state after creation (decision 3) — never the
   // primary here, because a feature still being planned is not what anyone came
   // to ship, but never hidden either: enabled is not the same as recommended.
@@ -84,7 +83,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     )
 
   // Tickets ready to burn outrank everything below: the click the human came
-  // for is right there, and no lap road or map mode is more urgent than it.
+  // for is right there, and no lap road is more urgent than it.
   if (missing === null) {
     // The other road into a burn reads the shape of what it would run — and
     // what the docs digest will cost every ticket in it — in the same words the
@@ -115,7 +114,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   const lapWorked =
     !!live ||
     sessions.some(
-      (session) => session.lap === feature.lap && ['chat', 'converge'].includes(session.kind),
+      (session) => session.lap === feature.lap && session.kind === 'chat',
     )
   if (feature.lap > 1 && !lapWorked) {
     const resumable = hasResumable(sessions, 'chat')
@@ -128,49 +127,9 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     )
   }
 
-  // The map is a MODE inside planning (ADR-0001, kept by the project session),
-  // not a state of its own: convergence lands the feature right here, with the
-  // artifacts it wrote answering the ladder below.
-  if (feature.mapped && waypoints.length > 0 && waypoints.every(isTerminal))
-    return step(
-      'MAP',
-      'The map is complete',
-      'Every waypoint is done. Converge to turn the map and its decisions into a spec and tickets in one session.',
-      { label: 'Converge', kind: 'converge' },
-      [mergeAction],
-    )
   // Nothing to do but watch: a live session owns every step it has not
   // finished, and the bar must never counsel the human to do the agent's job.
   if (live) return liveStatus(missing)
-
-  if (feature.mapped) {
-    const next = nextReadyWaypoint(full)
-    const unspecified = ctx.mapContent
-      ? parseMapSections(ctx.mapContent)['Not yet specified']?.trim()
-      : undefined
-    if (next) {
-      const done = waypoints.filter(isTerminal).length
-      return {
-        ...step(
-          'MAP',
-          'Work the map',
-          `${done} of ${waypoints.length} waypoints done · ${frontierIds.length} ready to work — next: ${next.title} · pick a different one in the map.`,
-          { label: 'Work next', kind: 'workNext', waypointId: next.id },
-          [mergeAction],
-        ),
-        ...(unspecified ? { note: `Still unspecified: ${unspecified}` } : {}),
-      }
-    }
-    const researchRuns = waypoints.filter((waypoint) => waypoint.claimedBy?.startsWith('run_')).length
-    if (researchRuns > 0)
-      return step(
-        'WAITING',
-        `Waiting on ${researchRuns} research run${researchRuns === 1 ? '' : 's'}`,
-        'Research is running unattended. Its waypoints open up when it finishes.',
-        undefined,
-        [mergeAction],
-      )
-  }
 
   switch (missing) {
     // Nothing written yet: the conversation is the whole of the next step.
@@ -191,17 +150,6 @@ export function resolvePlanning(input: ResolverInput): NextStep {
             [mergeAction],
           )
     case 'spec':
-      // A mapped feature with decisions and no spec is a converge session that
-      // ended before it finished writing: the road back is that session, which
-      // picks up from the map and the decisions, not a fresh conversation.
-      if (feature.mapped)
-        return step(
-          'NEXT STEP',
-          'Finish converging',
-          'The converge session ended before the spec and tickets were written. Resume it — it picks up from the map and the decisions.',
-          { label: 'Resume converge', kind: 'resumeConverge' },
-          [mergeAction],
-        )
       return step(
         'NEXT STEP',
         'Write the spec',
@@ -240,9 +188,7 @@ function planningFacts(input: ResolverInput): PlanningArtifactFacts {
 
 /** Resume the conversation that is on disk, or open a fresh one. */
 function resumeLabel(sessions: ResolverInput['full']['sessions']): string {
-  return hasResumable(sessions, 'chat') || hasResumable(sessions, 'converge')
-    ? 'Resume session'
-    : 'Start session'
+  return hasResumable(sessions, 'chat') ? 'Resume session' : 'Start session'
 }
 
 /**

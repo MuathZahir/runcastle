@@ -1,7 +1,7 @@
 /**
  * Plain-language definitions for runcastle's insider words (findings F16).
  *
- * Burn, waypoint, gate and lap all appear at the moment the human is deciding
+ * Burn, gate and lap all appear at the moment the human is deciding
  * whether to click something, and a newcomer meets them there for the first
  * time — so the definition belongs beside the action, not in a glossary nobody
  * opens. Keeping the sentences here means every surface says the same thing.
@@ -45,9 +45,6 @@ export function agentName(runtime: AgentRuntime | null | undefined): string {
 export function sessionAgentName(session: { runtime?: AgentRuntime | null }): string {
   return agentName(session.runtime ?? DEFAULT_RUNTIME)
 }
-
-export const WAYPOINT_EXPLAINER =
-  'A map breaks a big idea into waypoints — questions each worked in its own session. The feature converges once every waypoint is done.'
 
 /**
  * Tickets + build bodies: the mechanics behind Burn, which the bar's "review,
