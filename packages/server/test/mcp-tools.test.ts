@@ -5,8 +5,8 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
-import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput, WaypointInput } from '@runcastle/core'
-import { TicketInput as TicketInputSchema, newId } from '@runcastle/core'
+import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput } from '@runcastle/core'
+import { SessionKind, TicketInput as TicketInputSchema, newId } from '@runcastle/core'
 import { runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
@@ -20,14 +20,11 @@ import mcpApp, {
   toolCancelTicket,
   toolCompletePhase,
   toolEmitTickets,
-  toolEmitWaypoints,
-  toolEscalateToMap,
   toolGetFeatureContext,
   toolGetTicket,
   toolListTickets,
   toolReadFeatureDoc,
   toolRecordEvent,
-  toolResolveWaypoint,
   toolUpdateTicket,
   toolsForAudience,
 } from '../src/mcp/server'
@@ -45,16 +42,12 @@ import {
 } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { claim, getWaypoint, listByFeature as listWaypoints } from '../src/services/waypoints'
+import { claim, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 function ticket(title: string, blockedBy: number[] = []): TicketInput {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy }
-}
-
-function waypoint(title: string, blockedBy: (number | string)[] = []): WaypointInput {
-  return { title, type: 'grilling', question: `q: ${title}`, blockedBy }
 }
 
 describe('mcp tools', () => {
@@ -622,164 +615,30 @@ describe('mcp tools', () => {
   })
 })
 
-describe('mcp mapped write path (ADR-0001 §13.3)', () => {
-  let ctx: AppCtx
-  let repoPath: string
-  let featureId: string
-  let slug: string
-  let session: ReturnType<typeof createSessionRow>
-
-  function mapPath(): string {
-    return join(repoPath, 'docs', 'features', slug, 'map.md')
-  }
-
-  beforeEach(async () => {
-    ctx = await makeTestCtx()
-    repoPath = tmpRepo()
-    const project = seedProject(ctx, repoPath)
-    slug = 'big-feature'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
-    featureId = feature.id
-    session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
-    markSessionLive(ctx, session.id)
-    setRuntimeCtx(ctx)
-  })
-
-  afterEach(() => clearRuntimeCtx())
-
-  it('escalate_to_map flips mapped, scaffolds map.md from args, and emits an event', () => {
-    const out = toolEscalateToMap(ctx, session, {
-      destination: 'a fully offline-capable editor',
-      notes: 'sync is out of scope for v1',
+/**
+ * Mapped ideation is retired (ADR-0012): a formerly mapped feature reads back
+ * as an ordinary one, so its context carries no map state even while its old
+ * waypoint rows are still on disk.
+ */
+describe('get_feature_context on a formerly mapped feature', () => {
+  it('carries no frontierIds, assignedWaypointId or waypoints', async () => {
+    const ctx = await makeTestCtx()
+    const repoPath = tmpRepo()
+    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, {
+      slug: 'was-mapped',
+      mapped: true,
     })
-    expect(out).toEqual({ ok: true })
-
-    expect(getFeatureRow(ctx, featureId).mapped).toBe(true)
-
-    expect(existsSync(mapPath())).toBe(true)
-    const body = readFileSync(mapPath(), 'utf8')
-    expect(body).toContain('## Destination')
-    expect(body).toContain('a fully offline-capable editor')
-    expect(body).toContain('## Notes')
-    expect(body).toContain('sync is out of scope for v1')
-    expect(body).toContain('## Not yet specified')
-    expect(body).toContain('## Out of scope')
-
-    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
-    expect(types).toContain('feature.escalated')
-  })
-
-  it('escalate_to_map a second time warns and makes no side effects', () => {
-    toolEscalateToMap(ctx, session, { destination: 'first', notes: 'first notes' })
-    const firstBody = readFileSync(mapPath(), 'utf8')
-    const eventsAfterFirst = listAfter(ctx, featureId, 0).length
-
-    const out = toolEscalateToMap(ctx, session, { destination: 'second', notes: 'second notes' })
-    expect(out.ok).toBe(true)
-    expect(out.warning).toMatch(/already mapped/i)
-
-    // map.md untouched (first chart wins) and no new events
-    expect(readFileSync(mapPath(), 'utf8')).toBe(firstBody)
-    expect(readFileSync(mapPath(), 'utf8')).not.toContain('second')
-    expect(listAfter(ctx, featureId, 0).length).toBe(eventsAfterFirst)
-  })
-
-  it('emit_waypoints validates + stores via the waypoint service and reports assigned seqs', () => {
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    const out = toolEmitWaypoints(ctx, session, {
-      waypoints: [waypoint('root'), waypoint('leaf', [1])],
-    })
-    expect(out.stored).toBe(2)
-    expect(out.waypoints).toEqual([
-      { id: expect.any(String), seq: 1, title: 'root' },
-      { id: expect.any(String), seq: 2, title: 'leaf' },
+    const session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
+    const [open] = storeWaypoints(ctx, feature.id, [
+      { title: 'a', type: 'grilling', question: 'q', blockedBy: [] },
     ])
-
-    const stored = listWaypoints(ctx, featureId)
-    expect(stored.map((w) => w.title)).toEqual(['root', 'leaf'])
-    expect(stored[1].blockedBy).toEqual([1]) // batch position 1 -> global seq 1
-  })
-
-  it('emit_waypoints refuses a feature that has not been escalated', () => {
-    expect(() => toolEmitWaypoints(ctx, session, { waypoints: [waypoint('x')] })).toThrow(GateError)
-  })
-
-  it('emit_waypoints works from any session kind once mapped (qa can branch the map)', () => {
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    const qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
-    const out = toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] })
-    expect(out.stored).toBe(1)
-    expect(listWaypoints(ctx, featureId).map((w) => w.title)).toContain('from-qa')
-  })
-
-  it('resolve_waypoint flips machinery (status + cascade) and reports what it freed', () => {
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b', [1])] })
-    const [a, b] = listWaypoints(ctx, featureId)
-
-    const out = toolResolveWaypoint(ctx, session, {
-      id: a.id,
-      disposition: 'resolved',
-      summary: 'answered a',
-    })
-    // The service already worked out which dependents this frees (it emits an
-    // event per dependent) and used to return none of it, so the session's next
-    // move was a whole get_feature_context to find out what just happened.
-    expect(out).toEqual({
-      ok: true,
-      unblocked: [{ id: b.id, seq: b.seq, title: 'b' }],
-      frontierIds: [b.id],
-    })
-
-    // a is terminal with its summary; resolving it freed b onto the frontier
-    const done = getWaypoint(ctx, a.id)
-    expect(done.status).toBe('resolved')
-    expect(done.summary).toBe('answered a')
-    const types = listAfter(ctx, featureId, 0).map((e) => e.type)
-    expect(types).toContain('waypoint.resolved')
-    expect(types).toContain('waypoint.unblocked')
-    expect(getWaypoint(ctx, b.id).status).toBe('open')
-  })
-
-  it('resolve_waypoint drops a waypoint (terminal, frees dependents like a resolve)', () => {
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a')] })
-    const [a] = listWaypoints(ctx, featureId)
-    toolResolveWaypoint(ctx, session, { id: a.id, disposition: 'dropped', summary: 'out of scope' })
-    expect(getWaypoint(ctx, a.id).status).toBe('dropped')
-  })
-
-  it('get_feature_context surfaces the waypoint THIS session claimed as assignedWaypointId', () => {
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b')] })
-    const [a] = listWaypoints(ctx, featureId)
-    // simulate the server-side claim performed when this session was launched
-    claim(ctx, a.id, session.id)
+    claim(ctx, open.id, session.id)
 
     const out = toolGetFeatureContext(ctx, session)
-    expect(out.assignedWaypointId).toBe(a.id)
-    // a session with no claim (e.g. the ideation session) has none
-    const other = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
-    expect(toolGetFeatureContext(ctx, other).assignedWaypointId).toBeUndefined()
-  })
-
-  it('get_feature_context exposes waypoints + frontier ids only when mapped', () => {
-    // unmapped: no map fields
-    const before = toolGetFeatureContext(ctx, session)
-    expect(before.waypoints).toBeUndefined()
-    expect(before.frontierIds).toBeUndefined()
-
-    toolEscalateToMap(ctx, session, { destination: 'dest' })
-    toolEmitWaypoints(ctx, session, { waypoints: [waypoint('a'), waypoint('b', [1])] })
-
-    const after = toolGetFeatureContext(ctx, session)
-    expect(after.waypoints).toHaveLength(2)
-    // only 'a' is unblocked → the sole frontier waypoint. Ids, not rows: the
-    // rows are already above in `waypoints`, and serialising the same waypoint
-    // two and three times over is what this payload used to do.
-    const a = after.waypoints?.find((w) => w.title === 'a')
-    expect(after.frontierIds).toEqual([a?.id])
-    expect(JSON.stringify(after.frontierIds)).not.toContain('grilling')
+    expect(out.feature.id).toBe(feature.id)
+    expect(out).not.toHaveProperty('frontierIds')
+    expect(out).not.toHaveProperty('assignedWaypointId')
+    expect(out).not.toHaveProperty('waypoints')
   })
 })
 
@@ -808,10 +667,8 @@ describe('mcp chat write contract', () => {
     expect(listByFeature(ctx, featureId)).toHaveLength(2)
   })
 
-  it('still reads, and still branches the map — "any session may branch the map"', () => {
+  it('still reads', () => {
     expect(toolGetFeatureContext(ctx, qa).feature.id).toBe(featureId)
-    toolEscalateToMap(ctx, qa, { destination: 'dest' })
-    expect(toolEmitWaypoints(ctx, qa, { waypoints: [waypoint('from-qa')] }).stored).toBe(1)
   })
 })
 
@@ -900,8 +757,6 @@ describe('mcp run-scoped feature reads', () => {
 
     const reader = resolveFeatureReader(ctx, { runId })
     expect(reader.featureId).toBe(mine)
-    // No session id: a run agent claims no waypoint, so it inherits nobody's.
-    expect(reader.sessionId).toBeUndefined()
     expect(featureContext(ctx, reader).feature.slug).toBe('under-review')
   })
 
@@ -922,7 +777,6 @@ describe('mcp tool registration by audience', () => {
     const chat = toolsForAudience('chat')
     expect(chat).toContain('get_feature_context')
     expect(chat).toContain('list_tickets')
-    expect(chat).toContain('emit_waypoints')
     for (const write of ['emit_tickets', 'complete_phase', 'update_ticket', 'cancel_ticket']) {
       expect(chat, write).toContain(write)
     }
@@ -968,6 +822,18 @@ describe('mcp tool registration by audience', () => {
       'review_drive',
     ])
     expect(toolsForAudience('run')).not.toContain('add_test_note')
+  })
+
+  // Mapped ideation is retired (ADR-0012): its three tools are not registered at
+  // all, so no audience — not even the unidentified one — is offered them.
+  it('offers no audience the retired map tools', () => {
+    const audiences = [...SessionKind.options, 'run' as const, undefined]
+    for (const audience of audiences) {
+      const tools = toolsForAudience(audience)
+      for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint']) {
+        expect(tools, `${audience}: ${retired}`).not.toContain(retired)
+      }
+    }
   })
 
   it('registers EVERYTHING for an audience it cannot identify', () => {

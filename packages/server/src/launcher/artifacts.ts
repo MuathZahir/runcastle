@@ -612,7 +612,6 @@ export function renderRevisitPrompt(
     `Feature docs live at \`${docs}/\`:`,
     `- \`${docs}/decisions.md\` — append the new/changed decisions with a dated "revisited" note.`,
     `- \`${docs}/spec.md\` — if it exists, amend the affected sections in place.`,
-    `- \`${docs}/map.md\` — if the feature is mapped, keep the map honest too.`,
     '',
     '## Rules',
     // A lap is the one revisit that MUST move the pipeline — the blanket ban
@@ -1094,9 +1093,6 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__cancel_ticket',
   'mcp__runcastle__record_event',
   'mcp__runcastle__complete_phase',
-  'mcp__runcastle__escalate_to_map',
-  'mcp__runcastle__emit_waypoints',
-  'mcp__runcastle__resolve_waypoint',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
   'mcp__runcastle__retry_drive',
