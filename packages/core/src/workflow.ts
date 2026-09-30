@@ -1,3 +1,4 @@
+import type { ReviewGateRun } from './review-gates'
 import type { Feature, FixProgress, Project, ReviewFinding, Ticket, TicketInput } from './schemas'
 
 /**
@@ -36,6 +37,7 @@ export interface WorkflowCtx {
       reviewMode?: 'drive' | 'gates' | null
       reviewVerdict?: 'verified' | 'unverified' | null
       reviewVerdictReason?: string | null
+      reviewGateRun?: ReviewGateRun | null
     },
   ): void
   /**

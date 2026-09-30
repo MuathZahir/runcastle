@@ -4280,7 +4280,7 @@ export function burnContainerName(runId: string, seq: number, lane?: 'resolve'):
  * cold monorepo install blows through easily. 15 minutes; cache mounts make the
  * warm path far faster.
  */
-const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
+export const SETUP_HOOK_TIMEOUT_MS = 15 * 60_000
 
 /**
  * Run one ticket through sandcastle (M2). Renders the prompt, builds the

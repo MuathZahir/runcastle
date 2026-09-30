@@ -125,6 +125,28 @@ describe('tickets service', () => {
     })
   })
 
+  it('persists the server gate run on a review ticket and emits ticket.updated', () => {
+    const [review] = storeTickets(ctx, featureId, [{ ...ticket('review'), kind: 'review' }])
+    expect(review.reviewGateRun).toBeNull()
+
+    const gateRun = {
+      status: 'ran' as const,
+      commit: 'abc1234',
+      commands: [
+        { command: 'bun run typecheck', outcome: 'passed' as const, exitCode: 0, log: '0.log' },
+        { command: 'bun run test', outcome: 'failed' as const, exitCode: 1, log: '1.log' },
+      ],
+    }
+    updateTicket(ctx, review.id, { reviewGateRun: gateRun })
+
+    const [stored] = listByFeature(ctx, featureId)
+    expect(stored.reviewGateRun).toEqual(gateRun)
+    const updates = listAfter(ctx, featureId).filter((e) => e.type === 'ticket.updated')
+    expect(updates.at(-1)).toMatchObject({ ticketId: review.id })
+
+    expect(updateTicket(ctx, review.id, { reviewGateRun: null }).reviewGateRun).toBeNull()
+  })
+
   it('updateTicket clears a stored error with error: null (burn-retry path)', () => {
     const [t] = storeTickets(ctx, featureId, [ticket('a')])
     updateTicket(ctx, t.id, { status: 'failed', error: 'agent made no commits' })

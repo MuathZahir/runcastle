@@ -10,6 +10,7 @@
 export * from './ids'
 export * from './docs'
 export * from './schemas'
+export * from './review-gates'
 export * from './routes'
 export * from './format'
 export * from './blocking'
