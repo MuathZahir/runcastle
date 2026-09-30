@@ -13,11 +13,10 @@ That is the ordinary revisit, and it is what the moves below describe. The one e
 ## Order of operations
 
 1. **Listen first.** The human opens with what changed. If this terminal resumed the previous conversation, use that context; do not re-grill what is already settled. Ask only the questions the NEW information raises.
-2. **Context.** Call `mcp__runcastle__get_feature_context` — the feature, its `phase` and `lap`, the canonical docs inlined in `docs[]` (brief, map, decisions, spec), an index of everything else in `moreDocs[]` (test notes, `research/*.md`; fetch one with `mcp__runcastle__read_feature_doc({ relPath })`), and every ticket as a summary row with its id, `seq`, status and `goal` — its context, acceptance criteria and digest come from `mcp__runcastle__get_ticket({ seq })`. A canonical doc too large to inline is listed in `notInlined` instead; read it before acting. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state. When all you need is ticket ids to operate on, `mcp__runcastle__list_tickets({ status? })` is the cheap call — it returns the queue without the docs.
+2. **Context.** Call `mcp__runcastle__get_feature_context` — the feature, its `phase` and `lap`, the canonical docs inlined in `docs[]` (brief, decisions, spec), an index of everything else in `moreDocs[]` (test notes and any other doc the feature's sessions left behind; fetch one with `mcp__runcastle__read_feature_doc({ relPath })`), and every ticket as a summary row with its id, `seq`, status and `goal` — its context, acceptance criteria and digest come from `mcp__runcastle__get_ticket({ seq })`. A canonical doc too large to inline is listed in `notInlined` instead; read it before acting. The injected system prompt carries the slug and paths; trust `get_feature_context` for the live state. When all you need is ticket ids to operate on, `mcp__runcastle__list_tickets({ status? })` is the cheap call — it returns the queue without the docs.
 3. **Docs.** Capture the change as decision prose:
    - Append to `docs/features/<slug>/decisions.md` under a dated `## Revisited <date>` heading — never rewrite old decisions, supersede them ("Supersedes: <old decision>").
    - If `spec.md` exists and the change touches it, amend the affected sections in place.
-   - If the feature is mapped, keep `map.md` honest (destination/out-of-scope).
 4. **Ticket surgery.** Walk the ticket list against the new reality:
    - Stale but still needed → `mcp__runcastle__update_ticket({ id, ...changed fields })` (pending/failed only).
    - No longer needed → `mcp__runcastle__cancel_ticket({ id, reason })` (pending/failed only).
@@ -51,7 +50,7 @@ Your kickoff line reads `LAP <n> REVIEW ITERATION`. The human burned the last la
 
    > Lap `<n>` is specced and carded. Review the ticket cards and click **Burn** — I'll stop here.
 
-If this lap turns out to be genuinely big — whole branches of design reopened, decisions hanging on material nobody has read — say so and escalate the way ideation would (`/runcastle:ideate` §3, the map), rather than grinding it out here.
+If this lap turns out to be genuinely big — whole branches of design reopened, decisions hanging on material nobody has read — say so and recommend a thinner lap: card the part the human can test-drive now and defer the rest into the spec's `## Later laps`, rather than grinding it all out here.
 
 ### Stand on the failure
 
@@ -66,7 +65,6 @@ Never card a fix for a failure nobody has stood on: a ticket written from a one-
 ## Do NOT
 
 - **Never call `complete_phase` in an ordinary revisit.** It has no planning steps of its own to report; the human drives the pipeline from the UI. **Lap mode is the one exception** — reporting ideation → spec → tickets is its job (move 7), and nothing else here licenses it.
-- **Never resolve or reopen waypoints.** If a resolved waypoint's answer is now wrong, record the superseding decision in `decisions.md` — the map's history stays intact.
 - **Code changes ride tickets** — the burner (or a human) implements them, never this session. (The no-code rule itself is in your injected prompt and enforced by the edit guard.)
 
 ## Scope check

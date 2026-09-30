@@ -132,15 +132,14 @@ The standing convention across this pack:
   rule lives there, backed by `launcher/edit-guard.ts`, and is *not* restated in
   any skill).
 - **Procedures belong to the skill.** One skill owns each procedure in full;
-  `revisit/SKILL.md` §Lap mode is the whole lap procedure, `ideate/SKILL.md` §3
-  is the whole escalation procedure.
+  `revisit/SKILL.md` §Lap mode is the whole lap procedure, `ideate/SKILL.md` §1
+  is the whole grilling procedure.
 - **Where a skill names a fact the prompt also names, it points instead of
   restating** — the shape is `ideate/SKILL.md`'s "The injected system prompt
   carries the slug and paths; trust `get_feature_context` for the live state."
 - **Where two skills need the same procedure, the second delegates by
-  reference** — `revisit`'s "escalate the way ideation would
-  (`/runcastle:ideate` §3, the map)" rather than a second copy that ages
-  differently.
+  reference** — "grill the way `/runcastle:ideate` §1 does" rather than a
+  second copy that ages differently.
 - **A rule the hook enforces is stated once, as enforced, not as advice.** The
   `qa` kind's write refusals are server-side; `qa/SKILL.md` says so rather than
   asking nicely.
