@@ -47,27 +47,45 @@ interface FakeSandbox {
   /** The branch each open was handed, and the sha it pointed at when opened. */
   opened: { branch: string; sha: string }[]
   ran: string[]
+  /** Opens, execs and teardowns in order, with how many execs were still running at each exec. */
+  events: string[]
 }
 
-/** A sandbox that answers each command from `script`, or hangs on `'hang'`. */
+/**
+ * A sandbox that answers each command from `script`, or hangs on `'hang'`. Its
+ * teardown kills whatever is still running in it, as the real one's does.
+ */
 function fakeSandbox(
   repo: string,
   script: Record<string, GateExecResult | 'hang' | Error>,
 ): FakeSandbox {
+  const running = new Set<string>()
   const fake: FakeSandbox = {
     opened: [],
     ran: [],
+    events: [],
     withSandbox: async (branch, use) => {
       fake.opened.push({ branch, sha: git(repo, 'rev-parse', branch) })
-      return use({
-        exec: (command) => {
-          fake.ran.push(command)
-          const answer = script[command]
-          if (answer === 'hang') return new Promise(() => {})
-          if (answer instanceof Error) return Promise.reject(answer)
-          return Promise.resolve(answer ?? { exitCode: 0, stdout: '', stderr: '' })
-        },
-      })
+      fake.events.push('open')
+      try {
+        return await use({
+          exec: (command) => {
+            fake.ran.push(command)
+            fake.events.push(`exec ${command} beside ${running.size} running`)
+            const answer = script[command]
+            if (answer === 'hang') {
+              running.add(command)
+              return new Promise(() => {})
+            }
+            if (answer instanceof Error) return Promise.reject(answer)
+            return Promise.resolve(answer ?? { exitCode: 0, stdout: '', stderr: '' })
+          },
+        })
+      } finally {
+        for (const command of running) fake.events.push(`kill ${command}`)
+        running.clear()
+        fake.events.push('close')
+      }
     },
   }
   return fake
@@ -156,6 +174,59 @@ describe('runReviewGates', () => {
         { command: 'after', outcome: 'passed', exitCode: 0 },
       ],
     })
+  })
+
+  it('kills a command over the time limit before the next one starts, in a fresh sandbox', async () => {
+    const fake = fakeSandbox(repo, { 'hangs': 'hang' })
+
+    const run = await runReviewGates({
+      config, project: project('hangs\nafter'), ticketId: TICKET, sha: tip,
+      deps: { withSandbox: fake.withSandbox, commandTimeoutMs: 10 },
+    })
+
+    expect(fake.events).toEqual([
+      'open', 'exec hangs beside 0 running', 'kill hangs', 'close',
+      'open', 'exec after beside 0 running', 'close',
+    ])
+    expect(fake.opened).toEqual([
+      { branch: reviewGateBranch(TICKET), sha: tip },
+      { branch: reviewGateBranch(TICKET), sha: tip },
+    ])
+    expect(run).toMatchObject({
+      status: 'ran',
+      commands: [
+        { command: 'hangs', outcome: 'couldnt_run', reason: expect.stringContaining('timed out') },
+        { command: 'after', outcome: 'passed', exitCode: 0 },
+      ],
+    })
+  })
+
+  it('keeps the commands that ran when the sandbox cannot be reopened after a timeout', async () => {
+    const fake = fakeSandbox(repo, { 'hangs': 'hang' })
+    let opens = 0
+    const reopenFails: WithGateSandbox = (branch, use) => {
+      opens++
+      if (opens > 1) return Promise.reject(new Error('onSandboxReady hook failed'))
+      return fake.withSandbox(branch, use)
+    }
+
+    const run = await runReviewGates({
+      config, project: project('hangs\nafter'), ticketId: TICKET, sha: tip,
+      deps: { withSandbox: reopenFails, commandTimeoutMs: 10 },
+    })
+
+    expect(run).toMatchObject({
+      status: 'ran',
+      commit: tip,
+      commands: [
+        { command: 'hangs', outcome: 'couldnt_run', reason: expect.stringContaining('timed out') },
+        {
+          command: 'after', outcome: 'couldnt_run', exitCode: null, log: '1.log',
+          reason: expect.stringContaining('could not be reopened: onSandboxReady hook failed'),
+        },
+      ],
+    })
+    expect(readFileSync(reviewGateLogPath(TICKET, '1.log'), 'utf8')).toContain('onSandboxReady hook failed')
   })
 
   it('reports couldnt_run with the output in run.log when the sandbox or its install fails — never throws', async () => {
