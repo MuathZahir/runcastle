@@ -180,10 +180,11 @@ export function markSessionLive(
 export const SESSION_READY_TIMEOUT_MS = 25_000
 
 /**
- * The lap briefing (SPEC §15.2) — the `revisit` kickoff override a Rethink
- * passes, and the whole of a lap's ceremony: one terminal digests what the test
- * drive taught, amends the docs, emits the lap's tickets and advances itself
- * back to the human's Burn click (ADR-0010 §5).
+ * The lap briefing (SPEC §15.2) — the `revisit` kickoff override for the lap
+ * being planned at review, and the whole of a lap's ceremony: one terminal
+ * digests what the test drive taught, amends the docs, emits the lap's tickets
+ * and hands back to the human's Burn click (ADR-0010 §5), which is what starts
+ * the lap — so it never calls `complete_phase`.
  *
  * `carried` is what the last lap handed this one (see {@link CarriedWork}). When
  * there is any, the line LEADS with the counts and an instruction to address
@@ -205,10 +206,45 @@ export const SESSION_READY_TIMEOUT_MS = 25_000
  * procedure for those to `revisit/SKILL.md`.
  */
 export function lapKickoff(lap: number, carried?: CarriedWork): string {
+  return reviewLapKickoff(lap, carried)
+}
+
+/**
+ * The lap briefing for a lap planned FROM REVIEW — what the review page's
+ * "Start lap N+1" door opens the feature chat with (the `start-lap` purpose),
+ * whether it comes empty-handed or after a triage that carried work. It is the
+ * only lap briefing there is; {@link lapKickoff} is the same line.
+ *
+ * The feature is still at review on lap `lap - 1` when this conversation runs,
+ * and it stays there. The lap's tickets land `pending` and Burn from review is
+ * what moves them onto lap `lap` (`carryPendingTicketsIntoLap`) and bumps the
+ * counter — so there is no phase to complete, and the briefing forbids
+ * `complete_phase`. A stray call is not refused (the pipeline answers it as an
+ * `iterating` report, `toolCompletePhase`), which is why the ban is in the words.
+ */
+export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
+  return (
+    `Proceed with your task: invoke the /runcastle:revisit skill to PLAN LAP ${lap} FROM REVIEW. ` +
+    `This conversation plans lap ${lap}; the feature stays at review until I click Burn. ` +
+    lapAgenda(carried) +
+    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
+    `what I want next. Write what we settle on into decisions.md under "## Lap ${lap}" and amend ` +
+    'spec.md for this lap (pruning anything you promote out of "## Later laps"), then call ' +
+    `emit_tickets for lap ${lap}'s work — they land pending, and Burn from review moves them onto ` +
+    `lap ${lap}. Do NOT call complete_phase: the feature stays at review. Finish by telling me to ` +
+    'review the cards and click Burn.'
+  )
+}
+
+/**
+ * What a lap briefing sets as the lap's agenda — the carried notes, the open
+ * defects and `## Later laps` — plus the two things a lap session has been
+ * observed skipping.
+ */
+function lapAgenda(carried?: CarriedWork): string {
   const summary = carriedWorkSummary(carried)
   const evidence = reviewEvidenceSentence(carried)
   return (
-    `Proceed with your task: invoke the /runcastle:revisit skill for LAP ${lap} REVIEW ITERATION. ` +
     (summary ? `${summary} — address them. ` : '') +
     `Call get_feature_context, then read this feature's test-notes.md (its "## Carried, still ` +
     'open" section — every note carried and not yet done, whatever lap captured it), the open ' +
@@ -221,12 +257,7 @@ export function lapKickoff(lap: number, carried?: CarriedWork): string {
     'Before you offer me a test drive, grep spec.md and the tickets for "not demonstrable", ' +
     '"do not demo" and "later laps" and tell me what they say. For every bug I report, stand on ' +
     'the failure: reproduce it, or trace it to a file and line, or say plainly you could not — ' +
-    "and then make reproduction the fix ticket's first acceptance criterion. " +
-    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
-    'what I want next. Write what we settle on into decisions.md and amend spec.md for this lap ' +
-    '(pruning anything you promote out of "## Later laps"), then call emit_tickets for this ' +
-    `lap's work. Finish in THIS session: complete_phase through ideation → spec → tickets, then ` +
-    'tell me to review the cards and click Burn.'
+    "and then make reproduction the fix ticket's first acceptance criterion. "
   )
 }
 
@@ -264,79 +295,40 @@ export interface KickoffPlan {
    * restored transcript argues with an instruction that means to start over.
    */
   explicit: boolean
-  /** Set when this session is running a lap: which lap (see {@link lapInFlight}). */
+  /** Set when this session plans a lap from review: which lap (see {@link planKickoff}). */
   lap?: number
 }
 
 /**
- * Is this feature MID-LAP right now? The one question the launcher must answer
- * from FEATURE STATE rather than from what a caller happened to type.
+ * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}): an
+ * override passed by the caller is an explicit briefing, and no override means
+ * the per-kind default.
  *
- * A lap is the front half of the pipeline run again: Rethink bumps `lap` and
- * flips the phase back to `ideation` BEFORE launching, and the lap session is
- * the only thing that will advance it out again — through `complete_phase`
- * ideation → spec → tickets, emitting that lap's tickets on the way. So a
- * feature sitting at `ideation` on lap N with no tickets AT lap N has a lap in
- * flight, whether the session that was running it is still alive or died an hour
- * ago.
- *
- * THE BUG THIS FIXES. `lap` used to be derived by comparing the kickoff line to
- * `lapKickoff(lap)` with `===`, three call frames from the renderer that
- * depended on it. That works exactly once — on the Rethink launch that passes
- * the line. If the terminal then died mid-lap, the feature was stranded: Rethink
- * refuses to run again (it requires the `review` phase, and the phase had
- * already moved to `ideation`), so the human's only door back was Revisit, which
- * passes no `kickoffLine` — string identity failed, `lap` came back `undefined`,
- * and the relaunch RESUMED the dead lap conversation while rendering "Do NOT
- * call `complete_phase` — a revisit never moves the pipeline" into a transcript
- * whose own earlier turn said to complete_phase through to tickets. The feature
- * could not be finished through the UI at all.
- *
- * Deriving it from state keeps {@link WriteArtifactsInput.lap}'s reasoning true
- * — an ordinary revisit on a lap-3 feature is NOT running a lap, because such a
- * feature is at `review` or `building`, not back at `planning` — while closing
- * the re-entry hole, because the state that says "mid-lap" survives the terminal
- * that was running it.
- *
- * `ticketLaps` is the set of laps this feature has tickets for. It comes from
- * the tickets the launcher already lists; no new query and no new service.
- */
-export function lapInFlight(input: {
-  lap: number
-  phase: string
-  ticketLaps: readonly number[]
-}): boolean {
-  return input.lap > 1 && input.phase === 'planning' && !input.ticketLaps.includes(input.lap)
-}
-
-/**
- * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}).
- *
- * Two things produce an explicit briefing. An override passed by the caller (the
- * review Iterate click passes `lapKickoff`), and a lap that is in flight — which
- * covers both the lap-N grill (the ideation next-step's "Start/Resume grill
- * session" on a feature past lap 1 used to open with the generic ideate line and
- * no lap framing at all, F4) and the re-entry after a lap terminal died.
- *
- * `lap` on the plan is set from {@link lapInFlight}, never from what the line
- * happens to equal — that is the whole fix. It drives the artifacts, so a lap
- * relaunched by any door renders the lap prompt and the lap's `complete_phase`
- * licence.
+ * There is no planning-phase lap to brief. A lap used to be the front half of
+ * the pipeline run again, parked at `planning` on lap N until its session
+ * reported ideation → spec → tickets; nothing moves a feature backwards any
+ * more, and the lap counter moves only at Burn from review, straight into
+ * `building`. A lap is planned at review instead, from the Start-lap briefing:
+ * the review page's "Start lap N+1" door (`startLap`, the feature's current
+ * lap) briefs lap N+1's planning ({@link reviewLapKickoff}) while the feature is
+ * still at review, and sets `lap` on the plan so the artifacts render the lap
+ * prompt for that lap.
  */
 export function planKickoff(input: {
   kind: SessionKind
-  lap: number
   kickoffLine?: string
-  /** Is a lap in flight on this feature? Defaults false (no lap framing). */
-  lapInFlight?: boolean
+  /**
+   * Opened by the review page's "Start lap N+1" door at review: the feature's
+   * current lap N, whose successor this session plans.
+   */
+  startLap?: number
   /** What the last lap handed this one — stated in the briefing this plans. */
   carried?: CarriedWork
 }): KickoffPlan {
-  const running = input.lapInFlight === true
-  const lapBriefing = input.lap > 1 ? lapKickoff(input.lap, input.carried) : undefined
-  const line = input.kickoffLine ?? (running ? lapBriefing : undefined)
-  const lap = running ? input.lap : undefined
-  if (!line) return { explicit: false, ...(lap !== undefined ? { lap } : {}) }
+  const lap = input.startLap === undefined ? undefined : input.startLap + 1
+  const line =
+    input.kickoffLine ?? (lap === undefined ? undefined : reviewLapKickoff(lap, input.carried))
+  if (!line) return { explicit: false }
   return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }
 }
 

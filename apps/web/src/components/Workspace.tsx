@@ -589,13 +589,14 @@ export function Workspace({
   // triage step; with nothing open the step is skipped entirely and the lap
   // starts empty-handed. The resolver picks its action kind off the same two
   // counts, so the bar and this click cannot disagree — and both roads land
-  // here, so the escape off a test drive takes the same door.
+  // here, so the escape off a test drive takes the same door. Both lap launches
+  // say `start-lap`, and the server builds the lap briefing from that.
   const enterIterate = () => {
     // A second click while the first lap bump is in flight would bump two laps —
     // and this road is reachable from the bar, the drive escape and the failed
     // lap's Retry, so the guard lives here rather than on each button.
     if ((openNotes ?? 0) + (openDefects ?? 0) > 0) setTriaging(Date.now())
-    else launch.mutate({ featureId, kind: 'chat' })
+    else launch.mutate({ featureId, kind: 'chat', purpose: 'start-lap' })
   }
 
   /**
@@ -640,7 +641,7 @@ export function Workspace({
       // is what the exit's own label promised (decision 4). The burn road takes
       // no session, so it takes nothing away.
       if (selection.carry) {
-        if (await endLiveSession()) launch.mutate({ featureId, kind: 'chat' })
+        if (await endLiveSession()) launch.mutate({ featureId, kind: 'chat', purpose: 'start-lap' })
       } else burn.mutate({ featureId })
     } catch (e) {
       toast.push(e instanceof Error ? e.message : String(e))

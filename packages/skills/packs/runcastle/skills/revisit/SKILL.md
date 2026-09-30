@@ -1,6 +1,6 @@
 ---
 name: revisit
-description: Fold late-arriving information into a feature whose sessions are finished — amend the docs, then reconcile tickets (update/cancel/emit); an ordinary revisit never moves the feature. Also the lap session: digest the test drive, amend decisions + spec, emit the lap's tickets and report ideation → spec → tickets in the one session. Entry skill for kind=revisit sessions.
+description: Fold late-arriving information into a feature whose sessions are finished — amend the docs, then reconcile tickets (update/cancel/emit); an ordinary revisit never moves the feature. Also the lap session, planned at review from the Start-lap door: digest the test drive, amend decisions + spec, emit the lap's tickets and hand back to the human's Burn click. Entry skill for kind=revisit sessions.
 disable-model-invocation: false
 ---
 
@@ -26,7 +26,7 @@ That is the ordinary revisit, and it is what the moves below describe. The one e
 
 ## Lap mode (another lap over the same feature)
 
-Your kickoff line reads `LAP <n> REVIEW ITERATION`. The human burned the last lap, test-drove the branch, and came back with what it taught them: the code was right, the *spec* wasn't. Nothing looped the feature backwards to get you here and nothing can — **Planning → Building → Review → Shipped** runs one way only — so read its `phase` off `get_feature_context` rather than assuming which one you are standing in. One trip round is a lap, and this session is the whole front half of lap `<n>` — you carry it from what-the-drive-taught to ticket cards waiting on the human's **Burn** click, in this one conversation:
+Your kickoff line reads `PLAN LAP <n> FROM REVIEW`. The human burned the last lap, test-drove the branch, and clicked **Start lap `<n>`** on the review page with what it taught them: the code was right, the *spec* wasn't. That click is the start of the lap — you are already in it, so never send the human off to start one. Nothing looped the feature backwards to get you here and nothing can — **Planning → Building → Review → Shipped** runs one way only — so the feature stands at **review**, still on lap `<n-1>`, while you plan. The human's **Burn** click is what starts lap `<n>`: it moves the pending tickets you emit onto it and takes the feature through building. One trip round is a lap, and this session is the whole front half of lap `<n>` — you carry it from what-the-drive-taught to ticket cards waiting on that click, in this one conversation:
 
 1. **Context.** `mcp__runcastle__get_feature_context` — the feature (including its `lap`), the docs, `reviewEvidence`, and the full ticket history across every lap as summary rows (title, status, `goal`, `error`); each ticket's own `lap` is what separates them, and `mcp__runcastle__get_ticket({ seq })` gives one ticket's context, acceptance criteria and digest. A canonical doc listed in `notInlined` must be read before you plan. Skim what the last lap actually landed and what failed before you interview.
 2. **Read the evidence before you plan.** Not after, and not instead of the interview. Your inputs, in reading order:
@@ -36,16 +36,16 @@ Your kickoff line reads `LAP <n> REVIEW ITERATION`. The human burned the last la
 3. **Never re-emit a promoted note.** Notes the human already promoted from the review checklist are tickets in *this* lap and arrive as ids in your context. However well such a note reads as a ticket, if its id is in front of you the work is already carded — emitting it again gives the burner the same job twice.
 4. **Grill, briefly.** A small lap is a short grilling: a few questions, one at a time, each with your recommended answer attached. Prune and promote `## Later laps` entries with the human as part of that conversation — what the drive taught is usually what decides which deferred scope this lap picks up and which stays parked.
 5. **Amend the docs.** Append this lap's learning to `docs/features/<slug>/decisions.md` under a `## Lap <n>` heading (the convention) — never rewrite old decisions, supersede them. Then amend `spec.md` in place: the sections this lap changes, plus the pruned `## Later laps`.
-6. **Emit this lap's tickets, dispositioning the defects as you do.** `mcp__runcastle__emit_tickets({ tickets })` — only the work this lap will burn; the rest stays in `## Later laps`. Every ticket that answers a bug the human reported obeys **Stand on the failure** below. Reconcile stale pending tickets with `update_ticket` / `cancel_ticket`; `done` work that is now wrong gets a NEW ticket, as always.
+6. **Emit this lap's tickets, dispositioning the defects as you do.** `mcp__runcastle__emit_tickets({ tickets })` — only the work this lap will burn; the rest stays in `## Later laps`. They land `pending`, and the Burn click carries them onto lap `<n>`. Every ticket that answers a bug the human reported obeys **Stand on the failure** below. Reconcile stale pending tickets with `update_ticket` / `cancel_ticket`; `done` work that is now wrong gets a NEW ticket, as always.
 
-   The defects an **earlier** lap's review left open arrive in your context as `openDefects` (`carriedDefects` are the ones a lap already parked — agenda, not obligation). Each open one needs exactly one of three answers. Nothing refuses over the ones you leave: `complete_phase({ phase: "tickets" })` names them back at you as a warning and the human reads the same list in the Burn dialog, so finishing this triage is yours, not a gate's:
+   The defects an **earlier** lap's review left open arrive in your context as `openDefects` (`carriedDefects` are the ones a lap already parked — agenda, not obligation). Each open one needs exactly one of three answers. Nothing refuses over the ones you leave: the human reads them back as warnings in the Burn dialog, so finishing this triage is yours, not a gate's:
 
    - **Link** — this lap is carding the work that fixes it: emit that ticket with `originFindingId: "<the defect's id>"`. Nothing else to do; the burn closes the finding itself when the ticket lands.
    - **Carry** — nobody is answering it this lap: `mcp__runcastle__resolve_finding({ findingId, disposition: "carry" })`. It leaves the open count, stays visible, and only the human reopens it.
    - **Close as addressed** — this lap's work already answers it and no ticket names it: `mcp__runcastle__resolve_finding({ findingId, disposition: "addressed", note: "<what addressed it>" })`. The note is required and is your attestation, so make it specific ("lap 2's ticket 7 rewrote the endpoint").
 
    Judge each against what you and the human just settled — you are the only party that knows whether this lap's tickets touch a defect, which is why this is yours and not a dialog. If one genuinely is not this lap's business, carry it; do not close what you have not established.
-7. **Report the planning steps.** `mcp__runcastle__complete_phase` through `ideation` → `spec` → `tickets`, here, without opening another session. They are three steps inside Planning, not three gates: each records a milestone on the timeline and moves the feature nowhere. The `tickets` call comes back `ok: true` with `waitingOn: "human burn"` and a `warnings` array — the lap waits on the human's Burn click, which is the point. Whatever is in `warnings` is what they will read in the Burn dialog (un-dispositioned defects from move 6, no review ticket in the batch, no `spec.md` on disk): fix what you can while you are still the session that can, and call again.
+7. **Do NOT call `complete_phase`.** Its steps belong inside Planning, and this feature is at review: there is nothing to report, and the Burn click is what starts the lap. Before you hand over, check what the Burn dialog would warn about and fix what you can while you are still the session that can — un-dispositioned defects from move 6, no review ticket in the batch, a `spec.md` this lap changed but you have not amended.
 8. **Hand to Burn.** Tell the human in a line or two what this lap does, then:
 
    > Lap `<n>` is specced and carded. Review the ticket cards and click **Burn** — I'll stop here.
@@ -64,7 +64,7 @@ Never card a fix for a failure nobody has stood on: a ticket written from a one-
 
 ## Do NOT
 
-- **Never call `complete_phase` in an ordinary revisit.** It has no planning steps of its own to report; the human drives the pipeline from the UI. **Lap mode is the one exception** — reporting ideation → spec → tickets is its job (move 7), and nothing else here licenses it.
+- **Never call `complete_phase`** — not in an ordinary revisit and not in Lap mode. Neither has planning steps of its own to report; the human's clicks move the feature.
 - **Code changes ride tickets** — the burner (or a human) implements them, never this session. (The no-code rule itself is in your injected prompt and enforced by the edit guard.)
 
 ## Scope check
