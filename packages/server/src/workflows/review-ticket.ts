@@ -537,7 +537,7 @@ export function buildGateNotes(
 
   out.push(
     '',
-    "**Do not run any verify command yourself.** You are in the human's checkout, which is on the base branch, so anything you run there tests the base's code, not this branch's. The server's run above is the gate result.",
+    "**Do not run any verify command yourself.** You are in the human's checkout, on the base branch outside a drive, so anything you run there tests the base's code, not this branch's. The server's run above is the gate result.",
   )
 
   return out.join('\n')
