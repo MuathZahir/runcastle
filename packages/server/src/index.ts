@@ -114,8 +114,7 @@ export async function startServer(): Promise<void> {
 
   // Boot reconciliation: sessions left `launching`/`live` by a previous server
   // process are dead by definition (the PTY registry is in-memory) — end them
-  // and release their waypoint claims so the guard + frontier recover. Sessions
-  // with a PTY still alive in the registry (`bun --hot` reload) are skipped.
+  // so the live-session guard recovers. Sessions with a PTY still alive in the registry (`bun --hot` reload) are skipped.
   const reconciled = reconcileStaleSessions(ctx)
   if (reconciled.length > 0) {
     console.log(`reconciled ${reconciled.length} stale session(s) from a previous server run`)

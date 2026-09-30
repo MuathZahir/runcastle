@@ -61,7 +61,6 @@ describe('a stopped ticket does not read terminal before its agent is dead', () 
     slug: 'demo',
     title: 'Demo',
     oneLiner: 'x',
-    mapped: false,
     phase: 'building',
     branch: 'feature/demo',
     baseBranch: 'main',
@@ -105,7 +104,6 @@ describe('a stopped ticket does not read terminal before its agent is dead', () 
       updateTicket: (_id, patch: TicketPatch) => {
         if (patch.status) written.push(patch.status)
       },
-      resolveWaypoint: () => {},
       signal: new AbortController().signal,
     }
 

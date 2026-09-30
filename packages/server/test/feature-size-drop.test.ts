@@ -52,8 +52,8 @@ describe('feature size column drop (0008)', () => {
     )
     db.run(
       sql.raw(
-        "INSERT INTO features (id, project_id, slug, title, one_liner, size, mapped, phase, branch, status, created_at)" +
-          " VALUES ('feat_1', 'proj_1', 'legacy', 'Legacy', 'x', 'collapsed', 0, 'ideation', 'feature/legacy', 'active', 1)",
+        "INSERT INTO features (id, project_id, slug, title, one_liner, size, phase, branch, status, created_at)" +
+          " VALUES ('feat_1', 'proj_1', 'legacy', 'Legacy', 'x', 'collapsed', 'ideation', 'feature/legacy', 'active', 1)",
       ),
     )
 

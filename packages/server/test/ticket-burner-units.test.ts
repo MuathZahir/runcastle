@@ -107,7 +107,6 @@ const feature: Feature = {
   slug: 'my-feature',
   title: 'My Feature',
   oneLiner: 'does a thing',
-  mapped: false,
   phase: 'building',
   branch: 'feature/my-feature',
   status: 'active',
@@ -610,7 +609,7 @@ describe('readDocsDigest (the allowlist)', () => {
     expect(docs.included).toEqual(['brief.md', 'decisions.md', 'spec.md'])
   })
 
-  it('names a formerly mapped feature’s map.md rather than inlining it', () => {
+  it('names a leftover map.md rather than inlining it', () => {
     const { projectId, slug } = seedDocs({
       'brief.md': '# brief',
       'map.md': '# map\n\n## Destination\nthere\n\n## Out of scope\nforbidden fruit\n',

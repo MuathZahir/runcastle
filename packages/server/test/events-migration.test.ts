@@ -48,8 +48,8 @@ describe('events project_id migration (0004)', () => {
     )
     db.run(
       sql.raw(
-        "INSERT INTO features (id, project_id, slug, title, one_liner, size, mapped, phase, branch, status, created_at)" +
-          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 'full', 0, 'ideation', 'feature/demo', 'active', 1)",
+        "INSERT INTO features (id, project_id, slug, title, one_liner, size, phase, branch, status, created_at)" +
+          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 'full', 'ideation', 'feature/demo', 'active', 1)",
       ),
     )
     // A feature event and a legacy project-level event (feature_id = project id).

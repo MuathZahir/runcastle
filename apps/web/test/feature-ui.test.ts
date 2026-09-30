@@ -315,7 +315,7 @@ describe('nextStep — Resume vs Start wording for the chat', () => {
     docs?: string[]
   }) =>
     ({
-      feature: { id: 'f1', phase: opts.phase ?? 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: opts.phase ?? 'planning', status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -361,7 +361,7 @@ describe('nextStep — Resume vs Start wording for the chat', () => {
 describe('nextStep at building with no tickets', () => {
   const buildFull = (opts: { sessions?: unknown[]; runs?: unknown[] } = {}) =>
     ({
-      feature: { id: 'f1', phase: 'building', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'building', status: 'active' },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: opts.runs ?? [],
@@ -413,7 +413,7 @@ describe('nextStep at building with no tickets', () => {
 describe('nextStep after a server restart interrupted a burn', () => {
   const interrupted = (statuses: string[]) =>
     ({
-      feature: { id: 'f1', phase: 'building', lap: 1, mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'building', lap: 1, status: 'active' },
       tickets: statuses.map((status, index) => ({
         id: `t${index}`,
         seq: index + 1,
@@ -584,7 +584,6 @@ describe('nextStep — live sessions go status-only', () => {
       feature: {
         id: 'f1',
         phase: 'planning',
-        mapped: false,
         status: 'active',
         lap: 1,
         ticketsReadyLap: opts.ticketsReady ? 1 : null,
@@ -776,7 +775,7 @@ describe('nextStep at review', () => {
     }))
     const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : []
     return {
-      feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
+      feature: { id: 'f1', phase: 'review', lap: opts.lap ?? 1 },
       tickets,
       sessions,
       runs: opts.runs ?? [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
@@ -1577,7 +1576,7 @@ describe('groupByLap', () => {
 describe('ticketsAreBody — the ledger is the page before the first burn', () => {
   const featureFull = (phase: Phase, opts: { tickets?: unknown[]; sessions?: unknown[] } = {}): FeatureFull =>
     ({
-      feature: { id: 'f1', phase, mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase, lap: 1, status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -1617,7 +1616,7 @@ describe('ticketsAreBody — the ledger is the page before the first burn', () =
 describe('nextStep at planning — the step derived from the artifacts', () => {
   const planningFull = (opts: { docs?: string[]; tickets?: unknown[] } = {}): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', lap: 1, status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: [],
       runs: [],
@@ -1702,7 +1701,7 @@ describe('nextStep at planning — the step derived from the artifacts', () => {
 describe('nextStep at planning on a later lap', () => {
   const lapFull = (opts: { lap: number; sessions?: unknown[] }): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active', lap: opts.lap },
+      feature: { id: 'f1', phase: 'planning', status: 'active', lap: opts.lap },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -2530,7 +2529,7 @@ describe('nextStep at building', () => {
     shapes?: { goal: string; context: string; kind?: 'implementation' | 'review' }[]
   }): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'building', mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase: 'building', lap: 1, status: 'active' },
       tickets: (
         opts.ticketStatuses ??
         opts.shapes?.map(() => 'pending' as const) ?? ['pending']
@@ -2951,12 +2950,12 @@ describe('nextStep at planning — which door the artifacts open', () => {
   const docs = (...relPaths: string[]) =>
     relPaths.map((relPath) => ({ relPath: `docs/features/demo/${relPath}` })) as FeatureFull['docs']
 
-  // Mapped ideation is retired (ADR-0012): a feature that was once mapped keeps
-  // its old map.md on disk as plain history and takes the same linear road.
-  it('walks a formerly mapped feature down the linear ladder, map.md or not', () => {
-    const formerlyMapped = full({ phase: 'planning' })
-    formerlyMapped.docs = docs('map.md', 'decisions.md')
-    const ns = nextStep(formerlyMapped, { driving: false })
+  // Map ideation is retired (ADR-0012): a feature that still has an old map.md
+  // on disk keeps it as plain history and takes the same linear road.
+  it('walks a feature with a leftover map.md down the linear ladder', () => {
+    const withMap = full({ phase: 'planning' })
+    withMap.docs = docs('map.md', 'decisions.md')
+    const ns = nextStep(withMap, { driving: false })
     expect(ns.title).toBe('Write the spec')
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
@@ -3371,7 +3370,7 @@ describe('ticketModelChip — what a card says about its burn model', () => {
 describe('nextStep — naming the runtime in the copy', () => {
   const planning = (sessions: unknown[]) =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', status: 'active' },
       tickets: [],
       sessions,
       runs: [],
@@ -3410,7 +3409,7 @@ describe('nextStep — naming the runtime in the copy', () => {
   // both runtimes — there is no single one to name.
   it('does not name a runtime for a ticket batch that may span both', () => {
     const full = {
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', status: 'active' },
       tickets: [{ id: 't1', seq: 1, status: 'todo', ...BURNABLE }],
       sessions: [],
       runs: [],
