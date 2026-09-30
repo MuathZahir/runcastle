@@ -311,7 +311,6 @@ describe('renderTicketPrompt', () => {
       burnerTemplatePath(),
       resolverTemplatePath(),
       burnerAssetPath('review-ticket.md'),
-      burnerAssetPath('research-waypoint.md'),
     ]
 
     for (const path of templates) {
@@ -326,7 +325,6 @@ describe('renderTicketPrompt', () => {
   it('keeps the completion contract in every prompt that signals one', () => {
     // Unchanged by the runtime work: sandcastle matches the signal against the
     // agent's accumulated stdout, so it is honoured identically on both
-    // providers. (The research prompt has never signalled — it completes on git.)
     for (const path of [
       burnerTemplatePath(),
       resolverTemplatePath(),

@@ -228,7 +228,7 @@ describe('feature delete', () => {
     const g = simpleGit(project.repoPath)
     // Temp branches for this feature (segment = 'temps') + an unrelated branch.
     await g.branch(['runcastle/ticket/temps/1-abc', feature.branch])
-    await g.branch(['runcastle/research/temps/2-def', feature.branch])
+    await g.branch(['runcastle/chat/temps/def', feature.branch])
     await g.branch(['feature/other', 'main'])
     await g.branch(['runcastle/ticket/otherfeat/1-zzz', 'main'])
 
@@ -237,7 +237,7 @@ describe('feature delete', () => {
     const branches = (await g.branchLocal()).all
     expect(branches).not.toContain('feature/temps')
     expect(branches).not.toContain('runcastle/ticket/temps/1-abc')
-    expect(branches).not.toContain('runcastle/research/temps/2-def')
+    expect(branches).not.toContain('runcastle/chat/temps/def')
     // Another feature's branch + temp branch are untouched.
     expect(branches).toContain('feature/other')
     expect(branches).toContain('runcastle/ticket/otherfeat/1-zzz')

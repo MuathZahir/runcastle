@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { WaypointInput, WorkflowDef } from '@runcastle/core'
+import type { WorkflowDef } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -12,11 +12,10 @@ import {
   createFeatureBranch,
   detachWorktree,
   ensureTalkWorktree,
-  researchBranchName,
+  ticketBranchName,
 } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { storeTickets, updateTicket } from '../src/services/tickets'
-import { claim, frontier, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { reconcileStaleRuns } from '../src/workflows/reconcile-runs'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
@@ -27,17 +26,12 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 /**
  * Boot reconciliation for runs (mirror of the stale-session tests). A crashed
  * server leaves run rows `running` forever, wedging the launcher's active-run
- * guard and keeping claimed waypoints off the frontier. `reconcileStaleRuns`
- * must fail them honestly, release their claims, reattach a detached talk
- * worktree, and sweep merged research temp branches — all without touching runs
+ * guard. `reconcileStaleRuns` must fail them honestly, reattach a detached talk
+ * worktree, and sweep merged ticket temp branches — all without touching runs
  * genuinely in flight across a hot reload.
  */
 
-function wp(title: string): WaypointInput {
-  return { title, type: 'research', question: `q: ${title}`, blockedBy: [] }
-}
-
-function seedRunningRun(ctx: AppCtx, featureId: string, workflow = 'research'): string {
+function seedRunningRun(ctx: AppCtx, featureId: string, workflow = 'test-workflow'): string {
   const id = newId('run')
   ctx.db
     .insert(runs)
@@ -53,13 +47,11 @@ describe('reconcileStaleRuns — in-memory db', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    featureId = seedFeature(ctx, project.id, { mapped: true }).id
+    featureId = seedFeature(ctx, project.id).id
   })
 
-  it('marks stale running runs failed, releases their waypoint claims, one event each', async () => {
-    const [a] = storeWaypoints(ctx, featureId, [wp('dig')])
-    const runId = seedRunningRun(ctx, featureId, 'research')
-    claim(ctx, a.id, runId)
+  it('marks stale running runs failed, one event each', async () => {
+    const runId = seedRunningRun(ctx, featureId)
 
     const reconciled = await reconcileStaleRuns(ctx)
     expect(reconciled.map((r) => r.id)).toEqual([runId])
@@ -69,15 +61,11 @@ describe('reconcileStaleRuns — in-memory db', () => {
     expect(run.summary).toBe('orphaned by server restart')
     expect(run.endedAt).toBeGreaterThan(0)
 
-    // the claim is back on the frontier
-    expect(getWaypoint(ctx, a.id).status).toBe('open')
-    expect(frontier(ctx, featureId).map((w) => w.id)).toContain(a.id)
-
-    // exactly one run.reconciled event, tagged with the run + released ids
+    // exactly one run.reconciled event, tagged with the run
     const events = listAfter(ctx, featureId, 0).filter((e) => e.type === 'run.reconciled')
     expect(events).toHaveLength(1)
     expect(events[0].runId).toBe(runId)
-    expect((events[0].data as { releasedWaypointIds: string[] }).releasedWaypointIds).toEqual([a.id])
+    expect(events[0].data).toEqual({ runId, workflow: 'test-workflow', sweptTicketSeqs: [] })
   })
 
   it('leaves finished runs alone and is idempotent across boots', async () => {
@@ -195,7 +183,7 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
     expect(head).toBe('feature/stale')
   })
 
-  it('sweeps merged research temp branches at boot and keeps unmerged ones', async () => {
+  it('sweeps merged ticket temp branches at boot and keeps unmerged ones', async () => {
     const repo = mkTmp('rc-recrun-sweep-')
     await initRepo(repo)
     const project = seedProject(ctx, repo)
@@ -203,16 +191,16 @@ describe('reconcileStaleRuns — git side effects (fixture repo)', () => {
     await createFeatureBranch(project, 'swept', 'main')
 
     const g = simpleGit(repo)
-    const merged = researchBranchName('swept', 1, 'aaa111')
+    const merged = ticketBranchName('swept', 1, 'aaa111')
     await g.raw(['branch', merged, 'feature/swept'])
-    const unmerged = researchBranchName('swept', 2, 'bbb222')
+    const unmerged = ticketBranchName('swept', 2, 'bbb222')
     await g.raw(['branch', unmerged, 'feature/swept'])
     const wt = join(mkTmp('rc-recrun-wt-'), 'wt')
     await g.raw(['worktree', 'add', wt, unmerged])
     writeFileSync(join(wt, 'orphan.md'), 'unlanded\n')
     const gw = simpleGit(wt)
     await gw.add(['orphan.md'])
-    await gw.commit('research: orphan')
+    await gw.commit('ticket(2): orphan')
     await g.raw(['worktree', 'remove', wt, '--force'])
 
     await reconcileStaleRuns(ctx)

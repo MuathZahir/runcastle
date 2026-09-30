@@ -58,8 +58,8 @@ export interface WorkflowCtx {
    */
   updateFinding?(findingId: string, progress: FixProgress, reason?: string): void
   /**
-   * Per-run payload wired by the runner (SPEC §13.1). The research workflow reads
-   * the `Waypoint` it was started on from here; the ticket-burner ignores it.
+   * Per-run payload wired by the runner (`StartRunOptions.input`); the
+   * ticket-burner ignores it.
    */
   input?: unknown
   /**
@@ -68,13 +68,6 @@ export interface WorkflowCtx {
    * to force a cheap model without the retired `RUNCASTLE_MODEL` env hack.
    */
   modelOverride?: string
-  /**
-   * Resolve (or drop) the waypoint this run is working, flipping its lifecycle
-   * status and recording a one-line summary (SPEC §13.1/§13.2). A run that never
-   * calls this leaves its waypoint claimed; the runner's finalizer then
-   * auto-releases it back to the frontier (failure/cancel path).
-   */
-  resolveWaypoint(id: string, disposition: 'resolved' | 'dropped', summary: string): void
   signal: AbortSignal
 }
 
