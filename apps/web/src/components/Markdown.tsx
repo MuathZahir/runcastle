@@ -116,7 +116,7 @@ const COMPONENTS: Components = {
 
 /**
  * The one renderer for every agent-authored prose surface (doc peek, specs,
- * the map's section bodies, ticket goal/context, transcripts). Every element it
+ * ticket goal/context, transcripts). Every element it
  * emits is styled by {@link MARKDOWN_CLASSES} at this component, in theme
  * utilities. `size` — `sm` (default) for dense surfaces, `base` for a page of
  * prose or a transcript; `tone` — `secondary` (default) · `primary` ·
