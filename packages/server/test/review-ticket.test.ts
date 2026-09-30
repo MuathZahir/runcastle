@@ -1117,6 +1117,42 @@ describe('review declaration resolution', () => {
     )
   })
 
+  it('parses a declaration that omits the REVIEW-REASON line', () => {
+    // The template only requires a reason when unverified, so a clean pass
+    // ends DIGEST.md at the verdict line — no reason, no trailing newline.
+    const facts = { webmExists: false, offeredMode: 'gates' as const }
+    expect(resolveReviewDeclaration('account\n\nREVIEW-MODE: gates\nREVIEW-VERDICT: verified', facts)).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: '',
+    })
+    expect(resolveReviewDeclaration('account\r\n\r\nREVIEW-MODE: gates\r\nREVIEW-VERDICT: verified\r\n', facts)).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'verified',
+      reason: '',
+    })
+    expect(
+      resolveReviewDeclaration('account\r\n\r\nREVIEW-MODE: gates\r\nREVIEW-VERDICT: verified\r\nREVIEW-REASON: ran the gates\r\n', facts),
+    ).toEqual({ reviewMode: 'gates', reviewVerdict: 'verified', reason: 'ran the gates' })
+    expect(
+      resolveReviewDeclaration('REVIEW-MODE: gates\nREVIEW-VERDICT: verified', { ...facts, driveWithheldReason: 'ffmpeg is missing.' }),
+    ).toEqual({ reviewMode: 'gates', reviewVerdict: 'verified', reason: 'ffmpeg is missing.' })
+    expect(resolveReviewDeclaration('REVIEW-MODE: gates\nREVIEW-VERDICT: unverified\n', facts)).toEqual({
+      reviewMode: 'gates',
+      reviewVerdict: 'unverified',
+      reason: 'Reviewer declared this pass unverified.',
+    })
+  })
+
+  it('does not read the line after an empty REVIEW-REASON as the reason', () => {
+    expect(
+      resolveReviewDeclaration('REVIEW-MODE: gates\nREVIEW-VERDICT: unverified\nREVIEW-REASON:\ntrailing prose', {
+        webmExists: false,
+        offeredMode: 'gates',
+      }).reason,
+    ).toBe('Reviewer declared this pass unverified.')
+  })
+
   it('defaults missing and malformed declarations to unverified', () => {
     const expected = { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
     expect(resolveReviewDeclaration(undefined, { webmExists: false, offeredMode: 'gates' })).toEqual(expected)
