@@ -40,7 +40,6 @@ import {
   lastTestDriveLap,
   latestRun,
   liveSessionLine,
-  mapDocPath,
   mergeSummary,
   nextStep,
   pendingTickets,
@@ -134,8 +133,6 @@ export function Workspace({
   viewedPhase,
   onViewPhase,
   guidance,
-  mapRailCollapsed,
-  onToggleMapRail,
   driving,
   onDriveChange,
   onDeleted,
@@ -149,8 +146,6 @@ export function Workspace({
   viewedPhase: Phase | null
   onViewPhase: (phase: Phase | null) => void
   guidance: boolean
-  mapRailCollapsed: boolean
-  onToggleMapRail: () => void
   driving: DriveState | null
   onDriveChange: (d: DriveState | null) => void
   /**
@@ -254,14 +249,6 @@ export function Workspace({
     { featureId },
     { enabled: triaging !== null },
   )
-  // The next-step bar warns about remaining fog on a mapped feature, which lives
-  // in the map doc's prose — same query key as the map rail's read, so the two
-  // share one fetch.
-  const mapRelPath = q.data ? mapDocPath(q.data) : undefined
-  const mapQ = trpc.docs.read.useQuery(
-    { featureId, relPath: mapRelPath ?? 'map.md' },
-    { enabled: !!mapRelPath },
-  )
   // Scope the spec deliberately left for a later lap (decisions #7) — it steers
   // the review bar's primary and warns in the merge dialog. Same query key the
   // review body's Planned-next-lap card reads, so the bar and the card share one
@@ -355,7 +342,7 @@ export function Workspace({
 
   // Every session this page launches lands on the Chat tab once it is up
   // (one-chat-layout-everywhere decision 3) — the bar's Chat, a draft's Start,
-  // every road into the next lap, converge, work waypoint and fix drive.
+  // every road into the next lap and fix drive.
   const landOnChat = useLandOnChat(featureId)
   const launched = () => {
     invalidate()
@@ -367,19 +354,6 @@ export function Workspace({
       invalidate()
       onViewPhase(null)
     },
-    onError: (e) => toast.push(e.message),
-  })
-  // Convergence is the bar's own action on a mapped feature (decision #4): it
-  // crosses G1 — with an override reason when waypoints are still open — and
-  // spawns the converge session, which lands the feature at `spec`. Landing on
-  // Chat also drops any phase pin, so the page follows the phase it lands at.
-  const converge = trpc.feature.converge.useMutation({
-    onSuccess: launched,
-    onError: (e) => toast.push(e.message),
-  })
-  // A research waypoint starts a headless run, not a session: nothing to land on.
-  const workWaypoint = trpc.feature.workWaypoint.useMutation({
-    onSuccess: (res) => ('sessionId' in res ? launched() : invalidate()),
     onError: (e) => toast.push(e.message),
   })
   // The end half of every end-and-proceed compound (decision 4). No surface
@@ -575,7 +549,6 @@ export function Workspace({
     // same value the evidence stage renders from, so the bar and the stage can
     // no longer derive drive truth separately and disagree.
     driveState: driveQ.data?.featureId === feature.id ? driveQ.data.state : 'idle',
-    mapContent: mapQ.data?.content,
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
     // Whoever else holds the one drive slot, named as the server names it.
@@ -602,8 +575,6 @@ export function Workspace({
     start.isPending ||
     launch.isPending ||
     burn.isPending ||
-    converge.isPending ||
-    workWaypoint.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
     merge.isPending ||
@@ -699,7 +670,7 @@ export function Workspace({
     else launchChat()
   }
 
-  const runAction = (kind: ActionKind, waypointId?: string) => {
+  const runAction = (kind: ActionKind) => {
     switch (kind) {
       case 'startDraft':
         // Send the base the body is SHOWING, not just an explicit pick: omitting
@@ -721,13 +692,6 @@ export function Workspace({
         void endLiveSession().then((ended) => {
           if (ended) enterIterate()
         })
-        break
-      case 'converge':
-      case 'resumeConverge':
-        converge.mutate({ featureId })
-        break
-      case 'workNext':
-        if (waypointId) workWaypoint.mutate({ featureId, waypointId })
         break
       // The click opens the confirmation; `runBurn` below is what actually
       // burns. Every ex-gate that used to refuse this click is a warning inside
@@ -999,8 +963,6 @@ export function Workspace({
         runId={run?.id ?? null}
         ticketsIsBody={ticketsIsBody}
         readonly={readonly}
-        mapRailCollapsed={mapRailCollapsed}
-        onToggleMapRail={onToggleMapRail}
         onViewPhase={viewPhase}
       />
     )
@@ -1177,8 +1139,6 @@ function PhaseBody({
   runId,
   ticketsIsBody,
   readonly,
-  mapRailCollapsed,
-  onToggleMapRail,
   onViewPhase,
 }: {
   effective: Phase
@@ -1190,8 +1150,6 @@ function PhaseBody({
   /** The ledger is this body — see `ticketsAreBody`. */
   ticketsIsBody: boolean
   readonly: boolean
-  mapRailCollapsed: boolean
-  onToggleMapRail: () => void
   onViewPhase: (phase: Phase | null) => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
@@ -1202,8 +1160,6 @@ function PhaseBody({
         full={full}
         effective={effective}
         events={events}
-        mapRailCollapsed={mapRailCollapsed}
-        onToggleMapRail={onToggleMapRail}
       />
     )
   }
@@ -1215,7 +1171,7 @@ function PhaseBody({
       return ticketsIsBody ? (
         <TicketsBody featureId={full.feature.id} />
       ) : (
-        <GrillBody full={full} effective={effective} />
+        <GrillBody full={full} />
       )
     case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane

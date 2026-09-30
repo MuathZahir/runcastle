@@ -1,6 +1,6 @@
 import type { Phase } from '@runcastle/core'
 
-export type ArtifactKind = 'map' | 'decisions' | 'spec'
+export type ArtifactKind = 'decisions' | 'spec'
 
 export interface ArtifactDoc {
   relPath: string
@@ -8,15 +8,11 @@ export interface ArtifactDoc {
 
 export function artifactSelection({
   phase,
-  mapped,
   docs,
 }: {
   phase: Phase
-  mapped: boolean
   docs: ArtifactDoc[]
 }): { kind: ArtifactKind; relPath?: string } {
-  if (phase === 'planning' && mapped) return { kind: 'map' }
-
   // `kind` names a document, not a state: planning covers both, so which one is
   // the artifact is derived from disk the way decision 2 derives everything —
   // spec.md written means the spec is what there is to show.

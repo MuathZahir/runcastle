@@ -8,7 +8,7 @@ export function isSummaryPhase(phase: Phase): phase is SummaryPhase { return pha
 
 export interface PhaseSummaryInput {
   phase: Phase
-  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'waypoints' | 'docs'>
+  full: Pick<FeatureFull, 'feature' | 'sessions' | 'tickets' | 'docs'>
   events: readonly EventRow[]
   decisions?: string
 }
@@ -22,7 +22,6 @@ export function phaseFacts({ phase, full, decisions }: PhaseSummaryInput): strin
   if (!isSummaryPhase(phase)) return null
   const facts = [`${lapTicketCount(full.tickets, full.feature.lap).total} tickets`]
   if (decisions !== undefined) facts.unshift(`${countDecisions(decisions)} decisions`)
-  if (full.feature.mapped) facts.push(`${full.waypoints.length} waypoints`)
   return facts.join(' · ')
 }
 
