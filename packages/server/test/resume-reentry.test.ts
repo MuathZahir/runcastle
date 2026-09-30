@@ -13,7 +13,6 @@ import {
   resumeCapExceeded,
   transcriptBytes,
 } from '../src/launcher/sessions'
-import { evaluateEditGuard, prototypesRel } from '../src/launcher/edit-guard'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -95,51 +94,5 @@ describe('reentryCount', () => {
 
     expect(reentryCount(ctx, { featureId: a.id })).toBe(3)
     expect(reentryCount(ctx, { featureId: b.id })).toBe(0)
-  })
-})
-
-/**
- * The prototype spike exemption. A `prototype` waypoint's job is to BUILD the
- * throwaway thing that answers its question, which is code — so it gets one
- * place to put it, inside the feature's own docs dir, and the denial for
- * everywhere else has to be able to name that place.
- */
-describe('edit guard — prototype spikes', () => {
-  const base = {
-    kind: 'waypoint' as const,
-    toolName: 'Write',
-    worktreePath: 'C:/wt/dark-mode',
-    featureSlug: 'dark-mode',
-  }
-
-  it('names one path and it is under the feature docs', () => {
-    expect(prototypesRel('dark-mode')).toBe('docs/features/dark-mode/prototypes')
-  })
-
-  it('allows a spike under docs/features/<slug>/prototypes/', () => {
-    expect(
-      evaluateEditGuard({ ...base, filePath: 'docs/features/dark-mode/prototypes/spike.ts' }),
-    ).toBeNull()
-    expect(
-      evaluateEditGuard({
-        ...base,
-        filePath: 'docs/features/dark-mode/prototypes/nested/deep/app.tsx',
-      }),
-    ).toBeNull()
-  })
-
-  it('still denies code outside it, and says where a spike goes', () => {
-    const denial = evaluateEditGuard({ ...base, filePath: 'src/theme.ts' })
-    expect(denial).not.toBeNull()
-    expect(denial?.reason).toContain('docs/features/dark-mode/prototypes/')
-    // and it does not read as a route to landing the real change
-    expect(denial?.reason).toMatch(/not a route to landing the real change/i)
-  })
-
-  /** A near-miss sibling must not be swept in by a prefix match. */
-  it('denies a lookalike sibling directory', () => {
-    expect(
-      evaluateEditGuard({ ...base, filePath: 'docs/features/other/prototypes/spike.ts' }),
-    ).not.toBeNull()
   })
 })

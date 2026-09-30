@@ -85,13 +85,10 @@ describe('renderSettings', () => {
         'mcp__runcastle__complete_phase',
       ]),
     )
-    // the mapped-ideation tools are pre-allowed too (waypoint sessions use them)
-    expect(s.permissions.allow).toEqual(
-      expect.arrayContaining([
-        'mcp__runcastle__emit_waypoints',
-        'mcp__runcastle__resolve_waypoint',
-      ]),
-    )
+    // the retired mapped-ideation tools are not allowed for anyone (ADR-0012)
+    for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint']) {
+      expect(s.permissions.allow).not.toContain(`mcp__runcastle__${retired}`)
+    }
     // the project session's three (decision 19) — server-side kind gating makes
     // them inert for a feature session, so every session is launched with them
     expect(s.permissions.allow).toEqual(

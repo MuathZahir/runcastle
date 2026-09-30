@@ -78,10 +78,17 @@ describe('WITHHELD_FEATURE_DOCS', () => {
 })
 
 describe('agentDigestDocOrder', () => {
-  it('reads brief → map → decisions → spec whatever order the fs gave', () => {
-    const shuffled = ['spec.md', 'decisions.md', 'brief.md', 'map.md']
+  it('reads brief → decisions → spec whatever order the fs gave', () => {
+    const shuffled = ['spec.md', 'decisions.md', 'brief.md']
     const sorted = [...shuffled].sort((a, b) => agentDigestDocOrder(a) - agentDigestDocOrder(b))
-    expect(sorted).toEqual(['brief.md', 'map.md', 'decisions.md', 'spec.md'])
+    expect(sorted).toEqual(['brief.md', 'decisions.md', 'spec.md'])
+  })
+
+  // A formerly mapped feature keeps its map.md on disk as plain history
+  // (ADR-0012): indexed with the rest, never inlined.
+  it('treats map.md as an ordinary doc, not a canonical one', () => {
+    expect(isAgentDigestDoc('map.md')).toBe(false)
+    expect(agentDigestDocOrder('map.md')).toBe(agentDigestDocOrder('outcome.md'))
   })
 
   it('sorts unknown docs after every canonical one', () => {
@@ -90,16 +97,16 @@ describe('agentDigestDocOrder', () => {
 })
 
 describe('agentDigestFillRank', () => {
-  it('fills brief → decisions → spec → map whatever order the fs gave', () => {
-    const shuffled = ['map.md', 'spec.md', 'Decisions.md', 'brief.md']
+  it('fills brief → decisions → spec whatever order the fs gave', () => {
+    const shuffled = ['spec.md', 'Decisions.md', 'brief.md']
     const sorted = [...shuffled].sort((a, b) => agentDigestFillRank(a) - agentDigestFillRank(b))
-    expect(sorted).toEqual(['brief.md', 'Decisions.md', 'spec.md', 'map.md'])
+    expect(sorted).toEqual(['brief.md', 'Decisions.md', 'spec.md'])
   })
 
   // A canonical doc missing from the fill order used to rank -1, ahead of
   // brief.md, and so claim ceiling room first.
   it('ranks every canonical doc, and anything unranked after all of them', () => {
     expect([...AGENT_DIGEST_FILL_ORDER].sort()).toEqual([...AGENT_DIGEST_DOCS].sort())
-    expect(agentDigestFillRank('plan.md')).toBeGreaterThan(agentDigestFillRank('map.md'))
+    expect(agentDigestFillRank('plan.md')).toBeGreaterThan(agentDigestFillRank('spec.md'))
   })
 })
