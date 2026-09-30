@@ -8,7 +8,6 @@ import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { listAfter, listByProject } from '../src/services/events'
 import { storeTickets } from '../src/services/tickets'
-import { claim, getWaypoint, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -148,17 +147,13 @@ describe('hooks route', () => {
   })
 
   it('codex session-end only records the ended conversation and preserves live state', async () => {
-    const mapped = seedFeature(ctx, seedProject(ctx).id, { slug: 'codex-map', mapped: true })
+    const feature = seedFeature(ctx, seedProject(ctx).id, { slug: 'codex-chat' })
     const session = createSessionRow(ctx, {
-      featureId: mapped.id,
-      kind: 'waypoint',
-      worktreePath: 'C:\\wt\\codex-map',
+      featureId: feature.id,
+      kind: 'chat',
+      worktreePath: 'C:\\wt\\codex-chat',
       model: { id: 'gpt-5', runtime: 'codex' },
     })
-    const [waypoint] = storeWaypoints(ctx, mapped.id, [
-      { title: 'check', type: 'grilling', question: 'q', blockedBy: [] },
-    ])
-    claim(ctx, waypoint.id, session.id)
     await post(mount(), 'session-start', {
       sessionId: session.id,
       payload: { session_id: 'codex-thread', source: 'startup' },
@@ -171,8 +166,7 @@ describe('hooks route', () => {
 
     expect(json).toEqual({})
     expect(getSessionRow(ctx, session.id)?.status).toBe('live')
-    expect(getWaypoint(ctx, waypoint.id).status).toBe('claimed')
-    const events = listAfter(ctx, mapped.id, 0)
+    const events = listAfter(ctx, feature.id, 0)
     expect(events.filter((e) => e.type === 'session.ended')).toHaveLength(0)
     const notes = events.filter((e) => e.type === 'session.conversation_ended')
     expect(notes).toHaveLength(1)
@@ -204,27 +198,6 @@ describe('hooks route', () => {
     const notes = events.filter((e) => e.type === 'session.conversation_ended')
     expect(notes).toHaveLength(1)
     expect(notes[0]?.data).toEqual({ sessionId: session.id, reason: 'other' })
-  })
-
-  it('session-end auto-releases a waypoint the ending session had claimed', async () => {
-    const mapped = seedFeature(ctx, seedProject(ctx).id, { slug: 'big', mapped: true })
-    const s = createSessionRow(ctx, { featureId: mapped.id, kind: 'waypoint', worktreePath: 'C:\\wt' })
-    const [a] = storeWaypoints(ctx, mapped.id, [
-      { title: 'a', type: 'grilling', question: 'q', blockedBy: [] },
-    ])
-    claim(ctx, a.id, s.id)
-    // the session actually starts (this is what promotes lastSessionId)...
-    await post(mount(), 'session-start', {
-      sessionId: s.id,
-      payload: { session_id: 'cc-wp-1', hook_event_name: 'SessionStart', source: 'startup' },
-    })
-    // ...and later ends without resolving
-    await post(mount(), 'session-end', { sessionId: s.id, payload: { hook_event_name: 'SessionEnd' } })
-
-    // the waypoint is back on the frontier, remembering the session for Resume
-    const back = getWaypoint(ctx, a.id)
-    expect(back.status).toBe('open')
-    expect(back.lastSessionId).toBe(s.id)
   })
 
   it('session-start tells the session which LAP the feature is on', async () => {

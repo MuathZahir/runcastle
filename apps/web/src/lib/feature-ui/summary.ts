@@ -3,7 +3,6 @@ import type { FeatureFull } from '../api'
 import { holderSentence } from './drive'
 import { testDriveFigure, type MergeConflictState } from './gates'
 import { noun } from './laps'
-import { parseMapSections } from './map'
 import type { CheckRow, Freshness } from './review'
 
 const HEADLINE_MAX = 80
@@ -30,10 +29,10 @@ export function headline(text: string): { head: string; rest: string } {
 }
 
 /**
- * The spec's path, or undefined until it is written. Same shape as {@link
- * mapDocPath} and for the same reason: the review body's Planned-next-lap card
- * and the next-step bar both read the spec, and one implementation is what makes
- * them resolve the SAME `docs.read` query key and share a single fetch.
+ * The spec's path, or undefined until it is written. The review body's
+ * Planned-next-lap card and the next-step bar both read the spec, and one
+ * implementation is what makes them resolve the SAME `docs.read` query key and
+ * share a single fetch.
  */
 export function specDocPath(full: FeatureFull): string | undefined {
   return full.docs.find((d) => d.relPath.endsWith('spec.md'))?.relPath
@@ -59,7 +58,29 @@ export function outcomeDocPath(full: FeatureFull): string | undefined {
  */
 export function deferredScope(specContent?: string): string | null {
   if (!specContent) return null
-  return parseMapSections(specContent)['Later laps']?.trim() || null
+  return parseSections(specContent)['Later laps']?.trim() || null
+}
+
+/** Split a doc into a `{ heading: body }` record keyed by its `## ` sections. */
+function parseSections(content: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  let current: string | null = null
+  const buf: string[] = []
+  const flush = () => {
+    if (current !== null) out[current] = buf.join('\n')
+    buf.length = 0
+  }
+  for (const line of content.split('\n')) {
+    const heading = line.match(/^##\s+(.+?)\s*$/)
+    if (heading) {
+      flush()
+      current = heading[1]
+    } else if (current !== null) {
+      buf.push(line)
+    }
+  }
+  flush()
+  return out
 }
 
 /** What the merge confirmation shows: the figures, and every gap in them. */

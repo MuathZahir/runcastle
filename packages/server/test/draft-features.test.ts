@@ -9,7 +9,7 @@ import { features } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
-import { converge, launchSession, workWaypoint } from '../src/launcher/launcher'
+import { launchSession } from '../src/launcher/launcher'
 import { listAfter } from '../src/services/events'
 import {
   archiveFeature,
@@ -262,10 +262,6 @@ describe('draft features', () => {
       await expect(launchSession(ctx, { featureId: draft.id, kind: 'chat' })).rejects.toThrow(
         DRAFT_REFUSAL,
       )
-      await expect(
-        workWaypoint(ctx, { featureId: draft.id, waypointId: 'wp_nope' }),
-      ).rejects.toThrow(DRAFT_REFUSAL)
-      await expect(converge(ctx, { featureId: draft.id })).rejects.toThrow(DRAFT_REFUSAL)
     })
 
     it('refuses merge and test drive over tRPC', async () => {

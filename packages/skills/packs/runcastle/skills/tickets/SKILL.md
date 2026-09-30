@@ -1,6 +1,6 @@
 ---
 name: tickets
-description: Break the spec into vertical slices sized to earn a fresh sandboxed agent session and land inside it, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate or /runcastle:converge.
+description: Break the spec into vertical slices sized to earn a fresh sandboxed agent session and land inside it, and emit them via MCP. Then complete the tickets phase. Invoked by /runcastle:ideate.
 disable-model-invocation: false
 ---
 <!-- Forked from Matt Pocock's to-tickets skill, via https://github.com/mattpocock/skills, 2026-07-14, adapted for runcastle -->
@@ -110,4 +110,4 @@ Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a Burn landing mid-enrichment burns agents on the placeholders.
 - `mcp__runcastle__complete_phase({ phase: "tickets" })`. It comes back `ok: true` with `waitingOn: "human burn"` and a `warnings` array — the things the human will otherwise read in the Burn dialog (no review ticket in the batch, earlier-lap defects still un-dispositioned, no `spec.md` on disk). Nothing refuses, so anything in that array is yours to fix now, while you are still the session that can: fix it and call again.
 
-Return control to **the session skill that invoked you** — `/runcastle:ideate` for a linear feature, `/runcastle:converge` for a mapped one — and let it close out the session. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running (a converge session in particular is forbidden to grill) into the window.
+Return control to **the session skill that invoked you** — `/runcastle:ideate` — and let it close out the session. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running into the window.

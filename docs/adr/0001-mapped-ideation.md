@@ -1,6 +1,6 @@
 # ADR-0001: Mapped ideation (wayfinder as an ideation mode)
 
-- **Status:** accepted (2026-07-15)
+- **Status:** superseded by ADR-0012 (2026-09-30)
 - **Deciders:** Muath + grilling session
 - **Spec delta:** `docs/SPEC.md` §13
 

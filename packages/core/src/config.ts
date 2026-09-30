@@ -10,9 +10,8 @@ import * as z from 'zod'
 
 /**
  * The pipeline steps a model can be chosen for (issue #48). Each interactive
- * session kind (`chat`/`waypoint`/`converge`) and each AFK agent
- * (`research`, `implement`, `review`) plus the scripted `smoke` maps to one
- * step.
+ * session kind (`chat`, `prepare`, `project`) and each AFK agent
+ * (`implement`, `review`) plus the scripted `smoke` maps to one step.
  *
  * `review` is the burn's review pass — the agent that runs host-side once every
  * implementation ticket is terminal. It is a step of its own rather than a share
@@ -23,9 +22,6 @@ import * as z from 'zod'
  */
 export const MODEL_STEPS = [
   'chat',
-  'waypoint',
-  'converge',
-  'research',
   'implement',
   'review',
   'prepare',
@@ -118,22 +114,35 @@ export const CURATED_MODELS: readonly ModelEntry[] = [
 /** Cheap default for the scripted smoke so an end-to-end run stays inexpensive. */
 const DEFAULT_SMOKE_MODEL = RUNTIME_DEFAULT_MODELS[DEFAULT_RUNTIME].smoke
 
+/** Model steps retired with mapped ideation (ADR-0012), ignored on load. */
+const RETIRED_MODEL_STEPS = ['waypoint', 'converge', 'research'] as const
+
 /**
  * Read-compat for the legacy `smokeModel` field (issue #48): fold it into
  * `stepModels.smoke` unless that step is already set explicitly, then drop the
  * legacy key so it never lingers on the parsed shape. The next settings write
  * therefore persists the new `stepModels` shape.
+ *
+ * It also drops the `stepModels` keys of steps that no longer exist. Mapped
+ * ideation was retired (ADR-0012) and took the `waypoint`, `converge` and
+ * `research` steps with it, but a config written before then may still name
+ * them. `stepModels` rejects unknown keys, so an upgraded install would
+ * otherwise fail to boot; the stale keys are ignored instead.
  */
 export const foldLegacyModelConfig = (raw: unknown): unknown => {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
   const obj = { ...(raw as Record<string, unknown>) }
+  const existing =
+    typeof obj.stepModels === 'object' && obj.stepModels !== null && !Array.isArray(obj.stepModels)
+      ? { ...(obj.stepModels as Record<string, unknown>) }
+      : undefined
+  if (existing) {
+    for (const step of RETIRED_MODEL_STEPS) delete existing[step]
+    obj.stepModels = existing
+  }
   const legacy = obj.smokeModel
-  if (typeof legacy === 'string' && legacy.length > 0) {
-    const existing =
-      typeof obj.stepModels === 'object' && obj.stepModels !== null && !Array.isArray(obj.stepModels)
-        ? (obj.stepModels as Record<string, unknown>)
-        : {}
-    if (existing.smoke === undefined) obj.stepModels = { ...existing, smoke: legacy }
+  if (typeof legacy === 'string' && legacy.length > 0 && existing?.smoke === undefined) {
+    obj.stepModels = { ...existing, smoke: legacy }
   }
   delete obj.smokeModel
   return obj

@@ -9,8 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
  * numbers, so the numbers are the argument and this is the machinery.
  *
  * A width is a *screen* preference, not a project fact, so every key here is a
- * global one — the same choice `runcastle.inspector.collapsed` and
- * `runcastle.maprail.collapsed` already make.
+ * global one — the same choice `runcastle.inspector.collapsed` already makes.
  */
 export interface RailWidthSpec {
   /** The storage key this rail's width persists under. */

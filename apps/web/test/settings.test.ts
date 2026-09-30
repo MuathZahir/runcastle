@@ -294,10 +294,10 @@ describe('per-step model rows (#48)', () => {
       { key: 'model', source: 'default' },
       { key: 'stepModels.smoke', value: 'claude-haiku-4-5-20251001', source: 'file' },
       { key: 'stepModels.implement', value: 'x', source: 'default', scope: 'global' },
-      { key: 'stepModels.research', value: 'claude-sonnet-5', source: 'file' },
+      { key: 'stepModels.review', value: 'claude-sonnet-5', source: 'file' },
     ])
     const rows = stepModelRows(v)
-    expect(rows.map((r) => r.key)).toEqual(['stepModels.research', 'stepModels.smoke'])
+    expect(rows.map((r) => r.key)).toEqual(['stepModels.review', 'stepModels.smoke'])
     // step fields never leak into the flat Global section
     expect(globalRows(v).map((r) => r.key)).toEqual(['model'])
   })
@@ -1050,14 +1050,11 @@ describe('stepRows', () => {
 
   // `revisit` and `project` used to render as raw config keys (bug found in the
   // walk); every step is listed now, so every one of them needs a name.
-  it('lists all nine steps, grouped, each with a name and a description', () => {
+  it('lists all six steps, grouped, each with a name and a description', () => {
     const rows = stepRows(stepView())
     expect(rows.map((r) => r.step)).toEqual([
       'chat',
-      'waypoint',
-      'converge',
       'project',
-      'research',
       'implement',
       'review',
       'prepare',
@@ -1065,18 +1062,15 @@ describe('stepRows', () => {
     ])
     expect(rows.map((r) => r.label)).toEqual([
       'Chat',
-      'Waypoint',
-      'Converge',
       'Project chat',
-      'Research',
       'Implement',
       'Review',
       'Prepare',
       'Smoke',
     ])
     expect(rows.map((r) => r.group)).toEqual([
-      ...Array<string>(4).fill('sessions'),
-      ...Array<string>(5).fill('unattended'),
+      ...Array<string>(2).fill('sessions'),
+      ...Array<string>(4).fill('unattended'),
     ])
     for (const row of rows) expect(row.description).not.toBe('')
   })

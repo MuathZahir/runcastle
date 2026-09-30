@@ -2,7 +2,7 @@ import { contain, type Containment } from '../pty/job-object'
 
 /**
  * The default job containment for a host process the server spawns outside a
- * terminal: burn/review/research execs, drive hooks, doctor probes.
+ * terminal: burn/review execs, drive hooks, doctor probes.
  *
  * Jobs are a win32 thing, so elsewhere this skips `contain()` altogether and
  * with it the per-pid "unavailable" line it logs — a line that would otherwise

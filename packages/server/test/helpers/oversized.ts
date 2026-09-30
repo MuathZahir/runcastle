@@ -14,7 +14,6 @@ import {
 import { reportFinding } from '../../src/services/review-findings'
 import { addNote } from '../../src/services/test-notes'
 import { getTicket, storeTickets, updateTicket } from '../../src/services/tickets'
-import { storeWaypoints } from '../../src/services/waypoints'
 import { seedFeature } from './fixtures'
 
 /**
@@ -27,7 +26,7 @@ import { seedFeature } from './fixtures'
  * ~35K of this lap's findings plus test notes, and canonical docs over 111K (an
  * 83K `decisions.md`). With every doc moved out, the rows and to-do alone still
  * cross the ceiling, so the fixture also exercises the ticket move-out tiers:
- * goals on both feature shapes, and on the mapped one an earlier lap's rows.
+ * goals on both feature shapes, and on the backlogged one an earlier lap's rows.
  */
 
 /** `n` chars of filler prose, labelled so a failing assertion can say whose. */
@@ -49,13 +48,12 @@ export const OVERSIZED = {
   findingDetailChars: 2_800,
   testNotes: 7,
   testNoteChars: 2_200,
-  waypoints: 12,
-  waypointQuestionChars: 400,
+  /** Extra test notes on the `backlogged` shape — enough to move a lap's rows out. */
+  backlogTestNotes: 3,
   docs: {
     'brief.md': 7_500,
     'decisions.md': 83_000,
     'spec.md': 22_000,
-    'map.md': 10_000,
   },
 } as const
 
@@ -86,18 +84,17 @@ function oversizedTicket(lap: number, i: number, kind: TicketInput['kind']): Tic
 
 /**
  * Seed one feature at lap 3 with three laps of burned tickets, real-max docs on
- * disk, this lap's review findings and test notes, and — when `mapped` — a
- * twelve-waypoint map.
+ * disk, this lap's review findings and test notes, and — when `backlogged` — a
+ * test-notes backlog heavy enough to push earlier laps' rows out.
  */
 export function seedOversizedFeature(
   ctx: AppCtx,
   project: Project,
-  options: { slug: string; mapped?: boolean },
+  options: { slug: string; backlogged?: boolean },
 ): OversizedFeature {
   const feature = seedFeature(ctx, project.id, {
     slug: options.slug,
     title: `Oversized ${options.slug}`,
-    mapped: options.mapped ?? false,
     lap: 1,
   })
 
@@ -136,24 +133,15 @@ export function seedOversizedFeature(
     addNote(ctx, feature.id, prose(`note ${i}`, OVERSIZED.testNoteChars))
   }
 
-  if (feature.mapped) {
-    storeWaypoints(
-      ctx,
-      feature.id,
-      Array.from({ length: OVERSIZED.waypoints }, (_, n) => ({
-        title: `Waypoint ${n + 1}: settle one open question of the map`,
-        type: 'grilling' as const,
-        question: prose(`waypoint ${n + 1}`, OVERSIZED.waypointQuestionChars),
-        // Batch positions are 1-based: waypoint n+1 is blocked by the one before it.
-        blockedBy: n === 0 ? [] : [n],
-      })),
-    )
+  if (options.backlogged) {
+    for (let i = 1; i <= OVERSIZED.backlogTestNotes; i++) {
+      addNote(ctx, feature.id, prose(`backlog note ${i}`, OVERSIZED.testNoteChars))
+    }
   }
 
   const docsDir = join(worktreeDir(project.id, feature.slug), 'docs', 'features', feature.slug)
   mkdirSync(docsDir, { recursive: true })
   for (const [name, size] of Object.entries(OVERSIZED.docs)) {
-    if (name === 'map.md' && !feature.mapped) continue
     writeFileSync(join(docsDir, name), `# ${name}\n\n${prose(name, size)}`, 'utf8')
   }
 

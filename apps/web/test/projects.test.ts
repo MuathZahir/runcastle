@@ -35,7 +35,6 @@ const feat = (over: Partial<FeatureListItem>): FeatureListItem =>
     slug: 'x',
     title: 'x',
     oneLiner: '',
-    mapped: false,
     phase: 'planning',
     branch: 'feature/x',
     status: 'active',

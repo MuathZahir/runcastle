@@ -7,7 +7,6 @@ import type {
   SessionStatus,
   Ticket,
   TicketInput,
-  Waypoint,
 } from '@runcastle/core'
 import {
   newId,
@@ -21,12 +20,12 @@ import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { desc, eq } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
-import { events, features, runs, sessions, tickets, waypoints } from '../db/schema'
+import { events, features, runs, sessions, tickets } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
 import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
-import { listDocs, scaffoldDocs, scaffoldMapDoc } from './knowledge'
+import { listDocs, scaffoldDocs } from './knowledge'
 import type { DocSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
@@ -49,7 +48,6 @@ import {
   sweepOrphanedBurning,
   updateTicket,
 } from './tickets'
-import { frontier, listByFeature as listWaypoints } from './waypoints'
 import { cancelRun, startRun } from '../workflows/runner'
 
 /**
@@ -108,10 +106,6 @@ export interface FeatureFull {
   sessions: SessionRow[]
   runs: Run[]
   docs: DocSummary[]
-  /** Mapped features only (empty otherwise): the map's waypoints (ADR-0001). */
-  waypoints: Waypoint[]
-  /** Ids of the waypoints currently on the frontier (derived; empty otherwise). */
-  frontierIds: string[]
 }
 
 export interface CreateFeatureInput {
@@ -162,9 +156,6 @@ export async function createFeature(
     // Only a draft parks its brief in the column (decision 4); a live create
     // writes it straight to `brief.md`, the source of truth from then on.
     brief: cut ? null : (input.brief ?? null),
-    // Every feature is created unmapped; mapping is escalation-only, reached
-    // mid-grill via the MCP escalate_to_map tool (no "start mapped" at creation).
-    mapped: false,
     // Burn derives and stamps the lap from prior burn runs.
     lap: 1,
     phase: 'planning' as const,
@@ -443,7 +434,6 @@ export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise
       // verbatim where it belongs — brief.md and the tickets.
       oneLiner: proses[0].split('\n')[0].trim(),
       brief: cut ? null : brief,
-      mapped: false,
       lap: 1,
       // Ready at birth: the tickets below are complete and no session is
       // enriching them. Nothing else would ever say so — only
@@ -642,10 +632,6 @@ async function scaffoldDocsOnFeatureBranch(
 
 export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
-  // Waypoints are a mapped-feature concept; unmapped features carry none, so we
-  // skip the query entirely and return empty collections.
-  const waypoints = feature.mapped ? listWaypoints(ctx, id) : []
-  const frontierIds = feature.mapped ? frontier(ctx, id).map((w) => w.id) : []
   return {
     feature,
     tickets: listByFeature(ctx, id),
@@ -656,8 +642,6 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     ),
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
-    waypoints,
-    frontierIds,
   }
 }
 
@@ -1031,42 +1015,6 @@ export async function retryTicket(
   return { runId, retried: seqs, resumedFrom, preservedCommits, resolvingConflict }
 }
 
-export interface EscalateResult {
-  ok: true
-  /** Set (with no other effect) when the feature was already mapped. */
-  warning?: string
-}
-
-/**
- * Escalate a grilling session into a map (ADR-0001 / SPEC §13.3): flip `mapped`,
- * scaffold `map.md` seeded from the caller's Destination/Notes, emit an event.
- *
- * Idempotent: a second call on an already-mapped feature warns and makes NO
- * changes — no re-scaffold (which would anyway be a no-op) and no event. The
- * first chart wins, so re-escalating never clobbers the accumulated map.
- */
-export function escalateToMap(
-  ctx: AppCtx,
-  featureId: string,
-  input: { destination: string; notes?: string },
-): EscalateResult {
-  const feature = getFeatureRow(ctx, featureId)
-  if (feature.mapped) {
-    return { ok: true, warning: `feature ${feature.slug} is already mapped — no changes made` }
-  }
-
-  const project = projectForFeature(ctx, feature)
-  ctx.db.update(features).set({ mapped: true }).where(eq(features.id, featureId)).run()
-  scaffoldMapDoc(project, { ...feature, mapped: true }, input)
-
-  emit(ctx, featureId, {
-    type: 'feature.escalated',
-    message: `grilling escalated to a map (destination: ${input.destination})`,
-    data: { destination: input.destination },
-  })
-  return { ok: true }
-}
-
 /**
  * Archive a feature (decision #8): allowed from any phase and any status except
  * an already-archived one. Ends any live session first (the same PTY-killing
@@ -1199,8 +1147,8 @@ export async function deleteFeature(
 }
 
 /**
- * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events,
- * waypoints — then the feature row itself. Feature-scoped events
+ * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events
+ * — then the feature row itself. Feature-scoped events
  * die here; the project-scoped `feature.deleted` (featureId null) survives.
  */
 function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
@@ -1208,7 +1156,6 @@ function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
   ctx.db.delete(sessions).where(eq(sessions.featureId, featureId)).run()
   ctx.db.delete(runs).where(eq(runs.featureId, featureId)).run()
   ctx.db.delete(events).where(eq(events.featureId, featureId)).run()
-  ctx.db.delete(waypoints).where(eq(waypoints.featureId, featureId)).run()
   ctx.db.delete(features).where(eq(features.id, featureId)).run()
 }
 

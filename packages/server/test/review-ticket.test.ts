@@ -81,7 +81,6 @@ const feature: Feature = {
   slug: 'demo',
   title: 'Demo',
   oneLiner: 'x',
-  mapped: false,
   phase: 'building',
   branch: 'feature/demo',
   baseBranch: 'main',
@@ -121,7 +120,6 @@ function makeCtx(tickets: Ticket[]) {
       const t = tickets.find((x) => x.id === id)
       if (t) Object.assign(t, patch)
     },
-    resolveWaypoint: () => {},
     signal: new AbortController().signal,
   }
   return ctx
@@ -493,7 +491,6 @@ describe('a retried review over the real store', () => {
       updateFinding: (id, progress, reason) => {
         markFixProgress(ctx, id, progress, reason)
       },
-      resolveWaypoint: () => {},
       signal: new AbortController().signal,
     }
     const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {

@@ -50,7 +50,6 @@ function feature(overrides: Partial<Feature> = {}): Feature {
     slug: 'dark-mode',
     title: 'Dark mode',
     oneLiner: 'a dark theme',
-    mapped: false,
     phase: 'planning',
     branch: 'feature/dark-mode',
     status: 'active',
@@ -85,13 +84,10 @@ describe('renderSettings', () => {
         'mcp__runcastle__complete_phase',
       ]),
     )
-    // the mapped-ideation tools are pre-allowed too (waypoint sessions use them)
-    expect(s.permissions.allow).toEqual(
-      expect.arrayContaining([
-        'mcp__runcastle__emit_waypoints',
-        'mcp__runcastle__resolve_waypoint',
-      ]),
-    )
+    // the retired mapped-ideation tools are not allowed for anyone (ADR-0012)
+    for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint']) {
+      expect(s.permissions.allow).not.toContain(`mcp__runcastle__${retired}`)
+    }
     // the project session's three (decision 19) — server-side kind gating makes
     // them inert for a feature session, so every session is launched with them
     expect(s.permissions.allow).toEqual(
@@ -123,8 +119,8 @@ describe('renderSettings', () => {
   it('pre-allows the benign git commands the skills run (no Bash approval stalls)', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
-    // the E2E-observed stalls: `git rev-parse` (converge) and doc add/commit
-    // (waypoint work) — plus the rest of the read-mostly git surface, in the
+    // the E2E-observed stalls: `git rev-parse` and doc add/commit during
+    // planning — plus the rest of the read-mostly git surface, in the
     // documented `Bash(<prefix>:*)` trailing-wildcard form.
     expect(s.permissions.allow).toEqual(
       expect.arrayContaining([
@@ -169,7 +165,7 @@ describe('renderSettings', () => {
       expect(allow).toEqual(expect.arrayContaining([...SESSION_BASH_READ_RULES]))
     }
     // the docs-only talk kinds keep the blanket grant the reasoning covers
-    for (const kind of ['chat', 'waypoint', 'converge'] as const) {
+    for (const kind of ['chat'] as const) {
       expect(sessionBashAllowRules(kind)).toEqual(
         expect.arrayContaining([...SESSION_BASH_ALLOW_RULES]),
       )
@@ -189,8 +185,6 @@ describe('renderSettings', () => {
     // each kind's own entry skill(s) never appear in its deny list
     const own: Record<string, string[]> = {
       chat: ['ideate', 'revisit'],
-      waypoint: ['waypoint'],
-      converge: ['converge'],
       prepare: ['prepare'],
       project: ['project'],
       'drive-fix': [],
@@ -213,8 +207,8 @@ describe('renderSettings', () => {
       const bare = deny.filter((r) => !r.includes(' *'))
       expect(deny).toHaveLength(bare.length * 2)
     }
-    // a waypoint session cannot open another kind's procedure…
-    expect(entrySkillDenyRules('waypoint')).toEqual(
+    // a prepare session cannot open another kind's procedure…
+    expect(entrySkillDenyRules('prepare')).toEqual(
       expect.arrayContaining(['Skill(runcastle:ideate)', 'Skill(runcastle:project *)']),
     )
     // …an unknown kind gets no entry skill at all (the edit guard's stance)…
@@ -297,7 +291,7 @@ describe('renderSettings', () => {
    * feature itself — full checkout, `acceptEdits`, no deny hook anywhere.
    */
   it('registers the PreToolUse edit and install guards for every kind but `project`', () => {
-    for (const kind of ['chat', 'waypoint', 'converge', 'prepare', 'drive-fix'] as const) {
+    for (const kind of ['chat', 'prepare', 'drive-fix'] as const) {
       const guard = renderSettings('C:\\hooks\\hook-client.ts', kind).hooks.PreToolUse
       expect(guard).toHaveLength(1)
       expect(guard?.[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
@@ -344,7 +338,6 @@ describe('renderSystemPrompt', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
       { hasDecisions: false, hasSpec: false, hasTickets: false },
     )
     expect(p).toContain('/runcastle:ideate')
@@ -362,34 +355,23 @@ describe('renderSystemPrompt', () => {
   it('carries no MCP tool cheat-sheet in any renderer', () => {
     const prompts = [
       renderSystemPrompt(feature(), 'chat'),
-      renderSystemPrompt(feature({ mapped: true }), 'waypoint'),
-      renderSystemPrompt(feature({ mapped: true, phase: 'planning' }), 'converge'),
       renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
     ]
     for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
   })
 
-  it('injects the assigned waypoint + map state into a waypoint session', () => {
-    const wp = {
-      id: 'wpt_1',
-      featureId: 'feat_abc',
-      seq: 1,
-      title: 'auth model',
-      type: 'grilling' as const,
-      question: 'sessions or JWT?',
-      blockedBy: [],
-      status: 'claimed' as const,
+  // Mapped ideation was retired (ADR-0012): no feature prompt, whatever the
+  // phase or lap, still sends a session to a waypoint, a converge or a map.
+  it('mentions no waypoint, converge or map.md in any feature prompt', () => {
+    const prompts = [
+      renderSystemPrompt(feature(), 'chat'),
+      renderSystemPrompt(feature({ phase: 'building' }), 'chat'),
+      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', 2),
+    ]
+    for (const p of prompts) {
+      expect(p).not.toMatch(/waypoint|converge|map\.md/i)
     }
-    const p = renderSystemPrompt(feature({ mapped: true }), 'waypoint', wp)
-    expect(p).toContain('/runcastle:waypoint')
-    expect(p).toContain('auth model')
-    expect(p).toContain('sessions or JWT?')
-    expect(p).toContain('map.md')
-    // a waypoint session must NOT be told to converge / emit tickets
-    expect(p).not.toContain('emit_tickets')
-    // it states the no-code rule itself rather than leaving the guard's denial
-    // to be the session's first notice of it
-    expect(p).toMatch(/Talk sessions do not write code/)
   })
 
   it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
@@ -429,7 +411,7 @@ describe('renderSystemPrompt', () => {
    * lap briefing the same session was about to be typed (F2).
    */
   it('renders the lap framing when a lap is passed, and drops the complete_phase ban', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', 2)
     expect(p).toContain('This is lap 2')
     expect(p).toContain('ideation → spec → tickets')
     // its two optional inputs, and that missing ones are normal
@@ -453,7 +435,7 @@ describe('renderSystemPrompt', () => {
     for (const p of [
       renderSystemPrompt(feature(), 'chat'),
       renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', undefined, 2),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', 2),
     ]) {
       expect(p).toMatch(/Talk sessions do not write code/)
       // and it says where the line is, and where the change goes instead
@@ -470,7 +452,7 @@ describe('renderSystemPrompt', () => {
    * emitted a ticket to carry it instead, so the feature never worked.
    */
   it('tells the conflict-resolution revisit that it does write code here', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', undefined, undefined, 'resolve-conflict')
+    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', undefined, 'resolve-conflict')
     expect(p).not.toMatch(/Talk sessions do not write code/)
     expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
     // the exception is bounded: other work still rides a ticket
@@ -482,26 +464,6 @@ describe('renderSystemPrompt', () => {
     expect(p).not.toMatch(/run the tests/i)
   })
 
-  it('directs a converge session to /runcastle:converge over ONLY the compressed knowledge', () => {
-    const p = renderSystemPrompt(feature({ mapped: true, phase: 'planning' }), 'converge')
-    expect(p).toContain('/runcastle:converge')
-    // reads only the compressed knowledge — map + decisions, never transcripts
-    expect(p).toContain('map.md')
-    expect(p).toContain('decisions.md')
-    expect(p).toMatch(/do not read the waypoint session transcripts/i)
-    // it runs the existing spec → tickets skills
-    expect(p).toContain('/runcastle:spec')
-    expect(p).toContain('/runcastle:tickets')
-    // the `size`/`full` concept was DELETED (migration 0008 drops the column),
-    // so the spec step must not be handed a condition it cannot evaluate
-    expect(p).not.toContain('`full`')
-    // and it states the no-code rule, which `guardsEdits` enforces anyway
-    expect(p).toMatch(/Talk sessions do not write code/)
-    // the incomplete re-convergence rule is gone; the skill owns the complete
-    // one, including the "complete_phase for spec first" clause this omitted
-    expect(p).not.toMatch(/already exists \(a previous converge session/)
-  })
-
   /**
    * The lap owns the entry skill, then the kind. A lap-N grill is created as
    * `kind: 'chat'` and used to render the generic feature brief ("invoke
@@ -510,14 +472,14 @@ describe('renderSystemPrompt', () => {
    * precedence, and the `lap` parameter never read on that path.
    */
   it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3)
+    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', 3)
     expect(p).toContain('This is lap 3')
     expect(p).toContain('/runcastle:revisit')
     expect(p).not.toContain('/runcastle:ideate')
     expect(p).toMatch(/DO call `complete_phase`/)
     // and it is byte-identical to the revisit rendering of the same lap
     expect(p).toBe(
-      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', undefined, 3),
+      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', 3),
     )
   })
 
@@ -531,7 +493,6 @@ describe('renderSystemPrompt', () => {
     const p = renderSystemPrompt(
       feature({ phase: 'review' }),
       'chat',
-      undefined,
       undefined,
       'resolve-conflict',
     )
@@ -555,7 +516,6 @@ describe('renderSystemPrompt', () => {
       renderSystemPrompt(
         feature({ phase: 'planning', lap: 2 }),
         'chat',
-        undefined,
         2,
         'resolve-conflict',
       ),
@@ -684,7 +644,7 @@ describe('buildClaudeArgs', () => {
     expect(strict[strict.indexOf('--strict-mcp-config') - 1]).toBe('C:\\s\\mcp.json')
   })
 
-  it('prepends --resume <ccSessionId> when resuming a released waypoint', () => {
+  it('prepends --resume <ccSessionId> when resuming a conversation', () => {
     const base = {
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
@@ -1287,7 +1247,7 @@ describe('codexRuntime.writeArtifacts', () => {
       expect(codexRuntime.kickoffLine(kind)).toBe(CODEX_KICKOFF_LINES[kind])
       expect(codexRuntime.kickoffLine(kind)).not.toContain('/runcastle:')
     }
-    expect(codexRuntime.kickoffLine('converge')).toContain('$converge')
+    expect(codexRuntime.kickoffLine('project')).toContain('$project')
   })
 })
 

@@ -135,13 +135,13 @@ describe('the Chat door on a live chat', () => {
   })
 
   it('still refuses when a session of another kind holds the terminal', async () => {
-    const feature = await featureIn('planning', 'converge-chat')
-    const converge = createSessionRow(ctx, {
+    const feature = await featureIn('planning', 'drive-fix-chat')
+    const driveFix = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'converge',
+      kind: 'drive-fix',
       worktreePath: worktreeDir(projectId, feature.slug),
     })
-    markSessionLive(ctx, converge.id, { ccSessionId: 'cc-converge' })
+    markSessionLive(ctx, driveFix.id, { ccSessionId: 'cc-drive-fix' })
 
     await expect(
       launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),

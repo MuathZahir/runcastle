@@ -133,14 +133,13 @@ describe('every launch site lands', () => {
     })
   // The mutations that open a feature session. The project chat and
   // preparation launch through other routers, and have no Chat tab to land on.
-  const LAUNCH = /trpc\.feature\.(launchSession|converge|workWaypoint|fixDrive)\.useMutation/
+  const LAUNCH = /trpc\.feature\.(launchSession|fixDrive)\.useMutation/
 
   it('finds the launch sites it guards', () => {
     const sites = files(SRC).filter((f) => LAUNCH.test(readFileSync(f, 'utf8')))
     expect(sites.map((f) => relative(SRC, f).split('\\').join('/')).sort()).toEqual([
       'components/Workspace.tsx',
       'components/bodies/RunBody.tsx',
-      'components/bodies/grill/WaypointCard.tsx',
       'components/review/drive-parts.tsx',
       'lib/use-resolve-conflict.ts',
     ])

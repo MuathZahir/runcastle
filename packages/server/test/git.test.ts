@@ -38,7 +38,6 @@ import {
   mergeTempBranch,
   reattachWorktree,
   recordDriveUrl,
-  researchBranchName,
   resolveBaseBranch,
   reviewCommitCount,
   startBranchInWorktree,
@@ -1182,7 +1181,7 @@ describe('mergeTempBranch', () => {
 
   it('clean case: merges into the talk worktree, deletes the temp branch, detaches its leftover worktree', async () => {
     const talkWt = await ensureTalkWorktree(project, feature)
-    const temp = researchBranchName(feature.slug, 1, 'abc123')
+    const temp = ticketBranchName(feature.slug, 1, 'abc123')
     // keepWorktree simulates a preserved (dirty) sandcastle worktree pinning temp
     const { tip, worktreePath } = await commitOnTempBranch(temp, feature.branch, 'research.md', 'findings\n', {
       keepWorktree: true,
@@ -1204,7 +1203,7 @@ describe('mergeTempBranch', () => {
 
   it('no-holder case: fast-forwards the ref with no checkout and leaves the main checkout alone', async () => {
     // no talk worktree — nobody holds feature/rsr
-    const temp = researchBranchName(feature.slug, 2, 'def456')
+    const temp = ticketBranchName(feature.slug, 2, 'def456')
     const { tip } = await commitOnTempBranch(temp, feature.branch, 'notes.md', 'notes\n')
 
     const res = await mergeTempBranch(project.repoPath, feature.branch, temp)
@@ -1220,8 +1219,8 @@ describe('mergeTempBranch', () => {
     // Two tickets fork the same feature tip; the first lands and moves the ref,
     // so the second cannot fast-forward — the normal shape of burn concurrency
     // (this exact case failed as "From . ! [rejected]" in the first real burn).
-    const tempA = researchBranchName(feature.slug, 5, 'aaa111')
-    const tempB = researchBranchName(feature.slug, 6, 'bbb222')
+    const tempA = ticketBranchName(feature.slug, 5, 'aaa111')
+    const tempB = ticketBranchName(feature.slug, 6, 'bbb222')
     const { tip: tipA } = await commitOnTempBranch(tempA, feature.branch, 'a.md', 'a\n')
     await commitOnTempBranch(tempB, feature.branch, 'b.md', 'b\n')
 
@@ -1242,8 +1241,8 @@ describe('mergeTempBranch', () => {
   })
 
   it('no-holder non-FF conflict: aborts in the disposable worktree, preserves the temp branch', async () => {
-    const tempA = researchBranchName(feature.slug, 7, 'ccc333')
-    const tempB = researchBranchName(feature.slug, 8, 'ddd444')
+    const tempA = ticketBranchName(feature.slug, 7, 'ccc333')
+    const tempB = ticketBranchName(feature.slug, 8, 'ddd444')
     await commitOnTempBranch(tempA, feature.branch, 'same.md', 'from-a\n')
     await commitOnTempBranch(tempB, feature.branch, 'same.md', 'from-b\n')
 
@@ -1266,7 +1265,7 @@ describe('mergeTempBranch', () => {
 
   it('conflict case: aborts the merge, keeps the temp branch, leaves the talk worktree clean', async () => {
     const talkWt = await ensureTalkWorktree(project, feature)
-    const temp = researchBranchName(feature.slug, 3, 'ghi789')
+    const temp = ticketBranchName(feature.slug, 3, 'ghi789')
     // temp edits README from the ORIGINAL feature tip…
     await commitOnTempBranch(temp, feature.branch, 'README.md', 'research-line\n')
     // …and the feature branch moves mid-run: an HITL session edits the same line
@@ -1291,9 +1290,9 @@ describe('mergeTempBranch', () => {
   it('commitSummaries lists what landed on the feature branch, newest first', async () => {
     // The resolver's "other side" brief: the sibling work it must reconcile
     // with, seen from a ticket branch that forked before any of it landed.
-    const mine = researchBranchName(feature.slug, 10, 'mine111')
+    const mine = ticketBranchName(feature.slug, 10, 'mine111')
     await simpleGit(project.repoPath).raw(['branch', mine, feature.branch])
-    const sibling = researchBranchName(feature.slug, 11, 'sib222')
+    const sibling = ticketBranchName(feature.slug, 11, 'sib222')
     await commitOnTempBranch(sibling, feature.branch, 'sibling.md', 'sibling\n')
     expect(await mergeTempBranch(project.repoPath, feature.branch, sibling)).toEqual({ ok: true })
 
@@ -1307,12 +1306,12 @@ describe('mergeTempBranch', () => {
   })
 
   it('reports missing branches instead of throwing', async () => {
-    const missing = await mergeTempBranch(project.repoPath, feature.branch, 'runcastle/research/rsr/9-none')
+    const missing = await mergeTempBranch(project.repoPath, feature.branch, 'runcastle/ticket/rsr/9-none')
     expect(missing.ok).toBe(false)
     expect(missing.conflict).toBeUndefined()
     expect(missing.error).toMatch(/not found/)
 
-    const temp = researchBranchName(feature.slug, 4, 'jkl012')
+    const temp = ticketBranchName(feature.slug, 4, 'jkl012')
     await simpleGit(project.repoPath).raw(['branch', temp, feature.branch])
     const noFeature = await mergeTempBranch(project.repoPath, 'feature/ghost', temp)
     expect(noFeature.ok).toBe(false)
@@ -1327,15 +1326,11 @@ describe('temp branch names', () => {
     expect(ticketBranchName(longSlug, 5, 'NjflEB0m')).toBe(
       'runcastle/ticket/add-the-rest-of/5-NjflEB0m',
     )
-    expect(researchBranchName(longSlug, 2, 'abc123')).toBe(
-      'runcastle/research/add-the-rest-of/2-abc123',
-    )
     expect(chatBranchName(longSlug, 'def456')).toBe('runcastle/chat/add-the-rest-of/def456')
   })
 
   it('passes short slugs through unchanged', () => {
     expect(ticketBranchName('swp', 3, 'ccc333')).toBe('runcastle/ticket/swp/3-ccc333')
-    expect(researchBranchName('swp', 1, 'aaa111')).toBe('runcastle/research/swp/1-aaa111')
     // no seq — the chat is one conversation, not one of N lanes
     expect(chatBranchName('swp', 'bbb222')).toBe('runcastle/chat/swp/bbb222')
   })
@@ -1356,13 +1351,13 @@ describe('cleanupTempBranches', () => {
   it('deletes merged temp branches, keeps unmerged ones, never touches foreign branches', async () => {
     const g = simpleGit(project.repoPath)
     // merged: points at the feature branch tip (an ancestor by definition)
-    const merged = researchBranchName('swp', 1, 'aaa111')
+    const merged = ticketBranchName('swp', 1, 'aaa111')
     await g.raw(['branch', merged, 'feature/swp'])
     // a merged TICKET temp branch is swept by the same pass (M2)
     const mergedTicket = ticketBranchName('swp', 3, 'ccc333')
     await g.raw(['branch', mergedTicket, 'feature/swp'])
     // unmerged: one commit ahead of the feature branch
-    const unmerged = researchBranchName('swp', 2, 'bbb222')
+    const unmerged = ticketBranchName('swp', 2, 'bbb222')
     await g.raw(['branch', unmerged, 'feature/swp'])
     const wt = join(mkTmp('rc-sweepwt-'), 'wt')
     await g.raw(['worktree', 'add', wt, unmerged])
@@ -1374,8 +1369,10 @@ describe('cleanupTempBranches', () => {
     // an unmerged ticket branch (conflict leftover) must be kept too
     const unmergedTicket = ticketBranchName('swp', 4, 'ddd444')
     await g.raw(['branch', unmergedTicket, unmerged])
-    // a user's own branch under a similar-but-not-ours prefix must survive
+    // a user's own branch under a similar-but-not-ours prefix must survive, and
+    // so must a leftover of the retired research workflow (ADR-0012)
     await g.raw(['branch', 'research/user-branch', 'main'])
+    await g.raw(['branch', 'runcastle/research/swp/9-old', 'feature/swp'])
     await g.raw(['branch', 'ticket/user-branch', 'main'])
 
     const result = await cleanupTempBranches(project.repoPath)
@@ -1388,6 +1385,7 @@ describe('cleanupTempBranches', () => {
     expect(all).toContain(unmerged)
     expect(all).toContain(unmergedTicket)
     expect(all).toContain('research/user-branch')
+    expect(all).toContain('runcastle/research/swp/9-old')
     expect(all).toContain('ticket/user-branch')
   })
 

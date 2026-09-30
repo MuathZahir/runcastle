@@ -1,9 +1,7 @@
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget } from '../../lib/chat-notices'
-import { activeSession, chatContextLine, featureChat, sessionDoneState } from '../../lib/feature-ui'
-import { IconCheck } from '../../icons'
-import { StatusLabel } from '../../ui'
+import { activeSession, chatContextLine, featureChat } from '../../lib/feature-ui'
 import { ChatView } from '../chat/ChatView'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { SessionNotices } from '../chat/SessionNotices'
@@ -37,21 +35,12 @@ export function FeatureChat({
 }) {
   const live = activeSession(full.sessions)
   const chat = featureChat(full.sessions)
-  const done = live ? doneText(full, live) : null
   return (
     <ChatView
       label="Feature chat"
       session={live ?? null}
-      contextLine={live ? chatContextLine(live, full.waypoints) : `Chat · lap ${full.feature.lap}`}
-      meta={
-        done ? (
-          <StatusLabel tone="success" icon={<IconCheck />} className="min-w-0" title={done}>
-            {done}
-          </StatusLabel>
-        ) : (
-          'One transcript per feature'
-        )
-      }
+      contextLine={live ? chatContextLine(live) : `Chat · lap ${full.feature.lap}`}
+      meta="One transcript per feature"
       featureId={full.feature.id}
       notices={live && <SessionNotices featureId={full.feature.id} session={live} />}
       transcriptId={chat?.id}
@@ -62,19 +51,4 @@ export function FeatureChat({
       <FeatureNoticeDeck events={events} tickets={full.tickets} active={!hidden} onView={onView} />
     </ChatView>
   )
-}
-
-/**
- * A waypoint session whose waypoint went terminal says so in the strip — a
- * status, never another action: the terminal stays usable, because the agent
- * may resolve while the human still has things to say to it.
- */
-function doneText(full: FeatureFull, session: FeatureFull['sessions'][number]): string | null {
-  const state = sessionDoneState(full, session)
-  if (state.kind === 'notDone') return null
-  if (state.kind === 'mapComplete') return 'Map complete — every waypoint is done. Converge from Overview.'
-  const lead = state.waypoint.status === 'dropped' ? 'Dropped' : 'Resolved'
-  if (state.kind === 'awaitingResearch')
-    return `${lead} — waiting on ${state.claimed} research run${state.claimed === 1 ? '' : 's'}`
-  return `${lead}${state.waypoint.summary ? ` — ${state.waypoint.summary}` : ''}`
 }

@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import type { AppCtx } from '../src/db/types'
 import type { Project } from '@runcastle/core'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { escalateToMap } from '../src/services/features'
 import { listDocs, scaffoldDocs } from '../src/services/knowledge'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
@@ -39,13 +38,5 @@ describe('project resolution (issue #36)', () => {
     scaffoldDocs(ctx, feature)
 
     expect(listDocs(ctx, feature).map((d) => d.relPath)).toContain('brief.md')
-  })
-
-  it('escalateToMap writes map.md into the feature project repo', () => {
-    const feature = seedFeature(ctx, owner.id, { slug: 'mapper' })
-    escalateToMap(ctx, feature.id, { destination: 'somewhere' })
-
-    expect(existsSync(join(owner.repoPath, 'docs', 'features', 'mapper', 'map.md'))).toBe(true)
-    expect(existsSync(join(decoy.repoPath, 'docs', 'features', 'mapper', 'map.md'))).toBe(false)
   })
 })

@@ -93,8 +93,8 @@ export function runClaimedTicketIds(ctx: AppCtx, runId: string): string[] {
 
 /**
  * The feature's newest burn — its newest branch-claiming run, however that run
- * ended. A research run is not one: it works on its own temp branch and burns no
- * tickets, so it is not what "the latest run" means to anyone asking.
+ * ended. A run of a non-claiming workflow burns no tickets, so it is not what
+ * "the latest run" means to anyone asking.
  */
 export function latestBurn(ctx: AppCtx, featureId: string): Run | undefined {
   return listRunsByFeature(ctx, featureId).find((run) => workflowClaimsFeatureBranch(run.workflow))

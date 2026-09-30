@@ -55,7 +55,7 @@ export function startDocsWatch(ctx: AppCtx, feature: Feature): void {
   if (watches.has(feature.id)) return
   try {
     const dir = featureDocsDir(projectForFeature(ctx, feature), feature)
-    // The docs dir is flat (brief/decisions/spec/map.md), so a single
+    // The docs dir is flat (brief/decisions/spec.md), so a single
     // non-recursive watch covers it — no dependency, no subtree walk.
     const watcher = watch(dir, { persistent: false }, (_event, filename) => {
       noteDocsChange(ctx, feature.id, typeof filename === 'string' ? filename : null)

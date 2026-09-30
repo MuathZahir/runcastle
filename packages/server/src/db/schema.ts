@@ -9,7 +9,6 @@ import {
   sessions,
   testNotes,
   tickets,
-  waypoints,
 } from '@runcastle/core'
 
 /**
@@ -25,7 +24,6 @@ export const schema = {
   sessions,
   tickets,
   testNotes,
-  waypoints,
   runs,
   events,
   projectFindings,
@@ -45,5 +43,4 @@ export {
   sessions,
   testNotes,
   tickets,
-  waypoints,
 }

@@ -1,12 +1,6 @@
 import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict } from '@runcastle/core'
 import * as z from 'zod'
-import {
-  converge,
-  endSession,
-  launchDriveFixSession,
-  launchSession,
-  workWaypoint,
-} from '../../launcher/launcher'
+import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
 import { retireShippedWorktree } from '../../services/feature-worktrees'
@@ -109,24 +103,6 @@ export const featureRouter = router({
   fixDrive: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
-
-  // Work a frontier waypoint (ADR-0001 §13.2): claim it transactionally, then
-  // open a kind=waypoint session on it. Refuses a waypoint not on the frontier,
-  // or when a waypoint session is already live (one HITL session per feature).
-  // A finished live session is ended for us; `endLive` — set only after the human
-  // confirms — additionally abandons one that is still mid-work (decision #8).
-  workWaypoint: publicProcedure
-    .input(
-      z.object({ featureId: z.string(), waypointId: z.string(), endLive: z.boolean().optional() }),
-    )
-    .mutation(({ ctx, input }) => workWaypoint(ctx, input)),
-
-  // Converge a mapped feature (ADR-0001 §13.2): spawns a fresh kind=converge
-  // session that runs the existing spec → tickets skills over the compressed
-  // knowledge. The feature remains in Planning throughout.
-  converge: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => converge(ctx, { featureId: input.featureId })),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

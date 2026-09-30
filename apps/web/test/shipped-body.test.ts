@@ -112,7 +112,6 @@ const full = (over: Partial<FeatureFull> = {}): FeatureFull =>
       slug: 'greetings-pages',
       title: 'Greetings pages',
       oneLiner: 'pages that greet',
-      mapped: false,
       lap: 2,
       phase: 'shipped',
       branch: 'feature/greetings-pages',
@@ -127,8 +126,6 @@ const full = (over: Partial<FeatureFull> = {}): FeatureFull =>
       { relPath: 'docs/features/greetings-pages/outcome.md', title: 'outcome' },
     ],
     gate: { id: 'G5', ok: true, reasons: [] },
-    waypoints: [],
-    frontierIds: [],
     ...over,
   }) as unknown as FeatureFull
 

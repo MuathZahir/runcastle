@@ -54,12 +54,12 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
 
   describe.each([
     ['linear', false],
-    ['mapped', true],
-  ])('get_feature_context on a %s feature', (_label, mapped) => {
+    ['backlogged', true],
+  ])('get_feature_context on a %s feature', (_label, backlogged) => {
     let seeded: OversizedFeature
 
     beforeEach(() => {
-      seeded = seedOversizedFeature(ctx, project, { slug: `oversized-${_label}`, mapped })
+      seeded = seedOversizedFeature(ctx, project, { slug: `oversized-${_label}`, backlogged })
     })
 
     it('fits under the ceiling', () => {
@@ -80,9 +80,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
 
       // Every canonical doc on disk is accounted for exactly once, in fill
       // order, and an inlined one is the whole file — never a head cut.
-      const onDisk = mapped
-        ? ['brief.md', 'decisions.md', 'spec.md', 'map.md']
-        : ['brief.md', 'decisions.md', 'spec.md']
+      const onDisk = ['brief.md', 'decisions.md', 'spec.md']
       const inlined = context.docs.map((doc) => doc.relPath)
       const movedOut = context.notInlined.map((doc) => doc.relPath)
       expect([...inlined, ...movedOut].sort()).toEqual([...onDisk].sort())
@@ -126,7 +124,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       )
       // Oldest lap first: the moved laps run 1, 2, … with no gap.
       expect(movedLaps.map((l) => l.lap)).toEqual(movedLaps.map((_, i) => i + 1))
-      if (mapped) expect(movedLaps.length).toBeGreaterThan(0)
+      if (backlogged) expect(movedLaps.length).toBeGreaterThan(0)
     })
 
     it('opens with the decision-critical header', () => {
@@ -137,24 +135,22 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       expect(text.indexOf('"burnConcurrency"')).toBeGreaterThan(-1)
       expect(text.indexOf('"burnConcurrency"')).toBeLessThan(2_000)
       // Header, then rows, then the lap's to-do, then docs (the fixture never
-      // burned, so `latestRun` is absent, and nobody claimed a waypoint).
+      // burned, so `latestRun` is absent).
       expect(Object.keys(context)).toEqual([
         'feature',
         'phase',
         'lap',
         'annotatedModels',
         'burnConcurrency',
-        ...(mapped ? ['frontierIds'] : []),
         'reviewEvidence',
         'currentLapReview',
         'tickets',
-        ...(mapped ? ['ticketsNotInlined'] : []),
+        ...(backlogged ? ['ticketsNotInlined'] : []),
         'ticketsNote',
         'openDefects',
         'carriedDefects',
         'findings',
         'testNotes',
-        ...(mapped ? ['waypoints'] : []),
         'docs',
         'notInlined',
         'moreDocs',
