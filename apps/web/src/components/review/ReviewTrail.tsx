@@ -1,5 +1,6 @@
 import {
   Button,
+  CHECK_TONE,
   Disclosure,
   LINK,
   List,
@@ -20,7 +21,6 @@ import {
   lapTimeline,
   lapTrail,
   type BurnNode,
-  type CheckTone,
   type GateCheckState,
   type PassNode,
   type ReviewPassFigure,
@@ -129,13 +129,6 @@ function PassMeta({ pass }: { pass: PassNode }) {
     pass.fixed > 0 ? `${pass.fixed} fixed` : null,
   ].filter(Boolean)
   return <>{parts.flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}</>
-}
-
-const CHECK_TONE: Record<CheckTone, StatusTone> = {
-  ok: 'success',
-  warn: 'warning',
-  danger: 'danger',
-  idle: 'neutral',
 }
 
 const CHECK_LINE: Record<GateCheckState, { word: string; tone: StatusTone }> = {
