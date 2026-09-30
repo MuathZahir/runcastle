@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { annotationPath, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
+import { annotationPath, reviewDir, reviewGateLogDir, reviewGateLogPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -114,13 +114,14 @@ describe('review artifacts over HTTP', () => {
           landedSince: 0,
           hasVideo: true,
           videoUrl: `/api/reviews/ticket/${reviewId}/walkthrough.webm`,
+          gateRun: null,
         },
         // Nothing was recorded for this one — a normal state, not an error.
         {
           ticketId: secondReviewId, seq: 3, lap: 1, passKind: 'review',
           reviewMode: null, reviewVerdict: null, reviewVerdictReason: null,
           reviewedCommit: null, completedAt: null, landedSince: 0,
-          hasVideo: false, videoUrl: null,
+          hasVideo: false, videoUrl: null, gateRun: null,
         },
       ])
     })
@@ -167,6 +168,102 @@ describe('review artifacts over HTTP', () => {
       const res = await mount().request('/api/reviews/feat_nope')
       expect(res.status).toBe(200)
       expect(await res.json()).toEqual([])
+    })
+  })
+
+  describe('the server gate run', () => {
+    const logUrl = (ticketId: string, log: string): string =>
+      `/api/reviews/ticket/${ticketId}/gates/${log}`
+
+    function writeGateLog(ticketId: string, log: string, body: string): void {
+      mkdirSync(reviewGateLogDir(ticketId), { recursive: true })
+      writeFileSync(reviewGateLogPath(ticketId, log), body)
+    }
+
+    it('lists each pass\'s gate record with every log swapped for its URL', async () => {
+      const { reviewId, secondReviewId } = seedTickets()
+      updateTicket(ctx, reviewId, {
+        reviewGateRun: {
+          status: 'ran',
+          commit: 'abc1234',
+          commands: [
+            { command: 'bun run typecheck', outcome: 'passed', exitCode: 0, log: '0.log' },
+            { command: 'bun run test', outcome: 'couldnt_run', exitCode: null, reason: 'timed out', log: '1.log' },
+          ],
+        },
+      })
+      updateTicket(ctx, secondReviewId, {
+        reviewGateRun: { status: 'couldnt_run', commit: 'abc1234', reason: 'install failed', log: 'run.log' },
+      })
+
+      const artifacts = await (await mount().request(`/api/reviews/${featureId}`)).json()
+
+      expect(artifacts[0].gateRun).toEqual({
+        status: 'ran',
+        commit: 'abc1234',
+        commands: [
+          { command: 'bun run typecheck', outcome: 'passed', exitCode: 0, outputUrl: logUrl(reviewId, '0.log') },
+          {
+            command: 'bun run test', outcome: 'couldnt_run', exitCode: null, reason: 'timed out',
+            outputUrl: logUrl(reviewId, '1.log'),
+          },
+        ],
+      })
+      expect(artifacts[1].gateRun).toEqual({
+        status: 'couldnt_run', commit: 'abc1234', reason: 'install failed',
+        outputUrl: logUrl(secondReviewId, 'run.log'),
+      })
+    })
+
+    it('passes none_configured through, and a couldnt_run with no log has no URL', async () => {
+      const { reviewId, secondReviewId } = seedTickets()
+      updateTicket(ctx, reviewId, { reviewGateRun: { status: 'none_configured' } })
+      updateTicket(ctx, secondReviewId, {
+        reviewGateRun: { status: 'couldnt_run', commit: 'abc1234', reason: 'no sandbox', log: null },
+      })
+
+      const artifacts = await (await mount().request(`/api/reviews/${featureId}`)).json()
+
+      expect(artifacts[0].gateRun).toEqual({ status: 'none_configured' })
+      expect(artifacts[1].gateRun).toMatchObject({ status: 'couldnt_run', outputUrl: null })
+    })
+
+    it('serves a captured output as plain text', async () => {
+      const { reviewId } = seedTickets()
+      writeGateLog(reviewId, '1.log', 'FAIL src/thing.test.ts\n')
+      writeGateLog(reviewId, 'run.log', 'install exploded')
+      const app = mount()
+
+      const res = await app.request(logUrl(reviewId, '1.log'))
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+      expect(await res.text()).toBe('FAIL src/thing.test.ts\n')
+
+      expect(await (await app.request(logUrl(reviewId, 'run.log'))).text()).toBe('install exploded')
+    })
+
+    it('404s for a log never written, an unknown ticket, or an implementation ticket', async () => {
+      const { reviewId, implId } = seedTickets()
+      writeGateLog(reviewId, '0.log', 'ok')
+      mkdirSync(reviewGateLogDir(implId), { recursive: true })
+      writeFileSync(reviewGateLogPath(implId, '0.log'), 'ok')
+      const app = mount()
+
+      expect((await app.request(logUrl(reviewId, '3.log'))).status).toBe(404)
+      expect((await app.request(logUrl('tkt_nope', '0.log'))).status).toBe(404)
+      expect((await app.request(logUrl(implId, '0.log'))).status).toBe(404)
+    })
+
+    it('rejects any name the gate run does not write', async () => {
+      const { reviewId } = seedTickets()
+      writeGateLog(reviewId, '0.log', 'ok')
+      writeFileSync(join(reviewDir(reviewId), 'DIGEST.md'), 'secret-ish')
+      const app = mount()
+
+      for (const log of ['DIGEST.md', '..%2FDIGEST.md', '0.txt', 'run.log.bak', 'a.log']) {
+        const res = await app.request(logUrl(reviewId, log))
+        expect(res.status).toBe(400)
+      }
     })
   })
 

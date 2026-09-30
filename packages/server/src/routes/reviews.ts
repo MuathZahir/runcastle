@@ -6,13 +6,23 @@ import {
   PROJECT_NOTE_SCREENSHOT_ROUTE,
   PROJECT_NOTE_SCREENSHOT_UPLOAD_ROUTE,
   REVIEW_ARTIFACTS_ROUTE,
+  REVIEW_GATE_LOG_ROUTE,
   REVIEW_WALKTHROUGH_ROUTE,
+  reviewGateLogUrl,
   reviewWalkthroughUrl,
+  type GateCommandOutcome,
+  type ReviewGateRun,
   type ProjectNote,
   type TestNote,
   type Ticket,
 } from '@runcastle/core'
-import { annotationPath, projectNotePath, reviewWalkthroughPath } from '@runcastle/core/paths'
+import {
+  annotationPath,
+  isReviewGateLogName,
+  projectNotePath,
+  reviewGateLogPath,
+  reviewWalkthroughPath,
+} from '@runcastle/core/paths'
 import { Hono, type Context } from 'hono'
 import type { AppCtx } from '../db/types'
 import { NotFoundError } from '../errors'
@@ -57,6 +67,51 @@ export interface ReviewTicketArtifacts {
   hasVideo: boolean
   /** Where to stream the recording, or `null` when there is none to stream. */
   videoUrl: string | null
+  /**
+   * The server's gate run for this pass, each stored log name swapped for the
+   * URL that serves it. `null` when none is recorded — a pass from before gate
+   * runs existed, or one whose run has not happened yet.
+   */
+  gateRun: ReviewGateRunWire | null
+}
+
+/** {@link ReviewGateRun} as the web app receives it: every `log` → `outputUrl`. */
+export type ReviewGateRunWire =
+  | { status: 'none_configured' }
+  | { status: 'couldnt_run'; commit: string; reason: string; outputUrl: string | null }
+  | {
+    status: 'ran'
+    commit: string
+    commands: {
+      command: string
+      outcome: GateCommandOutcome
+      exitCode: number | null
+      reason?: string
+      outputUrl: string
+    }[]
+  }
+
+function gateRunWire(ticketId: string, run: ReviewGateRun): ReviewGateRunWire {
+  switch (run.status) {
+    case 'none_configured':
+      return run
+    case 'couldnt_run':
+      return {
+        status: run.status,
+        commit: run.commit,
+        reason: run.reason,
+        outputUrl: run.log === null ? null : reviewGateLogUrl(ticketId, run.log),
+      }
+    case 'ran':
+      return {
+        status: run.status,
+        commit: run.commit,
+        commands: run.commands.map(({ log, ...command }) => ({
+          ...command,
+          outputUrl: reviewGateLogUrl(ticketId, log),
+        })),
+      }
+  }
 }
 
 /** Size of a regular file, or `undefined` if it is missing / not a file. */
@@ -126,6 +181,7 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
         ).length,
         hasVideo,
         videoUrl: hasVideo ? reviewWalkthroughUrl(t.id) : null,
+        gateRun: t.reviewGateRun ? gateRunWire(t.id, t.reviewGateRun) : null,
       }
     })
     .sort((a, b) => {
@@ -221,6 +277,29 @@ reviews.get(REVIEW_WALKTHROUGH_ROUTE, async (c) => {
   // Range against it came back unsatisfiable above, so this is the plain reply.)
   if (size === 0) return c.body(null, 200, headers)
   return c.body(fileStream(path, start, end), range ? 206 : 200, headers)
+})
+
+/**
+ * GET /api/reviews/ticket/:ticketId/gates/:log — one captured output of the
+ * server's gate run. The name must be one the gate run writes (`run.log` or
+ * `<digits>.log`), and the path is computed from the looked-up row's id, so no
+ * URL segment is ever joined into a path unchecked.
+ */
+reviews.get(REVIEW_GATE_LOG_ROUTE, async (c) => {
+  const log = c.req.param('log')
+  if (!isReviewGateLogName(log)) return c.json({ error: 'not a gate log name' }, 400)
+
+  const ctx = await getRuntimeCtx()
+  const ticket = findReviewTicket(ctx, c.req.param('ticketId'))
+  if (!ticket) return c.notFound()
+
+  const path = reviewGateLogPath(ticket.id, log)
+  const size = fileSize(path)
+  if (size === undefined) return c.notFound()
+
+  const headers = { 'content-type': 'text/plain; charset=utf-8', 'content-length': String(size) }
+  if (size === 0) return c.body(null, 200, headers)
+  return c.body(fileStream(path, 0, size - 1), 200, headers)
 })
 
 /** The 8-byte PNG signature every PNG file starts with (RFC 2083 §3.1). */
