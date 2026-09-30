@@ -4014,7 +4014,7 @@ export interface BurnAgentOptions {
 
 /**
  * THE burn chokepoint: every headless agent runcastle runs — ticket burns,
- * conflict resolution, review tickets, research — is constructed here, so this
+ * conflict resolution, review tickets — is constructed here, so this
  * is the one place a runtime is chosen. The model's `runtime` decides it
  * (decision 2: runtime is a property of the model, never a separate knob), and
  * everything downstream — sandbox, prompt, completion, merge queue — is

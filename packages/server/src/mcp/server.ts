@@ -101,7 +101,7 @@ import { withheldDriveFor } from '../workflows/review-ticket'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
- * runcastle MCP server (SPEC §6 + §13.3) — zod-validated tools over Streamable HTTP
+ * runcastle MCP server (SPEC §6) — zod-validated tools over Streamable HTTP
  * (`@hono/mcp` + `@modelcontextprotocol/sdk` 1.29, per docs/research/STACK-NOTES §5).
  *
  * Session identity: the `X-Runcastle-Session` header set in each session's
