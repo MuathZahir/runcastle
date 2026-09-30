@@ -65,7 +65,8 @@ export function gateCheckLines(gateRun: ReviewGateRunWire): GateChecks {
       return {
         summary: `Checks couldn't run: ${gateRun.reason}`,
         short: "checks couldn't run",
-        commit: shortSha(gateRun.commit),
+        // '' when the feature branch never resolved — no commit to show
+        commit: gateRun.commit ? shortSha(gateRun.commit) : null,
         tone: 'warn',
         lines: [],
         ...(gateRun.outputUrl ? { outputUrl: gateRun.outputUrl } : {}),

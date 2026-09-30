@@ -416,6 +416,14 @@ describe('the lap trail', () => {
       expect(none).not.toContain('passed')
     })
 
+    it('shows no bare "@" when the feature branch never resolved to a commit', () => {
+      const html = render({
+        passes: [pass({ gateRun: { status: 'couldnt_run', commit: '', reason: 'feature branch not found', outputUrl: null } })],
+      })
+      expect(html).toContain('Checks couldn&#x27;t run: feature branch not found')
+      expect(html).not.toMatch(/>@</)
+    })
+
     it('renders no Checks block for a pass with no gate run recorded', () => {
       expect(render({ passes: [pass({ gateRun: null })] })).not.toContain('aria-label="Checks"')
       expect(render()).not.toContain('aria-label="Checks"')
