@@ -21,6 +21,7 @@ import {
   tickets,
 } from '../src/db/schema'
 import type { AppCtx, Db } from '../src/db/types'
+import { mostRecentResumableSession } from '../src/launcher/sessions'
 import { emit, listAfter } from '../src/services/events'
 import { getFeatureFull } from '../src/services/features'
 import {
@@ -223,10 +224,16 @@ describe('row contracts across the mapped-ideation retirement', () => {
          VALUES ('feat_1', 'proj_1', 'mapped', 'Mapped', 'a mapped feature', 1, 'planning', 'feature/mapped', 'active', 1)`,
       `INSERT INTO waypoints (id, feature_id, seq, title, type, question, blocked_by, status)
          VALUES ('wp_1', 'feat_1', 1, 'Which store?', 'grilling', 'q', '[]', 'resolved')`,
-      ...(['waypoint', 'converge', 'chat'] as const).map(
-        (kind, i) =>
-          `INSERT INTO sessions (id, feature_id, kind, status, worktree_path, created_at)
-             VALUES ('sess_${i}', 'feat_1', '${kind}', 'ended', '/tmp/wt', ${i + 1})`,
+      ...(
+        [
+          ['chat', 'cc_chat'],
+          ['waypoint', 'cc_wp'],
+          ['converge', 'cc_converge'],
+        ] as const
+      ).map(
+        ([kind, ccSessionId], i) =>
+          `INSERT INTO sessions (id, feature_id, kind, status, cc_session_id, worktree_path, created_at)
+             VALUES ('sess_${i}', 'feat_1', '${kind}', 'ended', '${ccSessionId}', '/tmp/wt', ${i + 1})`,
       ),
       `INSERT INTO events (id, project_id, feature_id, ts, type, message, data)
          VALUES (1, 'proj_1', 'feat_1', 1, 'waypoint.resolved', 'Which store? resolved', '{"waypointId":"wp_1"}')`,
@@ -251,6 +258,9 @@ describe('row contracts across the mapped-ideation retirement', () => {
       ['sess_1', 'chat'],
       ['sess_2', 'chat'],
     ])
+    // The rewritten rows lose their conversation, so Chat resumes the
+    // feature's own chat rather than a transcript told to use the map tools.
+    expect(mostRecentResumableSession(ctx, 'feat_1', 'chat')?.ccSessionId).toBe('cc_chat')
     expect(db.all(sql.raw('SELECT * FROM events ORDER BY id'))).toEqual(eventsBefore)
     expect(listAfter(ctx, 'feat_1').map((e) => e.type)).toEqual(['waypoint.resolved', 'feature.escalated'])
   })
