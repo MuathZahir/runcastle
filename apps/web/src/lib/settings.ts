@@ -188,7 +188,7 @@ export type StepGroup = 'sessions' | 'unattended'
 
 /**
  * Every model step in display order, with the name and the one-line description
- * that make the eleven step names self-explanatory without help text
+ * that make the step names self-explanatory without help text
  * (decision 15). `revisit` and `project` used to render as raw keys.
  */
 const STEP_META: readonly {
@@ -199,11 +199,8 @@ const STEP_META: readonly {
 }[] = [
   // Sessions — you are in the terminal.
   { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature conversation' },
-  { step: 'waypoint', label: 'Waypoint', group: 'sessions', description: 'Works one waypoint of a mapped feature' },
-  { step: 'converge', label: 'Converge', group: 'sessions', description: 'Folds a map back into one spec' },
   { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
   // Unattended — burns and scripted runs.
-  { step: 'research', label: 'Research', group: 'unattended', description: 'Reads the repo before a burn' },
   { step: 'implement', label: 'Implement', group: 'unattended', description: 'Burns a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
   { step: 'prepare', label: 'Prepare', group: 'unattended', description: 'Measures setup, verify and baseline' },

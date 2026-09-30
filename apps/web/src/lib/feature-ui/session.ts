@@ -93,10 +93,6 @@ export function sessionKindName(
   switch (session.kind) {
     case 'chat':
       return 'Chat'
-    // retired kind — removed with the enum by the contract ticket
-    case 'converge':
-    case 'waypoint':
-      return 'Chat'
     case 'drive-fix':
       return 'Drive fix'
     case 'prepare':

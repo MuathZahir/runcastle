@@ -49,6 +49,22 @@ describe('RuncastleConfig — model shape', () => {
     expect(RuncastleConfig.safeParse({ stepModels: { nonsense: 'x' } }).success).toBe(false)
   })
 
+  // Mapped ideation was retired (ADR-0012) with its three steps; a config.json
+  // written before then must still load on upgrade.
+  it('ignores stepModels keys of the retired waypoint/converge/research steps', () => {
+    const parsed = RuncastleConfig.safeParse({
+      stepModels: { waypoint: 'a', converge: 'b', research: 'c', implement: 'claude-x' },
+    })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data?.stepModels).toEqual({ implement: 'claude-x' })
+  })
+
+  it('no longer accepts the retired steps as model steps', () => {
+    for (const step of ['waypoint', 'converge', 'research']) {
+      expect(ModelStep.safeParse(step).success).toBe(false)
+    }
+  })
+
   it('accepts a review model, so the burn’s reviewer is settable on its own', () => {
     const cfg = RuncastleConfig.parse({ stepModels: { review: 'claude-opus-5' } })
     expect(cfg.stepModels).toEqual({ review: 'claude-opus-5' })
@@ -57,9 +73,6 @@ describe('RuncastleConfig — model shape', () => {
   it('exposes the model steps, review among them', () => {
     expect(MODEL_STEPS).toEqual([
       'chat',
-      'waypoint',
-      'converge',
-      'research',
       'implement',
       'review',
       'prepare',

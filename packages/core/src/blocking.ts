@@ -1,8 +1,7 @@
 /**
  * Batch blocking-edge resolution — pure, IO-free (SPEC §1).
  *
- * An ideation session emits a batch of nodes (tickets, and — post ADR-0001 —
- * waypoints) in one shot. Each node's `blockedBy` is a list of **1-based
+ * An ideation session emits a batch of nodes (tickets) in one shot. Each node's `blockedBy` is a list of **1-based
  * positions within that batch**. This utility assigns each node a global `seq`
  * (continuing after any nodes the feature already has, via `startSeq`) and
  * resolves every batch-local position to the referenced node's assigned global

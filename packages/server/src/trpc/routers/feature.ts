@@ -1,6 +1,5 @@
 import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict } from '@runcastle/core'
 import * as z from 'zod'
-import { GateError } from '../../errors'
 import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { emit, listAfter } from '../../services/events'
@@ -17,8 +16,6 @@ import {
 } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
 import { publicProcedure, router } from '../context'
-
-const MAPPED_IDEATION_RETIRED = 'mapped ideation was retired (ADR-0012)'
 
 export const featureRouter = router({
   create: publicProcedure
@@ -106,22 +103,6 @@ export const featureRouter = router({
   fixDrive: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
-
-  // Mapped ideation was retired (ADR-0012): both doors refuse until the contract
-  // change deletes them along with their last web callers.
-  workWaypoint: publicProcedure
-    .input(
-      z.object({ featureId: z.string(), waypointId: z.string(), endLive: z.boolean().optional() }),
-    )
-    .mutation((): never => {
-      throw new GateError(MAPPED_IDEATION_RETIRED)
-    }),
-
-  converge: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation((): never => {
-      throw new GateError(MAPPED_IDEATION_RETIRED)
-    }),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

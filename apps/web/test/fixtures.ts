@@ -15,7 +15,6 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     slug: over.slug ?? 'demo',
     title: 'Demo',
     oneLiner: '',
-    mapped: false,
     phase: over.phase ?? 'planning',
     branch: 'feature/demo',
     baseBranch: 'main',
@@ -45,7 +44,5 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     runs: [],
     docs: [],
     gate: { next: null, satisfied: false },
-    waypoints: [],
-    frontierIds: [],
   } as unknown as FeatureFull
 }

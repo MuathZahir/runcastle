@@ -98,7 +98,6 @@ describe('quickChange service — a one-ticket feature born ready to burn', () =
     expect(feature.phase).toBe('planning')
     expect(feature.lap).toBe(1)
     expect(feature.status).toBe('active')
-    expect(feature.mapped).toBe(false)
     expect(feature.slug).toBe('darker-empty-state')
     expect(feature.branch).toBe('feature/darker-empty-state')
     expect(feature.baseBranch).toBe('main')

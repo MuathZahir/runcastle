@@ -28,8 +28,9 @@
  * The canonical feature docs, in the order an agent should meet them. These are
  * the three the pipeline itself scaffolds and writes (`scaffoldDocs`, then the
  * planning sessions), and between them they carry a feature's whole intent:
- * what it is, what was decided, and what to build. A formerly mapped feature's
- * `map.md` is not among them — it is indexed like any other doc (ADR-0012).
+ * what it is, what was decided, and what to build. A `map.md` left over from
+ * retired map ideation is not among them — it is indexed like any other doc
+ * (ADR-0012).
  */
 export const AGENT_DIGEST_DOCS = ['brief.md', 'decisions.md', 'spec.md'] as const
 

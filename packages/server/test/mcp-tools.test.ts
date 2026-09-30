@@ -42,7 +42,6 @@ import {
 } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import { claim, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -616,26 +615,19 @@ describe('mcp tools', () => {
 })
 
 /**
- * Mapped ideation is retired (ADR-0012): a formerly mapped feature reads back
- * as an ordinary one, so its context carries no map state even while its old
- * waypoint rows are still on disk.
+ * Mapped ideation is retired (ADR-0012): every feature is an ordinary one, so
+ * its context carries no map state at all.
  */
-describe('get_feature_context on a formerly mapped feature', () => {
-  it('carries no frontierIds, assignedWaypointId or waypoints', async () => {
+describe('get_feature_context after the map retirement', () => {
+  it('carries no mapped flag, frontierIds, assignedWaypointId or waypoints', async () => {
     const ctx = await makeTestCtx()
     const repoPath = tmpRepo()
-    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, {
-      slug: 'was-mapped',
-      mapped: true,
-    })
+    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id)
     const session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
-    const [open] = storeWaypoints(ctx, feature.id, [
-      { title: 'a', type: 'grilling', question: 'q', blockedBy: [] },
-    ])
-    claim(ctx, open.id, session.id)
 
     const out = toolGetFeatureContext(ctx, session)
     expect(out.feature.id).toBe(feature.id)
+    expect(out.feature).not.toHaveProperty('mapped')
     expect(out).not.toHaveProperty('frontierIds')
     expect(out).not.toHaveProperty('assignedWaypointId')
     expect(out).not.toHaveProperty('waypoints')

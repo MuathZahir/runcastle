@@ -9,7 +9,7 @@ import type { AppCtx } from '../src/db/types'
 import { renderSystemPrompt } from '../src/launcher/artifacts'
 import { carriedWork } from '../src/services/carried-work'
 import { storeTickets, updateTicket } from '../src/services/tickets'
-import { CONVERGE_KICKOFF_LINE, KICKOFF_LINES } from '../src/launcher/runtimes/claude'
+import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
 import { kickoffLineFor, lapKickoff } from '../src/launcher/sessions'
 import { resolvePluginDir } from '../src/launcher/skills-root'
@@ -18,13 +18,11 @@ import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('kickoff registry + override', () => {
-  const KINDS: SessionKind[] = ['chat', 'waypoint', 'converge', 'prepare', 'project', 'drive-fix']
+  const KINDS: SessionKind[] = ['chat', 'prepare', 'project', 'drive-fix']
 
   it('maps every session kind to a non-empty kickoff line naming its opening skill', () => {
     const skillByKind: Record<SessionKind, string> = {
       chat: '/runcastle:revisit',
-      waypoint: '/runcastle:waypoint',
-      converge: '/runcastle:converge',
       prepare: '/runcastle:prepare',
       project: '/runcastle:project',
       'drive-fix': 'retry_drive',
@@ -34,10 +32,6 @@ describe('kickoff registry + override', () => {
       // A pasted-as-text regression guard: the line must carry no CR/LF of its own.
       expect(KICKOFF_LINES[kind]).not.toMatch(/[\r\n]/)
     }
-  })
-
-  it('keeps the converge line byte-for-byte (regression: converge behaves as before)', () => {
-    expect(KICKOFF_LINES.converge).toBe(CONVERGE_KICKOFF_LINE)
   })
 
   it('kickoffLineFor returns the per-kind default when no override is given', () => {
@@ -123,7 +117,6 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     const prompt = renderSystemPrompt(
       feature,
       'chat',
-      undefined,
       2,
       undefined,
       undefined,
@@ -148,7 +141,6 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
     const prompt = renderSystemPrompt(
       feature,
       'chat',
-      undefined,
       2,
       undefined,
       undefined,
@@ -199,7 +191,7 @@ describe('the lap briefing names the previous lap’s review evidence', () => {
  * claim a human's own prompt as our briefing.
  */
 describe('promptMatchesKickoff', () => {
-  const line = KICKOFF_LINES.converge
+  const line = KICKOFF_LINES.project
 
   it('matches the line verbatim', () => {
     expect(promptMatchesKickoff(line, line)).toBe(true)

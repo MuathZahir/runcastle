@@ -215,7 +215,6 @@ describe('the carry channel into the next lap', () => {
     const prompt = renderSystemPrompt(
       { ...feature, phase: 'planning', lap: 2 },
       'revisit',
-      undefined,
       2,
       undefined,
       undefined,
@@ -263,7 +262,6 @@ describe('the carry channel into the next lap', () => {
     const prompt = renderSystemPrompt(
       { ...feature, phase: 'planning', lap: 2 },
       'revisit',
-      undefined,
       2,
       undefined,
       undefined,
@@ -285,7 +283,6 @@ describe('the carry channel into the next lap', () => {
     const prompt = renderSystemPrompt(
       { ...feature, phase: 'planning', lap: 2 },
       'revisit',
-      undefined,
       2,
       undefined,
       undefined,

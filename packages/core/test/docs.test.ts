@@ -34,9 +34,9 @@ describe('isAgentDigestDoc', () => {
     expect(isAgentDigestDoc('Decisions.MD')).toBe(true)
   })
 
-  // Research deliverables live at `research/<seq>-<slug>.md` (workflows/research.ts).
+  // Docs under a subdirectory (an old `research/<seq>-<slug>.md`, say).
   // They are never inlined: they are indexed and read on demand, which is what
-  // keeps an allowlist from silently losing a whole AFK run's output.
+  // keeps an allowlist from silently losing them.
   it('never treats a doc in a subdirectory as canonical', () => {
     expect(isAgentDigestDoc('research/3-auth-model.md')).toBe(false)
     expect(isAgentDigestDoc('research\\3-auth-model.md')).toBe(false)
@@ -84,7 +84,7 @@ describe('agentDigestDocOrder', () => {
     expect(sorted).toEqual(['brief.md', 'decisions.md', 'spec.md'])
   })
 
-  // A formerly mapped feature keeps its map.md on disk as plain history
+  // A map.md left over from retired map ideation stays on disk as plain history
   // (ADR-0012): indexed with the rest, never inlined.
   it('treats map.md as an ordinary doc, not a canonical one', () => {
     expect(isAgentDigestDoc('map.md')).toBe(false)

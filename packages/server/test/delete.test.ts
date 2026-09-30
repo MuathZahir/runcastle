@@ -22,7 +22,6 @@ import {
   runs,
   sessions,
   tickets,
-  waypoints,
 } from '../src/db/schema'
 import { listAfter, listByProject } from '../src/services/events'
 import { deleteFeature } from '../src/services/features'
@@ -100,23 +99,6 @@ function seedAllRows(ctx: AppCtx, featureId: string): { sessionId: string } {
       status: 'succeeded',
       startedAt: Date.now(),
       endedAt: Date.now(),
-      summary: null,
-    })
-    .run()
-  ctx.db
-    .insert(waypoints)
-    .values({
-      id: newId('wp'),
-      featureId,
-      seq: 1,
-      title: 'w',
-      type: 'decision',
-      question: 'q',
-      blockedBy: [],
-      originWaypointId: null,
-      status: 'open',
-      claimedBy: null,
-      lastSessionId: null,
       summary: null,
     })
     .run()
@@ -208,7 +190,7 @@ describe('feature delete', () => {
     expect((await g.branchLocal()).all).not.toContain('feature/del-me')
 
     // Every feature-keyed table emptied.
-    for (const table of [features, tickets, sessions, runs, waypoints, events]) {
+    for (const table of [features, tickets, sessions, runs, events]) {
       expect(rowCount(ctx, table, feature.id)).toBe(0)
     }
 
