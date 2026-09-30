@@ -137,6 +137,29 @@ export function reviewWalkthroughPath(ticketId: string): string {
 }
 
 /**
+ * Captured output of the server's gate run for one review pass:
+ * `<reviewDir>/gates/`. One `<i>.log` per verify command, plus `run.log` when
+ * the run as a whole could not complete.
+ */
+export function reviewGateLogDir(ticketId: string): string {
+  return join(reviewDir(ticketId), 'gates')
+}
+
+/** A gate-log name the gate run writes: `run.log` or `<digits>.log`. */
+export function isReviewGateLogName(log: string): boolean {
+  return log === 'run.log' || /^\d+\.log$/.test(log)
+}
+
+/**
+ * One gate log inside {@link reviewGateLogDir}. Throws on any name the gate run
+ * never writes, so a caller-supplied name can never traverse out of the dir.
+ */
+export function reviewGateLogPath(ticketId: string, log: string): string {
+  if (!isReviewGateLogName(log)) throw new Error(`not a gate log name: ${log}`)
+  return join(reviewGateLogDir(ticketId), log)
+}
+
+/**
  * Annotated-frame screenshots, one per test note:
  * `~/.runcastle/annotations/`. Note-keyed rather than review-keyed on purpose
  * (decisions.md #4) — {@link reviewDir} is wiped when a review re-burns, and a

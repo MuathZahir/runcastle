@@ -1,0 +1,1 @@
+ALTER TABLE `tickets` ADD `review_gate_run` text;

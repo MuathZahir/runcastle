@@ -24,12 +24,22 @@ export const REVIEW_ARTIFACTS_ROUTE = '/:featureId'
 /** GET route for one review pass's walkthrough recording. */
 export const REVIEW_WALKTHROUGH_ROUTE = '/ticket/:ticketId/walkthrough.webm'
 
+/**
+ * GET route for one captured output of a review pass's server gate run —
+ * `run.log` or `<i>.log`.
+ */
+export const REVIEW_GATE_LOG_ROUTE = '/ticket/:ticketId/gates/:log'
+
 export function reviewArtifactsUrl(featureId: string): string {
   return `${REVIEWS_BASE}${REVIEW_ARTIFACTS_ROUTE.replace(':featureId', encodeURIComponent(featureId))}`
 }
 
 export function reviewWalkthroughUrl(ticketId: string): string {
   return `${REVIEWS_BASE}${REVIEW_WALKTHROUGH_ROUTE.replace(':ticketId', encodeURIComponent(ticketId))}`
+}
+
+export function reviewGateLogUrl(ticketId: string, log: string): string {
+  return `${REVIEWS_BASE}${REVIEW_GATE_LOG_ROUTE.replace(':ticketId', encodeURIComponent(ticketId)).replace(':log', encodeURIComponent(log))}`
 }
 
 /**

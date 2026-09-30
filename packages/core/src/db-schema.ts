@@ -22,6 +22,7 @@ import type {
   WaypointStatus,
   WaypointType,
 } from './schemas'
+import type { ReviewGateRun } from './review-gates'
 
 /**
  * Drizzle SQLite tables mirroring the zod schemas. JSON columns use
@@ -302,6 +303,8 @@ export const tickets = sqliteTable('tickets', {
   reviewMode: text('review_mode').$type<'drive' | 'gates'>(),
   reviewVerdict: text('review_verdict').$type<'verified' | 'unverified'>(),
   reviewVerdictReason: text('review_verdict_reason'),
+  /** The server's gate run for this review pass (`ReviewGateRun`); null until recorded. */
+  reviewGateRun: text('review_gate_run', { mode: 'json' }).$type<ReviewGateRun>(),
   completedAt: integer('completed_at'),
   /**
    * The model this ticket burns on, or null for "resolve it the ordinary way"
