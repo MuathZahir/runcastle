@@ -21,7 +21,6 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     slug: 'flow-redesign-project-shell',
     title: 'Flow redesign: project shell and navigation',
     oneLiner: '',
-    mapped: false,
     phase: 'building',
     branch: 'feature/flow-redesign-project-shell',
     baseBranch: 'main',

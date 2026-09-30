@@ -19,7 +19,7 @@ export function Knowledge({ featureId, docs }: { featureId: string; docs: DocSum
           compact
           icon={<IconDoc />}
           title="No docs yet"
-          hint="Docs the sessions write — decisions, the spec, the map — collect here."
+          hint="Docs the sessions write — decisions, the spec, the brief — collect here."
         />
       ) : (
         <List label="Feature docs" className="-mx-2">

@@ -1127,21 +1127,19 @@ export async function chatBranchInWorktree(path: string): Promise<string | undef
   return head.startsWith(CHAT_BRANCH_PREFIX) ? head : undefined
 }
 
-// --- runcastle temp branches (ADR-0001 §7: serial HITL, PARALLEL AFK) -------
+// --- runcastle temp branches -------------------------------------------------
 
 /**
- * Namespaces for AFK-run temp branches. Distinctively runcastle-owned so boot
- * cleanup can never touch a user's own branches (bare `research/*` / `ticket/*`
- * prefixes would be too easy to collide with). Both encode
- * `<slug-segment>/<seq>-<unique>` after the prefix so cleanup can map a
- * leftover branch back to its feature branch.
+ * Namespace for AFK-run temp branches. Distinctively runcastle-owned so boot
+ * cleanup can never touch a user's own branches (a bare `ticket/*` prefix would
+ * be too easy to collide with). It encodes `<slug-segment>/<seq>-<unique>` after
+ * the prefix so cleanup can map a leftover branch back to its feature branch.
  */
-export const RESEARCH_BRANCH_PREFIX = 'runcastle/research/'
 export const TICKET_BRANCH_PREFIX = 'runcastle/ticket/'
 /**
  * The branch the feature chat commits its docs to while a branch-claiming run
  * holds `feature/<slug>` (`one-chat-per-feature` decision 2). Same namespace and
- * same lifecycle as the other two: cut from the feature tip, landed through the
+ * same lifecycle as the ticket branches: cut from the feature tip, landed through the
  * feature's serial landing queue, swept at boot when it is fully merged.
  */
 export const CHAT_BRANCH_PREFIX = 'runcastle/chat/'
@@ -1155,7 +1153,6 @@ export const CHAT_BRANCH_PREFIX = 'runcastle/chat/'
  */
 export const PROJECT_BRANCH = 'runcastle/project'
 const TEMP_BRANCH_PREFIXES = [
-  RESEARCH_BRANCH_PREFIX,
   TICKET_BRANCH_PREFIX,
   CHAT_BRANCH_PREFIX,
 ] as const
@@ -1173,16 +1170,6 @@ const TEMP_BRANCH_SLUG_MAX = 16
  */
 export function tempBranchSlugSegment(slug: string): string {
   return slug.slice(0, TEMP_BRANCH_SLUG_MAX).replace(/-+$/, '')
-}
-
-/**
- * Branch a research run commits to:
- * `runcastle/research/<slug-segment>/<seq>-<unique>`. Based on the feature
- * branch tip (sandcastle `baseBranch`), merged back into it at run finalize,
- * deleted after a clean merge.
- */
-export function researchBranchName(slug: string, waypointSeq: number, unique: string): string {
-  return `${RESEARCH_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${waypointSeq}-${unique}`
 }
 
 /**
@@ -1648,7 +1635,7 @@ export interface TempBranchMergeResult {
 }
 
 /**
- * Land an AFK run's temp branch (research or ticket) on the feature branch.
+ * Land an AFK run's temp branch on the feature branch.
  * The temp branch was created from the feature branch tip, so this is a
  * fast-forward unless the feature branch moved mid-run (docs committed by a
  * parallel HITL session, or another concurrent ticket landed first) — then it
@@ -1853,7 +1840,7 @@ function tempBranchPrefix(name: string): string | undefined {
 }
 
 /**
- * Boot sweep of leftover runcastle temp branches — research AND ticket (server
+ * Boot sweep of leftover runcastle temp branches — ticket AND chat (server
  * crashed mid-run, or a post-merge delete failed). Deletes ONLY branches fully
  * merged into their feature branch: an unmerged branch holds either AFK commits
  * that never landed or a conflict deliberately preserved for manual recovery —
@@ -1953,7 +1940,7 @@ export async function worktreeState(path: string): Promise<WorktreeState> {
 /**
  * Delete a feature's git branches (feature delete, decision #8): `feature/<slug>`
  * plus every runcastle temp branch (`runcastle/ticket/<seg>/*`,
- * `runcastle/research/<seg>/*`) whose segment matches the feature's slug. Detaches
+ * `runcastle/chat/<seg>/*`) whose segment matches the feature's slug. Detaches
  * any sandcastle worktree (`.sandcastle/worktrees/*`) still pinning a branch first.
  * Best-effort per branch (matches `deleteTempBranch`): a branch git refuses to
  * delete is reported in `kept`, the rest in `deleted` — the caller does not fail

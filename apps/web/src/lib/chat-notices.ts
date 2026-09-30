@@ -44,7 +44,7 @@ const TICKETS_DONE = /(\d+)\/(\d+) tickets done/
 /**
  * The notice an event raises in the Chat tab, or `null` for every event that
  * is not worth pulling the operator out of the conversation for — each locked
- * decision, notes, waypoints, worktree and chat housekeeping, and the phase
+ * decision, notes, worktree and chat housekeeping, and the phase
  * moves the human made themselves (Burn, Merge).
  *
  * "Review ready" is the lap's review pass *finishing*: a `ticket.done` whose

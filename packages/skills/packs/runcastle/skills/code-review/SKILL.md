@@ -138,4 +138,4 @@ Either way: **finding problems is a successful review.** The report is the deliv
 - **Never merge or re-rank the two axes**, and never pick an overall winner.
 - **Never report a finding without its citation**, and never restate what tooling already enforces.
 - **Never let a sub-agent spawn more agents.** The guard line goes in both briefs, every time.
-- **Never run this in a loop until it comes back clean.** Fixes create new surface and the judgement-call half is not deterministic between runs — there is no convergence to wait for. One pass, act on the cited leads, stop.
+- **Never run this in a loop until it comes back clean.** Fixes create new surface and the judgement-call half is not deterministic between runs — there is no clean state to wait for. One pass, act on the cited leads, stop.

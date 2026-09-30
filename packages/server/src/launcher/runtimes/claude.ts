@@ -48,8 +48,7 @@ export interface BuildLaunchInput {
   model: string
   /**
    * The Claude Code session id (`ccSessionId`) to `--resume`. Every kind has a
-   * resume target: a waypoint resumes the conversation its `lastSessionId`
-   * remembers, a revisit resumes the feature's latest conversation of any kind,
+   * resume target: a revisit resumes the feature's latest conversation of any kind,
    * and every other kind resumes its own latest conversation (so reopening a
    * terminal after runcastle restarts continues it). `--resume` is scoped to the
    * project dir + its worktrees (CC-INTEGRATION-NOTES §7), which the talk worktree
@@ -115,9 +114,6 @@ export const CC_NESTING_ENV = [
  * `kickoffLine`, never indexed directly by the launcher.
  */
 export const KICKOFF_LINES: Record<SessionKind, string> = kickoffLinesFor('claude-code')
-
-/** The converge kickoff line, unchanged (E2E-proven — kept named for clarity). */
-export const CONVERGE_KICKOFF_LINE = KICKOFF_LINES.converge
 
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
 const CLAUDE_BIN = 'claude'

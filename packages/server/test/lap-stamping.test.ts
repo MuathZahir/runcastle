@@ -62,8 +62,8 @@ describe('migration 0014 — lap columns over an existing database', () => {
 
     db.run(
       sql.raw(
-        "INSERT INTO features (id, project_id, slug, title, one_liner, mapped, phase, branch, status, created_at)" +
-          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 0, 'review', 'feature/demo', 'active', 1)",
+        "INSERT INTO features (id, project_id, slug, title, one_liner, phase, branch, status, created_at)" +
+          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 'review', 'feature/demo', 'active', 1)",
       ),
     )
     db.run(
@@ -99,8 +99,8 @@ describe('migration 0014 — lap columns over an existing database', () => {
     runMigrations(db, preLapsDir())
     db.run(
       sql.raw(
-        "INSERT INTO features (id, project_id, slug, title, one_liner, mapped, phase, branch, status, created_at)" +
-          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 0, 'review', 'feature/demo', 'active', 1)",
+        "INSERT INTO features (id, project_id, slug, title, one_liner, phase, branch, status, created_at)" +
+          " VALUES ('feat_1', 'proj_1', 'demo', 'Demo', 'x', 'review', 'feature/demo', 'active', 1)",
       ),
     )
     runMigrations(db, DRIZZLE_DIR)

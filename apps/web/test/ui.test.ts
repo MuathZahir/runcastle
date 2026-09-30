@@ -427,8 +427,8 @@ describe('SectionLabel and SectionTitle', () => {
   })
 
   it('renders a quiet dim line', () => {
-    const out = html(createElement(DimLine, null, 'no waypoints yet'))
-    expect(out).toContain('no waypoints yet')
+    const out = html(createElement(DimLine, null, 'no tickets yet'))
+    expect(out).toContain('no tickets yet')
     expect(out).toContain('text-text-tertiary')
   })
 })

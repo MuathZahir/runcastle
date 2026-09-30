@@ -191,13 +191,6 @@ describe('feature.create', () => {
     expect(local.all).toContain('feature/off-remote')
   })
 
-  it('creates every feature unmapped — mapping is escalation-only', async () => {
-    // No `mapped` input exists at creation anymore (ticket 2); the only door into
-    // the mapped flow is the MCP escalate_to_map tool mid-grill.
-    const f = await createFeature(ctx, { projectId, title: 'Unmapped', oneLiner: 'x' })
-    expect(f.mapped).toBe(false)
-  })
-
   it('commits the scaffolded brief onto the feature branch, leaving the checkout alone', async () => {
     // The bug this pins: the scaffold was written into the human's checkout and
     // committed there, so it landed on whatever branch they were standing on (in

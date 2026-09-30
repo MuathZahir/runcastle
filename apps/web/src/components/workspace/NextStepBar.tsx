@@ -6,7 +6,6 @@ import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feat
 import {
   IconAlert,
   IconArchive,
-  IconArrowRight,
   IconFlame,
   IconGitMerge,
   IconMessage,
@@ -14,7 +13,6 @@ import {
   IconPlay,
   IconRefresh,
   IconSettings,
-  IconSparkle,
   IconStop,
   IconTerminal,
 } from '../../icons'
@@ -23,9 +21,6 @@ import {
 const ACTION_ICON: Record<ActionKind, ReactNode> = {
   startDraft: <IconPlay />,
   chat: <IconMessage />,
-  converge: <IconSparkle />,
-  workNext: <IconArrowRight />,
-  resumeConverge: <IconRefresh />,
   burn: <IconFlame />,
   cancelRun: <IconStop />,
   openBurnSettings: <IconSettings />,
@@ -75,7 +70,7 @@ export function NextStepBar({
   ns: NextStep
   guidance: boolean
   busy: boolean
-  onAction: (kind: ActionKind, waypointId?: string) => void
+  onAction: (kind: ActionKind) => void
   draftBranch?: {
     branches: string[] | undefined
     value: string | null
@@ -165,7 +160,7 @@ export function NextStepBar({
                 icon={ACTION_ICON[a.kind]}
                 disabled={busy || !!a.disabled}
                 title={a.disabled ?? a.hint}
-                onClick={() => onAction(a.kind, a.waypointId)}
+                onClick={() => onAction(a.kind)}
               >
                 {a.label}
               </Button>
@@ -182,7 +177,7 @@ export function NextStepBar({
                       icon={ACTION_ICON[a.kind]}
                       disabled={!!a.disabled}
                       title={a.disabled ?? a.hint}
-                      onSelect={() => onAction(a.kind, a.waypointId)}
+                      onSelect={() => onAction(a.kind)}
                     >
                       {a.label}
                     </DropdownMenuItem>
@@ -207,7 +202,7 @@ export function NextStepBar({
                   icon={ACTION_ICON[ns.primary.kind]}
                   disabled={busy || !!ns.primary.disabled}
                   title={ns.primary.disabled ?? ns.primary.hint}
-                  onClick={() => onAction(ns.primary!.kind, ns.primary!.waypointId)}
+                  onClick={() => onAction(ns.primary!.kind)}
                 >
                   {busy ? 'Working…' : ns.primary.label}
                 </Button>

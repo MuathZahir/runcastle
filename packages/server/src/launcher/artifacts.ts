@@ -10,7 +10,6 @@ import type {
   SessionKind,
   SessionPurpose,
   SessionRow,
-  Waypoint,
 } from '@runcastle/core'
 import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
@@ -41,8 +40,6 @@ export interface WriteArtifactsInput {
   feature?: Feature
   project: Project
   config: RuncastleConfig
-  /** The claimed waypoint (kind=waypoint sessions) — injected into the prompt. */
-  waypoint?: Waypoint
   /** The brief for a `prepare` session; required when `feature` is absent. */
   prepare?: PrepareBrief
   /** The brief for a `project` session; the other way `feature` may be absent. */
@@ -203,7 +200,6 @@ export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts):
 export function renderSystemPrompt(
   feature: Feature,
   kind: SessionKind,
-  waypoint?: Waypoint,
   lap?: number,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
@@ -211,8 +207,6 @@ export function renderSystemPrompt(
   planning?: PlanningArtifactFacts,
 ): string {
   if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
-  if (kind === 'waypoint') return renderWaypointPrompt(feature, waypoint, runtime)
-  if (kind === 'converge') return renderConvergePrompt(feature, runtime)
   if (kind === 'chat' && chatOpening(feature, planning) === 'revisit') {
     return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   }
@@ -293,116 +287,6 @@ export function renderQaPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT
     '',
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'qa')}\` skill and answer what the human asks.`,
-    '',
-  ].join('\n')
-}
-
-/**
- * The kind=waypoint system prompt (SPEC §13.5). Injects the assigned waypoint —
- * title, type, question — and the map/decisions paths, and directs the session to
- * `/runcastle:waypoint`, whose mode is chosen by the waypoint `type`. The agent
- * writes decision prose straight to `decisions.md`/`map.md`, may branch the map
- * with `emit_waypoints`, and ends by calling `resolve_waypoint`.
- */
-export function renderWaypointPrompt(
-  feature: Feature,
-  waypoint?: Waypoint,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): string {
-  const docs = featureDocsRel(feature.slug)
-  const assigned = waypoint
-    ? [
-        '## Your waypoint',
-        `- Title: **${waypoint.title}**`,
-        `- Type: \`${waypoint.type}\` — grill / prototype / task-checklist mode.`,
-        `- Question to answer: ${waypoint.question}`,
-        '',
-      ]
-    : ['## Your waypoint', 'The assigned waypoint is on the map — read it via `get_feature_context`.', '']
-
-  return [
-    `# runcastle — ${feature.title} (waypoint session)`,
-    '',
-    feature.oneLiner,
-    '',
-    'This is a **mapped-ideation waypoint session**. You are working ONE waypoint',
-    'on the feature map — not the whole feature. Answer its question, write the',
-    'decision prose to the docs, then resolve the waypoint. Do NOT converge, spec,',
-    'or emit tickets here.',
-    '',
-    ...assigned,
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
-    '',
-    '## Map + knowledge (versioned in the target repo)',
-    `Feature docs live at \`${docs}/\`:`,
-    `- \`${docs}/map.md\` — the map: destination, notes, open questions, out-of-scope.`,
-    `- \`${docs}/decisions.md\` — where your decision prose lands (append, do not batch).`,
-    'Write these files directly in THIS talk worktree — serial HITL makes it',
-    'race-free. A dropped waypoint gets its gist recorded under Out of scope in map.md.',
-    '',
-    '## Rules',
-    noCodeRule(docs),
-    '- End by resolving your waypoint (`resolved` when you answered it, `dropped` when it',
-    '  turned out not to be needed) — but write the decision prose to the docs FIRST. The',
-    '  resolve flips machinery; it does not record anything.',
-    '- Your tools here are the map\'s: read the context, branch the map, resolve your',
-    '  waypoint, note a milestone. The pipeline tools are not yours — a waypoint session',
-    '  does not spec, emit tickets or report a planning step, and the server refuses it.',
-    otherEntrySkillsRule(),
-    '',
-    '## Your task',
-    `Invoke the \`${skillRef(runtime, 'waypoint')}\` skill and work your assigned waypoint to a resolution.`,
-    '',
-  ].join('\n')
-}
-
-/**
- * The kind=converge system prompt (ADR-0001 / SPEC §13.5). The converge session
- * closes a mapped feature: it reads ONLY the compressed knowledge — `map.md` +
- * `decisions.md` — never the waypoint transcripts, then runs `/runcastle:spec` →
- * `/runcastle:tickets` in one unbroken window. Convergence lands the feature in
- * the same planning state every other feature is in, so this rejoins the normal
- * lifecycle with no special-casing.
- */
-export function renderConvergePrompt(
-  feature: Feature,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-): string {
-  const docs = featureDocsRel(feature.slug)
-  return [
-    `# runcastle — ${feature.title} (converge session)`,
-    '',
-    feature.oneLiner,
-    '',
-    'This is a **mapped-ideation converge session**. The map is charted and its',
-    'waypoints are terminal; your job is to turn the compressed knowledge into a',
-    'spec and tickets — the same output an unbroken ideation session produces.',
-    '',
-    '## Read ONLY the compressed knowledge',
-    `Read only these two files under \`${docs}/\`:`,
-    `- \`${docs}/map.md\` — the destination, notes, and out-of-scope decisions.`,
-    `- \`${docs}/decisions.md\` — every decision the waypoint sessions locked.`,
-    'Do NOT read the waypoint session transcripts — the map and decisions ARE the',
-    'compression; that is the whole point of the map. Trust them.',
-    '',
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
-    '',
-    '## Rules',
-    noCodeRule(docs),
-    '- DO call `complete_phase` — this session reports the remaining planning steps itself',
-    '  (spec, then tickets). Nothing else will.',
-    otherEntrySkillsRule(),
-    '',
-    '## Your task',
-    `Invoke the \`${skillRef(runtime, 'converge')}\` skill. Working from the map + decisions only,`,
-    `run \`${skillRef(runtime, 'spec')}\` then \`${skillRef(runtime, 'tickets')}\` in this one window. Do NOT`,
-    're-grill and do NOT reopen resolved waypoints — converge.',
     '',
   ].join('\n')
 }
@@ -612,7 +496,6 @@ export function renderRevisitPrompt(
     `Feature docs live at \`${docs}/\`:`,
     `- \`${docs}/decisions.md\` — append the new/changed decisions with a dated "revisited" note.`,
     `- \`${docs}/spec.md\` — if it exists, amend the affected sections in place.`,
-    `- \`${docs}/map.md\` — if the feature is mapped, keep the map honest too.`,
     '',
     '## Rules',
     '- Do NOT call `complete_phase` — a revisit never moves the pipeline, and neither does a lap planned at review.',
@@ -1089,9 +972,6 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__cancel_ticket',
   'mcp__runcastle__record_event',
   'mcp__runcastle__complete_phase',
-  'mcp__runcastle__escalate_to_map',
-  'mcp__runcastle__emit_waypoints',
-  'mcp__runcastle__resolve_waypoint',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
   'mcp__runcastle__retry_drive',
@@ -1122,8 +1002,8 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
 /**
  * Benign git commands the session skills actually run, pre-approved so
  * `--permission-mode acceptEdits` sessions never stall on an interactive Bash
- * approval prompt (E2E finding: `git rev-parse` during converge and doc commits
- * during waypoint work each sat waiting for a human). Rule syntax is the
+ * approval prompt (E2E finding: `git rev-parse` and doc commits during planning
+ * sessions each sat waiting for a human). Rule syntax is the
  * documented `Bash(<prefix>:*)` trailing-wildcard form
  * (code.claude.com/docs/en/permissions — ":* suffix can be used as a trailing
  * wildcard"). Scoped reasoning: these sessions live in docs-only talk
@@ -1366,7 +1246,6 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
   const {
     session,
     feature,
-    waypoint,
     prepare,
     projectBrief,
     driveFix,
@@ -1381,7 +1260,6 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
     return renderSystemPrompt(
       feature,
       session.kind,
-      waypoint,
       lap,
       purpose,
       runtime,

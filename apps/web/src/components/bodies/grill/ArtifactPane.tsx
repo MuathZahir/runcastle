@@ -19,14 +19,12 @@ export function ArtifactPane({
   featureId,
   kind,
   docs,
-  mapped = false,
   mode = 'live',
   children,
 }: {
   featureId: string
   kind: 'decisions' | 'spec'
   docs: FeatureFull['docs']
-  mapped?: boolean
   mode?: ArtifactPaneMode
   children?: ReactNode
 }) {
@@ -63,7 +61,7 @@ export function ArtifactPane({
         // empty state that the first read is about to contradict.
         <ProseSkeleton label={`Loading ${selectedPath?.split(/[\\/]/).pop()}…`} />
       ) : showingPrimary ? (
-        <ArtifactEmpty kind={kind} mapped={mapped} frozen={frozen} />
+        <ArtifactEmpty kind={kind} frozen={frozen} />
       ) : null}
       {children}
     </>
@@ -143,7 +141,7 @@ export function ProseSkeleton({ label }: { label: string }) {
  * (decisions 10 and 11). Neither ever tells the human to start a session — that
  * door is the next-step row's alone.
  */
-function ArtifactEmpty({ kind, mapped, frozen }: { kind: 'decisions' | 'spec'; mapped: boolean; frozen: boolean }) {
+function ArtifactEmpty({ kind, frozen }: { kind: 'decisions' | 'spec'; frozen: boolean }) {
   const skipped = 'This feature was created as a quick change and skipped ideation.'
   if (frozen)
     return (
@@ -162,9 +160,7 @@ function ArtifactEmpty({ kind, mapped, frozen }: { kind: 'decisions' | 'spec'; m
       hint={
         kind === 'decisions'
           ? 'They land here one by one as the session settles them.'
-          : mapped
-            ? 'The converge session writes it here from the map and the decisions.'
-            : "The session is drafting the spec — it appears here as it's written."
+          : "The session is drafting the spec — it appears here as it's written."
       }
     />
   )

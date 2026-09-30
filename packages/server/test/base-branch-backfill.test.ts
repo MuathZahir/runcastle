@@ -36,8 +36,8 @@ async function freshDb(): Promise<Db> {
 function seedRow(db: Db, id: string, projectId: string, status: string): void {
   db.run(
     sql.raw(
-      'INSERT INTO features (id, project_id, slug, title, one_liner, mapped, lap, phase, branch, status, created_at)' +
-        ` VALUES ('${id}', '${projectId}', '${id}', 'T', 'o', 0, 1, 'ideation', 'feature/${id}', '${status}', 1)`,
+      'INSERT INTO features (id, project_id, slug, title, one_liner, lap, phase, branch, status, created_at)' +
+        ` VALUES ('${id}', '${projectId}', '${id}', 'T', 'o', 1, 'ideation', 'feature/${id}', '${status}', 1)`,
     ),
   )
 }

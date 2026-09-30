@@ -22,7 +22,6 @@ import {
   runs,
   sessions,
   tickets,
-  waypoints,
 } from '../src/db/schema'
 import { listAfter, listByProject } from '../src/services/events'
 import { deleteFeature } from '../src/services/features'
@@ -100,23 +99,6 @@ function seedAllRows(ctx: AppCtx, featureId: string): { sessionId: string } {
       status: 'succeeded',
       startedAt: Date.now(),
       endedAt: Date.now(),
-      summary: null,
-    })
-    .run()
-  ctx.db
-    .insert(waypoints)
-    .values({
-      id: newId('wp'),
-      featureId,
-      seq: 1,
-      title: 'w',
-      type: 'decision',
-      question: 'q',
-      blockedBy: [],
-      originWaypointId: null,
-      status: 'open',
-      claimedBy: null,
-      lastSessionId: null,
       summary: null,
     })
     .run()
@@ -208,7 +190,7 @@ describe('feature delete', () => {
     expect((await g.branchLocal()).all).not.toContain('feature/del-me')
 
     // Every feature-keyed table emptied.
-    for (const table of [features, tickets, sessions, runs, waypoints, events]) {
+    for (const table of [features, tickets, sessions, runs, events]) {
       expect(rowCount(ctx, table, feature.id)).toBe(0)
     }
 
@@ -228,7 +210,7 @@ describe('feature delete', () => {
     const g = simpleGit(project.repoPath)
     // Temp branches for this feature (segment = 'temps') + an unrelated branch.
     await g.branch(['runcastle/ticket/temps/1-abc', feature.branch])
-    await g.branch(['runcastle/research/temps/2-def', feature.branch])
+    await g.branch(['runcastle/chat/temps/def', feature.branch])
     await g.branch(['feature/other', 'main'])
     await g.branch(['runcastle/ticket/otherfeat/1-zzz', 'main'])
 
@@ -237,7 +219,7 @@ describe('feature delete', () => {
     const branches = (await g.branchLocal()).all
     expect(branches).not.toContain('feature/temps')
     expect(branches).not.toContain('runcastle/ticket/temps/1-abc')
-    expect(branches).not.toContain('runcastle/research/temps/2-def')
+    expect(branches).not.toContain('runcastle/chat/temps/def')
     // Another feature's branch + temp branch are untouched.
     expect(branches).toContain('feature/other')
     expect(branches).toContain('runcastle/ticket/otherfeat/1-zzz')

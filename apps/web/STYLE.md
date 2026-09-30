@@ -51,7 +51,7 @@ Metrics are un-namespaced and read with `var()` or an arbitrary value
 (`h-(--control-h)`): `--control-sm` 24 · `--control-h` 28 · `--control-lg` 32,
 `--row-h` 32, `--topbar-h` 44, `--sidebar-w` 248, `--inspector-w` 320,
 `--aside-w` 380, `--content-max` 760, `--content-wide` 1040 (plus the older
-`--maprail-w`, `--artifact-w`, `--chat-panel-w`, `--notes-rail-w`), and
+`--artifact-w`, `--chat-panel-w`, `--notes-rail-w`), and
 `--dur-1/-2/-3` = 120/180/240ms. Spacing is Tailwind's **default 4px scale** —
 no custom spacing tokens.
 
@@ -292,8 +292,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `timeline.ts` | A lap's timeline nodes in lap order: burns (work, then fixes) and review/verification passes. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
-| `map.ts` | Mapped features: `map.md` sections, waypoints and their groups. |
-| `session.ts` | Session lifecycle: done state, live-session blockers, shipped QA sessions, shipped-at. |
+| `session.ts` | Session lifecycle: the Chat tab's session and context line, shipped QA sessions, shipped-at. |
 | `internal.ts` | Shared private helpers. **Not** re-exported by the barrel. |
 
 `src/lib/feature-ui/next-step/` — the next-step bar. `index.ts` keeps the exact

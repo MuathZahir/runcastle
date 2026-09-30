@@ -362,15 +362,12 @@ describe('Models page', () => {
     })
   })
 
-  it('names every one of the nine step selects', () => {
+  it('names every one of the six step selects', () => {
     open()
 
     const steps = [
       'Chat',
-      'Waypoint',
-      'Converge',
       'Project chat',
-      'Research',
       'Implement',
       'Review',
       'Prepare',
@@ -380,7 +377,7 @@ describe('Models page', () => {
       expect(screen.getByLabelText(`Model for ${step}`)).toBeTruthy()
     }
     // An unset step reads out what it will actually run.
-    expect(screen.getByLabelText('Model for Converge').textContent).toBe('Default (claude-opus-5)')
+    expect(screen.getByLabelText('Model for Chat').textContent).toBe('Default (claude-opus-5)')
     expect(screen.getByLabelText('Model for Implement').textContent).toContain('gpt-5.6-sol')
   })
 
@@ -393,7 +390,7 @@ describe('Models page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset Implement to default' }))
     expect(lastUpdate()).toEqual({ key: 'stepModels.implement', value: null })
     // Only a step with a model of its own has anything to reset.
-    expect(screen.queryByRole('button', { name: 'Reset Converge to default' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset Chat to default' })).toBeNull()
   })
 
   it('says the per-step models apply elsewhere only when this project sets one', () => {
@@ -429,8 +426,8 @@ describe('Models page', () => {
     expect(screen.queryByLabelText('Model for Implement')).toBeNull()
     expect(screen.queryByLabelText('Default model')).toBeNull()
     // A step is found by its name, not only by its key.
-    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'waypoint' } })
-    expect(screen.getByLabelText('Model for Waypoint')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'prepare' } })
+    expect(screen.getByLabelText('Model for Prepare')).toBeTruthy()
     expect(screen.queryByLabelText('Note for my-proxy')).toBeNull()
   })
 })

@@ -26,7 +26,6 @@ import {
   carriedWorkSummary,
   reviewEvidenceSentence,
 } from '../services/carried-work'
-import { promoteLastSession } from '../services/waypoints'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
 import { prepareConfirmKickoffFor } from './runtimes/skills'
@@ -99,9 +98,8 @@ export function getSessionRow(ctx: AppCtx, id: string): SessionRow | null {
 /**
  * Every non-ended session row (`launching` | `live`) for a feature. This is the
  * one-live-HITL-session-per-feature guard's source of truth (E2E findings 5+8):
- * the launcher refuses to spawn while any of these exist, so the guard cannot be
- * dodged by resolving a waypoint (which clears its claim but not the terminal)
- * and cannot lie about an AFK run (runs never create session rows).
+ * the launcher refuses to spawn while any of these exist, so the guard cannot lie
+ * about an AFK run (runs never create session rows).
  */
 export function activeSessionsForFeature(ctx: AppCtx, featureId: string): SessionRow[] {
   return ctx.db
@@ -149,9 +147,6 @@ export interface MarkLiveInput {
  * reported by the SessionStart hook. Returns the updated row, or null when the
  * session id is unknown (the caller must not break the user's session).
  *
- * Going live is the moment a session becomes RESUMABLE, so this is also where a
- * waypoint claim's `lastSessionId` is promoted (never at claim time — a resume
- * attempt that dies before this point must not clobber the previous good id).
  * Nothing is delivered here: a fresh session was opened with its kickoff already
  * in the CLI's argv, and a resumed one is picking a conversation back up.
  */
@@ -171,8 +166,6 @@ export function markSessionLive(
     })
     .where(eq(sessions.id, id))
     .run()
-  const firstTimeLive = existing.status !== 'live'
-  if (firstTimeLive) promoteLastSession(ctx, id)
   return getSessionRow(ctx, id)
 }
 
@@ -690,9 +683,8 @@ export function mostRecentResumableProjectSession(
  * — the worst possible moment to lose it, because nothing says it happened.
  *
  * Starting fresh is not a loss, and the revisit prompt already says why: "The
- * docs are the artifact — later phases read them, never the transcripts."
- * `converge` is built on that premise deliberately. This makes it the fallback
- * for every kind rather than a property of one.
+ * docs are the artifact — later phases read them, never the transcripts." This
+ * makes it the fallback for every kind.
  *
  * Both are overridable per-install by env var, and either set to `0` disables
  * that half of the check.

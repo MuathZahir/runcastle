@@ -160,7 +160,6 @@ async function seed(): Promise<{ ctx: AppCtx; projectId: string; featureId: stri
       slug: 'my-feature',
       title: 'My feature',
       oneLiner: 'does a thing',
-      mapped: false,
       phase: 'planning',
       branch: 'feature/my-feature',
       baseBranch: 'main',

@@ -18,7 +18,6 @@ import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
-import { releaseForSession } from '../services/waypoints'
 
 /**
  * Hook receiver (SPEC §5.6): `POST /api/hooks/:event` for `session-start`,
@@ -298,9 +297,6 @@ async function handleSessionEnd(
     return {}
   }
   markSessionEnded(ctx, session.id)
-  // A waypoint session that ended without calling resolve_waypoint auto-releases
-  // its waypoint back to the frontier (SPEC §13.2); no-op otherwise.
-  releaseForSession(ctx, session.id)
   emit(ctx, feature.id, {
     type: 'session.ended',
     message: 'session ended',

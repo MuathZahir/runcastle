@@ -1,6 +1,6 @@
 # Skill packs
 
-**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Most of the pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `revisit` and `waypoint` are original runcastle work.
+**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Most of the pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `revisit` and `prepare` are original runcastle work.
 
 ## The `runcastle` pack
 
@@ -13,8 +13,6 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
-| `/runcastle:waypoint` | entry for `kind=waypoint` | *original* — works ONE waypoint on a mapped feature, writes its decision prose, resolves the waypoint |
-| `/runcastle:converge` | entry for `kind=converge` | closes a mapped feature: reads the compressed knowledge — `map.md`, `decisions.md`, and the `research/*.md` deliverables the research waypoints produced — then drives spec + tickets from it |
 | `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on an Iterate from review, runs the whole front half of a lap |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
@@ -36,8 +34,6 @@ packs/
         │   └── references/         # loaded on demand by SKILL.md, never up front
         │       ├── charter.md
         │       └── health-sweeps.md
-        ├── waypoint/SKILL.md
-        ├── converge/SKILL.md
         ├── revisit/SKILL.md
         └── code-review/SKILL.md
 ```
@@ -83,8 +79,8 @@ another session's procedure — `project/SKILL.md` says "**Never run an ideation
 grilling**" while `ideate`'s description sits in the same list offering exactly
 that.
 
-The seven **session-entry** skills — `ideate`, `qa`, `converge`, `revisit`,
-`waypoint`, `project`, `prepare` — used to carry `disable-model-invocation:
+The five **session-entry** skills — `ideate`, `qa`, `revisit`, `project`,
+`prepare` — used to carry `disable-model-invocation:
 true` for that reason, on the build-era understanding that explicit invocation
 kept working (CC-INTEGRATION-NOTES §1). It no longer does: Claude Code now
 hard-blocks the **Skill tool** for such a skill even when the prompt names it,
@@ -103,10 +99,10 @@ live: **per-session settings**. The launcher launches each session with
 prompt states the policy in one line. Same layering as the edit guard: the
 prompt says it, the harness enforces it. `chat` keeps both of its openings
 (`ideate` + `revisit`); `qa` — whose session kind was retired — is denied
-everywhere; `drive-fix` has no entry skill and denies all seven.
+everywhere; `drive-fix` has no entry skill and denies all five.
 
 The chained/reached skills — `spec` and `tickets` (invoked by name from inside
-`ideate` and `converge`) and `code-review` (reached by description) — are in no
+`ideate`) and `code-review` (reached by description) — are in no
 deny list.
 
 The rule, for anything added later: **a session-entry skill goes into
@@ -132,15 +128,14 @@ The standing convention across this pack:
   rule lives there, backed by `launcher/edit-guard.ts`, and is *not* restated in
   any skill).
 - **Procedures belong to the skill.** One skill owns each procedure in full;
-  `revisit/SKILL.md` §Lap mode is the whole lap procedure, `ideate/SKILL.md` §3
-  is the whole escalation procedure.
+  `revisit/SKILL.md` §Lap mode is the whole lap procedure, `ideate/SKILL.md` §1
+  is the whole grilling procedure.
 - **Where a skill names a fact the prompt also names, it points instead of
   restating** — the shape is `ideate/SKILL.md`'s "The injected system prompt
   carries the slug and paths; trust `get_feature_context` for the live state."
 - **Where two skills need the same procedure, the second delegates by
-  reference** — `revisit`'s "escalate the way ideation would
-  (`/runcastle:ideate` §3, the map)" rather than a second copy that ages
-  differently.
+  reference** — "grill the way `/runcastle:ideate` §1 does" rather than a
+  second copy that ages differently.
 - **A rule the hook enforces is stated once, as enforced, not as advice.** The
   `qa` kind's write refusals are server-side; `qa/SKILL.md` says so rather than
   asking nicely.
@@ -148,9 +143,7 @@ The standing convention across this pack:
 A corollary that cost real sessions: **never tell a session to do something a
 hook will deny.** An agent that believes a skill and hits a hard deny has no path
 forward and improvises — ADR-0007 §6 documents one aborting and emitting a
-ticket instead. `prototype` waypoints were in exactly that trap until the skill
-was pointed at `docs/features/<slug>/prototypes/`, the one path the edit guard
-lets a talk session write code into.
+ticket instead.
 
 ## Adding a pack
 
