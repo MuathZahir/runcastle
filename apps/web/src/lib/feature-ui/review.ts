@@ -1,5 +1,7 @@
 import { lapWorkTickets, ticketTally } from '@runcastle/core'
 import type { FindingResolvedBy, FindingStatus, TallyTicket, TicketKind } from '@runcastle/core'
+import type { ReviewGateRunWire } from '../reviews'
+import { gateCheckLines } from './checks'
 import { testDriveFigure } from './gates'
 import { unverifiedWarning } from './internal'
 
@@ -138,6 +140,8 @@ export interface ReviewArtifactFigure {
   landedSince: number
   hasVideo: boolean
   videoUrl: string | null
+  /** The server's gate run for this pass; null or absent when none was recorded. */
+  gateRun?: ReviewGateRunWire | null
 }
 
 export type Freshness = { tone: 'fresh' | 'stale' | 'none' | 'verifying' | 'failed'; text: string }
@@ -270,9 +274,13 @@ export interface StatusProperty {
  * The Review row: the stamped pass's verdict and its freshness, said together
  * (decision 3). Freshness alone is how an unverified lap used to read
  * "Reviewed · this build" while the trail below it said "Unverified".
+ *
+ * The stamped pass's Checks ride on the sub-note (gates-mode decision 6): only
+ * that pass's, since it is the branch as it stands — an earlier pass's failure
+ * the latest one fixed is history, and the trail's to tell.
  */
 function reviewProperty(input: {
-  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
+  artifact?: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
   outcome?: TrailOutcome
   currentLap: number
   landedSince: number
@@ -292,19 +300,21 @@ function reviewProperty(input: {
   // checked for the human, and this row is where that fact now lives (d4).
   // While the burn runs, the review is simply still to come.
   if (!input.artifact) return { ...row, value: 'Not reviewed yet', tone: input.building ? 'idle' : 'warn' }
+  const gateRun = input.artifact.gateRun
+  const sub = (note: string): string => (gateRun ? `${note} · ${gateCheckLines(gateRun).short}` : note)
   const outcome = input.outcome ?? { kind: 'none' }
-  if (outcome.kind === 'unverified') return { ...row, value: 'Unverified', sub: 'nothing verified', tone: 'warn' }
-  if (outcome.kind === 'could-not-run') return { ...row, value: 'Could not run', sub: 'nothing verified', tone: 'warn' }
+  if (outcome.kind === 'unverified') return { ...row, value: 'Unverified', sub: sub('nothing verified'), tone: 'warn' }
+  if (outcome.kind === 'could-not-run') return { ...row, value: 'Could not run', sub: sub('nothing verified'), tone: 'warn' }
   // A pass that predates the verdict columns has no verdict to claim, so it
   // says only that it reviewed.
   const word = outcome.kind === 'verified' ? 'Verified' : 'Reviewed'
   if (input.landedSince === 0) {
     const mode = outcome.kind === 'verified' && outcome.mode ? `${outcome.mode} mode · ` : ''
-    return { ...row, value: word, sub: `${mode}this build`, tone: 'ok' }
+    return { ...row, value: word, sub: sub(`${mode}this build`), tone: 'ok' }
   }
   const laps = input.currentLap - input.artifact.lap
   const age = laps > 0 ? `${laps} ${laps === 1 ? 'lap' : 'laps'} ago` : 'earlier this lap'
-  return { ...row, value: `${word} ${age}`, sub: `${input.landedSince} landed since`, tone: 'warn' }
+  return { ...row, value: `${word} ${age}`, sub: sub(`${input.landedSince} landed since`), tone: 'warn' }
 }
 
 /**
@@ -326,7 +336,8 @@ export interface StatusBuilding {
  * Words, not glyph soup — "Verified", "Not run", "this build".
  */
 export function statusProperties(input: {
-  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
+  /** The stamped pass ({@link stampedReview}) — its Checks are the headline's. */
+  artifact?: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
   /** What the stamped pass amounted to ({@link stampedOutcome}). */
   outcome?: TrailOutcome
   currentLap: number
@@ -544,6 +555,8 @@ export interface ReviewPassFigure {
   reviewVerdictReason: string | null
   completedAt: number | null
   videoUrl: string | null
+  /** The server's gate run for this pass; null or absent when none was recorded. */
+  gateRun?: ReviewGateRunWire | null
 }
 
 /** A ticket as the trail reads it — what the feed cannot say about a pass. */
@@ -591,6 +604,8 @@ export interface TrailPass {
   couldNotRun: boolean
   /** Where to stream its recording, or null when it left none. */
   videoUrl: string | null
+  /** The checks the server ran before this pass, or null when none were recorded. */
+  gateRun: ReviewGateRunWire | null
 }
 
 /** One lap in the trail: what burned, how the review went, what it found. */
@@ -701,6 +716,7 @@ export function lapTrail(input: TrailInput): TrailEntry[] {
         verdict: pass.reviewVerdict,
         couldNotRun: tickets.find((t) => t.id === pass.ticketId)?.status === 'failed',
         videoUrl: pass.videoUrl,
+        gateRun: pass.gateRun ?? null,
       })),
       defects: {
         found: defects.length,

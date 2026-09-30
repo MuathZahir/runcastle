@@ -68,7 +68,7 @@ export function StatusStrip({
   building,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
-  artifact: Pick<ReviewArtifactFigure, 'lap'> | null
+  artifact: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
   /** What that pass amounted to — the Review row's verdict ({@link stampedOutcome}). */
   outcome?: TrailOutcome
   currentLap: number

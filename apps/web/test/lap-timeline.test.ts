@@ -15,6 +15,7 @@ const trailPass = (over: Partial<TrailPass> = {}): TrailPass => ({
   verdict: 'verified',
   couldNotRun: false,
   videoUrl: null,
+  gateRun: null,
   ...over,
 })
 
