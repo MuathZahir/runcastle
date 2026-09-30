@@ -3860,11 +3860,6 @@ export function readDocsDigest(projectId: string, slug: string): DocsDigestResul
   }
 }
 
-/** {@link readDocsDigest}, rendered — the block a prompt placeholder takes. */
-export function readDocsDigestFromDisk(projectId: string, slug: string): string {
-  return readDocsDigest(projectId, slug).text
-}
-
 /**
  * Put the cost — and the absence — of the spec on the run's timeline.
  *
