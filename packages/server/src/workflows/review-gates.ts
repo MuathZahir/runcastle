@@ -17,6 +17,7 @@ import {
   getBurnSlotAllocator,
   slotRepoPath,
 } from './burn-cache'
+import { killRegistry, registerHostChildren } from './kill-registry'
 import {
   ISOLATED_REPO_PATH,
   SETUP_HOOK_TIMEOUT_MS,
@@ -63,8 +64,9 @@ export interface GateSandbox {
 
 /**
  * Open a sandbox on `branch`, install its dependencies, hand it to `use`, and
- * tear it down on every exit path. Rejects when the sandbox cannot be opened or
- * the install fails — {@link runReviewGates} turns that into `couldnt_run`.
+ * tear it down on every exit path — killing any command still running in it —
+ * before resolving. Rejects when the sandbox cannot be opened or the install
+ * fails — {@link runReviewGates} turns that into `couldnt_run`.
  */
 export type WithGateSandbox = <T>(
   branch: string,
@@ -133,21 +135,40 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
     await deleteTempBranch(project.repoPath, branch)
   }
 
+  const results: GateCommandResult[] = []
   try {
     // A crashed earlier run may have left the branch pinned by its worktree,
     // which would refuse the move below.
     await discardBranch()
     await pinBranchAt(project.repoPath, branch, sha)
-    const commandResults = await withSandbox(branch, async (sandbox) => {
-      const results: GateCommandResult[] = []
-      for (const [i, command] of commands.entries()) {
-        results.push(await runGateCommand(sandbox, command, ticketId, `${i}.log`, timeoutMs))
-      }
-      return results
-    })
-    return { status: 'ran', commit: sha, commands: commandResults }
+    // sandcastle's `exec` cannot be aborted, so a command over its time limit
+    // ends the sandbox it ran in — the teardown is what kills it — and the rest
+    // run in a fresh one. No two commands ever run side by side.
+    while (results.length < commands.length) {
+      await withSandbox(branch, async (sandbox) => {
+        for (const [i, command] of commands.entries()) {
+          if (i < results.length) continue
+          const { result, stillRunning } = await runGateCommand(
+            sandbox, command, ticketId, `${i}.log`, timeoutMs,
+          )
+          results.push(result)
+          if (stillRunning) return
+        }
+      })
+    }
+    return { status: 'ran', commit: sha, commands: results }
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
+    if (results.length > 0) {
+      // Only a reopen after a timeout gets here: keep what already ran.
+      const reason = `the gate sandbox could not be reopened: ${headline(errorText(err))}`
+      for (const [i, command] of commands.entries()) {
+        if (i < results.length) continue
+        writeFileSync(reviewGateLogPath(ticketId, `${i}.log`), `${detail}\n`)
+        results.push({ command, outcome: 'couldnt_run', exitCode: null, reason, log: `${i}.log` })
+      }
+      return { status: 'ran', commit: sha, commands: results }
+    }
     writeFileSync(reviewGateLogPath(ticketId, 'run.log'), `${detail}\n`)
     return {
       status: 'couldnt_run',
@@ -160,13 +181,19 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
   }
 }
 
+/** A command's record, and whether it was abandoned at its time limit while still running. */
+interface GateCommandRun {
+  result: GateCommandResult
+  stillRunning: boolean
+}
+
 async function runGateCommand(
   sandbox: GateSandbox,
   command: string,
   ticketId: string,
   log: string,
   timeoutMs: number,
-): Promise<GateCommandResult> {
+): Promise<GateCommandRun> {
   const logPath = reviewGateLogPath(ticketId, log)
   let timer: ReturnType<typeof setTimeout> | undefined
   const timedOut = new Promise<'timeout'>((done) => {
@@ -177,16 +204,25 @@ async function runGateCommand(
     if (result === 'timeout') {
       const reason = `timed out after ${Math.round(timeoutMs / 60_000)} minutes`
       writeFileSync(logPath, `${reason}\n`)
-      return { command, outcome: 'couldnt_run', exitCode: null, reason, log }
+      return {
+        result: { command, outcome: 'couldnt_run', exitCode: null, reason, log },
+        stillRunning: true,
+      }
     }
     writeFileSync(logPath, [result.stdout, result.stderr].filter(Boolean).join('\n'))
-    return result.exitCode === 0
-      ? { command, outcome: 'passed', exitCode: 0, log }
-      : { command, outcome: 'failed', exitCode: result.exitCode, log }
+    return {
+      result: result.exitCode === 0
+        ? { command, outcome: 'passed', exitCode: 0, log }
+        : { command, outcome: 'failed', exitCode: result.exitCode, log },
+      stillRunning: false,
+    }
   } catch (err) {
     const reason = `could not start: ${headline(errorText(err))}`
     writeFileSync(logPath, `${errorText(err)}\n`)
-    return { command, outcome: 'couldnt_run', exitCode: null, reason, log }
+    return {
+      result: { command, outcome: 'couldnt_run', exitCode: null, reason, log },
+      stillRunning: false,
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -248,17 +284,36 @@ function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSan
             ? ISOLATED_REPO_PATH
             : undefined
 
+      // The throwaway branch names this gate run, so it is the kill lane too.
+      const lane = branch
       const sandbox = await createSandbox({
         branch,
-        sandbox: selectSandbox(config, project, cache.mounts, cache.env),
+        sandbox: selectSandbox(config, project, cache.mounts, cache.env, {
+          onChildSpawn: registerHostChildren(lane, {}),
+        }),
         cwd: project.repoPath,
         ...(setup
           ? { hooks: { sandbox: { onSandboxReady: [{ command: setup, timeoutMs: SETUP_HOOK_TIMEOUT_MS }] } } }
           : {}),
       })
+      let running = 0
       try {
-        return await use({ exec: (command) => sandbox.exec(command, cwd ? { cwd } : {}) })
+        return await use({
+          exec: async (command) => {
+            running++
+            try {
+              return await sandbox.exec(command, cwd ? { cwd } : {})
+            } finally {
+              running--
+            }
+          },
+        })
       } finally {
+        // A command abandoned at its time limit is still running. `close()`
+        // removes a container with everything in it, but the host provider's
+        // `close()` is a no-op — its child dies only by pid.
+        if (running > 0) await killRegistry().killAndWait(lane)
+        killRegistry().release(lane)
         await sandbox.close()
       }
     })
