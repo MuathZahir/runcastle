@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import type { Feature, Project } from '@runcastle/core'
+import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'

@@ -2587,8 +2587,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'models the operator described a use case for — the only ones `emit_tickets` may ' +
           'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
           'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-          'the newest burn went; absent only on a feature that has never burned), `reviewEvidence` (where the PREVIOUS ' +
-          'lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
+          'the newest burn went; absent only on a feature that has never burned), ' +
+          '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
           'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
           'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
           '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
