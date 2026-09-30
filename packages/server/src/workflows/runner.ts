@@ -142,9 +142,9 @@ export async function startRun(
   // ('already used by worktree'). It is parked on a chat temp branch for the
   // duration of the run — not detached, so the chat can keep committing docs
   // and landing them beside the burn (`one-chat-per-feature` decision 9) — and
-  // handed back at finalize. Non-claiming workflows (research: per-run temp
-  // branch) skip the dance entirely, so the talk worktree — and any live HITL
-  // session inside it — is never touched by a run (ADR-0001 §7).
+  // handed back at finalize. A non-claiming workflow skips the dance entirely,
+  // so the talk worktree — and any live HITL session inside it — is never
+  // touched by its run.
   const claimsBranch = workflowClaimsFeatureBranch(workflowId)
   if (claimsBranch) await parkTalkWorktreeForRun(ctx, project, feature)
 
