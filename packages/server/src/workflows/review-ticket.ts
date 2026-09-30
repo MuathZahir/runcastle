@@ -12,7 +12,7 @@ import { appendTranscript, beginTranscript, endTranscript } from '../services/ag
 import { headSha, releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
 import { killRegistry, registerHostChildren } from './kill-registry'
-import { runReviewGates } from './review-gates'
+import type { runReviewGates } from './review-gates'
 import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
 export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
@@ -744,7 +744,11 @@ async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps
       log: null,
     }
   }
-  return (deps.runGates ?? runReviewGates)({ config: deps.config, project, ticketId: ticket.id, sha })
+  // Loaded lazily: review-gates imports ticket-burner, which imports this file,
+  // so a static import evaluates review-gates before ticket-burner's constants
+  // exist whenever ticket-burner is the one loaded first (as at server boot).
+  const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
+  return runGates({ config: deps.config, project, ticketId: ticket.id, sha })
 }
 
 /**
