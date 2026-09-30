@@ -47,6 +47,10 @@ describe('gateCheckLines', () => {
       .not.toHaveProperty('outputUrl')
   })
 
+  it('shows no commit for a run whose feature branch never resolved', () => {
+    expect(gateCheckLines({ status: 'couldnt_run', commit: '', reason: 'x', outputUrl: null }).commit).toBeNull()
+  })
+
   it('gives one line per command, with exit code, reason and output only where not green', () => {
     const checks = gateCheckLines({
       status: 'ran',

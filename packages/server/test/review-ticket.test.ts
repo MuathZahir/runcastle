@@ -1534,6 +1534,23 @@ describe('the server gate run before each review pass', () => {
     expect(prompt).toContain('no docker')
   })
 
+  it('records couldnt_run and still launches the reviewer when the gate runner throws', async () => {
+    const pass = review(3)
+    const { ctx, patches } = ctxFor(pass)
+    let prompt: string | undefined
+    const outcome = await executeReviewTicket(ctx, pass, deps({
+      runGates: async () => { throw new Error('EBUSY') },
+      runAgent: async (options) => { prompt = String(options.prompt) },
+    }))
+
+    expect(outcome.status).toBe('done')
+    expect(patches).toContainEqual([
+      pass.id,
+      { reviewGateRun: { status: 'couldnt_run', commit: tip, reason: 'the gate run failed: EBUSY', log: null } },
+    ])
+    expect(prompt).toContain('The server could not run the gates on the feature branch')
+  })
+
   it.skipIf(process.platform === 'win32')('hands the gate notes to a pass offered Drive as well as one offered Gates', async () => {
     const gateRun = ranGates('bun run typecheck')
     const prompts: Record<string, string> = {}
