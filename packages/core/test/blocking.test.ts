@@ -42,8 +42,8 @@ describe('resolveBatchBlocking', () => {
   })
 
   it('names the node with the given label in rejection messages', () => {
-    expect(() => resolveBatchBlocking(edges([1]), { startSeq: 1, label: 'waypoint' })).toThrow(
-      /waypoint 1 cannot block on itself/,
+    expect(() => resolveBatchBlocking(edges([1]), { startSeq: 1, label: 'node' })).toThrow(
+      /node 1 cannot block on itself/,
     )
   })
 

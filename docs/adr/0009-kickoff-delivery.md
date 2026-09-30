@@ -14,7 +14,7 @@
 
 Every terminal runcastle opens is opened *for a reason*, and the reason is
 carried by one line: the per-kind kickoff (`/runcastle:ideate`,
-`/runcastle:converge`, …) or a per-purpose override — the review-iteration
+`/runcastle:revisit`, …) or a per-purpose override — the review-iteration
 briefing, the merge-conflict resolution briefing (`mergeConflictKickoff`,
 `ticketConflictKickoff`). The agent has no other way to learn why it exists.
 

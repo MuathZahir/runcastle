@@ -25,7 +25,6 @@ export interface DriveState {
 const SELECTED_KEY = 'runcastle.selected.v1'
 const PREPARING_KEY = 'runcastle.preparing.v1'
 const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
-const MAPRAIL_KEY = 'runcastle.maprail.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
 const FEATURE_VIEW_KEY = 'runcastle.feature.tab'
 
@@ -159,8 +158,6 @@ export interface WorkspaceApi {
   inspectorCollapsed: boolean
   /** Explicit inspector choice, or null until the human has toggled it. */
   inspectorPreference: boolean | null
-  /** Mapped-ideation map rail collapsed to its frontier-count stub. */
-  mapRailCollapsed: boolean
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -192,7 +189,6 @@ export interface WorkspaceApi {
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
   toggleInspector: (current?: boolean) => void
-  toggleMapRail: () => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -223,11 +219,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     const stored = readLS(INSPECTOR_KEY)
     return stored === null ? null : stored === '1'
   })
-  // Global, not per-project (matching the inspector): a rail preference is about
-  // how the human likes the screen, not about which project they are in.
-  const [mapRailCollapsed, setMapRailCollapsed] = useState(
-    () => readLS(MAPRAIL_KEY) === '1',
-  )
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -243,9 +234,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     if (inspectorPreference !== null)
       writeLS(INSPECTOR_KEY, inspectorPreference ? '1' : '0')
   }, [inspectorPreference])
-  useEffect(() => {
-    writeLS(MAPRAIL_KEY, mapRailCollapsed ? '1' : '0')
-  }, [mapRailCollapsed])
   useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
@@ -310,7 +298,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     (current?: boolean) => setInspectorPreference((value) => !(current ?? value ?? false)),
     [],
   )
-  const toggleMapRail = useCallback(() => setMapRailCollapsed((v) => !v), [])
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -322,7 +309,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     preparing,
     inspectorCollapsed: inspectorPreference ?? true,
     inspectorPreference,
-    mapRailCollapsed,
     cmdkOpen,
     settings,
     guidance,
@@ -335,7 +321,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     cancelCreate,
     closePreparation,
     toggleInspector,
-    toggleMapRail,
     setCmdk,
     openSettings,
     closeSettings,

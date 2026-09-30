@@ -356,9 +356,8 @@ export function killRegistry(): KillRegistry {
  * The spawn callback a host-mode agent hands the patched `noSandbox` provider:
  * every child it starts is registered against `laneKey`, latest pid winning.
  *
- * One helper because all three host launch sites owe the registry the same
- * thing — the review/verification agent, a research waypoint (whose lane IS its
- * run, having no ticket), and a `noSandbox` burn. The pid is all a host agent
+ * One helper because both host launch sites owe the registry the same thing —
+ * the review/verification agent and a `noSandbox` burn. The pid is all a host agent
  * can be killed by: there is no container to name, and the fresh child per exec
  * means only the newest one is still alive.
  */

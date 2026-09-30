@@ -10,7 +10,6 @@ import type {
   SessionKind,
   SessionPurpose,
   SessionRow,
-  Waypoint,
 } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import { DEFAULT_RUNTIME, resolveModelEntry } from '@runcastle/core'
@@ -21,9 +20,8 @@ import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } f
 import { chatKickoffFor, prepareConfirmKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
-import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { carriedWork, currentLapReviewEvidence } from '../services/carried-work'
+import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -38,13 +36,7 @@ import {
 } from '../services/repo'
 import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
-import {
-  claim as claimWaypoint,
-  getWaypoint,
-  listByFeature as listWaypointsByFeature,
-  releaseForSession,
-} from '../services/waypoints'
-import { startRun, workflowClaimsFeatureBranch } from '../workflows/runner'
+import { workflowClaimsFeatureBranch } from '../workflows/runner'
 import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
@@ -62,7 +54,6 @@ import {
   hasCompletedProjectSession,
   kickoffLineFor,
   landProjectSession,
-  lapInFlight,
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
@@ -71,6 +62,7 @@ import {
   reportProjectLanding,
   resumeCapExceeded,
   transcriptBytes,
+  type KickoffPlan,
   type ResumeCapVerdict,
 } from './sessions'
 
@@ -111,13 +103,6 @@ export function ptyExitMessage(exitCode: number | undefined | null): string {
 export interface LaunchSessionInput {
   featureId: string
   kind: SessionKind
-  /**
-   * When set, claim this waypoint for the freshly-created session BEFORE spawning
-   * (kind=waypoint sessions). The claim re-checks the frontier transactionally
-   * and throws if the waypoint is no longer claimable; the session row is then
-   * marked ended and the error propagates, so no orphaned session lingers.
-   */
-  waypointId?: string
   /**
    * Optional kickoff line, replacing the per-kind default typed into the PTY once
    * the session goes live (`KICKOFF_LINES`). Callers pass a per-purpose briefing
@@ -188,11 +173,6 @@ export interface LaunchSessionResult {
   sessionId: string
 }
 
-/** Working a research waypoint starts a headless run instead of a session. */
-export interface WorkRunResult {
-  runId: string
-}
-
 /**
  * Refuse a launch whose runtime cannot run right now (decision 7) — the AFK
  * auth-precheck extended to talk sessions. Called BEFORE the session row, the
@@ -240,8 +220,7 @@ function renderCommand(runtime: AgentRuntimeAdapter, spec: RuntimeLaunchSpec): s
  * nothing to talk to — but a BRANCH-CLAIMING run (e.g. ticket-burner) does
  * decide where the talk worktree stands: it holds `feature/<slug>`, so the
  * session works on a chat temp branch beside it (`one-chat-per-feature`
- * decision 2). Research runs work on temp branches (ADR-0001 §7 "parallel AFK")
- * and change nothing.
+ * decision 2).
  */
 function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
   const row = ctx.db
@@ -256,9 +235,7 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 /**
  * Throw when an HITL session must not spawn on this feature right now: another
  * session row is `launching`/`live` (one live HITL session per feature — one
- * talk worktree, git forbids two checkouts of one branch). Guarding on session
- * ROWS, not waypoint claims, means resolving a waypoint while its terminal is
- * still open can no longer sneak a second live session in.
+ * talk worktree, git forbids two checkouts of one branch).
  * `excludeSessionId` skips the caller's own just-created row.
  *
  * A live AFK run used to refuse here too. It no longer does: a branch-claiming
@@ -272,64 +249,6 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
     throw new GateError(
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
     )
-  }
-}
-
-/**
- * Whether a live session's work is demonstrably DONE (decision #8):
- * - a kind=`waypoint` session whose own waypoint — the one remembering it as
- *   `lastSessionId` — has gone terminal (`resolved`/`dropped`). While it is still
- *   working, that waypoint is `claimed`, so this is false.
- * - a kind=`converge` session once the feature is `mapped`: charting the map
- *   is the job it was opened to do, and the map is on disk.
- * - nothing else. The feature's one `chat` (grilling, a qa question, a
- *   revisit — one kind since one-chat-per-feature) is a conversation with the
- *   human, and no state on this side can prove one is over — saying so is what
- *   the `endLive` confirmation is for. Before the kinds merged, `ideation` was
- *   finished-once-mapped; that shortcut cannot survive on a kind that also
- *   carries open-ended conversations.
- * A session that never went live has no waypoint remembering it, so it is never
- * finished — abandoning it needs the explicit `endLive` confirmation.
- *
- * This answered `feature.mapped` for every non-waypoint kind, and its only call
- * site is reached only once the feature IS mapped — so it was constant `true`,
- * and working a waypoint silently killed whatever conversation was live and told
- * the timeline it had "finished".
- */
-function sessionFinished(ctx: AppCtx, feature: Feature, session: SessionRow): boolean {
-  if (session.kind === 'converge') return feature.mapped
-  if (session.kind !== 'waypoint') return false
-  const own = listWaypointsByFeature(ctx, feature.id).find((w) => w.lastSessionId === session.id)
-  return !!own && (own.status === 'resolved' || own.status === 'dropped')
-}
-
-/**
- * End the live sessions standing between the human and the waypoint they just
- * clicked Work on (decision #8). Ordinarily only FINISHED sessions are ended, so
- * the ordinary click is one click instead of "End session" then "Work". With
- * `endLive` — the human having confirmed the inline affordance — every active
- * session goes, abandoning its mid-work claim (`endSession` releases it back to
- * the frontier, so nothing is lost).
- *
- * `assertSpawnable` still runs after this and is deliberately untouched: a
- * mid-work session with no `endLive` survives the sweep and is refused there.
- */
-function sweepActiveSessions(ctx: AppCtx, feature: Feature, endLive: boolean): void {
-  for (const session of activeSessionsForFeature(ctx, feature.id)) {
-    const finished = sessionFinished(ctx, feature, session)
-    if (!finished && !endLive) continue
-    endSession(ctx, session.id)
-    emit(ctx, feature.id, {
-      type: 'session.auto_ended',
-      message: finished
-        ? `ended the finished ${session.kind} session to work the next waypoint`
-        : `abandoned the in-flight ${session.kind} session to work the next waypoint`,
-      data: {
-        sessionId: session.id,
-        kind: session.kind,
-        reason: finished ? 'finished' : 'abandoned',
-      },
-    })
   }
 }
 
@@ -391,6 +310,42 @@ function applyResumeCap(
 }
 
 /**
+ * A feature launch's kickoff plan, read off FEATURE STATE and the door it came
+ * through — shared by a fresh launch and the live-chat answer, so both brief
+ * alike. A `start-lap` launch at review is the "Start lap N+1" door, whose lap
+ * briefing is built here from `carried` rather than by the web.
+ */
+function planLaunchKickoff(
+  feature: Feature,
+  input: LaunchSessionInput,
+  carried: CarriedWork,
+): KickoffPlan {
+  return planKickoff({
+    kind: input.kind,
+    kickoffLine: input.kickoffLine,
+    ...(isStartLap(feature, input) ? { startLap: feature.lap, carried } : {}),
+  })
+}
+
+/** Whether this launch came through the review page's "Start lap N+1" door. */
+function isStartLap(feature: Feature, input: LaunchSessionInput): boolean {
+  return input.purpose === 'start-lap' && feature.phase === 'review'
+}
+
+/**
+ * What a lap planned from review is handed: the carry channel, with the review
+ * evidence of the lap the feature is still ON. At review the feature sits on lap
+ * N and this session plans N+1, so the review to read is lap N's — the build the
+ * human just drove — not the carry channel's lap N-1, which on lap 1 is nothing.
+ */
+function startLapCarriedWork(ctx: AppCtx, featureId: string): CarriedWork {
+  return {
+    ...carriedWork(ctx, featureId),
+    reviewEvidence: currentLapReviewEvidence(ctx, featureId),
+  }
+}
+
+/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -405,7 +360,8 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine`, and a lap in flight briefs itself ({@link planKickoff}) — and
+ * `kickoffLine` (the Start-lap door never lands here: its lap needs a fresh
+ * injected prompt, so {@link launchSession} relaunches the chat instead) — and
  * losing it is the whole defect this closes: the door foregrounded the terminal
  * and silently dropped the reason the human opened it.
  *
@@ -421,19 +377,9 @@ function briefLiveChat(
   ctx: AppCtx,
   feature: Feature,
   liveChat: SessionRow,
-  kickoffLine: string | undefined,
+  input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planKickoff({
-    kind: 'chat',
-    lap: feature.lap,
-    kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried: carriedWork(ctx, feature.id),
-  })
+  const plan = planLaunchKickoff(feature, input, startLapCarriedWork(ctx, feature.id))
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -499,9 +445,17 @@ export async function launchSession(
   // the one door that is constant in every state and never disabled. A live
   // session of any OTHER kind is still `assertSpawnable`'s
   // one-terminal-per-feature refusal below.
+  //
+  // The Start-lap door is the exception: its lap changes the session's injected
+  // prompt, not just its opening line, and a live chat's prompt was rendered for
+  // whatever opened it — at review, the plain Chat toggle's fix-ticket "Review
+  // iteration". Typing the lap briefing in would leave both framings in one
+  // session, so the live chat is ended and the conversation relaunched below
+  // with the lap prompt, as the carry road does from the web.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat) return briefLiveChat(ctx, feature, liveChat, input.kickoffLine)
+    if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
+    else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
   const project = projectForFeature(ctx, feature)
@@ -526,30 +480,13 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else. An explicit
   // briefing makes non-chat sessions fresh; chat briefings ride the persistent
-  // conversation's resume. A lap in flight additionally tells the artifacts
-  // which lap they are rendering for.
-  //
-  // The lap is read off FEATURE STATE — phase, lap number, and whether tickets
-  // exist at that lap — not off what the caller typed. `listTicketsByFeature` is
-  // already this module's import, so "does lap N have tickets" costs nothing
-  // extra and, unlike a kickoff string, it is still true tomorrow. See
-  // `lapInFlight` for the stranding bug this closes.
+  // conversation's resume. A lap planned from review (the Start-lap door)
+  // additionally tells the artifacts which lap they are rendering for.
   //
   // What the last lap handed this one rides along with it: the same counts brief
-  // the kickoff line and the injected prompt, so a lap opens knowing its agenda
-  // whichever door it came through.
-  const carried = carriedWork(ctx, feature.id)
-  const plan = planKickoff({
-    kind: input.kind,
-    lap: feature.lap,
-    kickoffLine: input.kickoffLine,
-    lapInFlight: lapInFlight({
-      lap: feature.lap,
-      phase: feature.phase,
-      ticketLaps: listTicketsByFeature(ctx, feature.id).map((t) => t.lap),
-    }),
-    carried,
-  })
+  // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
+  const carried = startLapCarriedWork(ctx, feature.id)
+  const plan = planLaunchKickoff(feature, input, carried)
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
@@ -558,45 +495,13 @@ export async function launchSession(
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
 
-  // A waypoint session claims its waypoint BEFORE spawning (SPEC §13.2). The
-  // prior LIVE session's cc id (`lastSessionId` — promoted only when a session
-  // actually started) is captured so a released-then-reworked waypoint resumes
-  // the same conversation. A failed claim (no longer on the frontier) ends the
-  // just-created session row and rethrows.
-  let waypoint: Waypoint | undefined
   let resumeSessionId: string | undefined
   let resumeUnavailableFrom: string | undefined
   // The row whose conversation is coming back, used by the re-entry cap.
   let resumedFrom: SessionRow | undefined
-  if (input.waypointId) {
-    const before = getWaypoint(ctx, input.waypointId)
-    if (before.lastSessionId) {
-      resumedFrom = getSessionRow(ctx, before.lastSessionId) ?? undefined
-      resumeSessionId = resumedFrom?.ccSessionId ?? undefined
-      // No cc id recorded for the remembered session → nothing the CLI could
-      // `--resume`. Spawn fresh WITHOUT the flag (a bogus --resume makes claude
-      // exit with "No conversation found") and say so on the timeline.
-      if (!resumeSessionId) resumeUnavailableFrom = before.lastSessionId
-    }
-    try {
-      // Re-check the one-live-session guard here, synchronously adjacent to the
-      // claim itself (no `await` between the two). `workWaypoint` already checks
-      // up front, but that check runs before this function's `await
-      // ensureWorktree` above — leaving a window where two concurrent Work calls
-      // on two DIFFERENT waypoints of the same feature both pass it before
-      // either claims. This recheck is the race-free, authoritative gate. It
-      // guards on live session ROWS (not claims), so a resolved-but-still-open
-      // terminal blocks a second spawn too (E2E finding 8).
-      assertSpawnable(ctx, feature, session.id)
-      waypoint = claimWaypoint(ctx, input.waypointId, session.id)
-    } catch (e) {
-      markSessionEnded(ctx, session.id)
-      throw e
-    }
-  }
 
-  // Chat resumes the feature's one conversation. One-live-session guard first — same failure mode
-  // as the waypoint path (end the just-created row, rethrow). A live CHAT was
+  // Chat resumes the feature's one conversation. One-live-session guard first —
+  // a refusal ends the just-created row and rethrows. A live CHAT was
   // already answered with above, so what this catches is a terminal of another
   // kind, or a second chat that raced this one past the `ensureWorktree` await.
   // No resumable conversation is fine: the docs carry the state, so it starts
@@ -625,9 +530,9 @@ export async function launchSession(
   // marks the row ended — but the Claude Code transcript survives on disk and
   // the row kept its `ccSessionId`, so reopening the same kind of terminal picks
   // the conversation back up instead of starting cold from the docs. No prior
-  // conversation is the ordinary first-launch case, so unlike waypoint/revisit
-  // it gets no `resume_unavailable` note — there is nothing to be unavailable.
-  if (input.kind !== 'waypoint' && input.kind !== 'chat') {
+  // conversation is the ordinary first-launch case, so unlike chat it gets no
+  // `resume_unavailable` note — there is nothing to be unavailable.
+  if (input.kind !== 'chat') {
     resumedFrom = mostRecentResumableSession(ctx, feature.id, input.kind) ?? undefined
     resumeSessionId = resumedFrom?.ccSessionId
     if (
@@ -676,7 +581,6 @@ export async function launchSession(
       sessionId: session.id,
       kind: input.kind,
       worktreePath,
-      waypointId: waypoint?.id,
       ...modelStamp(model),
     },
   })
@@ -703,20 +607,11 @@ export async function launchSession(
     })
   }
 
-  if (runtime.id !== 'codex' && waypoint && resumeUnavailableFrom) {
-    emit(ctx, feature.id, {
-      type: 'session.resume_unavailable',
-      message: `waypoint ${waypoint.seq} has no resumable conversation — starting fresh`,
-      data: { sessionId: session.id, waypointId: waypoint.id, lastSessionId: resumeUnavailableFrom },
-    })
-  }
-
   const spec = await runtime.writeArtifacts({
     session,
     feature,
     project,
     config: ctx.config,
-    waypoint,
     lap: plan.lap,
     carried: plan.lap === undefined ? undefined : carried,
     // Which of the chat's two openings its brief renders (see `chatOpening`).
@@ -741,7 +636,6 @@ export async function launchSession(
   }
 
   const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
-    waypoint,
     resumeSessionId,
   })
   if (spawned && kickoffLine) {
@@ -758,7 +652,7 @@ export async function launchSession(
  * Open a project-scoped preparation conversation (backs `project.talkToPrep`).
  *
  * Everything that makes `launchSession` feature-shaped is skipped: no feature
- * row, no worktree, no waypoint claim, no one-live-session-per-feature guard.
+ * row, no worktree, no one-live-session-per-feature guard.
  * The session runs in the project's REAL checkout, which is the whole point —
  * the host-only keys a container can only propose (`devCommand`,
  * `driveSetupCommand`, `driveStopCommand`, `dbResetCommand`) can be
@@ -1282,110 +1176,18 @@ export function probePrepareHost(repoPath: string): PrepareHost {
   }
 }
 
-/**
- * Work a waypoint (SPEC §13.2, backs `feature.workWaypoint`). A `research`
- * waypoint is worked AFK: it claims the waypoint for a headless `research` run
- * and returns `{ runId }`. Every other type opens a kind=`waypoint` HITL session
- * (claimed transactionally inside `launchSession`) and returns `{ sessionId }`.
- * Refuses up front when the feature is not mapped, the waypoint belongs to
- * another feature, or (HITL only) a waypoint session is already live (one live
- * HITL session per feature). The claim — inside `launchSession` for HITL, inside
- * `startRun` for research — is the transactional frontier gate, so a waypoint
- * that is claimed/terminal/blocked can never be worked.
- *
- * The HITL path owns the whole handoff atomically (decision #8): it first sweeps
- * away any live session it can prove is finished, and — with `endLive`, the
- * human having confirmed — any live session at all. Doing it here rather than as
- * a client-side end-then-work keeps it one mutation with no window where the
- * feature holds nothing.
- */
-export async function workWaypoint(
-  ctx: AppCtx,
-  input: { featureId: string; waypointId: string; endLive?: boolean },
-  opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult | WorkRunResult> {
-  const feature = getFeatureRow(ctx, input.featureId)
-  requireNotDraft(feature)
-  if (!feature.mapped) {
-    throw new GateError(`feature ${feature.slug} is not mapped — it has no waypoints to work`)
-  }
-
-  const wp = getWaypoint(ctx, input.waypointId)
-  if (wp.featureId !== feature.id) {
-    throw new GateError(`waypoint ${wp.seq} does not belong to feature ${feature.slug}`)
-  }
-
-  // Research waypoints run AFK (SPEC §13.2): claim the waypoint for the run (the
-  // transactional frontier gate lives in `startRun`) and hand it the waypoint as
-  // per-run input. Run failure/cancel auto-releases it back to the frontier.
-  if (wp.type === 'research') {
-    const { runId } = await startRun(ctx, feature.id, 'research', {
-      input: wp,
-      claimWaypointId: wp.id,
-    })
-    return { runId }
-  }
-
-  // Make room: end the live sessions that are finished (or, with `endLive`, all
-  // of them). Research is deliberately above this — an AFK run is not a session
-  // and runs in parallel, so it is neither swept nor blocked by the sweep.
-  sweepActiveSessions(ctx, feature, input.endLive === true)
-
-  // Fast-fail guard on live HITL SESSION rows + active runs (never on waypoint
-  // claims — a parallel research run's claim must not block HITL work, and a
-  // resolved claim must not unblock a second terminal while the first is live).
-  // The race-free authoritative recheck runs inside `launchSession`.
-  assertSpawnable(ctx, feature)
-
-  return launchSession(ctx, { featureId: feature.id, kind: 'waypoint', waypointId: wp.id }, opts)
-}
-
-/**
- * Converge a mapped feature (ADR-0001 / SPEC §13.2, backs `feature.converge`).
- *
- * Open waypoints no longer refuse it: with the gates gone, an unfinished map is
- * something the human reads and converges anyway, the same as remaining fog
- * (`Not yet specified` prose), which was never enforced either.
- *
- * Convergence moves the feature nowhere — the map is a mode inside planning, so
- * the fresh kind=`converge` session it spawns lands in the state it started in,
- * with NO downstream special-casing: it reads only the compressed knowledge
- * (map + decisions) and runs the existing spec → tickets skills unbroken.
- */
-export async function converge(
-  ctx: AppCtx,
-  input: { featureId: string },
-  opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
-  const feature = getFeatureRow(ctx, input.featureId)
-  requireNotDraft(feature)
-  if (!feature.mapped) {
-    throw new GateError(`feature ${feature.slug} is not mapped — convergence is only for mapped features`)
-  }
-  if (feature.phase !== 'planning') {
-    throw new GateError(`converge runs during planning — feature ${feature.slug} is already at ${feature.phase}`)
-  }
-  return launchSession(ctx, { featureId: feature.id, kind: 'converge' }, opts)
-}
-
 /** Spawn-time context the PTY exit handler needs to report honestly. */
 export interface SpawnMeta {
-  /** The waypoint this session claimed (kind=waypoint), if any. */
-  waypoint?: Waypoint
   /** The cc session id this launch tried to `--resume`, if any. */
   resumeSessionId?: string
 }
 
 /**
- * PTY exit finalizer (exported for the vitest seam). Marks the session ended,
- * auto-releases its waypoint (SPEC §13.2 — no-op when already resolved), and
- * emits `session.pty_exited`. When a RESUME attempt dies before ever reaching
- * `live` (the session-start hook never fired — e.g. claude exited with "No
- * conversation found with session ID"), it additionally emits
- * `session.resume_failed` so the UI can toast; the waypoint's `lastSessionId`
- * still points at the previous good session (promotion happens only at live),
- * so the next Resume targets the right conversation instead of silently
- * spawning fresh.
+ * PTY exit finalizer (exported for the vitest seam). Marks the session ended
+ * and emits `session.pty_exited`. When a RESUME attempt dies before ever
+ * reaching `live` (the session-start hook never fired — e.g. claude exited with
+ * "No conversation found with session ID"), it additionally emits
+ * `session.resume_failed` so the UI can toast.
  */
 export function handlePtyExit(
   ctx: AppCtx,
@@ -1396,10 +1198,6 @@ export function handlePtyExit(
 ): void {
   const diedBeforeLive = getSessionRow(ctx, session.id)?.status === 'launching'
   markSessionEnded(ctx, session.id)
-  // Closing a waypoint terminal without resolving auto-releases its waypoint
-  // back to the frontier (SPEC §13.2); no-op for non-waypoint sessions or when
-  // the agent already resolved.
-  releaseForSession(ctx, session.id)
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)
@@ -1407,13 +1205,11 @@ export function handlePtyExit(
     void noteResolvedMerge(ctx, session, feature).catch(() => {})
   }
   if (diedBeforeLive && meta.resumeSessionId) {
-    const label = meta.waypoint ? `waypoint ${meta.waypoint.seq} (${meta.waypoint.title})` : session.kind
     emitForSession(ctx, session, {
       type: 'session.resume_failed',
-      message: `resume failed for ${label} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
+      message: `resume failed for ${session.kind} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
       data: {
         sessionId: session.id,
-        waypointId: meta.waypoint?.id ?? null,
         resumeSessionId: meta.resumeSessionId,
         exitCode: exitCode ?? null,
       },
@@ -1479,7 +1275,6 @@ function spawnEmbeddedPty(
     // one-live-session guard reads session rows, so a leaked row would block
     // every future terminal on this feature until the next boot reconciliation.
     markSessionEnded(ctx, session.id)
-    releaseForSession(ctx, session.id)
     emitForSession(ctx, session, {
       type: 'session.spawn_failed',
       message: `failed to spawn embedded terminal: ${err instanceof Error ? err.message : String(err)}`,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePhase, Phase, Ticket, TicketInput } from '../src/schemas'
+import { parsePhase, Phase, SessionKind, Ticket, TicketInput } from '../src/schemas'
 
 const validTicket = {
   title: 'Add health endpoint',
@@ -104,6 +104,12 @@ describe('enums', () => {
     expect(Phase.safeParse('planning').success).toBe(true)
     expect(Phase.safeParse('shipped').success).toBe(true)
     expect(Phase.safeParse('bogus').success).toBe(false)
+  })
+
+  it('SessionKind no longer accepts the retired waypoint/converge kinds (ADR-0012)', () => {
+    expect(SessionKind.options).toEqual(['chat', 'prepare', 'project', 'drive-fix'])
+    expect(SessionKind.safeParse('waypoint').success).toBe(false)
+    expect(SessionKind.safeParse('converge').success).toBe(false)
   })
 })
 

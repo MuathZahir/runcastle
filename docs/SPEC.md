@@ -214,93 +214,6 @@ Vite + React + @trpc/react-query + TanStack Query v5, plain CSS (one stylesheet,
 - Commit your own work when done: conventional message `feat(scope): ...` — repo is `runcastle/` itself. On burn branches the machinery owns the subject instead: burn agents commit `ticket(<seq>): <summary>` (§8) and the orchestrator's docs commits are `runcastle: <what>`.
 - When docs are needed, use `npx ctx7@latest library/docs` (≤3 calls per question) — do not trust training data for API shapes.
 
-## 13. Mapped ideation (post-M1 — ADR-0001)
-
-Multi-session ideation for features too big for one context window. **Built
-after the ship-path fixes and the workspace redesign land** (ADR-0001
-sequencing); specified here so names are law when it does. Self-contained:
-each item below states its amendment to the M1 sections explicitly.
-
-### 13.1 Core amendments (§1)
-
-- `src/schemas.ts` additions:
-  - `WaypointType = z.enum(['grilling','research','prototype','task'])`
-  - `WaypointStatus = z.enum(['open','claimed','resolved','dropped'])`
-  - `WaypointInput { title: string, type: WaypointType, question: string, blockedBy: number[] /* seq refs within batch */ | string[] /* existing waypoint ids */, originWaypointId?: string }`
-  - `Waypoint` = WaypointInput + `{ id, featureId, seq: number, status: WaypointStatus, claimedBy?: string /* sessionId | runId */, lastSessionId?: string, summary?: string }`
-  - `Feature` gains `mapped: boolean` (default false; set by creation toggle or `escalate_to_map`; independent of `size`).
-  - `SessionKind` gains `'waypoint' | 'converge'`.
-- `src/pipeline.ts`: G1's check becomes conditional on `feature.mapped`:
-  `decisions-file-exists` (unmapped, unchanged) | `all-waypoints-terminal`
-  (mapped: every waypoint `resolved` or `dropped`). Fog is NOT gate-checked.
-  `nextPhase()` unchanged.
-- `src/db-schema.ts`: new `waypoints` table mirroring the schema; `blockedBy`
-  + lineage as JSON columns like tickets.
-- `src/workflow.ts`: `WorkflowCtx` gains `input?: unknown` (per-run payload —
-  the research waypoint) and `resolveWaypoint(id: string, disposition: 'resolved'|'dropped', summary: string): void`.
-
-### 13.2 Server amendments (§3, §4)
-
-- New `services/waypoints.ts` (owner: the mapped-ideation feature): `storeWaypoints` (seq assign + blockedBy resolve + cycle rejection — same algorithm as `storeTickets`), `listByFeature`, `claim(id, claimedBy)` (transactional; fails if not open/frontier), `release(id)` (back to open, keeps `lastSessionId`), `resolve(id, disposition, summary)`, `frontier(featureId)` (derived: open ∧ unclaimed ∧ all blockers terminal — never stored). `resolve` emits `waypoint.resolved` plus one `waypoint.unblocked` event per newly-freed waypoint.
-- Session-end hook + run finalizer: auto-release any waypoint still claimed by the ending session/run.
-- New `workflows/research.ts`: `research` WorkflowDef registered alongside `ticket-burner`. Sandcastle run (same auth/sandbox config as §8) with prompt from `packages/skills/burner/research-waypoint.md`; the sandbox agent reads the waypoint question, researches (web + repo), writes `docs/features/<slug>/research/<waypoint-slug>.md`, commits to the feature branch; the workflow then calls `ctx.resolveWaypoint`.
-- tRPC additions (§4):
-  - `feature.create` input gains `mapped?: boolean`.
-  - `feature.get` response gains `waypoints: Waypoint[]` + `frontierIds: string[]` when mapped.
-  - `feature.workWaypoint({ featureId, waypointId }): { sessionId } | { runId }` — claims first (error if not on frontier), then spawns terminal (grilling/prototype/task → kind=`waypoint`) or starts the `research` run.
-  - `feature.converge({ featureId }): { sessionId }` — requires G1 satisfiable (or override); spawns kind=`converge` terminal.
-
-### 13.3 MCP amendments (§6) — 3 new tools (7 total)
-
-5. `escalate_to_map({ destination, notes }) → { ok }` — sets `mapped`, scaffolds `map.md` (Destination/Notes from args; empty Not-yet-specified / Out-of-scope), emits event. Idempotent warning if already mapped.
-6. `emit_waypoints({ waypoints: WaypointInput[] }) → { stored: number, ids: string[] }` — via `storeWaypoints`; available to every session once mapped (recursion: any session may branch the map).
-7. `resolve_waypoint({ id, disposition: 'resolved'|'dropped', summary }) → { ok }` — prose answer goes to `decisions.md` (dropped: gist to `map.md` Out-of-scope) by direct file write in the session; this tool flips machinery only.
-
-`get_feature_context` response gains `waypoints` + `frontier` when mapped.
-Claiming is NEVER agent-callable — it is a spawn-time server side effect.
-
-### 13.4 Knowledge amendments
-
-`docs/features/<slug>/map.md` scaffolded by `escalate_to_map` (or at create
-when the toggle is set): `## Destination`, `## Notes`, `## Not yet specified`,
-`## Out of scope`. Prose sections are edited by sessions via direct file
-writes (serial HITL makes this race-free); resolutions accumulate in the
-existing `decisions.md`. `research/` subdirectory holds research waypoint
-summaries.
-
-### 13.5 Skills amendments (§9)
-
-- `ideate` gains the escalation branch: when the feature outgrows the window
-  (rabbit holes, decisions hanging on unread material), call
-  `escalate_to_map`, `emit_waypoints` for the first batch, tell the user the
-  map is charted, and END the session (charting is one session's work).
-- New `waypoint` (entry for kind=waypoint): read map + assigned question from
-  injected context; mode by type (grill / prototype fork / task checklist);
-  write `decisions.md` + `map.md` directly; may `emit_waypoints`; ends with
-  `resolve_waypoint`.
-- New `converge` (entry for kind=converge): read `map.md` + `decisions.md`
-  ONLY (not transcripts), then run `/runcastle:spec` → `/runcastle:tickets`
-  unbroken (decision 9 relocated here).
-- New `burner/research-waypoint.md` prompt template (see §13.2).
-
-### 13.6 UI amendments (§10)
-
-`GrillBody` mapped variant: destination line; waypoint groups — frontier
-(Work button each), blocked (greyed, blocker *names*), claimed (live pulse;
-Resume when `lastSessionId`), resolved/dropped (collapsed count); fog rendered
-from `map.md`; Converge button when G1 satisfiable, remaining fog shown as a
-soft warning beside it. `NewFeatureForm`: start-mapped toggle. Lineage shown
-as one line per waypoint ("surfaced by <name>"); tree view deferred. No new
-routes, no new polling.
-
-### 13.7 Tests
-
-Vitest: waypoint seq/blockedBy resolve + cycle rejection (shared with ticket
-tests), frontier derivation (blocked→freed on resolve AND on drop), claim
-transactionality (double-claim fails), auto-release on session end, G1
-conditional check both modes. Smoke extension: escalate → emit 2 waypoints
-(one blocking the other) → resolve both → converge gate satisfiable.
-
 ## 14. Project preparation — `services/prep.ts` + the `prepare` session
 
 **Why.** `verifyCommands`, `knownFailures` and `setupCommand` sit empty on
@@ -358,8 +271,7 @@ Iterative delivery: the pipeline loops until the human merges. One trip is a
 **lap**. From review, three verbs: **Fix** (promoted-note tickets burned via
 the existing review→implementation loop-back, same lap), **Rethink** (new lap,
 back to ideation), **Merge** (unchanged G5). No mode flag exists — a feature
-merged on lap 1 is the old linear flow verbatim. Self-contained amendments,
-same style as §13.
+merged on lap 1 is the old linear flow verbatim. Self-contained amendments.
 
 ### 15.1 Core amendments (§1)
 
@@ -405,14 +317,17 @@ same style as §13.
   - `feature.burn` G3 wording updated: requires ≥1 pending ticket **in the
     current lap** (both the `tickets`-phase crossing and the review-phase
     Fix restart).
-- Kickoff registry: `revisit` gains the `lap` purpose —
-  `LAP <n> REVIEW ITERATION`: read `test-notes.md` (previous lap's section)
-  + spec `## Later laps`; promoted notes are ALREADY tickets (ids injected —
-  never re-emit them); interview the human, update `decisions.md` + spec,
-  `emit_tickets` for this lap, `complete_phase` through ideation/spec/tickets
-  in this one session. Session-start context injection for a lap revisit
-  carries the same: previous lap's notes + promoted-ticket ids + `## Later
-  laps` content.
+- Kickoff registry: the `start-lap` launch purpose — the review page's
+  "Start lap N+1" door opens the feature chat at review with
+  `PLAN LAP <n> FROM REVIEW` (`reviewLapKickoff`, built server-side from
+  `carriedWork`): the agenda is `test-notes.md` `## Carried, still open`, the
+  open defects from `get_feature_context`, and spec `## Later laps`; promoted
+  notes are ALREADY tickets (never re-emit them); interview the human, write
+  decisions under `## Lap <n>` + amend spec, `emit_tickets` for this lap (they
+  land `pending`; Burn from review moves them onto lap n through
+  `carryPendingTicketsIntoLap`). The feature stays at review, so the session
+  never calls `complete_phase`; it finishes by telling the human to review the
+  cards and click Burn. The plain Chat toggle at review gets no lap framing.
 
 ### 15.3 MCP amendments (§6) — no new tools
 
@@ -436,13 +351,12 @@ machinery).
   human this is what they want?* Sure/small → spec the whole thing, one lap.
   Unsure/large → recommend a thin lap 1 (walking skeleton of the uncertain
   part, or a sub-feature slice), park the rest in `## Later laps`, and say
-  so out loud — the human decides. Orthogonal to the map escalation branch
-  (§13.5): mapping is for ideation too big to *think*; laps are for features
-  too uncertain to *spec whole*.
-- `revisit` gains the lap mode (triggered by the lap kickoff): digest notes →
-  amend `decisions.md` + spec (including pruning `## Later laps`) →
-  `emit_tickets` → `complete_phase` through tickets → tell the human to Burn.
-  Never re-emit promoted tickets.
+  so out loud — the human decides.
+- `revisit` gains the lap mode (triggered by the `PLAN LAP <n> FROM REVIEW`
+  kickoff, at review): digest notes and open defects → amend `decisions.md` +
+  spec (including pruning `## Later laps`) → `emit_tickets` → tell the human
+  to review the cards and click Burn. Never calls `complete_phase` (the
+  feature stays at review); never re-emits promoted tickets.
 
 ### 15.6 UI amendments (§10)
 

@@ -4,7 +4,7 @@ import { composeOutcomeDoc, digestHasSubstance, type OutcomeInput } from '../src
 
 const feature: Feature = {
   id: 'feat_1', projectId: 'proj_1', slug: 'record', title: 'A durable record',
-  oneLiner: 'Evidence and state first.', mapped: false, lap: 2, phase: 'review',
+  oneLiner: 'Evidence and state first.', lap: 2, phase: 'review',
   branch: 'feature/record', status: 'active', createdAt: 1,
 }
 const ticket = (seq: number, overrides: Partial<Ticket> = {}): Ticket => ({

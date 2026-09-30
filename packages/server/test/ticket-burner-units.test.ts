@@ -73,7 +73,6 @@ import {
   parseUnrunnableGates,
   preflightCommandNames,
   readDocsDigest,
-  trimMapDoc,
   verificationDue,
 } from '../src/workflows/ticket-burner'
 import type {
@@ -108,7 +107,6 @@ const feature: Feature = {
   slug: 'my-feature',
   title: 'My Feature',
   oneLiner: 'does a thing',
-  mapped: false,
   phase: 'building',
   branch: 'feature/my-feature',
   status: 'active',
@@ -311,7 +309,6 @@ describe('renderTicketPrompt', () => {
       burnerTemplatePath(),
       resolverTemplatePath(),
       burnerAssetPath('review-ticket.md'),
-      burnerAssetPath('research-waypoint.md'),
     ]
 
     for (const path of templates) {
@@ -326,7 +323,6 @@ describe('renderTicketPrompt', () => {
   it('keeps the completion contract in every prompt that signals one', () => {
     // Unchanged by the runtime work: sandcastle matches the signal against the
     // agent's accumulated stdout, so it is honoured identically on both
-    // providers. (The research prompt has never signalled — it completes on git.)
     for (const path of [
       burnerTemplatePath(),
       resolverTemplatePath(),
@@ -548,40 +544,6 @@ describe('buildProjectStandards', () => {
   })
 })
 
-describe('trimMapDoc', () => {
-  const map = [
-    '# Feature — map',
-    '',
-    '## Destination',
-    'ship it',
-    '',
-    '## Notes',
-    'a note',
-    '',
-    '## Not yet specified',
-    'a waypoint',
-    '',
-    '## Out of scope',
-    'never do this',
-    '',
-  ].join('\n')
-
-  it('keeps Destination and Notes, drops the two negative-space sections', () => {
-    const out = trimMapDoc(map, 'docs/features/x/map.md')
-    expect(out).toContain('ship it')
-    expect(out).toContain('a note')
-    expect(out).not.toContain('a waypoint')
-    expect(out).not.toContain('never do this')
-    // Named, not silently dropped.
-    expect(out).toContain('docs/features/x/map.md')
-  })
-
-  it('returns content untouched when there is nothing to drop', () => {
-    const plain = '# map\n\n## Destination\nx\n'
-    expect(trimMapDoc(plain, 'p')).toBe(plain)
-  })
-})
-
 describe('readDocsDigest (the allowlist)', () => {
   const savedDataDir = process.env.RUNCASTLE_DATA_DIR
   afterAll(() => {
@@ -637,23 +599,24 @@ describe('readDocsDigest (the allowlist)', () => {
     expect(docs.bytes).toBeLessThan(3_000)
   })
 
-  it('orders the canonical docs brief → map → decisions → spec whatever the FS says', () => {
+  it('orders the canonical docs brief → decisions → spec whatever the FS says', () => {
     const { projectId, slug } = seedDocs({
       'spec.md': '# spec',
       'decisions.md': '# decisions',
-      'map.md': '# map\n\n## Destination\nthere',
       'brief.md': '# brief',
     })
     const docs = readDocsDigest(projectId, slug)
-    expect(docs.included).toEqual(['brief.md', 'map.md', 'decisions.md', 'spec.md'])
+    expect(docs.included).toEqual(['brief.md', 'decisions.md', 'spec.md'])
   })
 
-  it('trims the map to the sections a coder may act on', () => {
+  it('names a leftover map.md rather than inlining it', () => {
     const { projectId, slug } = seedDocs({
+      'brief.md': '# brief',
       'map.md': '# map\n\n## Destination\nthere\n\n## Out of scope\nforbidden fruit\n',
     })
     const docs = readDocsDigest(projectId, slug)
-    expect(docs.text).toContain('there')
+    expect(docs.included).toEqual(['brief.md'])
+    expect(docs.withheld.map((w) => w.name)).toEqual(['map.md'])
     expect(docs.text).not.toContain('forbidden fruit')
   })
 

@@ -335,7 +335,10 @@ export interface ReviewResolution {
   reason: string
 }
 
-const DECLARATION = /(?:^|\n)REVIEW-MODE:\s*(drive|gates)\s*\nREVIEW-VERDICT:\s*(verified|unverified)\s*\nREVIEW-REASON:\s*([^\r\n]*)/i
+// The REVIEW-REASON line is optional: the template only requires it when a pass
+// is unverified, so a clean pass often ends the digest at the verdict line.
+const DECLARATION =
+  /(?:^|\n)REVIEW-MODE:\s*(drive|gates)\s*\nREVIEW-VERDICT:\s*(verified|unverified)\b(?:\s*\nREVIEW-REASON:[ \t]*([^\r\n]*))?/i
 
 /**
  * The pass's recorded outcome, from what the agent declared and what the host
@@ -355,7 +358,7 @@ export function resolveReviewDeclaration(
   if (!match) return { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' }
   const reviewMode = match[1]!.toLowerCase() as 'drive' | 'gates'
   const declared = match[2]!.toLowerCase() as 'verified' | 'unverified'
-  const declaredReason = match[3]!.trim()
+  const declaredReason = (match[3] ?? '').trim()
   if (declared === 'unverified') {
     return {
       reviewMode,

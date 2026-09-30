@@ -1,4 +1,3 @@
-import type { Waypoint } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 
 /**
@@ -16,7 +15,6 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     slug: over.slug ?? 'demo',
     title: 'Demo',
     oneLiner: '',
-    mapped: false,
     phase: over.phase ?? 'planning',
     branch: 'feature/demo',
     baseBranch: 'main',
@@ -37,7 +35,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
   } as FeatureListItem
 }
 
-/** A feature with nothing on it yet — no tickets, sessions, docs or waypoints. */
+/** A feature with nothing on it yet — no tickets, sessions or docs. */
 export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
   return {
     feature: { ...listItem(over as Partial<FeatureListItem>) } as FeatureFull['feature'],
@@ -46,23 +44,5 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     runs: [],
     docs: [],
     gate: { next: null, satisfied: false },
-    waypoints: [],
-    frontierIds: [],
   } as unknown as FeatureFull
-}
-
-/** One waypoint of a mapped feature: open, unblocked and unclaimed by default. */
-export function wp(over: Partial<Waypoint> & Pick<Waypoint, 'id' | 'seq' | 'title'>): Waypoint {
-  return {
-    featureId: 'feat_1',
-    type: 'grilling',
-    question: `what about ${over.title}?`,
-    blockedBy: [],
-    originWaypointId: null,
-    status: 'open',
-    claimedBy: null,
-    lastSessionId: null,
-    summary: null,
-    ...over,
-  } as Waypoint
 }

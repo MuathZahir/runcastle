@@ -26,11 +26,13 @@
 
 /**
  * The canonical feature docs, in the order an agent should meet them. These are
- * the four the pipeline itself scaffolds and writes (`scaffoldDocs`,
- * `scaffoldMapDoc`), and between them they carry a feature's whole intent:
- * what it is, where it is going, what was decided, and what to build.
+ * the three the pipeline itself scaffolds and writes (`scaffoldDocs`, then the
+ * planning sessions), and between them they carry a feature's whole intent:
+ * what it is, what was decided, and what to build. A `map.md` left over from
+ * retired map ideation is not among them — it is indexed like any other doc
+ * (ADR-0012).
  */
-export const AGENT_DIGEST_DOCS = ['brief.md', 'map.md', 'decisions.md', 'spec.md'] as const
+export const AGENT_DIGEST_DOCS = ['brief.md', 'decisions.md', 'spec.md'] as const
 
 export type AgentDigestDoc = (typeof AGENT_DIGEST_DOCS)[number]
 
@@ -94,7 +96,7 @@ export function isAgentDigestDoc(relPath: string): boolean {
 /**
  * Sort key putting the canonical docs in {@link AGENT_DIGEST_DOCS} order and
  * everything else after them alphabetically — so a rendered digest always reads
- * brief → map → decisions → spec regardless of how the filesystem enumerated it.
+ * brief → decisions → spec regardless of how the filesystem enumerated it.
  */
 export function agentDigestDocOrder(relPath: string): number {
   const i = (AGENT_DIGEST_DOCS as readonly string[]).indexOf(relPath.toLowerCase())
@@ -103,14 +105,14 @@ export function agentDigestDocOrder(relPath: string): number {
 
 /**
  * The order canonical docs claim room in a size-capped payload
- * (`get_feature_context`'s never-hidden ceiling): brief first, map last. Distinct
- * from the {@link AGENT_DIGEST_DOCS} reading order, which other callers rely on.
+ * (`get_feature_context`'s never-hidden ceiling): brief first, spec last. Kept
+ * distinct from the {@link AGENT_DIGEST_DOCS} reading order, which other callers
+ * rely on, even while the two agree.
  */
 export const AGENT_DIGEST_FILL_ORDER: readonly AgentDigestDoc[] = [
   'brief.md',
   'decisions.md',
   'spec.md',
-  'map.md',
 ]
 
 /**

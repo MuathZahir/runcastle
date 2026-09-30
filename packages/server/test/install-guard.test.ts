@@ -130,7 +130,7 @@ describe('install guard', () => {
   })
 
   it('denies every feature-worktree kind', () => {
-    for (const kind of ['chat', 'waypoint', 'converge'] as const) {
+    for (const kind of ['chat'] as const) {
       expect(denied('bun install', { kind }), kind).toBe(true)
     }
   })

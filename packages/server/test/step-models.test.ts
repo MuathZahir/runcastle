@@ -36,9 +36,6 @@ describe('per-step models (#48)', () => {
     const view = getSettings(ctx, undefined, io())
     for (const step of [
       'chat',
-      'waypoint',
-      'converge',
-      'research',
       'implement',
       'review',
       'smoke',
@@ -95,10 +92,10 @@ describe('per-step models (#48)', () => {
     expect(field(getSettings(ctx, undefined, io()), 'stepModels.smoke').value).toBe('claude-legacy')
 
     // the next write drops smokeModel and persists stepModels
-    updateSettings(ctx, { key: 'stepModels.research', value: 'claude-sonnet-5' }, io())
+    updateSettings(ctx, { key: 'stepModels.review', value: 'claude-sonnet-5' }, io())
     const raw = JSON.parse(readFileSync(configFile, 'utf8'))
     expect(raw.smokeModel).toBeUndefined()
-    expect(raw.stepModels).toEqual({ smoke: 'claude-legacy', research: 'claude-sonnet-5' })
+    expect(raw.stepModels).toEqual({ smoke: 'claude-legacy', review: 'claude-sonnet-5' })
   })
 
   it('shows a legacy ideation model as the chat step, the model a chat session launches on', () => {

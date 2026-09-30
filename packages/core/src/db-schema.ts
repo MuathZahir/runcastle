@@ -19,8 +19,6 @@ import type {
   ProjectNoteStatus,
   TicketKind,
   TicketStatus,
-  WaypointStatus,
-  WaypointType,
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
 
@@ -134,7 +132,6 @@ export const features = sqliteTable('features', {
    * it. Null for every feature not created as a draft.
    */
   brief: text('brief'),
-  mapped: integer('mapped', { mode: 'boolean' }).notNull().default(false),
   /**
    * The lap the feature is on (ADR-0010 / SPEC §15.1) — one trip round the
    * pipeline. Rethink increments it; Fix does not. Every feature ever created
@@ -405,23 +402,6 @@ export const projectNotes = sqliteTable('project_notes', {
   driveCommit: text('drive_commit'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
-})
-
-export const waypoints = sqliteTable('waypoints', {
-  id: text('id').primaryKey(),
-  featureId: text('feature_id').notNull(),
-  seq: integer('seq').notNull(),
-  title: text('title').notNull(),
-  type: text('type').notNull().$type<WaypointType>(),
-  question: text('question').notNull(),
-  // resolved global seqs (numeric batch positions + existing-waypoint ids both
-  // resolve to seq on store; see storeWaypoints)
-  blockedBy: text('blocked_by', { mode: 'json' }).notNull().$type<number[]>(),
-  originWaypointId: text('origin_waypoint_id'),
-  status: text('status').notNull().$type<WaypointStatus>(),
-  claimedBy: text('claimed_by'),
-  lastSessionId: text('last_session_id'),
-  summary: text('summary'),
 })
 
 export const runs = sqliteTable('runs', {

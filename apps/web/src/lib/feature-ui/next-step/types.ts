@@ -9,9 +9,6 @@
 export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
-  'converge', // feature.converge — turn a finished map into a spec and tickets
-  'workNext', // feature.workWaypoint — work the next ready mapped waypoint
-  'resumeConverge', // feature.converge — resume a stranded converge session
   'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
   'openBurnSettings', // opens Settings → Burns where a failed run's summary points (image rebuild)
@@ -37,7 +34,6 @@ export interface NextAction {
   label: string
   kind: ActionKind
   danger?: boolean
-  waypointId?: string
   /** Additional explanation rendered as the action's title. */
   hint?: string
   /**

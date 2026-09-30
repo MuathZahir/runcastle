@@ -19,21 +19,17 @@ import {
   lapAccount,
   landingFeature,
   lastTestDriveLap,
-  liveSessionBlocker,
-  mapProgress,
   mergeConflictKickoff,
   needsMe,
   nextStep,
   openApp,
   openAppWaitingLabel,
-  parseMapSections,
   PHASE_ORDER,
   phaseGlyph,
   reviewOutcome,
   reviewWalkthroughUrl,
   rowChip,
   sessionActive,
-  sessionDoneState,
   sessionNotReady,
   sessionStatusLabel,
   shippedAt,
@@ -49,15 +45,13 @@ import {
   triage,
   triageOf,
   unresolvedMergeConflict,
-  waypointGroups,
   type NextAction,
   type TriageGroup,
   type TriageKey,
-  type Waypoint,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { runHeadline } from '../src/lib/feature-ui/run'
-import { full, listItem, wp } from './fixtures'
+import { full, listItem } from './fixtures'
 
 /**
  * Merge is reachable from every state after creation (decisions §3), so every
@@ -321,7 +315,7 @@ describe('nextStep — Resume vs Start wording for the chat', () => {
     docs?: string[]
   }) =>
     ({
-      feature: { id: 'f1', phase: opts.phase ?? 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: opts.phase ?? 'planning', status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -347,18 +341,6 @@ describe('nextStep — Resume vs Start wording for the chat', () => {
     expect(ns.primary?.label).toBe('Start session')
   })
 
-  // The three door-specific kinds collapsed into one `chat` (one-chat-per-feature
-  // decision 3), so "a resumable session of a DIFFERENT kind" no longer names
-  // anything a feature's own conversation could be: a converge is the only other
-  // session planning can leave behind, and `resumeLabel` counts it deliberately.
-  it('says Resume off a converge conversation too — it is the same transcript', () => {
-    const converged = [{ id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' }]
-    const ns = nextStep(grillFull({ docs: ['decisions.md'], sessions: converged }), {
-      driving: false,
-    })
-    expect(ns.primary?.label).toBe('Resume session')
-  })
-
   it('carries the same wording across every step inside planning', () => {
     // Same session, further along: the artifacts on disk move the hint from
     // ideation to spec to tickets, and the launch wording never changes.
@@ -379,7 +361,7 @@ describe('nextStep — Resume vs Start wording for the chat', () => {
 describe('nextStep at building with no tickets', () => {
   const buildFull = (opts: { sessions?: unknown[]; runs?: unknown[] } = {}) =>
     ({
-      feature: { id: 'f1', phase: 'building', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'building', status: 'active' },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: opts.runs ?? [],
@@ -431,7 +413,7 @@ describe('nextStep at building with no tickets', () => {
 describe('nextStep after a server restart interrupted a burn', () => {
   const interrupted = (statuses: string[]) =>
     ({
-      feature: { id: 'f1', phase: 'building', lap: 1, mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'building', lap: 1, status: 'active' },
       tickets: statuses.map((status, index) => ({
         id: `t${index}`,
         seq: index + 1,
@@ -602,7 +584,6 @@ describe('nextStep — live sessions go status-only', () => {
       feature: {
         id: 'f1',
         phase: 'planning',
-        mapped: false,
         status: 'active',
         lap: 1,
         ticketsReadyLap: opts.ticketsReady ? 1 : null,
@@ -794,7 +775,7 @@ describe('nextStep at review', () => {
     }))
     const sessions = opts.sessionLive ? [{ id: 's1', status: 'live', kind: 'chat' }] : []
     return {
-      feature: { id: 'f1', phase: 'review', mapped: false, lap: opts.lap ?? 1 },
+      feature: { id: 'f1', phase: 'review', lap: opts.lap ?? 1 },
       tickets,
       sessions,
       runs: opts.runs ?? [{ id: 'r1', status: 'succeeded', startedAt: 1 }],
@@ -1595,7 +1576,7 @@ describe('groupByLap', () => {
 describe('ticketsAreBody — the ledger is the page before the first burn', () => {
   const featureFull = (phase: Phase, opts: { tickets?: unknown[]; sessions?: unknown[] } = {}): FeatureFull =>
     ({
-      feature: { id: 'f1', phase, mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase, lap: 1, status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -1635,7 +1616,7 @@ describe('ticketsAreBody — the ledger is the page before the first burn', () =
 describe('nextStep at planning — the step derived from the artifacts', () => {
   const planningFull = (opts: { docs?: string[]; tickets?: unknown[] } = {}): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', lap: 1, status: 'active' },
       tickets: opts.tickets ?? [],
       sessions: [],
       runs: [],
@@ -1720,7 +1701,7 @@ describe('nextStep at planning — the step derived from the artifacts', () => {
 describe('nextStep at planning on a later lap', () => {
   const lapFull = (opts: { lap: number; sessions?: unknown[] }): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active', lap: opts.lap },
+      feature: { id: 'f1', phase: 'planning', status: 'active', lap: opts.lap },
       tickets: [],
       sessions: opts.sessions ?? [],
       runs: [],
@@ -1735,15 +1716,6 @@ describe('nextStep at planning on a later lap', () => {
     expect(ns.secondary).toEqual([MERGE_ACTION])
     expect(ns.title).toBe('Work lap 2')
     expect(ns.desc).toContain('test-drive notes')
-  })
-
-  it('starts lap 2 before considering a completed map', () => {
-    const full = lapFull({ lap: 2 })
-    full.feature.mapped = true
-    expect(nextStep(full, { driving: false }).primary).toEqual({
-      label: 'Start lap 2 session',
-      kind: 'chat',
-    })
   })
 
   it('says Resume once the lap has a conversation on disk', () => {
@@ -2557,7 +2529,7 @@ describe('nextStep at building', () => {
     shapes?: { goal: string; context: string; kind?: 'implementation' | 'review' }[]
   }): FeatureFull =>
     ({
-      feature: { id: 'f1', phase: 'building', mapped: false, lap: 1, status: 'active' },
+      feature: { id: 'f1', phase: 'building', lap: 1, status: 'active' },
       tickets: (
         opts.ticketStatuses ??
         opts.shapes?.map(() => 'pending' as const) ?? ['pending']
@@ -2970,126 +2942,6 @@ describe('nextStep at building', () => {
 })
 
 /**
- * Improve-map-workflow ticket 3 — the map rail's two seams. `parseMapSections`
- * was private to the grill body; the rail and the fog warning now read one
- * implementation, so it is tested here on its own.
- */
-describe('parseMapSections', () => {
-  it('splits a map into its `## ` sections, keyed by heading', () => {
-    const map = [
-      '# Map — demo',
-      '',
-      'preamble that belongs to no section',
-      '',
-      '## Destination',
-      'Ship the rail.',
-      '',
-      '## Out of scope',
-      'The tickets body.',
-    ].join('\n')
-    expect(parseMapSections(map)).toEqual({
-      Destination: 'Ship the rail.\n',
-      'Out of scope': 'The tickets body.',
-    })
-  })
-
-  it('keeps deeper headings inside their section rather than opening a new one', () => {
-    const map = ['## Notes', 'intro', '### A sub-heading', 'detail'].join('\n')
-    expect(parseMapSections(map)).toEqual({ Notes: 'intro\n### A sub-heading\ndetail' })
-  })
-
-  it('returns nothing for a map with no `## ` headings at all', () => {
-    expect(parseMapSections('just prose\nand more prose')).toEqual({})
-  })
-
-  it('records an empty body for a heading with nothing under it', () => {
-    expect(parseMapSections('## Not yet specified')).toEqual({ 'Not yet specified': '' })
-  })
-})
-
-/** A waypoint row as the wire sends it, for the two rail derivations below. */
-/**
- * Improve-map-workflow ticket 6 — the next-step bar owns convergence. The map
- * survives the four-state collapse as a MODE inside planning (ADR-0001), so
- * this is the same bar it always was: Converge is the primary once every
- * waypoint is terminal, Work next while any is open, and remaining fog rides
- * along as a note that never gates the button.
- */
-describe('nextStep — the map mode inside planning owns Converge', () => {
-  function mappedIdeation(opts: { complete?: boolean; live?: boolean } = {}): FeatureFull {
-    const complete = opts.complete ?? false
-    return {
-      feature: { id: 'f1', phase: 'planning', mapped: true, lap: 1, status: 'active' },
-      tickets: [],
-      sessions: opts.live ? [{ id: 's1', status: 'live', kind: 'waypoint' }] : [],
-      runs: [],
-      docs: [],
-      waypoints: [
-        wp({ id: 'late', seq: 8, title: 'Later choice', ...(complete ? { status: 'resolved' as const } : {}) }),
-        wp({ id: 'done', seq: 1, title: 'Finished', status: 'resolved' }),
-        wp({ id: 'next', seq: 3, title: 'Choose storage', ...(complete ? { status: 'dropped' as const } : {}) }),
-      ],
-      frontierIds: complete ? [] : ['late', 'next'],
-    } as unknown as FeatureFull
-  }
-
-  const MAP_WITH_FOG = [
-    '## Destination',
-    'Ship the rail.',
-    '',
-    '## Not yet specified',
-    'the keyboard shortcut for “work next waypoint”',
-  ].join('\n')
-
-  it('makes Converge the primary action once every waypoint is terminal', () => {
-    const ns = nextStep(mappedIdeation({ complete: true }), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Converge', kind: 'converge' })
-    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
-    expect(ns.title).toBe('The map is complete')
-  })
-
-  it('works the lowest-seq ready waypoint and puts orientation in the description', () => {
-    const ns = nextStep(mappedIdeation(), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Work next', kind: 'workNext', waypointId: 'next' })
-    expect(ns.desc).toContain('1 of 3 waypoints done · 2 ready to work')
-    expect(ns.desc).toContain('next: Choose storage')
-    expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
-  })
-
-  it('surfaces unspecified map text as one note without gating Work next', () => {
-    const ns = nextStep(mappedIdeation(), {
-      driving: false,
-      mapContent: MAP_WITH_FOG,
-    })
-    expect(ns.note).toBe('Still unspecified: the keyboard shortcut for “work next waypoint”')
-    expect(ns.primary?.kind).toBe('workNext')
-  })
-
-  it('carries no note when the map has no unspecified text, or has not loaded yet', () => {
-    const clear = '## Destination\nShip the rail.\n\n## Not yet specified\n\n'
-    expect(nextStep(mappedIdeation(), { driving: false, mapContent: clear }).note).toBeUndefined()
-    expect(nextStep(mappedIdeation(), { driving: false }).note).toBeUndefined()
-  })
-
-  it('never offers the scroll-to-terminal action, live session or not', () => {
-    for (const complete of [true, false]) {
-      const ns = nextStep(mappedIdeation({ complete, live: true }), { driving: false })
-      const kinds = [ns.primary, ...ns.secondary].map((a) => a?.kind)
-      expect(kinds).not.toContain('openGrill')
-    }
-  })
-
-  it('waits when research owns the only open waypoint', () => {
-    const mapped = mappedIdeation()
-    mapped.waypoints = [wp({ id: 'research', seq: 1, title: 'Research', status: 'claimed', claimedBy: 'run_1' })]
-    mapped.frontierIds = []
-    const ns = nextStep(mapped, { driving: false })
-    expect(ns.title).toBe('Waiting on 1 research run')
-    expect(ns.primary).toBeUndefined()
-  })
-})
-
-/**
  * The doors out of planning, now that one state covers what spec and tickets
  * used to: which one the bar offers is read off the artifacts (decisions §2),
  * so the copy can never contradict the document in the pane beside it.
@@ -3098,13 +2950,14 @@ describe('nextStep at planning — which door the artifacts open', () => {
   const docs = (...relPaths: string[]) =>
     relPaths.map((relPath) => ({ relPath: `docs/features/demo/${relPath}` })) as FeatureFull['docs']
 
-  it('resumes a mapped converge that ended before the spec landed', () => {
-    const mapped = full({ phase: 'planning' })
-    mapped.feature = { ...mapped.feature, mapped: true }
-    mapped.docs = docs('decisions.md')
-    const ns = nextStep(mapped, { driving: false })
-    expect(ns.title).toBe('Finish converging')
-    expect(ns.primary).toEqual({ label: 'Resume converge', kind: 'resumeConverge' })
+  // Map ideation is retired (ADR-0012): a feature that still has an old map.md
+  // on disk keeps it as plain history and takes the same linear road.
+  it('walks a feature with a leftover map.md down the linear ladder', () => {
+    const withMap = full({ phase: 'planning' })
+    withMap.docs = docs('map.md', 'decisions.md')
+    const ns = nextStep(withMap, { driving: false })
+    expect(ns.title).toBe('Write the spec')
+    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
   })
 
   it('asks for tickets, not a spec, once spec.md sits in the pane beside the bar', () => {
@@ -3120,7 +2973,7 @@ describe('nextStep at planning — which door the artifacts open', () => {
     const written = full({ phase: 'planning' })
     written.docs = docs('decisions.md', 'spec.md')
     written.sessions = [
-      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+      { id: 's1', status: 'ended', kind: 'chat', ccSessionId: 'cc-1' },
     ] as unknown as FeatureFull['sessions']
     const ns = nextStep(written, { driving: false })
     expect(ns.title).toBe('Emit the tickets')
@@ -3161,287 +3014,6 @@ describe('nextStep at planning — which door the artifacts open', () => {
 })
 
 /**
- * Improve-map-workflow ticket 3 — the rail's grouping, ordering, lineage and
- * default-expanded state as a pure derivation, because this repo has no DOM
- * test environment and the rail component is kept thin over it.
- */
-describe('waypointGroups', () => {
-  const keys = (gs: ReturnType<typeof waypointGroups>) => gs.map((g) => g.key)
-  const titles = (gs: ReturnType<typeof waypointGroups>, key: string) =>
-    gs.find((g) => g.key === key)?.waypoints.map((r) => r.waypoint.title) ?? []
-
-  it('returns nothing for a map with no waypoints yet', () => {
-    expect(waypointGroups([], [])).toEqual([])
-  })
-
-  it('groups frontier, claimed, blocked and terminal waypoints in rail order', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'resolved one', status: 'resolved', summary: 'done' }),
-      wp({ id: 'w2', seq: 2, title: 'claimed one', status: 'claimed', claimedBy: 'sess_1' }),
-      wp({ id: 'w3', seq: 3, title: 'open one' }),
-      wp({ id: 'w4', seq: 4, title: 'blocked one', blockedBy: [2] }),
-      wp({ id: 'w5', seq: 5, title: 'dropped one', status: 'dropped' }),
-    ]
-    const groups = waypointGroups(ws, ['w3'])
-    expect(keys(groups)).toEqual(['ready', 'working', 'waiting', 'done'])
-    expect(titles(groups, 'ready')).toEqual(['open one'])
-    expect(titles(groups, 'working')).toEqual(['claimed one'])
-    expect(titles(groups, 'waiting')).toEqual(['blocked one'])
-    expect(titles(groups, 'done')).toEqual(['resolved one', 'dropped one'])
-  })
-
-  it('omits groups that have no waypoints', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
-    expect(keys(waypointGroups(ws, ['w1']))).toEqual(['ready'])
-  })
-
-  it('orders the frontier by ascending seq whatever order the server sent', () => {
-    const ws = [
-      wp({ id: 'w9', seq: 9, title: 'ninth' }),
-      wp({ id: 'w2', seq: 2, title: 'second' }),
-      wp({ id: 'w5', seq: 5, title: 'fifth' }),
-    ]
-    const groups = waypointGroups(ws, ['w9', 'w2', 'w5'])
-    expect(titles(groups, 'ready')).toEqual(['second', 'fifth', 'ninth'])
-  })
-
-  it('resolves blockedBy seqs to blocker titles, dropping the ones already terminal', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'already resolved', status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'still open' }),
-      wp({ id: 'w3', seq: 3, title: 'waits on both', blockedBy: [1, 2] }),
-    ]
-    const groups = waypointGroups(ws, ['w2'])
-    const blocked = groups.find((g) => g.key === 'waiting')?.waypoints ?? []
-    expect(blocked.map((r) => r.blockerTitles)).toEqual([['still open']])
-  })
-
-  it('ignores a blockedBy seq that names no waypoint', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'orphan edge', blockedBy: [42] })]
-    const groups = waypointGroups(ws, [])
-    expect(groups.find((g) => g.key === 'waiting')?.waypoints[0].blockerTitles).toEqual([])
-  })
-
-  it('names the waypoint that surfaced a later one, and leaves origin-less ones bare', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'the origin', status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'surfaced later', originWaypointId: 'w1' }),
-      wp({ id: 'w3', seq: 3, title: 'charted up front' }),
-    ]
-    const groups = waypointGroups(ws, ['w2', 'w3'])
-    const frontier = groups.find((g) => g.key === 'ready')?.waypoints ?? []
-    expect(frontier.map((r) => r.originTitle)).toEqual(['the origin', undefined])
-  })
-
-  it('starts frontier waypoints expanded and every other group collapsed', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'frontier', status: 'open' }),
-      wp({ id: 'w2', seq: 2, title: 'claimed', status: 'claimed', claimedBy: 'sess_1' }),
-      wp({ id: 'w3', seq: 3, title: 'blocked', blockedBy: [2] }),
-      wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
-    ]
-    const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.waypoints.map((r) => r.openByDefault))).toEqual([
-      [true],
-      [false],
-      [false],
-      [false],
-    ])
-  })
-
-  it('labels each group for the rail header', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'frontier' }),
-      wp({ id: 'w2', seq: 2, title: 'done', status: 'dropped' }),
-    ]
-    const groups = waypointGroups(ws, ['w1'])
-    expect(groups.map((g) => g.label)).toEqual(['Ready', 'Done'])
-  })
-
-  it('derives each state word and names the first open blocker', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'ready' }),
-      wp({ id: 'w2', seq: 2, title: 'working', status: 'claimed' }),
-      wp({ id: 'w3', seq: 3, title: 'waiting', blockedBy: [2] }),
-      wp({ id: 'w4', seq: 4, title: 'done', status: 'resolved' }),
-    ]
-    expect(waypointGroups(ws, ['w1']).flatMap((group) => group.waypoints.map((row) => row.stateWord)))
-      .toEqual(['Ready', 'Working', 'Waiting on "working"', 'Done'])
-  })
-
-  it('opens every card in a read-only record', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'waiting' }), wp({ id: 'w2', seq: 2, title: 'done', status: 'resolved' })]
-    expect(waypointGroups(ws, [], true).flatMap((group) => group.waypoints.map((row) => row.openByDefault)))
-      .toEqual([true, true])
-  })
-})
-
-describe('mapProgress', () => {
-  it('counts resolved and dropped as done and server-frontier ids as ready', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'resolved', status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'dropped', status: 'dropped' }),
-      wp({ id: 'w3', seq: 3, title: 'ready' }),
-      wp({ id: 'w4', seq: 4, title: 'waiting' }),
-    ]
-    expect(mapProgress(ws, ['w3'])).toEqual({ done: 2, total: 4, ready: 1 })
-  })
-})
-
-/**
- * Improve-map-workflow ticket 5 — the session strip's done state. A waypoint
- * session finds its own waypoint through `lastSessionId` (resolving clears the
- * claim but leaves that pointer), and the strip then says one of three things —
- * or nothing at all, while the work is still live. Pure derivation: this repo
- * has no DOM environment, so the strip is kept thin over it.
- */
-describe('sessionDoneState', () => {
-  const session = { id: 'sess_1', kind: 'waypoint', status: 'live' }
-
-  function mappedFull(waypoints: Waypoint[], frontierIds: string[]): FeatureFull {
-    return {
-      feature: { id: 'feat_1', phase: 'planning', mapped: true, status: 'active' },
-      tickets: [],
-      sessions: [session],
-      runs: [],
-      docs: [],
-      gate: { next: { id: 'G1' }, satisfied: false, reason: null },
-      waypoints,
-      frontierIds,
-    } as unknown as FeatureFull
-  }
-
-  const mine = (over: Partial<Waypoint> = {}) =>
-    wp({ id: 'w1', seq: 1, title: 'mine', lastSessionId: session.id, ...over })
-
-  it('is not done while this session’s waypoint is still claimed', () => {
-    const ws = [mine({ status: 'claimed', claimedBy: session.id })]
-    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({ kind: 'notDone' })
-  })
-
-  it('is not done when no waypoint points at the session (it never went live)', () => {
-    // `lastSessionId` is only promoted once the session-start hook fires, so a
-    // session that died before going live owns no waypoint at all.
-    const ws = [wp({ id: 'w1', seq: 1, title: 'someone else’s', status: 'resolved' })]
-    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({ kind: 'notDone' })
-  })
-
-  it('is not done on an unmapped feature, which has no waypoints', () => {
-    expect(sessionDoneState(mappedFull([], []), session)).toEqual({ kind: 'notDone' })
-  })
-
-  it('offers the lowest-seq frontier waypoint once its own waypoint resolved', () => {
-    const ws = [
-      mine({ status: 'resolved', summary: 'shipped the rail' }),
-      wp({ id: 'w5', seq: 5, title: 'fifth' }),
-      wp({ id: 'w2', seq: 2, title: 'second' }),
-    ]
-    const state = sessionDoneState(mappedFull(ws, ['w5', 'w2']), session)
-    expect(state.kind).toBe('workNext')
-    if (state.kind !== 'workNext') return
-    expect(state.waypoint.summary).toBe('shipped the rail')
-    expect(state.next.title).toBe('second')
-  })
-
-  it('ignores a lower-seq waypoint that is not on the frontier', () => {
-    const ws = [
-      mine({ status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'blocked', blockedBy: [3] }),
-      wp({ id: 'w3', seq: 3, title: 'open one' }),
-    ]
-    const state = sessionDoneState(mappedFull(ws, ['w3']), session)
-    expect(state.kind === 'workNext' && state.next.title).toBe('open one')
-  })
-
-  it('treats a dropped waypoint as done too', () => {
-    const ws = [mine({ status: 'dropped' }), wp({ id: 'w2', seq: 2, title: 'second' })]
-    expect(sessionDoneState(mappedFull(ws, ['w2']), session).kind).toBe('workNext')
-  })
-
-  it('reports the research runs still in flight when the frontier is empty', () => {
-    const ws = [
-      mine({ status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'researching', status: 'claimed', claimedBy: 'run_1' }),
-      wp({ id: 'w3', seq: 3, title: 'also researching', status: 'claimed', claimedBy: 'run_2' }),
-      wp({ id: 'w4', seq: 4, title: 'waits on both', blockedBy: [2, 3] }),
-    ]
-    const state = sessionDoneState(mappedFull(ws, []), session)
-    expect(state).toEqual({ kind: 'awaitingResearch', waypoint: ws[0], claimed: 2 })
-  })
-
-  it('reports the map complete once every waypoint is terminal', () => {
-    const ws = [
-      mine({ status: 'resolved' }),
-      wp({ id: 'w2', seq: 2, title: 'second', status: 'resolved' }),
-      wp({ id: 'w3', seq: 3, title: 'third', status: 'dropped' }),
-    ]
-    expect(sessionDoneState(mappedFull(ws, []), session)).toEqual({
-      kind: 'mapComplete',
-      waypoint: ws[0],
-    })
-  })
-})
-
-/**
- * Improve-map-workflow ticket 4 — a refused Work click becomes an inline confirm
- * on the card instead of a toast, and the confirm has to name what it would end.
- * This is the derivation behind that sentence.
- */
-describe('liveSessionBlocker', () => {
-  const sessions = (rows: unknown[]) => rows as FeatureFull['sessions']
-
-  it('names the still-open waypoint the live session is working', () => {
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'Session handoff', status: 'claimed', claimedBy: 'sess_1' }),
-      wp({ id: 'w2', seq: 2, title: 'next up' }),
-    ]
-    expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws),
-    ).toEqual({ sessionId: 'sess_1', kind: 'waypoint', waypointTitle: 'Session handoff' })
-  })
-
-  it('finds nothing when no session is live or launching', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'only one' })]
-    expect(liveSessionBlocker(sessions([{ id: 'sess_1', status: 'ended', kind: 'waypoint' }]), ws))
-      .toBeUndefined()
-    expect(liveSessionBlocker(sessions([]), ws)).toBeUndefined()
-  })
-
-  it('counts a launching session — its terminal is already on the way', () => {
-    expect(
-      liveSessionBlocker(sessions([{ id: 'sess_2', status: 'launching', kind: 'waypoint' }]), []),
-    ).toEqual({ sessionId: 'sess_2', kind: 'waypoint', waypointTitle: undefined })
-  })
-
-  it('reports no waypoint for a live session holding none (the ideation grill)', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'charted by the grill' })]
-    expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'chat' }]), ws),
-    ).toEqual({ sessionId: 'sess_1', kind: 'chat', waypointTitle: undefined })
-  })
-
-  it('ignores a resolved waypoint that merely remembers the session', () => {
-    // resolveWaypoint clears claimedBy but keeps lastSessionId — that session is
-    // finished, and the server ends it without ever asking the human.
-    const ws = [
-      wp({ id: 'w1', seq: 1, title: 'already answered', status: 'resolved', lastSessionId: 'sess_1' }),
-    ]
-    expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
-        ?.waypointTitle,
-    ).toBeUndefined()
-  })
-
-  it('ignores a waypoint claimed by a parallel research RUN, not by the session', () => {
-    const ws = [wp({ id: 'w1', seq: 1, title: 'researching', status: 'claimed', claimedBy: 'run_9' })]
-    expect(
-      liveSessionBlocker(sessions([{ id: 'sess_1', status: 'live', kind: 'waypoint' }]), ws)
-        ?.waypointTitle,
-    ).toBeUndefined()
-  })
-})
-
-/**
  * Chat lives on the shipped bar, so the terminal it resumes has to appear in the
  * shipped body — but only the chat conversation, and only when there is one
  * worth showing: a shipped feature is full of ended pipeline sessions, and a
@@ -3470,8 +3042,7 @@ describe('shippedChatSessions', () => {
     // Every pipeline session is ended and resumable by the time a feature ships —
     // those belong to the phase bodies that own them, not to the shipped hero.
     const rows = sessions([
-      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
-      { id: 's2', status: 'ended', kind: 'waypoint', ccSessionId: 'cc-2' },
+      { id: 's1', status: 'ended', kind: 'drive-fix', ccSessionId: 'cc-1' },
     ])
     expect(shippedChatSessions(rows)).toEqual([])
     expect(shippedChatSessions(sessions([]))).toEqual([])
@@ -3480,7 +3051,7 @@ describe('shippedChatSessions', () => {
   it('keeps only the chat rows when the feature also has other sessions', () => {
     const chat = { id: 's2', status: 'live', kind: 'chat', ccSessionId: null }
     const rows = sessions([
-      { id: 's1', status: 'ended', kind: 'converge', ccSessionId: 'cc-1' },
+      { id: 's1', status: 'ended', kind: 'drive-fix', ccSessionId: 'cc-1' },
       chat,
     ])
     expect(shippedChatSessions(rows)).toEqual([chat])
@@ -3799,7 +3370,7 @@ describe('ticketModelChip — what a card says about its burn model', () => {
 describe('nextStep — naming the runtime in the copy', () => {
   const planning = (sessions: unknown[]) =>
     ({
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', status: 'active' },
       tickets: [],
       sessions,
       runs: [],
@@ -3838,7 +3409,7 @@ describe('nextStep — naming the runtime in the copy', () => {
   // both runtimes — there is no single one to name.
   it('does not name a runtime for a ticket batch that may span both', () => {
     const full = {
-      feature: { id: 'f1', phase: 'planning', mapped: false, status: 'active' },
+      feature: { id: 'f1', phase: 'planning', status: 'active' },
       tickets: [{ id: 't1', seq: 1, status: 'todo', ...BURNABLE }],
       sessions: [],
       runs: [],

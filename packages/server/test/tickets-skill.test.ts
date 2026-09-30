@@ -67,22 +67,3 @@ describe('the tickets skill', () => {
     expect(selfCheck).toContain('total / concurrency')
   })
 })
-
-/**
- * The converge session emits the same batch from compressed knowledge instead
- * of from a live grilling, so both batch-wide rules have to reach it too. It
- * delegates to `/runcastle:tickets`, but a map worked waypoint by waypoint is
- * exactly where chaining-by-habit comes from, so the rule is named on the path.
- */
-describe('the converge skill', () => {
-  it('carries the review-ticket rule and the parallelism budget into the mapped path', () => {
-    const text = readFileSync(
-      join(resolvePluginDir(), 'skills', 'converge', 'SKILL.md'),
-      'utf8',
-    )
-    expect(text).toContain('one review ticket')
-    expect(text).toContain('critical path')
-    expect(text).toContain('burnConcurrency')
-    expect(text).toContain('total / concurrency')
-  })
-})

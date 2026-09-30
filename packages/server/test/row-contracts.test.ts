@@ -1,25 +1,37 @@
-import type { Feature, Project, SessionKind, TicketInput, WaypointInput } from '@runcastle/core'
-import { newId } from '@runcastle/core'
-import { eq } from 'drizzle-orm'
+import { copyFileSync, mkdtempSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import type { Feature, Project, SessionKind, TicketInput } from '@runcastle/core'
+import { newId, RuncastleConfig } from '@runcastle/core'
+import { eq, sql } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/sql-js'
+import initSqlJs from 'sql.js'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ZodError } from 'zod'
+import { runMigrations } from '../src/db/migrate'
 import {
   events,
   features,
   projects,
   runs,
+  schema,
   sessions,
   testNotes,
   tickets,
-  waypoints,
 } from '../src/db/schema'
-import type { AppCtx } from '../src/db/types'
+import type { AppCtx, Db } from '../src/db/types'
+import { mostRecentResumableSession } from '../src/launcher/sessions'
 import { emit, listAfter } from '../src/services/events'
 import { getFeatureFull } from '../src/services/features'
-import { getProjectById, listRunsByFeature, listSessionsByFeature } from '../src/services/repo'
+import {
+  getFeatureRow,
+  getProjectById,
+  listRunsByFeature,
+  listSessionsByFeature,
+} from '../src/services/repo'
 import { listByFeature as listNotes } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets } from '../src/services/tickets'
-import { listByFeature as listWaypoints, storeWaypoints } from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
@@ -53,10 +65,6 @@ function expectRejectsField(read: () => unknown, field: string): void {
 
 function ticket(title: string): TicketInput {
   return { title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] }
-}
-
-function waypoint(title: string): WaypointInput {
-  return { title, type: 'grilling', question: `q: ${title}`, blockedBy: [] }
 }
 
 describe('row → wire contracts', () => {
@@ -167,17 +175,6 @@ describe('row → wire contracts', () => {
     expectRejectsField(() => listTickets(ctx, feature.id), 'status')
   })
 
-  it('rejects a corrupt status on a waypoints row', () => {
-    const [stored] = storeWaypoints(ctx, feature.id, [waypoint('a waypoint')])
-    ctx.db
-      .update(waypoints)
-      .set({ status: 'pondering' as 'open' })
-      .where(eq(waypoints.id, stored.id))
-      .run()
-
-    expectRejectsField(() => listWaypoints(ctx, feature.id), 'status')
-  })
-
   it('rejects a corrupt status on a test_notes row', () => {
     const id = newId('note')
     const now = Date.now()
@@ -196,5 +193,75 @@ describe('row → wire contracts', () => {
       .run()
 
     expectRejectsField(() => listNotes(ctx, feature.id), 'status')
+  })
+})
+
+const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
+const RETIRE_MAPPED_MIGRATION = '0042_retire_mapped_ideation.sql'
+
+/** A copy of the migrations folder stopped just before `migration`. */
+function migrationsBefore(migration: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'runcastle-pre-migrate-'))
+  for (const file of readdirSync(DRIZZLE_DIR)) {
+    if (file.endsWith('.sql') && file < migration) copyFileSync(join(DRIZZLE_DIR, file), join(dir, file))
+  }
+  return dir
+}
+
+/**
+ * Retiring mapped ideation (ADR-0012) drops the `waypoints` table and
+ * `features.mapped` and shrinks `SessionKind`, so a DB written while maps
+ * existed has to come out of the migration with every row still readable.
+ */
+describe('row contracts across the mapped-ideation retirement', () => {
+  it('migrates a mapped feature, its waypoints and its sessions into rows that parse', async () => {
+    const SQL = await initSqlJs()
+    const db = drizzle(new SQL.Database(), { schema }) as unknown as Db
+    runMigrations(db, migrationsBefore(RETIRE_MAPPED_MIGRATION))
+    const seed = [
+      `INSERT INTO projects (id, name, repo_path) VALUES ('proj_1', 'demo', '/tmp/demo')`,
+      `INSERT INTO features (id, project_id, slug, title, one_liner, mapped, phase, branch, status, created_at)
+         VALUES ('feat_1', 'proj_1', 'mapped', 'Mapped', 'a mapped feature', 1, 'planning', 'feature/mapped', 'active', 1)`,
+      `INSERT INTO waypoints (id, feature_id, seq, title, type, question, blocked_by, status)
+         VALUES ('wp_1', 'feat_1', 1, 'Which store?', 'grilling', 'q', '[]', 'resolved')`,
+      ...(
+        [
+          ['chat', 'cc_chat'],
+          ['waypoint', 'cc_wp'],
+          ['converge', 'cc_converge'],
+        ] as const
+      ).map(
+        ([kind, ccSessionId], i) =>
+          `INSERT INTO sessions (id, feature_id, kind, status, cc_session_id, worktree_path, created_at)
+             VALUES ('sess_${i}', 'feat_1', '${kind}', 'ended', '${ccSessionId}', '/tmp/wt', ${i + 1})`,
+      ),
+      `INSERT INTO events (id, project_id, feature_id, ts, type, message, data)
+         VALUES (1, 'proj_1', 'feat_1', 1, 'waypoint.resolved', 'Which store? resolved', '{"waypointId":"wp_1"}')`,
+      `INSERT INTO events (id, project_id, feature_id, ts, type, message)
+         VALUES (2, 'proj_1', 'feat_1', 2, 'feature.escalated', 'escalated to a map')`,
+    ]
+    for (const statement of seed) db.run(sql.raw(statement))
+    const eventsBefore = db.all(sql.raw('SELECT * FROM events ORDER BY id'))
+
+    runMigrations(db, DRIZZLE_DIR)
+    const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
+
+    const tables = db.all<{ name: string }>(sql.raw(`SELECT name FROM sqlite_master WHERE type = 'table'`))
+    expect(tables.map((t) => t.name)).not.toContain('waypoints')
+    const featureColumns = db.all<{ name: string }>(sql.raw('PRAGMA table_info(features)'))
+    expect(featureColumns.map((c) => c.name)).not.toContain('mapped')
+
+    expect(getFeatureRow(ctx, 'feat_1')).not.toHaveProperty('mapped')
+    expect(getProjectById(ctx, 'proj_1')?.name).toBe('demo')
+    expect(listSessionsByFeature(ctx, 'feat_1').map((s) => [s.id, s.kind])).toEqual([
+      ['sess_0', 'chat'],
+      ['sess_1', 'chat'],
+      ['sess_2', 'chat'],
+    ])
+    // The rewritten rows lose their conversation, so Chat resumes the
+    // feature's own chat rather than a transcript told to use the map tools.
+    expect(mostRecentResumableSession(ctx, 'feat_1', 'chat')?.ccSessionId).toBe('cc_chat')
+    expect(db.all(sql.raw('SELECT * FROM events ORDER BY id'))).toEqual(eventsBefore)
+    expect(listAfter(ctx, 'feat_1').map((e) => e.type)).toEqual(['waypoint.resolved', 'feature.escalated'])
   })
 })

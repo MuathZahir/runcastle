@@ -41,8 +41,6 @@ export type TicketStatus = z.infer<typeof TicketStatus>
 
 /**
  * `qa` = "come back and ask questions" — same injection, no phase writes.
- * Mapped ideation (ADR-0001 / SPEC §13.1) adds `waypoint` (work one frontier
- * waypoint) and `converge` (read map + decisions, then spec → tickets).
  * `revisit` = "I remembered something" — resumes the feature's most recent
  * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
  * never advances phases.
@@ -56,8 +54,6 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  */
 export const SessionKind = z.enum([
   'chat',
-  'waypoint',
-  'converge',
   'prepare',
   'project',
   'drive-fix',
@@ -100,8 +96,13 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * Its briefing tells the agent to merge, resolve and commit, so the edit guard
  * lets it write files while that merge is actually in progress in its worktree
  * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
+ *
+ * `start-lap` — the feature chat opened by the review page's "Start lap N+1"
+ * door (empty-handed, or after a triage that carried work). At review it tells
+ * the launcher to brief the conversation to plan lap N+1 (`reviewLapKickoff`);
+ * the lap counter itself only moves at Burn from review.
  */
-export const SessionPurpose = z.enum(['resolve-conflict'])
+export const SessionPurpose = z.enum(['resolve-conflict', 'start-lap'])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
 /**
@@ -290,52 +291,6 @@ export const Ticket = TicketInput.extend({
   digest: z.string().optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
-
-// --- waypoints (mapped ideation, ADR-0001 / SPEC §13.1) --------------------
-
-export const WaypointType = z.enum(['grilling', 'research', 'prototype', 'task'])
-export type WaypointType = z.infer<typeof WaypointType>
-
-export const WaypointStatus = z.enum(['open', 'claimed', 'resolved', 'dropped'])
-export type WaypointStatus = z.infer<typeof WaypointStatus>
-
-/** How a waypoint terminates: `resolved` (answered) or `dropped` (out of scope). */
-export const WaypointDisposition = z.enum(['resolved', 'dropped'])
-export type WaypointDisposition = z.infer<typeof WaypointDisposition>
-
-/**
- * What any mapped session emits via MCP `emit_waypoints`. `blockedBy` mixes two
- * reference kinds resolved by `storeWaypoints`: 1-based positions within THIS
- * batch (numbers) and ids of already-stored waypoints (strings). Both resolve
- * to the referenced waypoints' global `seq` on store (mirroring tickets).
- */
-export const WaypointInput = z.object({
-  title: z.string(),
-  type: WaypointType,
-  question: z.string(),
-  blockedBy: z.array(z.union([z.number(), z.string()])),
-  /** The waypoint whose session surfaced this one (lineage; "surfaced by"). */
-  originWaypointId: z.string().optional(),
-})
-export type WaypointInput = z.infer<typeof WaypointInput>
-
-/**
- * A stored waypoint: WaypointInput plus persistence + lifecycle state.
- * `blockedBy` is narrowed to resolved global `seq` numbers. `claimedBy` holds
- * the claiming sessionId|runId while `claimed`; `lastSessionId` survives a
- * release so the UI can offer "Resume".
- */
-export const Waypoint = WaypointInput.extend({
-  id: z.string(),
-  featureId: z.string(),
-  seq: z.number(),
-  blockedBy: z.array(z.number()),
-  status: WaypointStatus,
-  claimedBy: z.string().optional(),
-  lastSessionId: z.string().optional(),
-  summary: z.string().optional(),
-})
-export type Waypoint = z.infer<typeof Waypoint>
 
 // --- test notes (test-drive capture) ---------------------------------------
 
@@ -583,12 +538,6 @@ export const Feature = z.object({
    * stays as a historical artifact. Unset on features created before drafts.
    */
   brief: z.string().optional(),
-  /**
-   * Mapped ideation (ADR-0001 / SPEC §13): the feature's ideation phase runs as
-   * a shared waypoint map instead of a single grill. Set by a mid-grill
-   * escalation. Defaults to false.
-   */
-  mapped: z.boolean(),
   /**
    * Which trip round the pipeline the feature is on (ADR-0010 / SPEC §15.1).
    * Starts at 1; a Burn from review opens the next one, and nothing else moves

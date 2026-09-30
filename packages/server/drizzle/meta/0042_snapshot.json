@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a4443f5b-bff3-4e4d-a636-9519d8190c10",
+  "id": "567e54c4-ce69-4798-9d2d-23540bd4f4dd",
   "prevId": "84a96a78-c99b-41fc-91a8-4bf0576d5049",
   "tables": {
     "events": {
@@ -146,14 +146,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "mapped": {
-          "name": "mapped",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         },
         "lap": {
           "name": "lap",
@@ -1040,13 +1032,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "review_gate_run": {
-          "name": "review_gate_run",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "completed_at": {
           "name": "completed_at",
           "type": "integer",
@@ -1117,96 +1102,9 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "waypoints": {
-      "name": "waypoints",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
         },
-        "feature_id": {
-          "name": "feature_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "question": {
-          "name": "question",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "blocked_by": {
-          "name": "blocked_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "origin_waypoint_id": {
-          "name": "origin_waypoint_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "claimed_by": {
-          "name": "claimed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_session_id": {
-          "name": "last_session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "summary": {
-          "name": "summary",
+        "review_gate_run": {
+          "name": "review_gate_run",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

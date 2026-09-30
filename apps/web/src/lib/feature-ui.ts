@@ -37,13 +37,6 @@ export * from './feature-ui/laps'
 export * from './feature-ui/timeline'
 export * from './feature-ui/checks'
 export * from './feature-ui/summary'
-export { mapDocPath, mapProgress, nextReadyWaypoint, parseMapSections, waypointGroups } from './feature-ui/map'
-export type {
-  RailWaypoint,
-  Waypoint,
-  WaypointGroup,
-  WaypointGroupKey,
-} from './feature-ui/map'
 export * from './feature-ui/session'
 export * from './feature-ui/phase-summary'
 export * from './feature-ui/next-step'

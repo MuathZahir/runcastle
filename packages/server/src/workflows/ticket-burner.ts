@@ -54,7 +54,7 @@ import {
   resolveHostAgentVersions,
 } from '../services/agent-cli-versions'
 import { isManagedImage } from '../services/sandbox-image'
-import { ADR_DIR_REL, CHARTER_FILE, MAP_SECTIONS, listLiveAdrs } from '../services/knowledge'
+import { ADR_DIR_REL, CHARTER_FILE, listLiveAdrs } from '../services/knowledge'
 import { RUNTIME_AUTH_KEY, RUNTIME_AUTH_SETUP_HINT } from '../services/setup'
 import { readDiscoverySnapshot } from '../services/model-discovery'
 import {
@@ -801,52 +801,6 @@ export function buildDocsDigest(
     )
   }
   return parts.join('\n\n---\n\n')
-}
-
-/**
- * `map.md` sections a coder must not act on, dropped from the digest.
- *
- * "Not yet specified" and "Out of scope" are the map's two negative-space
- * sections: between them they enumerate work that is deliberately NOT this
- * lap's, and on a mapped feature "Not yet specified" is the section that grows
- * without bound as waypoints pile up. The implementer is already told, twice,
- * never to expand scope beyond its ticket — so the only thing these sections can
- * change about its behaviour is to tempt it. Destination and Notes stay: those
- * are the intent a coder resolves ambiguity against.
- *
- * A pointer replaces what was cut, so the contract's naming half holds here too.
- */
-export const DROPPED_MAP_SECTIONS: readonly string[] = ['Not yet specified', 'Out of scope']
-
-/**
- * Strip {@link DROPPED_MAP_SECTIONS} out of a `map.md` body. Section headings are
- * matched at any heading level and case-insensitively, and a section runs to the
- * next heading of the same-or-shallower depth. Content with none of them is
- * returned unchanged (no pointer line is added for a cut that did not happen).
- */
-export function trimMapDoc(content: string, docPath?: string): string {
-  const lines = content.split(/\r?\n/)
-  const out: string[] = []
-  let dropping: number | null = null
-  let dropped = false
-  for (const line of lines) {
-    const heading = /^(#{1,6})\s+(.*?)\s*$/.exec(line)
-    if (heading) {
-      const depth = heading[1]?.length ?? 1
-      const title = (heading[2] ?? '').toLowerCase()
-      if (dropping !== null && depth <= dropping) dropping = null
-      if (DROPPED_MAP_SECTIONS.some((s) => s.toLowerCase() === title)) {
-        dropping = depth
-        dropped = true
-        continue
-      }
-    }
-    if (dropping === null) out.push(line)
-  }
-  const body = out.join('\n').replace(/\n{3,}$/, '\n').trimEnd()
-  if (!dropped) return content
-  const where = docPath ? ` — read \`${docPath}\` if you need them` : ''
-  return `${body}\n\n_(The "${DROPPED_MAP_SECTIONS.join('" and "')}" sections are omitted here: they describe work outside this ticket${where}.)_`
 }
 
 /** Both halves of a docs digest read off disk, plus what it cost to ship. */
@@ -3850,8 +3804,8 @@ function listFeatureDocs(docsDir: string, prefix = ''): string[] {
  * postmortem and its already-triaged bug notes, re-sent up to nine times per
  * ticket across iterations and attempts.
  *
- * Now: the four canonical docs in canonical order, `map.md` trimmed of its
- * negative-space sections, and everything else NAMED with a reason and a path.
+ * Now: the canonical docs in canonical order, and everything else NAMED with a
+ * reason and a path.
  */
 export function readDocsDigest(projectId: string, slug: string): DocsDigestResult {
   const docsRel = featureDocsRel(slug)
@@ -3893,7 +3847,6 @@ export function readDocsDigest(projectId: string, slug: string): DocsDigestResul
     } catch {
       continue // an unreadable doc is one fewer doc, never a failed burn
     }
-    if (name.toLowerCase() === 'map.md') content = trimMapDoc(content, `${docsRel}/${name}`)
     files.push({ name, content })
   }
 
@@ -3905,11 +3858,6 @@ export function readDocsDigest(projectId: string, slug: string): DocsDigestResul
     withheld,
     ...(files.length === 0 ? { missing: 'no-canonical-docs' as const } : {}),
   }
-}
-
-/** {@link readDocsDigest}, rendered — the block a prompt placeholder takes. */
-export function readDocsDigestFromDisk(projectId: string, slug: string): string {
-  return readDocsDigest(projectId, slug).text
 }
 
 /**
@@ -3935,7 +3883,7 @@ export function emitDocsDigestEvent(ctx: WorkflowCtx, docs: DocsDigestResult): v
         ? 'there is no talk worktree on disk'
         : docs.missing === 'no-docs-dir'
           ? 'the talk worktree has no docs dir for this feature'
-          : 'the docs dir holds none of brief/map/decisions/spec'
+          : 'the docs dir holds none of brief/decisions/spec'
     ctx.emitEvent({
       type: 'burn.docs.missing',
       message: `burning with NO feature spec — ${why}; every ticket runs on its own text alone`,
@@ -4061,7 +4009,7 @@ export interface BurnAgentOptions {
 
 /**
  * THE burn chokepoint: every headless agent runcastle runs — ticket burns,
- * conflict resolution, review tickets, research — is constructed here, so this
+ * conflict resolution, review tickets — is constructed here, so this
  * is the one place a runtime is chosen. The model's `runtime` decides it
  * (decision 2: runtime is a property of the model, never a separate knob), and
  * everything downstream — sandbox, prompt, completion, merge queue — is

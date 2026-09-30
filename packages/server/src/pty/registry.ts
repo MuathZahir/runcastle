@@ -187,8 +187,8 @@ class PtyRegistry {
    * status broadcast + launcher hook). Returns whether a PTY was there to kill.
    *
    * The teardown is async and continues in the background, because every caller
-   * of this form is a synchronous service (`endSession`, and the archive, delete
-   * and waypoint-sweep paths behind it) with nothing downstream that waits on a
+   * of this form is a synchronous service (`endSession`, and the archive and delete
+   * paths behind it) with nothing downstream that waits on a
    * freed port. Callers that DO wait — drive stop, server shutdown — use
    * `killTree` / `killAllTrees`.
    */

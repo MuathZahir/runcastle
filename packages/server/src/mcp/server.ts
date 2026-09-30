@@ -19,8 +19,6 @@ import type {
   Ticket,
   TicketInput as TicketInputT,
   TicketStatus as TicketStatusT,
-  Waypoint as WaypointT,
-  WaypointInput as WaypointInputT,
 } from '@runcastle/core'
 import {
   Phase,
@@ -28,8 +26,6 @@ import {
   ReviewFindingInput,
   TicketInput,
   TicketStatus,
-  WaypointDisposition,
-  WaypointInput,
   agentDigestFillRank,
   isAgentDigestDoc,
   isPastPhase,
@@ -47,7 +43,6 @@ import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
   createFeature,
-  escalateToMap,
   type FeatureListItem,
   list as listFeatures,
   quickChange,
@@ -102,18 +97,11 @@ import {
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
-import {
-  claimedForFeature,
-  frontier as waypointFrontier,
-  listByFeature as listWaypoints,
-  resolve as resolveWaypoint,
-  storeWaypoints,
-} from '../services/waypoints'
 import { withheldDriveFor } from '../workflows/review-ticket'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
- * runcastle MCP server (SPEC §6 + §13.3) — zod-validated tools over Streamable HTTP
+ * runcastle MCP server (SPEC §6) — zod-validated tools over Streamable HTTP
  * (`@hono/mcp` + `@modelcontextprotocol/sdk` 1.29, per docs/research/STACK-NOTES §5).
  *
  * Session identity: the `X-Runcastle-Session` header set in each session's
@@ -209,18 +197,9 @@ function requireFeatureId(session: SessionRow): string {
 
 // --- tool implementations (pure over AppCtx + session — unit-tested) ---------
 
-/**
- * Who a feature READ is for: the feature to read, plus the session that asked
- * when a session asked at all.
- *
- * The second field is why this is not just a string. A waypoint session's
- * assignment is "the waypoint claimed BY THIS SESSION", so the reader has to
- * carry the session id — and a run agent, which has none, correctly gets no
- * assignment rather than somebody else's.
- */
+/** Who a feature READ is for: the feature to read. */
 export interface FeatureReader {
   featureId: string
-  sessionId?: string
 }
 
 /**
@@ -241,7 +220,7 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
       'this call carries neither a session nor a live run identity — nothing to read a feature for.',
     )
   }
-  return { featureId: requireFeatureId(caller.session), sessionId: caller.session.id }
+  return { featureId: requireFeatureId(caller.session) }
 }
 
 /** One doc this payload did NOT inline, addressed well enough to go and get. */
@@ -309,7 +288,7 @@ export interface FeatureContext {
   lap: number
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
-   * ceiling, whole, in fill order: brief → decisions → spec → map.
+   * ceiling, whole, in fill order: brief → decisions → spec.
    */
   docs: { relPath: string; content: string }[]
   /**
@@ -406,17 +385,6 @@ export interface FeatureContext {
    * all, so the budget could only ever be guessed.
    */
   burnConcurrency: number
-  /** Mapped features only (ADR-0001 §13.3): every waypoint on the map… */
-  waypoints?: WaypointT[]
-  /**
-   * …and the ids of the subset currently on the frontier (open, unclaimed,
-   * unblocked). Ids rather than rows because the rows are already above, in
-   * `waypoints` — this is the shape `getFeatureFull` serves the UI, for the
-   * same reason.
-   */
-  frontierIds?: string[]
-  /** Id of the waypoint THIS session claimed (kind=waypoint) — the one to work + resolve. */
-  assignedWaypointId?: string
 }
 
 const DOCS_NOTE =
@@ -537,16 +505,6 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   // Fill order (decisions.md #5), not the reading order `agentDigestDocOrder` gives.
   canonical.sort((a, b) => agentDigestFillRank(a.doc.relPath) - agentDigestFillRank(b.doc.relPath))
 
-  // A mapped feature also exposes its map state so any session can read the
-  // waypoints and pick up the frontier (claiming stays a server-only effect).
-  // A waypoint session works exactly the waypoint it claimed — surface it so
-  // the entry skill knows its assignment without guessing from the frontier.
-  // A run agent has no session id, so it correctly has no assignment.
-  const assigned =
-    feature.mapped && reader.sessionId
-      ? claimedForFeature(ctx, feature.id).find((w) => w.claimedBy === reader.sessionId)
-      : undefined
-
   const header = {
     feature,
     phase: feature.phase,
@@ -554,10 +512,6 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...latestBurnSummary(ctx, feature.id, allTickets),
-    ...(feature.mapped
-      ? { frontierIds: waypointFrontier(ctx, feature.id).map((w) => w.id) }
-      : {}),
-    ...(assigned ? { assignedWaypointId: assigned.id } : {}),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
   }
@@ -566,7 +520,6 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     carriedDefects: carried.carriedDefects,
     findings,
     testNotes,
-    ...(feature.mapped ? { waypoints: listWaypoints(ctx, feature.id) } : {}),
   }
   let rows = allTickets.map(ticketRow)
   const lapsNotInlined: LapNotInlined[] = []
@@ -639,10 +592,7 @@ function ticketRow(ticket: Ticket): FeatureContextTicketRow {
 }
 
 export function toolGetFeatureContext(ctx: AppCtx, session: SessionRow): FeatureContext {
-  return featureContext(ctx, {
-    featureId: requireFeatureId(session),
-    sessionId: session.id,
-  })
+  return featureContext(ctx, { featureId: requireFeatureId(session) })
 }
 
 /**
@@ -714,49 +664,6 @@ export function toolGetTicket(ctx: AppCtx, reader: FeatureReader, input: { seq: 
   const ticket = listByFeature(ctx, reader.featureId).find((t) => t.seq === input.seq)
   if (!ticket) throw new NotFoundError(`ticket #${input.seq} not found on this feature`)
   return ticket
-}
-
-/** A waypoint named the way the map speaks about it: id, seq and title. */
-export interface WaypointRef {
-  id: string
-  seq: number
-  title: string
-}
-
-export interface ResolveWaypointResult {
-  ok: true
-  /** Dependents this resolve just freed — the map's answer to "what now?". */
-  unblocked: WaypointRef[]
-  /** The whole frontier after the move (open, unclaimed, unblocked). */
-  frontierIds: string[]
-}
-
-export function toolResolveWaypoint(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { id: string; disposition: 'resolved' | 'dropped'; summary: string },
-): ResolveWaypointResult {
-  // Resolving is a map move on a feature, so it needs one — the guard is what
-  // makes a project-scoped session's call a legible refusal rather than a
-  // NotFound on an id it had no business knowing.
-  const featureId = requireFeatureId(session)
-  // The service already works out which dependents this frees (it emits a
-  // `waypoint.unblocked` event per dependent) and then returns none of it, so
-  // the session's next move was a whole `get_feature_context` to find out what
-  // just happened. Diffing the frontier across the call recovers it here without
-  // changing the service the UI shares.
-  const before = new Set(waypointFrontier(ctx, featureId).map((w) => w.id))
-  // The prose answer is written to decisions.md/map.md by the session directly;
-  // this tool flips machinery only (status → terminal, cascade unblock events).
-  resolveWaypoint(ctx, input.id, input.disposition, input.summary)
-  const after = waypointFrontier(ctx, featureId)
-  return {
-    ok: true,
-    unblocked: after
-      .filter((w) => !before.has(w.id))
-      .map((w) => ({ id: w.id, seq: w.seq, title: w.title })),
-    frontierIds: after.map((w) => w.id),
-  }
 }
 
 /** A stored ticket named the way the batch speaks about it: id, seq and title. */
@@ -946,35 +853,6 @@ export function toolResolveFinding(
   return { ok: true, finding }
 }
 
-export function toolEscalateToMap(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { destination: string; notes?: string },
-): { ok: true; warning?: string } {
-  return escalateToMap(ctx, requireFeatureId(session), input)
-}
-
-export function toolEmitWaypoints(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { waypoints: WaypointInputT[] },
-): { stored: number; waypoints: WaypointRef[] } {
-  const feature = getFeatureRow(ctx, requireFeatureId(session))
-  // Waypoints only exist on a map — every session on a mapped feature may branch
-  // it (the recursion), but an unmapped feature must escalate first.
-  if (!feature.mapped) {
-    throw new GateError('feature is not mapped — call escalate_to_map before emitting waypoints')
-  }
-  const stored = storeWaypoints(ctx, feature.id, input.waypoints)
-  // Same reason as `emit_tickets`: the store assigns the global `seq` that later
-  // `blockedBy` edges and the UI both speak in, and dropping it made the
-  // emitting session re-read the whole feature to learn what it had just made.
-  return {
-    stored: stored.length,
-    waypoints: stored.map((w) => ({ id: w.id, seq: w.seq, title: w.title })),
-  }
-}
-
 /**
  * The one tool both halves of the surface share, so it emits at whatever scope
  * the calling session has: a feature's timeline for every pipeline kind, the
@@ -1030,7 +908,7 @@ export interface CompletePhaseResult {
  * Report a planning step complete (SPEC: the `complete_phase` seam).
  *
  * Wire-compatible on purpose: the name and the `ideation | spec | tickets`
- * argument are what `/runcastle:ideate`, `spec`, `tickets` and `converge`
+ * argument are what `/runcastle:ideate`, `spec` and `tickets`
  * already call, and in-flight sessions must not have to relearn them. What
  * changed underneath is that there is no gate and no transition left — the three
  * steps live inside one Planning state, so this records the milestone on the
@@ -1057,10 +935,10 @@ export function toolCompletePhase(
   // An iterate lap is the next lap being planned FROM Review. With `rethink`
   // gone nothing moves a feature backwards, so the session that writes lap N+1's
   // fix tickets does it while the feature stands at `review` — the same road
-  // `burn` already recognises (`iterating`, services/features.ts). That session
-  // is precisely the audience decisions §5 wrote the warnings for, so it falls
-  // through to the full answer below instead of being told there is nothing left
-  // to do for work it has just legitimately done.
+  // `burn` already recognises (`iterating`, services/features.ts). Its briefing
+  // forbids this call — Burn from review is what starts the lap — but a stray one
+  // is not refused: it falls through to the full answer below, Burn warnings
+  // included, instead of being told there is nothing left to do.
   const iterating = feature.phase === 'review' && pendingTickets(ctx, feature.id).length > 0
 
   // The human clicked Burn while this session was still closing out: the work
@@ -1521,7 +1399,7 @@ export interface CreateFeatureResult {
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
-const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'waypoint', 'converge']
+const DRAFTING_KINDS: readonly SessionKindT[] = ['chat']
 
 /**
  * The project a `create_feature` call belongs to — and, on the way there, how
@@ -1849,7 +1727,6 @@ function featureIndexLine(feature: FeatureListItem): string {
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  if (feature.mapped) state.push('mapped')
   return `${feature.slug} — ${feature.title} [${state.join(', ')}]`
 }
 
@@ -2109,12 +1986,7 @@ async function resolveReader(
 export type McpAudience = SessionKindT | 'run'
 
 /** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
-const FEATURE_KINDS: readonly SessionKindT[] = [
-  'chat',
-  'waypoint',
-  'converge',
-  'drive-fix',
-]
+const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 
@@ -2153,11 +2025,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
   resolve_finding: FEATURE_KINDS,
-  // Map moves stay open to `qa` on purpose: "any session may branch the map" is
-  // the recursion (SPEC §13.3), and it is pinned by test as well as by prose.
-  escalate_to_map: FEATURE_KINDS,
-  emit_waypoints: FEATURE_KINDS,
-  resolve_waypoint: FEATURE_KINDS,
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -2219,7 +2086,7 @@ const CompletablePhase = z.enum(['ideation', 'spec', 'tickets'])
  *
  * Not a closed enum, because sessions legitimately record milestones the server
  * has no name for. But not free text either: every emitter in the codebase
- * writes this shape (`phase.complete_requested`, `waypoint.resolved`,
+ * writes this shape (`phase.complete_requested`, `finding.reported`,
  * `tickets.stored`), the timeline is permanent, and a session that invents
  * `I finished the spec!` puts a row in it that nothing can ever filter on.
  */
@@ -2458,7 +2325,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           '(title + oneLiner + brief), the parked draft (`draft: true`), and the quick change ' +
           '(`tickets`). It opens NO terminal on what it creates; the new card in the rail is the ' +
           'feedback, and the human decides what to work on next. From a feature session ' +
-          '(ideation, revisit, waypoint, converge) only the draft shape is allowed — deflect ' +
+          '(ideation, revisit) only the draft shape is allowed — deflect ' +
           'scope creep here and leave full creation to the project session.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
@@ -2720,17 +2587,16 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'models the operator described a use case for — the only ones `emit_tickets` may ' +
           'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
           'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-          'the newest burn went; absent only on a feature that has never burned), `frontierIds` ' +
-          'and `assignedWaypointId` on mapped features, `reviewEvidence` (where the PREVIOUS ' +
-          'lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
+          'the newest burn went; absent only on a feature that has never burned), ' +
+          '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
           'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
           'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
           '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
           '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
           'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
           'Then this lap’s to-do in full: `openDefects`, ' +
-          '`carriedDefects`, `findings`, `testNotes`, and `waypoints` on mapped features. Last, ' +
-          'the canonical docs (brief, decisions, spec, map) in full while they fit; any doc in ' +
+          '`carriedDefects`, `findings`, and `testNotes`. Last, ' +
+          'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
           '`notInlined` was too large to include and MUST be read before acting ' +
           '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
           'docs/features/<slug>/.',
@@ -2930,113 +2796,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
           'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
           'then closes the finding itself when that ticket lands. An earlier-lap open defect you ' +
-          'leave un-dispositioned is not refused — it comes back as a warning from ' +
-          '`complete_phase("tickets")` and again at the human’s Burn click.',
+          'leave un-dispositioned is not refused — it comes back as a warning at the human’s Burn ' +
+          'click, so disposition each one before you hand over.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolResolveFinding(rs.ctx, rs.session, args))
-      },
-    )
-  }
-
-  if (wants('escalate_to_map')) {
-    server.registerTool(
-      'escalate_to_map',
-      {
-        title: 'Escalate to map',
-        description:
-          'Escalate this feature into a map when it outgrows one context window. Flips the ' +
-          'feature to mapped and scaffolds docs/features/<slug>/map.md. Idempotent: on an ' +
-          'already-mapped feature it warns and changes nothing.',
-        inputSchema: {
-          destination: z
-            .string()
-            .min(1)
-            .describe('Where this feature is going, in prose. Seeds map.md’s Destination section.'),
-          notes: z
-            .string()
-            .optional()
-            .describe(
-              'What is already known or already ruled out. Seeds map.md’s Notes section; ' +
-                'Not-yet-specified and Out-of-scope always start empty.',
-            ),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolEscalateToMap(rs.ctx, rs.session, args)
-        // Checkpoint the freshly-scaffolded map.md; skip when the call was a no-op
-        // warning (already mapped) so we don't churn an empty commit.
-        if (!result.warning) {
-          await commitDocsCheckpoint(rs.ctx, rs.session, 'escalate to map')
-        }
-        return ok(result)
-      },
-    )
-  }
-
-  if (wants('emit_waypoints')) {
-    server.registerTool(
-      'emit_waypoints',
-      {
-        title: 'Emit waypoints',
-        description:
-          'Batch-create waypoints on the map (the feature must already be mapped — call ' +
-          '`escalate_to_map` first). Returns each waypoint’s id, assigned `seq` and title. ' +
-          'Available from any session once mapped: any session may branch the map.',
-        inputSchema: {
-          waypoints: z
-            .array(WaypointInput)
-            .min(1)
-            .describe(
-              'The whole batch, in the order you want them numbered. Each: title, type ' +
-                '(grilling|research|prototype|task), question, blockedBy[]. `blockedBy` mixes ' +
-                'TWO reference systems and the type tells them apart — a NUMBER is a 1-based ' +
-                'position within THIS batch, a STRING is the id of an already-stored waypoint. ' +
-                'Both resolve to global seq numbers on store.',
-            ),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        return ok(toolEmitWaypoints(rs.ctx, rs.session, args))
-      },
-    )
-  }
-
-  if (wants('resolve_waypoint')) {
-    server.registerTool(
-      'resolve_waypoint',
-      {
-        title: 'Resolve waypoint',
-        description:
-          'End the current waypoint. Write the decision prose to decisions.md (or the gist to ' +
-          'map.md Out-of-scope for a drop) FIRST — this tool flips machinery only. Returns the ' +
-          'dependents it just freed and the frontier that remains, so you do not need another ' +
-          'call to see what opened up. Call it exactly once, as the last thing you do.',
-        inputSchema: {
-          id: z.string().min(1).describe('The waypoint id — the one this session was opened on.'),
-          disposition: WaypointDisposition.describe(
-            '`resolved` when its question is answered; `dropped` when it is no longer needed. ' +
-              'Both are terminal and both free dependents.',
-          ),
-          summary: z
-            .string()
-            .min(1)
-            .describe('The one-line gist shown in the UI. Not the argument — that goes in the docs.'),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolResolveWaypoint(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `waypoint ${args.disposition}`)
-        return ok(result)
       },
     )
   }

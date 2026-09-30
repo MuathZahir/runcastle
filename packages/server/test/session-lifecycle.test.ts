@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import type { SessionKind, WaypointInput } from '@runcastle/core'
+import type { SessionKind } from '@runcastle/core'
 import { newId } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
-import { handlePtyExit, launchSession, workWaypoint } from '../src/launcher/launcher'
+import { handlePtyExit, launchSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import {
   activeSessionsForFeature,
@@ -21,32 +21,19 @@ import {
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { getFeatureRow } from '../src/services/repo'
-import {
-  claim,
-  frontier,
-  getWaypoint,
-  promoteLastSession,
-  release,
-  resolve,
-  storeWaypoints,
-} from '../src/services/waypoints'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * E2E-findings coverage (session lifecycle):
- *  - boot reconciliation: stale launching/live sessions → ended, claims released,
- *    one `session.reconciled` event each;
- *  - the one-live-session guard reads session ROWS: a run-claim never blocks, a
- *    live HITL session always does (including after `resolve_waypoint`), and an
- *    active run parks the talk worktree rather than refusing the terminal;
- *  - a resume attempt that dies before going live preserves `lastSessionId` and
- *    emits `session.resume_failed`.
+ *  - boot reconciliation: stale launching/live sessions → ended, one
+ *    `session.reconciled` event each;
+ *  - the one-live-session guard reads session ROWS: a live chat answers the
+ *    Chat door instead of opening a second terminal, and an active run parks
+ *    the talk worktree rather than refusing the terminal;
+ *  - a resume attempt that dies before going live emits
+ *    `session.resume_failed` and leaves the good conversation resumable.
  */
-
-function wp(title: string, blockedBy: (number | string)[] = []): WaypointInput {
-  return { title, type: 'grilling', question: `q: ${title}`, blockedBy }
-}
 
 async function initRepo(dir: string): Promise<void> {
   const g = simpleGit(dir)
@@ -57,7 +44,7 @@ async function initRepo(dir: string): Promise<void> {
   await g.raw(['commit', '--allow-empty', '-m', 'initial commit'])
 }
 
-function seedRunningRun(ctx: AppCtx, featureId: string, workflow = 'research'): string {
+function seedRunningRun(ctx: AppCtx, featureId: string, workflow: string): string {
   const id = newId('run')
   ctx.db
     .insert(runs)
@@ -73,37 +60,32 @@ describe('boot reconciliation — stale sessions', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    featureId = seedFeature(ctx, project.id, { mapped: true }).id
+    featureId = seedFeature(ctx, project.id).id
   })
 
-  it('marks launching AND live sessions ended, releases their claims, one event each', () => {
-    const launching = createSessionRow(ctx, { featureId, kind: 'waypoint', worktreePath: 'C:\\wt' })
-    const live = createSessionRow(ctx, { featureId, kind: 'waypoint', worktreePath: 'C:\\wt' })
+  it('marks launching AND live sessions ended, one event each', () => {
+    const launching = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'C:\\wt' })
+    const live = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'C:\\wt' })
     markSessionLive(ctx, live.id, { ccSessionId: 'cc-live' })
-    const [a, b] = storeWaypoints(ctx, featureId, [wp('a'), wp('b')])
-    claim(ctx, a.id, live.id)
-    promoteLastSession(ctx, live.id)
-    claim(ctx, b.id, launching.id)
 
     const reconciled = reconcileStaleSessions(ctx)
     expect(reconciled.map((s) => s.id).sort()).toEqual([launching.id, live.id].sort())
 
-    // both rows are ended, no active session remains
+    // both rows are ended, no active session remains; the live one stays resumable
     expect(getSessionRow(ctx, launching.id)?.status).toBe('ended')
     expect(getSessionRow(ctx, live.id)?.status).toBe('ended')
     expect(activeSessionsForFeature(ctx, featureId)).toEqual([])
-
-    // claims are released back to the frontier; the live session stays resumable
-    expect(getWaypoint(ctx, a.id).status).toBe('open')
-    expect(getWaypoint(ctx, a.id).lastSessionId).toBe(live.id)
-    expect(getWaypoint(ctx, b.id).status).toBe('open')
-    expect(frontier(ctx, featureId).map((w) => w.id).sort()).toEqual([a.id, b.id].sort())
+    expect(mostRecentResumableSession(ctx, featureId, 'chat')?.id).toBe(live.id)
 
     // exactly one session.reconciled event per reconciled session
     const events = listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.reconciled')
     expect(events).toHaveLength(2)
-    const ids = events.map((e) => (e.data as { sessionId?: string }).sessionId).sort()
-    expect(ids).toEqual([launching.id, live.id].sort())
+    expect(events.map((e) => e.data)).toEqual(
+      expect.arrayContaining([
+        { sessionId: launching.id, previousStatus: 'launching' },
+        { sessionId: live.id, previousStatus: 'live' },
+      ]),
+    )
   })
 
   it('leaves already-ended sessions alone (no event, no double work)', () => {
@@ -121,7 +103,7 @@ describe('boot reconciliation — stale sessions', () => {
   })
 })
 
-describe('one-live-session guard — sessions and runs, never claims', () => {
+describe('one-live-session guard — sessions and runs', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -140,82 +122,42 @@ describe('one-live-session guard — sessions and runs, never claims', () => {
     cleanup.length = 0
   })
 
-  async function mappedFeature(slug: string) {
-    const feature = seedFeature(ctx, projectId, { slug, mapped: true })
+  async function feature(slug: string) {
+    const f = seedFeature(ctx, projectId, { slug })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
-    return feature
+    return f
   }
-
-  it('a run-claim does NOT block HITL work by itself (serial HITL, parallel AFK)', async () => {
-    const feature = await mappedFeature('afk')
-    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
-    // a research run claimed waypoint a… and the run row has since finished
-    // (only the claim lingers, e.g. released later by the finalizer)
-    claim(ctx, a.id, 'run_ghost')
-
-    // …working waypoint b in a terminal is allowed: no live session, no live run
-    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false })
-    expect('sessionId' in res && res.sessionId).toBeTruthy()
-    if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
-  })
 
   it('an ACTIVE branch-claiming run no longer refuses a terminal — it parks the worktree instead', async () => {
     // The post-mortem's worst hour was a live burn with nothing to talk to
     // (one-chat-per-feature decision 2). The run holds `feature/<slug>`, so the
     // session works on a chat temp branch beside it.
-    const feature = await mappedFeature('busy')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    seedRunningRun(ctx, feature.id, 'ticket-burner')
+    const f = await feature('busy')
+    seedRunningRun(ctx, f.id, 'ticket-burner')
 
-    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    expect('sessionId' in res && res.sessionId).toBeTruthy()
-    if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
+    const { sessionId } = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
+    cleanup.push(sessionDir(sessionId))
 
     const head = (
-      await simpleGit(worktreeDir(projectId, feature.slug)).revparse(['--abbrev-ref', 'HEAD'])
+      await simpleGit(worktreeDir(projectId, f.slug)).revparse(['--abbrev-ref', 'HEAD'])
     ).trim()
     expect(head.startsWith('runcastle/chat/')).toBe(true)
   })
 
-  it('an ACTIVE research run does NOT block HITL spawn (parallel AFK, ADR-0001 §7)', async () => {
-    const feature = await mappedFeature('parallel')
-    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
-    claim(ctx, a.id, 'run_live')
-    seedRunningRun(ctx, feature.id, 'research')
-
-    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false })
-    expect('sessionId' in res && res.sessionId).toBeTruthy()
-    if ('sessionId' in res) cleanup.push(sessionDir(res.sessionId))
-  })
-
-  it('keeps exactly one live session across the resolve → work handoff', async () => {
-    const feature = await mappedFeature('sneaky')
-    const [a, b] = storeWaypoints(ctx, feature.id, [wp('a'), wp('b')])
-    const first = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in first)) throw new Error('expected a session')
+  it('keeps exactly one live session: a second Chat click lands in the live one', async () => {
+    const f = await feature('sneaky')
+    const first = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
     cleanup.push(sessionDir(first.sessionId))
     markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-a' })
 
-    // mid-work: the claim is still held, so a second terminal is refused outright
-    await expect(
-      workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false }),
-    ).rejects.toThrow(/already live/i)
-
-    // the agent resolves its waypoint — the CLAIM is gone, but the terminal is live.
-    // Working the next waypoint now ends that finished terminal for us (ticket 2),
-    // so the guard is satisfied by the handoff rather than by a refusal.
-    resolve(ctx, a.id, 'resolved', 'answered')
-    const second = await workWaypoint(ctx, { featureId: feature.id, waypointId: b.id }, { spawn: false })
-    if ('sessionId' in second) cleanup.push(sessionDir(second.sessionId))
-    expect('sessionId' in second).toBe(true)
-    expect(activeSessionsForFeature(ctx, feature.id).map((s) => s.id)).toEqual([
-      'sessionId' in second ? second.sessionId : '',
-    ])
+    const second = await launchSession(ctx, { featureId: f.id, kind: 'chat' }, { spawn: false })
+    expect(second.sessionId).toBe(first.sessionId)
+    expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual([first.sessionId])
   })
 })
 
-describe('failed resume — lastSessionId preservation + events', () => {
+describe('failed resume — events + the resume target survives', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -234,116 +176,71 @@ describe('failed resume — lastSessionId preservation + events', () => {
     cleanup.length = 0
   })
 
-  async function mappedFeature(slug: string) {
-    const feature = seedFeature(ctx, projectId, { slug, mapped: true })
+  async function feature(slug: string) {
+    const f = seedFeature(ctx, projectId, { slug })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
-    return feature
+    return f
   }
 
-  it('a resume attempt that dies before live preserves the previous good id and emits session.resume_failed', async () => {
-    const feature = await mappedFeature('preserve')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
+  async function launchChat(featureId: string): Promise<string> {
+    const { sessionId } = await launchSession(ctx, { featureId, kind: 'chat' }, { spawn: false })
+    cleanup.push(sessionDir(sessionId))
+    return sessionId
+  }
 
-    // session 1: went live with a cc id, then closed without resolving
-    const first = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in first)) throw new Error('expected a session')
-    cleanup.push(sessionDir(first.sessionId))
-    markSessionLive(ctx, first.sessionId, { ccSessionId: 'cc-good' })
-    handlePtyExit(ctx, getFeatureRow(ctx, feature.id), getSessionRow(ctx, first.sessionId)!, {}, 0)
-    expect(getWaypoint(ctx, a.id).lastSessionId).toBe(first.sessionId)
+  it('a resume attempt that dies before live emits session.resume_failed and the good conversation stays the target', async () => {
+    const f = await feature('preserve')
+
+    // session 1: went live with a cc id, then its terminal exited
+    const first = await launchChat(f.id)
+    markSessionLive(ctx, first, { ccSessionId: 'cc-good' })
+    handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, first)!, {}, 0)
 
     // session 2: a resume attempt that dies BEFORE the session-start hook
-    const second = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in second)) throw new Error('expected a session')
-    cleanup.push(sessionDir(second.sessionId))
-    const secondRow = getSessionRow(ctx, second.sessionId)!
+    const second = await launchChat(f.id)
+    const secondRow = getSessionRow(ctx, second)!
     expect(secondRow.status).toBe('launching')
-    handlePtyExit(
-      ctx,
-      getFeatureRow(ctx, feature.id),
-      secondRow,
-      { waypoint: getWaypoint(ctx, a.id), resumeSessionId: 'cc-good' },
-      1,
-    )
+    handlePtyExit(ctx, getFeatureRow(ctx, f.id), secondRow, { resumeSessionId: 'cc-good' }, 1)
 
-    // the dead resume did NOT clobber the resume pointer
-    const back = getWaypoint(ctx, a.id)
-    expect(back.status).toBe('open')
-    expect(back.lastSessionId).toBe(first.sessionId)
-
-    // a third Work still targets the good conversation
-    const third = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in third)) throw new Error('expected a session')
-    cleanup.push(sessionDir(third.sessionId))
-    const launched = listAfter(ctx, feature.id, 0).find(
-      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === third.sessionId,
+    // a third launch still targets the good conversation
+    const third = await launchChat(f.id)
+    const launched = listAfter(ctx, f.id, 0).find(
+      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === third,
     )
     expect(String(launched?.data?.command)).toContain('--resume cc-good')
 
     // and the failure was announced distinctly (the UI toasts on exactly this)
-    const failed = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.resume_failed')
-    expect(failed).toBeTruthy()
-    expect(failed?.message).toContain('waypoint 1')
-    expect((failed?.data as { resumeSessionId?: string }).resumeSessionId).toBe('cc-good')
+    const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resume_failed')
+    expect(failed?.message).toContain('resume failed for chat')
+    expect(failed?.data).toEqual({ sessionId: second, resumeSessionId: 'cc-good', exitCode: 1 })
   })
 
   it('a normal (non-resume) pty exit emits no session.resume_failed', async () => {
-    const feature = await mappedFeature('normal')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in res)) throw new Error('expected a session')
-    cleanup.push(sessionDir(res.sessionId))
-    handlePtyExit(ctx, getFeatureRow(ctx, feature.id), getSessionRow(ctx, res.sessionId)!, {}, 1)
+    const f = await feature('normal')
+    const sessionId = await launchChat(f.id)
+    handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, sessionId)!, {}, 1)
 
-    expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'session.resume_failed')).toBe(false)
-  })
-
-  it('spawns fresh WITHOUT --resume and says so when the remembered session has no cc id', async () => {
-    const feature = await mappedFeature('nocc')
-    const [a] = storeWaypoints(ctx, feature.id, [wp('a')])
-
-    // a previous session is remembered, but it never reported a cc session id
-    const ghost = createSessionRow(ctx, { featureId: feature.id, kind: 'waypoint', worktreePath: 'C:\\wt' })
-    markSessionEnded(ctx, ghost.id)
-    claim(ctx, a.id, ghost.id)
-    promoteLastSession(ctx, ghost.id)
-    release(ctx, a.id)
-    expect(getWaypoint(ctx, a.id).lastSessionId).toBe(ghost.id)
-
-    const res = await workWaypoint(ctx, { featureId: feature.id, waypointId: a.id }, { spawn: false })
-    if (!('sessionId' in res)) throw new Error('expected a session')
-    cleanup.push(sessionDir(res.sessionId))
-
-    const launched = listAfter(ctx, feature.id, 0).find(
-      (e) => e.type === 'session.launched' && String(e.data?.sessionId) === res.sessionId,
-    )
-    expect(String(launched?.data?.command)).not.toContain('--resume')
-    const note = listAfter(ctx, feature.id, 0).find((e) => e.type === 'session.resume_unavailable')
-    expect(note).toBeTruthy()
-    expect((note?.data as { sessionId?: string }).sessionId).toBe(res.sessionId)
+    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_failed')).toBe(false)
   })
 })
 
 describe('codex PTY exit owns session teardown', () => {
-  it('ends the row, releases its waypoint, and emits session.pty_exited', async () => {
+  it('ends the row and emits session.pty_exited', async () => {
     const ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { mapped: true })
-    const [waypoint] = storeWaypoints(ctx, feature.id, [wp('codex work')])
+    const feature = seedFeature(ctx, project.id)
     const session = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'waypoint',
+      kind: 'chat',
       worktreePath: 'C:\\wt',
       model: { id: 'gpt-5', runtime: 'codex' },
     })
-    claim(ctx, waypoint.id, session.id)
     markSessionLive(ctx, session.id, { ccSessionId: 'codex-thread' })
 
-    handlePtyExit(ctx, feature, session, { waypoint }, 0)
+    handlePtyExit(ctx, feature, session, {}, 0)
 
     expect(getSessionRow(ctx, session.id)?.status).toBe('ended')
-    expect(getWaypoint(ctx, waypoint.id).status).toBe('open')
     const exited = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.pty_exited')
     expect(exited).toHaveLength(1)
     expect(exited[0]?.data).toEqual({ sessionId: session.id, exitCode: 0 })
@@ -599,7 +496,7 @@ describe('mostRecentResumableSession — the revisit resume target', () => {
     const grill = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: 'w' })
     markSessionLive(ctx, grill.id, { ccSessionId: 'cc-grill' })
     markSessionEnded(ctx, grill.id)
-    const qa = createSessionRow(ctx, { featureId, kind: 'converge', worktreePath: 'w' })
+    const qa = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: 'w' })
     markSessionLive(ctx, qa.id, { ccSessionId: 'cc-qa' })
     markSessionEnded(ctx, qa.id)
 
@@ -607,7 +504,7 @@ describe('mostRecentResumableSession — the revisit resume target', () => {
     expect(mostRecentResumableSession(ctx, featureId)?.ccSessionId).toBe('cc-qa')
     // filtered = newest of that kind, however long ago it ran
     expect(mostRecentResumableSession(ctx, featureId, 'chat')?.ccSessionId).toBe('cc-grill')
-    expect(mostRecentResumableSession(ctx, featureId, 'waypoint')).toBeNull()
+    expect(mostRecentResumableSession(ctx, featureId, 'prepare')).toBeNull()
   })
 
   it('picks the newest ENDED session with a cc id; ignores live rows and id-less rows', async () => {

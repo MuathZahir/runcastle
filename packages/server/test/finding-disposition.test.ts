@@ -94,7 +94,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
     it('is offered to the kinds that shape a lap’s work, and to nobody else', () => {
       // The same roster as `emit_tickets`: any session that can card the work
       // answering a defect can also say what that work did to it.
-      for (const kind of ['chat', 'converge', 'waypoint', 'drive-fix'] as const) {
+      for (const kind of ['chat', 'drive-fix'] as const) {
         expect(toolsForAudience(kind), kind).toContain('resolve_finding')
       }
       expect(toolsForAudience('project')).not.toContain('resolve_finding')

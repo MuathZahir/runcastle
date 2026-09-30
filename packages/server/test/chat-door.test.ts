@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Phase } from '@runcastle/core'
@@ -63,8 +63,8 @@ describe('the Chat door on a live chat', () => {
   })
 
   /** A feature on a real branch, in whichever state the door is clicked from. */
-  async function featureIn(phase: Phase, slug: string, lap = 1): Promise<Feature> {
-    const feature = seedFeature(ctx, projectId, { slug, phase, lap })
+  async function featureIn(phase: Phase, slug: string): Promise<Feature> {
+    const feature = seedFeature(ctx, projectId, { slug, phase })
     const docsDir = join(repoPath, ...featureDocsRel(slug).split('/'))
     mkdirSync(docsDir, { recursive: true })
     writeFileSync(join(docsDir, 'brief.md'), '# brief.md\n', 'utf8')
@@ -135,13 +135,13 @@ describe('the Chat door on a live chat', () => {
   })
 
   it('still refuses when a session of another kind holds the terminal', async () => {
-    const feature = await featureIn('planning', 'converge-chat')
-    const converge = createSessionRow(ctx, {
+    const feature = await featureIn('planning', 'drive-fix-chat')
+    const driveFix = createSessionRow(ctx, {
       featureId: feature.id,
-      kind: 'converge',
+      kind: 'drive-fix',
       worktreePath: worktreeDir(projectId, feature.slug),
     })
-    markSessionLive(ctx, converge.id, { ccSessionId: 'cc-converge' })
+    markSessionLive(ctx, driveFix.id, { ccSessionId: 'cc-drive-fix' })
 
     await expect(
       launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false }),
@@ -151,7 +151,7 @@ describe('the Chat door on a live chat', () => {
   /**
    * Decision 13: a purpose-specific briefing rides the conversation it is
    * headed for. Answering with the live chat used to answer with ONLY the live
-   * chat — resolve-conflict, stop-drive-and-iterate and a lap in flight all
+   * chat — resolve-conflict, stop-drive-and-iterate and a lap briefing all
    * foregrounded the terminal and dropped the reason the human opened it.
    */
   it('delivers a purpose-specific briefing into the live conversation', async () => {
@@ -198,15 +198,33 @@ describe('the Chat door on a live chat', () => {
     expect(kickoffs(feature.id)).toEqual(kickoffsBefore)
   })
 
-  it('delivers the briefing a lap in flight writes for itself', async () => {
-    const feature = await featureIn('planning', 'lap-chat', 2)
+  /**
+   * A live chat's system prompt was rendered when it launched — for the plain
+   * Chat toggle, a fix-ticket "Review iteration". Typing the lap briefing into it
+   * would leave the session holding both, so the Start-lap door ends it and
+   * relaunches the conversation with the lap prompt, as the carry road does.
+   */
+  it('relaunches a live review chat so the Start-lap door’s lap prompt replaces the fix-ticket one', async () => {
+    const feature = await featureIn('review', 'start-lap-chat')
     const first = await openChat(feature)
     const typed = terminalFor(first)
+    expect(readFileSync(join(sessionDir(first), 'system-prompt.md'), 'utf8')).toContain(
+      '## Review iteration',
+    )
 
-    const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+    const again = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'chat', purpose: 'start-lap' },
+      { spawn: false },
+    )
+    cleanup.push(sessionDir(again.sessionId))
 
-    expect(again.sessionId).toBe(first)
-    expect(typed[0]).toContain('LAP 2 REVIEW ITERATION')
+    expect(again.sessionId).not.toBe(first)
+    expect(typed).toEqual([])
+    expect(activeSessionsForFeature(ctx, feature.id).map((s) => s.id)).toEqual([again.sessionId])
+    const prompt = readFileSync(join(sessionDir(again.sessionId), 'system-prompt.md'), 'utf8')
+    expect(prompt).toContain('## This is lap 2')
+    expect(prompt).not.toContain('## Review iteration')
   })
 
   it('types nothing into a conversation the door merely returns to', async () => {

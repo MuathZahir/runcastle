@@ -44,9 +44,7 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
 export const ENTRY_SKILLS = [
   'ideate',
   'qa',
-  'converge',
   'revisit',
-  'waypoint',
   'project',
   'prepare',
 ] as const
@@ -70,10 +68,6 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
   switch (kind) {
     case 'chat':
       return ['ideate', 'revisit']
-    case 'waypoint':
-      return ['waypoint']
-    case 'converge':
-      return ['converge']
     case 'prepare':
       return ['prepare']
     case 'project':
@@ -124,12 +118,6 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
     // State-unknown default: a chat launched through `launchSession` gets the
     // composed line instead, which picks between this feature's two openings.
     chat: chatKickoffFor(runtime, 'revisit'),
-    waypoint:
-      `Proceed with your task: invoke the ${skill('waypoint')} skill and work your assigned ` +
-      'waypoint to a resolution.',
-    converge:
-      `Proceed with your task: invoke ${skill('converge')} and drive spec then tickets ` +
-      'from map.md + decisions.md, per your system prompt.',
     // The method moved out of the prompt and into a skill, so this names it like
     // every other entry line does. The rest of the line is the opening MOVE — a
     // headless run already measured what it could, so the useful first thing is
