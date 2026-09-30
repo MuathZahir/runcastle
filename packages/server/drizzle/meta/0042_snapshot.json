@@ -1102,6 +1102,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "review_gate_run": {
+          "name": "review_gate_run",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},

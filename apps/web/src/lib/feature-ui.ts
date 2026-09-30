@@ -35,6 +35,7 @@ export type {
 } from './feature-ui/review'
 export * from './feature-ui/laps'
 export * from './feature-ui/timeline'
+export * from './feature-ui/checks'
 export * from './feature-ui/summary'
 export * from './feature-ui/session'
 export * from './feature-ui/phase-summary'

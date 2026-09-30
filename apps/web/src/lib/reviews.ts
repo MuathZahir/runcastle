@@ -26,7 +26,30 @@ export interface ReviewArtifacts {
   hasVideo: boolean
   /** Where to stream the recording, or null when there is none to stream. */
   videoUrl: string | null
+  /**
+   * The verify commands the server ran on the feature branch before this pass
+   * started. Null — or absent, on a payload from before the field — when no
+   * gate run was recorded, which renders nothing.
+   */
+  gateRun?: ReviewGateRunWire | null
 }
+
+/** One verify command's result, as the server recorded it on the branch. */
+export interface GateCommandWire {
+  command: string
+  outcome: 'passed' | 'failed' | 'couldnt_run'
+  exitCode: number | null
+  /** Why it could not run — timed out, could not start. */
+  reason?: string
+  /** Where the captured output is served. */
+  outputUrl: string
+}
+
+/** A review pass's server-side gate run, as `GET /api/reviews/:featureId` lists it. */
+export type ReviewGateRunWire =
+  | { status: 'none_configured' }
+  | { status: 'couldnt_run'; commit: string; reason: string; outputUrl: string | null }
+  | { status: 'ran'; commit: string; commands: GateCommandWire[] }
 
 /**
  * The listing's query-key prefix. Named here and imported by `lib/live.ts`, so

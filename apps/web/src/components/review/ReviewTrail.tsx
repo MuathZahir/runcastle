@@ -1,6 +1,8 @@
 import {
   Button,
+  CHECK_TONE,
   Disclosure,
+  LINK,
   List,
   ListRow,
   MetaLine,
@@ -10,13 +12,16 @@ import {
   Timeline,
   TimelineNode,
   type MetaItem,
+  type StatusTone,
   type TimelineTone,
 } from '../../ui'
 import { IconCheck, IconPlay, IconShield } from '../../icons'
 import {
+  gateCheckLines,
   lapTimeline,
   lapTrail,
   type BurnNode,
+  type GateCheckState,
   type PassNode,
   type ReviewPassFigure,
   type TimelineFinding,
@@ -25,6 +30,7 @@ import {
   type TrailOutcome,
 } from '../../lib/feature-ui'
 import { fmtDateTime, relTimeAgo } from '../../lib/format'
+import type { ReviewGateRunWire } from '../../lib/reviews'
 
 /**
  * The laps as a timeline, oldest first (decision 5): each lap reads top to
@@ -125,6 +131,54 @@ function PassMeta({ pass }: { pass: PassNode }) {
   return <>{parts.flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}</>
 }
 
+const CHECK_LINE: Record<GateCheckState, { word: string; tone: StatusTone }> = {
+  passed: { word: 'passed', tone: 'success' },
+  failed: { word: 'failed', tone: 'danger' },
+  couldnt_run: { word: "couldn't run", tone: 'warning' },
+}
+
+function outputLink(url: string): MetaItem {
+  return {
+    text: (
+      <a className={LINK} href={url} target="_blank" rel="noreferrer noopener">
+        output
+      </a>
+    ),
+  }
+}
+
+/**
+ * The checks the server ran on the branch before this pass (gates-mode
+ * decision 6): the pass's own record, on its own sha, so a lap reads "failed →
+ * fixed → passes" across its passes. The output is a click away for anything
+ * not green.
+ */
+function PassChecks({ gateRun }: { gateRun: ReviewGateRunWire }) {
+  const checks = gateCheckLines(gateRun)
+  return (
+    <div role="group" aria-label="Checks" className="flex flex-col gap-0.5">
+      <MetaLine
+        items={[
+          { tone: CHECK_TONE[checks.tone], strong: checks.summary },
+          checks.commit !== null && { text: `@${checks.commit}`, mono: true, title: 'the feature-branch commit the checks ran on' },
+          checks.outputUrl !== undefined && outputLink(checks.outputUrl),
+        ]}
+      />
+      {checks.lines.map((line, i) => (
+        <MetaLine
+          key={i}
+          items={[
+            { tone: CHECK_LINE[line.state].tone, strong: CHECK_LINE[line.state].word },
+            { text: line.label, mono: true },
+            line.detail !== undefined && { text: line.detail },
+            line.outputUrl !== undefined && outputLink(line.outputUrl),
+          ]}
+        />
+      ))}
+    </div>
+  )
+}
+
 function PassMilestone({
   pass,
   staged,
@@ -171,6 +225,7 @@ function PassMilestone({
           {pass.reason && <span className="text-text-tertiary">{pass.reason}</span>}
         </div>
       )}
+      {pass.gateRun && <PassChecks gateRun={pass.gateRun} />}
     </TimelineNode>
   )
 }

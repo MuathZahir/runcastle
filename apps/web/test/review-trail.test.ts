@@ -343,6 +343,93 @@ describe('the lap trail', () => {
     expect(html.slice(html.indexOf('<summary'), html.indexOf('</summary>'))).toContain('Reviewed')
   })
 
+  /** Gates-mode decision 6: every pass shows its own checks, on its own sha. */
+  describe('Checks', () => {
+    const FIXED_LAP = {
+      passes: [
+        pass({
+          ticketId: 'tkt_r',
+          seq: 4,
+          completedAt: 1000,
+          gateRun: {
+            status: 'ran',
+            commit: '1111111aaaa',
+            commands: [
+              { command: 'bun run typecheck', outcome: 'passed', exitCode: 0, outputUrl: '/o/r/typecheck' },
+              { command: 'bun run test', outcome: 'failed', exitCode: 1, outputUrl: '/o/r/test' },
+            ],
+          },
+        }),
+        pass({
+          ticketId: 'tkt_v',
+          seq: 7,
+          passKind: 'verification',
+          completedAt: 2000,
+          gateRun: {
+            status: 'ran',
+            commit: '2222222bbbb',
+            commands: [
+              { command: 'bun run typecheck', outcome: 'passed', exitCode: 0, outputUrl: '/o/v/typecheck' },
+              { command: 'bun run test', outcome: 'passed', exitCode: 0, outputUrl: '/o/v/test' },
+            ],
+          },
+        }),
+      ],
+      tickets: [ticket({ id: 'tkt_r', seq: 4 }), ticket({ id: 'tkt_v', seq: 7, passKind: 'verification' })],
+    } satisfies Partial<Parameters<typeof ReviewTrail>[0]>
+
+    /** The markup of one pass's milestone, from its title to the next one. */
+    const passHtml = (html: string, title: string, next?: string): string =>
+      html.slice(html.indexOf(title), next ? html.indexOf(next) : undefined)
+
+    it('shows the review its pre-fix results and the verification its post-fix ones, each on its own sha', () => {
+      const html = render(FIXED_LAP)
+      const review = passHtml(html, 'Review #4', 'Verification #7')
+      const verification = passHtml(html, 'Verification #7')
+      expect(review).toContain('aria-label="Checks"')
+      expect(review).toContain('1 of 2 checks passed')
+      expect(review).toContain('@1111111')
+      expect(review).toContain('>failed<')
+      expect(review).toContain('exit 1')
+      expect(review).toContain('href="/o/r/test"')
+      expect(verification).toContain('2 of 2 checks passed')
+      expect(verification).toContain('@2222222')
+      expect(verification).not.toContain('>failed<')
+    })
+
+    it('links the output only for a line that is not green', () => {
+      const html = render(FIXED_LAP)
+      expect(html).toContain('href="/o/r/test"')
+      expect(html).not.toContain('href="/o/r/typecheck"')
+      expect(html).not.toContain('href="/o/v/test"')
+    })
+
+    it("says couldn't run with its reason, and no checks configured — never passed", () => {
+      const couldnt = render({
+        passes: [pass({ gateRun: { status: 'couldnt_run', commit: 'abc1234def', reason: 'sandbox unavailable', outputUrl: '/o/run' } })],
+      })
+      expect(couldnt).toContain('Checks couldn&#x27;t run: sandbox unavailable')
+      expect(couldnt).toContain('href="/o/run"')
+      expect(couldnt).not.toContain('passed')
+      const none = render({ passes: [pass({ gateRun: { status: 'none_configured' } })] })
+      expect(none).toContain('No checks configured for this project')
+      expect(none).not.toContain('passed')
+    })
+
+    it('shows no bare "@" when the feature branch never resolved to a commit', () => {
+      const html = render({
+        passes: [pass({ gateRun: { status: 'couldnt_run', commit: '', reason: 'feature branch not found', outputUrl: null } })],
+      })
+      expect(html).toContain('Checks couldn&#x27;t run: feature branch not found')
+      expect(html).not.toMatch(/>@</)
+    })
+
+    it('renders no Checks block for a pass with no gate run recorded', () => {
+      expect(render({ passes: [pass({ gateRun: null })] })).not.toContain('aria-label="Checks"')
+      expect(render()).not.toContain('aria-label="Checks"')
+    })
+  })
+
   /** Nothing reviewed and nothing burned: no band at all rather than an empty box. */
   it('renders nothing when this feature has run no review pass and burned nothing', () => {
     expect(render({ passes: [], tickets: [] })).toBe('')

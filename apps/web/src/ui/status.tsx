@@ -312,7 +312,7 @@ export function SessionStatusDot({ status }: { status: SessionStatus }) {
 }
 
 /** Review-figure tones: absence is neutral, never green. */
-const CHECK_TONE: Record<CheckTone, StatusTone> = {
+export const CHECK_TONE: Record<CheckTone, StatusTone> = {
   ok: 'success',
   warn: 'warning',
   danger: 'danger',

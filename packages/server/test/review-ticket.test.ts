@@ -1,15 +1,17 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import type {
   Feature,
   Project,
+  ReviewGateRun,
   RuncastleConfig,
   Ticket,
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
 import { newId } from '@runcastle/core'
+import { reviewGateLogPath } from '@runcastle/core/paths'
 import { runs } from '../src/db/schema'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -108,6 +110,13 @@ function ticket(seq: number, over: Partial<Ticket> = {}): Ticket {
 
 const review = (seq: number, over: Partial<Ticket> = {}): Ticket =>
   ticket(seq, { kind: 'review', title: `Review ${seq}`, ...over })
+
+/** A server gate run in which every command passed. */
+const ranGates = (...commands: string[]): ReviewGateRun => ({
+  status: 'ran',
+  commit: 'abcdef1234567890',
+  commands: commands.map((command, i) => ({ command, outcome: 'passed', exitCode: 0, log: `${i}.log` })),
+})
 
 function makeCtx(tickets: Ticket[]) {
   const ctx: WorkflowCtx = {
@@ -653,7 +662,7 @@ describe('what the review agent is handed', () => {
       BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/usr/bin/agent-browser', 'bun dev'),
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Drive the sample project at /tmp/sample.'),
-      GATE_NOTES: buildGateNotes({ verifyCommands: 'bun run typecheck' }),
+      GATE_NOTES: buildGateNotes(ranGates('bun run typecheck'), 'tkt_3', {}),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
@@ -683,8 +692,8 @@ describe('what the review agent is handed', () => {
     // stopped in the same cleanup that stops the drive.
     expect(prompt).toContain('agent-browser record start /data/reviews/tkt_3/walkthrough.webm')
     expect(prompt).toContain('agent-browser record stop')
-    // Gates mode runs the project's own commands rather than guessing at them.
-    expect(prompt).toContain('bun run typecheck')
+    // Both modes are handed the server's run of the project's own commands.
+    expect(prompt).toContain('`bun run typecheck` — passed')
     // And Drive mode is told how this particular app wants to be driven.
     expect(prompt).toContain('Drive the sample project at /tmp/sample.')
   })
@@ -711,7 +720,7 @@ describe('what the review agent is handed', () => {
     // The narrowed bucket still has its mandated paths: a drive that would not
     // start, a gate that could not run, a half-built feature.
     expect(template).toMatch(/report an observation saying the drive could not start/i)
-    expect(template).toMatch(/A gate you could not run at all is an observation/i)
+    expect(template).toMatch(/A gate the server could not run at all is an observation/i)
     expect(template).toMatch(/report that as an observation/i)
     // The severity scale, and that it never gates.
     expect(template).toMatch(/severity is `high` when an acceptance criterion is unmet/i)
@@ -728,7 +737,7 @@ describe('what the review agent is handed', () => {
       FEATURE_BRANCH: 'feature/demo', BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/browser', 'bun dev', 'drive'),
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Log in as demo@example.com.'),
-      GATE_NOTES: buildGateNotes({ verifyCommands: 'bun test' }), DIGEST_PATH: '/digest',
+      GATE_NOTES: buildGateNotes(ranGates('bun test'), 'tkt_4', {}), DIGEST_PATH: '/digest',
       BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
       LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
       AUTO_FIX_CAP: String(AUTO_FIX_CAP),
@@ -783,6 +792,34 @@ describe('what the review agent is handed', () => {
     expect(template).toMatch(/[Dd]o not create a worktree/)
     expect(template).toMatch(/No worktrees, no dependency installs/)
     expect(template).toMatch(/verify commands/)
+  })
+
+  /**
+   * The reviewer works in the human's checkout, still on the base branch, so a
+   * gate it ran there tested the base's code (gates-mode-review decision 7).
+   * Both templates hand over the server's run instead, and forbid running one.
+   */
+  it('hands both templates the server gate results and forbids running verify commands', () => {
+    const reviewTemplate = readFileSync(reviewTemplatePath(), 'utf8')
+    const verificationTemplate = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
+
+    for (const template of [reviewTemplate, verificationTemplate]) {
+      expect(template).toContain('{{GATE_NOTES}}')
+      expect(template).toMatch(/the server has already run this project's verify commands/i)
+      expect(template).toMatch(/never run (?:a|the) verify command/i)
+      expect(template).not.toMatch(/run the configured gates/i)
+      expect(template).not.toMatch(/Run the gates first/)
+      expect(template).not.toMatch(/run the verify commands as the repo's own manifest/i)
+      expect(template).not.toMatch(/say whether the gates passed/i)
+      // The no-checkout rule is untouched.
+      expect(template).toContain('git worktree add --detach <path> <sha>')
+    }
+    expect(reviewTemplate).toMatch(/Discuss the server's gate results/)
+    expect(reviewTemplate).toContain('No worktrees, no dependency installs, no builds')
+    // Drive reviews read the gate results too: they sit before the mode choice.
+    expect(reviewTemplate.indexOf('{{GATE_NOTES}}')).toBeLessThan(
+      reviewTemplate.indexOf('### 1. Choose your mode'),
+    )
   })
 
   it('makes the agent wait out a held slot and give up on a dirty tree at once', () => {
@@ -998,44 +1035,69 @@ describe('the mode the review is handed', () => {
     })
   })
 
-  it('hands Gates mode the project commands, or tells it to run none', () => {
-    const configured = buildGateNotes({
-      verifyCommands: 'bun run typecheck\nbun run test',
-      knownFailures: 'one flaky spec',
+  describe('the gate notes, from the server gate run', () => {
+    const NO_SELF_RUN = '**Do not run any verify command yourself.**'
+
+    it('hands over each command the server ran, its outcome, sha and output file', () => {
+      const notes = buildGateNotes(
+        {
+          status: 'ran',
+          commit: 'abcdef1234567890',
+          commands: [
+            { command: 'bun run typecheck', outcome: 'passed', exitCode: 0, log: '0.log' },
+            { command: 'bun run test', outcome: 'failed', exitCode: 1, log: '1.log' },
+            { command: 'bun run e2e', outcome: 'couldnt_run', exitCode: null, reason: 'timed out after 15 minutes', log: '2.log' },
+          ],
+        },
+        'tkt_9',
+        { knownFailures: 'one flaky spec' },
+      )
+      expect(notes).toContain('on the feature branch at `abcdef1`')
+      expect(notes).toContain(`- \`bun run typecheck\` — passed · output: \`${reviewGateLogPath('tkt_9', '0.log')}\``)
+      expect(notes).toContain(`- \`bun run test\` — FAILED (exit 1) · output: \`${reviewGateLogPath('tkt_9', '1.log')}\``)
+      expect(notes).toContain("- `bun run e2e` — couldn't run (timed out after 15 minutes)")
+      expect(notes).toMatch(/A failed command is a defect against the branch, with the command as its repro/)
+      expect(notes).toMatch(/A command that couldn't run is an observation/)
+      expect(notes).toContain('one flaky spec')
+      expect(notes).toContain('Subtract that baseline')
+      expect(notes).toContain(NO_SELF_RUN)
+      expect(notes).not.toMatch(/Run exactly these/)
     })
-    expect(configured).toContain('bun run typecheck\nbun run test')
-    expect(configured).toContain('one flaky spec')
-    expect(configured).toContain('Subtract that baseline')
+
+    it('says the gates could not run, why, and where the output is — never that they passed', () => {
+      const notes = buildGateNotes(
+        { status: 'couldnt_run', commit: 'abcdef1234567890', reason: 'the gate sandbox could not be set up: no docker', log: 'run.log' },
+        'tkt_9',
+        {},
+      )
+      expect(notes).toContain('The server could not run the gates on the feature branch at `abcdef1`: the gate sandbox could not be set up: no docker.')
+      expect(notes).toContain(`Its captured output is at \`${reviewGateLogPath('tkt_9', 'run.log')}\`.`)
+      expect(notes).toMatch(/an observation about the environment, not a defect against the branch/)
+      expect(notes).toContain('Never describe the gates as passed.')
+      expect(notes).toContain('may well predate this lap')
+      expect(notes).toContain(NO_SELF_RUN)
+    })
 
     // Unconfigured, the answer is to run nothing — a reviewer discovering a
     // monorepo's filter names by running the wrong suite is the long review
     // this mode split exists to end.
-    const bare = buildGateNotes({})
-    expect(bare).toContain('no verify commands configured')
-    expect(bare).toContain('Do not go hunting for them')
-    expect(bare).toContain('may well predate this lap')
-  })
+    it('says there are no gates when the project configures none', () => {
+      const notes = buildGateNotes({ status: 'none_configured' }, 'tkt_9', {})
+      expect(notes).toContain('no verify commands configured')
+      expect(notes).toContain('Do not go hunting for them')
+      expect(notes).toContain(NO_SELF_RUN)
+    })
 
-  it("reads the gates off the project first, falling back to the global config", () => {
-    // The project row is where verify commands normally live — an empty global
-    // config must not make the reviewer believe there are no gates.
-    const own = buildGateNotes({}, { verifyCommands: 'bun run check', knownFailures: 'a red e2e spec' })
-    expect(own).toContain('bun run check')
-    expect(own).toContain('a red e2e spec')
-    expect(own).not.toContain('no verify commands configured')
+    it('reads the known-failure baseline off the project first, falling back to the global config', () => {
+      const none = { status: 'none_configured' } as const
+      expect(buildGateNotes(none, 'tkt_9', {}, { knownFailures: 'a red e2e spec' })).toContain('a red e2e spec')
 
-    const project = buildGateNotes(
-      { verifyCommands: 'global verify', knownFailures: 'global failure' },
-      { verifyCommands: 'bun run check', knownFailures: null },
-    )
-    expect(project).toContain('bun run check')
-    expect(project).not.toContain('global verify')
-    expect(project).toContain('global failure')
+      const project = buildGateNotes(none, 'tkt_9', { knownFailures: 'global failure' }, { knownFailures: 'own failure' })
+      expect(project).toContain('own failure')
+      expect(project).not.toContain('global failure')
 
-    const inherited = buildGateNotes({ verifyCommands: 'global verify' }, { verifyCommands: '', knownFailures: null })
-    expect(inherited).toContain('global verify')
-
-    expect(buildGateNotes({}, { verifyCommands: null, knownFailures: null })).toContain('no verify commands configured')
+      expect(buildGateNotes(none, 'tkt_9', { knownFailures: 'global failure' }, { knownFailures: null })).toContain('global failure')
+    })
   })
 })
 
@@ -1370,6 +1432,210 @@ describe('review recorder teardown stays inside the terminal-outcome gate', () =
       runAgent: async () => { throw new Error('run cancelled') },
       recorderReap: async () => ({ confirmed: false }),
     }))).rejects.toThrow('recorder may still be running')
+  })
+})
+
+/**
+ * Every pass starts with the server's gate run on the feature branch's tip
+ * (gates-mode-review decisions #1, #3, #4): after the review directory is wiped,
+ * before the agent is launched, persisted on the review ticket, and handed to
+ * the agent's prompt whichever mode it is offered.
+ */
+describe('the server gate run before each review pass', () => {
+  let dataDir: string
+  let repo: string
+  let tip: string
+  let previousDataDir: string | undefined
+
+  beforeEach(async () => {
+    dataDir = mkdtempSync(join(tmpdir(), 'rc-review-gates-'))
+    previousDataDir = process.env.RUNCASTLE_DATA_DIR
+    process.env.RUNCASTLE_DATA_DIR = dataDir
+    repo = mkdtempSync(join(tmpdir(), 'rc-review-gates-repo-'))
+    const g = simpleGit(repo)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.email', 'test@runcastle.dev')
+    await g.addConfig('user.name', 'Runcastle Test')
+    writeFileSync(join(repo, 'README.md'), 'base\n')
+    await g.add(['README.md'])
+    await g.commit('initial commit')
+    await g.checkoutLocalBranch('feature/demo')
+    writeFileSync(join(repo, 'feature.txt'), 'feature\n')
+    await g.add(['feature.txt'])
+    await g.commit('feature work')
+    tip = (await g.revparse(['HEAD'])).trim()
+    await g.checkout('main')
+  })
+
+  afterEach(() => {
+    if (previousDataDir === undefined) delete process.env.RUNCASTLE_DATA_DIR
+    else process.env.RUNCASTLE_DATA_DIR = previousDataDir
+    rmSync(dataDir, { recursive: true, force: true })
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  function ctxFor(pass: Ticket, extra: Ticket[] = []) {
+    const tickets = [...extra, pass]
+    const base = makeCtx(tickets)
+    const patches: Array<Parameters<WorkflowCtx['updateTicket']>> = []
+    const ctx: WorkflowCtx = {
+      ...base,
+      project: { ...project, repoPath: repo, verifyCommands: 'bun run typecheck' },
+      updateTicket: (id, patch) => {
+        patches.push([id, patch])
+        base.updateTicket(id, patch)
+      },
+    }
+    return { ctx, patches }
+  }
+
+  function deps(overrides: Partial<Parameters<typeof executeReviewTicket>[2]>) {
+    return {
+      config: { serverPort: 4512, sandbox: 'docker', burnMaxIterations: 1 } as RuncastleConfig,
+      token: undefined,
+      model: { id: 'claude-opus-5', runtime: 'claude-code' } as const,
+      docsDigest: '',
+      lapDigests: [],
+      recorderReap: async () => ({ confirmed: true }),
+      releaseDrive: async () => {},
+      ...overrides,
+    }
+  }
+
+  const passes: Array<[string, () => { pass: Ticket; extra: Ticket[] }]> = [
+    ['review', () => ({ pass: review(3), extra: [] })],
+    [
+      'verification',
+      () => ({
+        pass: review(5, { passKind: 'verification' }),
+        extra: [review(3, { status: 'done', completedAt: 1, reviewMode: 'gates' })],
+      }),
+    ],
+  ]
+
+  for (const [kind, make] of passes) {
+    it(`runs the gates on the branch tip before launching a ${kind} pass, and persists the record`, async () => {
+      const { pass, extra } = make()
+      const { ctx, patches } = ctxFor(pass, extra)
+      const order: string[] = []
+      const gateRun: ReviewGateRun = { ...ranGates('bun run typecheck'), commit: tip }
+      let prompt = ''
+      const outcome = await executeReviewTicket(ctx, pass, deps({
+        recorderReap: async () => {
+          order.push('reap')
+          return { confirmed: true }
+        },
+        runGates: async (input) => {
+          order.push(`gates@${input.sha}`)
+          expect(input.ticketId).toBe(pass.id)
+          expect(input.project.repoPath).toBe(repo)
+          return gateRun
+        },
+        runAgent: async (options) => {
+          order.push('agent')
+          prompt = String(options.prompt)
+        },
+      }))
+
+      expect(outcome.status).toBe('done')
+      // The first reap is the pre-wipe one: the directory is prepared first.
+      expect(order.slice(0, 3)).toEqual(['reap', `gates@${tip}`, 'agent'])
+      expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
+      expect(prompt).toContain('`bun run typecheck` — passed')
+      expect(prompt).toContain(`at \`${tip.slice(0, 7)}\``)
+    })
+  }
+
+  it('still launches the reviewer when the gates could not run', async () => {
+    const pass = review(3)
+    const { ctx, patches } = ctxFor(pass)
+    const gateRun: ReviewGateRun = {
+      status: 'couldnt_run',
+      commit: tip,
+      reason: 'the gate sandbox could not be set up: no docker',
+      log: 'run.log',
+    }
+    let prompt: string | undefined
+    const outcome = await executeReviewTicket(ctx, pass, deps({
+      runGates: async () => gateRun,
+      runAgent: async (options) => { prompt = String(options.prompt) },
+    }))
+
+    expect(outcome.status).toBe('done')
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
+    expect(prompt).toContain('The server could not run the gates on the feature branch')
+    expect(prompt).toContain('no docker')
+  })
+
+  it('records couldnt_run and still launches the reviewer when the gate runner throws', async () => {
+    const pass = review(3)
+    const { ctx, patches } = ctxFor(pass)
+    let prompt: string | undefined
+    const outcome = await executeReviewTicket(ctx, pass, deps({
+      runGates: async () => { throw new Error('EBUSY') },
+      runAgent: async (options) => { prompt = String(options.prompt) },
+    }))
+
+    expect(outcome.status).toBe('done')
+    expect(patches).toContainEqual([
+      pass.id,
+      { reviewGateRun: { status: 'couldnt_run', commit: tip, reason: 'the gate run failed: EBUSY', log: null } },
+    ])
+    expect(prompt).toContain('The server could not run the gates on the feature branch')
+  })
+
+  it.skipIf(process.platform === 'win32')('hands the gate notes to a pass offered Drive as well as one offered Gates', async () => {
+    const gateRun = ranGates('bun run typecheck')
+    const prompts: Record<string, string> = {}
+    // A healthy browser and ffmpeg open Drive; an empty PATH withholds it.
+    const bin = join(dataDir, 'bin')
+    mkdirSync(bin)
+    for (const name of [AGENT_BROWSER_BIN, FFMPEG_BIN]) {
+      writeFileSync(join(bin, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+    }
+    const previousPath = process.env.PATH
+    // git stays reachable either way: the tip sha is read through it.
+    const gitDir = dirname(findOnPath('git', process.env) ?? '/usr/bin/git')
+    try {
+      for (const [mode, path] of [['gates', gitDir], ['drive', `${bin}${delimiter}${gitDir}`]] as const) {
+        process.env.PATH = path
+        const pass = review(3)
+        const { ctx } = ctxFor(pass)
+        ctx.project = { ...ctx.project, devCommand: 'bun dev' }
+        await executeReviewTicket(ctx, pass, deps({
+          runGates: async () => gateRun,
+          runAgent: async (options) => { prompts[mode] = String(options.prompt) },
+        }))
+      }
+    } finally {
+      process.env.PATH = previousPath
+    }
+    expect(prompts.gates).not.toContain('A drive **is** available')
+    expect(prompts.drive).toContain('A drive **is** available')
+    expect(prompts.gates).toContain('`bun run typecheck` — passed')
+    expect(prompts.drive).toContain('`bun run typecheck` — passed')
+  })
+
+  it('records couldnt_run without calling the runner when the branch does not resolve', async () => {
+    const pass = review(3)
+    const { ctx, patches } = ctxFor(pass)
+    ctx.feature = { ...ctx.feature, branch: 'feature/missing' }
+    let gatesCalled = false
+    let launched = false
+    await executeReviewTicket(ctx, pass, deps({
+      runGates: async () => {
+        gatesCalled = true
+        return ranGates()
+      },
+      runAgent: async () => { launched = true },
+    }))
+
+    expect(gatesCalled).toBe(false)
+    expect(launched).toBe(true)
+    expect(patches).toContainEqual([
+      pass.id,
+      { reviewGateRun: { status: 'couldnt_run', commit: '', reason: '`feature/missing` did not resolve to a commit', log: null } },
+    ])
   })
 })
 

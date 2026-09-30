@@ -2,16 +2,17 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
 import { resolvePreparedSettings } from '@runcastle/core'
-import type { ModelEntry, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
-import { logsDir, reviewDir, reviewWalkthroughPath } from '@runcastle/core/paths'
+import type { GateCommandResult, ModelEntry, ReviewGateRun, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
+import { logsDir, reviewDir, reviewGateLogPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
-import { releaseReviewDrive } from '../services/git'
+import { headSha, releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
 import { killRegistry, registerHostChildren } from './kill-registry'
+import type { runReviewGates } from './review-gates'
 import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
 export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
@@ -54,14 +55,15 @@ import {
  * review screen needs to know.
  *
  * A review runs in exactly ONE of two modes, never both: a browser **Drive** of
- * the app against the ticket's acceptance criteria, or **Gates** — the project's
- * verify commands plus a two-axis read of the branch's diff. Measured across a
+ * the app against the ticket's acceptance criteria, or **Gates** — the server's
+ * run of the project's verify commands on the branch, plus a two-axis read of
+ * the branch's diff. Measured across a
  * burn's worth of reviews, the ones that did exactly one delivered in around
  * half an hour and the ones that attempted both ran long or died having
  * delivered neither. The prompt makes the choice in its first step; this path
  * supplies the half of it the agent cannot cheaply observe — whether a drive is
- * available at all ({@link buildDriveAvailability}) — and the gate commands the
- * other mode runs ({@link buildGateNotes}).
+ * available at all ({@link buildDriveAvailability}) — and the gate results both
+ * modes are handed ({@link buildGateNotes}).
  *
  * So neither a missing `agent-browser` nor a drive that refused is a failure:
  * both just mean Gates mode. The template tells the agent to say `could not
@@ -89,7 +91,7 @@ const PLACEHOLDERS = [
   'DRIVE_AVAILABILITY',
   /** How to drive THIS app, in the project's own words (see {@link buildDriveInstructions}). */
   'DRIVE_INSTRUCTIONS',
-  /** Gates mode's commands and their known-failure baseline. */
+  /** The server's gate run on the branch and the known-failure baseline. */
   'GATE_NOTES',
   'DIGEST_PATH',
   'BLOCKED_PATH',
@@ -447,46 +449,75 @@ export function buildDriveInstructions(instructions: string | null | undefined):
   ].join('\n')
 }
 
+/** The 7-char form a sha is quoted in, matching the review page's Checks. */
+function shortCommit(sha: string): string {
+  return sha.slice(0, 7)
+}
+
+/** One verify command's line in the `ran` block. */
+function gateCommandNote(ticketId: string, result: GateCommandResult): string {
+  const outcome =
+    result.outcome === 'passed'
+      ? 'passed'
+      : result.outcome === 'failed'
+        ? `FAILED (exit ${result.exitCode ?? 'unknown'})`
+        : `couldn't run (${result.reason ?? 'no reason recorded'})`
+  return `- \`${result.command}\` — ${outcome} · output: \`${reviewGateLogPath(ticketId, result.log)}\``
+}
+
 /**
- * The `{{GATE_NOTES}}` block: the gates Gates mode runs, and the failures they
- * already produce without this lap's help.
+ * The `{{GATE_NOTES}}` block: what the server's own gate run found on the
+ * feature branch (gates-mode-review decisions #1, #5, #7), and the failures the
+ * project already produces without this lap's help.
  *
- * The implementers were handed the same two config fields through
- * `buildVerifyNotes`, but in the opposite voice — theirs says which failures are
- * "yours to fix", and a reviewer fixes nothing. Same facts, read for a different
- * purpose: the reviewer runs the gates to find out what the lap broke, so what
- * it needs from the baseline is what to subtract.
+ * The reviewer used to be told to run the verify commands itself — in the
+ * human's checkout, which is still on the base branch, so every "gates passed"
+ * proved only that the base was green. The server now runs them against the
+ * branch's tip in a sandbox before the agent starts, and this block hands over
+ * that record instead: the reviewer runs nothing, and reads the captured output
+ * and the branch to explain a failure.
  *
- * With nothing configured the answer is to run nothing. A reviewer guessing at a
- * monorepo's filter names — and discovering them by running the wrong suite — is
- * the long-review failure mode this whole mode split exists to end.
+ * The implementers were handed the same baseline through `buildVerifyNotes`,
+ * but in the opposite voice — theirs says which failures are "yours to fix", and
+ * a reviewer fixes nothing. Same facts, read for a different purpose: what the
+ * reviewer needs from the baseline is what to subtract.
  *
- * Both fields are resolved project-first ({@link resolvePreparedSettings}),
- * exactly as the implementer's `buildVerifyNotes` input is: they are normally
- * stored on the project row, so reading the global config alone told every
- * reviewer its project had no gates.
+ * `knownFailures` is resolved project-first ({@link resolvePreparedSettings}),
+ * exactly as the gate run's commands are: it is normally stored on the project
+ * row, so reading the global config alone would lose it.
  */
 export function buildGateNotes(
+  gateRun: ReviewGateRun,
+  ticketId: string,
   config: Pick<RuncastleConfig, 'verifyCommands' | 'knownFailures'>,
   project?: { verifyCommands?: string | null; knownFailures?: string | null } | null,
 ): string {
-  const prepared = resolvePreparedSettings(config, project)
-  const commands = prepared.verifyCommands
-  const failures = prepared.knownFailures
+  const failures = resolvePreparedSettings(config, project).knownFailures
   const out: string[] = []
 
-  if (commands) {
-    out.push(
-      "Run exactly these, once each — they are this project's own verify commands, so do not go looking for alternatives, add concurrency flags, or re-run one to re-read its output (redirect to a file and read that instead):",
-      '',
-      '```',
-      commands,
-      '```',
-    )
-  } else {
-    out.push(
-      'This project has no verify commands configured, so there are no gates to run. Do not go hunting for them — say so in one line of your summary note and spend the whole mode on the diff.',
-    )
+  switch (gateRun.status) {
+    case 'none_configured':
+      out.push(
+        'This project has no verify commands configured, so there are no gates and the server ran none. Do not go hunting for them — say so in one line of your digest and spend the whole of Gates mode on the diff.',
+      )
+      break
+    case 'couldnt_run':
+      out.push(
+        `The server could not run the gates on the feature branch${gateRun.commit ? ` at \`${shortCommit(gateRun.commit)}\`` : ''}: ${gateRun.reason}.`,
+        ...(gateRun.log ? [`Its captured output is at \`${reviewGateLogPath(ticketId, gateRun.log)}\`.`] : []),
+        '',
+        "That is an observation about the environment, not a defect against the branch: report it as an observation, say plainly in your digest that the gates did not run, and carry on with the review. Never describe the gates as passed.",
+      )
+      break
+    case 'ran':
+      out.push(
+        `Before you started, the server ran this project's verify commands once each on the feature branch at \`${shortCommit(gateRun.commit)}\`, in a sandbox with the branch checked out and its dependencies installed:`,
+        '',
+        ...gateRun.commands.map((result) => gateCommandNote(ticketId, result)),
+        '',
+        "A failed command is a defect against the branch, with the command as its repro: read its output file, then read the branch (`git diff` / `git show`) to explain what broke it. A command that couldn't run is an observation, not a defect.",
+      )
+      break
   }
 
   out.push('')
@@ -503,9 +534,14 @@ export function buildGateNotes(
     )
   } else {
     out.push(
-      "No pre-existing-failure baseline is configured, so a red gate may well predate this lap. Run it once, then check whether the failure touches the diff before writing it up as this lap's — and never re-run a suite to establish what was already red.",
+      "No pre-existing-failure baseline is configured, so a red gate may well predate this lap. Check whether the failure touches the diff before writing it up as this lap's.",
     )
   }
+
+  out.push(
+    '',
+    "**Do not run any verify command yourself.** You are in the human's checkout, on the base branch outside a drive, so anything you run there tests the base's code, not this branch's. The server's run above is the gate result.",
+  )
 
   return out.join('\n')
 }
@@ -689,8 +725,44 @@ export interface ReviewDeps {
   lapDigests: readonly HarvestedDigest[]
   /** System boundaries overridden only by seam-level workflow tests. */
   runAgent?: (options: RunOptions) => Promise<unknown>
+  runGates?: typeof runReviewGates
   recorderReap?: typeof reapRecorder
   releaseDrive?: () => Promise<void>
+}
+
+/**
+ * The server's gate run for this pass, against the feature branch's tip as it
+ * stands now (gates-mode-review decisions #1, #4). Never throws for a broken
+ * environment — a branch that will not resolve comes back `couldnt_run`, like a
+ * sandbox that will not open, and the review proceeds on the diff (decision 3).
+ */
+async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps): Promise<ReviewGateRun> {
+  const { project, feature } = ctx
+  const sha = await headSha(project.repoPath, feature.branch)
+  if (!sha) {
+    return {
+      status: 'couldnt_run',
+      commit: '',
+      reason: `\`${feature.branch}\` did not resolve to a commit`,
+      log: null,
+    }
+  }
+  // Loaded lazily: review-gates imports ticket-burner, which imports this file,
+  // so a static import evaluates review-gates before ticket-burner's constants
+  // exist whenever ticket-burner is the one loaded first (as at server boot).
+  try {
+    const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
+    return await runGates({ config: deps.config, project, ticketId: ticket.id, sha })
+  } catch (err) {
+    // The runner records its own failures; anything that still escapes it is
+    // no less an environment fault, and must not stop the reviewer launching.
+    return {
+      status: 'couldnt_run',
+      commit: sha,
+      reason: `the gate run failed: ${err instanceof Error ? err.message : String(err)}`,
+      log: null,
+    }
+  }
 }
 
 /**
@@ -738,6 +810,11 @@ async function reviewTicketOutcome(
   }
 
   const artifacts = await writeReviewArtifacts(ticket, ctx.runId, deps.config, deps.recorderReap)
+  // After the directory wipe above (its logs live inside it) and before the
+  // prompt, so every pass — review or verification, Drive or Gates — is handed
+  // the branch's gate record at its tip as it stands now.
+  const gateRun = await runBranchGates(ctx, ticket, deps)
+  ctx.updateTicket(ticket.id, { reviewGateRun: gateRun })
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
@@ -769,7 +846,7 @@ async function reviewTicketOutcome(
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserFailure, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
-    GATE_NOTES: buildGateNotes(deps.config, project),
+    GATE_NOTES: buildGateNotes(gateRun, ticket.id, deps.config, project),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,

@@ -62,6 +62,8 @@ export interface PassNode {
   /** Why an unverified pass verified nothing, when its account does not say it. */
   reason: string | null
   videoUrl: string | null
+  /** The checks the server ran on the branch before this pass, or null for none recorded. */
+  gateRun: TrailPass['gateRun']
   completedAt: number | null
 }
 
@@ -108,6 +110,7 @@ export function lapTimeline(
         verdict: null,
         couldNotRun: t.status === 'failed',
         videoUrl: null,
+        gateRun: null,
       })),
   ].sort((a, b) => a.seq - b.seq)
   const lastUnverified = passes.findLast((p) => p.verdict === 'unverified')?.ticketId
@@ -134,6 +137,7 @@ export function lapTimeline(
       account,
       reason: outcome?.reason ?? null,
       videoUrl: pass.videoUrl,
+      gateRun: pass.gateRun,
       completedAt: ticket?.completedAt ?? null,
     }
   }

@@ -38,7 +38,9 @@ In **Drive mode**, call `mcp__runcastle__review_drive({ action: "start" })`, sta
 
 {{DRIVE_INSTRUCTIONS}}
 
-In **Gates mode**, read each fix diff against its finding and run the configured gates exactly once. Do not perform a second two-axis review of the whole branch. Read the branch from where you stand — `git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}`, and `git show {{FEATURE_BRANCH}}:<path>` for a whole file: never check `{{FEATURE_BRANCH}}` out, and never leave a worktree holding it. A scratch worktree you cannot avoid is `git worktree add --detach <path> <sha>`, removed with `git worktree remove <path>` before you finish — never `git worktree add <path> <branch>`, which checks the branch out and leaves your directory holding it against the next session's launch.
+In **Gates mode**, read each fix diff against its finding and read the server's gate results for the fixed branch, below. Do not perform a second two-axis review of the whole branch. Read the branch from where you stand — `git diff {{BASE_BRANCH}}...{{FEATURE_BRANCH}}`, and `git show {{FEATURE_BRANCH}}:<path>` for a whole file: never check `{{FEATURE_BRANCH}}` out, and never leave a worktree holding it. A scratch worktree you cannot avoid is `git worktree add --detach <path> <sha>`, removed with `git worktree remove <path>` before you finish — never `git worktree add <path> <branch>`, which checks the branch out and leaves your directory holding it against the next session's launch.
+
+Whichever mode you are in, the server has already run this project's verify commands on the fixed `{{FEATURE_BRANCH}}` — these are its results. **Never run a verify command yourself**: the checkout you are in is the human's, on `{{BASE_BRANCH}}` outside a drive, so it would test the base's code, not the fixes.
 
 {{GATE_NOTES}}
 

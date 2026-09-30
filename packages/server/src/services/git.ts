@@ -1532,6 +1532,15 @@ export async function deleteTempBranch(repoPath: string, branch: string): Promis
   }
 }
 
+/**
+ * Point `branch` at exactly `sha`, creating it or moving a stale one — the
+ * throwaway branch a server-side gate run hands its sandbox, so the feature
+ * branch itself is never checked out anywhere. Touches no working tree.
+ */
+export async function pinBranchAt(repoPath: string, branch: string, sha: string): Promise<void> {
+  await git(repoPath).raw(['branch', '--force', branch, sha])
+}
+
 /** The deterministic name prefix every attempt branch of one ticket shares. */
 function ticketBranchPrefix(slug: string, ticketSeq: number): string {
   return `${TICKET_BRANCH_PREFIX}${tempBranchSlugSegment(slug)}/${ticketSeq}-`
