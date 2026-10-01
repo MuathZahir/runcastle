@@ -161,6 +161,27 @@ export const features = sqliteTable('features', {
   createdAt: integer('created_at').notNull(),
 })
 
+/**
+ * Merge-order dependencies between features (ADR-0013): the dependent (a draft)
+ * cannot Start until every dependency's phase is `shipped`. Satisfaction is
+ * derived at read time — nothing about it is stored. One edge type with one job,
+ * so there is deliberately NO `kind` column: a second edge type needs a new ADR,
+ * not an enum value.
+ */
+export const featureDependencies = sqliteTable(
+  'feature_dependencies',
+  {
+    dependentId: text('dependent_id')
+      .notNull()
+      .references(() => features.id, { onDelete: 'cascade' }),
+    dependencyId: text('dependency_id')
+      .notNull()
+      .references(() => features.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.dependentId, t.dependencyId] })],
+)
+
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),
   /**

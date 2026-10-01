@@ -140,6 +140,8 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'feature',
         'phase',
         'lap',
+        'dependsOn',
+        'blocks',
         'annotatedModels',
         'burnConcurrency',
         'reviewEvidence',

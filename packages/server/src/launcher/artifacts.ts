@@ -997,6 +997,8 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__list_project_notes',
   'mcp__runcastle__triage_project_note',
   'mcp__runcastle__update_project_note',
+  // Re-ordering parked drafts (ADR-0013) — project-only at the server, likewise.
+  'mcp__runcastle__set_feature_dependencies',
 ]
 
 /**

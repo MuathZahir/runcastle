@@ -32,6 +32,8 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     activeRun: over.activeRun ?? false,
     liveSession: over.liveSession ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
+    dependsOn: over.dependsOn ?? [],
+    blocks: over.blocks ?? [],
   } as FeatureListItem
 }
 
@@ -44,5 +46,7 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     runs: [],
     docs: [],
     gate: { next: null, satisfied: false },
+    dependsOn: [],
+    blocks: [],
   } as unknown as FeatureFull
 }

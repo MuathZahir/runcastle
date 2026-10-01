@@ -33,6 +33,7 @@ import {
   burnSummary,
   defaultBaseBranch,
   deferredScope,
+  dependencyCandidates,
   effectivePhase,
   freshness,
   isReadonlyView,
@@ -80,6 +81,7 @@ import { FeatureChat } from './workspace/FeatureChat'
 import { FeatureViewTabs } from './workspace/FeatureViewTabs'
 import { LiveSessionBar } from './workspace/LiveSessionBar'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
+import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
@@ -449,6 +451,18 @@ export function Workspace({
   // quick change skips the chat: it lands ready to Burn, as a started one does.
   // A failure leaves the draft intact and startable, so the toast is the whole
   // recovery.
+  // A draft's Waits-on row (ADR-0013): candidates come from the rail's own list
+  // query, and a refusal is rejected back to the row, which says it inline.
+  const projectList = trpc.feature.list.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId && isDraft },
+  )
+  const setDependencies = trpc.feature.setDependencies.useMutation({
+    onSuccess: invalidate,
+    // No toast: the row already says the refusal inline, and without a handler
+    // here the MutationCache safety net would repeat it raw (backticks and all).
+    onError: () => undefined,
+  })
   const start = trpc.feature.start.useMutation({
     onSuccess: (res, vars) => {
       invalidate()
@@ -937,6 +951,13 @@ export function Workspace({
           <IconButton label="Dismiss" size="sm" icon={<IconX />} onClick={resumeFailed.dismiss} />
         </div>
       )}
+      <DependenciesRow
+        isDraft={isDraft}
+        dependsOn={full.dependsOn}
+        candidates={dependencyCandidates(projectList.data ?? [], feature, full.dependsOn)}
+        onChange={(dependsOn) => setDependencies.mutateAsync({ featureId, dependsOn })}
+      />
+      <BlocksLine projectId={feature.projectId} blocks={full.blocks} />
       {nextRow}
       {view === 'overview' && !readonly && liveLine && (
         <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => onViewChange('chat')} />

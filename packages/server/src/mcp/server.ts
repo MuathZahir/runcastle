@@ -4,6 +4,7 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  DependencyRef,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
@@ -55,6 +56,12 @@ import {
   carriedWork,
   currentLapReviewEvidence,
 } from '../services/carried-work'
+import {
+  blocksOf,
+  dependsOnOf,
+  setDependencies,
+  validateDependencies,
+} from '../services/dependencies'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
@@ -184,8 +191,9 @@ function requireFeatureId(session: SessionRow): string {
   if (!session.featureId) {
     const instead =
       session.kind === 'project'
-        ? 'Your tools are create_feature, get_project_context, get_work_record, list_project_notes, ' +
-          'triage_project_note, update_project_note and record_event — ' +
+        ? 'Your tools are create_feature, set_feature_dependencies, get_project_context, ' +
+          'get_work_record, list_project_notes, triage_project_note, update_project_note and ' +
+          'record_event — ' +
           'to work an existing feature, tell the human to open its terminal.'
         : 'Use record_finding to store what you establish about the project.'
     throw new GateError(
@@ -221,6 +229,16 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
     )
   }
   return { featureId: requireFeatureId(caller.session) }
+}
+
+/** A merge-order dependency as an agent sees it: the slug it holds, and whether it shipped. */
+export interface DependencyMark {
+  slug: string
+  satisfied: boolean
+}
+
+function dependencyMark(d: DependencyRef): DependencyMark {
+  return { slug: d.slug, satisfied: d.satisfied }
 }
 
 /** One doc this payload did NOT inline, addressed well enough to go and get. */
@@ -286,6 +304,14 @@ export interface FeatureContext {
    * across every lap — the `lap` on each row is what distinguishes them.
    */
   lap: number
+  /**
+   * The merge-order edges (ADR-0013): what this feature waits on — or, once
+   * started, waited on — each with whether it has shipped, and the drafts still
+   * waiting on THIS feature. A feature session must know it is holding something
+   * up before it suggests an archive or a scope widening (decision 8).
+   */
+  dependsOn: DependencyMark[]
+  blocks: string[]
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
    * ceiling, whole, in fill order: brief → decisions → spec.
@@ -509,6 +535,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     feature,
     phase: feature.phase,
     lap: feature.lap,
+    dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
+    blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...latestBurnSummary(ctx, feature.id, allTickets),
@@ -1396,6 +1424,8 @@ export interface CreateFeatureResult {
   slug: string
   branch: string
   phase: PhaseT
+  /** The slugs the new draft waits on — present only when `dependsOn` was passed. */
+  dependsOn?: string[]
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
@@ -1464,9 +1494,21 @@ export async function toolCreateFeature(
     brief?: string
     draft?: boolean
     tickets?: string[]
+    dependsOn?: string[]
   },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
+  const dependsOn = input.dependsOn ?? []
+  if (dependsOn.length > 0 && (!input.draft || input.tickets)) {
+    throw new InvalidInputError(
+      'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` (and no ' +
+        '`tickets`) to park it waiting on those features.',
+    )
+  }
+  // Validated BEFORE the row exists, so a bad slug, a merged dependency or a
+  // foreign feature refuses the whole create instead of leaving a half-made draft.
+  const dependencyIds = featureIdsBySlug(ctx, project.id, dependsOn)
+  validateDependencies(ctx, project.id, null, dependencyIds)
   // `oneLiner` is required by the ORDINARY door only. The quick-change door
   // derives it from the first ticket's prose (`quickChange`) and ignores
   // anything passed, so demanding it there made the schema lie about the call.
@@ -1495,12 +1537,56 @@ export async function toolCreateFeature(
         brief: input.brief,
         draft: input.draft,
       })
+  if (dependencyIds.length === 0) {
+    return { id: feature.id, slug: feature.slug, branch: feature.branch, phase: feature.phase }
+  }
+  const edges = setDependencies(ctx, feature.id, dependencyIds)
   return {
     id: feature.id,
     slug: feature.slug,
     branch: feature.branch,
     phase: feature.phase,
+    dependsOn: edges.map((d) => d.slug),
   }
+}
+
+/**
+ * Feature slugs — what agents hold — to ids within ONE project. A slug that
+ * names nothing here (including another project's feature) is refused by name.
+ */
+function featureIdsBySlug(ctx: AppCtx, projectId: string, slugs: string[]): string[] {
+  if (slugs.length === 0) return []
+  const bySlug = new Map(listFeatures(ctx, projectId).map((f) => [f.slug, f.id]))
+  const unknown = slugs.filter((slug) => !bySlug.has(slug))
+  if (unknown.length > 0) {
+    throw new InvalidInputError(
+      `no feature in this project has the slug ${unknown.map((s) => `\`${s}\``).join(', ')}`,
+    )
+  }
+  return slugs.map((slug) => bySlug.get(slug) as string)
+}
+
+/**
+ * Replace a draft's merge-order dependencies (decisions 4, 5) through the same
+ * service the UI's `feature.setDependencies` uses. Re-ordering the portfolio is
+ * project-level curation, so only the project session may call it; a feature
+ * session's only power over edges is `dependsOn` at create time.
+ */
+export function toolSetFeatureDependencies(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { slug: string; dependsOn: string[] },
+): { slug: string; dependsOn: DependencyMark[] } {
+  const project = requireProject(ctx, session)
+  if (session.kind !== 'project') {
+    throw new GateError(
+      `set_feature_dependencies belongs to a project session, and this is a ${session.kind} session.`,
+    )
+  }
+  const [dependentId] = featureIdsBySlug(ctx, project.id, [input.slug])
+  const dependencyIds = featureIdsBySlug(ctx, project.id, input.dependsOn)
+  const edges = setDependencies(ctx, dependentId as string, dependencyIds)
+  return { slug: input.slug, dependsOn: edges.map(dependencyMark) }
 }
 
 /** One live ADR as an index row — title and address, not the argument itself. */
@@ -1560,7 +1646,9 @@ const ADRS_NOTE =
 
 const FEATURE_INDEX_NOTE =
   'featureIndex lists every in-flight feature, then every draft, then the most recently shipped, ' +
-  'one `slug — title [state]` line each. A shipped feature’s docs live at docs/features/<slug>/ ' +
+  'one `slug — title [state]` line each. A trailing `· waits on: a, b ✓` lists the features it ' +
+  'must wait to merge (✓ = already shipped), and `[draft, waiting]` marks a draft that cannot ' +
+  'start until every unmarked one ships. A shipped feature’s docs live at docs/features/<slug>/ ' +
   'in this worktree; an in-flight or draft feature’s docs live on an unmerged branch. Any ' +
   'feature’s brief is read_feature_brief({ slug }); what one actually did is ' +
   'get_work_record({ featureSlug }).'
@@ -1719,15 +1807,23 @@ export function toolReadAdr(
  * where shipped docs live. The in-flight state keeps what the portfolio lookup
  * is asked for — phase, lap and ticket counts, all true of the feature in
  * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
- * and `read_feature_brief` match on.
+ * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
+ * trail the line as slugs and marks — edges and state only, so the session can
+ * tell what is startable without re-cutting already-ordered work (decision 8).
  */
 function featureIndexLine(feature: FeatureListItem): string {
-  if (feature.status !== 'active') return `${feature.slug} — ${feature.title} [${feature.status}]`
+  const edges = feature.dependsOn.length
+    ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
+    : ''
+  if (feature.status !== 'active') {
+    const waiting = feature.status === 'draft' && feature.dependsOn.some((d) => !d.satisfied)
+    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}`
+  }
   const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]`
+  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2034,6 +2130,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   list_project_notes: ['project'],
   triage_project_note: ['project'],
   update_project_note: ['project'],
+  set_feature_dependencies: ['project'],
   // `createFeatureProject`: the project kinds get the whole door, the drafting
   // talk kinds get parking only, `qa` and `drive-fix` get nothing.
   create_feature: [...PROJECT_KINDS, ...DRAFTING_KINDS],
@@ -2283,6 +2380,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
+  const DEPENDS_ON_SCHEMA = z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'Slugs of features in this project that must merge before this draft can be started; ' +
+        'only with `draft: true`. Create the dependency first, then the dependent.',
+    )
+
   // A drafting TALK session may only park a draft (`createFeatureProject`), so
   // it is offered only that shape — the quick-change and full-create arguments
   // it would be refused are neither described to it nor accepted from it. Same
@@ -2298,7 +2403,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Park scope that surfaced here but belongs elsewhere: a row and its brief, no branch ' +
           'and no files, until the human clicks Start. This is the ONLY create shape a feature ' +
           'session has — cutting a branch belongs to the project session; tell the human to open ' +
-          'it. Nothing is launched: the new card in the rail is the feedback.',
+          'it. When the parked scope builds on THIS feature, pass `dependsOn: [<this feature’s ' +
+          'slug>]` so it cannot start before this one merges. Nothing is launched: the new card ' +
+          'in the rail is the feedback.',
         inputSchema: {
           title: z.string().min(1).describe('The parked feature’s name.'),
           oneLiner: z.string().min(1).describe('One line saying what it is.'),
@@ -2307,6 +2414,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .optional()
             .describe('Why you deferred it, and what it must not swallow. Stored verbatim.'),
           draft: z.literal(true).describe('Always true here — parking is the only move.'),
+          dependsOn: DEPENDS_ON_SCHEMA,
         },
       },
       async (args, extra) => {
@@ -2372,6 +2480,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
                 'every batch closes with). Send every sentence of one quick change in a SINGLE ' +
                 'call — calling this once per ticket makes one feature per ticket.',
             ),
+          dependsOn: DEPENDS_ON_SCHEMA,
         },
       },
       async (args, extra) => {
@@ -2395,7 +2504,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
           'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
           'lines: every in-flight feature (phase, lap, ticket counts), then every draft, then the ' +
-          `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped. Older shipped and archived ` +
+          `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped; a line ending ` +
+          '`· waits on: …` names the features it must wait to merge. Older shipped and archived ' +
           'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
           'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
           '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`.',
@@ -2463,6 +2573,31 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolUpdateProjectNote(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('set_feature_dependencies')) {
+    server.registerTool(
+      'set_feature_dependencies',
+      {
+        title: 'Set a draft’s dependencies',
+        description:
+          'Replace a parked draft’s whole merge-order set: the draft cannot be started until ' +
+          'every feature in `dependsOn` has merged. Pass `[]` to clear it. Refused for a started ' +
+          'feature, a self-reference, an already-merged dependency or a cycle. Returns the stored ' +
+          'set, each with whether it has shipped.',
+        inputSchema: {
+          slug: z.string().min(1).describe('The draft whose set this replaces.'),
+          dependsOn: z
+            .array(z.string().min(1))
+            .describe('Slugs of features in this project the draft must wait on — the WHOLE set.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolSetFeatureDependencies(rs.ctx, rs.session, args))
       },
     )
   }
@@ -2583,7 +2718,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Get feature context',
         description:
           'Everything true of the current feature, as a summary that never grows past what you ' +
-          'can see. It opens with a header: the feature row, phase, lap, `annotatedModels` (the ' +
+          'can see. It opens with a header: the feature row, phase, lap, `dependsOn` (the ' +
+          'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
+          'drafts waiting on this feature), `annotatedModels` (the ' +
           'models the operator described a use case for — the only ones `emit_tickets` may ' +
           'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
           'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
