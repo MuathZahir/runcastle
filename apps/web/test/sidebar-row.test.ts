@@ -31,6 +31,8 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     activeRun: false,
     liveSession: null,
     lastActivityAt: 0,
+    dependsOn: [],
+    blocks: [],
     ...over,
   } as FeatureListItem
 }
