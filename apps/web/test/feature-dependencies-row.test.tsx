@@ -73,10 +73,10 @@ describe('the Waits-on row', () => {
     expect(onChange).toHaveBeenCalledWith(['feat_auth', 'feat_search'])
   })
 
-  it('says a refusal from the server beside the row', async () => {
-    row([AUTH], vi.fn(async () => Promise.reject(new Error('would form a cycle: me → auth → me'))))
+  it('says a refusal from the server beside the row, as plain text without its Markdown backticks', async () => {
+    row([AUTH], vi.fn(async () => Promise.reject(new Error('that would form a cycle: `me` → `auth` → `me`'))))
     fireEvent.click(screen.getByLabelText('Stop waiting on auth'))
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('would form a cycle: me → auth → me'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('that would form a cycle: me → auth → me'))
   })
 
   it('says it waits on nothing when the set is empty, and still offers Add', () => {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { BlockRef, DependencyRef } from '@runcastle/core'
+import { stripMarkdown } from '../../lib/activity'
 import type { FeatureListItem } from '../../lib/api'
 import { dependencyState } from '../../lib/feature-ui/dependencies'
 import { pathFor } from '../../lib/routes'
@@ -85,7 +86,8 @@ export function DependenciesRow({
     setError(null)
     setPending(true)
     onChange(next)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      // The refusal is worded for agents too, in Markdown; this alert is plain text.
+      .catch((e: unknown) => setError(stripMarkdown(e instanceof Error ? e.message : String(e))))
       .finally(() => setPending(false))
   }
 
