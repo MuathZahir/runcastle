@@ -1,5 +1,6 @@
 import type { FeatureFull, FeatureListItem } from '../api'
 import { relTime } from '../format'
+import { blockerList, blockers, isWaiting } from './dependencies'
 
 export type NeedsMeKind = 'grill' | 'burn' | 'attention' | 'ship'
 
@@ -82,8 +83,14 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   }
   if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
   // A parked idea's age is noise, not news (decision 9) — say what it IS instead.
-  if (f.status === 'draft')
-    return { kind: 'draft', text: 'Draft', title: 'parked — click Start to cut its branch' }
+  // One that waits on unmerged work says what it waits on (ADR-0013 decision 6).
+  if (f.status === 'draft') {
+    const open = blockers(f.dependsOn)
+    if (open.length === 0)
+      return { kind: 'draft', text: 'Draft', title: 'parked — click Start to cut its branch' }
+    const text = open.length === 1 ? `Waits on ${open[0]!.slug}` : `Waits on ${open.length}`
+    return { kind: 'draft', text, title: `waits on ${blockerList(f.dependsOn)}` }
+  }
   const text = relTime(f.lastActivityAt, now)
   return { kind: 'age', text, title: `last activity ${text === 'now' ? 'just now' : `${text} ago`}` }
 }
@@ -100,21 +107,29 @@ export function ticketProgress(f: FeatureListItem): string | null {
   return total > 0 ? `${landed}/${total}` : null
 }
 
-/** Sidebar sort: needs-me first, then active, then parked drafts, then shipped
- *  (both dimmed). Stable within groups (the server returns newest-first). */
-export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
-  const rank = (f: FeatureListItem): number => {
-    if (f.status === 'shipped') return 3
-    // Parked ideas sit below work in motion and above shipped history
-    // (decision 9) — more alive than a merged branch, not in the pipeline.
-    if (f.status === 'draft') return 2
-    if (needsMe(f)) return 0
-    return 1
-  }
+/** Stable sort by a rank, lowest first — ties keep their incoming order. */
+function stableByRank(features: FeatureListItem[], rank: (f: FeatureListItem) => number): FeatureListItem[] {
   return [...features]
     .map((f, i) => ({ f, i }))
     .sort((a, b) => rank(a.f) - rank(b.f) || a.i - b.i)
     .map((x) => x.f)
+}
+
+/** Within the drafts, the startable ones above those still waiting (ADR-0013). */
+const draftRank = (f: FeatureListItem): number => (isWaiting(f) ? 1 : 0)
+
+/** Sidebar sort: needs-me first, then active, then parked drafts (ready before
+ *  waiting), then shipped (both dimmed). Stable within groups (the server
+ *  returns newest-first). */
+export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
+  return stableByRank(features, (f) => {
+    if (f.status === 'shipped') return 4
+    // Parked ideas sit below work in motion and above shipped history
+    // (decision 9) — more alive than a merged branch, not in the pipeline.
+    if (f.status === 'draft') return 2 + draftRank(f)
+    if (needsMe(f)) return 0
+    return 1
+  })
 }
 
 function latestRun(runs: FeatureFull['runs']): FeatureFull['runs'][number] | undefined {
@@ -166,7 +181,8 @@ export function triageOf(f: FeatureListItem): TriageKey {
 
 /**
  * Group features into the sidebar's triage lanes (app-redesign). Preserves the
- * incoming order within each lane (the server returns newest-first). Empty lanes
+ * incoming order within each lane (the server returns newest-first) — except
+ * that ready drafts sort above waiting ones in theirs (ADR-0013). Empty lanes
  * are omitted; lanes are returned in display order. Archived features are
  * excluded from the default view (decision #8) — pass `showArchived` to surface
  * them in a trailing Archived lane.
@@ -184,6 +200,7 @@ export function triage(
     archived: [],
   }
   for (const f of features) buckets[triageOf(f)].push(f)
+  buckets.drafts = stableByRank(buckets.drafts, draftRank)
 
   const order: { key: TriageKey; label: string }[] = [
     { key: 'needsYou', label: 'Needs you' },
