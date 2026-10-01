@@ -7,7 +7,9 @@ import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import {
   capLane,
+  isWaiting,
   needsMe,
+  rowChip,
   ticketProgress,
   triage,
   triageOf,
@@ -524,7 +526,7 @@ export function FeatureRowsSkeleton() {
  * One feature, as a one-line sidebar row (DESIGN.md: no two-line rows, no
  * progress bars, no per-row check buttons, no "…" at rest). The phase glyph
  * says where it is; one dot says whether it is moving or waiting on you; the
- * meta is its ticket progress. Selected is `surface-selected`, nothing else.
+ * meta is its ticket progress, or what a waiting draft waits on. Selected is `surface-selected`, nothing else.
  */
 export function FeatureRow({
   f,
@@ -537,7 +539,10 @@ export function FeatureRow({
   onSelect: (id: string) => void
   actions: FeatureAction[]
 }) {
-  const reason = rowReason(f)
+  // A waiting draft says what it waits on where the fraction would sit — the
+  // rail's one word on which drafts are startable (ADR-0013 decision 6).
+  const waits = isWaiting(f) ? rowChip(f) : null
+  const reason = waits?.title ?? rowReason(f)
   return (
     <NavItem
       phase={rowPhase(f)}
@@ -545,7 +550,7 @@ export function FeatureRow({
       title={reason ? `${f.title} — ${reason}` : f.title}
       dot={rowDot(f)}
       // Shipped work is all landed by definition — its fraction would be noise.
-      meta={f.status === 'shipped' ? undefined : (ticketProgress(f) ?? undefined)}
+      meta={waits?.text ?? (f.status === 'shipped' ? undefined : (ticketProgress(f) ?? undefined))}
       active={active}
       onClick={() => onSelect(f.id)}
       actions={actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined}
