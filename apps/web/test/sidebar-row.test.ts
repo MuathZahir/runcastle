@@ -66,6 +66,39 @@ describe('sidebar feature row', () => {
     expect(html).not.toContain('rounded-[2px]')
   })
 
+  it('says what a waiting draft waits on, with each blocker and its state on hover (ADR-0013)', () => {
+    const blocker = (slug: string, over: Partial<FeatureListItem['dependsOn'][number]> = {}) => ({
+      featureId: `feat_${slug}`,
+      slug,
+      title: slug,
+      phase: 'building' as const,
+      status: 'active' as const,
+      satisfied: false,
+      ...over,
+    })
+    const one = render(listItem({ status: 'draft', phase: 'planning', dependsOn: [blocker('weekly-digest')] }))
+    const two = render(
+      listItem({
+        status: 'draft',
+        phase: 'planning',
+        dependsOn: [blocker('auth'), blocker('old', { status: 'archived', phase: 'planning' })],
+      }),
+    )
+    const ready = render(
+      listItem({
+        status: 'draft',
+        phase: 'planning',
+        dependsOn: [blocker('done', { status: 'shipped', phase: 'shipped', satisfied: true })],
+      }),
+    )
+
+    expect(one).toContain('>Waits on weekly-digest<')
+    expect(one).toContain('waits on weekly-digest (building)')
+    expect(two).toContain('>Waits on 2<')
+    expect(two).toContain('waits on auth (building), old (archived)')
+    expect(ready).not.toContain('Waits on')
+  })
+
   it('writes ticket progress as a fraction, only once there are tickets', () => {
     const without = render(listItem())
     const withTickets = render(listItem({ lapTally: { landed: 4, total: 7, waived: 0 } }))
