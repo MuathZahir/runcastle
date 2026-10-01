@@ -1,5 +1,8 @@
 import type { DependencyRef } from '@runcastle/core'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { BlocksLine, DependenciesRow } from '../src/components/workspace/FeatureDependencies'
 import {
   dependencyCandidates,
   needsMe,
@@ -135,5 +138,48 @@ describe('the Waits-on picker’s candidates', () => {
       'parked',
       'gone',
     ])
+  })
+})
+
+describe('the read-only dependency lines', () => {
+  const waitedOn = (dependsOn: DependencyRef[]) =>
+    renderToStaticMarkup(
+      createElement(DependenciesRow, {
+        isDraft: false,
+        dependsOn,
+        candidates: [],
+        onChange: async () => undefined,
+      }),
+    )
+
+  it('states what a started feature waited on, with nothing to edit', () => {
+    const html = waitedOn([MERGED, dep('auth', { title: 'Auth rework' })])
+    expect(html).toContain('Waited on:')
+    expect(html).toContain('Auth rework')
+    expect(html).not.toContain('Stop waiting on')
+    expect(html).not.toContain('Add')
+  })
+
+  it('renders nothing for a started feature that never waited', () => {
+    expect(waitedOn([])).toBe('')
+  })
+
+  it('lists the drafts a feature blocks, each a link to its workspace', () => {
+    const html = renderToStaticMarkup(
+      createElement(BlocksLine, {
+        projectId: 'proj_1',
+        blocks: [
+          { featureId: 'a', slug: 'alpha', title: 'Alpha' },
+          { featureId: 'b', slug: 'beta', title: 'Beta' },
+        ],
+      }),
+    )
+    expect(html).toContain('Blocks:')
+    expect(html).toMatch(/<a [^>]*href="[^"]*alpha"[^>]*>alpha<\/a>,/)
+    expect(html).toMatch(/<a [^>]*href="[^"]*beta"[^>]*>beta<\/a>/)
+  })
+
+  it('renders no Blocks line when nothing waits on the feature', () => {
+    expect(renderToStaticMarkup(createElement(BlocksLine, { projectId: 'proj_1', blocks: [] }))).toBe('')
   })
 })
