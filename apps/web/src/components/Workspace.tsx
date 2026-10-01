@@ -457,7 +457,12 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId && isDraft },
   )
-  const setDependencies = trpc.feature.setDependencies.useMutation({ onSuccess: invalidate })
+  const setDependencies = trpc.feature.setDependencies.useMutation({
+    onSuccess: invalidate,
+    // No toast: the row already says the refusal inline, and without a handler
+    // here the MutationCache safety net would repeat it raw (backticks and all).
+    onError: () => undefined,
+  })
   const start = trpc.feature.start.useMutation({
     onSuccess: (res, vars) => {
       invalidate()
