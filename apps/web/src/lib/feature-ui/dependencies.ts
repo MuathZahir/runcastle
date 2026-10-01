@@ -39,7 +39,8 @@ export function blockerList(deps: DependencyRef[]): string {
 
 /**
  * Why Start is disabled on a waiting draft, or null when it waits on nothing.
- * The same wording the server's `startDraft` refusal uses: an archived blocker
+ * Mirrors the server's `startDraft` refusal (`describeBlocker`), minus its
+ * Markdown backticks — this is a plain-text caption. An archived blocker
  * never merges on its own, so it says the one way past it — remove the edge.
  */
 export function waitingReason(deps: DependencyRef[]): string | null {
