@@ -1,4 +1,6 @@
 import type {
+  BlockRef,
+  DependencyRef,
   Feature,
   FeatureStatus,
   Project,
@@ -17,11 +19,19 @@ import {
 } from '@runcastle/core'
 import type { TicketTally } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
-import { events, features, runs, sessions, tickets } from '../db/schema'
+import { events, featureDependencies, features, runs, sessions, tickets } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
+import {
+  blocksOf,
+  dependencyMaps,
+  dependentsOf,
+  dependsOnOf,
+  describeBlocker,
+  waitingOn,
+} from './dependencies'
 import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
@@ -98,6 +108,10 @@ export interface FeatureListItem extends Feature {
    * which is not the question a triage rail is asked.
    */
   lastActivityAt: number
+  /** What this feature waits on (ADR-0013), each with its derived `satisfied`. */
+  dependsOn: DependencyRef[]
+  /** The drafts this feature is still holding up — empty once it has merged. */
+  blocks: BlockRef[]
 }
 
 export interface FeatureFull {
@@ -106,6 +120,8 @@ export interface FeatureFull {
   sessions: SessionRow[]
   runs: Run[]
   docs: DocSummary[]
+  dependsOn: DependencyRef[]
+  blocks: BlockRef[]
 }
 
 export interface CreateFeatureInput {
@@ -255,6 +271,12 @@ export async function startDraft(
   const feature = getFeatureRow(ctx, featureId)
   if (feature.status !== 'draft') {
     throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
+  }
+  // Merge-order dependencies (ADR-0013) gate exactly this click, before any git
+  // work. No override: the way past an archived blocker is removing the edge.
+  const blockers = waitingOn(ctx, featureId)
+  if (blockers.length) {
+    throw new GateError(`\`${feature.slug}\` waits on ${blockers.map(describeBlocker).join(', ')}`)
   }
   const project = projectForFeature(ctx, feature)
   const base = await requestedBase(ctx, project, opts.baseBranch)
@@ -642,6 +664,8 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     ),
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
+    dependsOn: dependsOnOf(ctx, id),
+    blocks: blocksOf(ctx, id),
   }
 }
 
@@ -654,9 +678,10 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     .all()
 
   const lastActivity = latestTsByFeature(ctx, projectId)
+  const projectFeatures = rows.map(rowToFeature)
+  const deps = dependencyMaps(ctx, projectId, projectFeatures)
 
-  return rows.map((row) => {
-    const feature = rowToFeature(row)
+  return projectFeatures.map((feature) => {
     const tickets = listByFeature(ctx, feature.id)
     const counts: TicketCounts = {
       total: tickets.length,
@@ -673,6 +698,8 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       activeRun: hasActiveRun(ctx, feature.id),
       liveSession: liveSessionOf(ctx, feature.id),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
+      dependsOn: deps.dependsOn.get(feature.id) ?? [],
+      blocks: deps.blocks.get(feature.id) ?? [],
     }
   })
 }
@@ -1133,6 +1160,16 @@ export async function deleteFeature(
     data: { featureId, slug: feature.slug },
   })
 
+  // Each dependent's timeline records the edge the delete is about to cascade
+  // away — otherwise a draft would silently stop waiting.
+  for (const dependent of dependentsOf(ctx, featureId)) {
+    emit(ctx, dependent.id, {
+      type: 'feature.dependency.deleted',
+      message: `dependency \`${feature.slug}\` deleted`,
+      data: { featureId, slug: feature.slug },
+    })
+  }
+
   // (7) Remove per-session artifact dirs, then delete all DB rows LAST.
   for (const s of listSessionsByFeature(ctx, featureId)) {
     try {
@@ -1147,11 +1184,22 @@ export async function deleteFeature(
 }
 
 /**
- * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events
- * — then the feature row itself. Feature-scoped events
- * die here; the project-scoped `feature.deleted` (featureId null) survives.
+ * Delete every DB row keyed by `featureId` — tickets, sessions, runs, events,
+ * dependency edges in both directions — then the feature row itself.
+ * Feature-scoped events die here; the project-scoped `feature.deleted`
+ * (featureId null) survives. Edges are deleted explicitly rather than left to
+ * the FK cascade, which only fires where `foreign_keys` is on.
  */
 function deleteFeatureRows(ctx: AppCtx, featureId: string): void {
+  ctx.db
+    .delete(featureDependencies)
+    .where(
+      or(
+        eq(featureDependencies.dependentId, featureId),
+        eq(featureDependencies.dependencyId, featureId),
+      ),
+    )
+    .run()
   ctx.db.delete(tickets).where(eq(tickets.featureId, featureId)).run()
   ctx.db.delete(sessions).where(eq(sessions.featureId, featureId)).run()
   ctx.db.delete(runs).where(eq(runs.featureId, featureId)).run()

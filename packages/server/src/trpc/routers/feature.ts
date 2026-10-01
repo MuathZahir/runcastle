@@ -2,6 +2,7 @@ import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict }
 import * as z from 'zod'
 import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
+import { setDependencies } from '../../services/dependencies'
 import { emit, listAfter } from '../../services/events'
 import { retireShippedWorktree } from '../../services/feature-worktrees'
 import * as features from '../../services/features'
@@ -41,6 +42,12 @@ export const featureRouter = router({
     .mutation(({ ctx, input }) =>
       features.startDraft(ctx, input.featureId, { baseBranch: input.baseBranch }),
     ),
+
+  // Replace a draft's merge-order dependencies (ADR-0013) — the whole set at
+  // once, so add and remove are the same call. Refused on a started feature.
+  setDependencies: publicProcedure
+    .input(z.object({ featureId: z.string(), dependsOn: z.array(z.string()) }))
+    .mutation(({ ctx, input }) => setDependencies(ctx, input.featureId, input.dependsOn)),
 
   // The quick-change door (decision 21) — the second entrance beside `create`,
   // for work too small to deserve a conversation. Creates an ordinary feature

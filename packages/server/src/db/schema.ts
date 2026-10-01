@@ -1,5 +1,6 @@
 import {
   events,
+  featureDependencies,
   features,
   projectFindings,
   projectNotes,
@@ -21,6 +22,7 @@ export const schema = {
   projects,
   reviewFindings,
   features,
+  featureDependencies,
   sessions,
   tickets,
   testNotes,
@@ -34,6 +36,7 @@ export type Schema = typeof schema
 
 export {
   events,
+  featureDependencies,
   features,
   projectFindings,
   projectNotes,
