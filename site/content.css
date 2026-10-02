@@ -12,7 +12,7 @@
 
 :root {
   /* Long-form measure. Roughly 70 characters at the body size, which is the
-     middle of the comfortable range for a single column of Inter. */
+     middle of the comfortable range for a single column of Geist. */
   --measure: 72ch;
 }
 
@@ -27,6 +27,10 @@
   margin-inline: auto;
   padding-inline: var(--gutter);
   padding-block: 56px 96px;
+  /* The landing page sets its body copy per section; an article is one long
+     column, so it gets a reading size of its own. */
+  font-size: 16px;
+  line-height: 1.65;
   /* Long identifiers (env var names, paths) break rather than push the page
      wider than the viewport on a phone. */
   overflow-wrap: break-word;
@@ -40,22 +44,22 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 22px;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--text-3);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-tertiary);
 }
 .crumbs a {
-  color: var(--text-2);
+  color: var(--text-secondary);
   transition: color var(--dur-1) var(--ease);
 }
 .crumbs a:hover {
   color: var(--text);
 }
 .crumbs-sep {
-  color: var(--text-4);
+  color: var(--text-disabled);
 }
 .crumbs [aria-current='page'] {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 /* ==========================================================================
@@ -73,7 +77,7 @@
 .article-lede {
   font-size: 18px;
   line-height: 1.62;
-  color: var(--text-2);
+  color: var(--text-secondary);
   margin: 0 0 40px;
 }
 
@@ -84,7 +88,7 @@
   font-weight: 600;
   margin: 52px 0 14px;
   padding-top: 20px;
-  border-top: 1px solid var(--hairline-soft);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .article h3 {
@@ -105,14 +109,14 @@
 }
 
 .article a {
-  color: var(--accent-hi);
+  color: var(--accent-text);
   text-decoration: underline;
-  text-decoration-color: var(--accent-line);
+  text-decoration-color: color-mix(in srgb, var(--accent-text) 45%, transparent);
   text-underline-offset: 3px;
   transition: text-decoration-color var(--dur-1) var(--ease);
 }
 .article a:hover {
-  text-decoration-color: var(--accent-hi);
+  text-decoration-color: var(--accent-text);
 }
 
 /* ==========================================================================
@@ -128,7 +132,7 @@
   margin-bottom: 8px;
 }
 .article li::marker {
-  color: var(--text-4);
+  color: var(--text-disabled);
 }
 
 /* ==========================================================================
@@ -136,24 +140,23 @@
    ========================================================================== */
 
 .article code {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-variant-ligatures: none;
   font-size: 0.88em;
   color: var(--text);
-  background: var(--panel-3);
-  border: 1px solid var(--hairline-soft);
-  border-radius: 5px;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
 }
 
 .article pre {
   margin: 0 0 22px;
   padding: 16px 18px;
-  background: var(--panel-inset);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   overflow-x: auto;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-variant-ligatures: none;
   font-size: 13px;
   line-height: 1.7;
@@ -161,17 +164,16 @@
 }
 .article pre code {
   background: none;
-  border: 0;
   padding: 0;
   font-size: inherit;
 }
 /* A shell prompt inside a code block: dim, and not part of a copied line. */
 .article pre .pre-prompt {
-  color: var(--text-4);
+  color: var(--text-disabled);
   user-select: none;
 }
 .article pre .pre-comment {
-  color: var(--text-3);
+  color: var(--text-tertiary);
 }
 
 /* ==========================================================================
@@ -192,16 +194,13 @@
   text-align: left;
   vertical-align: top;
   padding: 11px 14px;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .article th {
   font-size: 12px;
-  font-family: var(--mono);
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  border-bottom-color: var(--hairline);
+  color: var(--text-tertiary);
+  border-bottom-color: var(--border);
 }
 .article tbody tr:last-child td {
   border-bottom: 0;
@@ -214,10 +213,9 @@
 .note {
   margin: 0 0 22px;
   padding: 14px 18px;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-panel);
-  color: var(--text-2);
+  background: var(--accent-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
   font-size: 15px;
 }
 .note :last-child {
@@ -234,32 +232,30 @@
 .subnav {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 40px;
+  gap: 2px;
+  /* Each link is padded for its ground; pull the row back so the first label
+     sits on the article's left edge. */
+  margin: 0 0 40px -10px;
 }
 .subnav a {
   display: inline-flex;
   align-items: center;
-  height: 30px;
-  padding-inline: 13px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--text-2);
+  height: 28px;
+  padding-inline: 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-tertiary);
   text-decoration: none;
-  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
-    background var(--dur-1) var(--ease);
+  transition: color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
 .subnav a:hover {
   color: var(--text);
-  border-color: var(--hairline-strong);
-  background: var(--panel-3);
 }
 .subnav a[aria-current='page'] {
-  color: var(--accent-hi);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  color: var(--text);
+  background: var(--surface-selected);
 }
 
 /* ==========================================================================
@@ -275,23 +271,22 @@
 .next a {
   display: block;
   padding: 16px 18px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   text-decoration: none;
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
 .next a:hover {
-  border-color: var(--hairline-strong);
-  background: var(--panel-3);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 .next-k {
   display: block;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-4);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-tertiary);
   margin-bottom: 5px;
 }
 .next-t {

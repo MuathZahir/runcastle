@@ -1,32 +1,38 @@
 /* ==========================================================================
-   runcastle.dev landing page
+   runcastle.dev
    --------------------------------------------------------------------------
-   Tokens are lifted verbatim from apps/web/src/styles.css so the marketing
-   surface and the product read as one system: near-black layered by 1px
-   hairlines, exactly one violet accent, mono for every identifier.
+   Tokens are the Runcastle Design System's, the same values the app reads
+   from apps/web/src/theme.css (there they carry Tailwind's `--color-` prefix),
+   so the marketing surface and the product read as one system: cool slate
+   grounds, an inverted-neutral primary, one blue accent, and colour spent
+   mostly along the pipeline.
 
-   Theme is locked to dark. The product is a dark IDE surface and this page is
-   its shopfront; there is no light variant to fall back to.
+   Theme is locked to dark. No section inverts. The one light surface on the
+   page is the app under test inside the review player, which is a recording
+   of somebody else's product.
 
-   Radius system (locked): panels 10px, controls 7px, chips/pills full.
+   This file also carries the header, footer and buttons the docs and
+   comparison pages share; content.css adds their reading surface on top.
+
+   Radius system: controls and rows 6px, panels 10px, dots only full.
    ========================================================================== */
 
 @font-face {
-  font-family: 'Inter Variable';
+  font-family: 'Geist Variable';
   font-style: normal;
   font-display: swap;
   font-weight: 100 900;
-  src: url('assets/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  src: url('assets/fonts/geist-latin-wght-normal.woff2') format('woff2-variations');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'JetBrains Mono Variable';
+  font-family: 'Geist Mono Variable';
   font-style: normal;
   font-display: swap;
-  font-weight: 100 800;
-  src: url('assets/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  src: url('assets/fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
     U+2212, U+2215, U+FEFF, U+FFFD;
@@ -35,56 +41,92 @@
 :root {
   color-scheme: dark;
 
-  /* surfaces */
-  --bg: #090b10;
-  --panel: #0e1117;
-  --panel-2: #0b0e14;
-  --panel-3: #12151d;
-  --panel-inset: #07080b;
+  /* grounds */
+  --canvas: #0a0c11;
+  --surface: #10131a;
+  --surface-raised: #161a24;
+  --surface-hover: #1a1e29;
+  --surface-selected: #212636;
+  --surface-inset: #0c0e14;
 
-  /* hairlines */
-  --hairline: #1c2230;
-  --hairline-soft: #151a26;
-  --hairline-strong: #2a3242;
+  /* lines */
+  --border: #222837;
+  --border-subtle: rgb(200 215 255 / 0.06);
+  --border-strong: #333a4d;
 
-  /* text ramp */
-  --text: #dde3ed;
-  --text-2: #96a0b0;
-  --text-3: #5f6a7a;
-  --text-4: #3a4354;
+  /* text */
+  --text: #eceef4;
+  --text-secondary: #a2a8b9;
+  --text-tertiary: #8a91a5;
+  --text-disabled: #4b5163; /* decorative only, never carries information */
+  --icon: #8990a4;
 
-  /* the one accent */
-  --accent: #7c6cf6;
-  --accent-hi: #a49bff;
-  --accent-2: #8f80f8;
-  --accent-ink: #0d0722;
-  --accent-soft: #161329;
-  --accent-line: #3d3670;
+  /* the one primary: inverted neutral */
+  --primary: #eceef4;
+  --primary-hover: #ffffff;
+  --on-primary: #0a0c11;
 
-  /* phase palette: semantic lifecycle state, confined to phase markers */
-  --ph-ideation: #8b7cf8;
-  --ph-spec: #8a94a2;
-  --ph-tickets: #d7a94a;
-  --ph-implementation: #f0883e;
-  --ph-review: #58a6ff;
-  --ph-shipped: #3fb950;
+  /* the one accent: focus, selection, links, live, review */
+  --accent: #4f8ef7;
+  --accent-text: #7aaafa;
+  --accent-subtle: #16213a;
 
-  --mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, ui-monospace, monospace;
-  --sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* status */
+  --success: #46b67a;
+  --warning: #e2a53b;
+  --danger: #f06363;
+  --danger-subtle: #2a1515;
 
-  --radius-ctl: 7px;
-  --radius-panel: 10px;
-  --radius-pill: 999px;
+  /* phases, in pipeline order */
+  --phase-draft: var(--text-disabled);
+  --phase-ideation: #ec7cb5;
+  --phase-spec: #35c2b8;
+  --phase-tickets: var(--warning);
+  --phase-implementation: #f08a4b;
+  --phase-review: var(--accent);
+  --phase-shipped: var(--success);
 
-  --wrap: 1220px;
-  --gutter: 28px;
+  --focus-ring: var(--accent);
 
-  --dur-1: 0.14s;
-  --dur-2: 0.24s;
-  --dur-3: 0.6s;
+  --font-sans: 'Geist Variable', 'Segoe UI Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Cascadia Code', ui-monospace, Consolas, monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* floating layers only; content is flat */
+  --shadow-popover: 0 0 0 1px rgb(255 255 255 / 0.06), 0 8px 24px -6px rgb(0 0 0 / 0.6);
+  --shadow-dialog: 0 0 0 1px rgb(255 255 255 / 0.07), 0 24px 64px -12px rgb(0 0 0 / 0.75);
+
+  /* product metrics, read by assets/rc-ui.css */
+  --control-sm: 24px;
+  --control-md: 28px;
+  --control-lg: 32px;
+  --row-h: 32px;
+  --titlebar-h: 44px;
+  --sidebar-w: 248px;
+  --content-max: 760px;
+
+  /* page metrics */
+  --wrap: 1280px;
+  --gutter: clamp(20px, 4vw, 40px);
+  --band: clamp(80px, 10vw, 144px);
+
+  --dur-1: 120ms; /* hover, colour, press */
+  --dur-2: 190ms; /* anything entering */
   --ease: cubic-bezier(0.22, 0.61, 0.24, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ring: 0 0 0 2px var(--bg), 0 0 0 4px rgba(124, 108, 246, 0.5);
 }
 
 *,
@@ -105,21 +147,22 @@ html {
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--canvas);
   color: var(--text);
-  font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.6;
-  letter-spacing: 0.004em;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 24px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 img,
 svg {
-  display: block;
   max-width: 100%;
+}
+img {
+  display: block;
 }
 
 a {
@@ -128,14 +171,28 @@ a {
 }
 
 :focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-  border-radius: var(--radius-ctl);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(124, 108, 246, 0.32);
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
   color: #fff;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h2 {
+  max-width: 900px;
+  font-size: clamp(30px, 3.6vw, 48px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
 }
 
 .wrap {
@@ -146,7 +203,7 @@ a {
 }
 
 .lp-mono {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-variant-ligatures: none;
 }
 
@@ -161,28 +218,83 @@ a {
   white-space: nowrap;
   border: 0;
 }
+/* The skip link is the one .sr-only element that has to appear when it is
+   reached, or keyboard users tab onto something they cannot see. */
+a.sr-only:focus-visible {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 50;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 8px 12px;
+  clip: auto;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+}
+
+/* Icons are a sprite at the top of the page; these give each <use> its box.
+   The rest of .rc-icon and .rc-phase comes from assets/rc-ui.css. */
+.rc-icon,
+.rc-phase {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+.rc-phase {
+  color: var(--ph);
+}
+.is-14 {
+  width: 14px;
+  height: 14px;
+}
+.is-18 {
+  width: 18px;
+  height: 18px;
+}
+
+/* A phase's hue, for whatever sits inside: its glyph, its bar, its wash. */
+.ph-draft {
+  --ph: var(--phase-draft);
+}
+.ph-ideation {
+  --ph: var(--phase-ideation);
+}
+.ph-spec {
+  --ph: var(--phase-spec);
+}
+.ph-tickets {
+  --ph: var(--phase-tickets);
+}
+.ph-implementation {
+  --ph: var(--phase-implementation);
+}
+.ph-review {
+  --ph: var(--phase-review);
+}
+.ph-shipped {
+  --ph: var(--phase-shipped);
+}
 
 /* ==========================================================================
    BRAND
    ========================================================================== */
 
-.lp-wordmark {
-  font-family: var(--mono);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-size: 15px;
-}
-.lp-wordmark .run {
-  color: var(--accent-hi);
-}
-.lp-wordmark .castle {
-  color: var(--text);
-}
-
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.brand svg {
+  flex: none;
 }
 
 /* ==========================================================================
@@ -190,36 +302,13 @@ a {
    ========================================================================== */
 
 .nav {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  height: 64px;
-  display: flex;
-  align-items: center;
-  background: rgba(9, 11, 16, 0.76);
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-  border-bottom: 1px solid transparent;
-  transition: border-color var(--dur-2) var(--ease), background var(--dur-2) var(--ease);
-}
-.nav.is-stuck {
-  border-bottom-color: var(--hairline);
-  background: rgba(9, 11, 16, 0.9);
-}
-@media (prefers-reduced-transparency: reduce) {
-  .nav,
-  .nav.is-stuck {
-    background: var(--bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
+  border-bottom: 1px solid var(--border-subtle);
 }
 .nav-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  width: 100%;
+  gap: 16px;
+  height: 64px;
   max-width: var(--wrap);
   margin-inline: auto;
   padding-inline: var(--gutter);
@@ -227,54 +316,61 @@ a {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 26px;
-  font-size: 13.5px;
-  color: var(--text-2);
+  gap: 2px;
+  margin-left: 16px;
 }
-.nav-links a {
-  transition: color var(--dur-1) var(--ease);
+.nav-links a,
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding-inline: 10px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  transition: background-color var(--dur-1), color var(--dur-1);
 }
-.nav-links a:hover {
+.nav-links a:hover,
+.footer-links a:hover {
+  background: var(--surface-hover);
   color: var(--text);
 }
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  margin-left: auto;
 }
 .nav-gh {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding-inline: 12px;
-  border-radius: var(--radius-ctl);
-  border: 1px solid var(--hairline);
-  color: var(--text-2);
-  font-size: 13px;
-  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
-    background var(--dur-1) var(--ease);
+  gap: 8px;
+  height: 36px;
+  padding-inline: 14px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: background-color var(--dur-1), color var(--dur-1);
 }
 .nav-gh:hover {
+  background: var(--surface-hover);
   color: var(--text);
-  border-color: var(--hairline-strong);
-  background: var(--panel-3);
 }
 .nav-gh svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
-@media (max-width: 880px) {
+@media (max-width: 900px) {
   .nav-links {
     display: none;
   }
 }
 /* Below this the brand plus both nav controls stop fitting on one line. The
-   hero's own "View on GitHub" button and the footer link both still cover it. */
-@media (max-width: 520px) {
-  :root {
-    --gutter: 18px;
-  }
+   footer link still covers GitHub. */
+@media (max-width: 640px) {
   .nav-gh {
     display: none;
   }
@@ -289,44 +385,44 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
-  padding-inline: 18px;
-  border-radius: var(--radius-ctl);
+  height: 36px;
+  padding-inline: 14px;
   border: 1px solid transparent;
-  font-family: var(--sans);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-family: var(--font-sans);
   font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform var(--dur-1) var(--ease), background var(--dur-1) var(--ease),
-    border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  transition: background-color var(--dur-1), border-color var(--dur-1), color var(--dur-1),
+    transform var(--dur-1);
 }
-.lp-btn-sm {
-  height: 34px;
-  padding-inline: 14px;
-  font-size: 13px;
+.lp-btn .rc-icon {
+  color: inherit;
+}
+.lp-btn-lg {
+  height: 44px;
+  padding-inline: 18px;
+  font-size: 15px;
 }
 .lp-btn-primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 .lp-btn-primary:hover {
-  background: var(--accent-2);
-}
-.lp-btn-primary:active {
-  transform: translateY(1px);
+  background: var(--primary-hover);
 }
 .lp-btn-ghost {
-  background: transparent;
-  border-color: var(--hairline);
-  color: var(--text);
+  color: var(--text-secondary);
 }
 .lp-btn-ghost:hover {
-  border-color: var(--hairline-strong);
-  background: var(--panel-3);
+  background: var(--surface-hover);
+  color: var(--text);
 }
-.lp-btn-ghost:active {
-  transform: translateY(1px);
+.lp-btn:active {
+  transform: scale(0.98);
 }
 @media (prefers-reduced-motion: reduce) {
   .lp-btn:active {
@@ -336,74 +432,22 @@ a {
 
 /* ==========================================================================
    SECTION SCAFFOLD
+   --------------------------------------------------------------------------
+   Every band is a stacked header (h2, then one sentence) over one visual.
+   Bands carry their space above, so the gap between two never doubles.
    ========================================================================== */
 
-section {
-  position: relative;
-}
-
 .band {
-  padding-block: clamp(64px, 7vw, 96px);
-}
-.band-tight {
-  padding-block: clamp(48px, 6vw, 76px);
-}
-
-.eyebrow {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--accent-hi);
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-  font-weight: 600;
-  letter-spacing: -0.028em;
-  line-height: 1.08;
-  text-wrap: balance;
-}
-
-h2 {
-  font-size: clamp(30px, 4.2vw, 46px);
-}
-h3 {
-  font-size: 17px;
-  letter-spacing: -0.012em;
-  line-height: 1.3;
+  padding-top: var(--band);
 }
 
 .lede {
-  margin: 18px 0 0;
-  font-size: clamp(16px, 1.5vw, 17.5px);
-  color: var(--text-2);
-  line-height: 1.65;
-  max-width: 60ch;
-  text-wrap: pretty;
-}
-
-/* Every band is `.section-head` followed by its content, so the gap between the
-   two lives here once rather than as a margin-top on each of `.showcase`,
-   `.bento`, `.local` and the pipeline's mock — which is how the pipeline ended
-   up with no gap at all, being the only one whose content is a bare wrapper. */
-.section-head {
+  margin: 20px 0 0;
   max-width: 62ch;
-  margin-bottom: 52px;
-}
-
-/* Violet-to-white duotone wash on key display type. Set as a block so the
-   gradient maps across the whole line rather than restarting per line box
-   when the text wraps. */
-.duo {
-  display: block;
-  background: linear-gradient(96deg, var(--accent-hi) 4%, #eef0f6 68%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
 /* ==========================================================================
@@ -412,50 +456,39 @@ h3 {
 
 .hero {
   position: relative;
-  padding-top: clamp(56px, 7vw, 92px);
-  padding-bottom: 0;
-  overflow: hidden;
+  padding-top: clamp(48px, 6.5vw, 96px);
 }
-
-/* violet horizon wash: the duotone, kept low and wide so it reads as light
-   coming off the product rather than a glow effect on a box */
+/* A dot grid fading out of the top right corner, so the headline sits on a
+   material rather than on flat black. */
 .hero::before {
   content: '';
   position: absolute;
-  left: 50%;
-  top: -140px;
-  width: 1500px;
-  height: 900px;
-  translate: -50% 0;
-  background: radial-gradient(
-    56% 46% at 50% 40%,
-    rgba(124, 108, 246, 0.2) 0%,
-    rgba(124, 108, 246, 0.075) 42%,
-    transparent 72%
-  );
+  top: 0;
+  right: 0;
+  width: min(760px, 70%);
+  height: 440px;
+  background-image: radial-gradient(circle, rgb(200 215 255 / 0.2) 1px, transparent 1.6px);
+  background-size: 16px 16px;
+  -webkit-mask-image: linear-gradient(to bottom left, #000 0%, transparent 60%);
+  mask-image: linear-gradient(to bottom left, #000 0%, transparent 60%);
   pointer-events: none;
-  z-index: 0;
 }
-
-.hero-inner {
+.hero > .wrap {
   position: relative;
-  z-index: 1;
 }
 
 .hero h1 {
-  font-size: clamp(34px, 5.4vw, 62px);
-  max-width: 24ch;
-}
-/* Two deliberate lines: statement in white, outcome in the violet-to-white
-   duotone. Blocks rather than a wrap, so the break never lands mid-phrase. */
-.hero h1 .h1-l1 {
-  display: block;
+  max-width: 900px;
+  font-size: clamp(40px, 5.4vw, 76px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
 }
 .hero .lede {
-  max-width: 54ch;
-  font-size: clamp(16.5px, 1.6vw, 19px);
+  margin-top: 24px;
+  max-width: 580px;
+  font-size: clamp(17px, 1.4vw, 19px);
+  line-height: 1.55;
 }
-
 .hero-cta {
   display: flex;
   flex-wrap: wrap;
@@ -463,967 +496,1344 @@ h3 {
   gap: 12px;
   margin-top: 32px;
 }
-
-/* the product shot: full-bleed-ish, bleeding past the fold on purpose so the
-   CTA above it stays in the first viewport */
-.hero-shot {
-  position: relative;
-  z-index: 1;
-  margin-top: clamp(48px, 6vw, 76px);
-  border: 1px solid var(--hairline);
-  border-bottom: none;
-  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-  overflow: hidden;
-  background: var(--panel-2);
-  box-shadow: 0 -1px 0 rgba(164, 155, 255, 0.14) inset, 0 40px 120px -50px rgba(124, 108, 246, 0.5);
-}
-.hero-shot img {
-  width: 100%;
-  height: auto;
+.film-time {
+  font-weight: 400;
+  color: var(--text-tertiary);
 }
 
-/* ==========================================================================
-   HERO FILM
-   --------------------------------------------------------------------------
-   The hero is the launch film rather than a still. It keeps the shot's panel
-   treatment but closes the bottom edge the shot deliberately left open: a still
-   can bleed past the fold and lose nothing, while a 16:9 film has a height of
-   its own and bleeding it would crop the frame.
-   ========================================================================== */
-
-.hero-film {
-  border-bottom: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  margin-bottom: clamp(52px, 6.5vw, 88px);
-  /* The film's own backdrop rather than the page's panel, so the frame never
-     shows a lighter box behind it while the first frames decode. */
-  background: #08070e;
-}
-.hero-film .film {
-  display: block;
-  /* The `width`/`height` attributes carry the 16:9 ratio, so the frame reserves
-     its full height before a byte of video is fetched. Nothing reflows when the
-     film arrives, which matters here because it is the tallest thing on screen. */
-  width: 100%;
-  height: auto;
-}
-
-/* Offered only while the film is looping muted, and only by main.js — the frame
-   is already showing the product by then, so the one thing left to hand over is
-   the voiceover. It sits in the corner rather than over the middle because it is
-   an option, not a gate: the film plays either way. */
-.film-btn {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  height: 34px;
-  padding-inline: 13px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-pill);
-  /* Translucent over the film, so it reads as an overlay on the footage rather
-     than a control bar bolted to the frame. */
-  background: rgba(10, 9, 15, 0.72);
-  backdrop-filter: blur(10px);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
-}
-.film-btn[hidden] {
-  display: none;
-}
-.film-btn:hover,
-.film-btn:focus-visible {
-  background: rgba(18, 16, 26, 0.9);
-  border-color: var(--accent);
-}
-.film-btn-icon {
-  display: flex;
-  color: var(--text-2);
-}
-.film-btn-icon svg {
-  width: 15px;
-  height: 15px;
-}
-.film-btn-time {
-  color: var(--text-3);
-  font-size: 12px;
-}
-
-/* ==========================================================================
-   EMBEDDED PRODUCT UI
-   --------------------------------------------------------------------------
-   The mockups on this page are the product's real components as live markup,
-   not screenshots. `assets/app-ui.css` is the shipped app stylesheet with every
-   rule scoped under `.rc-app` (see build-app-css.mjs), so a mock is just that
-   wrapper plus the app's own class names.
-
-   Two consequences worth knowing:
-   1. The mock lays out FLUIDLY at whatever width it is given, exactly as the app
-      does in a browser window. Nothing is scaled or letterboxed, so text stays
-      at its true size and no panel gets clipped.
-   2. Every mock is `inert` + `aria-hidden`, because it is an illustration. Each
-      one is paired with an `.sr-only` description carrying the same information.
-   ========================================================================== */
-
-.rc-app {
-  /* Named container, so the layout rules below can respond to the mock's own
-     logical width rather than the viewport. */
-  container-type: inline-size;
-  container-name: rcapp;
-
-  /* The app's global body typography, which the scoped stylesheet deliberately
-     drops. Without this the mock inherits the page's 16px and every component
-     renders oversized. */
-  font-family: var(--sans);
-  font-size: 13px;
-  line-height: 1.45;
-  letter-spacing: 0.004em;
-  font-feature-settings: 'tnum' 1, 'cv05' 1;
-  color: var(--text);
-  background: var(--bg);
-  text-align: left;
-  /* Belt and braces alongside `inert`, for browsers that predate it. */
-  pointer-events: none;
-  user-select: none;
-}
-
-/* The window a mock sits in. Hairline and radius match the product's own panel
-   treatment rather than inventing a browser chrome.
-
-   A mock lays out at a FIXED LOGICAL SIZE (--rc-w / --rc-h, unitless px) and is
-   then scaled to fit the frame. That is the whole trick: the app gets the room it
-   was designed for, so no title truncates and no panel is clipped, while the
-   scale keeps it inside the column. Because it is real DOM rather than a bitmap,
-   scaling costs nothing in sharpness.
-
-   `--rc-s` is refined per frame by main.js via ResizeObserver. The value below is
-   the no-JS fallback, correct for a full-width frame at the default page width. */
-.rc-frame {
-  --rc-w: 1600;
-  --rc-h: 900;
-  --rc-s: 0.72;
-  position: relative;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  overflow: hidden;
-  background: var(--bg);
-  height: calc(var(--rc-h) * var(--rc-s) * 1px);
-}
-.rc-frame > .rc-app {
-  width: calc(var(--rc-w) * 1px);
-  height: calc(var(--rc-h) * 1px);
-  transform: scale(var(--rc-s));
-  transform-origin: top left;
-}
-
-/* Mocks that are not scaled: they already sit at their natural size, so they
-   keep the frame's chrome but opt out of the fixed-size machinery. */
-.rc-frame.is-natural {
-  height: auto;
-}
-.rc-frame.is-natural > .rc-app {
-  width: auto;
-  height: auto;
-  transform: none;
-}
-
-/* Panels whose height should follow their content rather than a guessed number.
-   The inner element grows freely so its scrollHeight is the true content height;
-   main.js then sets the frame's height to that, scaled, because a transform does
-   not affect layout.
-
-   No min-height here on purpose: a floor would inflate the measurement and
-   reintroduce the dead space this is meant to remove. --rc-h survives only as the
-   frame's no-JS fallback height. */
-.rc-frame.is-autoheight > .rc-app {
-  height: auto;
-}
-
-/* A mock cropped on purpose: the panel continues past the frame, so fade the
-   cut edge instead of ending on a hard line. */
-.rc-frame.is-cropped::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 88px;
-  background: linear-gradient(to top, var(--bg), transparent);
-  pointer-events: none;
-}
-
-/* The app shell is a three-column grid, and below these widths the columns stop
-   being readable, so the outer rails drop the way they would in a narrow window.
-
-   Nothing on the page is a whole shell any more: the hero was the only one, and
-   the hero is the film. These rules and `[data-mock='shell']` below are kept
-   because `assets/screens/mock-shell.png` — the root README's lead image and the
-   page's own og:image — can only be recaptured by standing the frame back up.
-
-   These are CONTAINER queries, not media queries, and that distinction matters:
-   a mock's width is its own logical width, which has nothing to do with the
-   viewport. Keyed to the viewport, a 1600px-wide mock on a phone would collapse
-   its rails while still being 1600px wide, and the workspace would end up in the
-   252px sidebar track. */
-/* The product declares only `grid-template-rows` on the shell, so its single
-   implicit COLUMN is auto-sized and grows to the widest thing inside. In the app
-   that is harmless because the shell fills a real window. Here the shell has a
-   fixed width to respect, so the column is pinned to it. */
-.rc-app .shell {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* Note the `.rc-app` prefix inside these blocks. A container query does not add
-   specificity, so a bare `.shell-body` (0,1,0) would lose to the product sheet's
-   `.rc-app .shell-body` (0,2,0). Matching that specificity and coming later in
-   source order is what makes these win. */
-/* Scoped to a rail that is actually inside a shell. A mock may show one of these
-   panels on its own (the feature board is just `.sidebar`), and such a panel is
-   narrow by nature — keyed on the bare class it would match its own width here
-   and hide itself. */
-@container rcapp (max-width: 1080px) {
-  .rc-app .shell-body {
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  }
-  .rc-app .shell-body > .inspector {
-    display: none;
-  }
-}
-@container rcapp (max-width: 760px) {
-  /* minmax(0, ...) rather than 1fr: a bare 1fr keeps an auto minimum, so the
-     workspace would refuse to shrink below its content and push the column wider
-     than the mock. */
-  .rc-app .shell-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .rc-app .shell-body > .sidebar {
-    display: none;
-  }
-}
-
-/* Logical size per mock. Kept in CSS rather than inline styles so the narrow
-   overrides below can win on source order at equal specificity. */
-.rc-frame[data-mock='shell'] {
-  --rc-w: 1600;
-  --rc-h: 800;
-}
-/* Every panel of the end-to-end walkthrough lays out at one logical width, so the
-   phase stepper across the top does not resize as the stage cross-fades. Heights
-   differ per phase and `.is-autoheight` measures each; the stage takes the
-   tallest, which is the run. */
-.rc-frame[data-mock='walk'] {
-  --rc-w: 1040;
-  --rc-h: 560;
-}
-.rc-frame[data-mock='board'] {
-  --rc-w: 320;
-  --rc-h: 440;
-}
-.rc-frame[data-mock='term'] {
-  --rc-w: 880;
-  --rc-h: 420;
-}
-.rc-frame[data-mock='ledger'] {
-  --rc-w: 900;
-  --rc-h: 430;
-}
-.rc-frame[data-mock='review'] {
-  --rc-w: 940;
-  --rc-h: 540;
-}
-.rc-frame[data-mock='shipped'] {
-  --rc-w: 900;
-  --rc-h: 380;
-}
-
-/* On a phone there is no scale at which a 1600px IDE is readable, so the mock
-   stops pretending to be a desktop window and lays out narrow instead. The
-   container queries above then collapse the rails coherently, and the scale
-   lands near 0.8 so the type stays legible. This is a real state: it is what
-   runcastle looks like in a narrow window. */
-@media (max-width: 760px) {
-  .rc-frame[data-mock] {
-    --rc-w: 440;
-    --rc-h: 620;
-  }
-  /* The board is already a narrow rail at its natural size — shrinking it to the
-     blanket phone width would only make it illegible. */
-  .rc-frame[data-mock='board'] {
-    --rc-w: 320;
-    --rc-h: 440;
-  }
-}
-@media (max-width: 520px) {
-  .rc-frame[data-mock] {
-    --rc-w: 400;
-    --rc-h: 600;
-  }
-  .rc-frame[data-mock='board'] {
-    --rc-w: 320;
-    --rc-h: 440;
-  }
-}
-
-/* --------------------------------------------------------------------------
-   WALKTHROUGH PANELS
-   Each panel is a slice of the workspace: the phase stepper, sometimes the
-   next-step bar, and one phase body. It is not a whole shell, so it supplies
-   the chrome the surrounding workspace would have given it.
-   -------------------------------------------------------------------------- */
-/* A floor in the mock's own logical units, set to the tallest panel (the run).
-   Without it each frame is exactly as tall as its own phase body, so the short
-   ones float as a small bordered box inside a stage cell sized by the tallest.
-   With it every panel fills the cell and only the content inside changes. */
-.walk-app {
-  padding: 0;
-  min-height: 576px;
-}
-/* Standalone, the stepper is the panel's own header rather than something
-   sitting under a title row, so it loses the product's top margin and gains
-   the padding the surrounding chrome would otherwise have provided. */
-.walk-app .pipeline {
-  margin-top: 0;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--hairline);
-  /* Six phases do not fit on one line once the mock lays out at phone width, and
-     a stepper with the last two phases cut off is the one thing this section
-     cannot afford to show. Wrapping keeps all six visible; at every width above
-     that it is a single row and this never applies. */
-  flex-wrap: wrap;
-  row-gap: 8px;
-}
-.walk-body {
-  padding: 18px 20px 20px;
-}
-/* `.run-stream-panel` sizes itself against the viewport (`100dvh`). Inside a
-   mock that lays out at a fixed logical size that is meaningless, so the log
-   gets a height in the mock's own coordinate space instead. */
-.walk-app .run-stream-panel {
-  height: 316px;
-}
-/* The doc view is an overlay in the app, centred over a backdrop. Here it is the
-   panel's whole content, so it drops the viewport-relative cap and fills. */
-.walk-app .peek {
-  max-width: none;
-  max-height: none;
-}
-/* Sized so the whole excerpt fits: a doc cut mid-sentence reads as broken rather
-   than as a panel that scrolls. Matches the run panel's height, so the sticky
-   stage does not resize between those two steps. */
-.walk-app .peek-body {
-  max-height: 440px;
-}
-/* Entry animations are for a view arriving once. These panels cross-fade every
-   time the reader scrolls past them, so the one-shot ones are dropped. The
-   running-lane pulse stays: it is state, not entry. */
-.walk-app .peek,
-.walk-app .nextstep,
-.walk-app .stream-line {
-  animation: none;
-}
-/* In the product the next-step bar is a card floating in the workspace. Here the
-   frame is already that card, so the bar sits flush instead of drawing a second
-   border inside the first.
-
-   `max-width` / `margin-inline` are the product's centered document column
-   (`--content-max`, shared with `.ws-body-inner`). The stepper above is not in
-   that group, so left alone the bar sits 62px inboard of it and the two rows
-   visibly fail to line up. Standalone there is no document column to centre
-   against, so the bar takes the frame's full width. */
-.walk-app .nextstep {
-  margin-top: 0;
-  margin-inline: 0;
-  max-width: none;
-  border: 0;
-  border-bottom: 1px solid var(--hairline);
-  border-radius: 0;
-  padding: 14px 20px;
-  background: transparent;
-}
-
-/* The embedded terminal. Claude Code draws its start banner with box-drawing
-   characters, but those only tile cleanly at a line-height matching the font's
-   cell, which fights readable prose. So the banner is a real bordered box and the
-   text inside is ordinary monospace lines: same reading, no glyph seams, and it
-   stays sharp at any scale. */
-.rc-term {
-  padding: 18px 20px 20px;
-  margin: 0;
-  overflow: hidden;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-2);
-}
-
-/* Claude Code's banner: hairline box in its terminal orange, with the version
-   label sitting on the top edge. */
-.rc-term-banner {
-  position: relative;
-  max-width: 62ch;
-  margin: 14px 0 22px;
-  padding: 18px 20px 16px;
-  border: 1px solid #a5522f;
-  border-radius: 8px;
-  color: #d98457;
-}
-.rc-term-banner-label {
-  position: absolute;
-  top: 0;
-  left: 16px;
-  translate: 0 -50%;
-  padding-inline: 8px;
-  background: var(--bg);
-  color: #d98457;
-}
-.rc-term-banner .t-hi {
-  display: block;
-  margin-bottom: 12px;
-  color: var(--text);
-  font-weight: 600;
-}
-.rc-term-banner .t-dim {
-  display: block;
-  color: #b0714f;
-}
-
-/* The instruction runcastle injects into the session. */
-.rc-term-inject {
-  display: block;
-  max-width: 62ch;
-  padding: 7px 10px;
-  border-radius: 4px;
-  background: #262b33;
-  color: var(--text);
-}
-
-@media (max-width: 900px) {
-  .rc-term {
-    font-size: 11px;
-  }
-}
-
-/* ==========================================================================
-   RUNS-ON STRIP  (real brand marks, no category labels)
-   ========================================================================== */
-
-.runson {
-  border-top: 1px solid var(--hairline);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--panel-2);
-}
-.runson-inner {
-  display: flex;
-  align-items: center;
-  gap: clamp(24px, 4vw, 56px);
-  flex-wrap: wrap;
-  padding-block: 26px;
-}
-.runson .eyebrow {
-  color: var(--text-3);
-  flex: none;
-}
-.runson-marks {
-  display: flex;
-  align-items: center;
-  gap: clamp(26px, 4.4vw, 54px);
-  flex-wrap: wrap;
-}
-.runson-marks img {
-  height: 22px;
-  width: auto;
-  opacity: 0.44;
-  filter: grayscale(1);
-  transition: opacity var(--dur-2) var(--ease), filter var(--dur-2) var(--ease);
-}
-.runson-marks a:hover img,
-.runson-marks a:focus-visible img {
-  opacity: 0.95;
-  filter: grayscale(0);
-}
-
-/* ==========================================================================
-   PIPELINE
-   ========================================================================== */
-
-/* the two decisions callout */
-.decisions {
+/* The castle: six phase blocks as battlements, the app as the wall under
+   them. It echoes the logo, and it is the pipeline in one glance. */
+.castle-top {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  margin-top: 64px;
-  background: var(--hairline);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  overflow: hidden;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  column-gap: 5.9%;
+  align-items: end;
+  margin-top: clamp(44px, 5vw, 72px);
 }
-.decision {
-  background: var(--panel);
-  padding: 28px;
-}
-.decision p {
-  margin: 8px 0 0;
-  font-size: 14.5px;
-  color: var(--text-2);
-  line-height: 1.6;
-}
-@media (max-width: 720px) {
-  .decisions {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ==========================================================================
-   SCROLL SHOWCASE  (sticky visual, steps drive it)
-   ========================================================================== */
-
-/* Fixed reading column, and everything left over goes to the stage. A fractional
-   split would hand the stage a width that changes with the gap, and the mock
-   inside is sized against that width. */
-.showcase {
-  display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-  gap: clamp(36px, 4vw, 56px);
-  align-items: start;
-}
-
-.steps {
+.merlon {
   display: flex;
   flex-direction: column;
-  gap: 0;
-}
-.step-wrap {
-  border-top: 1px solid var(--hairline-soft);
-}
-.step-wrap:last-child {
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.step {
-  padding: 28px 0;
-  cursor: pointer;
-  opacity: 0.42;
-  transition: opacity var(--dur-3) var(--ease);
-  text-align: left;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  display: block;
-  width: 100%;
-}
-.step.is-active {
-  opacity: 1;
-}
-/* A step is a large block, so the default offset ring draws a big rectangle
-   around a paragraph and reads as a stray box. Swap it for the left accent bar
-   the product already uses to mark an active row: same clarity, no box. */
-.step:focus-visible {
-  box-shadow: none;
-  outline: none;
-}
-.step-wrap:has(.step:focus-visible) {
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-/* Fallback for engines without :has(), keep a visible indicator either way. */
-@supports not selector(:has(*)) {
-  .step:focus-visible {
-    box-shadow: inset 2px 0 0 var(--accent);
-  }
-}
-/* The step is a <button>, so its contents are spans rather than h3 + p. These
-   two rules carry the typography those tags would have brought. */
-.step-h {
-  display: block;
-  margin-bottom: 9px;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-  line-height: 1.3;
-  color: var(--text);
-}
-/* The phase this step is, in the product's own vocabulary and phase colour, so
-   the label in the step and the label in the stepper opposite are the same word. */
-.step-phase {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--text-2);
-}
-.step-phase::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ph);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ph) 18%, transparent);
-}
-/* Whether this phase wants the reader's attention. The whole argument of the
-   section is that three of the six do not. */
-.step-who {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding-inline: 9px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--hairline);
-  font-size: 11px;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-.step-who.is-you {
-  border-color: var(--accent-line);
-  background: rgba(124, 108, 246, 0.1);
-  color: var(--accent-hi);
-}
-.step-p {
-  display: block;
-  font-size: 14.5px;
-  color: var(--text-2);
-  line-height: 1.62;
-  max-width: 46ch;
-}
-.step-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.step-idx {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--text-4);
-  transition: color var(--dur-2) var(--ease);
-}
-.step.is-active .step-idx {
-  color: var(--accent-hi);
-}
-.step-bar {
-  display: block;
-  height: 1px;
-  margin-top: 18px;
-  background: var(--hairline);
-  position: relative;
-  overflow: hidden;
-}
-.step-bar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--accent);
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform var(--dur-3) var(--ease-out);
-}
-.step.is-active .step-bar::after {
-  transform: scaleX(1);
-}
-
-.stage {
-  position: sticky;
-  top: 108px;
-}
-/* The four panels are stacked in one grid cell and cross-faded. Because each is
-   real UI rather than a fixed-ratio image, the stage takes the height of the
-   tallest panel and never jumps between swaps.
-
-   minmax(0, 1fr) matters: the mock inside each panel is a fixed logical width,
-   and an auto grid track would size to that instead of to the column, pushing
-   the stage (and the page) wider than the layout allows. */
-#stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-.stage-panel {
-  grid-area: 1 / 1;
-  min-width: 0;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--dur-3) var(--ease), visibility var(--dur-3) var(--ease);
-}
-.stage-panel.is-shown {
-  opacity: 1;
-  visibility: visible;
-}
-.stage-panel .rc-frame {
-  box-shadow: 0 30px 90px -50px rgba(124, 108, 246, 0.42);
-}
-
-@media (max-width: 900px) {
-  /* minmax(0, 1fr) plus min-width:0 down the chain: a grid item defaults to a
-     min-content floor, which the product UI inside would otherwise push the
-     whole column past. */
-  .showcase {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-  .steps,
-  .step-wrap,
-  .step,
-  .stage,
-  #stage,
-  .stage-panel {
-    min-width: 0;
-  }
-  .step {
-    opacity: 1;
-    cursor: default;
-  }
-  /* No sticky column to track, so the panels stop competing for one cell and
-     simply stack below the steps. Every panel stays present and readable
-     without JavaScript. */
-  .stage {
-    position: static;
-    margin-top: 34px;
-  }
-  #stage {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-  }
-  .stage-panel {
-    grid-area: auto;
-    opacity: 1;
-    visibility: visible;
-    transition: none;
-  }
-  /* The floor exists so every panel fills one shared sticky cell. Stacked, each
-     panel is its own block and the floor would only add dead space. */
-  .walk-app {
-    min-height: 0;
-  }
-}
-
-/* ==========================================================================
-   PARALLEL WORK  (the feature board, beside the reasons it works)
-   ========================================================================== */
-
-.parallel {
-  display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
-  gap: clamp(36px, 5vw, 68px);
-  align-items: start;
-}
-/* Standalone the rail has nothing to its right to divide it from. */
-.board-app .sidebar {
-  border-right: none;
-}
-/* In the app the list is the scrolling remainder of a full-height shell column
-   (`flex: 1` against `min-height: 0`). With no height to take a remainder of,
-   that resolves to zero and the whole rail collapses, so here the list is simply
-   as tall as its rows. */
-.board-app .sidebar-list {
-  flex: none;
-  overflow: visible;
-}
-/* Reads the graphic above it, since the six-segment map is the whole point of
-   showing the rail at this size. */
-.board-note {
-  margin: 18px 2px 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-3);
-  max-width: 42ch;
-}
-@media (max-width: 900px) {
-  .parallel {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 34px;
-  }
-}
-
-/* ==========================================================================
-   GATES BENTO  (3 items, 3 cells, asymmetric)
-   ========================================================================== */
-
-/* The event stream is live UI now rather than a fixed-size capture, so it
-   reflows to whatever width the cell gives it and the columns can be even. */
-.bento {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  gap: 18px;
-}
-.cell {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  background: var(--panel);
-  padding: 26px;
-  min-width: 0;
-}
-.cell h3 {
-  margin-bottom: 10px;
-}
-.cell p {
-  margin: 0;
-  font-size: 14.5px;
-  color: var(--text-2);
-  line-height: 1.62;
-}
-
-/* cell 1: real event-stream capture, spans both rows */
-.cell-stream {
-  grid-row: 1 / span 2;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  overflow: hidden;
-  background: var(--panel-inset);
-}
-.cell-stream-copy {
-  padding: 26px 26px 20px;
-}
-/* A window onto the live event stream. Capped so the cell shows a readable
-   slice, with the cut edge faded so it reads as a stream that continues rather
-   than a panel that ran out. */
-.cell-stream-shot {
-  position: relative;
-  flex: 1;
-  min-height: 200px;
-  max-height: 320px;
-  border-top: 1px solid var(--hairline-soft);
-  overflow: hidden;
-}
-.cell-stream-shot::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 110px;
-  background: linear-gradient(to top, var(--panel-inset), transparent);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* cell 2: violet-tinted, carries the gate token type */
-.cell-gate {
-  background: linear-gradient(150deg, var(--accent-soft) 0%, var(--panel) 58%);
-  border-color: var(--accent-line);
-}
-.gate-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  height: 28px;
-  padding-inline: 12px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--accent-line);
-  background: rgba(124, 108, 246, 0.1);
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--accent-hi);
-  margin-bottom: 16px;
-}
-
-/* The gate cell carries a real gate card, in its blocked state, so the copy
-   above it is demonstrated rather than described. */
-.cell-gate-shot {
-  margin-top: 20px;
-}
-
-/* cell 3: the override, hairline ruled */
-.cell-override .override-line {
-  margin-top: 18px;
+  justify-content: space-between;
+  height: 76px;
   padding: 12px 14px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius-ctl);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--text-3);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--ph);
+  color: var(--on-primary);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+  /* The shipped glyph cuts its tick in the colour it sits on. */
+  --tick: var(--ph);
+}
+.merlon svg {
+  width: 18px;
+  height: 18px;
 }
 
-@media (max-width: 860px) {
-  .bento {
-    grid-template-columns: 1fr;
+.castle-wall {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  height: 640px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--canvas);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+@media (max-width: 900px) {
+  .castle-wall {
+    grid-template-columns: minmax(0, 1fr);
   }
-  .cell-stream {
-    grid-row: auto;
+  .castle-wall .rc-shell__side {
+    display: none;
   }
-  .cell-stream-shot {
-    max-height: 360px;
+  .castle-wall .rc-shell__main {
+    margin-left: var(--space-2);
+  }
+}
+@media (max-width: 640px) {
+  .merlon {
+    height: 44px;
+    padding: 10px;
+  }
+  .merlon span {
+    display: none;
   }
 }
 
 /* ==========================================================================
-   LOCAL-FIRST
+   PRODUCT MOCKUPS
+   --------------------------------------------------------------------------
+   Every piece of runcastle on this page is built from the design system's
+   own primitives (assets/rc-ui.css) as live markup, not a screenshot, so it
+   stays sharp at any size and the content is ours to choose. A mockup is
+   `inert` and `aria-hidden`, and is paired with an .sr-only description.
+
+   The rules below are the layout between primitives: the bits of a screen
+   that the app builds from utilities and the page has to spell out.
    ========================================================================== */
 
-.local {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(40px, 6vw, 80px);
-  align-items: start;
+/* The sidebar sits on the canvas, so a shipped tick is cut in that. */
+.castle-wall .rc-shell__side {
+  --tick: var(--canvas);
 }
-.facts {
-  display: flex;
-  flex-direction: column;
-}
-.fact {
-  padding: 22px 0;
-  border-top: 1px solid var(--hairline-soft);
-}
-.fact:last-child {
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.fact h3 {
-  margin-bottom: 7px;
-}
-.fact p {
-  margin: 0;
-  font-size: 14.5px;
-  color: var(--text-2);
-  line-height: 1.62;
-  max-width: 48ch;
-}
-
-/* git topology, real branch and path names, set as a code block */
-.topology {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  background: var(--panel-inset);
-  overflow: hidden;
-}
-.topology-bar {
+.mk-side-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  padding-inline: 16px;
-  border-bottom: 1px solid var(--hairline-soft);
-  background: var(--panel);
-  font-family: var(--mono);
-  font-size: 11.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  height: 36px;
+  padding: 0 6px 0 10px;
 }
-.topology pre {
-  margin: 0;
-  padding: 20px 18px 22px;
-  overflow-x: auto;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.95;
-  color: var(--text-2);
+.mk-side-head b {
+  font-weight: 600;
 }
-.topology .t-c {
-  color: var(--text-4);
+.mk-search {
+  padding: 4px 2px 8px;
 }
-.topology .t-a {
-  color: var(--accent-hi);
+.mk-search .rc-input span {
+  flex: 1;
+  color: var(--text-tertiary);
 }
-.topology .t-g {
-  color: var(--ph-shipped);
+.mk-side-foot {
+  padding: 8px 10px 4px;
+  gap: 6px 12px;
+}
+.mk-gap-8 {
+  height: 8px;
+}
+.mk-gap-12 {
+  height: 12px;
+}
+.mk-gap-24 {
+  height: 24px;
+}
+.mk-gap-32 {
+  height: 32px;
+}
+.mk-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.castle-wall .rc-page {
+  overflow: hidden;
+}
+.castle-wall .rc-page__inner {
+  padding: 40px clamp(16px, 4vw, 32px);
+}
+
+/* The next-step bar: what the feature needs, and the one button that does it. */
+.mk-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.mk-next-body {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.mk-next-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.mk-next-title {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.mk-next-desc {
+  color: var(--text-tertiary);
+}
+.mk-next-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rc-stepper {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+@media (max-width: 640px) {
+  /* A wrapped stepper leaves a dash dangling at the end of a line, so the
+     separators go and the gap between steps does their job. */
+  .rc-stepper__sep {
+    display: none;
+  }
+  .mk-tools,
+  .mk-agent {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   DRIVES / RUNS ON
+   ========================================================================== */
+
+.runson {
+  padding-top: 40px;
+}
+.runson-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px 56px;
+}
+.runson-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
+}
+.runson-label {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.runson-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-secondary);
+}
+.runson-mark {
+  display: inline-flex;
+  opacity: 0.55;
+  transition: opacity var(--dur-1);
+}
+.runson-mark:hover,
+.runson-mark:focus-visible {
+  opacity: 1;
+}
+
+/* ==========================================================================
+   THE SHIFT  (where the time on a feature goes)
+   ========================================================================== */
+
+/* The widths are the argument, not a measurement: two long stretches that are
+   yours, and a sliver between them that is the agent. */
+.timebar {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 1fr) minmax(0, 6fr);
+  gap: 6px;
+  margin-top: 40px;
+}
+.timebar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 112px;
+  border-radius: var(--radius-lg);
+}
+.timebar-you {
+  justify-content: space-between;
+  padding: 16px 18px;
+  background: var(--surface-raised);
+}
+.timebar-agent {
+  align-items: center;
+  padding: 16px 0;
+  background: var(--phase-implementation);
+  color: var(--on-primary);
+}
+.timebar-agent svg {
+  width: 18px;
+  height: 18px;
+  margin-top: auto;
+}
+.timebar-who {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.timebar-you .timebar-who {
+  color: var(--text-tertiary);
+}
+.timebar-what {
+  font-size: clamp(15px, 1.7vw, 22px);
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.shift-note {
+  margin: 24px 0 0;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.shift-note b {
+  font-weight: 400;
+  color: var(--text);
+}
+@media (max-width: 900px) {
+  .timebar-agent .timebar-who {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   PROJECT MANAGER  (one worked example, read left to right)
+   ========================================================================== */
+
+.flow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.15fr) minmax(0, 1.15fr);
+  margin-top: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 20px;
+}
+.flow-col {
+  padding: clamp(20px, 2.4vw, 32px);
+}
+.flow-col + .flow-col {
+  border-left: 1px solid var(--border-subtle);
+}
+/* The list rows carry their own 12px inset, so this column gives it back. */
+.flow-col--list {
+  padding-inline: clamp(8px, 1.4vw, 20px);
+}
+.flow-col--list .flow-label {
+  padding-inline: 12px;
+}
+.flow-col--list .rc-list {
+  margin-top: 8px;
+}
+.flow-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.flow-say {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  font-size: 17px;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+.flow-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+.flow-hit {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.flow-hit > div {
+  min-width: 0;
+}
+.flow-hit-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+.flow-path {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 16px 32px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.points .rc-icon {
+  margin-top: 3px;
 }
 
 @media (max-width: 900px) {
-  .local {
-    grid-template-columns: 1fr;
+  .flow {
+    grid-template-columns: minmax(0, 1fr);
   }
+  .flow-col + .flow-col {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  /* Stacked, the steps read downwards, so an arrow pointing right is wrong. */
+  .flow-label .rc-icon {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   THE DRIVE  (bento: 5 + 7, then 12)
+   ========================================================================== */
+
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 48px;
+}
+.cell {
+  padding: clamp(24px, 3vw, 36px);
+  border-radius: var(--radius-lg);
+}
+.cell-5 {
+  grid-column: span 5;
+}
+.cell-7 {
+  grid-column: span 7;
+}
+.cell-12 {
+  grid-column: 1 / -1;
+}
+.cell--panel {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.cell--accent {
+  background: var(--accent-subtle);
+}
+.cell h3 {
+  font-size: 24px;
+  line-height: 30px;
+  letter-spacing: -0.02em;
+}
+.cell p {
+  margin: 12px 0 0;
+  max-width: 56ch;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+@media (max-width: 900px) {
+  .cell-5,
+  .cell-7 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* What the review agent recorded: four frames of its walkthrough. The one
+   ringed is the frame the player beside it is paused on. */
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 28px;
+}
+.frames {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 12px;
+}
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+.frame-shot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  aspect-ratio: 4 / 3;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #eef1f6;
+}
+.frame.is-current {
+  color: var(--text);
+}
+.frame.is-current .frame-shot {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Skeleton pieces of the recorded app. Widths are set inline: they are the
+   drawing, not a style. */
+.sk {
+  flex: none;
+  height: 5px;
+  border-radius: 3px;
+  background: #cdd3e0;
+}
+.sk--title {
+  width: 56%;
+  height: 6px;
+  margin-bottom: 4px;
+  background: #8f98ad;
+}
+.sk--field {
+  height: 14px;
+  border: 1px solid #dfe3ec;
+  background: #fff;
+}
+.sk--field.is-focus {
+  border-color: #2f6fe4;
+}
+.sk--menu {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 54%;
+  height: auto;
+  margin-left: 18%;
+  padding: 4px;
+  border: 1px solid #dfe3ec;
+  background: #fff;
+}
+.sk--menu .sk {
+  background: #e4e8f1;
+}
+.sk--menu .sk:first-child {
+  background: #b9c1d3;
+}
+.sk-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.sk-row .sk {
+  flex: 1;
+}
+.sk-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: #c13d7e;
+}
+.sk-dot.is-b {
+  background: #0b7f78;
+}
+
+/* The review player: a paused frame of the app under test, the drawing tools
+   floating over it, a note ready to save, and the transport underneath. */
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.player-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 28px;
+  color: var(--text-secondary);
+}
+.player-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player-head .rc-btn {
+  margin-left: auto;
+}
+.player-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  min-height: 348px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: #eef1f6;
+  color: #161a24;
+}
+.shot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 64px 20px 0;
+}
+.shot-title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.shot-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  max-width: 420px;
+}
+.shot-input {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #2f6fe4;
+  border-radius: 6px;
+  background: #fff;
+}
+.shot-pick {
+  position: relative;
+  margin-left: 70px;
+}
+.shot-menu {
+  display: flex;
+  flex-direction: column;
+  width: 210px;
+  padding: 4px;
+  border: 1px solid #dfe3ec;
+  border-radius: 8px;
+  background: #fff;
+}
+.shot-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+.shot-opt.is-active {
+  background: #e4e8f1;
+}
+.shot-opt span {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--who);
+}
+/* The reviewer's annotation, in the red the app draws with. */
+.shot-mark {
+  position: absolute;
+  inset: -9px;
+  border: 3px solid #f85149;
+  border-radius: 4px;
+}
+.player-tools {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+}
+.toolbar .rc-btn.is-on {
+  background: var(--surface-selected);
+  color: var(--text);
+}
+.toolbar .rc-btn.is-off {
+  color: var(--text-disabled);
+}
+.toolbar-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.timecode {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+.player-tools .timecode {
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+}
+.notebar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-popover);
+  color: var(--text);
+}
+.notebar-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+}
+.transport .timecode {
+  flex: none;
+}
+.scrub {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.scrub::before,
+.scrub::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+}
+.scrub::before {
+  inset: 0 auto 0 0;
+  width: 16%;
+  border-radius: 2px;
+}
+.scrub::after {
+  top: 50%;
+  left: 16%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: var(--radius-full);
+}
+/* At phone width the frame is too narrow for the menu where the app put it
+   and for two buttons beside the note, so the menu moves in and Cancel goes. */
+@media (max-width: 640px) {
+  .shot-pick {
+    margin-left: 24px;
+  }
+  .notebar .rc-btn--ghost {
+    display: none;
+  }
+}
+
+/* The third cell: copy on one side, the note becoming a ticket becoming the
+   next lap on the other. */
+.cell--row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 28px 56px;
+}
+.cell--row > div:first-child {
+  flex: 1 1 320px;
+}
+.cell--row p {
+  max-width: 48ch;
+}
+.chain {
+  flex: 1.6 1 420px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.chain-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+/* ==========================================================================
+   HOW IT WORKS  (six phases, one panel each)
+   --------------------------------------------------------------------------
+   The six tiles are buttons. main.js shows the panel for the one pressed and
+   fills the bars up to it. Without JS nothing is hidden: `.js` is only on
+   <html> once the inline script in <head> has run, so the six panels simply
+   stack.
+   ========================================================================== */
+
+.phases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 8px;
+  margin-top: 48px;
+}
+.phase {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 10px 12px 14px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-1), transform var(--dur-1);
+  --tick: var(--canvas);
+}
+.phase:hover {
+  background: var(--surface-hover);
+}
+.phase[aria-pressed='true'] {
+  background: var(--surface-selected);
+}
+.phase:active {
+  transform: scale(0.98);
+}
+.phase-bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+}
+.phase.is-reached .phase-bar {
+  background: var(--ph);
+}
+.phase-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.phase-glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ph) 14%, transparent);
+}
+.phase-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.phase-name {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+}
+/* Who acts in this phase. The two that are yours are marked by weight alone;
+   all six tiles keep the same tint. */
+.phase-who {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
+}
+.phase-who.is-you {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.walk-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 32px 56px;
+  margin-top: 24px;
+}
+.js .walk-panel:not(.is-shown) {
+  display: none;
+}
+.walk-copy {
+  flex: 1 1 300px;
+  padding-top: 16px;
+}
+.walk-copy h3 {
+  font-size: 28px;
+  line-height: 34px;
+  letter-spacing: -0.025em;
+}
+.walk-copy p {
+  margin: 14px 0 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+.walk-app {
+  flex: 2.2 1 480px;
+  min-width: 0;
+  min-height: 440px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 20px;
+}
+.walk-app .rc-topbar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--titlebar-h);
+  padding: 8px 16px;
+}
+.walk-body {
+  padding: 24px;
+}
+.walk-body--page {
+  padding-block: 32px;
+}
+
+/* ideation: a live agent session */
+.session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.session b {
+  margin-left: 4px;
+  font-weight: 500;
+}
+.session-state,
+.mk-agent {
+  color: var(--text-tertiary);
+}
+.mk-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.term {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 280px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+.term-path {
+  color: var(--text-tertiary);
+  overflow-wrap: anywhere;
+}
+.term-cmd {
+  margin-top: 16px;
+  color: var(--accent-text);
+}
+
+/* spec: the document it writes */
+.doc-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-tertiary);
+}
+.doc-path span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.doc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 600px;
+  margin-top: 20px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-secondary);
+}
+.doc-title {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.doc-h {
+  margin-top: 10px;
+  font-weight: 600;
+  color: var(--text);
+}
+.doc ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* tickets and build: a titled list */
+.mk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.mk-head > div:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.mk-head--inline > div:first-child {
+  flex: none;
+}
+.mk-head-sub {
+  color: var(--text-tertiary);
+}
+.mk-head + .rc-list,
+.run {
+  margin-top: 12px;
+}
+.run {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 16px 24px;
+  align-items: start;
+}
+.run .rc-list {
+  min-width: 0;
+}
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.log div {
+  display: flex;
+  gap: 10px;
+}
+.log time {
+  flex: none;
+  color: var(--text-tertiary);
+}
+.log b {
+  flex: none;
+  font-weight: 400;
+  color: var(--text);
+}
+.log b.is-burn {
+  color: var(--warning);
+}
+.log b.is-done {
+  color: var(--success);
+}
+.log span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .walk-panel.is-shown {
+    animation: rise var(--dur-2) var(--ease-out) both;
+  }
+}
+
+/* ==========================================================================
+   PARALLEL WORK  (six features, each somewhere along the pipeline)
+   --------------------------------------------------------------------------
+   An illustration, not a screen of the app: a bar for each phase behind a
+   feature, a tinted glyph for the one it is on, and who has it right now.
+   ========================================================================== */
+
+.lanes {
+  margin-top: 48px;
+  padding: 4px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 20px;
+}
+.lane {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.6fr) repeat(6, minmax(0, 1fr)) minmax(0, 1.2fr);
+  align-items: center;
+  min-height: 48px;
+  padding: 0 24px;
+}
+.lane--head {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+.lane-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lane-name {
+  min-width: 0;
+  padding-right: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.lane-done {
+  height: 3px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: var(--ph);
+}
+.lane-now {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: -6px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ph) 14%, transparent);
+}
+.lane-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  color: var(--text-tertiary);
+}
+.lane-state.is-you {
+  font-weight: 500;
+  color: var(--text);
+}
+.lane-state.is-agent {
+  color: var(--text-secondary);
+}
+@media (max-width: 900px) {
+  .lane-col span {
+    display: none;
+  }
+}
+/* At phone width a name column would truncate every feature, so each name
+   takes a line of its own above its lane. */
+@media (max-width: 640px) {
+  .lane {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    row-gap: 2px;
+    padding: 8px 16px;
+  }
+  .lane--head {
+    padding-block: 0;
+  }
+  .lane-name {
+    grid-column: 1 / -1;
+  }
+  .lane-now {
+    margin-left: 0;
+  }
+  .lane-state,
+  .lane--head > :first-child,
+  .lane--head > :last-child {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   LOCAL-FIRST  (your machine, and the two things inside it)
+   ========================================================================== */
+
+/* The dashed edge is the boundary of your machine: everything runcastle
+   touches is inside it. */
+.machine {
+  margin-top: 48px;
+  padding: clamp(12px, 1.6vw, 20px);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+.machine-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 16px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.machine-head .lp-mono {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+.machine-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 12px;
+}
+.zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: clamp(20px, 2.4vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.zone h3 {
+  margin-bottom: 12px;
+  font-size: 20px;
+  line-height: 26px;
+  letter-spacing: -0.02em;
+}
+.zone p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-tertiary);
+}
+.zone p + .tiles {
+  margin-top: 8px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 8px;
+}
+.tile,
+.ref {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+.tile {
+  gap: 10px;
+  padding: 0 16px;
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.ref {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.ref .lp-mono {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ref .lp-mono.is-branch {
+  color: var(--accent-text);
+}
+.ref span:last-child {
+  margin-left: auto;
+  color: var(--text-secondary);
+}
+@media (max-width: 640px) {
+  /* The note drops under the name, in line with it rather than flung right. */
+  .ref span:last-child {
+    flex-basis: 100%;
+    margin-left: 28px;
+  }
+}
+
+/* ==========================================================================
+   PROOF
+   ========================================================================== */
+
+.proof {
+  padding-top: clamp(72px, 9vw, 128px);
+}
+.proof-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px 64px;
+  padding-block: 40px;
+  border-block: 1px solid var(--border);
+}
+.proof-inner > div:first-child {
+  flex: 1 1 360px;
+}
+.proof h2 {
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+.proof p {
+  margin: 10px 0 0;
+  max-width: 48ch;
+  color: var(--text-secondary);
+}
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 64px;
+  margin: 0;
+}
+.stats dt {
+  font-size: clamp(36px, 4vw, 52px);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.stats dd {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-secondary);
 }
 
 /* ==========================================================================
@@ -1431,119 +1841,121 @@ h3 {
    ========================================================================== */
 
 .install {
-  border-top: 1px solid var(--hairline);
-  background: linear-gradient(180deg, var(--panel-2) 0%, var(--bg) 100%);
-  position: relative;
-  overflow: hidden;
+  padding-top: clamp(72px, 9vw, 128px);
 }
-.install::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -420px;
-  width: 1200px;
-  height: 760px;
-  translate: -50% 0;
-  background: radial-gradient(
-    50% 50% at 50% 50%,
-    rgba(124, 108, 246, 0.17) 0%,
-    transparent 70%
-  );
-  pointer-events: none;
+/* The castle again, small: the page closes on the shape it opened with. */
+.install-top {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  column-gap: 5.9%;
 }
-.install-inner {
-  position: relative;
-  z-index: 1;
+.install-top span {
+  height: 20px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--ph);
+}
+.install-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(40px, 6vw, 80px) clamp(20px, 5vw, 64px);
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--surface);
   text-align: center;
 }
-.install h2 {
-  max-width: 22ch;
-  margin-inline: auto;
-}
 .install .lede {
-  margin-inline: auto;
-  max-width: 56ch;
+  max-width: 52ch;
 }
-
 .cmds {
-  margin: 44px auto 0;
-  max-width: 680px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-panel);
-  background: var(--panel-inset);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin-top: 36px;
   text-align: left;
 }
 .cmd {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 15px 14px 15px 18px;
-  border-bottom: 1px solid var(--hairline-soft);
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 10px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
 }
-.cmd:last-child {
-  border-bottom: none;
+.cmd-prompt,
+.cmd code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 20px;
 }
 .cmd-prompt {
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 13px;
-  flex: none;
+  color: var(--text-disabled);
   user-select: none;
 }
 .cmd code {
-  font-family: var(--mono);
-  font-size: 13.5px;
-  color: var(--text);
-  flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  white-space: nowrap;
+  color: var(--text);
 }
 .cmd-note {
-  font-family: var(--sans);
-  font-size: 12.5px;
-  color: var(--text-3);
-  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
 }
 .copy {
-  flex: none;
-  width: 30px;
-  height: 30px;
+  appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-ctl);
-  border: 1px solid var(--hairline);
-  background: var(--panel);
-  color: var(--text-3);
+  gap: 6px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-tertiary);
+  font: 500 12px/16px var(--font-sans);
   cursor: pointer;
-  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+  transition: background-color var(--dur-1), color var(--dur-1), transform var(--dur-1);
 }
 .copy:hover {
+  background: var(--surface-hover);
   color: var(--text);
-  border-color: var(--hairline-strong);
 }
-.copy.is-done {
-  color: var(--ph-shipped);
-  border-color: var(--ph-shipped);
+.copy:active {
+  transform: scale(0.98);
 }
-.copy svg {
+.copy .rc-icon {
   width: 14px;
   height: 14px;
+  color: inherit;
 }
 .install-after {
-  margin-top: 26px;
-  font-size: 13.5px;
-  color: var(--text-3);
+  margin: 28px 0 0;
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--text-tertiary);
+  text-wrap: pretty;
 }
 .install-after a {
-  color: var(--accent-hi);
-  border-bottom: 1px solid var(--accent-line);
+  color: var(--accent-text);
+  transition: color var(--dur-1);
 }
-@media (max-width: 620px) {
+.install-after a:hover {
+  color: var(--text);
+}
+@media (max-width: 640px) {
   .cmd-note {
     display: none;
+  }
+  .cmd .copy {
+    margin-left: auto;
   }
 }
 
@@ -1552,80 +1964,115 @@ h3 {
    ========================================================================== */
 
 .footer {
-  border-top: 1px solid var(--hairline);
-  background: var(--panel-2);
-  padding-block: 40px;
+  margin-top: clamp(64px, 8vw, 112px);
+  border-top: 1px solid var(--border-subtle);
 }
 .footer-inner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 42px;
+  padding-block: 28px;
+}
+.footer .brand {
+  font-size: 14px;
 }
 .footer-links {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 22px;
-  font-size: 13.5px;
-  color: var(--text-3);
-}
-.footer-links a {
-  transition: color var(--dur-1) var(--ease);
-}
-.footer-links a:hover {
-  color: var(--text);
+  gap: 2px;
+  /* Each link is padded for its hover ground; pull the row back by that much
+     so the first label lines up with the brand above it when the row wraps. */
+  margin-left: -10px;
 }
 .footer-meta {
-  font-size: 12.5px;
-  color: var(--text-4);
-  font-family: var(--mono);
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-tertiary);
 }
 
 /* ==========================================================================
-   REVEAL  (IntersectionObserver adds .is-in)
+   THE FILM  (a dialog, opened from the hero)
    ========================================================================== */
 
-.reveal {
-  opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
+.film {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-dialog);
+  color: var(--text);
 }
-.reveal.is-in {
-  opacity: 1;
-  transform: none;
+.film::backdrop {
+  background: rgb(0 0 0 / 0.6);
 }
-.reveal[data-delay='1'] {
-  transition-delay: 0.07s;
+.film-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: var(--titlebar-h);
+  padding: 0 8px 0 16px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
 }
-.reveal[data-delay='2'] {
-  transition-delay: 0.14s;
+.film-close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--dur-1), color var(--dur-1);
 }
-.reveal[data-delay='3'] {
-  transition-delay: 0.21s;
+.film-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.film-close .rc-icon {
+  color: inherit;
+}
+.film video {
+  display: block;
+  /* The `width`/`height` attributes carry the 16:9 ratio, so the dialog opens
+     at its full height before a byte of video has arrived. */
+  width: 100%;
+  height: auto;
+  background: #08070e;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .reveal {
+/* ==========================================================================
+   MOTION
+   --------------------------------------------------------------------------
+   One entrance: 4px of rise and a fade, 190ms. The hero staggers it on load;
+   a pipeline panel plays it when it is switched to. Nothing else moves, and
+   none of it runs under reduced motion.
+   ========================================================================== */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
     opacity: 1;
     transform: none;
-    transition: none;
   }
-  .step-bar::after {
-    transform: scaleX(1);
-    transition: none;
-  }
-  .stage-panel {
-    transition: none;
-  }
-  .step {
-    opacity: 1;
-  }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise var(--dur-2) var(--ease-out) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
   }
 }

@@ -3,36 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>runcastle - the IDE for Claude Code</title>
+    <title>runcastle - stop babysitting your coding agents</title>
     <meta
       name="description"
-      content="Claude Code is the editor. runcastle is the IDE for Claude Code: every feature gets its own branch, its own memory, and its own place in the pipeline, so several run in parallel. Runs on your machine, on your own repo."
+      content="Talk an idea through once and get back a branch to test drive. runcastle takes a feature through spec, tickets, build and review with Claude Code or Codex, unattended, on your own machine and your own repo."
     />
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <link rel="canonical" href="https://runcastle.dev/" />
     <!-- The page background token, so mobile browser chrome matches the page. -->
-    <meta name="theme-color" content="#090b10" />
+    <meta name="theme-color" content="#0a0c11" />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://runcastle.dev/" />
-    <meta property="og:title" content="runcastle - the IDE for Claude Code" />
+    <meta property="og:title" content="runcastle - stop babysitting your coding agents" />
     <meta
       property="og:description"
-      content="A chat window builds one thing while you watch it. runcastle keeps six features moving on their own branches and only stops you twice: to approve the plan, and to approve the merge."
+      content="Each feature asks for you twice: to approve the plan, and to approve the merge. Everything between runs unattended on your machine, with Claude Code or Codex."
     />
     <!-- PNG on purpose: several social-card scrapers still do not decode WebP. -->
-    <meta property="og:image" content="https://runcastle.dev/assets/screens/mock-shell.png" />
-    <meta property="og:image:width" content="2324" />
-    <meta property="og:image:height" content="1160" />
+    <meta property="og:image" content="https://runcastle.dev/assets/og.png" />
+    <meta property="og:image:width" content="2400" />
+    <meta property="og:image:height" content="1260" />
     <meta
       property="og:image:alt"
-      content="The runcastle workspace: a feature board on the left, a feature on its tickets phase with ten dependency-ordered tickets, and a gate panel offering the Burn click."
+      content="Stop babysitting your coding agents. Below the headline, six blocks for the phases of the pipeline (ideation, spec, tickets, build, review, shipped) stand on top of the runcastle workspace."
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="runcastle - the IDE for Claude Code" />
+    <meta name="twitter:title" content="runcastle - stop babysitting your coding agents" />
     <meta
       name="twitter:description"
-      content="A chat window builds one thing while you watch it. runcastle keeps six features moving on their own branches and only stops you twice: to approve the plan, and to approve the merge."
+      content="Each feature asks for you twice: to approve the plan, and to approve the merge. Everything between runs unattended on your machine, with Claude Code or Codex."
     />
 
     <!-- Structured data: free, source-available (FSL-1.1-ALv2), cross-platform, installed from npm.
@@ -47,7 +47,7 @@
         "url": "https://runcastle.dev/",
         "downloadUrl": "https://www.npmjs.com/package/runcastle",
         "license": "https://github.com/MuathZahir/runcastle/blob/main/LICENSE",
-        "description": "Claude Code is the editor. runcastle is the IDE for Claude Code: every feature gets its own branch, its own memory, and its own place in the pipeline, so several run in parallel. Runs on your machine, on your own repo.",
+        "description": "Talk an idea through once and get back a branch to test drive. runcastle takes a feature through spec, tickets, build and review with Claude Code or Codex, unattended, on your own machine and your own repo.",
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -57,36 +57,120 @@
     </script>
 
     <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="assets/fonts/inter-latin-wght-normal.woff2" />
+      href="assets/fonts/geist-latin-wght-normal.woff2" />
     <link rel="preload" as="font" type="font/woff2" crossorigin
-      href="assets/fonts/jetbrains-mono-latin-wght-normal.woff2" />
-    <!-- The product's own stylesheet, scoped under .rc-app. See build-app-css.mjs. -->
-    <link rel="stylesheet" href="assets/app-ui.css" />
+      href="assets/fonts/geist-mono-latin-wght-normal.woff2" />
+    <!-- The design system's component styles, for the product mockups. -->
+    <link rel="stylesheet" href="assets/rc-ui.css" />
     <link rel="stylesheet" href="styles.css" />
+    <!-- Before first paint, so the pipeline's five resting panels never flash.
+         Without it they are all simply shown: see HOW IT WORKS in styles.css. -->
+    <script>
+      document.documentElement.classList.add('js')
+    </script>
   </head>
 
   <body>
     <a class="sr-only" href="#main">Skip to content</a>
 
-    <!-- Icon sprite. The product mockups reuse the same few glyphs many times
-         over (a caret on every ticket row, a branch mark in four places), so
-         each is defined once and referenced with <use>. -->
+    <!-- Icon sprite. These are the design system's own glyphs (16px grid, 1.5px
+         round stroke), defined once and referenced with <use>. The i- set is
+         the icons, the p- set is the phase progress glyphs. -->
     <svg width="0" height="0" style="position: absolute" aria-hidden="true">
-      <symbol id="i-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-        stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 4 4-4 4" /></symbol>
+      <symbol id="i-activity" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8h2.6l1.8-4.4 2.8 8.8L10.8 8h3.4" /></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M9.5 4l4 4-4 4" /></symbol>
       <symbol id="i-branch" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
         stroke-linecap="round" stroke-linejoin="round">
         <circle cx="4.5" cy="3.8" r="1.7" /><circle cx="4.5" cy="12.2" r="1.7" />
         <circle cx="11.5" cy="5" r="1.7" />
         <path d="M4.5 5.5v5M11.5 6.7c0 2.6-3 3-5.4 3.6" />
       </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4" /></symbol>
+      <symbol id="i-claude" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.4v11.2M3.2 5.2l9.6 5.6M12.8 5.2l-9.6 5.6" /></symbol>
+      <symbol id="i-codex" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 4.8 2.4 8l3.2 3.2M10.4 4.8 13.6 8l-3.2 3.2" /></symbol>
+      <symbol id="i-copy" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5" />
+        <path d="M10.5 5.5v-2A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2" />
+      </symbol>
+      <symbol id="i-cube" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 1.6l5.4 3v6.8L8 14.4l-5.4-3V4.6z" /><path d="M8 7.6l5.4-3M8 7.6L2.6 4.6M8 7.6v6.8" />
+      </symbol>
       <symbol id="i-doc" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
         stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 1.8h5.2L13 5.6v8.6H4z" /><path d="M9 2v3.8h3.8M6 8.4h4M6 10.8h4" />
       </symbol>
-      <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      <symbol id="i-expand" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9.5 6.5M2.5 13.5l4-4" /></symbol>
+      <symbol id="i-flame" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M8 14.4c2.7 0 4.7-2 4.7-4.7 0-2-1.3-3.4-2-4.7-.7 1.3-1.3 2-2 2 0-2-.7-4-2.7-5.4 0 2.7-2.7 4-2.7 8.1 0 2.7 2 4.7 4.7 4.7z" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.4 1.7h5.2c.8 0 1.4.6 1.4 1.4v6.5c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" /></symbol>
+      <symbol id="i-message" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.4a1.6 1.6 0 0 1 1.6-1.6h8.8A1.6 1.6 0 0 1 14 4.4v5.2a1.6 1.6 0 0 1-1.6 1.6H6.4L3.2 14v-2.8A1.6 1.6 0 0 1 2 9.6z" /></symbol>
+      <symbol id="i-more" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="3.2" cy="8" r="1.1" /><circle cx="8" cy="8" r="1.1" /><circle cx="12.8" cy="8" r="1.1" />
+      </symbol>
+      <symbol id="i-pencil" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
         stroke-linecap="round" stroke-linejoin="round">
-        <rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" />
+        <path d="M10.6 2.4a1.7 1.7 0 0 1 2.4 2.4L5.5 12.3 2.4 13.1l.8-3.1z" /><path d="M9.4 3.6l2.4 2.4" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.2v9.6L13 8z" /></symbol>
+      <symbol id="i-search" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 L14 14" /></symbol>
+      <symbol id="i-settings" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="2" />
+        <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 3.6v4.2c0 3.2-2.1 5.3-5 6.4-2.9-1.1-5-3.2-5-6.4V3.6z" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1.2" /></symbol>
+      <symbol id="i-terminal" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" /><path d="m4.5 6.2 2.3 2-2.3 2M8.5 10.4h3" />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></symbol>
+      <symbol id="i-undo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h5a3 3 0 0 1 0 6H7" /><path d="M7 3.5 4.5 6 7 8.5" /></symbol>
+      <symbol id="i-redo" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M11 6H6a3 3 0 0 0 0 6h3" /><path d="M9 3.5 11.5 6 9 8.5" /></symbol>
+      <symbol id="i-x" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="m4 4 8 8M12 4l-8 8" /></symbol>
+      <!-- the review player's drawing tools: pen, arrow, rectangle -->
+      <symbol id="i-pen" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5c2-1 3-3.5 5-3.5s2 2 4 1.5 2.5-3 2.5-3" /></symbol>
+      <symbol id="i-arrow-tool" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M3 13 13 3M7 3h6v6" /></symbol>
+      <symbol id="i-rect" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="11" height="8" rx="1" /></symbol>
+
+      <symbol id="p-draft" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6" stroke-dasharray="2.2 2.2" /></symbol>
+      <symbol id="p-ideation" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6" /></symbol>
+      <symbol id="p-spec" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 0 1 4 4z" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="p-tickets" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 0 1 0 8z" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="p-implementation" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="6" /><path d="M8 8V4a4 4 0 1 1-4 4z" fill="currentColor" stroke="none" />
+      </symbol>
+      <symbol id="p-review" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none" />
+      </symbol>
+      <!-- The tick is cut in the colour of whatever the glyph sits on. -->
+      <symbol id="p-shipped" viewBox="0 0 16 16" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="7" fill="currentColor" />
+        <path d="M5.2 8.2 7 10l3.8-3.8" stroke-width="1.6" style="stroke: var(--tick, var(--surface))" />
       </symbol>
     </svg>
 
@@ -95,19 +179,14 @@
       <div class="nav-inner">
         <a class="brand" href="#main" aria-label="runcastle home">
           <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
-            <path fill-rule="evenodd" clip-rule="evenodd"
-              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
-              fill="#0d0722" />
+            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
           </svg>
-          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+          <span>runcastle</span>
         </a>
 
         <nav class="nav-links" aria-label="Sections">
-          <a href="#pipeline">Pipeline</a>
-          <a href="#loop">Parallel work</a>
-          <a href="#gates">Gates</a>
-          <a href="#local">Local-first</a>
+          <a href="#pipeline">How it works</a>
           <a href="/docs/">Docs</a>
           <a href="/compare/">Compare</a>
         </nav>
@@ -119,7 +198,7 @@
             </svg>
             GitHub
           </a>
-          <a class="lp-btn lp-btn-primary lp-btn-sm" href="#install">Get started</a>
+          <a class="lp-btn lp-btn-primary" href="#install">Get started</a>
         </div>
       </div>
     </header>
@@ -127,807 +206,1226 @@
     <main id="main">
       <!-- ===================== HERO ===================== -->
       <section class="hero">
-        <div class="wrap hero-inner">
-          <h1 class="reveal">
-            <span class="h1-l1">Claude Code is the editor.</span>
-            <span class="duo">runcastle is the IDE.</span>
-          </h1>
-          <p class="lede reveal" data-delay="1">
-            An editor opens one file. An IDE runs the whole project. runcastle gives every feature
-            its own branch, its own memory, and its own place in the queue, so several move at once.
-          </p>
-          <div class="hero-cta reveal" data-delay="2">
-            <a class="lp-btn lp-btn-primary" href="#install">Get started</a>
-            <a class="lp-btn lp-btn-ghost" href="https://github.com/MuathZahir/runcastle"
-              rel="noopener" target="_blank">View on GitHub</a>
-          </div>
-        </div>
-
         <div class="wrap">
-          <!-- The launch film, in place of the still workspace shot that used to
-               sit here. Plain markup: a video with its own controls and a poster,
-               which is what someone with no JS gets. main.js upgrades it to an
-               ambient muted loop with a button that hands over the narrated cut. -->
-          <div class="hero-shot hero-film reveal" data-delay="3">
-            <p id="film-desc" class="sr-only">
-              A ninety-second walkthrough of runcastle. A feature is named and sized; a real
-              Claude Code session opens with the brief already injected and grills the idea into
-              a spec that is committed to the repo; the spec is split into ten dependency-ordered
-              tickets; one Burn click hands them to six sandboxed Docker agents that pick up
-              every unblocked ticket at once and commit to a single branch; four features run
-              side by side; the finished branch is test-driven on its own port and merged.
-            </p>
-            <video
-              class="film"
-              id="hero-film"
-              width="2560"
-              height="1440"
-              poster="assets/video/runcastle-demo-poster.webp"
-              preload="none"
-              controls
-              playsinline
-              aria-label="The runcastle demo film, ninety seconds"
-              aria-describedby="film-desc"
-            >
-              <source src="assets/video/runcastle-demo-1440.mp4" type="video/mp4" />
-              <track
-                kind="captions"
-                src="assets/video/runcastle-demo.en.vtt"
-                srclang="en"
-                label="English"
-              />
-            </video>
-            <!-- prettier-ignore -->
-            <button class="film-btn" type="button" aria-controls="hero-film" data-film-play hidden>
-              <span class="film-btn-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6.6 8.9H3.2v6.2h3.4L11 19Z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6"/><path d="M18.3 6.3a8 8 0 0 1 0 11.4"/></svg></span>
-              <span class="film-btn-text">Play with sound</span>
-              <span class="film-btn-time lp-mono">1:30</span>
-            </button>
+          <h1 class="rise">Stop babysitting your coding agents.</h1>
+          <p class="lede rise" style="--i: 1">
+            Talk an idea through once, get back a branch to test drive. Claude Code or Codex builds
+            it unattended.
+          </p>
+          <div class="hero-cta rise" style="--i: 2">
+            <a class="lp-btn lp-btn-primary lp-btn-lg" href="#install">
+              Get started
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-arrow-right" /></svg>
+            </a>
+            <!-- The href is the film itself, which is what someone with no JS
+                 gets. main.js opens it in the dialog at the foot of the page. -->
+            <a class="lp-btn lp-btn-ghost lp-btn-lg" href="assets/video/runcastle-demo-1440.mp4"
+              data-film-open>
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-play" /></svg>
+              Watch the film
+              <span class="film-time">1:30</span>
+            </a>
+          </div>
+
+          <!-- The castle: six phase blocks as battlements, the app as the wall. -->
+          <div class="castle-top" aria-hidden="true">
+            <div class="merlon ph-ideation rise" style="--i: 3">
+              <svg><use href="#p-ideation" /></svg><span>Ideation</span>
+            </div>
+            <div class="merlon ph-spec rise" style="--i: 4">
+              <svg><use href="#p-spec" /></svg><span>Spec</span>
+            </div>
+            <div class="merlon ph-tickets rise" style="--i: 5">
+              <svg><use href="#p-tickets" /></svg><span>Tickets</span>
+            </div>
+            <div class="merlon ph-implementation rise" style="--i: 6">
+              <svg><use href="#p-implementation" /></svg><span>Build</span>
+            </div>
+            <div class="merlon ph-review rise" style="--i: 7">
+              <svg><use href="#p-review" /></svg><span>Review</span>
+            </div>
+            <div class="merlon ph-shipped rise" style="--i: 8">
+              <svg><use href="#p-shipped" /></svg><span>Shipped</span>
+            </div>
+          </div>
+
+          <p class="sr-only">
+            The runcastle workspace. A sidebar groups six features by who is blocked: two need you,
+            one has an agent working, two are in progress and one has shipped. The open feature is
+            on its tickets phase, with ten dependency-ordered tickets and a next step offering to
+            burn them.
+          </p>
+          <div class="castle-wall rise" style="--i: 9" inert aria-hidden="true">
+            <div class="rc-shell__side">
+              <div class="mk-side-head">
+                <svg width="18" height="18" viewBox="0 0 32 32">
+                  <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+                    d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
+                </svg>
+                <b>runcastle-demo</b>
+                <svg class="rc-icon is-14"><use href="#i-chevron-down" /></svg>
+                <span class="rc-spacer"></span>
+                <span class="rc-btn rc-btn--ghost rc-btn--sm rc-btn--icon">
+                  <svg class="rc-icon is-14"><use href="#i-pencil" /></svg>
+                </span>
+              </div>
+              <div class="mk-search">
+                <div class="rc-input">
+                  <svg class="rc-icon is-14"><use href="#i-search" /></svg>
+                  <span>Search</span>
+                  <kbd class="rc-kbd">Ctrl K</kbd>
+                </div>
+              </div>
+              <div class="rc-nav">
+                <svg class="rc-icon"><use href="#i-folder" /></svg>
+                <span class="rc-nav__label">Project</span>
+              </div>
+              <div class="rc-nav">
+                <svg class="rc-icon"><use href="#i-activity" /></svg>
+                <span class="rc-nav__label">Activity</span>
+              </div>
+              <div class="mk-gap-12"></div>
+              <div class="rc-label">Needs you<span class="rc-label__count">2</span></div>
+              <div class="rc-nav" aria-current="page">
+                <svg class="rc-phase ph-tickets"><use href="#p-tickets" /></svg>
+                <span class="rc-nav__label">Realtime team collaboration</span>
+                <span class="rc-dot rc-dot--warning"></span>
+              </div>
+              <div class="rc-nav">
+                <svg class="rc-phase ph-review"><use href="#p-review" /></svg>
+                <span class="rc-nav__label">Entry tags</span>
+                <span class="rc-dot rc-dot--warning"></span>
+              </div>
+              <div class="mk-gap-8"></div>
+              <div class="rc-label">Agent working<span class="rc-label__count">1</span></div>
+              <div class="rc-nav">
+                <svg class="rc-phase ph-implementation"><use href="#p-implementation" /></svg>
+                <span class="rc-nav__label">Offline draft sync</span>
+                <span class="rc-dot rc-dot--live"></span>
+                <span class="rc-nav__meta">4/10</span>
+              </div>
+              <div class="mk-gap-8"></div>
+              <div class="rc-label">In progress<span class="rc-label__count">2</span></div>
+              <div class="rc-nav">
+                <svg class="rc-phase ph-spec"><use href="#p-spec" /></svg>
+                <span class="rc-nav__label">Kickoff probe</span>
+              </div>
+              <div class="rc-nav">
+                <svg class="rc-phase ph-ideation"><use href="#p-ideation" /></svg>
+                <span class="rc-nav__label">Weekly digest email</span>
+              </div>
+              <div class="mk-gap-8"></div>
+              <div class="rc-label">Shipped<span class="rc-label__count">1</span></div>
+              <div class="rc-nav">
+                <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
+                <span class="rc-nav__label">Mood filter</span>
+              </div>
+              <span class="rc-spacer"></span>
+              <div class="rc-meta mk-side-foot">
+                <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Server</span>
+                <span class="rc-meta__item">
+                  <svg class="rc-icon is-14"><use href="#i-cube" /></svg>docker
+                </span>
+                <span class="rc-spacer"></span>
+                <span class="rc-btn rc-btn--ghost rc-btn--sm rc-btn--icon">
+                  <svg class="rc-icon is-14"><use href="#i-settings" /></svg>
+                </span>
+              </div>
+            </div>
+
+            <div class="rc-shell__main">
+              <div class="rc-topbar">
+                <div class="rc-crumbs">
+                  <svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>
+                  <b>Realtime team collaboration</b>
+                </div>
+                <span class="rc-spacer"></span>
+                <div class="mk-tools">
+                  <div class="rc-tabs" role="tablist">
+                    <span class="rc-tab" role="tab" aria-selected="true">Overview</span>
+                    <span class="rc-tab" role="tab" aria-selected="false">Tickets<span class="rc-tab__count">10</span></span>
+                    <span class="rc-tab" role="tab" aria-selected="false">Activity</span>
+                  </div>
+                  <span class="rc-btn rc-btn--secondary rc-btn--sm">
+                    <svg class="rc-icon is-14"><use href="#i-message" /></svg>Chat
+                  </span>
+                </div>
+                <span class="rc-btn rc-btn--ghost rc-btn--icon">
+                  <svg class="rc-icon"><use href="#i-more" /></svg>
+                </span>
+              </div>
+              <div class="rc-page">
+                <div class="rc-page__inner">
+                  <div class="rc-title-lg">Realtime team collaboration</div>
+                  <div class="mk-gap-12"></div>
+                  <div class="rc-meta">
+                    <span class="rc-meta__item">
+                      <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
+                    </span>
+                    <span class="rc-meta__item"><span class="rc-dot rc-dot--warning"></span>Waiting on you</span>
+                  </div>
+                  <div class="mk-gap-24"></div>
+                  <div class="rc-stepper">
+                    <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                    <span class="rc-stepper__sep"></span>
+                    <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
+                    <span class="rc-stepper__sep"></span>
+                    <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>Tickets</span>
+                    <span class="rc-stepper__sep"></span>
+                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
+                    <span class="rc-stepper__sep"></span>
+                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
+                    <span class="rc-stepper__sep"></span>
+                    <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                  </div>
+                  <hr class="rc-hr" />
+                  <div class="mk-next">
+                    <div class="mk-next-body">
+                      <div class="mk-next-label">Next step</div>
+                      <div class="mk-next-title">Review and burn the tickets</div>
+                      <div class="mk-next-desc">One task per ticket. Review them, then burn.</div>
+                    </div>
+                    <div class="mk-next-actions">
+                      <span class="rc-btn rc-btn--ghost rc-btn--lg">Revisit</span>
+                      <span class="rc-btn rc-btn--primary rc-btn--lg">
+                        <svg class="rc-icon"><use href="#i-flame" /></svg>Burn 10 tickets
+                      </span>
+                    </div>
+                  </div>
+                  <div class="mk-gap-32"></div>
+                  <div class="rc-title">Tickets</div>
+                  <div class="mk-gap-8"></div>
+                  <div class="rc-list rc-list--divided">
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#1 · Move entries into SQLite</span>
+                      <span class="rc-row__meta">Ready</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
+                      <span class="rc-row__meta">After #1</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#3 · Feed history read</span>
+                      <span class="rc-row__meta">After #2</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#5 · WebSocket transport</span>
+                      <span class="rc-row__meta">After #2</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#7 · Mentions and the typeahead</span>
+                      <span class="rc-row__meta">After #2, #5</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-icon"><use href="#i-cube" /></svg>
+                      <span class="rc-row__title">#9 · Activity tab with a live feed</span>
+                      <span class="rc-row__meta">After #3, #5</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- ===================== RUNS ON ===================== -->
-      <section class="runson" aria-label="What runcastle runs on">
+      <!-- ===================== DRIVES / RUNS ON ===================== -->
+      <section class="runson" aria-label="What runcastle drives and runs on">
         <div class="wrap runson-inner">
-          <span class="eyebrow">Runs on</span>
-          <div class="runson-marks">
-            <a href="https://claude.com/claude-code" rel="noopener" target="_blank">
-              <img src="assets/logos/claude.svg" alt="Claude" width="22" height="22" loading="lazy" /></a>
-            <a href="https://bun.sh" rel="noopener" target="_blank">
+          <div class="runson-group">
+            <span class="runson-label">Drives</span>
+            <span class="runson-agent">
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-claude" /></svg>Claude Code
+            </span>
+            <span class="runson-agent">
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-codex" /></svg>Codex
+            </span>
+          </div>
+          <div class="runson-group">
+            <span class="runson-label">Runs on</span>
+            <a class="runson-mark" href="https://bun.sh" rel="noopener" target="_blank">
               <img src="assets/logos/bun.svg" alt="Bun" width="22" height="22" loading="lazy" /></a>
-            <a href="https://git-scm.com" rel="noopener" target="_blank">
+            <a class="runson-mark" href="https://git-scm.com" rel="noopener" target="_blank">
               <img src="assets/logos/git.svg" alt="Git" width="22" height="22" loading="lazy" /></a>
-            <a href="https://www.docker.com" rel="noopener" target="_blank">
+            <a class="runson-mark" href="https://www.docker.com" rel="noopener" target="_blank">
               <img src="assets/logos/docker.svg" alt="Docker" width="22" height="22" loading="lazy" /></a>
-            <a href="https://podman.io" rel="noopener" target="_blank">
+            <a class="runson-mark" href="https://podman.io" rel="noopener" target="_blank">
               <img src="assets/logos/podman.svg" alt="Podman" width="22" height="22" loading="lazy" /></a>
-            <a href="https://sqlite.org" rel="noopener" target="_blank">
+            <a class="runson-mark" href="https://sqlite.org" rel="noopener" target="_blank">
               <img src="assets/logos/sqlite.svg" alt="SQLite" width="22" height="22" loading="lazy" /></a>
           </div>
         </div>
       </section>
 
-      <!-- ===================== PIPELINE ===================== -->
-      <section class="band" id="pipeline">
+      <!-- ===================== THE SHIFT ===================== -->
+      <section class="band" id="why">
         <div class="wrap">
-          <div class="section-head reveal">
-            <h2>Six phases. Two decisions.</h2>
-            <p class="lede">
-              An IDE always knows which file you are on. runcastle always knows what your feature
-              needs next, and says so in one sentence. It asks you for exactly two things: approve
-              the plan, and approve the merge.
-            </p>
-          </div>
-
-          <!-- One feature walked end to end. Reading down the steps drives the
-               sticky stage, so the phase stepper in the panel advances with you
-               and each phase body is the screen the app actually shows. -->
-          <div class="showcase">
-            <div class="steps" id="steps">
-              <div class="step-wrap">
-                <button class="step is-active" type="button" data-stage="0" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">01</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-ideation)">ideation</span>
-                    <span class="step-who is-you">Hands on</span>
-                  </span>
-                  <span class="step-h">Talk the idea into shape</span>
-                  <span class="step-p">
-                    A real Claude Code terminal opens with the feature already loaded, and argues
-                    the idea into something specific. This is the part only you can do.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="1" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">02</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-spec)">spec</span>
-                    <span class="step-who">Hands off</span>
-                  </span>
-                  <span class="step-h">The decisions get written down</span>
-                  <span class="step-p">
-                    The same session that just interrogated you writes the spec and commits it to
-                    your repo, while everything you said is still in front of it.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="2" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">03</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-tickets)">tickets</span>
-                    <span class="step-who is-you">Your call</span>
-                  </span>
-                  <span class="step-h">Skim the task list, say go</span>
-                  <span class="step-p">
-                    The spec becomes small tasks in the order they have to happen. You read the
-                    list and click once. It is the last thing you do here for a while.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="3" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">04</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-implementation)">build</span>
-                    <span class="step-who">Hands off</span>
-                  </span>
-                  <span class="step-h">Close the tab</span>
-                  <span class="step-p">
-                    Agents take the tasks in order inside a container, committing to the branch as
-                    each one lands. Watch the log if you like, or go and start the next feature.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="4" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">05</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-review)">review</span>
-                    <span class="step-who is-you">Your call</span>
-                  </span>
-                  <span class="step-h">Take it for a drive</span>
-                  <span class="step-p">
-                    runcastle sets your own work aside, checks out the finished branch, and starts
-                    it on its own port so you can click through the real thing before it lands.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
-
-              <div class="step-wrap">
-                <button class="step" type="button" data-stage="5" aria-controls="stage">
-                  <span class="step-top">
-                    <span class="step-idx lp-mono">06</span>
-                    <span class="step-phase lp-mono" style="--ph: var(--ph-shipped)">shipped</span>
-                    <span class="step-who">Hands off</span>
-                  </span>
-                  <span class="step-h">It merges, and it remembers</span>
-                  <span class="step-p">
-                    The branch lands on main. The spec, the decisions, and the whole run history
-                    stay readable afterwards, in your repo and in the app.
-                  </span>
-                  <span class="step-bar"></span>
-                </button>
-              </div>
+          <h2>The agent was never the slow part.</h2>
+          <p class="sr-only">
+            A bar showing where the time on a feature goes. Two wide blocks are yours: deciding what
+            to build, and checking what came back. The thin block between them is the agent writing
+            the code.
+          </p>
+          <div class="timebar" aria-hidden="true">
+            <div class="timebar-you">
+              <span class="timebar-who">You</span>
+              <span class="timebar-what">Deciding what to build</span>
             </div>
-
-            <div class="stage">
-              <div id="stage">
-                <!-- ---- 01 ideation ---- -->
-                <div class="stage-panel is-shown" data-stage="0">
-                  <p class="sr-only">
-                    The phase stepper with ideation current, above a live Claude Code session bound
-                    to the ideation phase, opened with an injected instruction to invoke the
-                    runcastle ideate skill.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="grill-strip">
-                          <span class="grill-kind">ideation</span>
-                          <span class="status-dot sess-dot-live"></span>
-                          <span class="grill-live-label">live</span>
-                          <span class="grill-strip-spacer"></span>
-                          <span class="grill-sid">cfc7946c</span>
-                          <span class="btn btn-xs btn-ghost sess-end">End session</span>
-                        </div>
-                        <div class="rc-term">
-                          <div class="rc-term-banner">
-                            <span class="rc-term-banner-label">Claude Code v2.1.218</span>
-                            <span class="t-hi">Welcome back!</span>
-                            <span class="t-dim">Opus 4.8 with high effort · Claude Max</span>
-                            <span class="t-dim">~/.runcastle/worktrees/proj_wf6xGoA7/realtime-team-collaboration</span>
-                          </div>
-                          <span class="rc-term-inject">
-                            &gt; Proceed with your task: invoke the /runcastle:ideate skill and
-                            drive the ideation session.
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 02 spec ---- -->
-                <div class="stage-panel" data-stage="1">
-                  <p class="sr-only">
-                    The phase stepper with spec current, above the generated spec document opened
-                    from the workspace, showing the decision, the scope, what is out of scope, and
-                    a resolved open question.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="peek">
-                          <div class="peek-head">
-                            <span class="mono peek-path">docs/features/realtime-team-collaboration/spec.md</span>
-                            <span class="peek-close">✕</span>
-                          </div>
-                          <div class="peek-body mono"><pre class="peek-pre"># Realtime team collaboration
-
-## Decision
-
-Entries move into SQLite behind an injectable driver port, so the
-transport and the storage can be replaced and tested apart.
-
-## In scope
-
-- Presence: who is in the entry, and whether they have gone idle.
-- Mentions: @name in a comment notifies the named person.
-- Activity feed: an append-only log of entry lifecycle events.
-
-## Out of scope
-
-- Live cursors and character-level merging. The comment is the unit
-  of collaboration here, not the keystroke.
-
-## Open question — resolved
-
-Q: Does a reconnecting client need an outbox to replay what it missed?
-A: No. It drops local state and re-reads the feed, which is already
-   paginated, so this costs one request.</pre></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 03 tickets ---- -->
-                <div class="stage-panel" data-stage="2">
-                  <p class="sr-only">
-                    The phase stepper with tickets current, above a next step bar offering to burn
-                    ten tickets, and the ticket list in dependency order.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <!-- prettier-ignore -->
-                      <div class="nextstep">
-                        <div class="nextstep-main">
-                          <div class="nextstep-kick">NEXT STEP</div>
-                          <div class="nextstep-title">Review &amp; burn the tickets</div>
-                          <div class="nextstep-desc">Each ticket is one atomic task Claude will implement. Review them, then burn.</div>
-                        </div>
-                        <div class="nextstep-actions">
-                          <span class="btn btn-ghost btn-xs">Revisit</span>
-                          <span class="btn btn-solid">Burn 10 tickets</span>
-                        </div>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="body-title">
-                          <div class="section-title">Tickets</div>
-                          <span class="body-meta">0/10 done</span>
-                          <span style="flex: 1"></span>
-                          <span class="chip chip-neutral">sandbox · docker</span>
-                        </div>
-                        <!-- prettier-ignore -->
-                        <div class="ledger">
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#1</span><span class="lg-title">Move entries into SQLite behind an injectable driver port</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#2</span><span class="lg-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="lg-block">after #1</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#3</span><span class="lg-title">Feed history read: keyset pagination with actor and type filters</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#5</span><span class="lg-title">WebSocket transport, identity minting, and the pure message router</span><span class="lg-block">after #2</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#7</span><span class="lg-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="lg-block">after #2, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                          <div class="ledger-row"><span class="ledger-head"><span class="lg-caret"><svg width="11" height="11"><use href="#i-caret"/></svg></span><span class="lg-seq">#9</span><span class="lg-title">Activity tab: live feed push, infinite scroll, filters, and reconnect gap-fill</span><span class="lg-block">after #3, #5</span><span class="lg-meta"><span class="chip chip-ticket-pending">pending</span></span></span></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 04 build ---- -->
-                <div class="stage-panel" data-stage="3">
-                  <p class="sr-only">
-                    The phase stepper with build current, above a run in progress: four of ten
-                    ticket lanes done with their commits, one lane running, and a live event log
-                    beside them.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="body-title">
-                          <div class="section-title">Run</div>
-                          <span class="chip chip-run-running">running</span>
-                          <span class="body-meta">4/10 done · 11m 40s</span>
-                        </div>
-                        <!-- prettier-ignore -->
-                        <div class="run-split">
-                          <div class="run-lanes-panel">
-                            <div class="panel-cap">Ticket lanes</div>
-                            <div class="run-lanes">
-                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#1</span><span class="lane-title">Move entries into SQLite behind an injectable driver port</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">a3f91c2</span><span class="commit-sha">7bd0e14</span></span><span class="lane-dur">3m 12s</span></div></div>
-                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#2</span><span class="lane-title">EventBus with a durable allowlist, and entry lifecycle events</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">1c47ae9</span></span><span class="lane-dur">4m 01s</span></div></div>
-                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#3</span><span class="lane-title">Feed history read: keyset pagination with actor and type filters</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">0e5b83d</span><span class="commit-sha">c91f206</span></span><span class="lane-dur">2m 48s</span></div></div>
-                              <div class="lane status-done"><div class="lane-head"><span class="lane-seq">#4</span><span class="lane-title">Retention pruning for the event log and the notification inbox</span><span class="chip chip-ticket-done">done</span></div><div class="lane-foot"><span class="lane-commits"><span class="commit-sha">5a2d770</span></span><span class="lane-dur">1m 39s</span></div></div>
-                              <div class="lane status-burning"><div class="lane-head"><span class="lane-seq">#5</span><span class="lane-title">WebSocket transport, identity minting, and the pure message router</span><span class="chip chip-ticket-burning">burning</span></div></div>
-                              <div class="lane"><div class="lane-head"><span class="lane-seq">#6</span><span class="lane-title">Presence: heartbeat, idle, liveness, and the avatar stack</span><span class="chip chip-ticket-pending">pending</span></div></div>
-                              <div class="lane"><div class="lane-head"><span class="lane-seq">#7</span><span class="lane-title">Mentions: canonical tokens, recipient fan-out, and the composer typeahead</span><span class="chip chip-ticket-pending">pending</span></div></div>
-                            </div>
-                          </div>
-                          <div class="run-stream-panel">
-                            <div class="stream-head">
-                              <div class="panel-tabs">
-                                <span class="panel-tab">Agent</span>
-                                <span class="panel-tab is-active">Events</span>
-                              </div>
-                            </div>
-                            <div class="stream-body">
-                              <div class="stream-line level-info"><span class="sl-time">14:02</span><span class="sl-type">run.started</span><span class="sl-msg">10 tickets queued</span></div>
-                              <div class="stream-line level-active"><span class="sl-time">14:02</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#1 Move entries into SQLite behind an injectable driver port</span></div>
-                              <div class="stream-line level-ok"><span class="sl-time">14:05</span><span class="sl-type">ticket.done</span><span class="sl-msg">#1 done · 2 commits</span></div>
-                              <div class="stream-line level-active"><span class="sl-time">14:05</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#2 EventBus with a durable allowlist, and entry lifecycle events</span></div>
-                              <div class="stream-line level-ok"><span class="sl-time">14:09</span><span class="sl-type">ticket.done</span><span class="sl-msg">#2 done · 1 commit</span></div>
-                              <div class="stream-line level-active"><span class="sl-time">14:09</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#3 Feed history read: keyset pagination with actor and type filters</span></div>
-                              <div class="stream-line level-ok"><span class="sl-time">14:12</span><span class="sl-type">ticket.done</span><span class="sl-msg">#3 done · 2 commits</span></div>
-                              <div class="stream-line level-active"><span class="sl-time">14:12</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#4 Retention pruning for the event log and the notification inbox</span></div>
-                              <div class="stream-line level-ok"><span class="sl-time">14:13</span><span class="sl-type">ticket.done</span><span class="sl-msg">#4 done · 1 commit</span></div>
-                              <div class="stream-line level-active"><span class="sl-time">14:13</span><span class="sl-type">ticket.burning</span><span class="sl-msg">#5 WebSocket transport, identity minting, and the pure message router</span></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 05 review ---- -->
-                <div class="stage-panel" data-stage="4">
-                  <p class="sr-only">
-                    The phase stepper with review current, above the run summary showing ten of ten
-                    tickets done across eleven commits, beside the test drive panel that boots the
-                    branch on its own port.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn"></span>
-                        <span class="pstep is-upcoming"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="review-body">
-                          <div class="review-grid">
-                            <div class="review-card">
-                              <div class="section-title">Summary</div>
-                              <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">tickets</span><span class="check-v">10/10 done</span></div>
-                              <div class="check-row"><span class="check-dot" style="background: var(--ok)"></span><span class="check-k">run</span><span class="check-v">succeeded · 38m 12s</span></div>
-                              <div class="check-row"><span class="check-dot" style="background: var(--ph-shipped)"></span><span class="check-k">changes</span><span class="check-v">11 commits</span></div>
-                              <div class="review-foot">feature/realtime-team-collaboration</div>
-                            </div>
-                            <div class="review-card">
-                              <div class="section-title">Test drive</div>
-                              <div class="drive-copy">Nothing is running yet. Start the test drive from the next step to boot this branch on its own port and click through the feature yourself. The merge gate wants a human behind the wheel.</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- ---- 06 shipped ---- -->
-                <div class="stage-panel" data-stage="5">
-                  <p class="sr-only">
-                    The phase stepper with every phase done and shipped current, above the shipped
-                    panel: the branch is merged and no gates remain.
-                  </p>
-                  <div class="rc-frame is-autoheight" data-mock="walk">
-                    <div class="rc-app walk-app" inert aria-hidden="true">
-                      <!-- prettier-ignore -->
-                      <div class="pipeline">
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">ideation</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">spec</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">tickets</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">build</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-done"><span class="pstep-dot"></span><span class="pstep-label">review</span></span>
-                        <span class="pconn is-done"></span>
-                        <span class="pstep is-current is-viewed"><span class="pstep-dot"></span><span class="pstep-label">shipped</span></span>
-                      </div>
-                      <div class="walk-body">
-                        <!-- prettier-ignore -->
-                        <div class="shipped-hero">
-                          <div class="shipped-check"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.4 3.2 3.2L13 5"/></svg></div>
-                          <div class="shipped-title">Shipped to main</div>
-                          <div class="shipped-meta"><svg width="12" height="12"><use href="#i-branch"/></svg>feature/realtime-team-collaboration</div>
-                          <div class="shipped-sub">The branch is merged and the pipeline is complete. The full history lives in the Activity tab.</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div class="timebar-agent">
+              <span class="timebar-who">Agent</span>
+              <svg><use href="#p-implementation" /></svg>
+            </div>
+            <div class="timebar-you">
+              <span class="timebar-who">You</span>
+              <span class="timebar-what">Checking what came back</span>
             </div>
           </div>
-
-          <div class="decisions reveal" data-delay="3">
-            <div class="decision">
-              <h3>Approve the plan</h3>
-              <p>
-                The spec and the task list come out of one unbroken conversation, so nothing is
-                rebuilt from a summary of a summary. You skim it and say go.
-              </p>
-            </div>
-            <div class="decision">
-              <h3>Approve the merge</h3>
-              <p>
-                runcastle sets your own work aside, checks out the finished branch, and starts it,
-                so you can click through the feature before it lands. Then it puts your work back.
-              </p>
-            </div>
-          </div>
+          <p class="shift-note">
+            The orange sliver is the agent writing the code. <b>runcastle takes on the rest.</b>
+          </p>
         </div>
       </section>
 
-      <!-- ===================== THE LOOP (sticky showcase) ===================== -->
-      <section class="band" id="loop">
+      <!-- ===================== PROJECT MANAGER ===================== -->
+      <section class="band" id="project">
         <div class="wrap">
-          <div class="section-head reveal">
-            <h2>Six features open, the way you keep six files open.</h2>
-            <p class="lede">
-              One chat window means one feature at a time, so you become the scheduler: what is
-              half-done, what is blocked, what you meant to come back to. runcastle carries that
-              instead, and the sidebar flags the features actually waiting on you.
-            </p>
-          </div>
+          <h2>A project manager that has read everything.</h2>
+          <p class="lede">
+            One standing chat sits above your features. Bring it what is bothering you and get back
+            features, in order.
+          </p>
 
-          <div class="parallel">
-            <div class="parallel-shot reveal" data-delay="1">
-              <p class="sr-only">
-                The feature list, grouped by what each feature wants from you: two under Needs you,
-                three under In progress, one under Shipped. Every row carries a six-segment map of
-                how far that feature has walked the pipeline, so they are all visible at once.
-              </p>
-              <div class="rc-frame is-autoheight" data-mock="board">
-                <div class="rc-app board-app" inert aria-hidden="true">
-                  <!-- prettier-ignore -->
-                  <nav class="sidebar">
-                    <div class="sidebar-head">
-                      <span class="pane-title">Features</span>
-                      <span class="new-btn"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>New</span>
-                    </div>
-                    <div class="sidebar-list">
-                      <div class="triage-group triage-needsYou">
-                        <div class="triage-label"><span class="triage-name">Needs you</span><span class="triage-count">2</span></div>
-                        <div class="feature-row is-active"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Realtime team collaboration</span><span class="feature-flag"><span class="needs-dot needs-burn"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-review"></span><span class="feature-slug">Entry tags</span><span class="feature-flag"><span class="needs-dot needs-ship"></span><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                      </div>
-                      <div class="triage-group triage-inProgress">
-                        <div class="triage-label"><span class="triage-name">In progress</span><span class="triage-count">3</span></div>
-                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-implementation"></span><span class="feature-slug">Offline draft sync</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-spec"></span><span class="feature-slug">Kickoff probe</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-tickets"></span><span class="feature-slug">Weekly digest email</span><span class="feature-flag"><span class="mini-map"><span class="mini-seg is-done"></span><span class="mini-seg is-done"></span><span class="mini-seg is-current"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span><span class="mini-seg is-upcoming"></span></span></span></span></div>
-                      </div>
-                      <div class="triage-group triage-shipped">
-                        <div class="triage-label"><span class="triage-name">Shipped</span><span class="triage-count">1</span></div>
-                        <div class="feature-row"><span class="feature-row-main"><span class="feature-dot phase-bg-shipped"></span><span class="feature-slug">mood-filter</span></span></div>
-                      </div>
-                    </div>
-                  </nav>
+          <p class="sr-only">
+            An example. You bring one sentence with three complaints in it. The project session
+            checks the record, finds a shipped feature that left part of the work undone and a
+            feature in review that touches the same area, then cuts the work into one started
+            feature, two parked drafts, and one item sent to an existing feature.
+          </p>
+          <div class="flow" inert aria-hidden="true">
+            <div class="flow-col">
+              <div class="flow-label">
+                You say<svg class="rc-icon is-14"><use href="#i-arrow-right" /></svg>
+              </div>
+              <div class="flow-say">
+                Search is slow, people want to share entries, and the tag picker flickers.
+              </div>
+            </div>
+
+            <div class="flow-col">
+              <div class="flow-label">
+                It checks the record<svg class="rc-icon is-14"><use href="#i-arrow-right" /></svg>
+              </div>
+              <div class="flow-hits">
+                <div class="flow-hit">
+                  <span class="flow-hit-icon"><svg class="rc-icon"><use href="#i-doc" /></svg></span>
+                  <div>
+                    <div>Search index was left undone</div>
+                    <div class="flow-path rc-mono">docs/features/mood-filter/outcome.md</div>
+                  </div>
+                </div>
+                <div class="flow-hit">
+                  <span class="flow-hit-icon"><svg class="rc-icon"><use href="#i-branch" /></svg></span>
+                  <div>
+                    <div>Tag picker is already in review</div>
+                    <div class="flow-path rc-mono">feature/entry-tags</div>
+                  </div>
                 </div>
               </div>
-              <p class="board-note">
-                The bar on each row is where that feature has got to in the six phases. Two are
-                waiting on a decision from you. The other four are working.
-              </p>
             </div>
 
-            <div class="facts reveal" data-delay="2">
-              <div class="fact">
-                <h3>Sorted by who is blocking</h3>
-                <p>
-                  The two features that want a decision from you sit at the top. Everything else is
-                  working, and the bar on each row says how far along it is.
-                </p>
-              </div>
-              <div class="fact">
-                <h3>Starting another one costs nothing</h3>
-                <p>
-                  An ideation session gets its own docs-only copy of the repo, with no dependency
-                  install, so opening a second and a third is instant.
-                </p>
-              </div>
-              <div class="fact">
-                <h3>Conflicts are a task, not a wall</h3>
-                <p>
-                  When a branch will not merge cleanly, an agent resolves it in that feature's own
-                  copy with the whole spec in front of it, then hands the branch back to you.
-                </p>
-              </div>
-              <div class="fact">
-                <h3>Nothing is lost when you close it</h3>
-                <p>
-                  The spec, the decisions, and the map are committed under the feature's folder,
-                  and the run history stays in the app. Come back in a week and it still knows what
-                  it was doing.
-                </p>
+            <div class="flow-col flow-col--list">
+              <div class="flow-label">It cuts the work</div>
+              <div class="rc-list">
+                <div class="rc-row">
+                  <svg class="rc-phase ph-ideation"><use href="#p-ideation" /></svg>
+                  <span class="rc-row__title">Search index for entries</span>
+                  <span class="rc-row__meta">Started</span>
+                </div>
+                <div class="rc-row">
+                  <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                  <span class="rc-row__title">Search results page</span>
+                  <span class="rc-row__meta">Waits on the index</span>
+                </div>
+                <div class="rc-row">
+                  <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                  <span class="rc-row__title">Share an entry by link</span>
+                  <span class="rc-row__meta">Parked</span>
+                </div>
+                <div class="rc-row">
+                  <svg class="rc-phase ph-review"><use href="#p-review" /></svg>
+                  <span class="rc-row__title">Tag picker flicker</span>
+                  <span class="rc-row__meta">Goes to Entry tags</span>
+                </div>
               </div>
             </div>
           </div>
+
+          <ul class="points">
+            <li>
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
+              Knows what every agent did
+            </li>
+            <li>
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
+              Splits the work, sets the order
+            </li>
+            <li>
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-x" /></svg>
+              Says no to what is already built
+            </li>
+            <li>
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-shield" /></svg>
+              Flags collisions before they merge
+            </li>
+          </ul>
         </div>
       </section>
 
-      <!-- ===================== GATES ===================== -->
-      <section class="band" id="gates">
+      <!-- ===================== THE DRIVE ===================== -->
+      <section class="band" id="drive">
         <div class="wrap">
-          <div class="section-head reveal">
-            <h2>Guardrails, not handcuffs.</h2>
-            <p class="lede">
-              Each phase ends with a check that has to pass before the next one starts. Every one of
-              them can be waved through with a one-line reason, and the reason is kept.
-            </p>
-          </div>
+          <h2>The review is a drive, not a diff.</h2>
+          <p class="lede">
+            A diff cannot show whether the thing works. So the agents run the app, and then you do.
+          </p>
 
           <div class="bento">
-            <div class="cell cell-stream reveal">
-              <div class="cell-stream-copy">
-                <h3>Everything that happened, in order</h3>
-                <p>
-                  Sessions, overrides, generated docs, blocked runs: all of it lands in one stream
-                  per feature. Work that ran while you were somewhere else is still readable
-                  afterwards.
-                </p>
+            <div class="cell cell-5 cell--panel">
+              <h3>An agent drives it first.</h3>
+              <p>It starts the branch, clicks through it, and records the session.</p>
+              <div class="record" inert aria-hidden="true">
+                <div class="frames">
+                  <div class="frame">
+                    <div class="frame-shot">
+                      <span class="sk sk--title"></span>
+                      <span class="sk" style="width: 92%"></span>
+                      <span class="sk" style="width: 80%"></span>
+                      <span class="sk" style="width: 86%"></span>
+                    </div>
+                    0:12
+                  </div>
+                  <div class="frame is-current">
+                    <div class="frame-shot">
+                      <span class="sk sk--title"></span>
+                      <span class="sk sk--field is-focus"></span>
+                      <span class="sk sk--menu">
+                        <span class="sk"></span><span class="sk"></span><span class="sk"></span>
+                      </span>
+                    </div>
+                    0:42
+                  </div>
+                  <div class="frame">
+                    <div class="frame-shot">
+                      <span class="sk sk--title"></span>
+                      <span class="sk sk--field"></span>
+                      <span class="sk-row"><span class="sk-dot"></span><span class="sk"></span></span>
+                      <span class="sk" style="width: 60%; margin-left: 16px"></span>
+                    </div>
+                    1:57
+                  </div>
+                  <div class="frame">
+                    <div class="frame-shot">
+                      <span class="sk sk--title"></span>
+                      <span class="sk-row"><span class="sk-dot"></span><span class="sk"></span></span>
+                      <span class="sk" style="width: 60%; margin-left: 16px"></span>
+                      <span class="sk-row"><span class="sk-dot is-b"></span><span class="sk"></span></span>
+                      <span class="sk" style="width: 44%; margin-left: 16px"></span>
+                    </div>
+                    3:40
+                  </div>
+                </div>
+                <div class="rc-meta">
+                  <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Review passed</span>
+                  <span class="rc-meta__item">
+                    <svg class="rc-icon is-14"><use href="#i-play" /></svg>Walkthrough 4:18
+                  </span>
+                </div>
               </div>
-              <div class="cell-stream-shot">
-                <p class="sr-only">
-                  A feature activity stream listing session, gate, docs, and converge events, each
-                  with a type and a relative timestamp.
-                </p>
-                <div class="rc-app" inert aria-hidden="true">
-                  <!-- prettier-ignore -->
-                  <div class="insp-pane insp-pane-activity">
-                    <section class="insp-section">
-                      <div class="activity-log">
-                        <div class="act-line"><span class="act-dot"></span><div class="act-body"><div class="act-msg">ideation session kicked off automatically</div><div class="act-sub"><span class="act-type">session · kickoff</span><span class="act-time">19h</span></div></div></div>
-                        <div class="act-line"><span class="act-dot"></span><div class="act-body"><div class="act-msg">embedded terminal spawned</div><div class="act-sub"><span class="act-type">session · launched</span><span class="act-time">19h</span></div></div></div>
-                        <div class="act-line"><span class="act-dot"></span><div class="act-body"><div class="act-msg">scaffolded docs/features/kickoff-probe/{brief,map}.md</div><div class="act-sub"><span class="act-type">docs · scaffolded</span><span class="act-time">7d</span></div></div></div>
-                        <div class="act-line"><span class="act-dot is-accent"></span><div class="act-body"><div class="act-msg">gate G1 overridden: regression verified by hand</div><div class="act-sub"><span class="act-type">gate · overridden</span><span class="act-time">7d</span></div></div></div>
-                        <div class="act-line"><span class="act-dot is-danger"></span><div class="act-body"><div class="act-msg">converge aborted: the feature's docs dir does not exist on disk</div><div class="act-sub"><span class="act-type">converge · blocked</span><span class="act-time">7d</span></div></div></div>
-                        <div class="act-line"><span class="act-dot"></span><div class="act-body"><div class="act-msg">advanced to spec</div><div class="act-sub"><span class="act-type">phase · advanced</span><span class="act-time">7d</span></div></div></div>
+            </div>
+
+            <div class="cell cell-7 cell--accent">
+              <h3>Then you drive it, and point at what is wrong.</h3>
+              <p>Scrub the recording, draw on a frame, write one line.</p>
+              <p class="sr-only">
+                The review player, paused at 0:42 of the lap 1 walkthrough. The recorded app shows a
+                comment box with a mention typeahead open. A red rectangle is drawn around the
+                typeahead, the drawing tools float above the frame, and a note reading "Typeahead
+                closes when I press the down arrow" is ready to save.
+              </p>
+              <div class="player" inert aria-hidden="true">
+                <div class="player-head">
+                  <span>Lap 1 · Walkthrough · 4:18 · this build</span>
+                  <span class="rc-btn rc-btn--ghost rc-btn--icon">
+                    <svg class="rc-icon"><use href="#i-expand" /></svg>
+                  </span>
+                </div>
+
+                <div class="player-frame">
+                  <div class="shot">
+                    <div class="shot-title">Offsite planning notes</div>
+                    <div class="shot-form">
+                      <div class="shot-input">Looping in @pri</div>
+                      <div class="shot-pick">
+                        <div class="shot-menu">
+                          <div class="shot-opt is-active"><span style="--who: #c13d7e"></span>Priya Raman</div>
+                          <div class="shot-opt"><span style="--who: #0b7f78"></span>Priit Kask</div>
+                          <div class="shot-opt"><span style="--who: #b44f0c"></span>Prisca Okafor</div>
+                        </div>
+                        <div class="shot-mark"></div>
                       </div>
-                    </section>
+                    </div>
                   </div>
+
+                  <div class="player-tools">
+                    <div class="toolbar">
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon is-on"><svg class="rc-icon"><use href="#i-pen" /></svg></span>
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-arrow-tool" /></svg></span>
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-rect" /></svg></span>
+                      <span class="toolbar-sep"></span>
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-undo" /></svg></span>
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon is-off"><svg class="rc-icon"><use href="#i-redo" /></svg></span>
+                      <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-trash" /></svg></span>
+                    </div>
+                    <span class="timecode">0:42</span>
+                  </div>
+
+                  <div class="notebar">
+                    <div class="notebar-field">Typeahead closes when I press the down arrow</div>
+                    <span class="rc-btn rc-btn--ghost">Cancel</span>
+                    <span class="rc-btn rc-btn--primary">Save note</span>
+                  </div>
+                </div>
+
+                <div class="transport">
+                  <span class="rc-btn rc-btn--ghost rc-btn--icon"><svg class="rc-icon"><use href="#i-play" /></svg></span>
+                  <span class="timecode">0:42</span>
+                  <div class="scrub"></div>
                 </div>
               </div>
             </div>
 
-            <div class="cell cell-gate reveal" data-delay="1">
-              <h3>It tells you what is missing</h3>
-              <p>
-                A check does not just refuse. It names the one condition that is not met and what
-                would clear it, right beside the button that does it.
-              </p>
-              <div class="cell-gate-shot">
-                <p class="sr-only">
-                  Gate G4, test driven, blocked because the branch has not been test driven yet,
-                  with an override link.
-                </p>
-                <div class="rc-app" inert aria-hidden="true">
-                  <!-- prettier-ignore -->
-                  <div class="gate-card">
-                    <div class="gate-idrow"><span class="gate-id">G4</span><span class="gate-name">Test driven</span></div>
-                    <div class="gate-req">The branch was booted and clicked through by a human</div>
-                    <div class="gate-state is-block"><span class="gate-state-dot"></span><span>start the test drive to clear this</span></div>
-                    <span class="gate-override-link">Override with reason…</span>
-                  </div>
-                </div>
+            <div class="cell cell-12 cell--panel cell--row">
+              <div>
+                <h3>Every note becomes the next lap.</h3>
+                <p>One click turns a note into a ticket. The frame you drew on goes with it.</p>
               </div>
-            </div>
-
-            <div class="cell cell-override reveal" data-delay="2">
-              <h3>Skipping one is on the record</h3>
-              <p>
-                Waving a check through is one click and one sentence. That sentence joins the
-                feature's history, instead of becoming a decision nobody can find later.
-              </p>
-              <div class="override-line lp-mono">gate G1 overridden: regression verified by hand</div>
+              <div class="chain" aria-hidden="true">
+                <div class="chain-step">
+                  <svg class="rc-icon"><use href="#i-pencil" /></svg>Your note at 0:42
+                </div>
+                <svg class="rc-icon"><use href="#i-arrow-right" /></svg>
+                <div class="chain-step">
+                  <svg class="rc-icon"><use href="#i-cube" /></svg>Ticket #11
+                </div>
+                <svg class="rc-icon"><use href="#i-arrow-right" /></svg>
+                <div class="chain-step"><span class="rc-dot rc-dot--live"></span>Lap 2 burning</div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ===================== LOCAL FIRST ===================== -->
-      <section class="band" id="local">
+      <!-- ===================== HOW IT WORKS ===================== -->
+      <section class="band" id="pipeline">
         <div class="wrap">
-          <div class="section-head reveal">
-            <h2>Your machine. Your subscription. Your repo.</h2>
-            <p class="lede">
-              runcastle is a small server and a browser tab on localhost. There is no runcastle
-              account, and no server of ours for your code to pass through.
-            </p>
+          <h2>Six phases. You make two calls.</h2>
+          <p class="lede">
+            runcastle always knows what the feature needs next. It asks you for two things: approve
+            the plan, approve the merge.
+          </p>
+
+          <div class="phases" role="group" aria-label="Pipeline phases">
+            <button class="phase ph-ideation is-reached" type="button" data-stage="0"
+              aria-pressed="false" aria-controls="walk-0">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-ideation" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Ideation</span>
+                  <span class="phase-who is-you">You talk it through</span>
+                </span>
+              </span>
+            </button>
+            <button class="phase ph-spec is-reached" type="button" data-stage="1"
+              aria-pressed="false" aria-controls="walk-1">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-spec" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Spec</span>
+                  <span class="phase-who">Agent writes it</span>
+                </span>
+              </span>
+            </button>
+            <button class="phase ph-tickets is-reached" type="button" data-stage="2"
+              aria-pressed="false" aria-controls="walk-2">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-tickets" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Tickets</span>
+                  <span class="phase-who is-you">You approve the plan</span>
+                </span>
+              </span>
+            </button>
+            <button class="phase ph-implementation is-reached" type="button" data-stage="3"
+              aria-pressed="true" aria-controls="walk-3">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-implementation" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Build</span>
+                  <span class="phase-who">Agents build it</span>
+                </span>
+              </span>
+            </button>
+            <button class="phase ph-review" type="button" data-stage="4" aria-pressed="false"
+              aria-controls="walk-4">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-review" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Review</span>
+                  <span class="phase-who is-you">You merge it</span>
+                </span>
+              </span>
+            </button>
+            <button class="phase ph-shipped" type="button" data-stage="5" aria-pressed="false"
+              aria-controls="walk-5">
+              <span class="phase-bar" aria-hidden="true"></span>
+              <span class="phase-row">
+                <span class="phase-glyph">
+                  <svg class="rc-phase is-18" aria-hidden="true"><use href="#p-shipped" /></svg>
+                </span>
+                <span class="phase-text">
+                  <span class="phase-name">Shipped</span>
+                  <span class="phase-who">It merges</span>
+                </span>
+              </span>
+            </button>
           </div>
 
-          <div class="local">
-            <div class="facts reveal" data-delay="1">
-              <div class="fact">
-                <h3>Nothing routes through us</h3>
-                <p>
-                  You sign in with your own Claude subscription, using a token you generate
-                  yourself. runcastle never holds a key of yours.
-                </p>
+          <!-- ---- Ideation ---- -->
+          <div class="walk-panel" id="walk-0" data-stage="0">
+            <div class="walk-copy">
+              <h3>Talk the idea into shape</h3>
+              <p>A real agent terminal opens with the feature already loaded. This part is yours.</p>
+            </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-ideation"><use href="#p-ideation" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                </div>
               </div>
-              <div class="fact">
-                <h3>Unattended work runs in a container</h3>
-                <p>
-                  Work that runs while you are away happens inside Docker or Podman on your own
-                  box. Podman works just as well, so a Docker Desktop licence never blocks you.
-                </p>
-              </div>
-              <div class="fact">
-                <h3>What it learns, it commits</h3>
-                <p>
-                  Specs, decisions, and maps are plain markdown in your repository under
-                  <code class="lp-mono">docs/features/</code>. They outlive the tool.
-                </p>
+              <div class="walk-body">
+                <div class="session">
+                  <span class="rc-dot rc-dot--live"></span>
+                  <b>Ideation session</b>
+                  <span class="session-state">Live</span>
+                  <span class="rc-spacer"></span>
+                  <span class="mk-agent">
+                    <svg class="rc-icon is-14"><use href="#i-claude" /></svg>Claude Code
+                  </span>
+                  <span class="rc-btn rc-btn--ghost rc-btn--sm">
+                    <svg class="rc-icon is-14"><use href="#i-stop" /></svg>End session
+                  </span>
+                </div>
+                <div class="term">
+                  <div class="term-path">~/.runcastle/worktrees/proj_wf6xGoA7/realtime-team-collaboration</div>
+                  <div class="term-cmd">
+                    &gt; Proceed with your task: invoke the /runcastle:ideate skill and drive the
+                    ideation session.
+                  </div>
+                </div>
               </div>
             </div>
+          </div>
 
-            <div class="topology reveal" data-delay="2">
-              <div class="topology-bar">Git topology</div>
-              <pre><span class="t-c"># the human keeps the main checkout</span>
-main                        <span class="t-c">your working tree</span>
-
-<span class="t-c"># one branch per feature</span>
-<span class="t-a">feature/realtime-collab</span>     <span class="t-c">commits land here</span>
-<span class="t-a">feature/entry-tags</span>          <span class="t-c">commits land here</span>
-
-<span class="t-c"># planning sessions get a docs-only copy of the repo,</span>
-<span class="t-c"># so planning several features at once costs nothing</span>
-~/.runcastle/worktrees/     <span class="t-c">no dependency install</span>
-
-<span class="t-c"># unattended builds get a container each</span>
-sandbox <span class="t-g">docker</span> | <span class="t-g">podman</span>       <span class="t-c">merged back to the branch</span></pre>
+          <!-- ---- Spec ---- -->
+          <div class="walk-panel" id="walk-1" data-stage="1">
+            <div class="walk-copy">
+              <h3>The decisions get written down</h3>
+              <p>The same session writes the spec and commits it to your repo.</p>
             </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-spec"><use href="#p-spec" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                </div>
+              </div>
+              <div class="walk-body">
+                <div class="doc-path">
+                  <svg class="rc-icon is-14"><use href="#i-doc" /></svg>
+                  <span class="rc-mono">docs/features/realtime-team-collaboration/spec.md</span>
+                </div>
+                <div class="doc">
+                  <div class="doc-title">Realtime team collaboration</div>
+                  <div class="doc-h">Decision</div>
+                  <div>Entries move into SQLite behind an injectable driver port.</div>
+                  <div class="doc-h">In scope</div>
+                  <ul>
+                    <li>Presence: who is in the entry.</li>
+                    <li>Mentions: @name notifies the person.</li>
+                    <li>Activity feed: an append-only log.</li>
+                  </ul>
+                  <div class="doc-h">Out of scope</div>
+                  <div>Live cursors and character-level merging.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Tickets ---- -->
+          <div class="walk-panel" id="walk-2" data-stage="2">
+            <div class="walk-copy">
+              <h3>Skim the task list, say go</h3>
+              <p>The spec becomes small tasks, in the order they have to happen. Click once.</p>
+            </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                </div>
+              </div>
+              <div class="walk-body">
+                <div class="mk-head">
+                  <div>
+                    <div class="rc-title">Tickets</div>
+                    <div class="mk-head-sub">10 tickets, in the order they have to happen</div>
+                  </div>
+                  <span class="rc-btn rc-btn--primary rc-btn--lg">
+                    <svg class="rc-icon"><use href="#i-flame" /></svg>Burn 10 tickets
+                  </span>
+                </div>
+                <div class="rc-list rc-list--divided">
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#1 · Move entries into SQLite</span>
+                    <span class="rc-row__meta">Ready</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
+                    <span class="rc-row__meta">After #1</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#3 · Feed history read</span>
+                    <span class="rc-row__meta">After #2</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#4 · Retention pruning</span>
+                    <span class="rc-row__meta">After #2</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#5 · WebSocket transport</span>
+                    <span class="rc-row__meta">After #2</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#6 · Presence and the avatar stack</span>
+                    <span class="rc-row__meta">After #5</span>
+                  </div>
+                  <div class="rc-row">
+                    <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                    <span class="rc-row__title">#7 · Mentions and the typeahead</span>
+                    <span class="rc-row__meta">After #2, #5</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Build ---- -->
+          <div class="walk-panel is-shown" id="walk-3" data-stage="3">
+            <div class="walk-copy">
+              <h3>Close the tab</h3>
+              <p>
+                Agents take every unblocked task at once, inside containers. Go start the next
+                feature.
+              </p>
+            </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-implementation"><use href="#p-implementation" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                </div>
+              </div>
+              <div class="walk-body">
+                <div class="mk-head mk-head--inline">
+                  <div class="rc-title">Run</div>
+                  <div class="rc-meta">
+                    <span class="rc-meta__item"><span class="rc-dot rc-dot--live"></span>Running</span>
+                    <span class="rc-meta__item">4 of 10 done</span>
+                    <span class="rc-meta__item">
+                      <svg class="rc-icon is-14"><use href="#i-codex" /></svg>Codex
+                    </span>
+                    <span class="rc-meta__item">
+                      <svg class="rc-icon is-14"><use href="#i-cube" /></svg>docker
+                    </span>
+                  </div>
+                </div>
+                <div class="run">
+                  <div class="rc-list">
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
+                      <span class="rc-row__title">#1 · Move entries into SQLite</span>
+                      <span class="rc-row__meta">3m 12s</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
+                      <span class="rc-row__title">#2 · EventBus and lifecycle events</span>
+                      <span class="rc-row__meta">4m 01s</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
+                      <span class="rc-row__title">#3 · Feed history read</span>
+                      <span class="rc-row__meta">2m 48s</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-shipped"><use href="#p-shipped" /></svg>
+                      <span class="rc-row__title">#4 · Retention pruning</span>
+                      <span class="rc-row__meta">1m 39s</span>
+                    </div>
+                    <div class="rc-row">
+                      <span class="rc-dotbox"><span class="rc-dot rc-dot--live"></span></span>
+                      <span class="rc-row__title">#5 · WebSocket transport</span>
+                      <span class="rc-row__meta">Burning</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                      <span class="rc-row__title">#6 · Presence and the avatar stack</span>
+                    </div>
+                    <div class="rc-row">
+                      <svg class="rc-phase ph-draft"><use href="#p-draft" /></svg>
+                      <span class="rc-row__title">#7 · Mentions and the typeahead</span>
+                    </div>
+                  </div>
+                  <div class="log">
+                    <div><time>14:02</time><b>run.started</b><span>10 tickets queued</span></div>
+                    <div><time>14:02</time><b class="is-burn">ticket.burning</b><span>#1 Move entries into SQLite</span></div>
+                    <div><time>14:05</time><b class="is-done">ticket.done</b><span>#1 done, 2 commits</span></div>
+                    <div><time>14:05</time><b class="is-burn">ticket.burning</b><span>#2 EventBus</span></div>
+                    <div><time>14:09</time><b class="is-done">ticket.done</b><span>#2 done, 1 commit</span></div>
+                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#3 Feed history read</span></div>
+                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#4 Retention pruning</span></div>
+                    <div><time>14:09</time><b class="is-burn">ticket.burning</b><span>#5 WebSocket transport</span></div>
+                    <div><time>14:11</time><b class="is-done">ticket.done</b><span>#4 done, 1 commit</span></div>
+                    <div><time>14:12</time><b class="is-done">ticket.done</b><span>#3 done, 2 commits</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Review ---- -->
+          <div class="walk-panel" id="walk-4" data-stage="4">
+            <div class="walk-copy">
+              <h3>Take it for a drive</h3>
+              <p>
+                The finished branch starts on its own port. Click through the real thing before it
+                lands.
+              </p>
+            </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-review"><use href="#p-review" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-draft"><use href="#p-draft" /></svg>Shipped</span>
+                </div>
+              </div>
+              <div class="walk-body">
+                <div class="mk-next">
+                  <div class="mk-next-body">
+                    <div class="mk-next-label">Next step</div>
+                    <div class="mk-next-title">Take it for a test drive</div>
+                    <div class="mk-next-desc">
+                      Boots this branch on its own port so you can click through the feature
+                      yourself.
+                    </div>
+                  </div>
+                  <span class="rc-btn rc-btn--primary rc-btn--lg">
+                    <svg class="rc-icon"><use href="#i-play" /></svg>Start test drive
+                  </span>
+                </div>
+                <hr class="rc-hr" />
+                <dl class="rc-props">
+                  <dt>Tickets</dt>
+                  <dd><span class="rc-dot rc-dot--success"></span><span>10 of 10 landed</span></dd>
+                  <dt>Run</dt>
+                  <dd>
+                    <span class="rc-dot rc-dot--success"></span><span>Succeeded</span>
+                    <span class="rc-sub">38m 12s</span>
+                  </dd>
+                  <dt>Changes</dt>
+                  <dd><svg class="rc-icon is-14"><use href="#i-branch" /></svg><span>11 commits</span></dd>
+                  <dt>Test drive</dt>
+                  <dd><span class="rc-dot"></span><span>Not run</span></dd>
+                </dl>
+                <div class="mk-gap-24"></div>
+                <div class="rc-meta">
+                  <span class="rc-meta__item">
+                    <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- Shipped ---- -->
+          <div class="walk-panel" id="walk-5" data-stage="5">
+            <div class="walk-copy">
+              <h3>It merges, and it remembers</h3>
+              <p>
+                The branch lands on main. The spec, the decisions, and the run history stay in your
+                repo.
+              </p>
+            </div>
+            <div class="walk-app" inert aria-hidden="true">
+              <div class="rc-topbar">
+                <div class="rc-stepper">
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Ideation</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Spec</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Tickets</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Build</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Review</span>
+                  <span class="rc-stepper__sep"></span>
+                  <span class="rc-step" aria-current="step"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg>Shipped</span>
+                </div>
+              </div>
+              <div class="walk-body walk-body--page">
+                <div class="rc-title-lg">Realtime team collaboration</div>
+                <div class="mk-gap-12"></div>
+                <div class="rc-meta">
+                  <span class="rc-meta__item">
+                    <svg class="rc-icon is-14"><use href="#i-branch" /></svg>feature/realtime-team-collaboration
+                  </span>
+                  <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Merged 2m ago</span>
+                </div>
+                <hr class="rc-hr" />
+                <dl class="rc-props">
+                  <dt>Review</dt>
+                  <dd>
+                    <span class="rc-dot rc-dot--success"></span><span>Passed</span>
+                    <span class="rc-sub">this build</span>
+                  </dd>
+                  <dt>Checks</dt>
+                  <dd><span class="rc-dot rc-dot--success"></span><span>3 of 3 passed</span></dd>
+                  <dt>Test drive</dt>
+                  <dd>
+                    <span class="rc-dot rc-dot--success"></span><span>Driven</span>
+                    <span class="rc-sub">lap 1</span>
+                  </dd>
+                  <dt>Tickets</dt>
+                  <dd><svg class="rc-icon is-14"><use href="#i-cube" /></svg><span>10 of 10 landed</span></dd>
+                  <dt>Laps</dt>
+                  <dd><svg class="rc-icon is-14"><use href="#i-undo" /></svg><span>1</span></dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== PARALLEL WORK ===================== -->
+      <section class="band" id="loop">
+        <div class="wrap">
+          <h2>Run more features than you could watch.</h2>
+          <p class="lede">
+            Each feature asks for you twice. Six of them is a short queue of decisions, not six
+            terminals to poll.
+          </p>
+
+          <p class="sr-only">
+            Six features, each on its own branch and each at a different phase. Realtime team
+            collaboration is on tickets and Entry tags is on review, both waiting on you. Offline
+            draft sync is building with an agent working. Kickoff probe is on spec, Weekly digest
+            email is on ideation, and Mood filter has shipped.
+          </p>
+          <div class="lanes" aria-hidden="true">
+            <div class="lane lane--head">
+              <span>Feature</span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-ideation"><use href="#p-ideation" /></svg><span>Ideation</span></span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-spec"><use href="#p-spec" /></svg><span>Spec</span></span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-tickets"><use href="#p-tickets" /></svg><span>Tickets</span></span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-implementation"><use href="#p-implementation" /></svg><span>Build</span></span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-review"><use href="#p-review" /></svg><span>Review</span></span>
+              <span class="lane-col"><svg class="rc-phase is-14 ph-shipped"><use href="#p-shipped" /></svg><span>Shipped</span></span>
+              <span></span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Realtime team collaboration</span>
+              <span class="lane-done ph-ideation"></span>
+              <span class="lane-done ph-spec"></span>
+              <span><span class="lane-now ph-tickets"><svg class="rc-phase"><use href="#p-tickets" /></svg></span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span class="lane-state is-you">Waiting on you</span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Entry tags</span>
+              <span class="lane-done ph-ideation"></span>
+              <span class="lane-done ph-spec"></span>
+              <span class="lane-done ph-tickets"></span>
+              <span class="lane-done ph-implementation"></span>
+              <span><span class="lane-now ph-review"><svg class="rc-phase"><use href="#p-review" /></svg></span></span>
+              <span></span>
+              <span class="lane-state is-you">Waiting on you</span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Offline draft sync</span>
+              <span class="lane-done ph-ideation"></span>
+              <span class="lane-done ph-spec"></span>
+              <span class="lane-done ph-tickets"></span>
+              <span><span class="lane-now ph-implementation"><svg class="rc-phase"><use href="#p-implementation" /></svg></span></span>
+              <span></span>
+              <span></span>
+              <span class="lane-state is-agent"><span class="rc-dot rc-dot--live"></span>Agent working, 4/10</span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Kickoff probe</span>
+              <span class="lane-done ph-ideation"></span>
+              <span><span class="lane-now ph-spec"><svg class="rc-phase"><use href="#p-spec" /></svg></span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span class="lane-state">In progress</span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Weekly digest email</span>
+              <span><span class="lane-now ph-ideation"><svg class="rc-phase"><use href="#p-ideation" /></svg></span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span class="lane-state">In progress</span>
+            </div>
+
+            <div class="lane">
+              <span class="lane-name">Mood filter</span>
+              <span class="lane-done ph-ideation"></span>
+              <span class="lane-done ph-spec"></span>
+              <span class="lane-done ph-tickets"></span>
+              <span class="lane-done ph-implementation"></span>
+              <span class="lane-done ph-review"></span>
+              <span><span class="lane-now ph-shipped"><svg class="rc-phase"><use href="#p-shipped" /></svg></span></span>
+              <span class="lane-state">Merged 19h ago</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== LOCAL-FIRST ===================== -->
+      <section class="band" id="local">
+        <div class="wrap">
+          <h2>Your agents. Your machine. Your repo.</h2>
+          <p class="lede">
+            A small server and a browser tab on localhost. No runcastle account, and no server of
+            ours.
+          </p>
+
+          <div class="machine">
+            <div class="machine-head">
+              <svg class="rc-icon" aria-hidden="true"><use href="#i-terminal" /></svg>
+              <span>Your machine</span>
+              <span class="lp-mono">localhost:4512</span>
+            </div>
+            <div class="machine-grid">
+              <div class="zone">
+                <h3>Your agents</h3>
+                <div class="tiles">
+                  <div class="tile">
+                    <svg class="rc-icon is-18" aria-hidden="true"><use href="#i-claude" /></svg>Claude Code
+                  </div>
+                  <div class="tile">
+                    <svg class="rc-icon is-18" aria-hidden="true"><use href="#i-codex" /></svg>Codex
+                  </div>
+                </div>
+                <p>Your own login, on the plan you already pay for</p>
+                <div class="tiles">
+                  <div class="tile">
+                    <img src="assets/logos/docker.svg" alt="" width="20" height="20" loading="lazy" />Docker
+                  </div>
+                  <div class="tile">
+                    <img src="assets/logos/podman.svg" alt="" width="20" height="20" loading="lazy" />Podman
+                  </div>
+                </div>
+                <p>One container for each unattended build</p>
+              </div>
+
+              <div class="zone">
+                <h3>Your repo</h3>
+                <div class="ref">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
+                  <span class="lp-mono">main</span>
+                  <span>Unattended builds never touch it</span>
+                </div>
+                <div class="ref">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-branch" /></svg>
+                  <span class="lp-mono is-branch">feature/entry-tags</span>
+                  <span>Agents commit here</span>
+                </div>
+                <div class="ref">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-doc" /></svg>
+                  <span class="lp-mono">docs/features/</span>
+                  <span>Specs, decisions, outcomes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== PROOF ===================== -->
+      <!-- Both numbers are counted from this repository's own history:
+             git log --format=%s | grep -c "^runcastle: outcome for"
+             git log --format=%s | grep -c "^ticket("
+           Recount them before a deploy rather than trusting what is here. -->
+      <section class="proof" aria-label="runcastle is built with runcastle">
+        <div class="wrap">
+          <div class="proof-inner">
+            <div>
+              <h2>runcastle is built with runcastle.</h2>
+              <p>Counted from its own git history since July 2026.</p>
+            </div>
+            <dl class="stats">
+              <div>
+                <dt>100</dt>
+                <dd>features shipped through this pipeline</dd>
+              </div>
+              <div>
+                <dt>1,342</dt>
+                <dd>ticket commits written by agents</dd>
+              </div>
+            </dl>
           </div>
         </div>
       </section>
 
       <!-- ===================== INSTALL ===================== -->
-      <section class="band install" id="install">
-        <div class="wrap install-inner">
-          <h2 class="reveal">Get started</h2>
-          <p class="lede reveal" data-delay="1">
-            One global command. Before anything boots, the doctor names the exact prerequisite you
-            are missing and the line that fixes it.
-          </p>
-
-          <div class="cmds reveal" data-delay="2">
-            <div class="cmd">
-              <span class="cmd-prompt">$</span>
-              <code>bun add -g runcastle</code>
-              <span class="cmd-note">install</span>
-              <button class="copy" type="button" data-copy="bun add -g runcastle"
-                aria-label="Copy install command">
-                <svg width="14" height="14"><use href="#i-copy" /></svg>
-              </button>
-            </div>
-            <div class="cmd">
-              <span class="cmd-prompt">$</span>
-              <code>runcastle doctor</code>
-              <span class="cmd-note">check prerequisites</span>
-              <button class="copy" type="button" data-copy="runcastle doctor"
-                aria-label="Copy doctor command">
-                <svg width="14" height="14"><use href="#i-copy" /></svg>
-              </button>
-            </div>
-            <div class="cmd">
-              <span class="cmd-prompt">$</span>
-              <code>runcastle</code>
-              <span class="cmd-note">boots on localhost:4512</span>
-              <button class="copy" type="button" data-copy="runcastle" aria-label="Copy run command">
-                <svg width="14" height="14"><use href="#i-copy" /></svg>
-              </button>
-            </div>
+      <section class="install" id="install">
+        <div class="wrap">
+          <div class="install-top" aria-hidden="true">
+            <span class="ph-ideation"></span><span class="ph-spec"></span><span class="ph-tickets"></span>
+            <span class="ph-implementation"></span><span class="ph-review"></span><span class="ph-shipped"></span>
           </div>
+          <div class="install-box">
+            <h2>Get started</h2>
+            <p class="lede">One global command. The doctor names anything you are missing.</p>
 
-          <p class="install-after reveal" data-delay="3">
-            Needs Bun, Git, and a Claude Code login on a paid plan. Containers are only required for
-            builds you walk away from.
-            <a href="https://github.com/MuathZahir/runcastle#prerequisites" rel="noopener"
-              target="_blank">Full prerequisites</a>
-          </p>
+            <div class="cmds">
+              <div class="cmd">
+                <span class="cmd-prompt" aria-hidden="true">$</span>
+                <code>bun add -g runcastle</code>
+                <span class="cmd-note">Install</span>
+                <button class="copy" type="button" data-copy="bun add -g runcastle"
+                  aria-label="Copy install command">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
+                </button>
+              </div>
+              <div class="cmd">
+                <span class="cmd-prompt" aria-hidden="true">$</span>
+                <code>runcastle doctor</code>
+                <span class="cmd-note">Check prerequisites</span>
+                <button class="copy" type="button" data-copy="runcastle doctor"
+                  aria-label="Copy doctor command">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
+                </button>
+              </div>
+              <div class="cmd">
+                <span class="cmd-prompt" aria-hidden="true">$</span>
+                <code>runcastle</code>
+                <span class="cmd-note">Boots on localhost:4512</span>
+                <button class="copy" type="button" data-copy="runcastle" aria-label="Copy run command">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-copy" /></svg><span>Copy</span>
+                </button>
+              </div>
+            </div>
+
+            <p class="install-after">
+              Needs Bun, Git, and a login for Claude Code or Codex.
+              <a href="https://github.com/MuathZahir/runcastle#prerequisites" rel="noopener"
+                target="_blank">Full prerequisites</a>
+            </p>
+          </div>
         </div>
       </section>
     </main>
@@ -937,17 +1435,12 @@ sandbox <span class="t-g">docker</span> | <span class="t-g">podman</span>       
       <div class="wrap footer-inner">
         <a class="brand" href="#main" aria-label="runcastle home">
           <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="7" fill="#7c6cf6" />
-            <path fill-rule="evenodd" clip-rule="evenodd"
-              d="M6.5 26.6 V8.4 H11.3 V12.4 H13.7 V8.4 H18.5 V12.4 H20.9 V8.4 H25.7 V26.6 H6.5 Z M13.3 15.6 L20.4 19.6 L13.3 23.6 Z"
-              fill="#0d0722" />
+            <path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor"
+              d="M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z" />
           </svg>
-          <span class="lp-wordmark"><span class="run">run</span><span class="castle">castle</span></span>
+          <span>runcastle</span>
         </a>
-        <!-- The row wraps: with the two section links added it no longer fits on
-             one line at phone width, and the footer is inside an overflow-x: hidden
-             body, so an unwrapped row would clip its last link instead of scrolling. -->
-        <nav class="footer-links" style="flex-wrap: wrap" aria-label="Project links">
+        <nav class="footer-links" aria-label="Project links">
           <a href="/docs/">Docs</a>
           <a href="/compare/">Compare</a>
           <a href="https://github.com/MuathZahir/runcastle" rel="noopener" target="_blank">GitHub</a>
@@ -956,9 +1449,41 @@ sandbox <span class="t-g">docker</span> | <span class="t-g">podman</span>       
           <a href="https://github.com/MuathZahir/runcastle/blob/main/LICENSE" rel="noopener"
             target="_blank">FSL-1.1</a>
         </nav>
-        <span class="footer-meta lp-mono">built with Claude Code</span>
+        <span class="footer-meta">Built with runcastle</span>
       </div>
     </footer>
+
+    <!-- ===================== THE FILM ===================== -->
+    <!-- Opened by the hero's second button. A plain <video> with its own
+         controls: nothing loads until the dialog is opened. -->
+    <dialog class="film" id="film" aria-label="The runcastle film">
+      <div class="film-bar">
+        <span>runcastle in ninety seconds</span>
+        <button class="film-close" type="button" aria-label="Close" data-film-close>
+          <svg class="rc-icon" aria-hidden="true"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <p id="film-desc" class="sr-only">
+        A ninety-second walkthrough of runcastle. A feature is named and sized; a real agent session
+        opens with the brief already injected and grills the idea into a spec that is committed to
+        the repo; the spec is split into ten dependency-ordered tickets; one Burn click hands them
+        to six sandboxed Docker agents that pick up every unblocked ticket at once and commit to a
+        single branch; four features run side by side; the finished branch is test-driven on its
+        own port and merged.
+      </p>
+      <video
+        width="2560"
+        height="1440"
+        poster="assets/video/runcastle-demo-poster.webp"
+        preload="none"
+        controls
+        playsinline
+        aria-describedby="film-desc"
+      >
+        <source src="assets/video/runcastle-demo-1440.mp4" type="video/mp4" />
+        <track kind="captions" src="assets/video/runcastle-demo.en.vtt" srclang="en" label="English" />
+      </video>
+    </dialog>
 
     <script src="main.js" defer></script>
   </body>

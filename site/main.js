@@ -1,144 +1,48 @@
 /* runcastle.dev landing page behaviour.
  *
- * Everything here is IntersectionObserver or event driven. There is no scroll
- * listener and no rAF loop, so nothing runs per frame.
+ * Everything here is event driven. There is no scroll listener, no observer
+ * and no rAF loop, so nothing runs per frame and nothing runs on scroll.
  *
- * Motion inventory, each justified:
- *   1. reveal on enter        -> hierarchy, brings the eye down the page in order
- *   2. pipeline rail draw     -> storytelling, the pipeline advancing left to right
- *   3. sticky stage swap      -> storytelling, the visual tracks the step being read
- *   4. nav hairline on scroll -> state transition, the bar has detached from the top
- *   5. copy button feedback   -> feedback, acknowledges the click
- *   6. hero film ambient loop -> the hero is the product moving rather than a
- *                                still of it; muted, on screen only, one click
- *                                away from the narrated cut
+ * What moves, each justified (the motion itself is CSS, see MOTION in
+ * styles.css):
+ *   1. hero entrance        -> hierarchy, the eye lands on the headline first
+ *   2. pipeline panel swap  -> state transition, the panel follows the tile
+ *   3. copy button feedback -> feedback, acknowledges the click
+ *
+ * The page reads whole without this file: the pipeline shows all six panels
+ * stacked, the commands can be selected by hand, and the film link goes to the
+ * film.
  */
 
 (() => {
   'use strict'
 
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-  /* ---- 1 + 2. reveal on enter -------------------------------------------- */
-  const revealables = document.querySelectorAll('.reveal')
-
-  if (reduced || !('IntersectionObserver' in window)) {
-    revealables.forEach((el) => el.classList.add('is-in'))
-  } else {
-    const revealObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return
-          entry.target.classList.add('is-in')
-          revealObserver.unobserve(entry.target)
-        })
-      },
-      { rootMargin: '0px 0px -12% 0px', threshold: 0.12 },
-    )
-    revealables.forEach((el) => revealObserver.observe(el))
-  }
-
-  /* ---- 3. sticky stage tracks the active step ---------------------------- */
-  const steps = Array.from(document.querySelectorAll('.step'))
-  const stagePanels = Array.from(document.querySelectorAll('#stage .stage-panel'))
+  /* ---- 1. the pipeline walkthrough --------------------------------------- */
+  /* Six tiles, six panels. Pressing a tile shows its panel and fills the bars
+   * up to and including it, so the row reads as progress through the pipeline
+   * rather than as six unrelated tabs. */
+  const phases = Array.from(document.querySelectorAll('.phase'))
+  const panels = Array.from(document.querySelectorAll('.walk-panel'))
 
   const setStage = (index) => {
-    steps.forEach((step) => {
-      step.classList.toggle('is-active', Number(step.dataset.stage) === index)
+    phases.forEach((phase) => {
+      const stage = Number(phase.dataset.stage)
+      phase.classList.toggle('is-reached', stage <= index)
+      phase.setAttribute('aria-pressed', String(stage === index))
     })
-    stagePanels.forEach((panel) => {
+    panels.forEach((panel) => {
       panel.classList.toggle('is-shown', Number(panel.dataset.stage) === index)
     })
   }
 
-  if (steps.length && stagePanels.length) {
-    // Clicking a step is the accessible, keyboard-reachable path. It works
-    // regardless of scroll position or reduced-motion preference.
-    steps.forEach((step) => {
-      step.addEventListener('click', () => setStage(Number(step.dataset.stage)))
-      step.addEventListener('focus', () => setStage(Number(step.dataset.stage)))
-    })
+  phases.forEach((phase) => {
+    phase.addEventListener('click', () => setStage(Number(phase.dataset.stage)))
+  })
 
-    // On top of that, scrolling through the steps advances the stage on its own.
-    // A band across the middle of the viewport decides which step is "being
-    // read", which is steadier than reacting to whichever step entered last.
-    if (!reduced && 'IntersectionObserver' in window) {
-      const stepObserver = new IntersectionObserver(
-        (entries) => {
-          const inBand = entries
-            .filter((entry) => entry.isIntersecting)
-            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
-          if (inBand) setStage(Number(inBand.target.dataset.stage))
-        },
-        { rootMargin: '-42% 0px -42% 0px', threshold: 0 },
-      )
-      steps.forEach((step) => stepObserver.observe(step))
-    }
-  }
-
-  /* ---- 3b. fit each product mock to its frame ---------------------------- */
-  /* Every mock lays out at a fixed logical width (--rc-w) and is scaled to fit.
-   * ResizeObserver keeps the scale exact as the column changes, which no amount
-   * of media queries can do reliably because the frames live in columns of
-   * different widths. The CSS default covers the no-JS case. */
-  const frames = Array.from(document.querySelectorAll('.rc-frame:not(.is-natural)'))
-
-  if (frames.length) {
-    const fit = (frame) => {
-      const logical = parseFloat(getComputedStyle(frame).getPropertyValue('--rc-w'))
-      const available = frame.clientWidth
-      if (!logical || !available) return
-      // Never scale past 1: blowing a mock up past its design size looks wrong
-      // even though it stays sharp.
-      const scale = Math.min(available / logical, 1)
-      frame.style.setProperty('--rc-s', String(scale))
-
-      // Height from content, so a panel never carries dead space below itself.
-      // scrollHeight is the pre-transform layout height, which is what we want
-      // to scale.
-      if (frame.classList.contains('is-autoheight')) {
-        const app = frame.firstElementChild
-        if (app) frame.style.height = `${Math.round(app.scrollHeight * scale)}px`
-      }
-    }
-
-    if ('ResizeObserver' in window) {
-      const frameObserver = new ResizeObserver((entries) => {
-        entries.forEach((entry) => fit(entry.target))
-      })
-      frames.forEach((frame) => {
-        fit(frame)
-        frameObserver.observe(frame)
-      })
-    } else {
-      frames.forEach(fit)
-    }
-  }
-
-  /* ---- 4. nav gains a hairline once it detaches from the top ------------- */
-  const nav = document.getElementById('nav')
-  if (nav && 'IntersectionObserver' in window) {
-    // A zero-height sentinel at the very top of the document. Watching it is
-    // free; watching scroll position is not.
-    const sentinel = document.createElement('div')
-    sentinel.setAttribute('aria-hidden', 'true')
-    sentinel.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;'
-    document.body.prepend(sentinel)
-
-    new IntersectionObserver(
-      ([entry]) => nav.classList.toggle('is-stuck', !entry.isIntersecting),
-      { threshold: 0 },
-    ).observe(sentinel)
-  }
-
-  /* ---- 5. copy to clipboard --------------------------------------------- */
-  const CHECK =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"' +
-    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M20 6 9 17l-5-5"/></svg>'
-
+  /* ---- 2. copy to clipboard ---------------------------------------------- */
   document.querySelectorAll('.copy').forEach((button) => {
-    const original = button.innerHTML
+    const label = button.querySelector('span')
+    let reset = 0
 
     button.addEventListener('click', async () => {
       const text = button.dataset.copy
@@ -165,107 +69,44 @@
         document.body.removeChild(scratch)
       }
 
-      button.classList.add('is-done')
-      button.innerHTML = CHECK
-      button.setAttribute('aria-label', 'Copied')
-
-      window.setTimeout(() => {
-        button.classList.remove('is-done')
-        button.innerHTML = original
-        button.setAttribute('aria-label', 'Copy command')
+      if (!label) return
+      label.textContent = 'Copied'
+      window.clearTimeout(reset)
+      reset = window.setTimeout(() => {
+        label.textContent = 'Copy'
       }, 1600)
     })
   })
 
-  /* ---- 6. the hero film -------------------------------------------------- */
-  /* Two modes, one file. The markup on its own is a plain video with native
-   * controls and a poster, which is exactly what someone with no JS should get:
-   * the narrated cut, on request. What this adds is the ambient mode — muted,
-   * controls dropped, looping on its own in-point, running only while it is on
-   * screen — plus the corner button that trades that loop for the voiceover.
-   *
-   * `narrating` is the mode flag rather than `film.muted`, because the muted
-   * state is set here and would otherwise be both the cause and the record of
-   * the mode. */
-  const film = document.getElementById('hero-film')
-  const filmBtn = document.querySelector('[data-film-play]')
+  /* ---- 3. the film -------------------------------------------------------- */
+  /* The hero's second button is a plain link to the film, which is what it
+   * stays without JS or without <dialog>. Here it opens the film in a modal
+   * instead and starts it; closing the modal, by the button, Escape or a click
+   * on the backdrop, pauses it so it never plays on behind the page. */
+  const film = document.getElementById('film')
+  const video = film ? film.querySelector('video') : null
 
-  if (film && filmBtn) {
-    let narrating = false
-
-    // The film opens on five seconds of brand hold and a statement card that
-    // repeats the page's own h1. That is the right way to open a film and the
-    // wrong way to open a hero, so the ambient loop starts where the product
-    // does. Clicking through plays the film whole, from frame one.
-    const AMBIENT_IN = 9.4
-
-    // Eleven megabytes is not a fair thing to push at a metered connection or a
-    // phone, and ambient motion is the first thing reduced-motion asks us to
-    // drop. In all three cases the native controls stay and the film waits.
-    const saveData = navigator.connection ? navigator.connection.saveData : false
-    const ambientOK =
-      !reduced && !saveData && !window.matchMedia('(max-width: 720px)').matches
-
-    // Only ever moves the playhead forward to the in-point: on the first play and
-    // on the loop back from the end, never on a resume from the pause the
-    // observer takes when the frame leaves the screen.
-    const cueIn = () => {
-      if (film.ended || film.currentTime < AMBIENT_IN) film.currentTime = AMBIENT_IN
-    }
-
-    const ambient = () => {
-      narrating = false
-      film.controls = false
-      film.muted = true
-      // `loop` is left off so that the loop point is ours: the end of the film
-      // returns to the product rather than to the brand open.
-      //
-      // Seeking a `preload="none"` element that has not loaded anything yet is
-      // dropped on the floor, so on the very first play the in-point has to wait
-      // for metadata. `cueIn` is idempotent, which is what makes that safe.
-      if (film.readyState > 0) cueIn()
-      else film.addEventListener('loadedmetadata', cueIn, { once: true })
-      const started = film.play()
-      if (!started) return
-      started
-        .then(() => filmBtn.removeAttribute('hidden'))
-        .catch(() => {
-          // Autoplay was refused after all. Hand the film back to the user
-          // rather than leaving a frozen poster with a sound button on it.
-          film.controls = true
-          filmBtn.setAttribute('hidden', '')
-        })
-    }
-
-    filmBtn.addEventListener('click', () => {
-      narrating = true
-      filmBtn.setAttribute('hidden', '')
-      film.controls = true
-      film.muted = false
-      film.currentTime = 0
-      film.play()
+  if (film && video && typeof film.showModal === 'function') {
+    document.querySelectorAll('[data-film-open]').forEach((opener) => {
+      opener.addEventListener('click', (event) => {
+        event.preventDefault()
+        film.showModal()
+        // Refused autoplay is fine: the controls are right there.
+        const started = video.play()
+        if (started) started.catch(() => {})
+      })
     })
 
-    // Serves both modes, because both end at the same frame: it closes the
-    // ambient loop, and it drops the finished narrated cut back into it.
-    film.addEventListener('ended', () => {
-      if (ambientOK) ambient()
+    film.querySelectorAll('[data-film-close]').forEach((closer) => {
+      closer.addEventListener('click', () => film.close())
     })
 
-    if (ambientOK && 'IntersectionObserver' in window) {
-      // Never fetch or decode a film nobody is looking at. The same observer
-      // parks it on the way out, and only ever touches the muted loop — a
-      // narrated play keeps going while the reader scrolls the page.
-      new IntersectionObserver(
-        ([entry]) => {
-          if (narrating) return
-          if (entry.isIntersecting) ambient()
-          else if (!film.paused) film.pause()
-        },
-        { threshold: 0.2 },
-      ).observe(film)
-    } else if (ambientOK) {
-      ambient()
-    }
+    // The dialog's own box is filled edge to edge by its children, so a click
+    // whose target is the dialog itself can only have landed on the backdrop.
+    film.addEventListener('click', (event) => {
+      if (event.target === film) film.close()
+    })
+
+    film.addEventListener('close', () => video.pause())
   }
 })()
