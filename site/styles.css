@@ -2049,7 +2049,8 @@ a.sr-only:focus-visible {
      at its full height before a byte of video has arrived. */
   width: 100%;
   height: auto;
-  background: #08070e;
+  /* The film's own ground, so the box and the first frame are one colour. */
+  background: var(--canvas);
 }
 
 /* ==========================================================================

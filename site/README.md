@@ -98,8 +98,8 @@ fills the bars up to it. Two things are load-bearing:
 
 ```
 assets/video/
-  runcastle-demo-1440.mp4      2560x1440, 60fps, H.264 + AAC, 11.5 MB
-  runcastle-demo-poster.webp   the 0:52 "six sandboxes" frame, 2560px, 59 KB
+  runcastle-demo-1080.mp4      1920x1080, 60fps, H.264 + AAC, 60s, 11.6 MB
+  runcastle-demo-poster.webp   the 0:10 title card, 1920px, 18 KB
   runcastle-demo.en.vtt        voiceover captions
 ```
 
@@ -108,38 +108,49 @@ with no JS gets. `main.js` opens it in a modal `<dialog>` instead: a `<video>`
 with native controls, `preload="none"` and a poster, so nothing is fetched until
 the dialog is opened. Closing the dialog pauses it.
 
-The film was cut for the previous look of the page (violet accent, Claude Code
-only). It is still the film; it no longer matches the page around it.
+The film is the sixty-second launch film, in the page's own look: its ground is
+`--canvas`, which is also the `<video>` box's background, so the poster, the
+first frame and the box are one colour.
 
-**To re-cut it** from a new master (the 4K one, always: the 1080p export is
-already compressed and re-encoding it twice shows):
+**The mp4 is the 1080p export, byte for byte.** It is not re-encoded: the export
+is already H.264 High with the moov atom at the front, and the dialog is never
+wider than 1120px, so the 4K master would be weight nobody sees. To replace the
+film, copy the new export over it and take the poster from the 4K master (a
+still, so the larger source only helps):
 
 ```sh
-ffmpeg -i "$FILM/runcastle-launch-4k60.mp4" \
-  -vf "scale=2560:1440:flags=lanczos" \
-  -c:v libx264 -profile:v high -level 5.1 -preset slow -crf 23 \
-  -x264-params "aq-mode=3:aq-strength=0.9" \
-  -pix_fmt yuv420p -g 120 -c:a aac -b:a 128k -ac 1 \
-  -movflags +faststart \
-  site/assets/video/runcastle-demo-1440.mp4
+cp "$FILM/runcastle-launch-1080p60.mp4" site/assets/video/runcastle-demo-1080.mp4
 
-ffmpeg -ss 52 -i "$FILM/runcastle-launch-4k60.mp4" -frames:v 1 \
-  -vf "scale=2560:1440:flags=lanczos" \
+ffmpeg -ss 10 -i "$FILM/runcastle-launch-4k60.mp4" -frames:v 1 \
+  -vf "scale=1920:1080:flags=lanczos" \
   -c:v libwebp -quality 80 -compression_level 6 \
   site/assets/video/runcastle-demo-poster.webp
 ```
 
-`+faststart` is load-bearing: without it the moov atom sits at the end of the file
-and nothing plays until the whole 11.5 MB has arrived. Keep the `width`/`height`
-attributes on the `<video>` in step with the encode: they are what gives the
-dialog its full height before a byte is fetched.
-
-**The captions are timed off the audio, not the storyboard.** The cues in the
-`.vtt` come from `silencedetect` run over the mixed track, so they follow the
-read.
+The moov atom at the front is load-bearing: with it at the end of the file,
+nothing plays until the whole 11.6 MB has arrived. Check a new export before
+shipping it, and remux (no re-encode) if `mdat` comes first:
 
 ```sh
-ffmpeg -i "$FILM/runcastle-launch-4k60.mp4" -af silencedetect=noise=-45dB:d=0.45 -f null -
+ffprobe -v trace "$FILM/runcastle-launch-1080p60.mp4" 2>&1 | grep -m2 -E "type:'(moov|mdat)'"
+# want moov listed before mdat; if not:
+ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4
+```
+
+If a smaller file is ever wanted, encode it from the 4K master, never from the
+1080p export: that one is already compressed, and encoding it twice shows. Keep
+the `width`/`height` attributes on the `<video>` in step with the file: they are
+what gives the dialog its full height before a byte is fetched. The running time
+is written in two places in `index.html`, the `1:00` on the hero button and the
+dialog's title bar.
+
+**The captions are timed off the audio, not the storyboard.** The cues in the
+`.vtt` come from `silencedetect` run over the voice stem of the mix, so they
+follow the read. The finished track has a bed under it and never goes silent, so
+the stem is the only place the pauses can be measured.
+
+```sh
+ffmpeg -i vo.wav -af silencedetect=noise=-45dB:d=0.25 -f null -
 ```
 
 ## Preview locally
@@ -197,7 +208,7 @@ So:
 Check with `curl` before believing anything:
 
 ```sh
-curl -sD - -o /dev/null -r 5000000-5000100 https://runcastle.dev/assets/video/runcastle-demo-1440.mp4 | head -3
+curl -sD - -o /dev/null -r 5000000-5000100 https://runcastle.dev/assets/video/runcastle-demo-1080.mp4 | head -3
 # want: HTTP/1.1 206 Partial Content + a content-range header
 ```
 

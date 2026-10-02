@@ -55,3 +55,4 @@
 ## 14. (D7) Demo video stays in git; next re-record moves to external hosting
 **Decision:** `site/assets/video/runcastle-demo-1440.mp4` (11.5MB) stays committed — no hosting change now. Tripwire: the first time the demo is re-recorded, the new video goes to external hosting instead of git, so the current blob remains the only one in history. Recorded as a note on the site GitHub issue, not work.
 **Why:** The cost of the committed video is already sunk; the real risk is history stacking on replacement. Standing up hosting machinery to save already-spent megabytes is the exact overengineering decision #11 forbids.
+**Superseded 2026-10-02:** the tripwire fired when the sixty-second launch film replaced the demo, and the call was to commit it anyway: `site/assets/video/runcastle-demo-1080.mp4` (11.6MB) is in git, so history now carries both films.

@@ -219,11 +219,11 @@
             </a>
             <!-- The href is the film itself, which is what someone with no JS
                  gets. main.js opens it in the dialog at the foot of the page. -->
-            <a class="lp-btn lp-btn-ghost lp-btn-lg" href="assets/video/runcastle-demo-1440.mp4"
+            <a class="lp-btn lp-btn-ghost lp-btn-lg" href="assets/video/runcastle-demo-1080.mp4"
               data-film-open>
               <svg class="rc-icon" aria-hidden="true"><use href="#i-play" /></svg>
               Watch the film
-              <span class="film-time">1:30</span>
+              <span class="film-time">1:00</span>
             </a>
           </div>
 
@@ -1458,29 +1458,30 @@
          controls: nothing loads until the dialog is opened. -->
     <dialog class="film" id="film" aria-label="The runcastle film">
       <div class="film-bar">
-        <span>runcastle in ninety seconds</span>
+        <span>runcastle in sixty seconds</span>
         <button class="film-close" type="button" aria-label="Close" data-film-close>
           <svg class="rc-icon" aria-hidden="true"><use href="#i-x" /></svg>
         </button>
       </div>
       <p id="film-desc" class="sr-only">
-        A ninety-second walkthrough of runcastle. A feature is named and sized; a real agent session
-        opens with the brief already injected and grills the idea into a spec that is committed to
-        the repo; the spec is split into ten dependency-ordered tickets; one Burn click hands them
-        to six sandboxed Docker agents that pick up every unblocked ticket at once and commit to a
-        single branch; four features run side by side; the finished branch is test-driven on its
-        own port and merged.
+        A sixty-second film. An agent says a task is done, and two more prompts show it was not.
+        Then one feature goes through runcastle: a wrong total spotted in the app is saved as a note
+        with Ctrl+J; a project chat turns the notes and a new request into a feature with six
+        ordered tickets; one Burn click gives every ticket its own agent in its own container, all
+        committing to one feature branch; a review agent uses the finished app in a recorded browser
+        and finds a defect; the recording is played back and annotated; a merge conflict with main
+        is resolved by an agent in one click; the feature ships.
       </p>
       <video
-        width="2560"
-        height="1440"
+        width="1920"
+        height="1080"
         poster="assets/video/runcastle-demo-poster.webp"
         preload="none"
         controls
         playsinline
         aria-describedby="film-desc"
       >
-        <source src="assets/video/runcastle-demo-1440.mp4" type="video/mp4" />
+        <source src="assets/video/runcastle-demo-1080.mp4" type="video/mp4" />
         <track kind="captions" src="assets/video/runcastle-demo.en.vtt" srclang="en" label="English" />
       </video>
     </dialog>
