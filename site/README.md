@@ -236,7 +236,7 @@ were staged in that scratch database (the live burn, the finished review), but
 every screen is the real UI, and the project-session conversation is a real
 session. Nothing on the landing page uses them.
 
-`assets/banner.png`, the README's header, is the exception: it is the hero of
+`assets/readme-banner.png`, the README's header, is the exception: it is the hero of
 this page (brand, headline, the six phase blocks) rendered over `build.png` as
 the castle wall, at 1280px and 2x.
 

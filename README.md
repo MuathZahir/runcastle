@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="site/assets/banner.png" alt="runcastle. Stop babysitting your coding agents. Talk an idea through once, get back a branch to test drive. Claude Code or Codex builds it unattended. Six phase blocks, ideation to shipped, stand on top of the runcastle workspace." width="100%" />
+  <img src="site/assets/readme-banner.png" alt="runcastle. Stop babysitting your coding agents. Talk an idea through once, get back a branch to test drive. Claude Code or Codex builds it unattended. Six phase blocks, ideation to shipped, stand on top of the runcastle workspace." width="100%" />
 </p>
 
 <p align="center">
@@ -218,10 +218,6 @@ of the *model*, so you choose models, not vendors:
   even mid-burn.
 - **Per project.** A project can pin its own model and override the machine
   default.
-
-<p align="center">
-  <img src="site/assets/screens/models-menu.png" alt="The model menu on a queued ticket in a live burn, listing Claude Code models and Codex models in two groups, with gpt-6-sol, noted for implementation tickets, selected" width="100%" />
-</p>
 
 Both runtimes get the same treatment: the same phase rules and skill pack, the
 same lifecycle hooks, the same runcastle MCP server, the same sandbox. The model
