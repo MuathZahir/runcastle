@@ -1,4 +1,4 @@
-import { exec } from 'node:child_process'
+import { exec, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -308,9 +308,20 @@ describe('buildSlotSetupCommand — the slot-sync script', () => {
  * The script runs inside the burn container by construction, so it is `sh` —
  * driven here for real rather than matched as a string, because the acceptance
  * question ("does a second run start warm?") is not one a string can answer. A
- * Windows host has no sh to drive it with; the shape assertions above cover it.
+ * Windows host has no sh to drive it with, and macOS's BSD `date` has no `%N`
+ * for the script's millisecond timers (the container's GNU coreutils does) —
+ * the shape assertions above cover both.
  */
-describe.skipIf(process.platform === 'win32')('buildSlotSetupCommand — driven for real', () => {
+const hostDateHasNanos = (() => {
+  if (process.platform === 'win32') return false
+  try {
+    return /^d+$/.test(execSync('date +%N', { encoding: 'utf8' }).trim())
+  } catch {
+    return false
+  }
+})()
+
+describe.skipIf(!hostDateHasNanos)('buildSlotSetupCommand — driven for real', () => {
   let home: string
   let workspace: string
   let volume: string

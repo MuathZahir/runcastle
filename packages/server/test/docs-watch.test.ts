@@ -42,6 +42,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * Start the watcher and give the OS a beat to arm it. On macOS the first
+ * FSEvents stream in a process starts asynchronously, and a write landing in
+ * that window is never reported — a race only a test can lose, since a real
+ * session's first doc write comes seconds after the watcher starts.
+ */
+async function startArmed(ctx: AppCtx, feature: Feature): Promise<void> {
+  startDocsWatch(ctx, feature)
+  await sleep(150)
+}
+
 describe('docs watcher', () => {
   let ctx: AppCtx
   let feature: Feature
@@ -72,7 +83,7 @@ describe('docs watcher', () => {
   }
 
   it('turns a doc write into one event that also publishes on the live bus', async () => {
-    startDocsWatch(ctx, feature)
+    await startArmed(ctx, feature)
 
     writeFileSync(join(docsDir, 'spec.md'), '# spec\n', 'utf8')
     await sleep(SETTLE_MS)
@@ -88,7 +99,7 @@ describe('docs watcher', () => {
   })
 
   it('debounces a write burst into a single event naming each file', async () => {
-    startDocsWatch(ctx, feature)
+    await startArmed(ctx, feature)
 
     // What an agent writing a spec actually looks like: several files, many
     // writes, all inside a few milliseconds.
@@ -119,7 +130,7 @@ describe('docs watcher', () => {
 
   it('is idempotent on a double start — one watcher, one event per write', async () => {
     startDocsWatch(ctx, feature)
-    startDocsWatch(ctx, feature)
+    await startArmed(ctx, feature)
     expect(docsWatchCount()).toBe(1)
 
     writeFileSync(join(docsDir, 'spec.md'), '# spec\n', 'utf8')
@@ -139,7 +150,7 @@ describe('docs watcher', () => {
   })
 
   it('ignores editor temp files beside the docs', async () => {
-    startDocsWatch(ctx, feature)
+    await startArmed(ctx, feature)
 
     writeFileSync(join(docsDir, '.spec.md.swp'), 'vim', 'utf8')
     await sleep(SETTLE_MS)
