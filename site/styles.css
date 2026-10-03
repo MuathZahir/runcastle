@@ -7,9 +7,9 @@
    grounds, an inverted-neutral primary, one blue accent, and colour spent
    mostly along the pipeline.
 
-   Theme is locked to dark. No section inverts. The one light surface on the
-   page is the app under test inside the review player, which is a recording
-   of somebody else's product.
+   Theme is locked to dark. No section inverts, and nothing on the page is
+   light: the app under test inside the review player is a recording of
+   somebody else's product, and it is dark too.
 
    This file also carries the header, footer and buttons the docs and
    comparison pages share; content.css adds their reading surface on top.
@@ -894,159 +894,98 @@ a.sr-only:focus-visible {
 }
 
 /* ==========================================================================
-   THE DRIVE  (bento: 5 + 7, then 12)
+   THE DRIVE  (one panel: the review player, and the three steps of a lap)
    ========================================================================== */
 
-.bento {
+.drive {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
   margin-top: 48px;
-}
-.cell {
-  padding: clamp(24px, 3vw, 36px);
-  border-radius: var(--radius-lg);
-}
-.cell-5 {
-  grid-column: span 5;
-}
-.cell-7 {
-  grid-column: span 7;
-}
-.cell-12 {
-  grid-column: 1 / -1;
-}
-.cell--panel {
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
-.cell--accent {
-  background: var(--accent-subtle);
+.drive-col {
+  padding: clamp(20px, 2.4vw, 32px);
 }
-.cell h3 {
-  font-size: 24px;
-  line-height: 30px;
-  letter-spacing: -0.02em;
-}
-.cell p {
-  margin: 12px 0 0;
-  max-width: 56ch;
-  color: var(--text-secondary);
-  text-wrap: pretty;
+.drive-col + .drive-col {
+  border-left: 1px solid var(--border-subtle);
 }
 @media (max-width: 900px) {
-  .cell-5,
-  .cell-7 {
-    grid-column: 1 / -1;
+  .drive {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .drive-col + .drive-col {
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
   }
 }
 
-/* What the review agent recorded: four frames of its walkthrough. The one
-   ringed is the frame the player beside it is paused on. */
-.record {
+/* The lap, top to bottom: the agent's drive, yours, and what your note turns
+   into. The rail between the icons is the gap, so the two stay in step. */
+.drive-steps {
+  --step-gap: 40px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 28px;
+  justify-content: center;
+  gap: var(--step-gap);
+  margin: 0;
+  list-style: none;
 }
-.frames {
+.drive-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.drive-step + .drive-step::before {
+  content: '';
+  position: absolute;
+  left: 15.5px;
+  bottom: calc(100% + 6px);
+  width: 1px;
+  height: var(--step-gap);
+  background: var(--border);
+}
+.drive-step > div {
+  min-width: 0;
+}
+.drive-icon {
+  flex: none;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 12px;
-}
-.frame {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-tertiary);
-}
-.frame-shot {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  aspect-ratio: 4 / 3;
-  padding: 12px;
-  overflow: hidden;
+  place-items: center;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
-  background: #eef1f6;
+  background: var(--surface-raised);
 }
-.frame.is-current {
-  color: var(--text);
+.drive-title {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
 }
-.frame.is-current .frame-shot {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-/* Skeleton pieces of the recorded app. Widths are set inline: they are the
-   drawing, not a style. */
-.sk {
-  flex: none;
-  height: 5px;
-  border-radius: 3px;
-  background: #cdd3e0;
-}
-.sk--title {
-  width: 56%;
-  height: 6px;
-  margin-bottom: 4px;
-  background: #8f98ad;
-}
-.sk--field {
-  height: 14px;
-  border: 1px solid #dfe3ec;
-  background: #fff;
-}
-.sk--field.is-focus {
-  border-color: #2f6fe4;
-}
-.sk--menu {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 54%;
-  height: auto;
-  margin-left: 18%;
-  padding: 4px;
-  border: 1px solid #dfe3ec;
-  background: #fff;
-}
-.sk--menu .sk {
-  background: #e4e8f1;
-}
-.sk--menu .sk:first-child {
-  background: #b9c1d3;
-}
-.sk-row {
-  flex: none;
+.drive-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 2px;
-}
-.sk-row .sk {
-  flex: 1;
-}
-.sk-dot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  background: #c13d7e;
-}
-.sk-dot.is-b {
-  background: #0b7f78;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-tertiary);
 }
 
 /* The review player: a paused frame of the app under test, the drawing tools
-   floating over it, a note ready to save, and the transport underneath. */
+   floating over it, a note ready to save, and the transport underneath.
+
+   The app under test is somebody else's product, so it has its own palette
+   (the --app-* values): a neutral dark, a step lighter than any ground of
+   ours, so the tools floating over it still read as ours. */
 .player {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 28px;
   font-size: 13px;
   line-height: 20px;
 }
@@ -1072,8 +1011,12 @@ a.sr-only:focus-visible {
   min-height: 348px;
   overflow: hidden;
   border-radius: var(--radius-md);
-  background: #eef1f6;
-  color: #161a24;
+  --app-bg: #24262c;
+  --app-raised: #2e3138;
+  --app-line: #41454f;
+  --app-accent: #6d9cf5;
+  background: var(--app-bg);
+  color: #e8e9ed;
 }
 .shot {
   position: absolute;
@@ -1101,9 +1044,9 @@ a.sr-only:focus-visible {
   width: 100%;
   height: 36px;
   padding: 0 12px;
-  border: 1px solid #2f6fe4;
+  border: 1px solid var(--app-accent);
   border-radius: 6px;
-  background: #fff;
+  background: var(--app-raised);
 }
 .shot-pick {
   position: relative;
@@ -1114,9 +1057,9 @@ a.sr-only:focus-visible {
   flex-direction: column;
   width: 210px;
   padding: 4px;
-  border: 1px solid #dfe3ec;
+  border: 1px solid var(--app-line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--app-raised);
 }
 .shot-opt {
   display: flex;
@@ -1127,7 +1070,7 @@ a.sr-only:focus-visible {
   border-radius: 6px;
 }
 .shot-opt.is-active {
-  background: #e4e8f1;
+  background: var(--app-line);
 }
 .shot-opt span {
   width: 16px;
@@ -1253,41 +1196,6 @@ a.sr-only:focus-visible {
   .notebar .rc-btn--ghost {
     display: none;
   }
-}
-
-/* The third cell: copy on one side, the note becoming a ticket becoming the
-   next lap on the other. */
-.cell--row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 28px 56px;
-}
-.cell--row > div:first-child {
-  flex: 1 1 320px;
-}
-.cell--row p {
-  max-width: 48ch;
-}
-.chain {
-  flex: 1.6 1 420px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-  min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-}
-.chain-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 0 16px;
-  border-radius: var(--radius-md);
-  background: var(--surface-inset);
 }
 
 /* ==========================================================================

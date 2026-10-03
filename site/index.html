@@ -594,63 +594,8 @@
             A diff cannot show whether the thing works. So the agents run the app, and then you do.
           </p>
 
-          <div class="bento">
-            <div class="cell cell-5 cell--panel">
-              <h3>An agent drives it first.</h3>
-              <p>It starts the branch, clicks through it, and records the session.</p>
-              <div class="record" inert aria-hidden="true">
-                <div class="frames">
-                  <div class="frame">
-                    <div class="frame-shot">
-                      <span class="sk sk--title"></span>
-                      <span class="sk" style="width: 92%"></span>
-                      <span class="sk" style="width: 80%"></span>
-                      <span class="sk" style="width: 86%"></span>
-                    </div>
-                    0:12
-                  </div>
-                  <div class="frame is-current">
-                    <div class="frame-shot">
-                      <span class="sk sk--title"></span>
-                      <span class="sk sk--field is-focus"></span>
-                      <span class="sk sk--menu">
-                        <span class="sk"></span><span class="sk"></span><span class="sk"></span>
-                      </span>
-                    </div>
-                    0:42
-                  </div>
-                  <div class="frame">
-                    <div class="frame-shot">
-                      <span class="sk sk--title"></span>
-                      <span class="sk sk--field"></span>
-                      <span class="sk-row"><span class="sk-dot"></span><span class="sk"></span></span>
-                      <span class="sk" style="width: 60%; margin-left: 16px"></span>
-                    </div>
-                    1:57
-                  </div>
-                  <div class="frame">
-                    <div class="frame-shot">
-                      <span class="sk sk--title"></span>
-                      <span class="sk-row"><span class="sk-dot"></span><span class="sk"></span></span>
-                      <span class="sk" style="width: 60%; margin-left: 16px"></span>
-                      <span class="sk-row"><span class="sk-dot is-b"></span><span class="sk"></span></span>
-                      <span class="sk" style="width: 44%; margin-left: 16px"></span>
-                    </div>
-                    3:40
-                  </div>
-                </div>
-                <div class="rc-meta">
-                  <span class="rc-meta__item"><span class="rc-dot rc-dot--success"></span>Review passed</span>
-                  <span class="rc-meta__item">
-                    <svg class="rc-icon is-14"><use href="#i-play" /></svg>Walkthrough 4:18
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="cell cell-7 cell--accent">
-              <h3>Then you drive it, and point at what is wrong.</h3>
-              <p>Scrub the recording, draw on a frame, write one line.</p>
+          <div class="drive">
+            <div class="drive-col">
               <p class="sr-only">
                 The review player, paused at 0:42 of the lap 1 walkthrough. The recorded app shows a
                 comment box with a mention typeahead open. A red rectangle is drawn around the
@@ -672,9 +617,9 @@
                       <div class="shot-input">Looping in @pri</div>
                       <div class="shot-pick">
                         <div class="shot-menu">
-                          <div class="shot-opt is-active"><span style="--who: #c13d7e"></span>Priya Raman</div>
-                          <div class="shot-opt"><span style="--who: #0b7f78"></span>Priit Kask</div>
-                          <div class="shot-opt"><span style="--who: #b44f0c"></span>Prisca Okafor</div>
+                          <div class="shot-opt is-active"><span style="--who: #e06aa3"></span>Priya Raman</div>
+                          <div class="shot-opt"><span style="--who: #2bb3a9"></span>Priit Kask</div>
+                          <div class="shot-opt"><span style="--who: #e0853f"></span>Prisca Okafor</div>
                         </div>
                         <div class="shot-mark"></div>
                       </div>
@@ -709,23 +654,37 @@
               </div>
             </div>
 
-            <div class="cell cell-12 cell--panel cell--row">
-              <div>
-                <h3>Every note becomes the next lap.</h3>
-                <p>One click turns a note into a ticket. The frame you drew on goes with it.</p>
-              </div>
-              <div class="chain" aria-hidden="true">
-                <div class="chain-step">
-                  <svg class="rc-icon"><use href="#i-pencil" /></svg>Your note at 0:42
+            <ol class="drive-col drive-steps">
+              <li class="drive-step">
+                <span class="drive-icon">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-play" /></svg>
+                </span>
+                <div>
+                  <div class="drive-title">An agent drives it first</div>
+                  <div class="drive-meta">Walkthrough recorded, 4:18</div>
                 </div>
-                <svg class="rc-icon"><use href="#i-arrow-right" /></svg>
-                <div class="chain-step">
-                  <svg class="rc-icon"><use href="#i-cube" /></svg>Ticket #11
+              </li>
+              <li class="drive-step">
+                <span class="drive-icon">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-pencil" /></svg>
+                </span>
+                <div>
+                  <div class="drive-title">You point at what is wrong</div>
+                  <div class="drive-meta">Your note at 0:42</div>
                 </div>
-                <svg class="rc-icon"><use href="#i-arrow-right" /></svg>
-                <div class="chain-step"><span class="rc-dot rc-dot--live"></span>Lap 2 burning</div>
-              </div>
-            </div>
+              </li>
+              <li class="drive-step">
+                <span class="drive-icon">
+                  <svg class="rc-icon" aria-hidden="true"><use href="#i-cube" /></svg>
+                </span>
+                <div>
+                  <div class="drive-title">The note becomes the next lap</div>
+                  <div class="drive-meta">
+                    <span class="rc-dot rc-dot--live" aria-hidden="true"></span>Ticket #11, lap 2 burning
+                  </div>
+                </div>
+              </li>
+            </ol>
           </div>
         </div>
       </section>

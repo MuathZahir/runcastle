@@ -252,8 +252,9 @@ look moves; stale screenshots are what this folder exists to avoid.
   phase. The primary button is inverted neutral, never accent-filled. The phase
   palette is lifecycle state and stays on phase markers, the hero blocks and the
   one orange sliver in `#why`.
-- **Dark only.** The page is theme-locked and no section inverts. The one light
-  surface is the app under test inside the review player.
+- **Dark only.** The page is theme-locked, no section inverts, and nothing on it
+  is light. The app under test inside the review player is somebody else's
+  product, so it has its own palette (`--app-*`), but that is dark too.
 - **Facts are text, not boxes.** No outlined pills, no uppercase tracked labels,
   no eyebrows above headings. Sentence case everywhere.
 - **Mono is for strings you could paste into a terminal**: branches, paths,
