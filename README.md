@@ -1,24 +1,26 @@
 <p align="center">
-  <img src="site/assets/banner.png" alt="runcastle - idea in, merged branch out" width="100%" />
+  <img src="site/assets/banner.png" alt="runcastle. Stop babysitting your coding agents. Talk an idea through once, get back a branch to test drive. Claude Code or Codex builds it unattended. Six phase blocks, ideation to shipped, stand on top of the runcastle workspace." width="100%" />
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/runcastle"><img alt="npm version" src="https://img.shields.io/npm/v/runcastle?color=7c6cf6&labelColor=0e1117&logo=npm&logoColor=white" /></a>
-  <a href="LICENSE"><img alt="License: FSL-1.1-ALv2" src="https://img.shields.io/badge/license-FSL--1.1--ALv2-7c6cf6?labelColor=0e1117" /></a>
-  <img alt="Platforms" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-0e1117?labelColor=0e1117&color=96a0b0" />
-  <a href="https://claude.com/claude-code"><img alt="Requires Claude Code" src="https://img.shields.io/badge/requires-Claude%20Code-7c6cf6?labelColor=0e1117" /></a>
+  <a href="https://www.npmjs.com/package/runcastle"><img alt="npm version" src="https://img.shields.io/npm/v/runcastle?color=4f8ef7&labelColor=0a0c11&logo=npm&logoColor=white" /></a>
+  <a href="LICENSE"><img alt="License: FSL-1.1-ALv2" src="https://img.shields.io/badge/license-FSL--1.1--ALv2-4f8ef7?labelColor=0a0c11" /></a>
+  <img alt="Platforms: macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-0a0c11?labelColor=0a0c11&color=262b36" />
+  <img alt="Runs on Claude Code or Codex" src="https://img.shields.io/badge/runs%20on-Claude%20Code%20%7C%20Codex-4f8ef7?labelColor=0a0c11" />
 </p>
 
 <p align="center">
-  <b>runcastle is an opinionated programming system layered on Claude Code:<br />the IDE to Claude Code's text editor.</b>
+  <b>Idea in, merged branch out. On your machine, in your repo.</b>
 </p>
 
 <p align="center">
+  <a href="https://runcastle.dev">Website</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="#install">Install</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="#the-loop">The loop</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#the-afk-sandbox">Sandbox</a>
+  <a href="#claude-code-or-codex">Claude Code or Codex</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
   <a href="#contributing">Contributing</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
@@ -27,20 +29,25 @@
 
 ---
 
-Every feature you build gets a persistent session that walks a pipeline:
-**ideation, spec, tickets, build, review, shipped**. You get grilled on an idea
-until a spec and a set of tickets fall out. Sandboxed AFK agents burn those
-tickets on a branch. You test drive the result and merge. Human in the loop at
-only the two ends.
+Every feature you build gets its own conversation, its own branch and its own
+memory, and walks a pipeline: **ideation, spec, tickets, build, review,
+shipped**. You get grilled on an idea until a spec and a set of tickets fall
+out. Sandboxed agents burn those tickets on the feature's branch while you are
+elsewhere. You test drive the result and merge.
+
+You make two calls per feature: approve the tickets, approve the merge.
+Everything between them runs without you, so several features move at once and
+the sidebar only flags the ones actually waiting on you.
 
 It runs entirely on your machine: a Bun server plus a browser UI at
 `http://localhost:4512`. There is no runcastle account and no hosted backend.
 
 <p align="center">
-  <img src="site/assets/screens/mock-shell.png" alt="The runcastle workspace showing a feature in the tickets phase, with ten generated tickets in dependency order and a Burn 10 tickets button" width="100%" />
+  <img src="site/assets/screens/tickets.png" alt="A feature in planning with ten tickets in dependency order, each after the ones it needs, and a Burn 10 tickets button as the one next step" width="100%" />
 </p>
 
-> New here? [`CONTEXT.md`](CONTEXT.md) has the vision and the locked decisions.
+> New here? [runcastle.dev](https://runcastle.dev) has the sixty-second film,
+> and [`CONTEXT.md`](CONTEXT.md) has the vision and the locked decisions.
 
 ---
 
@@ -66,7 +73,7 @@ stricter pre-boot gate that stops only on the must-haves.)
 | Requirement | Why runcastle needs it |
 |---|---|
 | **[Bun](https://bun.sh) 1.3.14+** | The runtime. `curl -fsSL https://bun.sh/install \| bash`, or `irm bun.sh/install.ps1 \| iex` on Windows. |
-| **[Claude Code](https://claude.com/claude-code)** | The engine runcastle drives. Install, then log in with `claude`. **Requires a paid Claude plan** (Pro, Max, Team, Enterprise, or Console); the free Claude.ai plan has no Claude Code access. |
+| **A coding agent: [Claude Code](https://claude.com/claude-code), [Codex](https://developers.openai.com/codex), or both** | The engines runcastle drives. You need at least one, signed in. **Claude Code** needs a paid Claude plan (Pro, Max, Team, Enterprise, or Console); install it, then log in with `claude`. **Codex** installs with `npm install -g @openai/codex` (or `brew install codex`); log in with `codex login`, on a ChatGPT plan or an API key. |
 | **[Git](https://git-scm.com)** | runcastle branches, worktrees, commits, and merges on your behalf. It also needs a commit identity: the first-run wizard collects one, or set it yourself. |
 | **[Node.js](https://nodejs.org) 22+** | **Every platform.** The embedded terminal runs in a `node`-hosted PTY sidecar whenever runcastle runs under Bun, because node-pty does not work in-process under Bun (its Windows ConPTY input pipe breaks, and on Linux the terminal hangs up after its first output). Without `node` on PATH, terminals exit instantly. |
 
@@ -91,40 +98,135 @@ Platform baselines: macOS 13+, Windows 10 1809+ (64-bit), or a modern Linux.
    - **Git identity.** The one hard step. runcastle commits docs and merges for
      you, so it writes your name and email to `git config --global`. Skipped
      automatically if you already have one.
-   - **Enable AFK burns.** Optional. Set up the sandbox and auth token now, or
+   - **Coding agents.** Claude Code and Codex side by side: which are
+     installed, which are signed in, and a button that runs the login for the
+     ones that are not. One is enough.
+   - **Enable AFK burns.** Optional. Set up the sandbox and credentials now, or
      skip and do it later.
    - **Open your first project.** Point runcastle at a git repo.
-3. Inside a project, drive the loop below.
+3. **Prepare the project.** One conversation, once, that records how your repo
+   installs, verifies, and runs, so no agent has to guess.
+4. Start something: **New feature** when you know what you want, or
+   [the project session](#the-project-session) when you have a complaint
+   rather than a plan.
 
 ---
 
 ## The loop
-
-<p align="center">
-  <img src="site/assets/screens/mock-strip.png" alt="The phase stepper reading ideation, spec, tickets, build, review, shipped, above a next-step bar" width="100%" />
-</p>
 
 The app always names the one next step, and it only stops you twice: once to
 approve the tickets, once to merge.
 
 | Phase | What happens |
 |---|---|
-| **ideation** | A real Claude Code terminal opens with the feature brief, phase rules, and runcastle's skill pack pre-injected, and argues with you until the idea is concrete. |
+| **ideation** | A real agent terminal opens with the feature brief, phase rules, and runcastle's skill pack pre-injected, and argues with you until the idea is concrete. |
 | **spec** | The decisions get written down as a spec, committed into your repo under `docs/features/<slug>/`. |
-| **tickets** | The spec is split into atomic tickets with a dependency order. **You review and click burn.** |
-| **build** | AFK agents burn each ticket inside a container, committing to the feature branch. |
-| **review** | Checks land, then you test drive the branch on its own port. **You click merge.** |
+| **tickets** | The spec is split into atomic tickets with a dependency order, each with a model picked for it. **You review and click burn.** |
+| **build** | AFK agents burn each ticket inside a container, in parallel, committing to the feature branch. You can close the tab. |
+| **review** | A review agent drives the running app, records a walkthrough, runs your checks, and fixes what it finds. Then you test drive the branch. **You click merge.** |
 | **shipped** | The branch is merged. The spec, decisions, and run history stay queryable. |
 
 Gates sit between the phases. They block by default, and every one takes an
 override with a one-line reason that is recorded in the feature's history.
 Seatbelt, not cage.
 
-### What it looks like
+### Build: agents burn tickets in parallel
 
-| Live Claude Code session, bound to a phase | Review, with agent-assisted conflict resolution |
-|---|---|
-| <img src="site/assets/screens/mock-term.png" alt="An embedded Claude Code session bound to the ideation phase with an injected instruction" /> | <img src="site/assets/screens/mock-review.png" alt="The review phase showing a merge conflict card with a Resolve with agent button" /> |
+Every unblocked ticket starts at once, each in its own sandboxed lane, each on
+its own model. Lanes land their commits on the feature branch, and a ticket that
+fails says why, with retry, retry on another model, and waive one click away.
+
+<p align="center">
+  <img src="site/assets/screens/build.png" alt="A live burn: two tickets done, three burning in parallel on gpt-6-sol, claude-sonnet-5-5 and gpt-6-sol, the rest queued, with a Cancel run action" width="100%" />
+</p>
+
+### Review: the agent drives it first
+
+Before you look, a review agent runs the app, clicks through the feature, and
+records it. Defects it finds become fix tickets and burn in the same lap; a
+second pass verifies the fixes. You get a verdict, the checks, and the
+walkthrough, and the one next step is **Merge & ship**.
+
+<p align="center">
+  <img src="site/assets/screens/review.png" alt="A feature in review: Verified in drive mode with checks 2 of 2 passed, 3 of 3 tickets landed, Merge and ship as the primary action, and the review agent's recorded walkthrough of the app below" width="100%" />
+</p>
+
+---
+
+## Beyond one feature
+
+### The project session
+
+Every feature has its own conversation; the project session is the one that
+does not. It is a single chat per project for the part that happens *before* a
+feature exists. Bring it a complaint, a screenshot, a paragraph from a
+customer. It checks the idea against what is already built and in flight,
+grills you on what is left, and cuts the rest into features, drafts, or a quick
+change.
+
+<p align="center">
+  <img src="site/assets/screens/project-chat.png" alt="A live project session in a real Claude Code terminal. Given an idea for a shared team feed with a Friday recap email, the agent reports that two-thirds of it is already in flight in two existing features, lists what neither covers, and asks the first deciding question" width="100%" />
+</p>
+
+It runs in a worktree runcastle owns, on `runcastle/project`, never in your
+checkout. It is also where `CONTEXT.md`, the project's standing decisions, gets
+written.
+
+**Drafts** are features you parked: a title, a one-liner and an optional brief,
+with no branch cut and nothing committed. You park them from the New feature
+form, and feature conversations park the scope they find that does not belong
+to them. **Start** cuts the branch and opens ideation.
+
+### Test drive, and jot what you notice
+
+**Test drive** runs everything that has shipped, in runcastle, with the app on
+the left and your notes on the right. A note can take a pasted screenshot, and
+it remembers the branch and commit it was written against.
+
+<p align="center">
+  <img src="site/assets/screens/drive.png" alt="A project test drive: the shiplog demo app running inside runcastle on main, with a Notes panel listing the note just taken on this drive above three notes already open" width="100%" />
+</p>
+
+You do not have to be driving to take one. **Ctrl+J** (**⌘J** on a Mac) opens
+a note anywhere in the app, even with focus in a terminal:
+
+<p align="center">
+  <img src="site/assets/screens/note.png" alt="The Ctrl+J note popover open over a feature page, with a typed note, Paste a screenshot, and save, new line and close shortcuts" width="100%" />
+</p>
+
+Notes collect in the project's inbox. **Triage** opens a project chat that
+clusters them into themes, grills you one theme at a time, and routes each one:
+a new feature, a batch of quick changes, another lap on an existing feature, or
+nothing.
+
+<p align="center">
+  <img src="site/assets/screens/project.png" alt="The project home: Talk it through and Test drive, past chats, and the Notes panel with three open notes and a Triage 3 button" width="100%" />
+</p>
+
+---
+
+## Claude Code or Codex
+
+runcastle drives either agent, and you can mix them. The runtime is a property
+of the *model*, so you choose models, not vendors:
+
+- **Per step.** A default model, then one each for planning chats, the project
+  session, implementation, and review. Plan with Claude and burn on Codex, or
+  the other way round.
+- **Per ticket.** Give a model a use-case note in Settings and the tickets agent
+  may assign it to the tickets that fit. Reassign any queued ticket yourself,
+  even mid-burn.
+- **Per project.** A project can pin its own model and override the machine
+  default.
+
+<p align="center">
+  <img src="site/assets/screens/models-menu.png" alt="The model menu on a queued ticket in a live burn, listing Claude Code models and Codex models in two groups, with gpt-6-sol, noted for implementation tickets, selected" width="100%" />
+</p>
+
+Both runtimes get the same treatment: the same phase rules and skill pack, the
+same lifecycle hooks, the same runcastle MCP server, the same sandbox. The model
+roster refreshes itself from each CLI, so a new model shows up without a
+runcastle release.
 
 ---
 
@@ -191,20 +293,23 @@ optional. sandcastle drives whichever runtime is on your PATH.
 runcastle is the orchestration, memory, and observation layer. It never rebuilds
 the chat UX.
 
-- **Interactive work** runs in **real Claude Code terminals** that runcastle
-  launches with context pre-injected: a generated feature brief via
+- **Interactive work** runs in **real agent terminals** that runcastle launches
+  with context pre-injected. For Claude Code that is a generated brief via
   `--append-system-prompt-file`, per-session hooks via inline `--settings`,
   phase-scoped skill packs via `--plugin-dir`, and runcastle's own MCP server
-  via `--mcp-config`. Terminals are server-owned PTYs streamed to an in-app
-  xterm view.
+  via `--mcp-config`. Codex takes no per-launch flags, so each session gets its
+  own `CODEX_HOME` holding the same things as files: `config.toml`, `hooks.json`,
+  `AGENTS.md`, and a copy of your `auth.json`. Terminals are server-owned PTYs
+  streamed to an in-app xterm view.
 - **AFK work** runs headless through sandcastle, in a Docker or Podman
   container, committing back to the feature branch.
 - **Knowledge lives in your repo** at `docs/features/<slug>/`: spec, decisions,
   research, notes. Versioned and agent-readable, and it outlives the tool.
 - **Machinery lives in the app's SQLite** at `~/.runcastle/`: phase state,
-  session links, workflow runs, transcript index.
+  session links, workflow runs, notes, transcript index.
 - **Git topology:** one branch per feature; interactive sessions get instant
-  docs-only worktrees so several features can be grilled in parallel; the main
+  docs-only worktrees so several features can be grilled in parallel; the
+  project session gets its own worktree on `runcastle/project`; the main
   checkout stays reserved for you, with a guarded test-drive switch that stashes
   and restores your work.
 
@@ -216,13 +321,15 @@ Bun workspaces, TypeScript strict, ESM only.
 |---|---|---|
 | `packages/core` | `@runcastle/core` | IO-free contracts: zod schemas, drizzle schema, pipeline and gates, paths, workflow types, config. |
 | `packages/server` | `@runcastle/server` | Hono + tRPC + services + launcher + MCP + workflows. Runs TS directly with Bun, no build step. |
-| `packages/skills` | `@runcastle/skills` | Vendored and forked Claude Code skill packs, plus the ticket-burner prompt template. |
+| `packages/skills` | `@runcastle/skills` | Vendored and forked skill packs, plus the ticket-burner prompt template. |
 | `apps/web` | `@runcastle/web` | Vite + React + tRPC client + TanStack Query. |
-| `site/` | | The static landing page. No build step. |
+| `site/` | | The static landing page and docs at [runcastle.dev](https://runcastle.dev). No build step. |
 
-There is no separate design-system package. `apps/web` owns its own styling: the design
-tokens live in a Tailwind `@theme` block at `apps/web/src/theme.css` and the primitives in
-`apps/web/src/ui.tsx`. See `apps/web/STYLE.md`.
+The UI follows the **Runcastle Design System**: cool slate neutrals, one blue
+accent, Geist and Geist Mono, a hue per phase. `apps/web/DESIGN.md` is the
+contract; the tokens live in a Tailwind `@theme` block at
+`apps/web/src/theme.css` and the primitives in `apps/web/src/ui.tsx`. See
+`apps/web/STYLE.md` for how it is styled.
 
 ---
 
@@ -275,7 +382,9 @@ bun run dev            # server (4512) + web dev server (4513)
 | `bun run scripts/smoke.ts` | A scripted end-to-end run against a throwaway repo and a real host `claude`. |
 
 Read [`CLAUDE.md`](CLAUDE.md) for conventions and [`docs/SPEC.md`](docs/SPEC.md)
-for the contracts before implementing anything.
+for the contracts before implementing anything. Styling `apps/web`? Read
+[`apps/web/DESIGN.md`](apps/web/DESIGN.md) and
+[`apps/web/STYLE.md`](apps/web/STYLE.md) first.
 
 ### The dev data dir
 
@@ -283,7 +392,7 @@ for the contracts before implementing anything.
 `.env`, logs and worktrees. An installed `runcastle` keeps using `~/.runcastle/`.
 The two never see each other, so wiping projects while testing cannot touch your
 real work. Both listen on 4512, so run one at a time; the boot line names the
-tree it opened.
+tree it opened. Set `RUNCASTLE_DATA_DIR` to point dev at any other scratch tree.
 
 ### `bun run dev:tool`
 
@@ -411,6 +520,6 @@ free to use, copy, modify, and redistribute for any purpose except offering a
 competing commercial product or service. Each release automatically becomes
 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) two years after publication.
 
-Built with [Claude Code](https://claude.com/claude-code). Methodology forked and
-adapted from [Matt Pocock](https://github.com/mattpocock)'s skills; AFK engine
-by [sandcastle](https://github.com/mattpocock/sandcastle).
+Built with runcastle, on Claude Code. Methodology forked and adapted from
+[Matt Pocock](https://github.com/mattpocock)'s skills; AFK engine by
+[sandcastle](https://github.com/mattpocock/sandcastle).

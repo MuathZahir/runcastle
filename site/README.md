@@ -229,10 +229,20 @@ taken. Keep `og:image:width` / `og:image:height` in step with the file.
 ## `assets/screens/` and the root README
 
 Markdown cannot run CSS, so the root README needs real images. The PNGs here are
-captures of the mockups on the **previous** landing page, in its violet look.
-Nothing on this page uses them any more, and the mockups they were taken from are
-gone, so they cannot be refreshed in place: recapture from the current mockups
-(or from the app) when the root README is next updated.
+captures of **the app itself**, not of the page's mockups: the `runcastle-demo`
+project (the `shiplog` journal app) booted from a checkout against a throwaway
+`RUNCASTLE_DATA_DIR`, in the dark theme, at 1440x900 CSS px and 2x. Some states
+were staged in that scratch database (the live burn, the finished review), but
+every screen is the real UI, and the project-session conversation is a real
+session. Nothing on the landing page uses them.
+
+`assets/banner.png`, the README's header, is the exception: it is the hero of
+this page (brand, headline, the six phase blocks) rendered over `build.png` as
+the castle wall, at 1280px and 2x.
+
+To refresh them, repeat that: boot a dev server on a scratch data dir holding a
+demo project, then capture with headless Chrome. Recapture whenever the app's
+look moves; stale screenshots are what this folder exists to avoid.
 
 ## House rules
 
