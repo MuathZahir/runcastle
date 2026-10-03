@@ -1,0 +1,20 @@
+# The musl variant of ./Dockerfile. Same contract: README prerequisites only, no
+# compiler — so it shows what an Alpine user gets before following the README's
+# musl section (`apk add build-base python3`).
+ARG BASE=alpine:3.22
+FROM ${BASE}
+
+ARG BUN_VERSION=1.3.14
+
+# libstdc++/libgcc: Bun's musl build links against them. bash: the Bun installer.
+RUN apk add --no-cache bash ca-certificates curl unzip git nodejs libstdc++ libgcc
+
+RUN adduser -D tester
+USER tester
+WORKDIR /home/tester
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+ENV PATH=/home/tester/.bun/bin:$PATH \
+    RUNCASTLE_SMOKE_DISPOSABLE=1
+
+COPY --chown=tester . /smoke/
+CMD ["bun", "/smoke/smoke.ts"]
