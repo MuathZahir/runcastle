@@ -139,9 +139,11 @@ if (ptyEntry) {
   // node-pty's entry is <root>/lib/index.js; its loader tries these dirs in order.
   const ptyRoot = dirname(dirname(ptyEntry))
   const dirs = ['build/Release', 'build/Debug', `prebuilds/${platform()}-${arch()}`]
-  const found = dirs.find((d) => existsSync(join(ptyRoot, d, 'pty.node')))
+  // node-pty 1.2 ships no pty.node on win32: ConPTY (conpty.node) is its only backend there.
+  const addon = platform() === 'win32' ? 'conpty.node' : 'pty.node'
+  const found = dirs.find((d) => existsSync(join(ptyRoot, d, addon)))
   if (!found) {
-    record('pty binary', false, `no pty.node under ${ptyRoot} (checked ${dirs.join(', ')})`)
+    record('pty binary', false, `no ${addon} under ${ptyRoot} (checked ${dirs.join(', ')})`)
   } else if (platform() === 'darwin') {
     const helper = join(ptyRoot, found, 'spawn-helper')
     let executable = false
@@ -159,7 +161,7 @@ if (ptyEntry) {
           : `${found}/spawn-helper is NOT executable — node-pty fails with "posix_spawnp failed"`,
     )
   } else {
-    record('pty binary', true, `${found}/pty.node`)
+    record('pty binary', true, `${found}/${addon}`)
   }
 }
 
