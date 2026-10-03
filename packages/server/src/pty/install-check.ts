@@ -5,24 +5,27 @@ import { dirname, join } from 'node:path'
 /**
  * Install-completeness check for node-pty's native binary (issue #39).
  *
- * WHY THIS EXISTS. node-pty ships prebuilt addons for darwin + win32 but **no
- * `linux-*` prebuild**, so on stock glibc Linux its install hook
- * (`node scripts/prebuild.js || node-gyp rebuild`) falls through to compiling
- * from source — which needs a C++ toolchain and node ≥22. The prebuild bridge
- * (root `postinstall` → {@link applyLinuxPrebuildBridge}, with node-pty's hook
- * rewritten to a no-op via a `patchedDependencies` patch) copies a vendored linux
- * prebuild into node-pty's `prebuilds/linux-<arch>/` so the compile never fires.
+ * WHY THIS EXISTS. node-pty ships prebuilt addons for darwin, win32 and glibc
+ * linux (x64 + arm64 since 1.2), and its install hook
+ * (`node scripts/prebuild.js || node-gyp rebuild`) compiles from source only
+ * when the platform's `prebuilds/<platform>-<arch>/` dir is absent. Where that
+ * compile runs and fails — no toolchain, or an arch with no prebuild — the
+ * terminal is dead while the server boots fine.
  *
  * WHY A DISK CHECK, NOT AN EXIT CODE. A second `bun install` after a failed one
- * exits **0** ("no changes") while the tree is still missing `pty.node` — the
- * retry lies. So doctor / first-run must verify the binary exists ON DISK, which
- * is what {@link checkPtyInstall} does. It mirrors node-pty's own loader
+ * exits **0** ("no changes") while the tree is still missing the addon — the
+ * retry lies. So the binary has to be verified ON DISK, which is what
+ * {@link checkPtyInstall} does. It mirrors node-pty's own loader
  * (`lib/utils.js`): probe `build/Release`, `build/Debug`, then
- * `prebuilds/<platform>-<arch>`. On **macOS** it also requires the `spawn-helper`
- * executable alongside the addon — but only there: node-pty's native `fork` uses
- * the helper solely under `#if defined(__APPLE__)` (`src/unix/pty.cc`), and the
- * spawn-helper build target is gated to `OS=="mac"` (`binding.gyp`), so Linux
- * ships and needs `pty.node` alone.
+ * `prebuilds/<platform>-<arch>`, for the addon the platform loads — `conpty.node`
+ * on win32, `pty.node` elsewhere. On **macOS** it also requires the
+ * `spawn-helper` executable alongside the addon — but only there: node-pty's
+ * native `fork` uses the helper solely under `#if defined(__APPLE__)`
+ * (`src/unix/pty.cc`).
+ *
+ * musl is the one case presence cannot vouch for: the `linux-<arch>` prebuild is
+ * glibc-only, yet its mere presence makes the install hook skip the compile. On
+ * musl only a source build (`build/Release`) counts.
  */
 
 /** Where node-pty's loader looks for its addon, in order (`lib/utils.js`). */
@@ -53,8 +56,8 @@ export interface PtyInstallProbe {
 }
 
 /**
- * musl libc can't load a glibc prebuild, so the bridge doesn't help there and
- * the fix is a source rebuild. `process.report` exposes the runtime glibc
+ * musl libc can't load node-pty's glibc prebuild, so the fix there is a source
+ * rebuild. `process.report` exposes the runtime glibc
  * version on glibc systems and omits it on musl; Alpine's marker file is the
  * belt-and-braces fallback.
  */
@@ -81,29 +84,32 @@ export function resolvePtyRoot(): string | null {
   }
 }
 
+/** The addon node-pty's loader requires on `platform`. */
+export function ptyAddonName(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? 'conpty.node' : 'pty.node'
+}
+
 function remediation(
   platform: NodeJS.Platform,
   arch: string,
   musl: boolean,
   checked: string[],
 ): string {
-  const where = checked.join(', ')
+  const addon = ptyAddonName(platform)
   if (musl) {
     return (
-      "node-pty's native binary (pty.node) is missing and this is a musl/Alpine " +
-      'system, where the vendored glibc prebuild cannot load. Install a build ' +
-      'toolchain and rebuild from source: `apk add build-base python3` then ' +
-      '`bun install` (see docs/research/POSIX-VERIFICATION.md, musl fallback).'
+      `node-pty's native binary (${addon}) has not been built from source, and this is ` +
+      "a musl/Alpine system, where node-pty's glibc prebuild cannot load. Install a " +
+      'build toolchain and reinstall forcing a source build: `apk add build-base ' +
+      'python3`, then `npm_config_build_from_source=true bun add -g runcastle`.'
     )
   }
   return (
-    `node-pty's native binary (pty.node) is missing for ${platform}-${arch} ` +
-    `(looked in: ${where}). The embedded terminal will not work. Re-run ` +
-    "`bun install` — the root postinstall prebuild bridge should copy it into " +
-    "node-pty's prebuilds. If it still fails, no linux-" +
-    `${arch} binary is vendored (build one with \`bun ` +
-    'scripts/vendor-node-pty-prebuilds.ts\`) or you\'re without a C++ toolchain; ' +
-    'see docs/research/POSIX-VERIFICATION.md.'
+    `node-pty's native binary (${addon}) is missing for ${platform}-${arch} ` +
+    `(looked in: ${checked.join(', ')}). The embedded terminal will not work. ` +
+    "node-pty ships no prebuild for this platform, so its install compiled from " +
+    'source and that failed: install a C++ toolchain and Python 3, then re-run ' +
+    '`bun install` (or `bun add -g runcastle`).'
   )
 }
 
@@ -120,7 +126,9 @@ export function checkPtyInstall(probe: PtyInstallProbe = {}): PtyInstallStatus {
   const exists = probe.exists ?? existsSync
   const ptyRoot = probe.ptyRoot === undefined ? resolvePtyRoot() : probe.ptyRoot
 
-  const checked = [...CANDIDATE_DIRS, `prebuilds/${platform}-${arch}`]
+  // On musl the glibc prebuild is on disk but unloadable, so it never counts.
+  const checked = musl ? [...CANDIDATE_DIRS] : [...CANDIDATE_DIRS, `prebuilds/${platform}-${arch}`]
+  const addon = ptyAddonName(platform)
 
   if (ptyRoot === null) {
     return {
@@ -138,7 +146,7 @@ export function checkPtyInstall(probe: PtyInstallProbe = {}): PtyInstallStatus {
   // Linux and win32 need the addon alone.
   const needsHelper = platform === 'darwin'
   for (const dir of checked) {
-    const binaryPath = join(ptyRoot, dir, 'pty.node')
+    const binaryPath = join(ptyRoot, dir, addon)
     if (!exists(binaryPath)) continue
     if (needsHelper && !exists(join(ptyRoot, dir, 'spawn-helper'))) {
       return {

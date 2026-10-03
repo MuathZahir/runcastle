@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   BUNDLED_DEPENDENCIES,
@@ -8,6 +10,8 @@ import {
   PATCHED_EXTERNAL_DEPENDENCIES,
   patchedDependencyName,
 } from '../scripts/publish-manifest'
+
+const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..')
 
 /**
  * Issue #51 — `packages/server` BECOMES the published `runcastle` package,
@@ -193,7 +197,6 @@ describe('buildPublishedManifest', () => {
 describe('patched dependencies', () => {
   const ROOT_PATCHES = {
     '@ai-hero/sandcastle@0.12.0': 'patches/@ai-hero%2Fsandcastle@0.12.0.patch',
-    'node-pty@1.1.0': 'patches/node-pty@1.1.0.patch',
   }
 
   it('strips the version from a patchedDependencies key, scoped or not', () => {
@@ -202,10 +205,16 @@ describe('patched dependencies', () => {
     expect(patchedDependencyName('node-pty')).toBe('node-pty')
   })
 
-  it("accepts the workspace's current patches: sandcastle bundled, node-pty external with a reason", () => {
+  it("accepts the workspace's current patches: sandcastle bundled", () => {
     expect(checkPatchedDependencies(ROOT_PATCHES)).toEqual([])
     expect('@ai-hero/sandcastle' in BUNDLED_DEPENDENCIES).toBe(true)
-    expect(PATCHED_EXTERNAL_DEPENDENCIES['node-pty']).toMatch(/native/)
+  })
+
+  it('matches the patches the root manifest actually declares', () => {
+    const root = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'))
+    expect(root.patchedDependencies).toEqual(ROOT_PATCHES)
+    // node-pty's patch retired with 1.2: nothing is external-with-a-reason today.
+    expect(PATCHED_EXTERNAL_DEPENDENCIES).toEqual({})
   })
 
   it('fails the build for a patch that would ship unpatched', () => {

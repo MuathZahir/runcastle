@@ -104,10 +104,7 @@ export const BUNDLED_DEPENDENCIES: Readonly<
  * published package is correct without its patch. Anything patched that is
  * neither here nor bundled is a build error.
  */
-export const PATCHED_EXTERNAL_DEPENDENCIES: Readonly<Record<string, string>> = {
-  'node-pty':
-    'native CJS module — cannot be bundled. Its patch (a) no-ops the compile-from-source install hook, which bun never runs for a dependency anyway, and (b) quietens the ConPTY console-list agent on headless kills (a 5s delay, not a failure).',
-}
+export const PATCHED_EXTERNAL_DEPENDENCIES: Readonly<Record<string, string>> = {}
 
 /** The bare package name of a `patchedDependencies` key (`name@version` → `name`). */
 export function patchedDependencyName(key: string): string {

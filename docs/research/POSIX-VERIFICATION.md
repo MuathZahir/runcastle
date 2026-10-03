@@ -115,6 +115,20 @@ node 20. (Linux needs only `pty.node`; `spawn-helper` is macOS-only.) See
   `vendor/node-pty/`, the `patchedDependencies` patch, and the root `postinstall`;
   confirm the binary still lands on stock glibc, and re-verify the Windows sidecar path.
 
+> **RETIRED (2026-10-03, node-pty 1.2.0-beta.15).** The bridge never reached users:
+> it was a root `postinstall` of this monorepo, and the published package shipped
+> neither it nor `vendor/`. A clean-container smoke (`scripts/platform-smoke/`)
+> showed `bun add -g runcastle` exiting 1 on stock Ubuntu/Debian for the published
+> 1.4.3 — bun trusts node-pty by default and runs its install hook, which fell
+> through to node-gyp. 1.2.0-beta.15 ships `linux-{x64,arm64}` (glibc) prebuilds and
+> carries the ConPTY `AttachConsole` guard upstream, so the bridge, the vendored
+> binary and the node-pty patch are deleted. Two corrections to the notes above:
+> on win32 node-pty 1.2 loads `conpty.node` (there is no `pty.node`); and on musl a
+> plain install keeps the glibc prebuild (its presence skips the compile) and the
+> host **segfaults** on load, so the musl route is now `apk add build-base python3`
+> then `npm_config_build_from_source=true bun add -g runcastle` — verified in an
+> Alpine 3.22 container.
+
 ## 2. `bun run dev` starts only the server on Linux [VERIFIED]
 
 The documented entry point is `bun run dev` →

@@ -137,7 +137,8 @@ export function createSidecarPtySession(
       }
       switch (msg.t) {
         case 'ready':
-          if (typeof msg.pid === 'number') pid = msg.pid
+          // 0 is node-pty 1.2's "not started yet" on win32; the host re-sends the real one.
+          if (typeof msg.pid === 'number' && msg.pid > 0) pid = msg.pid
           break
         case 'data':
           if (typeof msg.d === 'string') emitData(Buffer.from(msg.d, 'base64'))

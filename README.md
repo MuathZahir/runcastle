@@ -347,11 +347,12 @@ crash means your CPU lacks AVX2; use Bun's `x64-baseline` build.
 
 <br />
 
-node-pty's native binary (`pty.node`) is missing. runcastle's postinstall bridge
-copies a vendored Linux prebuild into place, and doctor plus first-run assert
-the binary is actually on disk. A repeat `bun install` exits `0` even when it is
-still missing, so the disk check is what catches it. Re-run `bun install`. If it
-still fails you are either without a C++ toolchain, or on musl (below).
+node-pty's native binary is missing (`pty.node`, or `conpty.node` on Windows).
+node-pty ships it prebuilt for macOS, Windows and glibc Linux on x64 and arm64.
+Anywhere else, its install compiles from source, which needs a C++ toolchain and
+Python 3. Install those, then reinstall with `bun add -g runcastle`. A repeat
+install can exit `0` even when the binary is still missing, so check the terminal
+again rather than trusting the exit code. On musl, see below.
 
 It can also be a missing system `node`, on any platform: the terminal runs in a
 `node`-hosted sidecar, so Node.js 22+ must be on PATH. This is the usual cause
@@ -364,8 +365,13 @@ on Windows. See [Prerequisites](#prerequisites).
 
 <br />
 
-The vendored prebuild is glibc-only and cannot load under musl, so node-pty must
-be built from source: `apk add build-base python3`, then `bun install`.
+node-pty's Linux prebuild is glibc-only and crashes under musl, and a plain
+install keeps it. Build from source instead:
+
+```sh
+apk add build-base python3
+npm_config_build_from_source=true bun add -g runcastle
+```
 
 </details>
 

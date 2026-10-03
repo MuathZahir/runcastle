@@ -17,16 +17,11 @@ export {
   assertPtyInstalled,
   checkPtyInstall,
   detectMusl,
+  ptyAddonName,
   resolvePtyRoot,
   type PtyInstallProbe,
   type PtyInstallStatus,
 } from './install-check'
-export {
-  applyLinuxPrebuildBridge,
-  type PrebuildBridgeFs,
-  type PrebuildBridgeOptions,
-  type PrebuildBridgeResult,
-} from './prebuild-bridge'
 export { createSidecarPtySession } from './pty-sidecar'
 export { RingBuffer } from './ring-buffer'
 export {

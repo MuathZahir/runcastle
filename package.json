@@ -21,8 +21,7 @@
     "burn-cache:probe": "bun scripts/burn-cache-probe.ts",
     "deploy:worker": "bun run --filter '@runcastle/ping' deploy",
     "release": "bun run scripts/release.ts",
-    "install:local": "bun run scripts/install-local.ts",
-    "postinstall": "bun scripts/postinstall-node-pty.ts"
+    "install:local": "bun run scripts/install-local.ts"
   },
   "devDependencies": {
     "@testing-library/dom": "10.4.1",
@@ -34,7 +33,6 @@
     "wrangler": "^4.122.0"
   },
   "patchedDependencies": {
-    "@ai-hero/sandcastle@0.12.0": "patches/@ai-hero%2Fsandcastle@0.12.0.patch",
-    "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
+    "@ai-hero/sandcastle@0.12.0": "patches/@ai-hero%2Fsandcastle@0.12.0.patch"
   }
 }

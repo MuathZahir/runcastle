@@ -4,17 +4,17 @@ import { createNativePtySession } from '../src/pty/pty'
 import {
   assertPtyInstalled,
   checkPtyInstall,
+  ptyAddonName,
   type PtyInstallProbe,
 } from '../src/pty/install-check'
 
 /**
  * Install-completeness check for node-pty's native binary (issue #39).
  *
- * The Linux install path is fragile: node-pty ships no `linux-*` prebuild, so a
- * stock machine falls through to `node-gyp rebuild` and — worse — a *second*
- * `bun install` after a failure exits 0 while the tree is still broken. Any
- * doctor/first-run check therefore must verify `pty.node` exists ON DISK, not
- * trust the installer's exit code. These tests drive that check via injected
+ * Where node-pty has no usable prebuild its install falls through to
+ * `node-gyp rebuild` and — worse — a *second* `bun install` after a failure
+ * exits 0 while the tree is still broken. Any check therefore must verify the
+ * addon exists ON DISK, not trust the installer's exit code. These tests drive that check via injected
  * platform/arch/fs so they run identically on every OS.
  */
 
@@ -29,6 +29,8 @@ const has = (...present: string[]) => {
 const linuxRoot = '/pkg/node-pty'
 const bin = (dir: string) => join(linuxRoot, dir, 'pty.node')
 const helper = (dir: string) => join(linuxRoot, dir, 'spawn-helper')
+// node-pty 1.2 ships no pty.node for win32 — ConPTY is its only backend there.
+const conpty = (dir: string) => join(linuxRoot, dir, 'conpty.node')
 
 const probe = (over: Partial<PtyInstallProbe>): PtyInstallProbe => ({
   ptyRoot: linuxRoot,
@@ -89,14 +91,39 @@ describe('checkPtyInstall', () => {
     expect(status.ok).toBe(true)
   })
 
-  it('on win32 does not require spawn-helper', () => {
+  it('on win32 looks for conpty.node and does not require spawn-helper', () => {
     const status = checkPtyInstall(
       probe({
         platform: 'win32',
-        exists: has(bin('prebuilds/win32-x64')),
+        exists: has(conpty('prebuilds/win32-x64')),
       }),
     )
     expect(status.ok).toBe(true)
+    expect(status.binaryPath).toBe(conpty('prebuilds/win32-x64'))
+  })
+
+  it('on win32 a lone pty.node is not an install', () => {
+    const status = checkPtyInstall(
+      probe({ platform: 'win32', exists: has(bin('prebuilds/win32-x64')) }),
+    )
+    expect(status.ok).toBe(false)
+    expect(status.message).toMatch(/conpty.node/)
+  })
+
+  it('names the addon each platform loads', () => {
+    expect(ptyAddonName('win32')).toBe('conpty.node')
+    expect(ptyAddonName('linux')).toBe('pty.node')
+    expect(ptyAddonName('darwin')).toBe('pty.node')
+  })
+
+  it('on musl/Alpine the glibc prebuild does not count — only a source build does', () => {
+    // node-pty's install hook sees prebuilds/linux-x64 and skips the compile, so
+    // on musl the unloadable glibc binary is exactly what is on disk.
+    const prebuildOnly = checkPtyInstall(probe({ musl: true, exists: has(bin('prebuilds/linux-x64')) }))
+    expect(prebuildOnly.ok).toBe(false)
+    expect(prebuildOnly.checked).toEqual(['build/Release', 'build/Debug'])
+    const built = checkPtyInstall(probe({ musl: true, exists: has(bin('build/Release')) }))
+    expect(built.ok).toBe(true)
   })
 
   it('on musl/Alpine points at the compile fallback', () => {
@@ -104,6 +131,7 @@ describe('checkPtyInstall', () => {
     expect(status.ok).toBe(false)
     expect(status.message).toMatch(/musl|Alpine/i)
     expect(status.message).toMatch(/build-base|python3|source/i)
+    expect(status.message).toMatch(/npm_config_build_from_source=true/)
   })
 
   it('reports a clear message when node-pty itself is unresolvable', () => {

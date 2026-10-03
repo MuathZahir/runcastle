@@ -102,7 +102,15 @@ function handleSpawn(msg) {
 
   send({ t: 'ready', pid: proc.pid })
 
+  // node-pty 1.2 on win32 starts the ConPTY child only once its output worker has
+  // connected, so `proc.pid` is still 0 above. It is set before the first output
+  // arrives, so re-announce it then.
+  let pidAnnounced = proc.pid > 0
   proc.onData((d) => {
+    if (!pidAnnounced && proc.pid > 0) {
+      pidAnnounced = true
+      send({ t: 'ready', pid: proc.pid })
+    }
     const buf = typeof d === 'string' ? Buffer.from(d, 'utf8') : d
     send({ t: 'data', d: buf.toString('base64') })
   })

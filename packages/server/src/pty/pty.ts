@@ -14,7 +14,7 @@ import { createSidecarPtySession } from './pty-sidecar'
  * - **sidecar** (`pty-sidecar.ts` + `pty-host.cjs` under system `node`): the
  *   default under **Bun, on every platform** — node-pty does not work
  *   in-process under Bun anywhere:
- *   - win32: node-pty v1.1.0's ConPTY backend writes keystrokes to the child
+ *   - win32: node-pty's ConPTY backend (observed on 1.1.0) writes keystrokes to the child
  *     through a Node `net.Socket` input pipe; under Bun that socket is unusable
  *     and `write()` throws `ERR_SOCKET_CLOSED`, so INPUT is silently dropped
  *     (OUTPUT works — it uses a different read path). Reproduced: under Bun

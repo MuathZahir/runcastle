@@ -179,6 +179,10 @@ async function ptySpawn(hostPath: string, entry: string): Promise<{ ok: boolean;
       15_000,
     )
     child.on('error', (err) => done(false, `could not start node: ${err.message}`))
+    // A wrong-libc addon kills the host outright (musl + glibc prebuild segfaults).
+    child.on('exit', (code, signal) =>
+      done(false, `pty-host died (code ${code}, signal ${signal}) before the PTY exited; stderr ${stderr.trim()}`),
+    )
     child.stdout.on('data', (d: Buffer) => {
       buffered += d.toString()
       let nl: number
