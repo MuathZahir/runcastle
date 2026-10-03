@@ -24,7 +24,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { accessSync, constants, existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { arch, platform, tmpdir } from 'node:os'
+import { arch, homedir, platform, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -106,12 +106,19 @@ if (!bin) {
 } else {
   const v = run(bin, ['--version'], smokeEnv)
   record('version', v.code === 0, v.code === 0 ? v.out : `exit ${v.code}: ${v.out}`)
-  // bin/runcastle.js → the package root (the dir whose manifest is `runcastle`).
-  let dir = dirname(realpathSync(bin))
-  for (let i = 0; i < 4 && !pkgDir; i++, dir = dirname(dir)) {
+  // The package root is the dir whose manifest is `runcastle`. On POSIX the bin
+  // is a symlink into it; on Windows it is a `runcastle.exe` shim in ~/.bun/bin
+  // that leads nowhere, so fall back to bun's global dir.
+  const isRuncastle = (dir: string) => {
     const manifest = join(dir, 'package.json')
-    if (existsSync(manifest) && JSON.parse(readFileSync(manifest, 'utf8')).name === 'runcastle') pkgDir = dir
+    return existsSync(manifest) && JSON.parse(readFileSync(manifest, 'utf8')).name === 'runcastle'
   }
+  let dir = dirname(realpathSync(bin))
+  for (let i = 0; i < 4 && !pkgDir; i++, dir = dirname(dir)) if (isRuncastle(dir)) pkgDir = dir
+  const globalDir =
+    process.env.BUN_INSTALL_GLOBAL_DIR ?? join(process.env.BUN_INSTALL ?? join(homedir(), '.bun'), 'install', 'global')
+  const fromGlobal = join(globalDir, 'node_modules', 'runcastle')
+  if (!pkgDir && isRuncastle(fromGlobal)) pkgDir = fromGlobal
   console.log(`package   ${pkgDir ?? '(not found)'}`)
 }
 
@@ -119,7 +126,9 @@ if (!bin) {
 
 header('3. node-pty binary')
 let ptyEntry: string | null = null
-if (pkgDir) {
+if (!pkgDir) {
+  record('pty binary', false, 'the installed runcastle package could not be located')
+} else {
   try {
     ptyEntry = createRequire(join(pkgDir, 'package.json')).resolve('node-pty')
   } catch (err) {
