@@ -30,7 +30,7 @@ describe('noticeFor', () => {
   })
 
   it.each(['tickets.stored', 'ticket.edited', 'ticket.cancelled'])(
-    'maps %s to "Tickets updated", going to the Tickets tab',
+    'maps %s to "Tickets updated", going to the Overview',
     (type) => {
       expect(noticeFor(ev(type, 'ticket 3 content edited (title)'))).toMatchObject({
         kind: 'tickets',
@@ -38,7 +38,7 @@ describe('noticeFor', () => {
         title: 'Tickets updated',
         subtitle: 'ticket 3 content edited (title)',
         actionLabel: 'View tickets',
-        target: 'tickets',
+        target: 'overview',
       })
     },
   )

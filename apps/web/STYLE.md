@@ -312,7 +312,7 @@ the phase-body dispatch and the action switch; these moved out:
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
-| `FeatureViewTabs.tsx` | Overview \| Tickets \| Chat, with the Chat tab's live dot; none on a draft. |
+| `FeatureViewTabs.tsx` | Overview \| Chat, with the Chat tab's live dot; none on a draft. |
 | `FeatureChat.tsx` | The Chat tab: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 

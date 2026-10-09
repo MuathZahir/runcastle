@@ -208,7 +208,7 @@ describe('the project chat', () => {
   })
 })
 
-/** Overview | Tickets | Chat on every non-draft feature (decisions 1, 11). */
+/** Overview | Chat on every non-draft feature (decisions 1, 11). */
 describe('FeatureViewTabs', () => {
   const tabs = (props: Partial<Parameters<typeof FeatureViewTabs>[0]> = {}) =>
     html(
@@ -216,18 +216,17 @@ describe('FeatureViewTabs', () => {
         isDraft: false,
         value: 'overview',
         onChange: () => undefined,
-        ticketCount: 0,
         sessionLive: false,
         ...props,
       }),
     )
 
-  it('shows the three views, Chat last, with the ticket count', () => {
-    const out = tabs({ ticketCount: 4 })
+  it('shows the two views, Chat last, and no Tickets tab', () => {
+    const out = tabs()
     const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
       m[1]!.replace(/<[^>]+>/g, ''),
     )
-    expect(labels).toEqual(['Overview', 'Tickets4', 'Chat'])
+    expect(labels).toEqual(['Overview', 'Chat'])
     expect(out).not.toContain('Session live')
   })
 

@@ -14,7 +14,6 @@ import {
   DimLine,
   IconButton,
   Page,
-  PageSection,
   PageTopbar,
   StatusLabel,
   cx,
@@ -37,7 +36,6 @@ import {
   effectivePhase,
   freshness,
   isReadonlyView,
-  lapTicketCount,
   lastTestDriveLap,
   latestRun,
   liveSessionLine,
@@ -70,7 +68,7 @@ import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
-import { PinnedBody, PinnedTickets } from './bodies/PinnedBody'
+import { PinnedBody } from './bodies/PinnedBody'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
@@ -115,7 +113,7 @@ function writeSession(key: string, value: string) {
  * The feature page — the page every feature lives on (DESIGN.md §Frame, §Page
  * anatomy), rendered inside the shell's content panel:
  *
- *   PageTopbar — phase glyph + title · Overview | Tickets | Chat · "…" · details
+ *   PageTopbar — phase glyph + title · Overview | Chat · "…" · details
  *   the page — title once, a meta line, the pipeline stepper, the next-step
  *              row (one primary), then the body for the phase in view
  *   the Chat tab — the feature's live session full-area (`FeatureChat`), kept
@@ -826,9 +824,9 @@ export function Workspace({
 
   // ---- the frame (DESIGN.md §Frame, §Page anatomy) ----
 
-  // The page's views of the feature: Overview | Tickets | Chat in every state
-  // (one-chat-layout-everywhere decision 1). A draft has no branch to chat on
-  // and nothing to ticket, so it has no views at all (decision 11).
+  // The page's views of the feature: Overview | Chat in every state
+  // (one-chat-layout-everywhere decision 1). A draft has no branch to chat on,
+  // so it has no views at all (decision 11).
   const ticketsIsBody = ticketsAreBody({ full, phase: bodyPhase, readonly, hasRun: !!run })
   const view: FeatureView = isDraft ? 'overview' : viewProp
   // Pinning a phase is a different overview; it always lands on it.
@@ -836,9 +834,6 @@ export function Workspace({
     onViewChange('overview')
     onViewPhase(p)
   }
-  // The one count every surface states (implementation tickets of this lap) —
-  // see `lapTicketCount`.
-  const ticketCount = lapTicketCount(full.tickets, feature.lap)
 
   // Live planning's artifact scrolls itself, so it fills the panel; every
   // other body is a document in the page
@@ -965,29 +960,24 @@ export function Workspace({
     </FeatureHeader>
   )
 
-  const body =
-    view === 'tickets' ? (
-      <PageSection title="Tickets">
-        <PinnedTickets full={full} />
-      </PageSection>
-    ) : isDraft ? (
-      // Status wins over phase here (decision 9): a draft is created at
-      // `ideation`, and the grill body would offer a terminal on a feature
-      // that has no branch to open one against.
-      <DraftBody full={full} />
-    ) : (
-      <PhaseBody
-        effective={bodyPhase}
-        full={full}
-        events={events}
-        driving={driving}
-        conflict={conflict}
-        runId={run?.id ?? null}
-        ticketsIsBody={ticketsIsBody}
-        readonly={readonly}
-        onViewPhase={viewPhase}
-      />
-    )
+  const body = isDraft ? (
+    // Status wins over phase here (decision 9): a draft is created at
+    // `ideation`, and the grill body would offer a terminal on a feature
+    // that has no branch to open one against.
+    <DraftBody full={full} />
+  ) : (
+    <PhaseBody
+      effective={bodyPhase}
+      full={full}
+      events={events}
+      driving={driving}
+      conflict={conflict}
+      runId={run?.id ?? null}
+      ticketsIsBody={ticketsIsBody}
+      readonly={readonly}
+      onViewPhase={viewPhase}
+    />
+  )
 
   return (
     // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
@@ -1016,7 +1006,6 @@ export function Workspace({
               isDraft={isDraft}
               value={view}
               onChange={onViewChange}
-              ticketCount={ticketCount.total}
               sessionLive={!!liveSession}
             />
           }

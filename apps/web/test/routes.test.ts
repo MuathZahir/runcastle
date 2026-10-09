@@ -21,7 +21,6 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'chat', projectId: 'proj_a' },
   { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
-  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'tickets' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'chat' },
 ]
 
@@ -33,7 +32,6 @@ describe('pathFor', () => {
       '/p/proj_a/chat',
       '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
-      '/p/proj_a/f/flow-redesign-shell/tickets',
       '/p/proj_a/f/flow-redesign-shell/chat',
     ])
   })
@@ -50,6 +48,14 @@ describe('parsePath', () => {
     for (const location of LOCATIONS) {
       expect(parsePath(pathFor(location))).toEqual(location)
     }
+  })
+
+  it("reads the retired Tickets tab's path as the feature's Overview", () => {
+    expect(parsePath('/p/proj_a/f/flow-redesign-shell/tickets')).toEqual({
+      kind: 'feature',
+      projectId: 'proj_a',
+      featureSlug: 'flow-redesign-shell',
+    })
   })
 
   it('round-trips ids and slugs that needed escaping', () => {
@@ -129,10 +135,6 @@ describe('locationFor', () => {
   it("carries the selected feature's tab, and none for its Overview", () => {
     const feature = { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }
     expect(locationFor({ ...base, featureSlug: 'x', featureView: 'overview' })).toEqual(feature)
-    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'tickets' })).toEqual({
-      ...feature,
-      tab: 'tickets',
-    })
     expect(locationFor({ ...base, featureSlug: 'x', featureView: 'chat' })).toEqual({
       ...feature,
       tab: 'chat',

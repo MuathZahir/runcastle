@@ -54,3 +54,7 @@ Nothing else raises one: not each decision locking during planning, not notes, w
 ## 12. One lap, nothing deferred
 **Decision:** The whole feature is spec'd as lap 1: `ChatView`, the addressable tabs with per-feature memory, landing on Chat from every session button, the Overview live-session line, the notification deck, and retiring the aside and the in-body terminals. The spec has no Later laps scope. If the notifications feel off in use, lap 2 tunes them.
 **Why:** The operator is sure: the layout and the notification deck were both tried in clickable prototypes and approved, and no part is uncertain enough to need a trial lap first. All the work is in `apps/web` and can be ticketed and checked piece by piece.
+
+## 13. The Tickets tab is retired (amends 1, 4 and 8)
+**Decision:** The feature top bar carries two view tabs: Overview | Chat. The Tickets tab, its `/p/:id/f/:slug/tickets` path and its remembered value are gone; an old link or a feature last left on Tickets opens on Overview. The "Tickets updated · View tickets" notice goes to Overview. In Review and Shipped the ticket list is reached by clicking the Planning step, which pins it as a record.
+**Why:** Overview already shows a phase's tickets (the editable ledger at planning and before the burn, the live lanes during it), so the tab was a second, read-only copy. During a burn it showed a ticket as "Burning" with no transcript, and the operator, landing there from tab memory, read the run as hung. It also ignored the phase in view, so the stepper appeared to do nothing.

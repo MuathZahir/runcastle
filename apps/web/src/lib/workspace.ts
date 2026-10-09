@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Phase } from '@runcastle/core'
+import { RETIRED_TICKETS_TAB } from './routes'
 import type { FeatureView } from './routes'
 import type { SettingsLocation } from './settings'
 
@@ -58,7 +59,9 @@ function featureViewKeyFor(featureId: string): string {
 }
 
 function parseFeatureView(value: string | null): FeatureView | null {
-  return value === 'overview' || value === 'tickets' || value === 'chat' ? value : null
+  // A feature left on the retired Tickets tab reopens on the Overview.
+  if (value === RETIRED_TICKETS_TAB) return 'overview'
+  return value === 'overview' || value === 'chat' ? value : null
 }
 
 /**
@@ -135,7 +138,7 @@ export interface WorkspaceApi {
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
   /**
-   * The selected feature's view tab (Overview | Tickets | Chat). Shell state
+   * The selected feature's view tab (Overview | Chat). Shell state
    * rather than the page's, so the address bar can name it and drive it
    * (one-chat-layout-everywhere decision 8).
    */

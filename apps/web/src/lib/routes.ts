@@ -16,7 +16,7 @@
  */
 
 /** The views a feature page switches between with its topbar tabs. */
-export type FeatureView = 'overview' | 'tickets' | 'chat'
+export type FeatureView = 'overview' | 'chat'
 
 /**
  * The feature views that carry a path segment of their own
@@ -24,7 +24,10 @@ export type FeatureView = 'overview' | 'tickets' | 'chat'
  */
 export type FeatureTab = Exclude<FeatureView, 'overview'>
 
-const FEATURE_TABS: readonly FeatureTab[] = ['tickets', 'chat']
+const FEATURE_TABS: readonly FeatureTab[] = ['chat']
+
+/** The path segment and remembered value the Tickets tab had before it was retired. */
+export const RETIRED_TICKETS_TAB = 'tickets'
 
 function isFeatureTab(segment: string): segment is FeatureTab {
   return (FEATURE_TABS as readonly string[]).includes(segment)
@@ -105,6 +108,11 @@ export function parsePath(path: string): AppLocation | null {
   const tab = parts[4]
   if (parts.length === 5 && parts[2] === 'f' && parts[3] && tab && isFeatureTab(tab)) {
     return { kind: 'feature', projectId, featureSlug: parts[3], tab }
+  }
+  // The retired Tickets tab: its links land on the Overview, which shows the
+  // tickets in every phase that has them.
+  if (parts.length === 5 && parts[2] === 'f' && parts[3] && tab === RETIRED_TICKETS_TAB) {
+    return { kind: 'feature', projectId, featureSlug: parts[3] }
   }
   return null
 }

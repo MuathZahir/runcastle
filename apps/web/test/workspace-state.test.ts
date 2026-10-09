@@ -91,9 +91,13 @@ describe('initialTab — which view a feature opens on', () => {
   })
 
   it('restores the remembered view, whatever is live', () => {
-    expect(initialTab({ ...none, stored: 'tickets' })).toBe('tickets')
     expect(initialTab({ ...none, stored: 'overview', hasLiveSession: true })).toBe('overview')
     expect(initialTab({ ...none, stored: 'chat' })).toBe('chat')
+  })
+
+  it('reopens a feature left on the retired Tickets tab on Overview, whatever is live', () => {
+    expect(initialTab({ ...none, stored: 'tickets' })).toBe('overview')
+    expect(initialTab({ ...none, stored: 'tickets', hasLiveSession: true })).toBe('overview')
   })
 
   it('never lands a draft on Chat', () => {
@@ -121,13 +125,13 @@ describe('useWorkspace — per-feature view memory', () => {
     const { result } = renderHook(() => useWorkspace('proj_1'))
     act(() => result.current.select('feat_a', rememberedView('feat_a', quiet)))
     expect(result.current.featureView).toBe('overview')
-    act(() => result.current.selectView('tickets'))
+    act(() => result.current.selectView('chat'))
     act(() => result.current.select('feat_b', rememberedView('feat_b', live)))
     expect(result.current.featureView).toBe('chat')
     act(() => result.current.selectView('overview'))
 
     act(() => result.current.select('feat_a', rememberedView('feat_a', quiet)))
-    expect(result.current.featureView).toBe('tickets')
+    expect(result.current.featureView).toBe('chat')
     act(() => result.current.select('feat_b', rememberedView('feat_b', live)))
     expect(result.current.featureView).toBe('overview')
   })
@@ -158,7 +162,7 @@ describe('useWorkspace — per-feature view memory', () => {
     })
     expect(rememberedView('feat_a', live)).toBe('chat')
     const { result } = renderHook(() => useWorkspace('proj_1'))
-    act(() => result.current.select('feat_a', 'tickets'))
-    expect(result.current.featureView).toBe('tickets')
+    act(() => result.current.select('feat_a', 'chat'))
+    expect(result.current.featureView).toBe('chat')
   })
 })

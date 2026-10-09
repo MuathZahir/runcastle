@@ -24,7 +24,7 @@ const TICKETS: ChatNotice = {
   title: 'Tickets updated',
   subtitle: 'ticket 3 cancelled',
   actionLabel: 'View tickets',
-  target: 'tickets',
+  target: 'overview',
   count: 3,
   eventId: 2,
 }

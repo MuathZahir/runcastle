@@ -15,7 +15,7 @@ export type ChatNoticeKind = 'spec' | 'tickets' | 'ticket-failed' | 'run' | 'rev
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
 
 /** The feature view tab a notice's action switches to. */
-export type ChatNoticeTarget = 'overview' | 'tickets'
+export type ChatNoticeTarget = 'overview'
 
 export interface ChatNotice {
   kind: ChatNoticeKind
@@ -80,7 +80,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Tickets updated',
       subtitle: event.message,
       actionLabel: 'View tickets',
-      target: 'tickets',
+      target: 'overview',
     })
   }
 

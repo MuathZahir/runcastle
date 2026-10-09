@@ -181,7 +181,6 @@ describe('useHistorySync', () => {
       return (
         <>
           <button onClick={() => ws.select('alpha')}>alpha</button>
-          <button onClick={() => ws.selectView('tickets')}>tickets</button>
           <button onClick={() => ws.selectView('chat')}>chat</button>
           <span data-testid="view">{ws.featureView}</span>
         </>
@@ -194,14 +193,10 @@ describe('useHistorySync', () => {
       expect(path()).toBe('/p/p1/f/alpha')
       const depth = window.history.length
 
-      go('tickets')
-      expect(path()).toBe('/p/p1/f/alpha/tickets')
       go('chat')
       expect(path()).toBe('/p/p1/f/alpha/chat')
-      expect(window.history.length).toBe(depth + 2)
+      expect(window.history.length).toBe(depth + 1)
 
-      back('/p/p1/f/alpha/tickets')
-      expect(screen.getByTestId('view').textContent).toBe('tickets')
       back('/p/p1/f/alpha')
       expect(screen.getByTestId('view').textContent).toBe('overview')
     })

@@ -36,9 +36,9 @@ export function PinnedBody({
  * The ledger as a record: lap headers, no session strip, no menus and nothing
  * editable. The roster is read for the same reason the live ledger reads it —
  * a ticket's static model names the runtime its model runs on — and shares
- * that query key, so this costs no extra fetch. Also the page's Tickets view.
+ * that query key, so this costs no extra fetch.
  */
-export function PinnedTickets({ full }: { full: FeatureFull }) {
+function PinnedTickets({ full }: { full: FeatureFull }) {
   const settings: QueryResult<SettingsView> = trpc.settings.get.useQuery({
     projectId: full.feature.projectId,
   })
