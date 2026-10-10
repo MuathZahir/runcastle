@@ -49,6 +49,7 @@ import {
   specDocPath,
   stampedReview,
   startOpensChat,
+  planningFills,
   ticketsAreBody,
   unresolvedMergeConflict,
   unverifiedLap,
@@ -69,6 +70,7 @@ import { TriageStep, type TriageSelection } from './review/TriageStep'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
 import { PinnedBody } from './bodies/PinnedBody'
+import { PreviewLead } from './PreviewPanel'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
@@ -835,11 +837,12 @@ export function Workspace({
     onViewPhase(p)
   }
 
-  // Live planning's artifact scrolls itself, so it fills the panel; every
-  // other body is a document in the page
+  // Live planning's artifact scrolls itself, so it fills the panel — unless a
+  // preview leads it; every other body is a document in the page
   // column, the header scrolling away with it. The data-heavy ones (the run's
   // lanes, the review's evidence, the ledger) take the wide column.
-  const fill = view === 'overview' && !isDraft && bodyPhase === 'planning' && !readonly && !ticketsIsBody
+  const fill =
+    view === 'overview' && !isDraft && planningFills({ full, phase: bodyPhase, readonly, ticketsIsBody })
   // Per phase, not per view: switching tabs must not move the title. Every
   // working phase (planning's panes included) shares the wide column; the
   // shipped record and a draft read as documents.
@@ -1141,7 +1144,7 @@ export function Workspace({
   )
 }
 
-function PhaseBody({
+export function PhaseBody({
   effective,
   full,
   events,
@@ -1165,13 +1168,17 @@ function PhaseBody({
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether.
+  // The plan preview leads planning's bodies, live and pinned (plan-preview
+  // decisions 6 and 11) — never building's, though its ledger is the same one.
   if (readonly && effective === 'planning') {
     return (
-      <PinnedBody
-        full={full}
-        effective={effective}
-        events={events}
-      />
+      <PreviewLead full={full} live={false}>
+        <PinnedBody
+          full={full}
+          effective={effective}
+          events={events}
+        />
+      </PreviewLead>
     )
   }
   switch (effective) {
@@ -1179,10 +1186,10 @@ function PhaseBody({
       // Planning's own body is the conversation that shapes the idea; once this
       // lap has tickets, they are what the human reviews and corrects before
       // Burn — and a quick change never had a conversation to show.
-      return ticketsIsBody ? (
-        <TicketsBody featureId={full.feature.id} />
-      ) : (
-        <GrillBody full={full} />
+      return (
+        <PreviewLead full={full}>
+          {ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />}
+        </PreviewLead>
       )
     case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane

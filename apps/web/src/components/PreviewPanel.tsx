@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { FeatureFull } from '../lib/api'
 import { relTimeAgo } from '../lib/format'
 import { PREVIEW_SANDBOX, previewDocument } from '../lib/preview-frame'
@@ -69,6 +69,29 @@ export function PreviewPanel({
         {srcDoc !== undefined && <PreviewFrame srcDoc={srcDoc} className="min-h-0 w-full flex-1 border-0" />}
       </Dialog>
     </PageSection>
+  )
+}
+
+/**
+ * A planning body led by the feature's preview (plan-preview decisions 6 and
+ * 11), the body below it as the next section of the page. A feature with no
+ * preview renders exactly `children`: no panel, no placeholder.
+ */
+export function PreviewLead({
+  full,
+  live,
+  children,
+}: {
+  full: Pick<FeatureFull, 'feature' | 'preview'>
+  live?: boolean
+  children: ReactNode
+}) {
+  if (!full.preview) return <>{children}</>
+  return (
+    <>
+      <PreviewPanel featureId={full.feature.id} preview={full.preview} live={live} />
+      <div className="mt-10">{children}</div>
+    </>
   )
 }
 
