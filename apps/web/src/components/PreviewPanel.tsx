@@ -1,7 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { FeatureFull } from '../lib/api'
 import { relTimeAgo } from '../lib/format'
-import { PREVIEW_SANDBOX, previewDocument } from '../lib/preview-frame'
+import { PREVIEW_ESCAPE_MESSAGE, PREVIEW_SANDBOX, previewDocument } from '../lib/preview-frame'
 import { useTheme } from '../lib/theme'
 import { useFeatureDoc } from '../lib/use-feature-doc'
 import { IconExpand, IconX } from '../icons'
@@ -66,7 +66,13 @@ export function PreviewPanel({
           <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{updated}</span>
           <IconButton label="Close" size="sm" icon={<IconX />} onClick={() => setFullWindow(false)} />
         </div>
-        {srcDoc !== undefined && <PreviewFrame srcDoc={srcDoc} className="min-h-0 w-full flex-1 border-0" />}
+        {srcDoc !== undefined && (
+          <PreviewFrame
+            srcDoc={srcDoc}
+            onEscape={() => setFullWindow(false)}
+            className="min-h-0 w-full flex-1 border-0"
+          />
+        )}
       </Dialog>
     </PageSection>
   )
@@ -102,9 +108,31 @@ export function PreviewLead({
  * Nothing stops a script navigating its own frame (spec, open question 1), so a
  * second load of the same document means the preview went somewhere else; the
  * frame is remounted to put the preview back.
+ *
+ * Focus inside the frame is out of the app's reach, so Escape pressed there
+ * arrives as the frame document's relay message; `onEscape` hears it only
+ * from this frame's own window.
  */
-function PreviewFrame({ srcDoc, className }: { srcDoc: string; className: string }) {
+function PreviewFrame({
+  srcDoc,
+  onEscape,
+  className,
+}: {
+  srcDoc: string
+  onEscape?: () => void
+  className: string
+}) {
   const [generation, setGeneration] = useState(0)
+  const frame = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    if (!onEscape) return
+    const onMessage = (event: MessageEvent) => {
+      if (event.data === PREVIEW_ESCAPE_MESSAGE && event.source === frame.current?.contentWindow) onEscape()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [onEscape])
   // Loads counted for one document in one mount; a new `srcDoc` (an edit, a
   // theme switch) or a remount starts the count again.
   const loads = useRef({ srcDoc, generation, count: 0 })
@@ -122,6 +150,7 @@ function PreviewFrame({ srcDoc, className }: { srcDoc: string; className: string
   return (
     <iframe
       key={generation}
+      ref={frame}
       title="Preview"
       sandbox={PREVIEW_SANDBOX}
       srcDoc={srcDoc}

@@ -4,8 +4,9 @@ import { PREVIEW_CSP, PREVIEW_SANDBOX, previewDocument } from '../src/lib/previe
 const POLICY =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'"
 const META = `<meta http-equiv="Content-Security-Policy" content="${POLICY}">`
-const DARK = `<script>document.documentElement.setAttribute('data-theme','dark')</script>`
-const LIGHT = `<script>document.documentElement.setAttribute('data-theme','light')</script>`
+const RELAY = `<script>addEventListener('keydown',function(e){if(e.key==='Escape'&&!e.defaultPrevented)parent.postMessage('runcastle:preview-escape','*')})</script>`
+const DARK = `<script>document.documentElement.setAttribute('data-theme','dark')</script>${RELAY}`
+const LIGHT = `<script>document.documentElement.setAttribute('data-theme','light')</script>${RELAY}`
 
 describe('previewDocument', () => {
   it('holds the policy from the spec, and the frame runs scripts and nothing else', () => {
