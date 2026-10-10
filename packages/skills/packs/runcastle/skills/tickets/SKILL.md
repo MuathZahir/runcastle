@@ -71,6 +71,12 @@ And width only counts if it lands: parallel tickets touching the same files coll
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
 
+<preview-screen-block>
+When the feature has a `preview.html` and a ticket **builds a screen that appears in it as a screen block**, point that ticket at **one named screen block**, never the file. Its **context** names the path (`docs/features/<slug>/preview.html`) and the block name, and tells the burn agent to find the two markers, `<!-- screen:<name> -->` and `<!-- /screen:<name> -->`, and **read only the lines between them**. Say plainly that the block shows the approved look and behaviour and **is not the implementation**: build it with the project's real components and never copy the mock's markup. The mock's styles live in the page head and are deliberately not read. **Never tell an agent to read the whole file** — the rest repeats docs it already has.
+
+A ticket with no screen does not mention the preview.
+</preview-screen-block>
+
 ## 2. Build each ticket to the schema
 
 Emit an array of `TicketInput`. Number them from 1 in the array in **dependency order (blockers first)**; `blockedBy` holds those numbers (they are the seq numbers the store assigns).

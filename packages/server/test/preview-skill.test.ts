@@ -93,3 +93,112 @@ describe('the preview starter', () => {
     expect(text).not.toContain('feature-page-planning')
   })
 })
+
+describe('the preview rules (ideate/references/preview.md)', () => {
+  const rules = (): string => read('ideate', 'references', 'preview.md')
+
+  it('names the one file and the starter it is copied from', () => {
+    const text = rules()
+    expect(text).toContain('Exactly one file, `preview.html`, at the root of the feature\'s docs dir')
+    expect(text).toContain('`./preview-starter.html`')
+    expect(text).toContain('/prototypes/`')
+    expect(text).toContain('They are never shown')
+  })
+
+  it('states the five parts in order, the hood collapsed by default', () => {
+    const text = rules()
+    const parts = [
+      '1. **What this is.**',
+      '2. **The show.**',
+      '3. **What was decided.**',
+      '4. **What is left out.**',
+      '5. **Under the hood.**',
+    ].map((part) => text.indexOf(part))
+    expect(parts.every((at) => at >= 0)).toBe(true)
+    expect([...parts].sort((a, b) => a - b)).toEqual(parts)
+    expect(text).toContain('**collapsed by default**')
+    expect(text).toContain('**It is free, with\n   no template**')
+    expect(text).toMatch(/every decision in `decisions\.md` by its number and\s+title/i)
+  })
+
+  it('pins visual first, the theme rule, screen blocks, inline only and sizing', () => {
+    const text = rules()
+    expect(text).toContain('**A short sentence beside a picture, never paragraphs, detail behind a click.**')
+    expect(text).toMatch(/\*\*The page and every diagram and flow are runcastle-themed\*\*/)
+    expect(text).toMatch(/\*\*A mocked screen uses the styling of the project it belongs to\*\*/)
+    expect(text).toContain('<!-- screen:<name> -->')
+    expect(text).toContain('<!-- /screen:<name> -->')
+    expect(text).toContain('kebab case and unique in the file')
+    expect(text).toContain('**Styles, scripts and images are inline. The file makes no network request**')
+    expect(text).toContain('refuses every fetch')
+    expect(text).toContain('**There is no minimum.**')
+    expect(text).toMatch(/about a\s+minute for a small feature, a few minutes for a large one/)
+  })
+})
+
+describe('the ideate skill’s preview step', () => {
+  const skill = (): string => read('ideate', 'SKILL.md')
+
+  it('sits between locking decisions and completing ideation', () => {
+    const text = skill()
+    const lock = text.indexOf('## 2. Lock decisions incrementally')
+    const preview = text.indexOf('## 3. Draw the preview, then wait for the human to look')
+    const complete = text.indexOf('## 4. Complete ideation')
+    expect(lock).toBeGreaterThanOrEqual(0)
+    expect(preview).toBeGreaterThan(lock)
+    expect(complete).toBeGreaterThan(preview)
+  })
+
+  it('draws from the starter, checks every decision, waits, redraws on a correction', () => {
+    const step = skill().slice(skill().indexOf('## 3. Draw the preview'), skill().indexOf('## 4. Complete ideation'))
+    expect(step).toContain('**The preview is what the human confirms shared understanding on.**')
+    expect(step).toContain('`./references/preview.md`')
+    expect(step).toContain('`./references/preview-starter.html`')
+    expect(step).toContain('Every decision appears by its number and title.')
+    expect(step).toContain('**Overview**')
+    expect(step).toContain('Then stop and wait for their answer.')
+    expect(step).toContain('**A correction is a decision edit plus a redraw.**')
+    expect(step).toContain('**Only after the human confirms**, complete ideation')
+    expect(step).toContain('**Never skip the preview on your own judgement**')
+    expect(step).toContain('**If the human says to skip it**, write no file')
+  })
+
+  it('carries the redraw rule, and section 1 hands confirmation to the preview', () => {
+    const text = skill()
+    expect(text).toMatch(/edit to `decisions\.md`.*updates `preview\.html` in the same move/)
+    expect(text).toContain('That confirmation happens on the preview (§3)')
+  })
+})
+
+describe('the revisit skill and the preview', () => {
+  const skill = (): string => read('revisit', 'SKILL.md')
+
+  it('redraws the preview with a decision edit in an ordinary revisit at planning', () => {
+    const text = skill()
+    const docs = text.slice(text.indexOf('3. **Docs.**'), text.indexOf('4. **Ticket surgery.**'))
+    expect(docs).toContain('at `planning`')
+    expect(docs).toContain('update `preview.html` in the same move as the decisions edit')
+    expect(docs).toContain('`../ideate/references/preview.md`')
+  })
+
+  it('does not redraw in a lap planned from review', () => {
+    const text = skill()
+    const lap = text.slice(text.indexOf('## Lap mode'), text.indexOf('### Stand on the failure'))
+    expect(lap).toContain('A lap planned from review does not redraw the preview')
+  })
+})
+
+describe('the tickets skill and the preview', () => {
+  const skill = (): string => read('tickets', 'SKILL.md')
+
+  it('points a screen-building ticket at one named screen block, never the file', () => {
+    const text = skill()
+    const block = text.slice(text.indexOf('<preview-screen-block>'), text.indexOf('</preview-screen-block>'))
+    expect(block).toContain('point that ticket at **one named screen block**')
+    expect(block).toContain('**read only the lines between them**')
+    expect(block).toContain('**is not the implementation**')
+    expect(block).toContain('never copy the mock\'s markup')
+    expect(block).toContain('**Never tell an agent to read the whole file**')
+    expect(block).toContain('A ticket with no screen does not mention the preview.')
+  })
+})
