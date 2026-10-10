@@ -1,0 +1,132 @@
+import { useRef, useState, type ReactNode } from 'react'
+import type { FeatureFull } from '../lib/api'
+import { relTimeAgo } from '../lib/format'
+import { PREVIEW_SANDBOX, previewDocument } from '../lib/preview-frame'
+import { useTheme } from '../lib/theme'
+import { useFeatureDoc } from '../lib/use-feature-doc'
+import { IconExpand, IconX } from '../icons'
+import { Dialog, DimLine, IconButton, PageSection, Skeleton, SkeletonBar, cx } from '../ui'
+
+/**
+ * The plan preview (plan-preview decisions 6, 7, 9): the feature's
+ * `preview.html`, led by its written time and a control that opens it full
+ * window, in a frame that runs the file's scripts and allows nothing else.
+ * The caller renders it only when the feature has a preview — a feature with
+ * none shows no panel and no placeholder.
+ *
+ * It refreshes through the shared `docs.read` key, which every pushed event
+ * already invalidates; `live={false}` (the read-only Planning view) reads once.
+ */
+export function PreviewPanel({
+  featureId,
+  preview,
+  live = true,
+}: {
+  featureId: string
+  preview: NonNullable<FeatureFull['preview']>
+  live?: boolean
+}) {
+  const doc = useFeatureDoc(featureId, preview.relPath, { live })
+  const { resolved } = useTheme()
+  const [fullWindow, setFullWindow] = useState(false)
+  const srcDoc = doc.content === undefined ? undefined : previewDocument(doc.content, resolved)
+  const updated = preview.updatedAt === undefined ? null : `updated ${relTimeAgo(preview.updatedAt)}`
+
+  return (
+    <PageSection
+      title="Preview"
+      action={
+        <>
+          {updated && <span className="mr-1 text-xs text-text-tertiary">{updated}</span>}
+          <IconButton label="Open full window" icon={<IconExpand />} onClick={() => setFullWindow(true)} />
+        </>
+      }
+    >
+      {doc.failed ? (
+        <DimLine>Could not read {preview.relPath}.</DimLine>
+      ) : srcDoc === undefined ? (
+        <Skeleton label="Loading the preview" className="h-[60vh] min-h-[360px] rounded-lg border border-border p-4">
+          <SkeletonBar className="h-4 w-1/2" />
+          <SkeletonBar className="mt-3 h-3 w-2/3" />
+        </Skeleton>
+      ) : (
+        <PreviewFrame srcDoc={srcDoc} className="h-[60vh] min-h-[360px] w-full rounded-lg border border-border" />
+      )}
+      <Dialog
+        open={fullWindow}
+        onClose={() => setFullWindow(false)}
+        labelledBy="preview-full-title"
+        size="full"
+        className="flex h-[86vh] flex-col overflow-hidden"
+      >
+        <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-5">
+          <h2 id="preview-full-title" className="m-0 text-sm font-medium text-text">
+            Preview
+          </h2>
+          <span className="min-w-0 flex-1 truncate text-xs text-text-tertiary">{updated}</span>
+          <IconButton label="Close" size="sm" icon={<IconX />} onClick={() => setFullWindow(false)} />
+        </div>
+        {srcDoc !== undefined && <PreviewFrame srcDoc={srcDoc} className="min-h-0 w-full flex-1 border-0" />}
+      </Dialog>
+    </PageSection>
+  )
+}
+
+/**
+ * A planning body led by the feature's preview (plan-preview decisions 6 and
+ * 11), the body below it as the next section of the page. A feature with no
+ * preview renders exactly `children`: no panel, no placeholder.
+ */
+export function PreviewLead({
+  full,
+  live,
+  children,
+}: {
+  full: Pick<FeatureFull, 'feature' | 'preview'>
+  live?: boolean
+  children: ReactNode
+}) {
+  if (!full.preview) return <>{children}</>
+  return (
+    <>
+      <PreviewPanel featureId={full.feature.id} preview={full.preview} live={live} />
+      <div className="mt-10">{children}</div>
+    </>
+  )
+}
+
+/**
+ * The locked-down frame: an opaque origin with scripts and nothing else — never
+ * `allow-same-origin`, which would hand the preview the app's storage and API.
+ *
+ * Nothing stops a script navigating its own frame (spec, open question 1), so a
+ * second load of the same document means the preview went somewhere else; the
+ * frame is remounted to put the preview back.
+ */
+function PreviewFrame({ srcDoc, className }: { srcDoc: string; className: string }) {
+  const [generation, setGeneration] = useState(0)
+  // Loads counted for one document in one mount; a new `srcDoc` (an edit, a
+  // theme switch) or a remount starts the count again.
+  const loads = useRef({ srcDoc, generation, count: 0 })
+
+  const onLoad = () => {
+    const seen = loads.current
+    if (seen.srcDoc !== srcDoc || seen.generation !== generation) {
+      loads.current = { srcDoc, generation, count: 1 }
+      return
+    }
+    seen.count += 1
+    if (seen.count > 1) setGeneration((g) => g + 1)
+  }
+
+  return (
+    <iframe
+      key={generation}
+      title="Preview"
+      sandbox={PREVIEW_SANDBOX}
+      srcDoc={srcDoc}
+      onLoad={onLoad}
+      className={cx('block bg-surface-inset', className)}
+    />
+  )
+}

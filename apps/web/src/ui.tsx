@@ -252,7 +252,7 @@ export function FailureNote({
   )
 }
 
-type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette'
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'palette' | 'full'
 
 const DIALOG_SIZE: Record<DialogSize, string> = {
   sm: 'max-w-[460px]',
@@ -262,6 +262,8 @@ const DIALOG_SIZE: Record<DialogSize, string> = {
   xl: 'max-w-[940px]',
   // Note capture: the palette's width, so it reads as the same gesture.
   palette: 'max-w-[560px]',
+  // The plan preview, full window: most of the viewport, whatever its size.
+  full: 'max-w-[min(1400px,96vw)]',
 }
 
 type DialogScrim = 'dim' | 'light' | 'none'

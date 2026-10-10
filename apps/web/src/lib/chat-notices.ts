@@ -1,4 +1,4 @@
-import type { EventRow, Ticket } from '@runcastle/core'
+import { type EventRow, PREVIEW_FILE, type Ticket } from '@runcastle/core'
 
 /**
  * Chat notices (one-chat-layout-everywhere decisions 3, 4, 10): while a
@@ -9,7 +9,7 @@ import type { EventRow, Ticket } from '@runcastle/core'
  */
 
 /** The collapse key: a repeat of the same kind counts up on one card. */
-export type ChatNoticeKind = 'spec' | 'tickets' | 'ticket-failed' | 'run' | 'review' | 'drive'
+export type ChatNoticeKind = 'preview' | 'spec' | 'tickets' | 'ticket-failed' | 'run' | 'review' | 'drive'
 
 /** The phase hue a notice wears (the `--color-phase-*` token), or danger. */
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
@@ -62,7 +62,21 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
   })
 
   if (event.type === 'docs.changed') {
-    if (!docsFiles(event).some((file) => file === 'spec.md' || file.endsWith('/spec.md'))) return null
+    const files = docsFiles(event)
+    const names = (name: string) => files.some((file) => file === name || file.endsWith(`/${name}`))
+    // The preview first: the session asks the human to look at it, and a write
+    // that also touched the spec is still the preview they were asked about.
+    if (names(PREVIEW_FILE)) {
+      return notice({
+        kind: 'preview',
+        hue: 'planning',
+        title: 'Preview ready',
+        subtitle: PREVIEW_FILE,
+        actionLabel: 'View preview',
+        target: 'overview',
+      })
+    }
+    if (!names('spec.md')) return null
     return notice({
       kind: 'spec',
       hue: 'planning',

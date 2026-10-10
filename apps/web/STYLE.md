@@ -254,7 +254,7 @@ Three of those look like details and are not:
 - **Focus is not stolen from a child that asked for it.** `Dialog` focuses the
   panel on open only when nothing inside it already has the focus.
 
-`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh;
+`size`: `sm` 460 · `md` 620 · `lg` 780 · `xl` 940 · `palette` 560 at 12vh · `full` 1400 or 96vw, whichever is less (the plan preview);
 `scrim`: `dim` (default) · `light` · `none` (clicks fall through). `className`
 lands on the panel and `backdropClassName` on the backdrop.
 

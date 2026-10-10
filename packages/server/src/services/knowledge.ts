@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import type { Feature } from '@runcastle/core'
+import { type Feature, PREVIEW_FILE } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
@@ -151,6 +151,23 @@ export function listDocs(ctx: AppCtx, feature: Feature): DocSummary[] {
       return { relPath: e.name, title: readTitle(path, e.name), ...writtenAt(path) }
     })
     .sort((a, b) => a.relPath.localeCompare(b.relPath))
+}
+
+/** Whether a feature has a plan preview, and when it was last written. */
+export interface PreviewSummary {
+  relPath: typeof PREVIEW_FILE
+  updatedAt?: number
+}
+
+/**
+ * The feature's plan preview, or null when its docs dir has none. Kept apart
+ * from {@link listDocs}, whose consumers (the Knowledge inspector, the grill
+ * body, the MCP context) all assume a Markdown-only list.
+ */
+export function previewSummary(ctx: AppCtx, feature: Feature): PreviewSummary | null {
+  const path = featureDocPath(projectForFeature(ctx, feature), feature, PREVIEW_FILE)
+  if (!existsSync(path)) return null
+  return { relPath: PREVIEW_FILE, ...writtenAt(path) }
 }
 
 /** Read a doc by path relative to the feature's docs dir (traversal-guarded). */

@@ -157,6 +157,26 @@ describe('docs watcher', () => {
 
     expect(docsEvents()).toHaveLength(0)
   })
+
+  it('names the plan preview, the one non-Markdown doc the page shows', async () => {
+    await startArmed(ctx, feature)
+
+    writeFileSync(join(docsDir, 'preview.html'), '<!doctype html>', 'utf8')
+    await sleep(SETTLE_MS)
+
+    const events = listAfter(ctx, feature.id).filter((e) => e.type === 'docs.changed')
+    expect(events).toHaveLength(1)
+    expect(events[0].data).toEqual({ files: ['preview.html'] })
+  })
+
+  it('still ignores every other non-Markdown file', async () => {
+    await startArmed(ctx, feature)
+
+    writeFileSync(join(docsDir, 'notes.txt'), 'scratch', 'utf8')
+    await sleep(SETTLE_MS)
+
+    expect(docsEvents()).toHaveLength(0)
+  })
 })
 
 /**

@@ -29,6 +29,37 @@ describe('noticeFor', () => {
     })
   })
 
+  it('maps a docs.changed naming preview.html to "Preview ready" on the planning hue', () => {
+    const e = ev('docs.changed', 'docs changed: preview.html', { data: { files: ['preview.html'] } })
+    expect(noticeFor(e)).toEqual({
+      kind: 'preview',
+      hue: 'planning',
+      title: 'Preview ready',
+      subtitle: 'preview.html',
+      actionLabel: 'View preview',
+      target: 'overview',
+      count: 1,
+      eventId: e.id,
+    })
+  })
+
+  it('raises the preview, not the spec, for a write naming both', () => {
+    const e = ev('docs.changed', 'docs changed', {
+      data: { files: ['docs/features/x/preview.html', 'spec.md'] },
+    })
+    expect(noticeFor(e)?.kind).toBe('preview')
+  })
+
+  it('collapses two preview redraws into one card counting 2', () => {
+    const redraw = () => ev('docs.changed', 'docs changed: preview.html', { data: { files: ['preview.html'] } })
+    const deck = [noticeFor(redraw()), noticeFor(redraw())].reduce<ChatNotice[]>(
+      (cards, notice) => (notice ? deckReducer(cards, { type: 'push', notice }) : cards),
+      [],
+    )
+    expect(deck).toHaveLength(1)
+    expect(deck[0]).toMatchObject({ kind: 'preview', count: 2 })
+  })
+
   it.each(['tickets.stored', 'ticket.edited', 'ticket.cancelled'])(
     'maps %s to "Tickets updated", going to the Overview',
     (type) => {
