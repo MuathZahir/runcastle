@@ -434,7 +434,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
           <div class="facts" style="margin-top:10px">
             <div><i class="dot ok"></i><span><b>Runs scripts</b>, so prototypes are clickable</span></div>
             <div><i class="dot no"></i><span><b>Cannot read the app</b>: its page, its storage</span></div>
-            <div><i class="dot no"></i><span><b>Cannot reach the network</b>, runcastle's own server included</span></div>
+            <div><i class="dot no"></i><span><b>Cannot fetch from the network</b>, runcastle's own server included</span></div>
             <div><i class="dot no"></i><span><b>Cannot open popups</b>, post forms or navigate away</span></div>
           </div>
         </div>
@@ -507,6 +507,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li>One preview panel, used by the planning body and the read-only Planning view</li>
         <li>A sandboxed frame fed the text, with the content policy and the app's light or dark mode added</li>
         <li>A full-window dialog around the same frame</li>
+        <li>Known gap: a script can still navigate its own frame, one GET it cannot read; the panel then restores the preview</li>
         <li>A "Preview ready" chat notice, a new kind beside "Spec written"</li>
       </ul></div>
     </div>
