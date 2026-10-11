@@ -22,7 +22,7 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 - `mcp__runcastle__get_feature_context` / `mcp__runcastle__read_feature_doc` / `mcp__runcastle__list_tickets` / `mcp__runcastle__get_ticket` — the record.
 - `mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true, dependsOn? })` — park scope creep as a draft feature (§1), with `dependsOn: [<this feature's slug>]` when it builds on this one. `draft: true` is the only door open to you; a full create belongs to the project session.
-- `mcp__runcastle__complete_phase` — the phase boundaries (§3), and the ones `/runcastle:spec` and `/runcastle:tickets` cross after you.
+- `mcp__runcastle__complete_phase` — the phase boundaries (§4), and the ones `/runcastle:spec` and `/runcastle:tickets` cross after you.
 - `mcp__runcastle__emit_tickets` — used by `/runcastle:tickets`, not by you directly.
 - `mcp__runcastle__record_event` — the feature timeline. Most state changes already emit their own event; only reach for this when the timeline would otherwise have no record at all.
 
@@ -38,7 +38,7 @@ Interview the human about every aspect of the feature until you reach a genuinel
 - **Park scope creep instead of swallowing it.** When something surfaces that is plainly its own feature, say so and offer to park it: `mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` creates a parked draft — no branch, nothing written — with the `brief` carrying why you deferred it and what it must not swallow. When the parked scope builds on this feature, also pass `dependsOn: [<this feature's slug>]` so it cannot be started before this one merges. Then get back to this feature. Drafts are the only thing you may create here; a full create belongs to the project session.
 - **A feature bigger than expected gets a thin lap 1.** The project session sizes features to fit one ideation window before they reach you, so this is rare. When a feature still turns out bigger than this window mid-grill, do not grind on and do not split it yourself: put the slicing question to the human again, recommend a thin lap 1, and park the rest under the spec's `## Later laps`.
 
-Do not move on until the human confirms you have reached shared understanding.
+Do not move on until the human confirms you have reached shared understanding. That confirmation happens on the preview (§3), not in chat alone.
 
 ## 2. Lock decisions incrementally
 
@@ -52,19 +52,33 @@ The moment a decision locks, append it to `docs/features/<slug>/decisions.md` �
 
 Keep `decisions.md` free of implementation minutiae — it is the record of *what was decided and why*, the raw material spec and tickets are built from. `complete_phase` checkpoints the file into git for you; you just write it. The file is the record — do not narrate it onto the timeline as you go.
 
-## 3. Complete ideation
+## 3. Draw the preview, then wait for the human to look
 
-When the human confirms shared understanding and the open questions are answered or explicitly deferred:
+**The preview is what the human confirms shared understanding on.** It is one self-contained page, `docs/features/<slug>/preview.html`, that shows the feature and every decision; the human reads the feature by looking at it.
+
+1. **Draw it.** When the decisions are locked, read `./references/preview.md` (the rules) and write `preview.html` from `./references/preview-starter.html`.
+2. **Check it against `decisions.md`.** Every decision appears by its number and title. Fix the preview before anyone sees it.
+3. **Tell the human to look, then wait.** Say the preview is on the feature's **Overview**, under the Burn row, and that the "Preview ready" notice in Chat leads there. Then stop and wait for their answer.
+4. **A correction is a decision edit plus a redraw.** Edit the decision in `decisions.md` and redraw the preview in the same move, then ask them to look again.
+5. **Only after the human confirms**, complete ideation (§4).
+
+**Never skip the preview on your own judgement** — not because the feature is small, not because the grill went quickly. A small feature gets a small preview. **If the human says to skip it**, write no file and go straight on to §4.
+
+**The redraw rule.** While the feature is at planning, any later edit to `decisions.md` — in this session or after it — updates `preview.html` in the same move, before anything else.
+
+## 4. Complete ideation
+
+When the human confirms shared understanding on the preview and the open questions are answered or explicitly deferred:
 
 `mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok: true, nextPhase, nextStep }`. It does not refuse and it does not move the feature: ideation, spec and tickets are three steps inside **Planning**, and this records the milestone on the timeline. `nextStep` is the next step still missing its artifact, read off disk rather than stored — so if `decisions.md` is not written yet it comes back as `"ideation"` again, which is your cue to write it. It logs its own timeline event; do not add one.
 
-## 4. Spec → tickets — stay in this window
+## 5. Spec → tickets — stay in this window
 
 Invoke `/runcastle:spec` (it writes `spec.md` and completes the `spec` phase); when it returns, invoke `/runcastle:tickets`.
 
 Do not open a new session for these. They run here, on top of everything you just learned.
 
-## 5. Close — hand off to the human
+## 6. Close — hand off to the human
 
 `/runcastle:tickets` ends by emitting tickets to the runcastle store. When it returns, your job is **done**. Tell the human plainly:
 

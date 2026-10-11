@@ -35,8 +35,8 @@ import {
 import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
-import { listDocs, scaffoldDocs } from './knowledge'
-import type { DocSummary, ScaffoldOptions } from './knowledge'
+import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
+import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
   hasActiveRun,
@@ -120,6 +120,8 @@ export interface FeatureFull {
   sessions: SessionRow[]
   runs: Run[]
   docs: DocSummary[]
+  /** null when the feature's docs dir has no preview.html */
+  preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
 }
@@ -664,6 +666,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     ),
     runs: listRunsByFeature(ctx, id),
     docs: listDocs(ctx, feature),
+    preview: previewSummary(ctx, feature),
     dependsOn: dependsOnOf(ctx, id),
     blocks: blocksOf(ctx, id),
   }

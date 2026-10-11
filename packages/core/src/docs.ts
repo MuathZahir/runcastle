@@ -34,6 +34,14 @@
  */
 export const AGENT_DIGEST_DOCS = ['brief.md', 'decisions.md', 'spec.md'] as const
 
+/**
+ * The plan preview: the one self-contained HTML page a planning session draws
+ * when the decisions lock, shown on the feature page at planning. A fixed name
+ * is the whole lookup — no listing, no stored field. It is deliberately NOT an
+ * agent digest doc: a burn agent reads only the screen block its ticket names.
+ */
+export const PREVIEW_FILE = 'preview.html'
+
 export type AgentDigestDoc = (typeof AGENT_DIGEST_DOCS)[number]
 
 /**

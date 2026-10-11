@@ -1,5 +1,5 @@
 import { type FSWatcher, watch } from 'node:fs'
-import type { Feature } from '@runcastle/core'
+import { type Feature, PREVIEW_FILE } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { emit } from './events'
 import { featureDocsDir } from './feature-docs'
@@ -107,8 +107,9 @@ function noteDocsChange(ctx: AppCtx, featureId: string, filename: string | null)
   if (!entry) return
   // Editors and agents leave swap/temp files beside the docs; only the docs
   // themselves are worth waking the UI for. A platform that reports no
-  // filename at all still counts — it just cannot be named.
-  if (filename !== null && !filename.endsWith('.md')) return
+  // filename at all still counts — it just cannot be named. The plan preview is
+  // the one non-Markdown doc the page shows, so it wakes the UI too.
+  if (filename !== null && !filename.endsWith('.md') && filename !== PREVIEW_FILE) return
   if (filename) entry.changed.add(filename)
   if (entry.timer) clearTimeout(entry.timer)
   entry.timer = setTimeout(() => emitDocsChanged(ctx, featureId), DOCS_WATCH_DEBOUNCE_MS)
