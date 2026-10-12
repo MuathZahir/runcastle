@@ -11,7 +11,12 @@ import {
 } from '@runcastle/core'
 import { reviewGateLogDir, reviewGateLogPath } from '@runcastle/core/paths'
 import { createSystemExec } from '../doctor/system-exec'
-import { cleanupBurnWorktree, deleteTempBranch, pinBranchAt } from '../services/git'
+import {
+  cleanupBurnWorktree,
+  deleteTempBranch,
+  excludeBurnWorktrees,
+  pinBranchAt,
+} from '../services/git'
 import {
   ensureBurnCacheVolume,
   getBurnSlotAllocator,
@@ -142,6 +147,8 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
     // which would refuse the move below.
     await discardBranch()
     await pinBranchAt(project.repoPath, branch, sha)
+    // The gate sandbox is a burn worktree too, and may be the project's first.
+    await excludeBurnWorktrees(project.repoPath)
     // sandcastle's `exec` cannot be aborted, so a command over its time limit
     // ends the sandbox it ran in — the teardown is what kills it — and the rest
     // run in a fresh one. No two commands ever run side by side.
