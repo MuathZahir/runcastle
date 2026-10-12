@@ -1052,9 +1052,16 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     })
 
     it('keeps the host environment when there is no token to pass', () => {
-      const env = buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL).env
-      expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
-      expect(env.PATH ?? env.Path).toBeDefined()
+      // The host env is kept by design, so a token set on the machine running
+      // the suite would surface here — clear it so this tests buildBurnAgent.
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined)
+      try {
+        const env = buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL).env
+        expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
+        expect(env.PATH ?? env.Path).toBeDefined()
+      } finally {
+        vi.unstubAllEnvs()
+      }
     })
 
     it('sends only the overrides into a container, never the host env', () => {
