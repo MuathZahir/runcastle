@@ -345,6 +345,20 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('complete_phase')
   })
 
+  it('tells a self-planning run no human is present, adding to the ideation brief alone', () => {
+    const empty = { hasDecisions: false, hasSpec: false, hasTickets: false }
+    const ideation = renderSystemPrompt(feature(), 'chat', undefined, undefined, 'codex', undefined, empty)
+    const selfPlan = renderSystemPrompt(feature(), 'chat', undefined, 'self-plan', 'codex', undefined, empty)
+    expect(selfPlan).toContain('## No human is present')
+    expect(selfPlan).toContain('Never end your turn to ask a question')
+    expect(selfPlan).toContain('A refused tool is not a wait')
+    expect(selfPlan).toContain('"Planning without a human"')
+    expect(selfPlan).toContain('$ideate')
+    // The section is the whole difference: an ordinary ideation chat is untouched.
+    expect(selfPlan.replace(/## No human is present[\s\S]*?\n\n/, '')).toBe(ideation)
+    expect(ideation).not.toContain('No human is present')
+  })
+
   /**
    * No renderer restates the MCP tool list any more. Every tool is already in
    * the session's tool list with a schema-backed description, registration is

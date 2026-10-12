@@ -19,7 +19,13 @@ import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
 import { PRE_TOOL_MATCHER } from './install-guard'
-import { type ChatOpening, ENTRY_SKILLS, entrySkillsFor, skillRef } from './runtimes/skills'
+import {
+  type ChatOpening,
+  ENTRY_SKILLS,
+  PLANNING_WITHOUT_A_HUMAN,
+  entrySkillsFor,
+  skillRef,
+} from './runtimes/skills'
 
 /**
  * Session launch artifacts (SPEC §5.2). Writes `system-prompt.md`,
@@ -207,7 +213,8 @@ export function renderSystemPrompt(
   planning?: PlanningArtifactFacts,
 ): string {
   if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
-  if (kind === 'chat' && chatOpening(feature, planning) === 'revisit') {
+  const selfPlan = purpose === 'self-plan'
+  if (kind === 'chat' && !selfPlan && chatOpening(feature, planning) === 'revisit') {
     return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
   }
 
@@ -242,9 +249,29 @@ export function renderSystemPrompt(
     noCodeRule(docs),
     otherEntrySkillsRule(),
     '',
+    ...(selfPlan ? [selfPlanRule(), ''] : []),
     '## Your task',
     `Begin by invoking the \`${skillRef(runtime, 'ideate')}\` skill and drive the ideation session to completion.`,
     '',
+  ].join('\n')
+}
+
+/**
+ * The section a self-planning run's brief adds to the ideation brief
+ * (`features-plan-themselves` decision 9). The run is headless: a question ends
+ * the turn and with it the process, and a tool it is refused will never be
+ * approved, so both are stated as things to decide past rather than wait on.
+ */
+function selfPlanRule(): string {
+  return [
+    '## No human is present',
+    'This is a self-planning run: nobody is watching and nobody will reply.',
+    '- Never end your turn to ask a question — ending the turn ends the run. Ask your design',
+    '  questions of yourself, as the skill describes, and answer them.',
+    '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
+    '  know and treat that decision as a candidate to check first.',
+    `- Follow the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" section through the preview, the`,
+    '  spec and the tickets, in this one run.',
   ].join('\n')
 }
 
