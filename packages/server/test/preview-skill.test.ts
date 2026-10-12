@@ -92,6 +92,26 @@ describe('the preview starter', () => {
     expect(text).not.toContain('Saved filters')
     expect(text).not.toContain('feature-page-planning')
   })
+
+  it('builds the check-first group from an empty-by-default C list, above the decisions', () => {
+    const text = starter()
+    expect(text).toContain('var C = []')
+    // nothing in the markup: the group exists only when the script draws it
+    expect(text).not.toMatch(/<div class="cf"/)
+    const build = text.slice(text.indexOf('if (C.length) {'))
+    expect(text).toContain('if (C.length) {')
+    expect(build).toContain("'<h3>Check first</h3>")
+    expect(build).toContain('<dt>Alternative</dt>')
+    expect(build).toContain('<dt>Why unsure</dt>')
+    expect(build).toContain('list.before(cf)')
+  })
+
+  it('tags a decision whose D entry carries a mark', () => {
+    const text = starter()
+    expect(text).toContain('[title, reason, mark?]')
+    expect(text).toMatch(/if \(d\[2\]\) \{[\s\S]*?mark\.className = 'tag'/)
+    expect(text).toMatch(/\.tag\{[^}]*var\(--color-/)
+  })
 })
 
 describe('the preview rules (ideate/references/preview.md)', () => {
@@ -133,6 +153,19 @@ describe('the preview rules (ideate/references/preview.md)', () => {
     expect(text).toContain('refuses every fetch')
     expect(text).toContain('**There is no minimum.**')
     expect(text).toMatch(/about a\s+minute for a small feature, a few minutes for a large one/)
+  })
+
+  it('opens a self-planned feature’s decisions with at most five to check first', () => {
+    const text = rules()
+    const decided = text.slice(text.indexOf('3. **What was decided.**'), text.indexOf('4. **What is left out.**'))
+    expect(decided).toMatch(/\*\*Check first\*\* group of at most five/)
+    expect(decided).toMatch(/its alternative, and why it\s+is uncertain/)
+    expect(decided).toMatch(/each showing that it was assumed/)
+    expect(decided).toContain('**A grilled feature has neither**')
+    const selfCheck = text.slice(text.indexOf('## Self-check'))
+    expect(selfCheck).toMatch(/\*\*Check first\*\* group holds at most five/)
+    expect(selfCheck).toMatch(/shows as assumed/)
+    expect(selfCheck).toMatch(/For a grilled feature, `C` is empty/)
   })
 })
 

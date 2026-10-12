@@ -1,7 +1,7 @@
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget } from '../../lib/chat-notices'
-import { activeSession, chatContextLine, featureChat } from '../../lib/feature-ui'
+import { activeSession, chatContextLine, featureChat, isSelfPlanRun } from '../../lib/feature-ui'
 import { ChatView } from '../chat/ChatView'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { SessionNotices } from '../chat/SessionNotices'
@@ -43,6 +43,11 @@ export function FeatureChat({
       meta="One transcript per feature"
       featureId={full.feature.id}
       notices={live && <SessionNotices featureId={full.feature.id} session={live} />}
+      headless={
+        live && isSelfPlanRun(live)
+          ? 'This feature is planning itself. There is no terminal to watch; the plan appears on the Overview as it is written.'
+          : undefined
+      }
       transcriptId={chat?.id}
       onLaunch={onLaunch}
       launching={launching}

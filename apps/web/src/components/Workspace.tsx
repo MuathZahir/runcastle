@@ -36,6 +36,7 @@ import {
   effectivePhase,
   freshness,
   isReadonlyView,
+  isSelfPlanRun,
   lastTestDriveLap,
   latestRun,
   liveSessionLine,
@@ -470,6 +471,20 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
+  // and launch as above, but the session is a headless run with no terminal, so
+  // neither lands on the Chat tab — the plan is watched from the Overview.
+  const launchSelfPlan = trpc.feature.launchSession.useMutation({
+    onSuccess: invalidate,
+    onError: (e) => toast.push(e.message),
+  })
+  const startSelfPlan = trpc.feature.start.useMutation({
+    onSuccess: (res, vars) => {
+      invalidate()
+      if (startOpensChat(res)) launchSelfPlan.mutate({ featureId: vars.featureId, kind: 'chat', purpose: 'self-plan' })
+    },
+    onError: (e) => toast.push(e.message),
+  })
   // The resolve launch, shared with the conflict card below so the two brief the
   // agent identically (decisions #10) — and so the bar's primary can end a live
   // session on the way in rather than hiding until the human ends it themselves.
@@ -588,6 +603,8 @@ export function Workspace({
   const busy =
     start.isPending ||
     launch.isPending ||
+    startSelfPlan.isPending ||
+    launchSelfPlan.isPending ||
     burn.isPending ||
     cancel.isPending ||
     testDrive.isPending ||
@@ -681,7 +698,11 @@ export function Workspace({
    * human arriving at a conversation they had lost sight of.
    */
   const openChat = () => {
-    if (liveSession) landOnChat()
+    // A self-planning run has no terminal to land on, and the server refuses a
+    // chat beside it — say so rather than open a tab with nothing to answer.
+    if (liveSession && isSelfPlanRun(liveSession))
+      toast.push('This feature is planning itself — stop the run to open the chat.', 'info')
+    else if (liveSession) landOnChat()
     else launchChat()
   }
 
@@ -696,6 +717,16 @@ export function Workspace({
         break
       case 'chat':
         openChat()
+        break
+      // Plan it yourself: a draft is started off the same base Start would send,
+      // then launched as a self-planning run; a started feature just launches.
+      case 'selfPlan':
+        if (isDraft) startSelfPlan.mutate({ featureId, baseBranch: effectiveDraftBase })
+        else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
+        break
+      // Stop is ending the run: it has no terminal to type into (decision 9).
+      case 'stopSelfPlan':
+        void endLiveSession()
         break
       case 'iterate':
         enterIterate()

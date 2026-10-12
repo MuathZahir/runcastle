@@ -4,6 +4,7 @@ import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
 import {
+  assertHeadlessKickoff,
   assertKickoffArgv,
   type AgentRuntimeAdapter,
   type RuntimeLaunchInput,
@@ -62,14 +63,21 @@ export interface BuildLaunchInput {
    * runcastle's — see {@link RuncastleConfig.sessionMcp}.
    */
   strictMcp?: boolean
+  /**
+   * Print mode (`-p`): run the kickoff as the prompt to completion with no
+   * terminal — a self-planning run. Always a fresh conversation, never `--resume`.
+   */
+  headless?: boolean
 }
 
 /** @see {@link BuildLaunchInput} */
 export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   assertKickoffArgv(input.kickoffLine)
+  assertHeadlessKickoff(input.headless, input.kickoffLine)
   const permissionMode = input.permissionMode ?? 'acceptEdits'
-  const resume = input.resumeSessionId ? ['--resume', input.resumeSessionId] : []
+  const resume = input.resumeSessionId && !input.headless ? ['--resume', input.resumeSessionId] : []
   return [
+    ...(input.headless ? ['-p'] : []),
     ...resume,
     '--settings',
     input.settingsPath,
@@ -167,6 +175,7 @@ export const claudeRuntime: AgentRuntimeAdapter = {
         ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
         ...(input.kickoffLine ? { kickoffLine: input.kickoffLine } : {}),
         strictMcp: input.config.sessionMcp === 'runcastleOnly',
+        ...(input.headless ? { headless: true } : {}),
       }),
       env: {
         RUNCASTLE_SESSION_ID: input.session.id,

@@ -37,6 +37,7 @@ export function ChatView({
   featureId,
   onEnded,
   notices,
+  headless,
   transcriptId,
   onLaunch,
   launchLabel,
@@ -57,6 +58,11 @@ export function ChatView({
   onEnded?: () => void
   /** Lines between the strip and the live terminal (not-ready, check-in). */
   notices?: ReactNode
+  /**
+   * The session up has no terminal (a headless self-planning run): this stands
+   * where the terminal would, and nothing attaches to the process.
+   */
+  headless?: ReactNode
   /** With nothing live: the transcript to read back. Absent — never started. */
   transcriptId?: string
   /** With nothing live: the one launch that resumes or starts the conversation. */
@@ -92,7 +98,9 @@ export function ChatView({
       </div>
       {session && notices && <div className="flex-none px-4 pt-2">{notices}</div>}
       <div className="relative flex min-h-0 flex-1 flex-col bg-surface-inset animate-fade-in">
-        {session ? (
+        {session && headless ? (
+          <div className="px-6 py-6 text-sm text-text-secondary">{headless}</div>
+        ) : session ? (
           <div className="min-h-0 flex-1" data-chat-terminal="">
             <ErrorBoundary label="terminal">
               <TerminalView sessionId={session.id} />

@@ -11,6 +11,7 @@ import { carriedWork } from '../src/services/carried-work'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
+import { selfPlanKickoffFor } from '../src/launcher/runtimes/skills'
 import { kickoffLineFor, lapKickoff } from '../src/launcher/sessions'
 import { resolvePluginDir } from '../src/launcher/skills-root'
 import { promptMatchesKickoff } from '../src/services/conversations'
@@ -59,6 +60,16 @@ describe('kickoff registry + override', () => {
     expect(kickoffLineFor('chat', override)).toBe(override)
     // an empty override is not a real override — the default still wins
     expect(kickoffLineFor('chat', undefined)).toBe(KICKOFF_LINES.chat)
+  })
+
+  it('opens a self-planning run saying no human is present, naming ideate per runtime', () => {
+    for (const [runtime, ideate] of [['claude-code', '/runcastle:ideate'], ['codex', '$ideate']] as const) {
+      const line = selfPlanKickoffFor(runtime)
+      expect(line).toContain('no human is present')
+      expect(line).toContain(ideate)
+      expect(line).toContain('"Planning without a human"')
+      expect(line).not.toMatch(/[\r\n]/)
+    }
   })
 })
 

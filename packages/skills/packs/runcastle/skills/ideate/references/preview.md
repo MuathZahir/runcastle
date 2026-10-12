@@ -30,6 +30,12 @@ Burn. Draw it for that reader.
    title, with the reason available on demand (the starter's `D` list builds
    this). Where a decision is visible in the show, pin its number on that spot:
    `<a class="pin" data-d="3">3</a>`.
+   **A self-planned feature** (§1a of the ideate skill) opens this part with a
+   **Check first** group of at most five decisions, the ones the planner picked.
+   Each entry shows the decision's number and title, its alternative, and why it
+   is uncertain (the starter's `C` list builds this). The remaining decisions
+   follow in the list, each showing that it was assumed (a third element on its
+   `D` entry). **A grilled feature has neither**: no group and no assumed marks.
 4. **What is left out.** Out of scope, and anything deferred to a later lap.
 5. **Under the hood.** The technical shape for a reader who wants it,
    **collapsed by default**, drawn where it can be.
@@ -83,6 +89,10 @@ minute for a small feature, a few minutes for a large one.**
 
 - Every decision in `decisions.md` appears in **What was decided**, by its number
   and its title, in order — none missing, none renumbered.
+- For a self-planned feature, the **Check first** group holds at most five
+  decisions, each with its alternative and why it is uncertain, and every
+  decision carrying an `**Assumed.**` line in `decisions.md` shows as assumed.
+  For a grilled feature, `C` is empty and no decision is marked.
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
 - The file is still fully inline.

@@ -35,6 +35,7 @@ import {
   codexHomeDir,
   codexRuntime,
   mcpServerTables,
+  renderCodexConfig,
   renderCodexHooks,
 } from '../src/launcher/runtimes/codex'
 import { MAX_KICKOFF_ARGV } from '../src/launcher/runtimes/types'
@@ -343,6 +344,20 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('/runcastle:ideate')
     expect(p).toContain('docs/features/dark-mode/')
     expect(p).toContain('complete_phase')
+  })
+
+  it('tells a self-planning run no human is present, adding to the ideation brief alone', () => {
+    const empty = { hasDecisions: false, hasSpec: false, hasTickets: false }
+    const ideation = renderSystemPrompt(feature(), 'chat', undefined, undefined, 'codex', undefined, empty)
+    const selfPlan = renderSystemPrompt(feature(), 'chat', undefined, 'self-plan', 'codex', undefined, empty)
+    expect(selfPlan).toContain('## No human is present')
+    expect(selfPlan).toContain('Never end your turn to ask a question')
+    expect(selfPlan).toContain('A refused tool is not a wait')
+    expect(selfPlan).toContain('"Planning without a human"')
+    expect(selfPlan).toContain('$ideate')
+    // The section is the whole difference: an ordinary ideation chat is untouched.
+    expect(selfPlan.replace(/## No human is present[\s\S]*?\n\n/, '')).toBe(ideation)
+    expect(ideation).not.toContain('No human is present')
   })
 
   /**
@@ -733,9 +748,35 @@ describe('buildClaudeArgs', () => {
       }),
     ).toThrow(/maximum/)
   })
+
+  it('runs a headless launch in print mode with the kickoff as its prompt, never resuming', () => {
+    const base = {
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    }
+    const kickoffLine = 'Plan this feature with no human present.'
+    const args = buildClaudeArgs({ ...base, kickoffLine, resumeSessionId: 'cc-42', headless: true })
+    expect(args).toContain('-p')
+    expect(args).not.toContain('--resume')
+    expect(args.at(-1)).toBe(kickoffLine)
+    // The same flags as the interactive launch, plus print mode.
+    expect(args.filter((a) => a !== '-p')).toEqual(buildClaudeArgs({ ...base, kickoffLine }))
+    expect(() => buildClaudeArgs({ ...base, headless: true })).toThrow(/kickoff/)
+  })
 })
 
 describe('buildCodexArgs', () => {
+  it('runs a headless launch as `exec` with the kickoff as its prompt, never resuming', () => {
+    const kickoffLine = 'Plan this feature with no human present.'
+    expect(buildCodexArgs({ kickoffLine, resumeSessionId: 'thread-42', headless: true })).toEqual([
+      'exec', '--dangerously-bypass-hook-trust', kickoffLine,
+    ])
+    expect(() => buildCodexArgs({ headless: true })).toThrow(/kickoff/)
+  })
+
   it('keeps the trust flag and appends a fresh kickoff verbatim', () => {
     const kickoffLine = `Invoke "the skill" and preserve the user's words.`
     const args = buildCodexArgs({ kickoffLine })
@@ -1017,7 +1058,12 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('model = "gpt-5.6-sol"')
     // the `--permission-mode acceptEdits` analogue: writes inside the worktree
     // without prompting — a dialog blocks BEFORE SessionStart, stranding the session
-    expect(toml).toContain('sandbox_mode = "workspace-write"')
+    // (win32 is the one unsandboxed case — pinned by its own test below)
+    expect(toml).toContain(
+      process.platform === 'win32'
+        ? 'sandbox_mode = "danger-full-access"'
+        : 'sandbox_mode = "workspace-write"',
+    )
     expect(toml).toContain('approval_policy = "never"')
     expect(toml).toContain(
       'approval_policy = "never"\ncheck_for_update_on_startup = false\n\n[features]',
@@ -1029,6 +1075,46 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('[mcp_servers.runcastle]')
     expect(toml).toContain('url = "http://localhost:4512/mcp"')
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }')
+  })
+
+  it('runs an unattended session unsandboxed on win32, where workspace-write degrades to read-only', () => {
+    const render = (platform: NodeJS.Platform, permissionMode?: string) =>
+      renderCodexConfig({
+        session: session({ id: 'sess_codex_self_plan', kind: 'chat' }),
+        config,
+        model: 'gpt-5.6-terra',
+        worktreePath: worktree,
+        platform,
+        ...(permissionMode ? { permissionMode } : {}),
+      })
+
+    // Codex enforces workspace-write on Windows only through a sandbox setup a
+    // generated home never ran; a `never` session there could write nothing.
+    expect(render('win32')).toContain('sandbox_mode = "danger-full-access"')
+    expect(render('win32', 'acceptEdits')).toContain('sandbox_mode = "danger-full-access"')
+    // a session that asks keeps the sandbox: a blocked write is a question
+    expect(render('win32', 'default')).toContain('sandbox_mode = "workspace-write"')
+    // elsewhere the sandbox enforces itself and nothing changes
+    expect(render('linux')).toContain('sandbox_mode = "workspace-write"')
+    expect(render('darwin')).toContain('sandbox_mode = "workspace-write"')
+  })
+
+  it('pre-approves runcastle\'s own tools, so a session that never asks can still call them', async () => {
+    // Under `approval_policy = "never"` Codex refuses every MCP call it would
+    // have asked about — "MCP tool call requires approval, but approval policy
+    // is never" — which left a self-planning run, and the chat resumed after it,
+    // unable to read its feature or record a decision. `approve` is the variant
+    // pinned against codex-cli 0.155.1 (`auto | prompt | writes | approve`).
+    const approved = '[mcp_servers.runcastle]\nurl = "http://localhost:4512/mcp"\n' +
+      'http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }\n' +
+      'default_tools_approval_mode = "approve"\n'
+
+    await launchSpec('chat', { headless: true, kickoffLine: '$ideate' })
+    expect(configToml('sess_codex_chat')).toContain(approved)
+
+    // the chat that resumes the run gets its home rewritten, and keeps the grant
+    await launchSpec('chat', { resumeSessionId: '01a12ee7-9008-7c32-906f-01d8905afd1b' })
+    expect(configToml('sess_codex_chat')).toContain(approved)
   })
 
   it('turns hook discovery on, so the generated hooks.json is discoverable at all', async () => {
@@ -1073,7 +1159,7 @@ describe('codexRuntime.writeArtifacts', () => {
     // prompting policy config.toml still accepts, so the same session on a Codex
     // model asks too. Not `untrusted`: the CLI now rejects it on config load.
     expect(projected).toContain('approval_policy = "on-request"')
-    // only the approval gate moves; the sandbox is the same one every kind runs in
+    // the sandbox stays on for a session that asks, on every platform
     expect(projected).toContain('sandbox_mode = "workspace-write"')
 
     // a worktree-scoped kind keeps the acceptEdits analogue: it writes inside its

@@ -102,6 +102,27 @@ export function chatKickoffFor(runtime: AgentRuntime, opening: ChatOpening): str
 }
 
 /**
+ * The heading of the ideate skill's section for a session with nobody to answer
+ * it (`features-plan-themselves`). Named verbatim by both halves of a
+ * self-planning briefing, so the skill's heading and the pointer to it agree.
+ */
+export const PLANNING_WITHOUT_A_HUMAN = 'Planning without a human'
+
+/**
+ * The opening of a self-planning run's prompt, spelled for `runtime` — the
+ * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
+ * on the other end, so the line says so before anything else and sends the
+ * session straight through to tickets rather than stopping to confirm.
+ */
+export function selfPlanKickoffFor(runtime: AgentRuntime): string {
+  return (
+    'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
+    `${skillRef(runtime, 'ideate')} skill and follow its "${PLANNING_WITHOUT_A_HUMAN}" section ` +
+    "to plan this feature by yourself, through the preview, the spec and the tickets, in this one run."
+  )
+}
+
+/**
  * The per-kind kickoff line typed into a freshly-live session so no session
  * starts dead. Each line names the same opening skill its appended system prompt
  * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief

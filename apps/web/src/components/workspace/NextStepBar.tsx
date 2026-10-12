@@ -13,6 +13,7 @@ import {
   IconPlay,
   IconRefresh,
   IconSettings,
+  IconSparkle,
   IconStop,
   IconTerminal,
 } from '../../icons'
@@ -21,6 +22,8 @@ import {
 const ACTION_ICON: Record<ActionKind, ReactNode> = {
   startDraft: <IconPlay />,
   chat: <IconMessage />,
+  selfPlan: <IconSparkle />,
+  stopSelfPlan: <IconStop />,
   burn: <IconFlame />,
   cancelRun: <IconStop />,
   openBurnSettings: <IconSettings />,

@@ -17,7 +17,7 @@ import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } from './runtimes'
-import { chatKickoffFor, prepareConfirmKickoffFor } from './runtimes/skills'
+import { chatKickoffFor, prepareConfirmKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
@@ -128,11 +128,14 @@ export interface LaunchSessionInput {
  * The opening comes from {@link chatOpening} — the same predicate the injected
  * system prompt splits on — so a brand-new Planning feature is told to ideate by
  * both, and a feature with a record on disk is told to revisit by both.
+ * `opening` replaces that first sentence for a launch that brings its own (a
+ * self-planning run); the feature state after it is the same either way.
  */
 export function chatKickoffHeader(
   ctx: AppCtx,
   feature: Feature,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
+  opening: string = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature))),
 ): string {
   const counts = new Map<string, number>()
   for (const ticket of listTicketsByFeature(ctx, feature.id)) {
@@ -155,7 +158,6 @@ export function chatKickoffHeader(
           : 'unverified'
     review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
   }
-  const opening = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature)))
   return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
 
@@ -251,6 +253,43 @@ function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: strin
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
     )
   }
+}
+
+/** Whether this launch is "Plan it yourself": the planning chat, run headless with nobody present. */
+function isSelfPlan(input: LaunchSessionInput): boolean {
+  return input.kind === 'chat' && input.purpose === 'self-plan'
+}
+
+/**
+ * Refuse a self-planning run the feature cannot take (`features-plan-themselves`
+ * decision 5): it plans a feature from nothing, so the feature must be at
+ * planning with no decisions, spec or tickets yet, and — like any terminal —
+ * with no other session up. Checked before the row exists, so a refusal leaves
+ * nothing behind.
+ */
+function assertSelfPlannable(ctx: AppCtx, feature: Feature): void {
+  if (feature.phase !== 'planning') {
+    throw new GateError(
+      `${feature.slug} is past planning, so there is nothing for it to plan by itself — open the chat to change it`,
+    )
+  }
+  if (chatOpening(feature, planningFacts(ctx, feature)) !== 'ideate') {
+    throw new GateError(
+      `${feature.slug} already has planning on record (decisions, a spec or tickets), so it cannot plan itself from scratch — open the chat to carry on`,
+    )
+  }
+  assertSpawnable(ctx, feature)
+}
+
+/**
+ * The refusal every chat launch gets while a self-planning run is up. The run is
+ * headless — there is no terminal to attach to or type into — and it is the
+ * feature's one session, so the human has to stop it before the chat can open.
+ */
+function selfPlanRunningError(feature: Feature): GateError {
+  return new GateError(
+    `${feature.slug} is planning itself — stop the run first, then open the chat to pick up where it got to`,
+  )
 }
 
 /**
@@ -453,9 +492,15 @@ export async function launchSession(
   // iteration". Typing the lap briefing in would leave both framings in one
   // session, so the live chat is ended and the conversation relaunched below
   // with the lap prompt, as the carry road does from the web.
+  //
+  // A self-planning run is never the conversation to answer with: it is headless,
+  // so there is nothing to attach to or brief, and ending it silently would throw
+  // away a plan in progress. Every chat launch is refused until the human stops it.
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
+    if (liveChat?.purpose === 'self-plan') throw selfPlanRunningError(feature)
+    if (isSelfPlan(input)) assertSelfPlannable(ctx, feature)
+    else if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
     else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
@@ -488,11 +533,18 @@ export async function launchSession(
   // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
   const carried = startLapCarriedWork(ctx, feature.id)
   const plan = planLaunchKickoff(feature, input, carried)
+  const selfPlan = isSelfPlan(input)
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
-    // feature state rather than the state captured on the previous turn.
-    const header = chatKickoffHeader(ctx, feature, runtime.id)
+    // feature state rather than the state captured on the previous turn. A
+    // self-planning run opens on its own sentence: nobody is there to grill.
+    const header = chatKickoffHeader(
+      ctx,
+      feature,
+      runtime.id,
+      selfPlan ? selfPlanKickoffFor(runtime.id) : undefined,
+    )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
 
@@ -506,7 +558,8 @@ export async function launchSession(
   // already answered with above, so what this catches is a terminal of another
   // kind, or a second chat that raced this one past the `ensureWorktree` await.
   // No resumable conversation is fine: the docs carry the state, so it starts
-  // fresh and the timeline says so.
+  // fresh and the timeline says so. A self-planning run never resumes — it plans
+  // a feature that has nothing on record, from its briefing alone.
   if (input.kind === 'chat') {
     try {
       assertSpawnable(ctx, feature, session.id)
@@ -514,6 +567,8 @@ export async function launchSession(
       markSessionEnded(ctx, session.id)
       throw e
     }
+  }
+  if (input.kind === 'chat' && !selfPlan) {
     const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
     if (prior?.ccSessionId) {
       resumedFrom = prior
@@ -577,12 +632,13 @@ export async function launchSession(
     : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
     type: 'session.launching',
-    message: `launching ${input.kind} session`,
+    message: selfPlan ? 'launching a self-planning run' : `launching ${input.kind} session`,
     data: {
       sessionId: session.id,
       kind: input.kind,
       worktreePath,
       ...modelStamp(model),
+      ...(input.purpose ? { purpose: input.purpose } : {}),
     },
   })
 
@@ -624,6 +680,8 @@ export async function launchSession(
     resumeSessionId,
     resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
+    // No terminal: the run takes its kickoff as its prompt and exits when done.
+    ...(selfPlan ? { headless: true } : {}),
   })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
@@ -1214,6 +1272,18 @@ export function handlePtyExit(
         resumeSessionId: meta.resumeSessionId,
         exitCode: exitCode ?? null,
       },
+    })
+  }
+  if (session.purpose === 'self-plan' && feature) {
+    // The plan is complete when its run reached the last planning step for this
+    // lap; anything short of that is a run that stopped early. Re-read, because
+    // the run completed its steps after `feature` was captured at spawn.
+    const current = getFeatureRow(ctx, feature.id)
+    const complete = current.ticketsReadyLap === current.lap
+    emitForSession(ctx, session, {
+      type: 'session.self_plan_ended',
+      message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
+      data: { sessionId: session.id, complete, exitCode: exitCode ?? null },
     })
   }
   emitForSession(ctx, session, {

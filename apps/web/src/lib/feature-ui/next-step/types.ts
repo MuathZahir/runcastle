@@ -9,6 +9,8 @@
 export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
+  'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
+  'stopSelfPlan', // feature.endSession on the live self-planning run
   'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
   'openBurnSettings', // opens Settings → Burns where a failed run's summary points (image rebuild)

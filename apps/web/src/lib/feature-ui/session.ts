@@ -19,6 +19,15 @@ export function featureChat(sessions: FeatureFull['sessions']): FeatureFull['ses
 }
 
 /**
+ * A self-planning run (features-plan-themselves decision 9): the feature's chat
+ * launched headless, with no terminal to attach and nobody to answer it. The
+ * bar, the Chat tab and the Chat door all key on this one reading.
+ */
+export function isSelfPlanRun(session: Pick<FeatureFull['sessions'][number], 'kind' | 'purpose'>): boolean {
+  return session.kind === 'chat' && session.purpose === 'self-plan'
+}
+
+/**
  * The Chat tab strip's context line for whichever session is live
  * (decision 9): "Chat · lap 2", "Drive fix".
  */
@@ -69,7 +78,9 @@ export function shippedAt(events: EventRow[]): number | null {
  * The one line a live session gets on Overview, in every state
  * (one-chat-layout-everywhere decision 7): "● Chat live · lap 2", with Open
  * chat — which switches to the Chat tab, where every session kind lives — and
- * End session. An ended session says nothing.
+ * End session. An ended session says nothing, and neither does a self-planning
+ * run: it is no chat to open, and the bar above already says it is planning
+ * itself with Stop as its one control (features-plan-themselves decision 11).
  */
 export interface LiveSessionLine {
   sessionId: string
@@ -79,7 +90,7 @@ export interface LiveSessionLine {
 
 export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
   const live = activeSession(sessions)
-  if (!live) return null
+  if (!live || isSelfPlanRun(live)) return null
   return { sessionId: live.id, text: `${sessionKindName(live)} live · lap ${live.lap}` }
 }
 

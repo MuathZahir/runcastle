@@ -28,6 +28,8 @@ Everything happens in this one window. **Never compact. Never `/clear`. Never su
 
 ## 1. Grill relentlessly
 
+This is the **grill path**: the human is here and answers. When your briefing says no human is present, take the **self-planning path** in "Planning without a human" below instead; the rules of this section do not bind it.
+
 Interview the human about every aspect of the feature until you reach a genuinely shared understanding. Walk each branch of the design tree, resolving dependencies between decisions one at a time.
 
 - **One question at a time.** Wait for the answer before the next. Asking several at once is bewildering.
@@ -38,7 +40,19 @@ Interview the human about every aspect of the feature until you reach a genuinel
 - **Park scope creep instead of swallowing it.** When something surfaces that is plainly its own feature, say so and offer to park it: `mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` creates a parked draft — no branch, nothing written — with the `brief` carrying why you deferred it and what it must not swallow. When the parked scope builds on this feature, also pass `dependsOn: [<this feature's slug>]` so it cannot be started before this one merges. Then get back to this feature. Drafts are the only thing you may create here; a full create belongs to the project session.
 - **A feature bigger than expected gets a thin lap 1.** The project session sizes features to fit one ideation window before they reach you, so this is rare. When a feature still turns out bigger than this window mid-grill, do not grind on and do not split it yourself: put the slicing question to the human again, recommend a thin lap 1, and park the rest under the spec's `## Later laps`.
 
-Do not move on until the human confirms you have reached shared understanding. That confirmation happens on the preview (§3), not in chat alone.
+On the grill path, do not move on until the human confirms you have reached shared understanding. That confirmation happens on the preview (§3), not in chat alone.
+
+## 1a. Planning without a human
+
+This is the **self-planning path**. It applies only when your briefing says no human is present; with a human here, §1 stands and this section does not. You still look up facts, model the domain and park scope creep as §1 says. What changes is who answers.
+
+- **One turn.** Do the whole plan in this one turn. Never end the turn to ask a question or to report progress: nobody will reply, and ending the turn ends the run.
+- **Frontier rounds.** Work in rounds. A round is every open question that does not depend on an unanswered one. Write each as you would put it to the human, with your recommended answer and the main alternative, then accept your own recommendations and record them. Then ask what those answers opened: that is the next round. Write each round to `decisions.md` as it is decided (§2), not at the end, so a run that dies keeps what it had.
+- **Depth rule.** Record a decision only if it changes what the feature is or does for its users, or the human might reasonably overturn it. Anything an engineer would settle while building (wording, internal formats, test coverage) is not a question; it goes to the spec as detail.
+- **Exactly one challenger.** When a round would be empty, run one separate agent: the Agent tool in Claude Code, `spawn_agent` in Codex. Give it only the brief and `decisions.md`. Ask it for (a) design branches never asked, within the depth rule, and (b) decisions it would have made differently, with its reason. Do not tell it what you expect to hear. Ask its branches as one more round and decide them, with whatever they open. A decision it disagrees with is marked challenged with its reason (§2), and your own answer stands. There is no second pass, and no requirement that the pass come back empty. If you have no tool that runs a separate agent, challenge your own plan as a separate pass and write in `decisions.md` that the challenge was not independent.
+- **A refused tool is not a wait.** If a tool is refused, do not retry it and do not wait: decide on what you know, and treat that decision as a candidate to check first.
+- **Check first.** Pick at most five decisions for the human to check first: guesses about the human's intent that the brief did not settle, decisions that force several others, and decisions the challenger disagreed with. They open the preview's decisions part (`./references/preview.md`).
+- **Straight through.** Then draw the preview and run its self-check (§3, steps 1 and 2), but do not tell the human to look and do not wait: complete ideation (§4), run `/runcastle:spec`, then `/runcastle:tickets` (§5). End with one closing message (§6): the plan was made without the human, how many decisions it holds, and which are to check first.
 
 ## 2. Lock decisions incrementally
 
@@ -50,6 +64,27 @@ The moment a decision locks, append it to `docs/features/<slug>/decisions.md` �
 **Why:** <the reason / the trade-off chosen over the alternatives>
 ```
 
+A decision you made without the human (the self-planning path, §1a) keeps that shape and adds one line naming the main alternative it was chosen over. A decision the challenger disagreed with adds a further line with its reason:
+
+```markdown
+## <n>. <short decision title>
+**Decision:** <the choice>
+**Why:** <the reason>
+**Assumed.** Alternative: <the main alternative>.
+**Challenged:** <the challenger's reason>.
+```
+
+For example:
+
+```markdown
+## 4. Tags and dates are left out of the PDF
+**Decision:** The PDF carries the title and body only.
+**Why:** The brief asks for the note, not its filing.
+**Assumed.** Alternative: a small footer with tags and the last-edited date.
+```
+
+When the human later confirms or changes such a decision, the session doing the edit removes its `**Assumed.**` and `**Challenged:**` lines; from then on it reads as any other decision.
+
 Keep `decisions.md` free of implementation minutiae — it is the record of *what was decided and why*, the raw material spec and tickets are built from. `complete_phase` checkpoints the file into git for you; you just write it. The file is the record — do not narrate it onto the timeline as you go.
 
 ## 3. Draw the preview, then wait for the human to look
@@ -58,6 +93,9 @@ Keep `decisions.md` free of implementation minutiae — it is the record of *wha
 
 1. **Draw it.** When the decisions are locked, read `./references/preview.md` (the rules) and write `preview.html` from `./references/preview-starter.html`.
 2. **Check it against `decisions.md`.** Every decision appears by its number and title. Fix the preview before anyone sees it.
+
+On the self-planning path (§1a) steps 1 and 2 are the whole of this section: go straight on to §4. Steps 3 to 5 are the grill path.
+
 3. **Tell the human to look, then wait.** Say the preview is on the feature's **Overview**, under the Burn row, and that the "Preview ready" notice in Chat leads there. Then stop and wait for their answer.
 4. **A correction is a decision edit plus a redraw.** Edit the decision in `decisions.md` and redraw the preview in the same move, then ask them to look again.
 5. **Only after the human confirms**, complete ideation (§4).
@@ -68,7 +106,7 @@ Keep `decisions.md` free of implementation minutiae — it is the record of *wha
 
 ## 4. Complete ideation
 
-When the human confirms shared understanding on the preview and the open questions are answered or explicitly deferred:
+On the grill path, when the human confirms shared understanding on the preview and the open questions are answered or explicitly deferred. On the self-planning path (§1a), as soon as the preview passes its check, without waiting:
 
 `mcp__runcastle__complete_phase({ phase: "ideation" })` → returns `{ ok: true, nextPhase, nextStep }`. It does not refuse and it does not move the feature: ideation, spec and tickets are three steps inside **Planning**, and this records the milestone on the timeline. `nextStep` is the next step still missing its artifact, read off disk rather than stored — so if `decisions.md` is not written yet it comes back as `"ideation"` again, which is your cue to write it. It logs its own timeline event; do not add one.
 
@@ -83,5 +121,7 @@ Do not open a new session for these. They run here, on top of everything you jus
 `/runcastle:tickets` ends by emitting tickets to the runcastle store. When it returns, your job is **done**. Tell the human plainly:
 
 > Tickets are in the runcastle UI. Review the ticket cards and click **Burn** to start the AFK agents. That is the next step — I will stop here.
+
+On the self-planning path (§1a), the closing message also says that the plan was made without the human, how many decisions it holds, and which are to check first, by number and title. Then end the turn; the run is done.
 
 Do **not** start burning. Burn and Merge are the only two clicks in the whole pipeline, and both belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)
