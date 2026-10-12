@@ -68,6 +68,7 @@ import {
   burnWorktreePath,
   cleanupBurnWorktree,
   commitSummaries,
+  excludeBurnWorktrees,
   excludePath,
   headSha,
   mergeTempBranch,
@@ -4387,6 +4388,8 @@ async function burnTicket(
       await clearAttachments(burnWorktreePath(project.repoPath, branch), project.repoPath)
     }
   }
+  // Every burn, before its first worktree exists — and never taken back out.
+  await excludeBurnWorktrees(project.repoPath)
 
   // Shared by both prompts: a resolver spawned after the fact gets the SAME
   // ticket + feature + docs context the implementer had (the whole point — it

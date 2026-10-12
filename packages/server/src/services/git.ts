@@ -1207,6 +1207,27 @@ export function burnWorktreePath(repoPath: string, branch: string): string {
   return join(repoPath, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
 }
 
+/** The `info/exclude` line covering every {@link burnWorktreePath}. */
+const BURN_WORKTREES_PATTERN = '.sandcastle/worktrees/'
+
+/**
+ * Hide sandcastle's burn worktrees (see {@link burnWorktreePath}) from the
+ * project's own `git status`. Each one carries its own `.git` file, so left
+ * visible it shows up untracked and `git add -A` warns about an embedded
+ * repository. Called before anything creates one — a ticket burn and the
+ * review's gate run alike.
+ *
+ * Unlike the attachments line this one is PERMANENT — never `unexcludePath`ed:
+ * the directory is runcastle machinery for the life of the project, and a
+ * worktree preserved from a failed burn must stay hidden too. Only the
+ * `worktrees/` subdirectory: a project that dogfoods sandcastle tracks real
+ * files under `.sandcastle/` (its Dockerfile, prompts), and new ones beside them
+ * must stay visible. `info/exclude`, never `.gitignore` — that is the human's.
+ */
+export async function excludeBurnWorktrees(repoPath: string): Promise<void> {
+  await excludePath(repoPath, BURN_WORKTREES_PATTERN)
+}
+
 /**
  * Where git keeps this repo's `info/exclude`. Asked of git rather than
  * assembled, for two reasons: a linked worktree's `.git` is a FILE, not a
