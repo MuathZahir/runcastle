@@ -198,12 +198,16 @@ function sandboxModeFor(
  * - `[mcp_servers.runcastle]` is the same Streamable-HTTP server every Claude
  *   session gets, with session identity on the same `X-Runcastle-Session`
  *   header (`http_headers` is Codex's spelling of Claude's `headers`).
- *   `default_tools_approval_mode = "approve"` is the analogue of the Claude
- *   allow rules (`RUNCASTLE_MCP_ALLOW_RULES`): left at `auto`, Codex wants an
- *   approval for every tool that is not marked read-only, and under `never`
- *   that is a refusal — "MCP tool call requires approval, but approval policy
- *   is never" — on `get_feature_context`, `complete_phase` and `emit_tickets`
- *   alike. The server already gates each tool on the calling session's kind.
+ *   `default_tools_approval_mode = "approve"` pre-approves its tools, the
+ *   analogue of the Claude allow rules (`RUNCASTLE_MCP_ALLOW_RULES`): under
+ *   `approval_policy = "never"` Codex refuses any MCP call it would otherwise
+ *   ask about ("MCP tool call requires approval, but approval policy is
+ *   never"), which cut every worktree-scoped session — the headless
+ *   self-planning run and the chat resumed after it alike — off from
+ *   `get_feature_context`, `complete_phase` and `emit_tickets`. The variants
+ *   (`auto | prompt | writes | approve`) are pinned against codex-cli 0.155.1.
+ *   Only our own server is granted; the human's inherited servers keep theirs.
+ *   The server already gates each tool on the calling session's kind.
  */
 export function renderCodexConfig(input: CodexConfigInput): string {
   const { session, config, model, worktreePath, inheritedMcpServers, permissionMode } = input
