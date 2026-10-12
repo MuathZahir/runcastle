@@ -12,7 +12,7 @@ import {
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { burnWorktreePath, excludePath } from '../src/services/git'
+import { burnWorktreePath, excludeBurnWorktrees, excludePath } from '../src/services/git'
 import {
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
@@ -249,6 +249,43 @@ describe('burn attachments — preparing the workspace', () => {
     await clearAttachments(workspace, repo)
 
     expect(readFileSync(excludeFile, 'utf8')).toBe(untouched)
+  })
+
+  // The burn worktree itself — `.sandcastle/worktrees/<branch>`, with its own
+  // `.git` file — must not show up in the human's `git status`. Unlike the
+  // attachments line, this one is permanent.
+  it('hides the burn worktrees from the human`s checkout, and only them', async () => {
+    await excludeBurnWorktrees(repo)
+
+    expect(readFileSync(excludeFile, 'utf8').split('\n')).toContain('.sandcastle/worktrees/')
+    expect(await g.raw(['status', '--porcelain'])).toBe('')
+    // A real file beside the worktrees (a dogfooding project's Dockerfile)
+    // stays visible; and nothing touched the human's `.gitignore`.
+    writeFileSync(join(repo, '.sandcastle', 'Dockerfile'), 'FROM scratch\n')
+    expect(await g.raw(['status', '--porcelain'])).toBe('?? .sandcastle/\n')
+    expect(existsSync(join(repo, '.gitignore'))).toBe(false)
+  })
+
+  it('writes the burn-worktrees line once, however many burns run against one repo', async () => {
+    await excludeBurnWorktrees(repo)
+    await excludeBurnWorktrees(repo)
+    await Promise.all([excludeBurnWorktrees(repo), excludeBurnWorktrees(repo)])
+
+    const lines = readFileSync(excludeFile, 'utf8')
+      .split('\n')
+      .filter((l) => l === '.sandcastle/worktrees/')
+    expect(lines).toHaveLength(1)
+  })
+
+  it('keeps the burn-worktrees line through attachment cleanup, around the human`s own lines', async () => {
+    const before = '# the human`s own entries\r\nbuild/\r\nscratch.txt\n'
+    writeFileSync(excludeFile, before)
+
+    await excludeBurnWorktrees(repo)
+    await runWorkspacePrep(contextNaming(NOTE))
+    await clearAttachments(workspace, repo)
+
+    expect(readFileSync(excludeFile, 'utf8')).toBe(`${before}.sandcastle/worktrees/\n`)
   })
 
   it('prepares nothing, and fails nothing, when the promoted note`s PNG is gone', async () => {
