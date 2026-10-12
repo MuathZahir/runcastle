@@ -117,6 +117,7 @@ import { podman } from '@ai-hero/sandcastle/sandboxes/podman'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
 
 const ATTACHMENTS_PREFIX = `${ATTACHMENTS_DIR}/`
+const BURN_WORKTREES_PREFIX = '.sandcastle/worktrees/'
 
 /**
  * Ticket burner — WAVE B3 (SPEC §8), the AFK engine over `@ai-hero/sandcastle`
@@ -1818,6 +1819,23 @@ export function buildAttachmentCopyCommands(
 export async function clearAttachments(workspacePath: string, repoPath: string): Promise<void> {
   rmSync(join(workspacePath, ATTACHMENTS_DIR), { recursive: true, force: true })
   await unexcludePath(repoPath, ATTACHMENTS_PREFIX)
+}
+
+/**
+ * Hide sandcastle's burn worktrees (`.sandcastle/worktrees/<branch>`, see
+ * `burnWorktreePath`) from the project's own `git status`. Each one carries its
+ * own `.git` file, so left visible it shows up untracked and `git add -A` warns
+ * about an embedded repository.
+ *
+ * Unlike the attachments line this one is PERMANENT — never `unexcludePath`ed:
+ * the directory is runcastle machinery for the life of the project, and a
+ * worktree preserved from a failed burn must stay hidden too. Only the
+ * `worktrees/` subdirectory: a project that dogfoods sandcastle tracks real
+ * files under `.sandcastle/` (its Dockerfile, prompts), and new ones beside them
+ * must stay visible. `info/exclude`, never `.gitignore` — that is the human's.
+ */
+export async function excludeBurnWorktrees(repoPath: string): Promise<void> {
+  await excludePath(repoPath, BURN_WORKTREES_PREFIX)
 }
 
 /**
@@ -4387,6 +4405,8 @@ async function burnTicket(
       await clearAttachments(burnWorktreePath(project.repoPath, branch), project.repoPath)
     }
   }
+  // Every burn, before its first worktree exists — and never taken back out.
+  await excludeBurnWorktrees(project.repoPath)
 
   // Shared by both prompts: a resolver spawned after the fact gets the SAME
   // ticket + feature + docs context the implementer had (the whole point — it
