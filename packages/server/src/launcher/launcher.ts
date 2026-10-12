@@ -539,9 +539,12 @@ export async function launchSession(
     // text comes first so it remains the immediate task, followed by current
     // feature state rather than the state captured on the previous turn. A
     // self-planning run opens on its own sentence: nobody is there to grill.
-    const header = selfPlan
-      ? chatKickoffHeader(ctx, feature, runtime.id, selfPlanKickoffFor(runtime.id))
-      : chatKickoffHeader(ctx, feature, runtime.id)
+    const header = chatKickoffHeader(
+      ctx,
+      feature,
+      runtime.id,
+      selfPlan ? selfPlanKickoffFor(runtime.id) : undefined,
+    )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
 
