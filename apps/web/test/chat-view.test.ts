@@ -170,6 +170,12 @@ describe('FeatureChat', () => {
     })
   }
 
+  it('never attaches a terminal to a live self-planning run, and says it is planning itself', () => {
+    const out = tab([session({ id: 'sess_self', purpose: 'self-plan' })])
+    expect(out).not.toContain('data-terminal')
+    expect(out).toContain('This feature is planning itself.')
+  })
+
   it('with nothing live, reads back the chat transcript over Resume', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
     expect(out).toContain('Chat · lap 2')

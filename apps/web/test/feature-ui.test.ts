@@ -625,10 +625,12 @@ describe('nextStep — live sessions go status-only', () => {
     expect(kinds(ns)).toEqual([undefined, 'chat', 'merge'])
   })
 
-  it('offers only the session door once planning is idle', () => {
+  // Plan it yourself sits beside the first session (features-plan-themselves
+  // decision 12) — the one other way into it, not a second chat door.
+  it('offers only the session door, and Plan it yourself, once planning is idle', () => {
     const ns = nextStep(auditFull({}), { driving: false })
     expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
-    expect(ns.secondary).toEqual([MERGE_ACTION])
+    expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }, MERGE_ACTION])
   })
 
   it('says Resume on the idle primary when the conversation survives', () => {

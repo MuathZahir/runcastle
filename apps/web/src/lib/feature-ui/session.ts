@@ -19,6 +19,15 @@ export function featureChat(sessions: FeatureFull['sessions']): FeatureFull['ses
 }
 
 /**
+ * A self-planning run (features-plan-themselves decision 9): the feature's chat
+ * launched headless, with no terminal to attach and nobody to answer it. The
+ * bar, the Chat tab and the Chat door all key on this one reading.
+ */
+export function isSelfPlanRun(session: Pick<FeatureFull['sessions'][number], 'kind' | 'purpose'>): boolean {
+  return session.kind === 'chat' && session.purpose === 'self-plan'
+}
+
+/**
  * The Chat tab strip's context line for whichever session is live
  * (decision 9): "Chat · lap 2", "Drive fix".
  */

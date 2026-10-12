@@ -3,7 +3,8 @@ import { hasResumable } from '../internal'
 import { burnLabel } from '../laps'
 import { sessionAgentName } from '../../vocabulary'
 import { burnWarningLine } from './burn-warnings'
-import { CHAT_ACTION } from './chat'
+import { isSelfPlanRun } from '../session'
+import { CHAT_ACTION, SELF_PLAN_ACTION } from './chat'
 import type { NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
 
@@ -68,6 +69,20 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   const facts = planningFacts(input)
   const missing = facts.hasTickets ? null : nextPlanningStep(facts)
 
+  // A self-planning run has no terminal and nobody to talk to (features-plan-
+  // themselves decision 11): the bar says it is working and offers the one
+  // thing the human can do to it. Built outside `step()`, which would put the
+  // Chat door in front — and a chat launch is refused while the run is live.
+  if (live && isSelfPlanRun(live))
+    return {
+      kick: 'PLANNING ITSELF',
+      title: 'Planning itself',
+      desc: 'No terminal to watch; the plan appears below as it is written.',
+      primary: { label: 'Stop', kind: 'stopSelfPlan' },
+      secondary: [],
+      busy: true,
+    }
+
   // Tickets land before the session is done with them: it emits placeholder
   // contexts and enriches each afterwards, so the ledger on screen is not yet
   // what a burn would run. `complete_phase("tickets")` stamps the lap when the
@@ -79,6 +94,18 @@ export function resolvePlanning(input: ResolverInput): NextStep {
       'Finishing the tickets',
       'The session is finishing the tickets — enriching them, then closing out this lap’s planning. Burn arms the moment it does.',
       undefined,
+      [mergeAction],
+    )
+
+  // The run ended — by itself or by Stop — before it completed the tickets
+  // step (decisions 3, 11). Derived, not stored: the chat it offers makes a
+  // newer session of this lap, and the ordinary bars return.
+  if (!live && feature.ticketsReadyLap !== feature.lap && stoppedShort(sessions, feature.lap))
+    return step(
+      'STOPPED',
+      'Planning stopped before the plan was complete',
+      'Chat picks up what it had done.',
+      { label: 'Resume session', kind: 'chat' },
       [mergeAction],
     )
 
@@ -145,9 +172,9 @@ export function resolvePlanning(input: ResolverInput): NextStep {
         : step(
             'NEXT STEP',
             'Shape the idea with the agent',
-            'Start a session: the agent asks about the idea until it is concrete enough to write up, and every decision lands in the pane on the left.',
+            'Start a session: the agent asks about the idea until it is concrete enough to write up, and every decision lands in the pane on the left. Or let it plan by itself, through spec and tickets.',
             { label: 'Start session', kind: 'chat' },
-            [mergeAction],
+            [SELF_PLAN_ACTION, mergeAction],
           )
     case 'spec':
       return step(
@@ -184,6 +211,15 @@ function planningFacts(input: ResolverInput): PlanningArtifactFacts {
     hasSpec: onDisk('spec.md'),
     hasTickets: input.pending > 0,
   }
+}
+
+/**
+ * This lap's newest chat is a self-planning run that has ended. Sessions arrive
+ * oldest first, as `featureChat` reads them.
+ */
+function stoppedShort(sessions: ResolverInput['full']['sessions'], lap: number): boolean {
+  const latest = sessions.filter((session) => session.kind === 'chat' && session.lap === lap).at(-1)
+  return !!latest && latest.status === 'ended' && isSelfPlanRun(latest)
 }
 
 /** Resume the conversation that is on disk, or open a fresh one. */

@@ -25,3 +25,12 @@ import type { NextAction } from './types'
  * sending the panel away is not ending the conversation.
  */
 export const CHAT_ACTION: NextAction = { label: 'Chat', kind: 'chat' }
+
+/**
+ * The other way into a feature's first planning session (features-plan-themselves
+ * decisions 5 and 12): the session plans by itself, headless, through spec and
+ * tickets. Offered beside the grill wherever that session is first opened — a
+ * draft's Start and a started feature's first Start session — and never in its
+ * place, so the main button keeps meaning the grill.
+ */
+export const SELF_PLAN_ACTION: NextAction = { label: 'Plan it yourself', kind: 'selfPlan' }
