@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   chooseBackend,
@@ -211,7 +212,55 @@ describe.skipIf(!AVAILABLE)('createSidecarPtySession (node sidecar backend)', ()
     },
     20000,
   )
+
+  // End session on win32 tree-kills the HOST first, then sends the `kill` frame
+  // as a backstop — into the stdin of a host already dead but whose `exit` has
+  // not been delivered yet. That write fails asynchronously (EPIPE), and with
+  // nothing listening for it the error took the whole server down. Reproduced
+  // here by killing the host out from under the session the same way.
+  it.skipIf(process.platform !== 'linux')(
+    'survives writing to a host that died before its exit was delivered',
+    async () => {
+      const p = createSidecarPtySession(SHELL, idleArgs(), baseOpts)
+      const exit = new Promise<void>((resolve) => p.onExit(() => resolve()))
+      await delay(600)
+      const hostPid = parentPid(p.pid)
+      process.kill(hostPid, 'SIGKILL')
+      // Spin, not poll: a timer turn would let the host's `exit` be delivered, and
+      // the writes below must land while the host is dead but not yet reaped.
+      while (!isZombieOrGone(hostPid)) {}
+      p.write('echo late\n')
+      p.kill()
+      await exit
+      await delay(200)
+      expect(p.killed).toBe(true)
+    },
+    20000,
+  )
 })
+
+/** The parent of `pid`, read from `/proc` (linux only). */
+function parentPid(pid: number): number {
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1])
+}
+
+/**
+ * True once `pid` has exited and released its fds (a zombie awaiting its reap
+ * counts). The leader turns `Z` while its other threads are still exiting, and
+ * the shared fd table — the host's stdin — closes only with the last of them.
+ */
+function isZombieOrGone(pid: number): boolean {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return (
+      stat.slice(stat.lastIndexOf(')') + 2).startsWith('Z') &&
+      readdirSync(`/proc/${pid}/task`).length === 1
+    )
+  } catch {
+    return true
+  }
+}
 
 describe('chooseBackend', () => {
   it.each(['linux', 'darwin', 'win32'] as const)('picks the sidecar for any Bun runtime (%s)', (platform) => {
