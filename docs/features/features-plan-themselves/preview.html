@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features plan themselves preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.cap{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lane{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px 16px;background:var(--color-surface-inset)}
+.lane h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:10px}
+.steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.step{padding:3px 9px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);white-space:nowrap}
+.step.you{border-color:var(--color-phase-ideation);color:var(--color-text)}
+.step.run{border-color:var(--color-phase-planning);color:var(--color-text)}
+.step.go{background:var(--color-primary);color:var(--color-on-primary);border-color:var(--color-primary)}
+.arr{color:var(--color-text-disabled)}
+.lane .hint{margin-top:10px}
+.key{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+.key span{display:inline-flex;align-items:center;gap:6px;color:var(--color-text-tertiary);font-size:12px}
+.sw{width:10px;height:10px;border-radius:3px;border:1px solid var(--color-border-strong)}
+.sw.you{border-color:var(--color-phase-ideation)}.sw.run{border-color:var(--color-phase-planning)}
+
+/* mocked feature page (runcastle's own look) */
+.fp-head{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+.fp-title{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.chip{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:999px;background:var(--color-surface-inset);color:var(--color-text-secondary);font-size:12px}
+.chip i{width:6px;height:6px;border-radius:999px;background:var(--color-phase-planning)}
+.chip.draft i{background:var(--color-text-disabled)}
+.nsr{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 16px;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.nsr .say{flex:1;min-width:200px;color:var(--color-text-secondary)}
+.nsr .say b{color:var(--color-text);font-weight:500}
+.btn{height:28px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);color:var(--color-text);background:var(--color-surface);font-weight:500}
+.btn.pri{background:var(--color-primary);color:var(--color-on-primary);border-color:var(--color-primary)}
+.btn.off{color:var(--color-text-disabled);border-color:var(--color-border)}
+.spin{width:10px;height:10px;border-radius:999px;border:2px solid var(--color-border-strong);border-top-color:var(--color-accent);animation:sp 1s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.fp-body{padding:14px 16px 16px;display:grid;gap:8px}
+.row{display:flex;align-items:center;gap:10px;min-height:30px;padding:0 10px;border:1px solid var(--color-border-subtle);border-radius:var(--radius-md);color:var(--color-text-secondary)}
+.row .r{margin-left:auto;color:var(--color-text-tertiary);font-size:12px}
+.row.wait{color:var(--color-text-disabled)}
+.pv{border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}
+.pv-h{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary)}
+.pv-h .r{margin-left:auto;color:var(--color-text-tertiary);font-size:12px}
+.pv-b{padding:10px;background:var(--color-surface-inset);display:grid;gap:6px}
+.note{margin:0 16px 14px;color:var(--color-text-tertiary);font-size:12px}
+[data-state]{display:none}
+[data-state].on{display:block}
+
+/* check-first mock */
+.cf{padding:14px 16px 16px}
+.cf h3{margin-bottom:2px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;color:var(--color-text);font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px}
+.cf-rest{margin-top:12px;border-top:1px solid var(--color-border-subtle)}
+.cf-rest div{display:flex;align-items:center;gap:10px;min-height:32px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-secondary)}
+.cf-rest .tag{margin-left:auto}
+.n{display:inline-grid;place-items:center;min-width:18px;height:18px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font:500 11px/1 var(--font-mono)}
+
+/* bars */
+.bars{display:grid;gap:8px;margin-top:4px}
+.bar{display:grid;grid-template-columns:230px 1fr 52px;align-items:center;gap:10px;color:var(--color-text-secondary)}
+.bar .track{height:10px;border-radius:999px;background:var(--color-surface-inset);overflow:hidden}
+.bar .fill{height:100%;border-radius:999px;background:var(--color-text-disabled)}
+.bar.good .fill{background:var(--color-success)}.bar.bad .fill{background:var(--color-danger)}.bar.you .fill{background:var(--color-phase-ideation)}
+.bar b{font:500 12px/1 var(--font-mono);color:var(--color-text);text-align:right}
+.md{margin:0;padding:12px 14px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface-inset);font:12px/19px var(--font-mono);color:var(--color-text-secondary);white-space:pre-wrap}
+.md em{font-style:normal;color:var(--color-warning)}
+.md strong{color:var(--color-text);font-weight:500}
+.cli{display:grid;grid-template-columns:140px 1fr 1fr;border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden}
+.cli > div{padding:7px 12px;border-bottom:1px solid var(--color-border-subtle);display:flex;align-items:center;gap:8px;color:var(--color-text-secondary)}
+.cli > div:nth-last-child(-n+3){border-bottom:0}
+.cli .h{color:var(--color-text);font-weight:500;background:var(--color-surface-inset)}
+.cli .k{color:var(--color-text-tertiary);font-size:12px}
+@media (max-width:760px){
+  .two{grid-template-columns:1fr}.bar{grid-template-columns:1fr 60px 36px}.cli{grid-template-columns:1fr}
+  .cli > div:nth-last-child(-n+3){border-bottom:1px solid var(--color-border-subtle)}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Features plan themselves</h1>
+  <p class="lede">Beside Start there is a second choice, "Plan it yourself". The feature then makes its own plan with nobody answering questions, and you come back to a preview and a Burn button. To change the plan, you open the chat and it is the grill you know.</p>
+  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span class="mono">docs/features/features-plan-themselves/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>Your time, before and after</h3>
+    <p class="hint">Pink is you. Teal runs without you.</p>
+    <div class="two">
+      <div class="lane">
+        <h3>Start (today, unchanged) <a class="pin" data-d="12">12</a></h3>
+        <div class="steps">
+          <span class="step you">Start</span><span class="arr">→</span>
+          <span class="step you">question 1</span><span class="arr">→</span>
+          <span class="step you">question 2</span><span class="arr">→</span>
+          <span class="step you">… about 8</span><span class="arr">→</span>
+          <span class="step you">look at preview</span><span class="arr">→</span>
+          <span class="step run">spec, tickets</span><span class="arr">→</span>
+          <span class="step go">Burn</span>
+        </div>
+        <p class="hint">You wait between every turn.</p>
+      </div>
+      <div class="lane">
+        <h3>Plan it yourself (new) <a class="pin" data-d="5">5</a></h3>
+        <div class="steps">
+          <span class="step you">Plan it yourself</span><span class="arr">→</span>
+          <span class="step run">rounds</span><span class="arr">→</span>
+          <span class="step run">one challenger</span><span class="arr">→</span>
+          <span class="step run">preview, spec, tickets</span><span class="arr">→</span>
+          <span class="step you">look</span><span class="arr">→</span>
+          <span class="step go">Burn</span>
+        </div>
+        <p class="hint">One click, then you walk away. <a class="pin" data-d="10">10</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <div class="cap">
+      <div><h3>The feature page</h3><p class="hint">Switch between the four things it can say.</p></div>
+      <div class="seg" role="group" aria-label="Page state" id="fp-seg">
+        <button data-go="choose" aria-pressed="true">The choice</button>
+        <button data-go="running" aria-pressed="false">Planning itself</button>
+        <button data-go="done" aria-pressed="false">Done</button>
+        <button data-go="stopped" aria-pressed="false">Stopped short</button>
+      </div>
+    </div>
+<!-- screen:planning-next-step -->
+    <div class="screen">
+      <div data-state="choose" class="on">
+        <div class="fp-head"><span class="fp-title">Export notes as PDF</span><span class="chip draft"><i></i>Draft</span></div>
+        <div class="nsr">
+          <span class="say"><b>Not started.</b> Start opens the grill with you. Plan it yourself makes the plan without you.</span>
+          <button class="btn pri">Start</button> <a class="pin" data-d="12">12</a>
+          <button class="btn">Plan it yourself</button> <a class="pin" data-d="5">5</a>
+        </div>
+        <p class="note" style="margin-top:10px">The same two choices appear on a started feature with nothing planned yet, in place of the first Chat click.</p>
+      </div>
+      <div data-state="running">
+        <div class="fp-head"><span class="fp-title">Export notes as PDF</span><span class="chip"><i></i>Planning</span></div>
+        <div class="nsr">
+          <i class="spin"></i>
+          <span class="say"><b>Planning itself.</b> No terminal to watch; the plan appears below as it is written. <a class="pin" data-d="9">9</a></span>
+          <button class="btn">Stop</button> <a class="pin" data-d="11">11</a>
+          <button class="btn off" disabled>Chat</button>
+        </div>
+        <div class="fp-body">
+          <div class="row"><i class="dot ok"></i>decisions.md<span class="r">9 decisions so far</span></div>
+          <div class="row wait"><i class="dot"></i>Preview<span class="r">not yet</span></div>
+          <div class="row wait"><i class="dot"></i>Spec<span class="r">not yet</span></div>
+          <div class="row wait"><i class="dot"></i>Tickets<span class="r">not yet</span></div>
+        </div>
+        <p class="note">In the feature list this feature shows the existing "Working" chip.</p>
+      </div>
+      <div data-state="done">
+        <div class="fp-head"><span class="fp-title">Export notes as PDF</span><span class="chip"><i></i>Planning</span></div>
+        <div class="nsr">
+          <span class="say"><b>Ready to burn.</b> 3 tickets.</span>
+          <button class="btn pri">Burn</button> <a class="pin" data-d="10">10</a>
+          <button class="btn">Chat</button> <a class="pin" data-d="9">9</a>
+        </div>
+        <div class="fp-body">
+          <div class="pv">
+            <div class="pv-h">Preview<span class="r">updated 2m ago · Open full window</span></div>
+            <div class="pv-b">
+              <div class="row"><i class="dot" style="background:var(--color-warning)"></i>Check first: 4 decisions <a class="pin" data-d="8">8</a></div>
+              <div class="row"><i class="dot"></i>11 more decisions, each marked assumed <a class="pin" data-d="7">7</a></div>
+            </div>
+          </div>
+          <div class="row"><i class="dot ok"></i>1 · PDF layout and page breaks</div>
+          <div class="row"><i class="dot ok"></i>2 · Export action on a note</div>
+          <div class="row"><i class="dot ok"></i>3 · Export several notes at once</div>
+        </div>
+        <p class="note">The ordinary planning page, nothing added. Chat resumes the planning conversation in the normal terminal.</p>
+      </div>
+      <div data-state="stopped">
+        <div class="fp-head"><span class="fp-title">Export notes as PDF</span><span class="chip"><i></i>Planning</span></div>
+        <div class="nsr">
+          <span class="say"><b>Planning stopped before the plan was complete.</b> Chat picks up what it had done.</span>
+          <button class="btn pri">Chat</button> <a class="pin" data-d="11">11</a>
+        </div>
+        <div class="fp-body">
+          <div class="row"><i class="dot ok"></i>decisions.md<span class="r">9 decisions</span></div>
+          <div class="row wait"><i class="dot"></i>Preview, spec, tickets<span class="r">not written</span></div>
+        </div>
+        <p class="note">Shown after you press Stop, and when a run ends early by itself. Nothing sends it back to work. <a class="pin" data-d="3">3</a></p>
+      </div>
+    </div>
+<!-- /screen:planning-next-step -->
+  </div>
+
+  <div class="sub">
+    <h3>What you read when you come back</h3>
+    <p class="hint">The decisions part of a self-made plan's preview. Example content.</p>
+<!-- screen:check-first-decisions -->
+    <div class="screen">
+      <div class="cf">
+        <h3>Check first <a class="pin" data-d="8">8</a></h3>
+        <p class="hint">At most five. The ones most likely to be wrong for you.</p>
+        <div class="cf-item">
+          <div class="t"><span class="n">1</span>The PDF is made in the browser, with no server<span class="tag">forces 4 others</span></div>
+          <dl><dt>Alternative</dt><dd>A server renders it, which allows custom fonts and exact page breaks.</dd>
+          <dt>Why unsure</dt><dd>The brief says "export" and nothing about fidelity.</dd></dl>
+        </div>
+        <div class="cf-item">
+          <div class="t"><span class="n">6</span>Images are embedded at full size<span class="tag">challenged</span></div>
+          <dl><dt>Alternative</dt><dd>Downscale to keep files small.</dd>
+          <dt>Why unsure</dt><dd>The challenger expects large notes to produce files too big to email.</dd></dl>
+        </div>
+        <div class="cf-rest">
+          <div><span class="n">2</span>One note per file by default<span class="tag">assumed</span></div>
+          <div><span class="n">3</span>The file is named after the note's title<span class="tag">assumed</span></div>
+          <div><span class="n">4</span>Tags and dates are left out of the PDF<span class="tag">assumed</span> <a class="pin" data-d="7">7</a></div>
+        </div>
+      </div>
+    </div>
+<!-- /screen:check-first-decisions -->
+  </div>
+
+  <div class="sub">
+    <h3>How the plan gets made</h3>
+    <p class="hint">One turn. Nothing replies between rounds. <a class="pin" data-d="1">1</a> <a class="pin" data-d="3">3</a></p>
+    <div class="lane">
+      <div class="steps">
+        <span class="step run">Round 1 · every question it can ask now</span><span class="arr">→</span>
+        <span class="step run">Round 2 · what those opened</span><span class="arr">→</span>
+        <span class="step run">Round 3 · …</span><span class="arr">→</span>
+        <span class="step">Challenger · once</span><span class="arr">→</span>
+        <span class="step run">One more round · its branches</span><span class="arr">→</span>
+        <span class="step run">Preview · spec · tickets</span>
+      </div>
+      <p class="hint">Rounds <a class="pin" data-d="2">2</a> · the challenger sees only the brief and the decisions <a class="pin" data-d="4">4</a> · only decisions you might overturn are recorded <a class="pin" data-d="6">6</a></p>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What the hand runs showed</h3>
+    <p class="hint">Decisions made for one toy feature ("share a note"). Two runs per row where a range is shown. Bars show the higher figure.</p>
+    <div class="bars">
+      <div class="bar you"><span>You grill (median, your features)</span><span class="track"><span class="fill" style="width:16%;display:block"></span></span><b>8</b></div>
+      <div class="bar bad"><span>Planner alone, no depth rule</span><span class="track"><span class="fill" style="width:98%;display:block"></span></span><b>38–49</b></div>
+      <div class="bar good"><span>Planner with the depth rule <a class="pin" data-d="6">6</a></span><span class="track"><span class="fill" style="width:50%;display:block"></span></span><b>13–25</b></div>
+      <div class="bar good"><span>…after one challenger pass <a class="pin" data-d="4">4</a></span><span class="track"><span class="fill" style="width:68%;display:block"></span></span><b>19–34</b></div>
+      <div class="bar bad"><span>Challenger "until it finds nothing"</span><span class="track"><span class="fill" style="width:88%;display:block"></span></span><b>44+</b></div>
+    </div>
+    <p class="hint" style="margin-top:10px">The last run was on its tenth challenger when it was stopped by hand. <code class="mono">/goal</code> never agreed its run was finished. The run with nothing driving it finished cleanly. <a class="pin" data-d="3">3</a></p>
+  </div>
+
+  <div class="sub">
+    <div class="two">
+      <div>
+        <h3>A self-made decision on the record <a class="pin" data-d="7">7</a></h3>
+        <p class="hint" style="margin:2px 0 10px">The mark goes when you confirm or change it in the chat.</p>
+<pre class="md"><strong>## 4. Tags and dates are left out of the PDF</strong>
+<strong>Decision:</strong> The PDF carries the title and body only.
+<strong>Why:</strong> The brief asks for the note, not its filing.
+<em>Assumed.</em> Alternative: a small footer with tags
+and the last-edited date.</pre>
+      </div>
+      <div>
+        <h3>Both CLIs, in lap 1 <a class="pin" data-d="9">9</a></h3>
+        <p class="hint" style="margin:2px 0 10px">Tried by hand on the toy feature.</p>
+        <div class="cli">
+          <div class="h"></div><div class="h">Claude Code</div><div class="h">Codex</div>
+          <div class="k">Plans headless</div><div><i class="dot ok"></i>yes</div><div><i class="dot ok"></i>yes</div>
+          <div class="k">Can wait on a prompt</div><div><i class="dot ok"></i>no</div><div><i class="dot ok"></i>no</div>
+          <div class="k">Resumes with context</div><div><i class="dot ok"></i>yes</div><div><i class="dot ok"></i>yes</div>
+          <div class="k">Opens in the terminal</div><div><i class="dot"></i>not tried</div><div><i class="dot"></i>not tried</div>
+          <div class="k">Challenger tool</div><div>Agent</div><div>spawn_agent, must be named</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>Plans that start with nobody on the page, so a whole cut plans itself</li>
+      <li><i class="dot"></i>What a feature waiting on a sibling does</li>
+      <li><i class="dot"></i>Something that sends a run back to work, only if runs stop early</li>
+      <li><i class="dot"></i>Making "Plan it yourself" the default</li>
+      <li><i class="dot"></i>Self-planning a lap that is planned from review</li>
+      <li><i class="dot"></i>"Plan the rest yourself" said in the middle of a grill</li>
+      <li><i class="dot"></i>A time limit on a run</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The preview's form and its place on the page (Plan preview owns them)</li>
+      <li><i class="dot"></i>Burning, judging a lap, merging or starting drafts without you</li>
+      <li><i class="dot"></i>The project session answering design questions</li>
+      <li><i class="dot"></i>The charter change; the project session writes that record</li>
+      <li><i class="dot"></i>Batched questions to you; your grill stays one at a time</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="lane">
+        <h3>One launch, two ways to run it</h3>
+        <div class="steps">
+          <span class="step">same briefing, skill pack, guards, tools</span><span class="arr">→</span>
+          <span class="step you">terminal (grill)</span><span class="arr">or</span>
+          <span class="step run">headless: <span class="mono">claude -p</span> · <span class="mono">codex exec</span></span><span class="arr">→</span>
+          <span class="step">same conversation record</span><span class="arr">→</span>
+          <span class="step you">Chat resumes it by id</span>
+        </div>
+        <p class="hint">The headless run is recorded as the feature's chat session, so the existing resume finds it.</p>
+      </div>
+    </div>
+    <div class="sub">
+      <div class="two">
+        <div class="lane">
+          <h3>Skill pack</h3>
+          <div class="row"><i class="dot live"></i>ideate: a section for planning with no human</div>
+          <div class="row" style="margin-top:6px"><i class="dot live"></i>preview rules: the "check first" group</div>
+          <div class="row" style="margin-top:6px"><i class="dot live"></i>the challenger named per CLI</div>
+        </div>
+        <div class="lane">
+          <h3>Server and page</h3>
+          <div class="row"><i class="dot live"></i>launch a planning session headless, on either CLI</div>
+          <div class="row" style="margin-top:6px"><i class="dot live"></i>Stop, and "stopped short" when a run exits early</div>
+          <div class="row" style="margin-top:6px"><i class="dot live"></i>the second choice beside Start and first Chat</div>
+        </div>
+      </div>
+    </div>
+    <div class="sub">
+      <h3>Checked first in the build</h3>
+      <p class="hint" style="margin:2px 0 10px">Not reachable by hand from the planning session. If either fails, the build stops there.</p>
+      <div class="row"><i class="dot"></i>A headless session opens in the interactive terminal, on Claude Code and on Codex</div>
+      <div class="row" style="margin-top:6px"><i class="dot"></i>Codex plans headless inside the session home runcastle generates (its hooks, skills and tools)</div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason]
+  var D = [
+    ['The planner grills itself in one turn and its own recommendations are the answers', 'A reply that is always "yes" carries no information, so nothing needs to send it. The run that got no replies planned as well as the runs that did.'],
+    ['Questions are asked a whole frontier at a time', 'You asked for it. One question per turn spares a human reader, and there is none here. The rounds leave what was considered on the record.'],
+    ['Nothing drives a loop in lap 1', 'The driver was the only part that failed in the hand runs, and it failed by spending tokens. With none, a run that ends early just stops, and you carry on in the chat.'],
+    ['Exactly one challenger pass', 'The first pass found real gaps. A rule that it must find nothing never held: one run reached its tenth challenger with the list more than tripled.'],
+    ['Thin lap 1: the human chooses self-planning with a click, per feature', 'The unknown is whether a self-made plan is good enough to approve by looking. One click per feature shows that before a whole cut spends tokens on it.'],
+    ['A depth rule keeps the decision list readable', 'Left alone the planner made 38 and 49 decisions for a toy feature, against a median of 8 when you grill. With one sentence of this rule it made 13 and 25.'],
+    ['Every self-made decision is marked assumed and names its alternative', 'The record shows who decided, and overturning one costs you a sentence in the chat because the other option is already written down.'],
+    ['At most five decisions to check first', 'So you can approve a plan by reading the show and five decisions. Fewer risks hiding a real one; more reads like the grill again.'],
+    ['Self-planning runs headless, and the chat resumes the same conversation', 'You proposed it. A headless run cannot sit on a permission prompt, and it ends, so finished and stopped early are facts. The cost: you cannot watch its turns.'],
+    ['A self-planned feature goes all the way to Burn without waiting', 'Settled in the project session. Waiting at the preview would put you back in the middle of planning. The cost: tickets written on an assumption are rewritten if you overturn it.'],
+    ['The page says the feature is planning itself, and offers Stop', 'You are told three things and no more: it is working, it is done, or it stopped short. A finished plan is read through the preview.'],
+    ['Start still means a grill; "Plan it yourself" sits beside it', 'Runcastle is published and other people use Start. The default flips only after your test drives show self-made plans hold up.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    list.appendChild(el)
+  })
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the feature-page figure: one state visible at a time
+  $('#fp-seg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-go]')
+    if (!b) return
+    $$('button', this).forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    $$('[data-state]').forEach(function (s) { s.classList.toggle('on', s.dataset.state === b.dataset.go) })
+  })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
