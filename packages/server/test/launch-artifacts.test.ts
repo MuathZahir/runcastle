@@ -35,6 +35,7 @@ import {
   codexHomeDir,
   codexRuntime,
   mcpServerTables,
+  renderCodexConfig,
   renderCodexHooks,
 } from '../src/launcher/runtimes/codex'
 import { MAX_KICKOFF_ARGV } from '../src/launcher/runtimes/types'
@@ -1057,7 +1058,12 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('model = "gpt-5.6-sol"')
     // the `--permission-mode acceptEdits` analogue: writes inside the worktree
     // without prompting — a dialog blocks BEFORE SessionStart, stranding the session
-    expect(toml).toContain('sandbox_mode = "workspace-write"')
+    // (win32 is the one unsandboxed case — pinned by its own test below)
+    expect(toml).toContain(
+      process.platform === 'win32'
+        ? 'sandbox_mode = "danger-full-access"'
+        : 'sandbox_mode = "workspace-write"',
+    )
     expect(toml).toContain('approval_policy = "never"')
     expect(toml).toContain(
       'approval_policy = "never"\ncheck_for_update_on_startup = false\n\n[features]',
@@ -1069,6 +1075,28 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('[mcp_servers.runcastle]')
     expect(toml).toContain('url = "http://localhost:4512/mcp"')
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }')
+  })
+
+  it('runs an unattended session unsandboxed on win32, where workspace-write degrades to read-only', () => {
+    const render = (platform: NodeJS.Platform, permissionMode?: string) =>
+      renderCodexConfig({
+        session: session({ id: 'sess_codex_self_plan', kind: 'chat' }),
+        config,
+        model: 'gpt-5.6-terra',
+        worktreePath: worktree,
+        platform,
+        ...(permissionMode ? { permissionMode } : {}),
+      })
+
+    // Codex enforces workspace-write on Windows only through a sandbox setup a
+    // generated home never ran; a `never` session there could write nothing.
+    expect(render('win32')).toContain('sandbox_mode = "danger-full-access"')
+    expect(render('win32', 'acceptEdits')).toContain('sandbox_mode = "danger-full-access"')
+    // a session that asks keeps the sandbox: a blocked write is a question
+    expect(render('win32', 'default')).toContain('sandbox_mode = "workspace-write"')
+    // elsewhere the sandbox enforces itself and nothing changes
+    expect(render('linux')).toContain('sandbox_mode = "workspace-write"')
+    expect(render('darwin')).toContain('sandbox_mode = "workspace-write"')
   })
 
   it('pre-approves runcastle\'s own tools, so a session that never asks can still call them', async () => {
@@ -1131,7 +1159,7 @@ describe('codexRuntime.writeArtifacts', () => {
     // prompting policy config.toml still accepts, so the same session on a Codex
     // model asks too. Not `untrusted`: the CLI now rejects it on config load.
     expect(projected).toContain('approval_policy = "on-request"')
-    // only the approval gate moves; the sandbox is the same one every kind runs in
+    // the sandbox stays on for a session that asks, on every platform
     expect(projected).toContain('sandbox_mode = "workspace-write"')
 
     // a worktree-scoped kind keeps the acceptEdits analogue: it writes inside its
