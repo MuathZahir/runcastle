@@ -733,9 +733,35 @@ describe('buildClaudeArgs', () => {
       }),
     ).toThrow(/maximum/)
   })
+
+  it('runs a headless launch in print mode with the kickoff as its prompt, never resuming', () => {
+    const base = {
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+    }
+    const kickoffLine = 'Plan this feature with no human present.'
+    const args = buildClaudeArgs({ ...base, kickoffLine, resumeSessionId: 'cc-42', headless: true })
+    expect(args).toContain('-p')
+    expect(args).not.toContain('--resume')
+    expect(args.at(-1)).toBe(kickoffLine)
+    // The same flags as the interactive launch, plus print mode.
+    expect(args.filter((a) => a !== '-p')).toEqual(buildClaudeArgs({ ...base, kickoffLine }))
+    expect(() => buildClaudeArgs({ ...base, headless: true })).toThrow(/kickoff/)
+  })
 })
 
 describe('buildCodexArgs', () => {
+  it('runs a headless launch as `exec` with the kickoff as its prompt, never resuming', () => {
+    const kickoffLine = 'Plan this feature with no human present.'
+    expect(buildCodexArgs({ kickoffLine, resumeSessionId: 'thread-42', headless: true })).toEqual([
+      'exec', '--dangerously-bypass-hook-trust', kickoffLine,
+    ])
+    expect(() => buildCodexArgs({ headless: true })).toThrow(/kickoff/)
+  })
+
   it('keeps the trust flag and appends a fresh kickoff verbatim', () => {
     const kickoffLine = `Invoke "the skill" and preserve the user's words.`
     const args = buildCodexArgs({ kickoffLine })
