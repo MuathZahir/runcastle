@@ -78,7 +78,9 @@ export function shippedAt(events: EventRow[]): number | null {
  * The one line a live session gets on Overview, in every state
  * (one-chat-layout-everywhere decision 7): "● Chat live · lap 2", with Open
  * chat — which switches to the Chat tab, where every session kind lives — and
- * End session. An ended session says nothing.
+ * End session. An ended session says nothing, and neither does a self-planning
+ * run: it is no chat to open, and the bar above already says it is planning
+ * itself with Stop as its one control (features-plan-themselves decision 11).
  */
 export interface LiveSessionLine {
   sessionId: string
@@ -88,7 +90,7 @@ export interface LiveSessionLine {
 
 export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
   const live = activeSession(sessions)
-  if (!live) return null
+  if (!live || isSelfPlanRun(live)) return null
   return { sessionId: live.id, text: `${sessionKindName(live)} live · lap ${live.lap}` }
 }
 
