@@ -48,3 +48,10 @@
 ## 12. Start still means a grill; "Plan it yourself" sits beside it
 **Decision:** Wherever a feature's planning session is first opened, the existing action keeps its meaning: it opens the grill with the human. Self-planning is a second option beside it. The default flips only after the human's test drives show self-made plans hold up.
 **Why:** Runcastle is published and other people use Start. Changing what the main button does, to a mode whose plans have not been judged yet, would spend their tokens on something they did not ask for.
+
+## Revisited 2026-10-12
+
+## 13. The feature merges after lap 1, and the deferred scope is its own draft
+**Decision:** There is no lap 2. The feature merges as lap 1 left it. Everything the spec had deferred to later laps is parked as the draft feature "Whole cuts plan themselves" (`whole-cuts-plan-themselves`), which waits on this feature's merge. The observations lap 1's reviews left open ride in that draft's brief too, since none was a defect and none blocks the merge.
+**Why:** The human asked for it after the review. Lap 1 does what it set out to do on both CLIs, and its five defects were fixed and verified in the same run. The deferred items are a different size of work (planning sessions that start with nobody on the page) and get their own grill.
+**Supersedes:** the "deferred to later laps" clause of decision 5, which expected those items to return as laps of this feature.

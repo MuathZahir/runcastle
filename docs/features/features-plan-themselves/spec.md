@@ -87,20 +87,19 @@ No new seam is introduced.
 
 ## Open questions
 
-- **Interactive resume of a headless session.** Not verified on either CLI. Codex leaves `exec` sessions out of its interactive session listing; resuming one by explicit id is expected to work but was not tried. The fallback, a fresh chat from the docs, loses the planner's unrecorded reasoning.
-- **Codex in the generated session home.** The hand run used the human's own Codex home. Whether the start hook fires under `exec`, so that the conversation id is recorded and the session reports ready, is unverified. Codex prints the session id when `exec` starts, which is a second source if the hook does not fire.
-- **Length of a real run.** The toy plans took three to five minutes for the decisions alone. A real run also reads the codebase, draws the preview and writes spec and tickets in one turn. Whether sessions get through all of it without stopping is what lap 1's test drive shows.
-- **Volume.** With the depth rule the planner made 13 and 25 decisions in two toy runs, and 19 and 34 after the challenger, against a median of 8 in human grills. Whether five to check first is enough to approve by looking is judged at the test drive.
-- **Whether the planner picks the right five.** In one toy run its least-sure list named the decision that forced six others. One sample.
-- **The test drive needs the branch's skill pack.** Skill changes reach live sessions only from the pack the running server loads. The drive of this branch must load the branch's own pack, or the skill half cannot be judged until a publish.
+Answered by lap 1 and its review drives:
+
+- **Interactive resume of a headless session.** Works on both CLIs. A session that ran headless opens in the interactive terminal by its id, with its context.
+- **Codex in the generated session home.** The start hook fires under `exec` and the conversation id is recorded. The first run could write nothing, because every runcastle tool call and file write was refused; that was fixed in the lap and re-driven.
+- **Length of a real run.** A small draft planned itself in about four minutes on each CLI and finished without stopping. Larger features have not been measured.
+- **The branch's skill pack.** The drive loaded the branch's own pack.
+
+Still open:
+
+- **Codex sessions run unsandboxed on Windows.** The fix above runs every Codex session there with full access and approvals off, interactive chats included, bounded by runcastle's own edit and install guards. The human has not ruled on whether that trade stands. It is carried in the draft named under Later laps.
+- **Volume, and whether the planner picks the right decisions to check first.** The driven plans made six decisions and one. The human's own count of decisions they would overturn has not been recorded. In the one complete plan read at review, two of three check-first entries did not say why they were uncertain.
 - **Cost.** A toy plan cost under a dollar of Opus usage. A real feature's cost is unknown.
 
 ## Later laps
 
-- Self-planning runs that start with nobody on the page, so a cut made by the project session plans itself. Concurrency and token spend across a cut are decided then.
-- What a feature waiting on an unmerged sibling does: plan when it starts, or earlier.
-- Something that sends a run back to work, only if real runs are seen stopping early. The known fix is runcastle answering the turn-end hook it already receives; `/goal` was tried and its checker never agreed a run was finished.
-- Making Plan it yourself the default, once the human's test drives show the plans hold up.
-- Self-planning a lap that is planned from review.
-- "Plan the rest yourself" said in the middle of a grill.
-- A time limit on a run.
+None. The feature merges after lap 1 (decision 13). The scope that was deferred here is parked as the draft feature "Whole cuts plan themselves" (`whole-cuts-plan-themselves`), which waits on this feature's merge, together with the observations lap 1's reviews left open.
