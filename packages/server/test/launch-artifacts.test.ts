@@ -1071,6 +1071,24 @@ describe('codexRuntime.writeArtifacts', () => {
     expect(toml).toContain('http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }')
   })
 
+  it('pre-approves runcastle\'s own tools, so a session that never asks can still call them', async () => {
+    // Under `approval_policy = "never"` Codex refuses every MCP call it would
+    // have asked about — "MCP tool call requires approval, but approval policy
+    // is never" — which left a self-planning run, and the chat resumed after it,
+    // unable to read its feature or record a decision. `approve` is the variant
+    // pinned against codex-cli 0.155.1 (`auto | prompt | writes | approve`).
+    const approved = '[mcp_servers.runcastle]\nurl = "http://localhost:4512/mcp"\n' +
+      'http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }\n' +
+      'default_tools_approval_mode = "approve"\n'
+
+    await launchSpec('chat', { headless: true, kickoffLine: '$ideate' })
+    expect(configToml('sess_codex_chat')).toContain(approved)
+
+    // the chat that resumes the run gets its home rewritten, and keeps the grant
+    await launchSpec('chat', { resumeSessionId: '01a12ee7-9008-7c32-906f-01d8905afd1b' })
+    expect(configToml('sess_codex_chat')).toContain(approved)
+  })
+
   it('turns hook discovery on, so the generated hooks.json is discoverable at all', async () => {
     await launchSpec('chat')
     // Without it `list_hooks` returns nothing and the hooks.json written beside
