@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
@@ -48,6 +49,19 @@ function pidAlive(pid: number): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * True while any member of POSIX process group `pgid` is still running. Not
+ * `kill -0 -pgid`: that succeeds on zombies, and a killed member stays a zombie
+ * until init reaps it — which a container whose PID 1 is not a real init (a
+ * `sleep`, say) never does, so the group reads as alive long after it died.
+ */
+function groupHasLiveMember(pgid: number): boolean {
+  return execFileSync('ps', ['-A', '-o', 'pgid=,stat='], { encoding: 'utf8' })
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
+    .some(([group, stat]) => Number(group) === pgid && !stat?.startsWith('Z'))
 }
 
 describe('drivePaneId', () => {
@@ -178,9 +192,9 @@ describe.skipIf(!AVAILABLE)('startDevPane / stopDevPane', () => {
     await stopDevPane(paneId)
     await delay(400)
 
-    // The process group must be gone — `kill -0 -pgid` throws ESRCH once every
-    // member (shell + the backgrounded sleep) has been reaped.
-    expect(pidAlive(-pgid)).toBe(false)
+    // No member of the process group (shell + the backgrounded sleep) may still
+    // be running; unreaped zombies are dead and do not count.
+    expect(groupHasLiveMember(pgid)).toBe(false)
   }, 15000)
 })
 

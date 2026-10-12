@@ -1041,6 +1041,7 @@ describe('selectSandbox — provider for the configured sandbox', () => {
    */
   describe('buildBurnAgent — child environment', () => {
     const homeKeys = ['HOME', 'USERPROFILE'] as const
+    afterEach(() => vi.unstubAllEnvs())
 
     it('keeps the host environment alongside the token when running on the host', () => {
       const env = buildBurnAgent(config('noSandbox'), 'sk-token', CLAUDE_MODEL).env
@@ -1052,6 +1053,9 @@ describe('selectSandbox — provider for the configured sandbox', () => {
     })
 
     it('keeps the host environment when there is no token to pass', () => {
+      // The host env is copied through, so a token the host itself carries (a
+      // burn sandbox does) would read as one buildBurnAgent passed.
+      vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', undefined)
       const env = buildBurnAgent(config('noSandbox'), undefined, CLAUDE_MODEL).env
       expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined()
       expect(env.PATH ?? env.Path).toBeDefined()

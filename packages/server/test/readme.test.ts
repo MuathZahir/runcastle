@@ -28,7 +28,7 @@ describe('README for strangers', () => {
     // Windows needs system `node` for the PTY sidecar even though this is a Bun app.
     expect(README).toMatch(/node[^\n]*(windows|pty|sidecar)/i)
     // A paid Claude plan is required — the free plan has no Claude Code access.
-    expect(README).toMatch(/free[^\n]*Claude[^\n]*(no|not)|Claude Code access/i)
+    expect(README).toMatch(/free[^\n]*Claude[^\n]*(no|not)|Claude Code access|paid Claude plan/i)
   })
 
   it('walks a stranger through the first run', () => {
