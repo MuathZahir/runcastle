@@ -184,9 +184,15 @@ export function createSidecarPtySession(
     void containment?.kill()
     fireExit(code ?? 0, signal ? 1 : undefined)
   })
+  // A write into a host that is dead but whose `exit` is not delivered yet fails
+  // ASYNCHRONOUSLY (EPIPE), past the try/catch in `sendToHost`. Unheard, that
+  // error is an uncaught exception that takes the whole server down — which is
+  // what End session did on win32, where teardown kills the host first and then
+  // sends the `kill` frame as a backstop. The `exit` handler above owns death.
+  child.stdin?.on('error', () => {})
 
   function sendToHost(obj: unknown): void {
-    if (!child.stdin || child.stdin.destroyed) return
+    if (exitFired || !child.stdin || child.stdin.destroyed) return
     try {
       child.stdin.write(JSON.stringify(obj) + '\n')
     } catch {
