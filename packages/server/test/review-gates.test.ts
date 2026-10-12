@@ -153,6 +153,34 @@ describe('runReviewGates', () => {
     expect(failed).toContain('boom')
   })
 
+  // A review-only run can be a project's first on this build: the gate
+  // sandbox's worktree must already be hidden from the human's `git status`.
+  it('hides its sandbox worktree from the project`s git status while the gates run', async () => {
+    const excludeFile = join(repo, '.git', 'info', 'exclude')
+    const before = '# the human`s own entries\nbuild/\n'
+    writeFileSync(excludeFile, before)
+    const fake = fakeSandbox(repo, {})
+    const statusWhileOpen: string[] = []
+    const withSandbox: WithGateSandbox = (branch, use) =>
+      fake.withSandbox(branch, async (sandbox) => {
+        // What sandcastle's `branch` strategy leaves in the checkout.
+        const worktree = join(repo, '.sandcastle', 'worktrees', branch.replace(/\//g, '-'))
+        mkdirSync(worktree, { recursive: true })
+        writeFileSync(join(worktree, '.git'), 'gitdir: elsewhere\n')
+        statusWhileOpen.push(git(repo, 'status', '--porcelain'))
+        return use(sandbox)
+      })
+
+    await runReviewGates({
+      config, project: project('bun run test'), ticketId: TICKET, sha: tip,
+      deps: { withSandbox },
+    })
+
+    expect(statusWhileOpen).toEqual([''])
+    // Permanent, and appended after the human's lines untouched.
+    expect(readFileSync(excludeFile, 'utf8')).toBe(`${before}.sandcastle/worktrees/\n`)
+  })
+
   it('records a command over the time limit, or one that cannot start, as couldnt_run and carries on', async () => {
     const fake = fakeSandbox(repo, {
       'hangs': 'hang',

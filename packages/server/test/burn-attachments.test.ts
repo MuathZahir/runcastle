@@ -12,7 +12,7 @@ import {
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { burnWorktreePath, excludePath } from '../src/services/git'
+import { burnWorktreePath, excludeBurnWorktrees, excludePath } from '../src/services/git'
 import {
   ISOLATED_REPO_PATH,
   SANDBOX_WORKSPACE_PATH,
@@ -21,7 +21,6 @@ import {
   buildAttachmentCopyCommands,
   buildIsolatedSetupCommand,
   clearAttachments,
-  excludeBurnWorktrees,
 } from '../src/workflows/ticket-burner'
 import { useDataDir } from './helpers/data-dir'
 
