@@ -25,7 +25,7 @@ import type {
   RuntimeLaunchSpec,
   RuntimeReadiness,
 } from './types'
-import { assertKickoffArgv } from './types'
+import { assertHeadlessKickoff, assertKickoffArgv } from './types'
 
 /**
  * The Codex adapter (decision 9) — the same session, driven by the other CLI.
@@ -417,9 +417,18 @@ function gitInfoDir(worktreePath: string): string | null {
  * freshly-generated `hooks.json` has no persisted trust, and without the flag
  * every lifecycle event is silently skipped — no `live` row, no kickoff, no
  * edit guard.
+ *
+ * `headless` is a self-planning run: `exec` runs the kickoff as its prompt to
+ * completion with no terminal, and is always a fresh conversation (never `resume`).
  */
-export function buildCodexArgs(input: { resumeSessionId?: string; kickoffLine?: string }): string[] {
+export function buildCodexArgs(input: {
+  resumeSessionId?: string
+  kickoffLine?: string
+  headless?: boolean
+}): string[] {
   assertKickoffArgv(input.kickoffLine)
+  assertHeadlessKickoff(input.headless, input.kickoffLine)
+  if (input.headless) return ['exec', '--dangerously-bypass-hook-trust', input.kickoffLine as string]
   return [
     ...(input.resumeSessionId ? ['resume', input.resumeSessionId] : []),
     '--dangerously-bypass-hook-trust',
@@ -531,6 +540,7 @@ export const codexRuntime: AgentRuntimeAdapter = {
       argv: buildCodexArgs({
         ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
         ...(input.kickoffLine ? { kickoffLine: input.kickoffLine } : {}),
+        ...(input.headless ? { headless: true } : {}),
       }),
       env: {
         CODEX_HOME: home,

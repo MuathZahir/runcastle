@@ -101,8 +101,13 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * door (empty-handed, or after a triage that carried work). At review it tells
  * the launcher to brief the conversation to plan lap N+1 (`reviewLapKickoff`);
  * the lap counter itself only moves at Burn from review.
+ *
+ * `self-plan` — the feature's planning session launched by "Plan it yourself"
+ * (`features-plan-themselves` decision 9): headless, with no human present, it
+ * plans the feature through preview, spec and tickets in one run. The briefing,
+ * the page and the exit handling key on it; a live one refuses every chat launch.
  */
-export const SessionPurpose = z.enum(['resolve-conflict', 'start-lap'])
+export const SessionPurpose = z.enum(['resolve-conflict', 'start-lap', 'self-plan'])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
 /**

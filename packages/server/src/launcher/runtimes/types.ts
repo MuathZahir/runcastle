@@ -51,6 +51,16 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
   kickoffLine?: string
   /** Overrides the runtime's default permission posture (the project session's `default`). */
   permissionMode?: string
+  /**
+   * Run non-interactively to completion with {@link kickoffLine} as the prompt
+   * (a self-planning run): Claude Code's print mode, Codex's `exec`. Never resumes.
+   */
+  headless?: boolean
+}
+
+/** A headless launch has no terminal to type into, so its prompt is the whole briefing. */
+export function assertHeadlessKickoff(headless: boolean | undefined, line: string | undefined): void {
+  if (headless && !line) throw new Error('a headless launch needs a kickoff line as its prompt')
 }
 
 /** Keep comfortably below Windows' 32,767-character command-line ceiling. */
