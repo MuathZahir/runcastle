@@ -261,6 +261,11 @@ describe('the live-session line', () => {
     expect(liveSessionLine([])).toBeNull()
   })
 
+  it('says nothing during a self-planning run, whose bar already offers Stop', () => {
+    expect(liveSessionLine([session({ purpose: 'self-plan' })])).toBeNull()
+    expect(liveSessionLine([session({ purpose: 'self-plan', status: 'launching' })])).toBeNull()
+  })
+
   it('offers Open chat and End session', () => {
     const out = html(
       createElement(LiveSessionBar, {
