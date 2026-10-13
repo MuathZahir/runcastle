@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { EventRow } from '@runcastle/core'
-import { activityLine, eventLevel, isLapDivider, type EventLevel } from '../../lib/activity'
+import { activityLine, eventLabel, eventLevel, isLapDivider, type EventLevel } from '../../lib/activity'
 import { relTime } from '../../lib/format'
 import { IconActivity, IconChevronRight } from '../../icons'
 import { EmptyState, StatusDot, cx } from '../../ui'
@@ -12,11 +12,6 @@ const LEVEL_TONE: Record<EventLevel, StatusTone> = {
   ok: 'success',
   active: 'accent',
   info: 'neutral',
-}
-
-/** `session.pty_exited` → `session · pty exited` */
-function humanType(type: string): string {
-  return type.replace(/_/g, ' ').replace('.', ' · ')
 }
 
 /** How far back the feed reads. Older than this and the docs are the record. */
@@ -102,7 +97,7 @@ export function ActivityRow({ event }: { event: EventRow }) {
           </pre>
         )}
         <div className="mt-0.5 flex items-baseline gap-2 text-xs text-text-tertiary">
-          <span className="truncate">{humanType(event.type)}</span>
+          <span className="truncate">{eventLabel(event.type)}</span>
           <span className="ml-auto shrink-0 tabular-nums">{relTime(event.ts)}</span>
         </div>
       </div>

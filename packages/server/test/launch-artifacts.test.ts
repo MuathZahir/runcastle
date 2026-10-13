@@ -19,6 +19,7 @@ import {
   renderMcpConfig,
   renderSettings,
   renderSystemPrompt,
+  skillPackReadRule,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
 import { ptyExitMessage } from '../src/launcher/launcher'
@@ -173,6 +174,33 @@ describe('renderSettings', () => {
     }
     // and `project` still gets read-only (whole-repo write, prompts for the rest)
     expect(sessionBashAllowRules('project')).toEqual([...SESSION_BASH_READ_RULES])
+  })
+
+  /**
+   * A self-planning run (`-p`) was refused `ideate/references/preview.md` and the
+   * starter page: the pack lives outside the worktree, and in print mode nobody
+   * is there to approve the read. Every session gets read access to its own pack
+   * — and to nothing else outside its worktree.
+   */
+  it('lets every session read its own skill pack, and nothing wider', () => {
+    const pack = '/opt/runcastle/packages/skills/packs/runcastle'
+    for (const kind of [...SessionKind.options, undefined]) {
+      const allow = renderSettings('/hooks/hook-client.ts', kind, pack).permissions.allow
+      const fileRules = allow.filter((rule) => /^(Read|Edit)\(/.test(rule))
+      expect(fileRules).toEqual(['Read(//opt/runcastle/packages/skills/packs/runcastle/**)'])
+    }
+  })
+
+  it('spells the pack read rule as an absolute path on every platform', () => {
+    // `//` anchors at the filesystem root; a single `/` would anchor at the
+    // settings file's own directory (code.claude.com/docs/en/permissions).
+    expect(skillPackReadRule('/home/me/.bun/runcastle/packs/runcastle/')).toBe(
+      'Read(//home/me/.bun/runcastle/packs/runcastle/**)',
+    )
+    // Windows paths are matched in POSIX form, the drive as `/c`.
+    expect(skillPackReadRule('C:\\Users\\me\\AppData\\runcastle\\packs\\runcastle')).toBe(
+      'Read(//c/Users/me/AppData/runcastle/packs/runcastle/**)',
+    )
   })
 
   /**
@@ -829,6 +857,8 @@ describe('writeSessionArtifacts', () => {
     ])
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
     expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
+    // the pack the session's skills load from is readable without a prompt
+    expect(settings.permissions.allow).toContain(skillPackReadRule(resolvePluginDir()))
     // the edit guard reaches the session as a real registered hook, not just a rule
     expect(settings.hooks.PreToolUse[0].matcher).toBe('Edit|Write|NotebookEdit|apply_patch|Bash|PowerShell')
     expect(settings.hooks.PreToolUse[0].hooks[0].command).toContain('pre-tool')

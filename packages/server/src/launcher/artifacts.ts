@@ -19,6 +19,7 @@ import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
 import { PRE_TOOL_MATCHER } from './install-guard'
+import { resolvePluginDir } from './skills-root'
 import {
   type ChatOpening,
   ENTRY_SKILLS,
@@ -1082,6 +1083,28 @@ export const HOST_SESSION_BASH_WRITE_RULES: readonly string[] = [
   'Bash(git add .gitignore:*)',
 ]
 
+/**
+ * The `Read(...)` allow rule for the session's own skill pack — the plugin dir
+ * passed as `--plugin-dir`, which lives OUTSIDE the session's working directory.
+ * Without it a skill's `./references/*` read is a permission prompt, and in a
+ * self-planning run (`-p`) nobody is there to answer it: one was refused
+ * `ideate/references/preview.md` and the starter page, and drew its preview by
+ * hand. A prompt for runcastle's own files is wrong interactively too, so every
+ * kind gets the rule — read-only and scoped to the pack, nothing wider.
+ *
+ * `//` anchors the pattern at the filesystem root (a single `/` anchors at the
+ * settings file's own dir), and Windows paths are matched in POSIX form with the
+ * drive as `/c` (code.claude.com/docs/en/permissions, "Read and Edit"). A pure
+ * string conversion, so the Windows spelling is testable on any host.
+ */
+export function skillPackReadRule(packDir: string): string {
+  const posix = packDir
+    .replace(/\\/g, '/')
+    .replace(/^([A-Za-z]):/, (_, drive: string) => `/${drive.toLowerCase()}`)
+    .replace(/\/+$/, '')
+  return `Read(/${posix}/**)`
+}
+
 /** Kinds that run in the developer's OWN checkout rather than a talk worktree. */
 const HOST_SIDE_KINDS: readonly SessionKind[] = ['prepare', 'drive-fix']
 
@@ -1156,7 +1179,9 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   the skills run (`SESSION_BASH_ALLOW_RULES`) so docs-worktree sessions never
  *   stall on a Bash approval prompt. `kind` narrows that git surface to the
  *   read-only rules for the one kind whose worktree is not docs-only
- *   (see {@link sessionBashAllowRules}); omitted, every rule is granted.
+ *   (see {@link sessionBashAllowRules}); omitted, every rule is granted. With
+ *   `skillPackDir` it also lets the session read its own skill pack
+ *   ({@link skillPackReadRule}).
  * - `permissions.deny` blocks the pack entry skills that belong to OTHER session
  *   kinds ({@link entrySkillDenyRules}) — the enforcement behind flipping their
  *   `disable-model-invocation` frontmatter to false.
@@ -1178,7 +1203,11 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
  */
-export function renderSettings(hookClient: string, kind?: SessionKind): SessionSettings {
+export function renderSettings(
+  hookClient: string,
+  kind?: SessionKind,
+  skillPackDir?: string,
+): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
@@ -1186,7 +1215,11 @@ export function renderSettings(hookClient: string, kind?: SessionKind): SessionS
   })
   return {
     permissions: {
-      allow: [...RUNCASTLE_MCP_ALLOW_RULES, ...sessionBashAllowRules(kind)],
+      allow: [
+        ...RUNCASTLE_MCP_ALLOW_RULES,
+        ...sessionBashAllowRules(kind),
+        ...(skillPackDir ? [skillPackReadRule(skillPackDir)] : []),
+      ],
       deny: entrySkillDenyRules(kind),
     },
     hooks: {
@@ -1301,8 +1334,10 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
   throw new Error(`session ${session.id} has no feature and no project-session brief`)
 }
 
+/** `pluginDir` is the pack the session is launched with, made readable in its settings. */
 export async function writeSessionArtifacts(
   input: WriteArtifactsInput,
+  pluginDir: string = resolvePluginDir(),
 ): Promise<SessionArtifacts> {
   const { session, config } = input
   const dir = sessionDir(session.id)
@@ -1315,7 +1350,7 @@ export async function writeSessionArtifacts(
   writeFileSync(systemPromptPath, renderSessionPrompt(input), 'utf8')
   writeFileSync(
     settingsPath,
-    JSON.stringify(renderSettings(hookClientPath(), session.kind), null, 2),
+    JSON.stringify(renderSettings(hookClientPath(), session.kind, pluginDir), null, 2),
     'utf8',
   )
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')

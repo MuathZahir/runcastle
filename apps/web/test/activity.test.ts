@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventRow } from '@runcastle/core'
-import { activityLine, eventLevel, isLapDivider, stripMarkdown } from '../src/lib/activity'
+import { activityLine, eventLabel, eventLevel, isLapDivider, stripMarkdown } from '../src/lib/activity'
 
 /**
  * Findings F10.5 / F18 — the activity feed leaked agent internals (`Bash cd
@@ -240,5 +240,39 @@ describe('isLapDivider', () => {
     expect(activityLine(ev({ type: 'lap.started', message: 'burning tickets — lap 2' })).summary).toBe(
       'burning tickets — lap 2',
     )
+  })
+})
+
+/**
+ * A self-planning run ends on `session.self_plan_ended`, which the feed used to
+ * print as its slug ("session · self plan ended") over a bare "planning finished".
+ * It says whose plan it was and whether it got there.
+ */
+describe('a self-planning run ending', () => {
+  const ended = (complete: boolean) =>
+    ev({
+      type: 'session.self_plan_ended',
+      message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
+      data: { sessionId: 's1', complete, exitCode: 0 },
+    })
+
+  it('says the plan was made without the human, and that it is finished', () => {
+    expect(activityLine(ended(true))).toEqual({
+      summary: 'Planned without you — the plan is finished',
+      detail: null,
+    })
+    expect(eventLevel(ended(true))).toBe('ok')
+  })
+
+  it('reads a run that stopped short as something to notice', () => {
+    expect(activityLine(ended(false)).summary).toBe(
+      'Planning without you stopped before the plan was complete',
+    )
+    expect(eventLevel(ended(false))).toBe('error')
+  })
+
+  it('is labelled as a self-planning run, not by its slug', () => {
+    expect(eventLabel('session.self_plan_ended')).toBe('self-planning run')
+    expect(eventLabel('session.pty_exited')).toBe('session · pty exited')
   })
 })

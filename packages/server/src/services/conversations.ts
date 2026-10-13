@@ -13,6 +13,7 @@ import {
   projectSessions,
   setSessionTitle,
 } from '../launcher/sessions'
+import { selfPlanKickoffFor } from '../launcher/runtimes/skills'
 import { readTranscript, type SessionTranscript, type TranscriptTurn } from './transcripts'
 
 /**
@@ -69,6 +70,10 @@ export const TITLE_MAX = 60
  * given the wrong runtime silently keeps the line and names the conversation
  * after it.
  *
+ * A self-planning run's briefing ({@link selfPlanKickoffFor}) is matched too,
+ * whatever the kind: it parts from the per-kind line after "Proceed with your
+ * task: ", well inside the matched prefix, so the kind's own line never catches it.
+ *
  * Filtered here, server-side, so the one matcher serves every surface and the
  * title and the transcript can never disagree about who said the first thing.
  */
@@ -77,8 +82,11 @@ function withoutKickoff(
   kind: SessionKind,
   runtime: AgentRuntime,
 ): TranscriptTurn[] {
-  const kickoff = kickoffLineFor(kind, undefined, runtime)
-  return turns.filter((turn) => !(turn.role === 'user' && promptMatchesKickoff(kickoff, turn.text)))
+  const kickoffs = [kickoffLineFor(kind, undefined, runtime), selfPlanKickoffFor(runtime)]
+  return turns.filter(
+    (turn) =>
+      !(turn.role === 'user' && kickoffs.some((kickoff) => promptMatchesKickoff(kickoff, turn.text))),
+  )
 }
 
 /**

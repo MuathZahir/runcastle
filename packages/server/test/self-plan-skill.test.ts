@@ -43,6 +43,15 @@ describe('the ideate skill, planning without a human', () => {
     expect(text).toContain('**A refused tool is not a wait.**')
   })
 
+  it('retries a timed-out tool once, unlike a refused one, without duplicating a write', () => {
+    const text = section()
+    expect(text).toContain('**A timed-out tool is not a refused one.**')
+    expect(text).toContain('Retry it once, checking first that it did not land')
+    expect(text).toContain('`complete_phase` is safe to repeat')
+    expect(text).toContain('read `list_tickets` and send only what is missing')
+    expect(text).toContain('Never leave `complete_phase({ phase: "tickets" })` on a timeout')
+  })
+
   it('runs exactly one challenger, given only the brief and the decisions', () => {
     const text = section()
     expect(text).toContain('**Exactly one challenger.**')
@@ -71,6 +80,16 @@ describe('the ideate skill, planning without a human', () => {
     expect(order.every((at) => at >= 0)).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
     expect(text).toContain('the plan was made without the human, how many decisions it holds, and which are to check first')
+  })
+
+  it('closes on the plan only, leaving out tools and connectors the plan did not need', () => {
+    expect(section()).toContain('one closing message (§6) that covers the plan only')
+    expect(section()).toContain('anything that stopped you doing the job (a refused or failed tool the plan needed)')
+    expect(section()).toContain('Leave out the state of tools and connectors the plan did not need.')
+    const close = skill().slice(skill().indexOf('## 6. Close'))
+    expect(close).toContain('It covers the plan only.')
+    expect(close).toContain('a tool the plan needed that was refused or failed')
+    expect(close).toContain('Do not report the state of tools and connectors the plan did not need')
   })
 
   it('keeps the grill path one question at a time, confirmed on the preview', () => {

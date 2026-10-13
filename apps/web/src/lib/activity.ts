@@ -123,6 +123,30 @@ function text(value: unknown): string | null {
 }
 
 /**
+ * Whether a self-planning run reached a finished plan, or null for any other
+ * event (and for a payload without the flag). The server's own message is a
+ * bare "planning finished", which says nothing about whose planning it was.
+ */
+function selfPlanComplete(event: Pick<EventRow, 'type' | 'data'>): boolean | null {
+  if (event.type !== 'session.self_plan_ended') return null
+  const complete = fields(event.data)?.complete
+  return typeof complete === 'boolean' ? complete : null
+}
+
+/**
+ * The small print under a row: the event's type, as words —
+ * `session.pty_exited` → `session · pty exited` — or the name a type reads
+ * better under where the slug would say nothing to the human.
+ */
+const EVENT_LABELS: Record<string, string> = {
+  'session.self_plan_ended': 'self-planning run',
+}
+
+export function eventLabel(type: string): string {
+  return EVENT_LABELS[type] ?? type.replace(/_/g, ' ').replace('.', ' · ')
+}
+
+/**
  * The sentence an event writes better from its payload than from its message.
  *
  * `feature.created` is the offender the walk caught in the feed: its message is
@@ -132,6 +156,11 @@ function text(value: unknown): string | null {
  * {@link deslug}, which is why every read here is defensive.
  */
 function fromPayload(event: Pick<EventRow, 'type' | 'data'>): string | null {
+  const planned = selfPlanComplete(event)
+  if (planned !== null)
+    return planned
+      ? 'Planned without you — the plan is finished'
+      : 'Planning without you stopped before the plan was complete'
   if (event.type !== 'feature.created') return null
   const d = fields(event.data)
   const branch = text(d?.branch)
@@ -221,6 +250,9 @@ function runFinishedStatus(event: Pick<EventRow, 'type' | 'data'>): RunStatus | 
 export function eventLevel(event: Pick<EventRow, 'type' | 'data'>): EventLevel {
   const status = runFinishedStatus(event)
   if (status) return status === 'succeeded' ? 'ok' : 'error'
+  // `ended` says nothing either way; a plan that stopped short is the one to notice.
+  const planned = selfPlanComplete(event)
+  if (planned !== null) return planned ? 'ok' : 'error'
 
   const type = event.type
   // In-loop conflict resolution is progress, not failure — checked before the
