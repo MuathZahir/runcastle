@@ -82,6 +82,16 @@ describe('the ideate skill, planning without a human', () => {
     expect(text).toContain('the plan was made without the human, how many decisions it holds, and which are to check first')
   })
 
+  it('closes on the plan only, leaving out tools and connectors the plan did not need', () => {
+    expect(section()).toContain('one closing message (§6) that covers the plan only')
+    expect(section()).toContain('anything that stopped you doing the job (a refused or failed tool the plan needed)')
+    expect(section()).toContain('Leave out the state of tools and connectors the plan did not need.')
+    const close = skill().slice(skill().indexOf('## 6. Close'))
+    expect(close).toContain('It covers the plan only.')
+    expect(close).toContain('a tool the plan needed that was refused or failed')
+    expect(close).toContain('Do not report the state of tools and connectors the plan did not need')
+  })
+
   it('keeps the grill path one question at a time, confirmed on the preview', () => {
     const text = skill()
     const grill = text.slice(text.indexOf('## 1. Grill relentlessly'), text.search(/^## .*Planning without a human/m))
