@@ -43,6 +43,15 @@ describe('the ideate skill, planning without a human', () => {
     expect(text).toContain('**A refused tool is not a wait.**')
   })
 
+  it('retries a timed-out tool once, unlike a refused one, without duplicating a write', () => {
+    const text = section()
+    expect(text).toContain('**A timed-out tool is not a refused one.**')
+    expect(text).toContain('Retry it once, checking first that it did not land')
+    expect(text).toContain('`complete_phase` is safe to repeat')
+    expect(text).toContain('read `list_tickets` and send only what is missing')
+    expect(text).toContain('Never leave `complete_phase({ phase: "tickets" })` on a timeout')
+  })
+
   it('runs exactly one challenger, given only the brief and the decisions', () => {
     const text = section()
     expect(text).toContain('**Exactly one challenger.**')
