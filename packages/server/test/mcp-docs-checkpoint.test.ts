@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature } from '@runcastle/core'
+import { events, features, sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
@@ -103,6 +105,26 @@ describe('docs checkpoint behind a pipeline write', () => {
     await vi.waitFor(() =>
       expect(commitPending()).toEqual(['docs checkpoint failed: index.lock exists']),
     )
+  })
+
+  it('a checkpoint that fails after its feature is deleted fails alone, not the server', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      await call('complete_phase', { phase: 'ideation' })
+      // deleteFeature's last step: the rows go while the checkpoint is running.
+      ctx.db.delete(sessions).where(eq(sessions.featureId, feature.id)).run()
+      ctx.db.delete(events).where(eq(events.featureId, feature.id)).run()
+      ctx.db.delete(features).where(eq(features.id, feature.id)).run()
+
+      failCommit(new Error('index.lock exists'))
+      await new Promise((r) => setTimeout(r, 20))
+
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 
   it('emit_tickets answers while the checkpoint commit is still running', async () => {

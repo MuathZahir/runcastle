@@ -1063,11 +1063,17 @@ function checkpointDocsAfterReply(ctx: AppCtx, session: SessionRow, summary: str
   }
   void queue(() => commitDocsCheckpoint(ctx, session, summary)).catch((e: unknown) => {
     // Nobody awaits this, so whatever escaped is said here or nowhere.
-    emit(ctx, requireFeatureId(session), {
-      type: 'git.commit_pending',
-      message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
-      data: { summary },
-    })
+    try {
+      emit(ctx, requireFeatureId(session), {
+        type: 'git.commit_pending',
+        message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
+        data: { summary },
+      })
+    } catch (err) {
+      // The feature was deleted while its checkpoint was queued or running.
+      // A throw here is an unhandled rejection that takes the server with it.
+      console.error(`docs checkpoint failed for session ${session.id}`, e, err)
+    }
   })
 }
 
