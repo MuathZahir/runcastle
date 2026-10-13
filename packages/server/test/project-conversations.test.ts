@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentRuntime, Project } from '@runcastle/core'
+import type { AgentRuntime, Project, SessionKind } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -10,6 +10,7 @@ import { sessions } from '../src/db/schema'
 import { launchProjectSession } from '../src/launcher/launcher'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
+import { selfPlanKickoffFor } from '../src/launcher/runtimes/skills'
 import {
   awaitProjectLandings,
   getSessionRow,
@@ -105,6 +106,22 @@ describe('deriving a conversation’s name', () => {
       ),
     ).toBeNull()
   })
+
+  /**
+   * A self-planning run opens on its own briefing, which shares only "Proceed
+   * with your task: " with the per-kind kickoff — so it has to be recognised in
+   * its own right, in each runtime's spelling, or it names the conversation.
+   */
+  it.each(['claude-code', 'codex'] as const)(
+    'is never named after a self-planning briefing (%s)',
+    (runtime) => {
+      const briefing = `${selfPlanKickoffFor(runtime)} The feature has no decisions yet.`
+      expect(deriveTitle([said('user', briefing)], runtime)).toBeNull()
+      expect(deriveTitle([said('user', briefing), said('user', 'tighten the preview')], runtime)).toBe(
+        'tighten the preview',
+      )
+    },
+  )
 })
 
 describe('the project conversation list', () => {
@@ -351,7 +368,11 @@ describe('reading a conversation back', () => {
   let seq = 0
 
   /** A session row with a transcript, without spawning anything. */
-  function seedSession(lines: string[] | null, runtime: AgentRuntime | null = null): string {
+  function seedSession(
+    lines: string[] | null,
+    runtime: AgentRuntime | null = null,
+    kind: SessionKind = 'project',
+  ): string {
     const id = `sess_seeded_${(seq += 1)}`
     let transcriptPath: string | null = null
     if (lines) {
@@ -363,7 +384,7 @@ describe('reading a conversation back', () => {
       .values({
         id,
         projectId: project.id,
-        kind: 'project',
+        kind,
         status: 'ended',
         worktreePath: '/wt',
         // A conversation the CLI picked up, so the list shows it (decision 4).
@@ -515,6 +536,51 @@ describe('reading a conversation back', () => {
     const { turns } = await caller().project.conversationTranscript({ sessionId: id })
 
     expect(turns.some((t) => t.role === 'user')).toBe(false)
+  })
+
+  /**
+   * A self-planning run's briefing is the launcher's too, and nobody was there to
+   * type anything — the chat must not open on a "You" bubble carrying it.
+   */
+  it('drops a self-planning briefing from a Claude Code chat', async () => {
+    const id = seedSession(
+      [
+        entry('user', `${selfPlanKickoffFor('claude-code')} The feature has no decisions yet.`),
+        entry('assistant', 'Planning this feature by myself.'),
+      ],
+      null,
+      'chat',
+    )
+
+    expect((await caller().project.conversationTranscript({ sessionId: id })).turns).toEqual([
+      { role: 'assistant', text: 'Planning this feature by myself.' },
+    ])
+  })
+
+  it('drops a self-planning briefing from a Codex chat, spelled the Codex way', async () => {
+    const said = (role: 'user' | 'assistant', text: string) =>
+      JSON.stringify({
+        timestamp: '2026-01-01T00:00:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role,
+          content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }],
+        },
+      })
+    const id = seedSession(
+      [
+        JSON.stringify({ timestamp: '2026-01-01T00:00:00.000Z', type: 'session_meta', payload: { id: 'r1' } }),
+        said('user', `${selfPlanKickoffFor('codex')} The feature has no decisions yet.`),
+        said('assistant', 'Planning this feature by myself.'),
+      ],
+      'codex',
+      'chat',
+    )
+
+    expect((await caller().project.conversationTranscript({ sessionId: id })).turns).toEqual([
+      { role: 'assistant', text: 'Planning this feature by myself.' },
+    ])
   })
 
   /** A record that is gone is an empty conversation, NOT a format we failed to read. */
