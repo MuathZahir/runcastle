@@ -76,6 +76,7 @@ import {
 import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
+import { type SerialQueue, createSerialQueue } from '../services/landing-queue'
 import { PLANNING_STEP_EVENT, planningFacts, planningStepReported } from '../services/planning'
 import {
   editNote as editProjectNote,
@@ -1036,6 +1037,38 @@ async function commitDocsCheckpoint(
   // branch); a landing that conflicts keeps its branch and says so, and the
   // run-end boundary tries again.
   await landChatCommits(ctx, project, feature)
+}
+
+/**
+ * One checkpoint chain per worktree: a checkpoint runs after the tool has
+ * answered, so two quick writes would otherwise race for the same git index.
+ * Never dropped, for the landing queue's reason — a forgotten chain hands the
+ * next caller a fresh one that commits in parallel with the first.
+ */
+const docsCheckpointQueues = new Map<string, SerialQueue>()
+
+/**
+ * Run {@link commitDocsCheckpoint} AFTER the tool answers. The write it follows
+ * is already recorded, and the checkpoint can be slow — a commit on a busy disk,
+ * or, mid-burn, a landing queued behind the burner's own merges — slow enough to
+ * pass the client's tool timeout and make a recorded write read as a failed one.
+ * The checkpoint stays durable without the wait: it still runs, in order, and a
+ * failure still lands on the timeline as `git.commit_pending`.
+ */
+function checkpointDocsAfterReply(ctx: AppCtx, session: SessionRow, summary: string): void {
+  let queue = docsCheckpointQueues.get(session.worktreePath)
+  if (!queue) {
+    queue = createSerialQueue()
+    docsCheckpointQueues.set(session.worktreePath, queue)
+  }
+  void queue(() => commitDocsCheckpoint(ctx, session, summary)).catch((e: unknown) => {
+    // Nobody awaits this, so whatever escaped is said here or nowhere.
+    emit(ctx, requireFeatureId(session), {
+      type: 'git.commit_pending',
+      message: `docs checkpoint failed: ${e instanceof Error ? e.message : String(e)}`,
+      data: { summary },
+    })
+  })
 }
 
 // --- project-scoped tools (`prepare` + `project` sessions) ------------------
@@ -2847,7 +2880,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolEmitTickets(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `tickets emitted (${result.stored})`)
+        checkpointDocsAfterReply(rs.ctx, rs.session, `tickets emitted (${result.stored})`)
         return ok(result)
       },
     )
@@ -2890,7 +2923,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolUpdateTicket(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `ticket ${result.ticket.seq} updated`)
+        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.ticket.seq} updated`)
         return ok(result)
       },
     )
@@ -2917,7 +2950,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         const result = toolCancelTicket(rs.ctx, rs.session, args)
-        await commitDocsCheckpoint(rs.ctx, rs.session, `ticket ${result.ticket.seq} cancelled`)
+        checkpointDocsAfterReply(rs.ctx, rs.session, `ticket ${result.ticket.seq} cancelled`)
         return ok(result)
       },
     )
@@ -3001,7 +3034,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         if (!rs) return noSession()
         const result = toolCompletePhase(rs.ctx, rs.session, args)
         if (result.ok) {
-          await commitDocsCheckpoint(rs.ctx, rs.session, `phase '${args.phase}' complete`)
+          checkpointDocsAfterReply(rs.ctx, rs.session, `phase '${args.phase}' complete`)
         }
         return ok(result)
       },
