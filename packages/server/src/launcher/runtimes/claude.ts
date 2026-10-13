@@ -162,11 +162,14 @@ export const claudeRuntime: AgentRuntimeAdapter = {
   async writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec> {
     // The adapter names the runtime the briefing is rendered for, so the prompt's
     // skill spelling can never disagree with the CLI that is about to read it.
-    const files = await writeSessionArtifacts({ ...input, runtime: this.id })
+    // One pack, resolved once: the dir `--plugin-dir` loads is the dir the
+    // settings make readable.
+    const pluginDir = resolvePluginDir()
+    const files = await writeSessionArtifacts({ ...input, runtime: this.id }, pluginDir)
     return {
       files: [files.systemPromptPath, files.settingsPath, files.mcpConfigPath],
       argv: buildClaudeArgs({
-        pluginDir: resolvePluginDir(),
+        pluginDir,
         settingsPath: files.settingsPath,
         mcpConfigPath: files.mcpConfigPath,
         systemPromptPath: files.systemPromptPath,
