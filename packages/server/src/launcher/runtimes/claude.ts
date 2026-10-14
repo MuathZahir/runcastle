@@ -183,6 +183,12 @@ export const claudeRuntime: AgentRuntimeAdapter = {
       env: {
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
+        // Agent view off: left-arrow backgrounding moves the conversation under
+        // CC's background supervisor, where it outlives the PTY and every later
+        // `--resume` of it is refused. The env var (not the `disableAgentView`
+        // setting) so it holds however the per-session --settings merge, and it
+        // reaches only the processes runcastle spawns, never the human's config.
+        CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
       },
       envScrub: CC_NESTING_ENV,
     }

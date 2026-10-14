@@ -969,15 +969,22 @@ describe('claudeRuntime.writeArtifacts', () => {
     for (const file of spec.files) expect(existsSync(file)).toBe(true)
   })
 
-  it('carries the two runcastle env vars and the CC nesting scrub list', async () => {
+  it('carries the two runcastle env vars, agent view off, and the CC nesting scrub list', async () => {
     const spec = await launchSpec('chat')
     expect(spec.env).toEqual({
       RUNCASTLE_SESSION_ID: 'sess_rt_chat',
       RUNCASTLE_SERVER_URL: 'http://localhost:4512',
+      CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
     })
     // the marker that makes a nested CC skip writing its transcript, breaking --resume
     expect(spec.envScrub).toContain('CLAUDE_CODE_CHILD_SESSION')
     expect(spec.envScrub).toEqual([...CC_NESTING_ENV])
+  })
+
+  it('turns agent view off for a headless self-planning run too', async () => {
+    const spec = await launchSpec('chat', { headless: true, kickoffLine: '/runcastle:plan' })
+    expect(spec.argv[0]).toBe('-p')
+    expect(spec.env.CLAUDE_CODE_DISABLE_AGENT_VIEW).toBe('1')
   })
 
   it('passes the launch options through to the flags they used to set inline', async () => {
