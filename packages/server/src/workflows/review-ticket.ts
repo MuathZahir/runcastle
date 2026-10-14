@@ -11,6 +11,7 @@ import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { headSha, releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
+import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import type { runReviewGates } from './review-gates'
 import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
@@ -129,7 +130,17 @@ export interface ExecutableHealth {
 /** The process boundary the probe crosses — injectable so the failure shapes are testable. */
 export type ProbeSpawn = (path: string) => { status: number | null; signal: string | null; error?: Error }
 
-const spawnVersion: ProbeSpawn = (path) => spawnSync(path, ['--version'], { timeout: 3_000, stdio: 'ignore' })
+/**
+ * `path` is whatever {@link findOnPath} found, which on Windows is usually npm's
+ * `agent-browser.CMD` shim. Node and Bun refuse to start a `.cmd`/`.bat` without a
+ * shell (EINVAL, since CVE-2024-27980), so it goes through its interpreter like
+ * every other shim runcastle starts — otherwise the probe fails on every npm
+ * install and the drive is withheld from a working browser.
+ */
+const spawnVersion: ProbeSpawn = (path) => {
+  const { file, args } = spawnTargetFor(path, ['--version'])
+  return spawnSync(file, args, { timeout: 3_000, stdio: 'ignore', windowsHide: true })
+}
 
 function probeExecutable(path: string, spawn: ProbeSpawn): ExecutableHealth {
   const started = performance.now()

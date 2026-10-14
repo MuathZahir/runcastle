@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { reviewWalkthroughPath } from '@runcastle/core/paths'
+import { spawnTargetFor } from '../util/resolve-executable'
 
 /** The CLI used by review agents to drive and record the app. */
 export const AGENT_BROWSER_BIN = 'agent-browser'
@@ -57,8 +58,12 @@ function log(message: string): void {
   console.error(`[recorder-reap] ${message}`)
 }
 
-/** Spawn without a shell and settle under Bun/Windows even when a child misbehaves. */
-function runCommand(bin: string, args: readonly string[]): Promise<boolean> {
+/**
+ * Spawn without a shell and settle under Bun/Windows even when a child misbehaves.
+ * `bin` is usually npm's `agent-browser.CMD` shim on Windows, which cannot be
+ * started directly (EINVAL), so it goes through its interpreter.
+ */
+export function runCommand(bin: string, args: readonly string[]): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false
     const settle = (ok: boolean): void => {
@@ -71,7 +76,8 @@ function runCommand(bin: string, args: readonly string[]): Promise<boolean> {
     timer.unref?.()
 
     try {
-      const child = spawn(bin, [...args], { windowsHide: true, stdio: 'ignore' })
+      const target = spawnTargetFor(bin, [...args])
+      const child = spawn(target.file, target.args, { windowsHide: true, stdio: 'ignore' })
       child.on('exit', (code) => settle(code === 0))
       child.on('close', (code) => settle(code === 0))
       child.on('error', () => settle(false))

@@ -975,6 +975,24 @@ describe('the mode the review is handed', () => {
     expect(health.path).toBe(process.execPath)
   })
 
+  // npm installs agent-browser on Windows as an `agent-browser.CMD` shim, which
+  // Node and Bun refuse to spawn directly (EINVAL). The probe must still pass
+  // for it, from a profile path with a space in it, or every npm install loses
+  // its drive.
+  it.runIf(process.platform === 'win32')('health-checks an npm .cmd shim from a path with a space', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rc shim '))
+    try {
+      const shim = join(dir, 'agent-browser.CMD')
+      writeFileSync(shim, '@if "%~1"=="--version" (exit /b 0) else (exit /b 9)\r\n')
+      const health = checkExecutableHealth(shim)
+      expect(health.error).toBeUndefined()
+      expect(health.status).toBe(0)
+      expect(health.ok).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   describe('a failed health check says why', () => {
     const errno = (code: string) => Object.assign(new Error(`spawnSync /x ${code}`), { code })
     const withheldFor = (spawn: Parameters<typeof checkExecutableHealth>[1]) => {

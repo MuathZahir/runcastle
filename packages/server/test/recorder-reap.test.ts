@@ -1,7 +1,10 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { reviewWalkthroughPath } from '@runcastle/core/paths'
 import { describe, expect, it, vi } from 'vitest'
 import type { RecorderReapDeps } from '../src/workflows/recorder-reap'
-import { reapRecorder } from '../src/workflows/recorder-reap'
+import { reapRecorder, runCommand } from '../src/workflows/recorder-reap'
 
 function deps(overrides: Partial<RecorderReapDeps> = {}): RecorderReapDeps {
   return {
@@ -70,5 +73,22 @@ describe('reapRecorder', () => {
       deps: deps({ runCommand: async () => { throw new Error('boom') } }),
     })).resolves.toEqual({ confirmed: false })
     consoleError.mockRestore()
+  })
+})
+
+// The real command runner, against the shim npm installs on Windows: a `.CMD`
+// that cannot be spawned directly. Before it went through its interpreter, every
+// stop/close failed silently with EINVAL and the recording was never finalized.
+describe.runIf(process.platform === 'win32')('runCommand against an npm .cmd shim', () => {
+  it('runs it, from a path with a space, with its arguments intact', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rc shim '))
+    try {
+      const shim = join(dir, 'agent-browser.CMD')
+      writeFileSync(shim, '@if "%~1 %~2 %~3 %~4"=="--session review-tkt_abc record stop" (exit /b 0) else (exit /b 9)\r\n')
+      expect(await runCommand(shim, ['--session', 'review-tkt_abc', 'record', 'stop'])).toBe(true)
+      expect(await runCommand(shim, ['--session', 'review-tkt_abc', 'close'])).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
