@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process'
 import type { SessionKind } from '@runcastle/core'
-import { resolveTool } from '../../util/resolve-executable'
+import { resolveTool, spawnTargetFor } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
@@ -7,6 +8,7 @@ import {
   assertHeadlessKickoff,
   assertKickoffArgv,
   type AgentRuntimeAdapter,
+  type BackgroundSession,
   type RuntimeLaunchInput,
   type RuntimeLaunchSpec,
   type RuntimeReadiness,
@@ -123,6 +125,74 @@ export const CC_NESTING_ENV = [
  */
 export const KICKOFF_LINES: Record<SessionKind, string> = kickoffLinesFor('claude-code')
 
+/**
+ * The background session in a `claude agents --json` listing that holds the
+ * conversation `ccSessionId`, if any. The listing is a JSON array of active
+ * sessions, interactive and background alike, each carrying `sessionId` and
+ * `kind`; only `kind: "background"` holds a conversation against `--resume`.
+ * Anything not shaped like that listing reads as "no background session".
+ *
+ * The short id is the leading block of the session id — the spelling Claude
+ * Code's own `claude attach <short>` / `claude stop <short>` advice uses.
+ */
+export function findBackgroundSessionIn(listing: unknown, ccSessionId: string): BackgroundSession | undefined {
+  if (!Array.isArray(listing)) return undefined
+  const held = listing.some(
+    (entry: unknown) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as { sessionId?: unknown }).sessionId === ccSessionId &&
+      (entry as { kind?: unknown }).kind === 'background',
+  )
+  return held ? { sessionId: ccSessionId, shortId: ccSessionId.slice(0, 8) } : undefined
+}
+
+/** How long `claude agents --json` may run before the probe gives up on it. */
+const AGENTS_LISTING_TIMEOUT_MS = 10_000
+
+/**
+ * Run `claude agents --json` and resolve its parsed output, or `undefined` when
+ * it could not run, timed out, or printed something that is not JSON. Never
+ * rejects. Settlement is owned here (listeners plus a timer backstop) for the
+ * reason `taskkillTree` gives: a promisified `execFile` is not trusted to settle
+ * under Bun on win32.
+ */
+function listClaudeAgents(binary: string): Promise<unknown> {
+  return new Promise((resolve) => {
+    let settled = false
+    let stdout = ''
+    let child: ReturnType<typeof spawn> | undefined
+    const settle = (value: unknown): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(value)
+    }
+    const timer = setTimeout(() => {
+      settle(undefined)
+      child?.kill()
+    }, AGENTS_LISTING_TIMEOUT_MS)
+    timer.unref?.()
+    try {
+      const { file, args } = spawnTargetFor(binary, ['agents', '--json'])
+      child = spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString('utf8')
+      })
+      child.on('error', () => settle(undefined))
+      child.on('close', () => {
+        try {
+          settle(JSON.parse(stdout))
+        } catch {
+          settle(undefined)
+        }
+      })
+    } catch {
+      settle(undefined)
+    }
+  })
+}
+
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
 const CLAUDE_BIN = 'claude'
 
@@ -190,5 +260,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
 
   kickoffLine(kind: SessionKind): string {
     return KICKOFF_LINES[kind]
+  },
+
+  async findBackgroundSession(ccSessionId: string): Promise<BackgroundSession | undefined> {
+    return findBackgroundSessionIn(await listClaudeAgents(this.resolveBinary()), ccSessionId)
   },
 }
