@@ -1,6 +1,6 @@
-import { spawn } from 'node:child_process'
 import type { SessionKind } from '@runcastle/core'
-import { resolveTool, spawnTargetFor } from '../../util/resolve-executable'
+import { createSystemExec } from '../../doctor/system-exec'
+import { resolveTool } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
 import { kickoffLinesFor } from './skills'
@@ -153,44 +153,18 @@ const AGENTS_LISTING_TIMEOUT_MS = 10_000
 /**
  * Run `claude agents --json` and resolve its parsed output, or `undefined` when
  * it could not run, timed out, or printed something that is not JSON. Never
- * rejects. Settlement is owned here (listeners plus a timer backstop) for the
- * reason `taskkillTree` gives: a promisified `execFile` is not trusted to settle
- * under Bun on win32.
+ * rejects. Runs through the shared {@link createSystemExec}, so a hung listing
+ * has its whole process tree killed — a `.cmd` shim included — not just the
+ * direct child.
  */
-function listClaudeAgents(binary: string): Promise<unknown> {
-  return new Promise((resolve) => {
-    let settled = false
-    let stdout = ''
-    let child: ReturnType<typeof spawn> | undefined
-    const settle = (value: unknown): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      resolve(value)
-    }
-    const timer = setTimeout(() => {
-      settle(undefined)
-      child?.kill()
-    }, AGENTS_LISTING_TIMEOUT_MS)
-    timer.unref?.()
-    try {
-      const { file, args } = spawnTargetFor(binary, ['agents', '--json'])
-      child = spawn(file, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8')
-      })
-      child.on('error', () => settle(undefined))
-      child.on('close', () => {
-        try {
-          settle(JSON.parse(stdout))
-        } catch {
-          settle(undefined)
-        }
-      })
-    } catch {
-      settle(undefined)
-    }
-  })
+async function listClaudeAgents(): Promise<unknown> {
+  try {
+    const out = await createSystemExec({ timeoutMs: AGENTS_LISTING_TIMEOUT_MS })(CLAUDE_BIN, ['agents', '--json'])
+    if (!out.ok || out.timedOut) return undefined
+    return JSON.parse(out.stdout)
+  } catch {
+    return undefined
+  }
 }
 
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
@@ -269,6 +243,6 @@ export const claudeRuntime: AgentRuntimeAdapter = {
   },
 
   async findBackgroundSession(ccSessionId: string): Promise<BackgroundSession | undefined> {
-    return findBackgroundSessionIn(await listClaudeAgents(this.resolveBinary()), ccSessionId)
+    return findBackgroundSessionIn(await listClaudeAgents(), ccSessionId)
   },
 }
