@@ -16,7 +16,12 @@ import { DEFAULT_RUNTIME, resolveModelEntry } from '@runcastle/core'
 import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { spawnTargetFor } from '../util/resolve-executable'
-import { runtimeAdapterFor, type AgentRuntimeAdapter, type RuntimeLaunchSpec } from './runtimes'
+import {
+  runtimeAdapterFor,
+  type AgentRuntimeAdapter,
+  type BackgroundSession,
+  type RuntimeLaunchSpec,
+} from './runtimes'
 import { chatKickoffFor, prepareConfirmKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
@@ -1239,6 +1244,12 @@ export function probePrepareHost(repoPath: string): PrepareHost {
 export interface SpawnMeta {
   /** The cc session id this launch tried to `--resume`, if any. */
   resumeSessionId?: string
+  /**
+   * The runtime's background-session lookup ({@link
+   * AgentRuntimeAdapter.findBackgroundSession}), asked only when a resume dies
+   * before going live; absent for runtimes without background sessions.
+   */
+  findBackgroundSession?: (agentSessionId: string) => Promise<BackgroundSession | undefined>
 }
 
 /**
@@ -1246,7 +1257,10 @@ export interface SpawnMeta {
  * and emits `session.pty_exited`. When a RESUME attempt dies before ever
  * reaching `live` (the session-start hook never fired — e.g. claude exited with
  * "No conversation found with session ID"), it additionally emits
- * `session.resume_failed` so the UI can toast.
+ * `session.resume_failed` so the UI can toast — once the runtime has been asked
+ * whether a background session of its own holds the conversation, which is the
+ * one failure a plain retry can never get past. The returned promise settles
+ * when that event has been emitted (`undefined` when there is none to emit).
  */
 export function handlePtyExit(
   ctx: AppCtx,
@@ -1254,7 +1268,7 @@ export function handlePtyExit(
   session: SessionRow,
   meta: SpawnMeta,
   exitCode: number | undefined | null,
-): void {
+): Promise<void> | undefined {
   const diedBeforeLive = getSessionRow(ctx, session.id)?.status === 'launching'
   markSessionEnded(ctx, session.id)
   // A project session's commits land on the base branch when its terminal goes
@@ -1263,16 +1277,19 @@ export function handlePtyExit(
   if (session.runtime === 'codex' && feature) {
     void noteResolvedMerge(ctx, session, feature).catch(() => {})
   }
+  let resumeFailureReported: Promise<void> | undefined
   if (diedBeforeLive && meta.resumeSessionId) {
-    emitForSession(ctx, session, {
-      type: 'session.resume_failed',
-      message: `resume failed for ${session.kind} — the session exited before starting (code ${exitCode ?? 'unknown'}); the previous conversation is still resumable`,
-      data: {
-        sessionId: session.id,
-        resumeSessionId: meta.resumeSessionId,
-        exitCode: exitCode ?? null,
-      },
-    })
+    const resumeSessionId = meta.resumeSessionId
+    const report = (background: BackgroundSession | undefined): void =>
+      emitResumeFailed(ctx, session, resumeSessionId, exitCode, background)
+    if (meta.findBackgroundSession) {
+      resumeFailureReported = meta
+        .findBackgroundSession(resumeSessionId)
+        .catch(() => undefined)
+        .then(report)
+    } else {
+      report(undefined)
+    }
   }
   if (session.purpose === 'self-plan' && feature) {
     // The plan is complete when its run reached the last planning step for this
@@ -1290,6 +1307,38 @@ export function handlePtyExit(
     type: 'session.pty_exited',
     message: ptyExitMessage(exitCode),
     data: { sessionId: session.id, exitCode: exitCode ?? null },
+  })
+  return resumeFailureReported
+}
+
+/**
+ * `session.resume_failed` for a resume that died before going live. A
+ * conversation held by a background session is NOT still resumable — every
+ * retry is refused the same way — so that case names the background session and
+ * the human's way out instead. Runcastle never stops it itself (it may be
+ * mid-work in the feature's worktree) nor forks it (two agents, one worktree).
+ */
+function emitResumeFailed(
+  ctx: AppCtx,
+  session: SessionRow,
+  resumeSessionId: string,
+  exitCode: number | undefined | null,
+  background: BackgroundSession | undefined,
+): void {
+  const exited = `resume failed for ${session.kind} — the session exited before starting (code ${exitCode ?? 'unknown'})`
+  const short = background?.shortId
+  emitForSession(ctx, session, {
+    type: 'session.resume_failed',
+    message: short
+      ? `${exited}: its conversation is running as a Claude Code background session (${short}), which cannot be resumed here. ` +
+        `Run \`claude attach ${short}\` to look at it, then \`claude stop ${short}\` (stopping keeps the conversation), then relaunch.`
+      : `${exited}; the previous conversation is still resumable`,
+    data: {
+      sessionId: session.id,
+      resumeSessionId,
+      exitCode: exitCode ?? null,
+      ...(short ? { backgroundSessionId: short } : {}),
+    },
   })
 }
 
@@ -1318,13 +1367,15 @@ function spawnEmbeddedPty(
   const { file, args } = spawnTargetFor(runtime.resolveBinary(), spec.argv)
   const env: Record<string, string | undefined> = { ...process.env, ...spec.env }
   for (const key of spec.envScrub) delete env[key]
+  const findBackgroundSession = runtime.findBackgroundSession?.bind(runtime)
+  const exitMeta: SpawnMeta = findBackgroundSession ? { ...meta, findBackgroundSession } : meta
   try {
     const entry = ptyRegistry().create({
       sessionId: session.id,
       cmd: file,
       args,
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
-      onExit: ({ exitCode }) => handlePtyExit(ctx, feature, session, meta, exitCode),
+      onExit: ({ exitCode }) => void handlePtyExit(ctx, feature, session, exitMeta, exitCode),
     })
     // The session is about to write docs; watch them so the UI sees the spec
     // appear as it is written. Feature sessions only — the prepare and project
