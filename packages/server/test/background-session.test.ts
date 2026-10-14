@@ -28,19 +28,29 @@ const LISTING = [
     status: 'busy',
   },
   {
-    pid: 202,
+    id: '3f2a9c71',
     cwd: 'C:\\repo\\.worktrees\\talk',
     kind: 'background',
     startedAt: 1791965000000,
     sessionId: HELD,
     name: 'talk-3f',
-    status: 'idle',
+    state: 'idle',
   },
 ]
 
 describe('finding the background session in a `claude agents --json` listing', () => {
   it('finds a background session holding the conversation, with its short id', () => {
     expect(findBackgroundSessionIn(LISTING, HELD)).toEqual({ sessionId: HELD, shortId: '3f2a9c71' })
+  })
+
+  it('names the short id Claude Code gives the background entry, not one derived from the session id', () => {
+    const listing = [{ id: 'abc12345', kind: 'background', sessionId: HELD, state: 'idle' }]
+    expect(findBackgroundSessionIn(listing, HELD)).toEqual({ sessionId: HELD, shortId: 'abc12345' })
+  })
+
+  it('falls back to the leading block of the session id when the entry carries no id', () => {
+    const listing = [{ kind: 'background', sessionId: HELD, state: 'idle' }]
+    expect(findBackgroundSessionIn(listing, HELD)).toEqual({ sessionId: HELD, shortId: '3f2a9c71' })
   })
 
   it('does not count an interactive session as holding it', () => {

@@ -132,19 +132,21 @@ export const KICKOFF_LINES: Record<SessionKind, string> = kickoffLinesFor('claud
  * `kind`; only `kind: "background"` holds a conversation against `--resume`.
  * Anything not shaped like that listing reads as "no background session".
  *
- * The short id is the leading block of the session id — the spelling Claude
- * Code's own `claude attach <short>` / `claude stop <short>` advice uses.
+ * The short id is the background entry's own `id` — the one Claude Code's
+ * `claude attach <short>` / `claude stop <short>` advice names. An entry without
+ * a string `id` falls back to the leading block of the session id.
  */
 export function findBackgroundSessionIn(listing: unknown, ccSessionId: string): BackgroundSession | undefined {
   if (!Array.isArray(listing)) return undefined
-  const held = listing.some(
-    (entry: unknown) =>
+  const held = listing.find(
+    (entry: unknown): entry is { id?: unknown } =>
       typeof entry === 'object' &&
       entry !== null &&
       (entry as { sessionId?: unknown }).sessionId === ccSessionId &&
       (entry as { kind?: unknown }).kind === 'background',
   )
-  return held ? { sessionId: ccSessionId, shortId: ccSessionId.slice(0, 8) } : undefined
+  if (!held) return undefined
+  return { sessionId: ccSessionId, shortId: typeof held.id === 'string' ? held.id : ccSessionId.slice(0, 8) }
 }
 
 /** How long `claude agents --json` may run before the probe gives up on it. */
