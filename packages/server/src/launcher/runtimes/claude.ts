@@ -1,4 +1,5 @@
 import type { SessionKind } from '@runcastle/core'
+import { createSystemExec } from '../../doctor/system-exec'
 import { resolveTool } from '../../util/resolve-executable'
 import { writeSessionArtifacts } from '../artifacts'
 import { resolvePluginDir } from '../skills-root'
@@ -7,6 +8,7 @@ import {
   assertHeadlessKickoff,
   assertKickoffArgv,
   type AgentRuntimeAdapter,
+  type BackgroundSession,
   type RuntimeLaunchInput,
   type RuntimeLaunchSpec,
   type RuntimeReadiness,
@@ -123,6 +125,50 @@ export const CC_NESTING_ENV = [
  */
 export const KICKOFF_LINES: Record<SessionKind, string> = kickoffLinesFor('claude-code')
 
+/**
+ * The background session in a `claude agents --json` listing that holds the
+ * conversation `ccSessionId`, if any. The listing is a JSON array of active
+ * sessions, interactive and background alike, each carrying `sessionId` and
+ * `kind`; only `kind: "background"` holds a conversation against `--resume`.
+ * Anything not shaped like that listing reads as "no background session".
+ *
+ * The short id is the background entry's own `id` — the one Claude Code's
+ * `claude attach <short>` / `claude stop <short>` advice names. An entry without
+ * a string `id` falls back to the leading block of the session id.
+ */
+export function findBackgroundSessionIn(listing: unknown, ccSessionId: string): BackgroundSession | undefined {
+  if (!Array.isArray(listing)) return undefined
+  const held = listing.find(
+    (entry: unknown): entry is { id?: unknown } =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as { sessionId?: unknown }).sessionId === ccSessionId &&
+      (entry as { kind?: unknown }).kind === 'background',
+  )
+  if (!held) return undefined
+  return { sessionId: ccSessionId, shortId: typeof held.id === 'string' ? held.id : ccSessionId.slice(0, 8) }
+}
+
+/** How long `claude agents --json` may run before the probe gives up on it. */
+const AGENTS_LISTING_TIMEOUT_MS = 10_000
+
+/**
+ * Run `claude agents --json` and resolve its parsed output, or `undefined` when
+ * it could not run, timed out, or printed something that is not JSON. Never
+ * rejects. Runs through the shared {@link createSystemExec}, so a hung listing
+ * has its whole process tree killed — a `.cmd` shim included — not just the
+ * direct child.
+ */
+async function listClaudeAgents(): Promise<unknown> {
+  try {
+    const out = await createSystemExec({ timeoutMs: AGENTS_LISTING_TIMEOUT_MS })(CLAUDE_BIN, ['agents', '--json'])
+    if (!out.ok || out.timedOut) return undefined
+    return JSON.parse(out.stdout)
+  } catch {
+    return undefined
+  }
+}
+
 /** The CLI name, as `resolveTool` and the doctor's `claude` probe both spell it. */
 const CLAUDE_BIN = 'claude'
 
@@ -183,6 +229,12 @@ export const claudeRuntime: AgentRuntimeAdapter = {
       env: {
         RUNCASTLE_SESSION_ID: input.session.id,
         RUNCASTLE_SERVER_URL: input.serverUrl,
+        // Agent view off: left-arrow backgrounding moves the conversation under
+        // CC's background supervisor, where it outlives the PTY and every later
+        // `--resume` of it is refused. The env var (not the `disableAgentView`
+        // setting) so it holds however the per-session --settings merge, and it
+        // reaches only the processes runcastle spawns, never the human's config.
+        CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
       },
       envScrub: CC_NESTING_ENV,
     }
@@ -190,5 +242,9 @@ export const claudeRuntime: AgentRuntimeAdapter = {
 
   kickoffLine(kind: SessionKind): string {
     return KICKOFF_LINES[kind]
+  },
+
+  async findBackgroundSession(ccSessionId: string): Promise<BackgroundSession | undefined> {
+    return findBackgroundSessionIn(await listClaudeAgents(), ccSessionId)
   },
 }

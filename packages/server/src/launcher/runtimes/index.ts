@@ -6,6 +6,7 @@ import type { AgentRuntimeAdapter } from './types'
 
 export type {
   AgentRuntimeAdapter,
+  BackgroundSession,
   RuntimeLaunchInput,
   RuntimeLaunchSpec,
   RuntimeReadiness,

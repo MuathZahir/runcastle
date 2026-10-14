@@ -97,4 +97,18 @@ export interface AgentRuntimeAdapter {
   writeArtifacts(input: RuntimeLaunchInput): Promise<RuntimeLaunchSpec>
   /** The line typed into a freshly-live session of `kind` to open it. */
   kickoffLine(kind: SessionKind): string
+  /**
+   * The runtime's own background session holding the conversation `agentSessionId`,
+   * if one does — which makes that conversation refuse to be resumed here.
+   * Omitted by runtimes that have no background sessions.
+   */
+  findBackgroundSession?(agentSessionId: string): Promise<BackgroundSession | undefined>
+}
+
+/** A conversation the runtime is running in the background, outside any runcastle terminal. */
+export interface BackgroundSession {
+  /** The agent-side conversation id. */
+  sessionId: string
+  /** The short id the runtime's own `attach` / `stop` commands take. */
+  shortId: string
 }
