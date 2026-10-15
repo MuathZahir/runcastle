@@ -70,6 +70,25 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain("saying it is the human's answer")
   })
 
+  it('agrees how the cut is run before creating anything, and works within it', () => {
+    const text = section()
+    const agreement = text.indexOf('### The working agreement')
+    expect(agreement).toBeGreaterThanOrEqual(0)
+    expect(agreement).toBeLessThan(text.indexOf('### Grill, create, and what is yours'))
+    expect(text).toContain('**Before you create anything for a cut, ask the human how they want the work run.**')
+    expect(text).toContain('One question, with your recommendation')
+    expect(text).toContain('**Autonomous**')
+    expect(text).toContain('**Checkpoints they name**')
+    expect(text).toContain('**A check-in after each feature**')
+    expect(text).toContain('**"You decide" means autonomous.**')
+    expect(text).toContain('**Write the agreement into the brief of every feature in the cut**')
+    expect(text).toContain('read the agreement back from the briefs')
+    expect(text).toContain('**Autonomous: never stop for a test drive.**')
+    expect(text).toContain('**never create review tickets yourself**')
+    expect(text).toContain('**Checkpoints: stop exactly at the points they named**')
+    expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
+  })
+
   it('reads runcastle messages and the catch-up, and stops on one move', () => {
     const text = section()
     expect(text).toContain('`[runcastle]`')
