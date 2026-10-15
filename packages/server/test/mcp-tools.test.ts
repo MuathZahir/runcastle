@@ -773,7 +773,8 @@ describe('mcp tool registration by audience', () => {
       expect(chat, write).toContain(write)
     }
 
-    // A project session has no feature, so none of the feature surface.
+    // A project session has no feature, so none of the feature surface beyond
+    // the four reads it names a feature to by slug.
     const project = toolsForAudience('project')
     expect(project).toEqual(
       expect.arrayContaining([
@@ -785,9 +786,12 @@ describe('mcp tool registration by audience', () => {
         'list_project_notes',
         'triage_project_note',
         'update_project_note',
+        'get_feature_context',
+        'read_feature_doc',
+        'list_tickets',
+        'get_ticket',
       ]),
     )
-    expect(project).not.toContain('get_feature_context')
     // …and the project's fetch-one stays the project's.
     expect(toolsForAudience('chat')).not.toContain('read_feature_brief')
     expect(toolsForAudience('run')).not.toContain('read_feature_brief')
