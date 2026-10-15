@@ -42,6 +42,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     baseBranch: row.baseBranch ?? undefined,
     status: row.status,
     createdAt: row.createdAt,
+    orchestrated: row.orchestrated,
   })
 }
 
@@ -62,6 +63,7 @@ export function rowToProject(row: ProjectSelect): Project {
     driveStopCommand: row.driveStopCommand ?? undefined,
     driveInstructions: row.driveInstructions ?? undefined,
     docsCommitPrefix: row.docsCommitPrefix ?? undefined,
+    orchestrator: row.orchestrator ?? undefined,
     closedAt: row.closedAt ?? undefined,
   })
 }
@@ -92,6 +94,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     transcriptPath: row.transcriptPath ?? undefined,
     status: row.status,
     awaitingInput: row.awaitingInput,
+    headless: row.headless,
     worktreePath: row.worktreePath,
     model: row.model ?? undefined,
     runtime: row.runtime ?? undefined,
