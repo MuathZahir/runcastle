@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, NavItem, OrchestratedTag, SectionLabel, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Kbd, NavItem, SectionLabel, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
@@ -527,7 +527,9 @@ export function FeatureRowsSkeleton() {
  * progress bars, no per-row check buttons, no "…" at rest). The phase glyph
  * says where it is; one dot says whether it is moving or waiting on you; the
  * meta is its ticket progress, or what a waiting draft waits on. A feature the
- * orchestrator owns carries the Orchestrated tag after its title. Selected is `surface-selected`, nothing else.
+ * orchestrator owns wears a second, accent ring on its glyph ("Orchestrated"
+ * on hover); the page header carries the tag. Selected is `surface-selected`,
+ * nothing else.
  */
 export function FeatureRow({
   f,
@@ -547,17 +549,9 @@ export function FeatureRow({
   return (
     <NavItem
       phase={rowPhase(f)}
-      label={
-        f.orchestrated ? (
-          // The title gives way to the tag, never the other way round.
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 truncate">{f.title}</span>
-            <OrchestratedTag orchestrated />
-          </span>
-        ) : (
-          f.title
-        )
-      }
+      // A ring, not a tag: a tag took the row's width from the title.
+      glyphRing={f.orchestrated ? 'Orchestrated' : undefined}
+      label={f.title}
       title={reason ? `${f.title} — ${reason}` : f.title}
       dot={rowDot(f)}
       // Shipped work is all landed by definition — its fraction would be noise.

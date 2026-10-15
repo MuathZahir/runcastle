@@ -189,13 +189,47 @@ describe('sidebar feature row', () => {
     expect(html).not.toContain('group-hover/nav:opacity-0')
   })
 
-  it('tags a feature the orchestrator owns after its title, and no other', () => {
-    const owned = render(listItem({ orchestrated: true }))
-    expect(owned).toContain('Flow redesign: project shell and navigation</span><span')
-    expect(owned).toContain('bg-accent-subtle')
-    expect(owned).toContain('>Orchestrated<')
+  // Lap 1 drive: the tag sat after the title in the label, and on a waiting
+  // draft the meta took the rest of the row — the title shrank to nothing and
+  // the tag clipped to "Orch" before "Waits on snake-powerups".
+  it('gives a waiting orchestrated draft its whole label for the title, beside its Waits on meta', () => {
+    const html = render(
+      listItem({
+        title: 'Snake power-ups',
+        status: 'draft',
+        phase: 'planning',
+        orchestrated: true,
+        dependsOn: [
+          {
+            featureId: 'feat_core',
+            slug: 'snake-powerups',
+            title: 'snake-powerups',
+            phase: 'building',
+            status: 'active',
+            satisfied: false,
+          },
+        ],
+      }),
+    )
 
-    expect(render(listItem({ orchestrated: false }))).not.toContain('Orchestrated')
-    expect(render(listItem())).not.toContain('Orchestrated')
+    expect(html).toContain('<span class="min-w-0 flex-1 truncate">Snake power-ups</span>')
+    expect(html).toContain('>Waits on snake-powerups<')
+    expect(html).not.toContain('bg-accent-subtle')
+  })
+
+  it('rings the glyph of a feature the orchestrator owns, named Orchestrated, and no other', () => {
+    const owned = render(listItem({ orchestrated: true }))
+    expect(owned).toContain('data-glyph-ring')
+    expect(owned).toContain('ring-accent')
+    expect(owned).toContain('aria-label="Orchestrated"')
+    // No text tag in the row: the label is the title alone.
+    expect(owned).toContain('<span class="min-w-0 flex-1 truncate">Flow redesign: project shell and navigation</span>')
+    expect(owned).not.toContain('>Orchestrated<')
+
+    for (const html of [render(listItem({ orchestrated: false })), render(listItem())]) {
+      expect(html).not.toContain('Orchestrated')
+      expect(html).not.toContain('data-glyph-ring')
+      expect(html).not.toContain('ring-accent')
+    }
   })
 })
