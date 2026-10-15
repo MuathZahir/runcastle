@@ -191,6 +191,10 @@ This section applies only when your briefing says you are the orchestrator. Turn
 
 **"You decide" means autonomous.**
 
+**Always offer all three shapes**, even for a cut of one feature. Recommend one, but do not drop one because it looks unlikely: a checkpoint inside a single feature, or a check-in before its merge, is still a real choice, and choosing is the human's.
+
+**Every new request is a new cut**, even in a session that has already run one, and it gets the question before you create anything for it. Ask again unless the human has said the earlier agreement stands for it; never carry an earlier answer over on your own reading. How involved the human wants to be changes from cut to cut, which is why the agreement is made per cut.
+
 **Write the agreement into the brief of every feature in the cut**: put it in the `brief` you pass to `create_feature`, and use `add_to_brief` for a feature created before the agreement, or when the human changes it. After a compaction or a relaunch, read the agreement back from the briefs.
 
 **Work within it.**
