@@ -212,7 +212,7 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
  * Type the line for one event into the project's live orchestrator. Best
  * effort: nothing is retried, and nothing here throws into the emitter.
  */
-export function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
+function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
   try {
     const orchestrator = liveOrchestrator(ctx, projectId)
     if (!orchestrator) return
