@@ -303,9 +303,9 @@ function assertSelfPlannable(ctx: AppCtx, feature: Feature): void {
 }
 
 /**
- * The refusal every chat launch gets while a self-planning run is up. The run is
- * headless — there is no terminal to attach to or type into — and it is the
- * feature's one session, so the human has to stop it before the chat can open.
+ * The refusal every chat launch gets while a headless run is up. There is no
+ * terminal to attach to or type into, and it is the feature's one session, so
+ * it has to be stopped before the chat can open.
  */
 function headlessRunningError(feature: Feature, run: SessionRow): GateError {
   return new GateError(
@@ -322,7 +322,11 @@ function headlessRunningError(feature: Feature, run: SessionRow): GateError {
  */
 function isHeadless(input: LaunchSessionInput): boolean {
   if (input.kind !== 'chat') return false
-  return isSelfPlan(input) || input.purpose === 'relay' || (input.purpose === 'start-lap' && !!input.headless)
+  return (
+    isSelfPlan(input) ||
+    input.purpose === 'relay' ||
+    (input.purpose === 'start-lap' && !!input.headless)
+  )
 }
 
 /**
