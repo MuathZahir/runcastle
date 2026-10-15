@@ -225,11 +225,20 @@ export const toolMergeFeature = orchestratorTool(
   },
 )
 
+/** `prior` with `text` appended as a dated orchestrator section. */
+function withBriefSection(prior: string, text: string): string {
+  const date = new Date().toISOString().slice(0, 10)
+  const section = `## Added by the orchestrator, ${date}\n\n${text}\n`
+  const separator = prior === '' ? '' : prior.endsWith('\n') ? '\n' : '\n\n'
+  return `${prior}${separator}${section}`
+}
+
 /**
  * Append what the human told the orchestrator later about a feature to its
  * brief, where the human's intent lives (decision 16), and commit it as
  * runcastle commits feature docs — landed through the feature's queue when a
- * burn holds the branch.
+ * burn holds the branch. A draft has no branch and keeps its brief on its row,
+ * so the section is appended there and Start scaffolds it into `brief.md`.
  */
 export const toolAddToBrief = orchestratorTool(
   async (
@@ -238,9 +247,20 @@ export const toolAddToBrief = orchestratorTool(
     input: { slug: string; text: string },
   ): Promise<{ slug: string; relPath: string }> => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    requireNotDraft(feature)
     const text = input.text.trim()
     if (!text) throw new InvalidInputError('there is nothing to add: the text is empty.')
+    if (feature.status === 'draft') {
+      ctx.db
+        .update(features)
+        .set({ brief: withBriefSection(feature.brief ?? '', text) })
+        .where(eq(features.id, feature.id))
+        .run()
+      emit(ctx, feature.id, {
+        type: 'brief.added',
+        message: `the orchestrator added to ${feature.slug}'s brief`,
+      })
+      return { slug: feature.slug, relPath: 'brief.md' }
+    }
     const project = projectForFeature(ctx, feature)
     const worktree = worktreeDir(project.id, feature.slug)
     if (!existsSync(worktree)) {
@@ -248,11 +268,8 @@ export const toolAddToBrief = orchestratorTool(
     }
     const briefPath = featureDocPath(project, feature, 'brief.md')
     const prior = existsSync(briefPath) ? readFileSync(briefPath, 'utf8') : ''
-    const date = new Date().toISOString().slice(0, 10)
-    const section = `## Added by the orchestrator, ${date}\n\n${text}\n`
-    const separator = prior === '' ? '' : prior.endsWith('\n') ? '\n' : '\n\n'
     mkdirSync(dirname(briefPath), { recursive: true })
-    writeFileSync(briefPath, `${prior}${separator}${section}`, 'utf8')
+    writeFileSync(briefPath, withBriefSection(prior, text), 'utf8')
     await git.commitDocs(
       worktree,
       git.docsCommitMessage(`add to ${feature.slug} brief`, project.docsCommitPrefix),
@@ -434,7 +451,8 @@ export function registerOrchestratorTools(
       title: 'Add to a feature’s brief',
       description:
         'Append what the human told you later about a feature to its brief.md, as a dated ' +
-        'section, and commit it. The brief is where the human’s intent for the feature lives. ' +
+        'section, and commit it; on a draft it is added to the parked brief that Start turns ' +
+        'into brief.md. The brief is where the human’s intent for the feature lives. ' +
         'Orchestrator only.',
       inputSchema: {
         slug: SlugInput,
