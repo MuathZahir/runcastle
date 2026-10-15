@@ -309,6 +309,25 @@ describe('the notifier and the catch-up', () => {
     ])
   })
 
+  it('reproduces the lap 1 drive: two lines inside 350 ms are submitted as one joined line', () => {
+    vi.useFakeTimers()
+    try {
+      updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
+      const typed = terminalFor(projectSession('orchestrate'))
+      const feature = seedFeature(ctx, projectId, { slug: 'snake-core', orchestrated: true })
+
+      emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
+      emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '5/5 tickets done' } })
+      vi.advanceTimersByTime(1000)
+
+      const submissions = typed.join('').split('\r').filter((s) => s.length > 0)
+      expect(submissions).toHaveLength(1)
+      expect(submissions[0]).toContain('.[runcastle] snake-core burn finished')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('stays quiet about a feature it does not own, and about acts and merges it took itself', () => {
     updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
     const typed = terminalFor(projectSession('orchestrate'))
