@@ -105,11 +105,11 @@ export function toolTakeOverFeature(
   return { slug: feature.slug, orchestrated: true }
 }
 
-function ok(result: unknown): CallToolResult {
+export function ok(result: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(result) }] }
 }
 
-function noSession(): CallToolResult {
+export function noSession(): CallToolResult {
   return {
     content: [
       { type: 'text', text: 'No active runcastle session. Launch a session from the runcastle UI first.' },
