@@ -217,20 +217,23 @@ export function NavItem({
         )}
       >
         {glyph && <Leading>{glyph}</Leading>}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {/* Sized from its text, not from zero: in a tight row the label and a
+            long meta ("Waits on changelog-file") give up width together, so
+            the meta can never take the whole row from the title. */}
+        <span className="min-w-0 flex-auto truncate">{label}</span>
         {(dot || hasMeta) && (
           // The trailing cluster steps aside while the actions show — they sit
           // over this edge, and a dot peeking out behind the "…" read as a
           // fourth dot (hovered, focused, or with its menu open).
           <span
             className={cx(
-              'flex shrink-0 items-center gap-2',
+              'flex min-w-0 items-center gap-2',
               actions != null &&
                 'transition-opacity duration-(--dur-1) group-focus-within/nav:opacity-0 group-hover/nav:opacity-0 group-has-[[aria-expanded=true]]/nav:opacity-0',
             )}
           >
             {dot && <StatusDot tone={dot} />}
-            {hasMeta && <span className="text-xs font-normal text-text-tertiary tabular-nums">{meta}</span>}
+            {hasMeta && <span className="min-w-0 truncate text-xs font-normal text-text-tertiary tabular-nums">{meta}</span>}
           </span>
         )}
       </RowControl>
