@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME, type AgentRuntime, type SessionRow } from '@runcastle/
 import { writeToLiveTerminal } from '../launcher/launcher'
 import { codexHomeDir } from '../launcher/runtimes/codex'
 import { resolveSpawnTarget } from '../util/resolve-executable'
-import { answerOrchestratorWaiter, takeOrchestratorLines } from './orchestrator-messages'
+import { answerOrchestratorWaiter, hasOrchestratorLines, takeOrchestratorLines } from './orchestrator-messages'
 
 /**
  * How a live orchestrator's pending lines reach it (`whole-cuts-plan-themselves`
@@ -77,24 +77,40 @@ const runCommand: RunCommand = (command) =>
   })
 
 /**
+ * How long a Codex delivery waits after the first kick before it takes the
+ * lines, so events that end together go as one message: a burn's review ticket
+ * and the burn itself end tens of milliseconds apart. Small beside the queue
+ * service's own ~10 s poll.
+ */
+export const CODEX_GATHER_MS = 1000
+
+/**
  * Codex: queue the lines to the session's thread. Codex's queue service starts a
  * turn with them when the thread is idle, or delivers them after the current
- * turn when it is busy (it polls about every 10 s). One spawn at a time per
- * session: lines arriving while one runs go in the next. Best effort — a failed
- * spawn is logged and its lines dropped.
+ * turn when it is busy (it polls about every 10 s). The first kick opens a
+ * `gatherMs` window and the lines are taken when it closes. One spawn at a time
+ * per session: lines arriving while one gathers or runs go in it or the next.
+ * Best effort — a failed spawn is logged and its lines dropped.
  */
-export function codexQueueDelivery(run: RunCommand = runCommand): OrchestratorDelivery {
-  const running = new Set<string>()
+export function codexQueueDelivery(run: RunCommand = runCommand, gatherMs = CODEX_GATHER_MS): OrchestratorDelivery {
+  const busy = new Set<string>()
   const send = (session: SessionRow): void => {
-    if (running.has(session.id) || !session.ccSessionId) return
-    const lines = takeOrchestratorLines(session.id)
-    if (lines.length === 0) return
-    running.add(session.id)
-    void run(codexQueueCommand(session, session.ccSessionId, lines.join('\n'))).then((code) => {
-      if (code !== 0) console.error(`codex queue exited ${code}; dropped ${lines.length} line(s)`)
-      running.delete(session.id)
-      send(session)
-    })
+    const conversationId = session.ccSessionId
+    if (busy.has(session.id) || !conversationId || !hasOrchestratorLines(session.id)) return
+    busy.add(session.id)
+    const deliver = (): void => {
+      const lines = takeOrchestratorLines(session.id)
+      if (lines.length === 0) {
+        busy.delete(session.id)
+        return
+      }
+      void run(codexQueueCommand(session, conversationId, lines.join('\n'))).then((code) => {
+        if (code !== 0) console.error(`codex queue exited ${code}; dropped ${lines.length} line(s)`)
+        busy.delete(session.id)
+        send(session)
+      })
+    }
+    setTimeout(deliver, gatherMs).unref?.()
   }
   return { kick: send }
 }

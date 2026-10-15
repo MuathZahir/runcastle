@@ -46,10 +46,15 @@ export function takeOrchestratorLines(sessionId: string): string[] {
   return lines
 }
 
+/** Whether a session has any line pending. */
+export function hasOrchestratorLines(sessionId: string): boolean {
+  return Boolean(pending.get(sessionId)?.length)
+}
+
 /** Hand a session's pending lines to its waiter, if it has one and there are any. */
 export function answerOrchestratorWaiter(sessionId: string): void {
   const waiter = waiters.get(sessionId)
-  if (!waiter || !pending.get(sessionId)?.length) return
+  if (!waiter || !hasOrchestratorLines(sessionId)) return
   waiters.delete(sessionId)
   waiter.answer({ status: 'lines', lines: takeOrchestratorLines(sessionId) })
 }

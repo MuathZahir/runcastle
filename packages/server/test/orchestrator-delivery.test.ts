@@ -12,6 +12,7 @@ import hooksApp from '../src/routes/hooks'
 import {
   asyncRewakeDelivery,
   bracketedPaste,
+  CODEX_GATHER_MS,
   codexQueueCommand,
   codexQueueDelivery,
   deliveryFor,
@@ -126,7 +127,8 @@ describe('the Codex delivery — codex queue', () => {
     expect(command.env).toEqual({ PATH: '/bin', CODEX_HOME: codexHomeDir('sess-1') })
   })
 
-  it('sends all pending lines as one spawn, and one spawn at a time per session', async () => {
+  /** A delivery whose spawns are recorded and finish only when the test says so. */
+  function heldDelivery(): { delivery: ReturnType<typeof codexQueueDelivery>; runs: CodexQueueCommand[]; finish: Array<(code: number) => void> } {
     const runs: CodexQueueCommand[] = []
     const finish: Array<(code: number) => void> = []
     const delivery = codexQueueDelivery(
@@ -136,20 +138,45 @@ describe('the Codex delivery — codex queue', () => {
           finish.push(resolve)
         }),
     )
+    return { delivery, runs, finish }
+  }
+
+  it('gathers two events ending 10 ms apart into one spawn (the drive’s two turns)', () => {
+    vi.useFakeTimers()
+    const { delivery, runs } = heldDelivery()
+    const id = freshId()
+    const row = session(id, { runtime: 'codex', ccSessionId: 'conv-1' })
+
+    queueOrchestratorLine(id, 'A')
+    delivery.kick(row)
+    vi.advanceTimersByTime(10)
+    queueOrchestratorLine(id, 'B')
+    delivery.kick(row)
+    vi.advanceTimersByTime(CODEX_GATHER_MS)
+
+    expect(runs.map((r) => r.args.at(-1))).toEqual(['A\nB'])
+  })
+
+  it('sends all pending lines as one spawn, and one spawn at a time per session', async () => {
+    vi.useFakeTimers()
+    const { delivery, runs, finish } = heldDelivery()
     const id = freshId()
     const row = session(id, { runtime: 'codex', ccSessionId: 'conv-1' })
 
     queueOrchestratorLine(id, 'one')
     queueOrchestratorLine(id, 'two')
     delivery.kick(row)
+    vi.advanceTimersByTime(CODEX_GATHER_MS)
     queueOrchestratorLine(id, 'three')
     delivery.kick(row)
     queueOrchestratorLine(id, 'four')
     delivery.kick(row)
+    vi.advanceTimersByTime(CODEX_GATHER_MS)
 
     expect(runs.map((r) => r.args.at(-1))).toEqual(['one\ntwo'])
     finish[0]?.(0)
-    await vi.waitFor(() => expect(runs).toHaveLength(2))
+    await vi.advanceTimersByTimeAsync(CODEX_GATHER_MS)
+    expect(runs).toHaveLength(2)
     expect(runs[1]?.args.at(-1)).toBe('three\nfour')
     expect(runs[1]?.args.slice(-5, -1)).toEqual(['queue', '--thread', 'conv-1', '--message'])
   })
