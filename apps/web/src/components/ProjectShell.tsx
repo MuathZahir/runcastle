@@ -101,7 +101,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const prepared = prep.data?.prepared ?? true
   const empty = prep.data?.empty ?? true
   // The one drive query every drive surface polls, read for the titlebar pill.
-  const slot = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() }).data
+  const slot = trpc.feature.driveInfo.useQuery({ projectId }, { refetchInterval: useLivePoll() }).data
   const projectDrive = isThisProjectDrive(slot, projectId) ? slot : null
 
   const features = list.data

@@ -108,7 +108,7 @@ export function ReviewBody({
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
   const conflictResolved = !conflict && mergeConflictResolved(events)
-  const drive = trpc.feature.driveInfo.useQuery(undefined, {
+  const drive = trpc.feature.driveInfo.useQuery({ projectId: feature.projectId }, {
     refetchInterval: useLivePoll(),
   })
   // The drive slot is shared with preparation's dry run, which belongs to no

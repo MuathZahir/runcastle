@@ -274,7 +274,10 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
-  const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  const driveQ = trpc.feature.driveInfo.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId, refetchInterval: useLivePoll() },
+  )
   // How long tickets have actually been taking in THIS project, for the pre-burn
   // bar's time expectation (decision #16b). History, so it does not poll — a
   // median over every ticket the project has ever finished cannot move within a

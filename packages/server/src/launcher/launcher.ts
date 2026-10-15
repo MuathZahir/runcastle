@@ -883,7 +883,7 @@ export async function launchDriveFixSession(
   requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
 
-  const drive = git.activeDriveInfo()
+  const drive = git.activeDriveInfo(project.id)
   if (drive?.featureId !== feature.id || !drive.hookFailure) {
     throw new GateError(
       `no failed drive to fix on ${feature.slug} — a drive-fix session is opened from a drive ` +

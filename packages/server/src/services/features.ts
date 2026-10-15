@@ -1143,7 +1143,7 @@ export async function deleteFeature(
   // (3) Stop a test drive of THIS feature — it holds the main checkout on the
   // feature branch, which would block the branch delete (a drive of another
   // feature is left alone).
-  if (git.activeTestDriveFeatureId() === featureId) {
+  if (git.activeTestDriveFeatureId(project.id) === featureId) {
     await git.testDrive(ctx, project, feature, 'stop')
   }
 
