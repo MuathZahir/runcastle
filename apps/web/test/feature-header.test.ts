@@ -96,6 +96,15 @@ describe('the feature header', () => {
     // begun on a feature that has no branch yet.
     expect(header({}, true)).not.toContain('title="building"')
   })
+
+  it('marks a feature the orchestrator owns beside its title, and no other', () => {
+    const owned = header({ orchestrated: true })
+    expect(owned).toContain(`${LONG_TITLE}<span`)
+    expect(classesAround(owned, '>Orchestrated<')).toContain('bg-accent-subtle')
+    expect(classesAround(owned, '>Orchestrated<')).toContain('text-accent-text')
+
+    expect(header({ orchestrated: false })).not.toContain('Orchestrated')
+  })
 })
 
 describe('the next-step bar under it', () => {

@@ -182,6 +182,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `StatusLabel` | children (the word); `tone`; or `icon` (tone-coloured) / `phase` / `spinning`; `size` `xs` (default) · `sm`; `strong`; `title`. | What every former chip is now. |
 | `PhaseIcon` (icons.tsx) | `phase` (`Phase` or `draft` · `ideation` · `spec` · `tickets` · `implementation`); `size`; `label` (`''` = decorative); `className`. | Shape first: dashed ring · ring · ¼ · ½ · ¾ · ring+dot · filled check. The fill sweeps on a phase change. `PHASE_TEXT`, `PHASE_NAME` maps exported. |
 | `PhaseTag` · `PhaseDot` | `phase`. | PhaseIcon + sentence-case name · the glyph alone at 14px. |
+| `Tag` · `OrchestratedTag` | `Tag`: children, `className` (placement). `OrchestratedTag`: `orchestrated`. | The one boxed mark: `accent-subtle` ground, `accent-text` 12px medium word. For what a thing *is* (experimental, Orchestrated), never a state. `OrchestratedTag` renders nothing when `orchestrated` is false. |
 | `TicketStatusChip` · `RunStatusChip` · `FindingSeverityChip` · `TicketKindChip` · `NoteAuthorChip` | unchanged. | Rendered as `StatusLabel`s in sentence case. `TicketKindChip` / `NoteAuthorChip` render nothing for the default kind/author. |
 | `SessionStatusDot` | `status`. | A dot with a `title` (not an accessible name). |
 | `CheckLine` | `row: CheckRow`. | One review figure as a property row. |
