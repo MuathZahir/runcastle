@@ -21,6 +21,7 @@ import {
 } from '../src/services/orchestrator-delivery'
 import {
   answerOrchestratorWaiter,
+  ORCHESTRATOR_GATHER_MS,
   queueOrchestratorLine,
   takeOrchestratorLines,
   waitForOrchestratorLines,
@@ -116,6 +117,41 @@ describe('the typing fallback', () => {
 
     expect(writes).toEqual([bracketedPaste('[runcastle] a finished.\n[runcastle] b finished.'), '\r'])
     expect(takeOrchestratorLines(id)).toEqual([])
+  })
+})
+
+describe('the Claude Code delivery — the asyncRewake waiter', () => {
+  beforeEach(() => vi.useFakeTimers())
+
+  it('gathers two lines ending 10 ms apart into one answer for the one waiter', async () => {
+    const id = freshId()
+    const answer = waitForOrchestratorLines(id, 'w1', 25_000)
+    let settled: unknown
+    void answer.then((a) => (settled = a))
+
+    queueOrchestratorLine(id, '[runcastle] a review pass (ticket 2) finished.')
+    asyncRewakeDelivery.kick(session(id))
+    await vi.advanceTimersByTimeAsync(10)
+    queueOrchestratorLine(id, '[runcastle] a burn finished (2/2 tickets done).')
+    asyncRewakeDelivery.kick(session(id))
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBeUndefined()
+
+    await vi.advanceTimersByTimeAsync(ORCHESTRATOR_GATHER_MS)
+    expect(await answer).toEqual({
+      status: 'lines',
+      lines: ['[runcastle] a review pass (ticket 2) finished.', '[runcastle] a burn finished (2/2 tickets done).'],
+    })
+  })
+
+  it('answers a waiter at once with lines that waited out the window before it came up', async () => {
+    const id = freshId()
+    queueOrchestratorLine(id, '[runcastle] a finished.')
+    asyncRewakeDelivery.kick(session(id))
+    await vi.advanceTimersByTimeAsync(ORCHESTRATOR_GATHER_MS * 10)
+
+    const answer = waitForOrchestratorLines(id, 'w1', 25_000)
+    expect(await answer).toEqual({ status: 'lines', lines: ['[runcastle] a finished.'] })
   })
 })
 

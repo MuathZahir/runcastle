@@ -212,9 +212,40 @@ describe('sidebar feature row', () => {
       }),
     )
 
-    expect(html).toContain('<span class="min-w-0 flex-1 truncate">Snake power-ups</span>')
+    expect(html).toContain('<span class="min-w-0 flex-auto truncate">Snake power-ups</span>')
     expect(html).toContain('>Waits on snake-powerups<')
     expect(html).not.toContain('bg-accent-subtle')
+  })
+
+  // Lap 2 review: with the tag gone the title still read "See…" (34 of 169 px)
+  // beside "Waits on changelog-file", whose wrapper never shrank. Static markup
+  // cannot measure, so what is pinned is the flex sizing that shares the
+  // shortfall: the label is sized from its text (not a zero basis that lets the
+  // meta take everything first), and the meta's cluster may shrink and truncate.
+  it('lets a long Waits on meta give up width alongside the title instead of taking it', () => {
+    const html = render(
+      listItem({
+        title: 'See changelog README line',
+        status: 'draft',
+        phase: 'planning',
+        orchestrated: true,
+        dependsOn: [
+          {
+            featureId: 'feat_changelog',
+            slug: 'changelog-file',
+            title: 'changelog-file',
+            phase: 'building',
+            status: 'active',
+            satisfied: false,
+          },
+        ],
+      }),
+    )
+
+    expect(html).toContain('<span class="min-w-0 flex-auto truncate">See changelog README line</span>')
+    expect(html).not.toContain('shrink-0 items-center gap-2')
+    expect(html).toContain('<span class="flex min-w-0 items-center gap-2">')
+    expect(html).toMatch(/<span class="min-w-0 truncate [^"]*">Waits on changelog-file<\/span>/)
   })
 
   it('rings the glyph of a feature the orchestrator owns, named Orchestrated, and no other', () => {
@@ -223,7 +254,7 @@ describe('sidebar feature row', () => {
     expect(owned).toContain('ring-accent')
     expect(owned).toContain('aria-label="Orchestrated"')
     // No text tag in the row: the label is the title alone.
-    expect(owned).toContain('<span class="min-w-0 flex-1 truncate">Flow redesign: project shell and navigation</span>')
+    expect(owned).toContain('<span class="min-w-0 flex-auto truncate">Flow redesign: project shell and navigation</span>')
     expect(owned).not.toContain('>Orchestrated<')
 
     for (const html of [render(listItem({ orchestrated: false })), render(listItem())]) {
