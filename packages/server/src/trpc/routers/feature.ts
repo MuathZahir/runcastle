@@ -1,20 +1,12 @@
-import { MergeBranchPair, SessionKind, SessionPurpose, unresolvedMergeConflict } from '@runcastle/core'
+import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { setDependencies } from '../../services/dependencies'
-import { emit, listAfter } from '../../services/events'
-import { retireShippedWorktree } from '../../services/feature-worktrees'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
-import { promoteOutcomeDoc } from '../../services/outcome'
-import {
-  getFeatureRow,
-  projectForFeature,
-  setFeatureStatus,
-  setPhase,
-  tryGetFeature,
-} from '../../services/repo'
+import { mergeFeatureFlow } from '../../services/merge'
+import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
 import { publicProcedure, router } from '../context'
 
@@ -188,53 +180,9 @@ export const featureRouter = router({
       return git.mergeDelta(projectForFeature(ctx, feature), feature)
     }),
 
-  // B2 behavior — the git stub throws; the success path (set phase shipped) is
-  // wired now so B2 only fills in `mergeFeature`.
+  // The whole merge — drives stopped, outcome doc, shipped, worktree retired,
+  // conflict event — is the service the orchestrator's `merge_feature` shares.
   merge: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      const feature = getFeatureRow(ctx, input.featureId)
-      features.requireNotDraft(feature)
-      const project = projectForFeature(ctx, feature)
-      // A test drive of THIS feature holds the main checkout on the feature
-      // branch; stop it first (restores main) so the merge can proceed. This lets
-      // the Merge button work whether or not the branch is currently test-driven.
-      if (git.activeTestDriveFeatureId() === feature.id) {
-        await git.testDrive(ctx, project, feature, 'stop')
-      }
-      // A project drive serves from the very checkout the merge commits in;
-      // merging underneath its dev server would leave it describing old code.
-      // Stop it the same way (project-level-test-drive decision 6).
-      const drive = git.activeDriveInfo()
-      if (drive?.projectDrive && drive.projectId === project.id) {
-        await git.projectDrive(ctx, project, 'stop')
-      }
-      const delta = await git.mergeDelta(project, feature)
-      const standingConflict = unresolvedMergeConflict(listAfter(ctx, feature.id, 0))
-      const res = await git.mergeFeature(project, feature)
-      if (res.ok) {
-        if (standingConflict) {
-          emit(ctx, input.featureId, {
-            type: 'merge.resolved',
-            message: 'conflict retired by the merge',
-          })
-        }
-        await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
-        setPhase(ctx, input.featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
-        setFeatureStatus(ctx, input.featureId, 'shipped')
-        // Last, and best-effort: the merge has landed, so a worktree that will
-        // not go is reported by an event, never by failing the ship.
-        await retireShippedWorktree(ctx, project, feature)
-      } else {
-        // Carry the base branch + conflicting files on the event so the review
-        // UI can surface the conflict card after a reload and brief the
-        // resolve-with-agent session (kickoff needs both).
-        emit(ctx, input.featureId, {
-          type: 'merge.conflict',
-          message: 'merge conflict — resolve and retry',
-          data: { conflict: res.conflict, base: res.target, files: res.files ?? [] },
-        })
-      }
-      return { ok: res.ok, conflict: res.conflict, base: res.target, files: res.files ?? [] }
-    }),
+    .mutation(({ ctx, input }) => mergeFeatureFlow(ctx, input.featureId)),
 })

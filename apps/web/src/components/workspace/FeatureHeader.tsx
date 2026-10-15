@@ -3,14 +3,15 @@ import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { PipelineStep } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
-import { MetaLine, PageHeader, cx, type MetaItem } from '../../ui'
+import { MetaLine, OrchestratedTag, PageHeader, cx, type MetaItem } from '../../ui'
 import { IconBranch } from '../../icons'
 import { copyText } from './copy-text'
 import { PipelineStepper } from './PipelineStepper'
 
 /**
  * The top of the feature page (DESIGN.md §Page anatomy): the title once
- * (22/28), one meta line — the branch (a click copies it), then 2–3 facts —
+ * (22/28) with the Orchestrated tag beside it when the orchestrator owns the
+ * feature, one meta line — the branch (a click copies it), then 2–3 facts —
  * the pipeline stepper, and the next-step row passed as `children`.
  *
  * Everything here fits the column it is handed: the title wraps (it is the
@@ -64,7 +65,16 @@ export function FeatureHeader({
   )
 
   return (
-    <PageHeader title={feature.title} meta={meta} className={className}>
+    <PageHeader
+      title={
+        <>
+          {feature.title}
+          <OrchestratedTag orchestrated={feature.orchestrated} className="ml-2 align-middle" />
+        </>
+      }
+      meta={meta}
+      className={className}
+    >
       {(!isDraft || children) && (
       <div className="flex flex-col gap-5">
         {/* A draft has no meaningful pipeline position (decision 9): it is

@@ -176,6 +176,12 @@ function insertEvent(
   return event
 }
 
+/** One event by id — what a live-bus signal names — or null when there is none. */
+export function getEventRow(ctx: AppCtx, id: number): EventRow | null {
+  const row = ctx.db.select().from(events).where(eq(events.id, id)).get()
+  return row ? rowToEvent(row) : null
+}
+
 /** Events for a feature with `id > afterId`, oldest first (the poll cursor). */
 export function listAfter(ctx: AppCtx, featureId: string, afterId = 0): EventRow[] {
   const rows = ctx.db

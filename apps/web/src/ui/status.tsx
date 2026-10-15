@@ -166,6 +166,29 @@ export function PhaseTag({
 }
 
 /**
+ * A small `accent-subtle` tag with an `accent-text` word — the one boxed mark,
+ * kept for a property the thing *is* rather than a state it is in: a setting
+ * marked experimental, a feature the orchestrator owns.
+ */
+export function Tag({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <span
+      className={cx(
+        'inline-flex shrink-0 items-center rounded-sm bg-accent-subtle px-1.5 text-xs font-medium whitespace-nowrap text-accent-text',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** The Orchestrated tag, beside a feature's title — nothing for a feature the orchestrator does not own. */
+export function OrchestratedTag({ orchestrated, className }: { orchestrated: boolean; className?: string }) {
+  return orchestrated ? <Tag className={className}>Orchestrated</Tag> : null
+}
+
+/**
  * A feature's phase where a row has no room to name it: the phase glyph alone
  * at 14px (labelled for screen readers). Shape, not a coloured dot.
  */

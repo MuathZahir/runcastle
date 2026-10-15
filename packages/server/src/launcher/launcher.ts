@@ -497,7 +497,7 @@ function briefLiveChat(
  * observable to the launcher: a database row is not proof that its terminal
  * still exists.
  */
-function writeToLiveTerminal(sessionId: string, line: string): boolean {
+export function writeToLiveTerminal(sessionId: string, line: string): boolean {
   const write = (data: string): boolean => {
     const entry = ptyRegistry().get(sessionId)
     if (!entry || entry.exited) return false
