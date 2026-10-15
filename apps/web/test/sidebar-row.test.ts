@@ -188,4 +188,14 @@ describe('sidebar feature row', () => {
     expect(html).toContain('>2/2<')
     expect(html).not.toContain('group-hover/nav:opacity-0')
   })
+
+  it('tags a feature the orchestrator owns after its title, and no other', () => {
+    const owned = render(listItem({ orchestrated: true }))
+    expect(owned).toContain('Flow redesign: project shell and navigation</span><span')
+    expect(owned).toContain('bg-accent-subtle')
+    expect(owned).toContain('>Orchestrated<')
+
+    expect(render(listItem({ orchestrated: false }))).not.toContain('Orchestrated')
+    expect(render(listItem())).not.toContain('Orchestrated')
+  })
 })
