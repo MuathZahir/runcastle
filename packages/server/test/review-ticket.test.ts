@@ -1830,24 +1830,24 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     expect((await reviewDrive(ctx, proj, feat, 'start')).ok).toBe(true)
     expect(await branch()).toBe('feature/reviewed')
 
-    await releaseReviewDrive()
+    await releaseReviewDrive(proj.id)
 
     expect(await branch()).toBe('main')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(proj.id)).toBeNull()
   })
 
   it('is a no-op when the agent already stopped what it started', async () => {
     await reviewDrive(ctx, proj, feat, 'start')
     await reviewDrive(ctx, proj, feat, 'stop')
 
-    await releaseReviewDrive()
+    await releaseReviewDrive(proj.id)
 
     expect(await branch()).toBe('main')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(proj.id)).toBeNull()
   })
 
   it('is a no-op when no review drive was ever started', async () => {
-    await expect(releaseReviewDrive()).resolves.toBeUndefined()
+    await expect(releaseReviewDrive(proj.id)).resolves.toBeUndefined()
     expect(await branch()).toBe('main')
   })
 })

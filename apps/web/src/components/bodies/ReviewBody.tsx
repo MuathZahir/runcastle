@@ -108,7 +108,7 @@ export function ReviewBody({
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
   const conflictResolved = !conflict && mergeConflictResolved(events)
-  const drive = trpc.feature.driveInfo.useQuery(undefined, {
+  const drive = trpc.feature.driveInfo.useQuery({ projectId: feature.projectId }, {
     refetchInterval: useLivePoll(),
   })
   // The drive slot is shared with preparation's dry run, which belongs to no
@@ -280,7 +280,7 @@ export function ReviewBody({
     expanded: expanding && stageMounted,
     set: setExpanding,
   }
-  // The one drive slot is taken by somebody else — another feature, a
+  // This project's drive slot is taken by somebody else — another feature, a
   // preparation dry run (decision 9) or a project drive — named as the server
   // names it (project-level-test-drive decision 9).
   const slotHolder = drive.data && drive.data.featureId !== feature.id ? drive.data : undefined

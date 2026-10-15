@@ -166,7 +166,7 @@ describe('the project drive', () => {
     const t0 = Date.now()
     await projectDrive(ctx, project, 'start')
 
-    const info = await caller().feature.driveInfo()
+    const info = await caller().feature.driveInfo({ projectId: project.id })
     expect(info).toMatchObject({
       projectDrive: true,
       projectId: project.id,
@@ -186,7 +186,7 @@ describe('the project drive', () => {
 
     await projectDrive(ctx, project, 'start')
 
-    expect(activeDriveInfo()?.commit).toBe(`${await shortHead()}+dirty`)
+    expect(activeDriveInfo(project.id)?.commit).toBe(`${await shortHead()}+dirty`)
   })
 
   it('carries a failed setup on the drive, and keeps the drive up', async () => {
@@ -196,7 +196,7 @@ describe('the project drive', () => {
 
     expect(start.ok).toBe(true)
     expect(start.hookFailure).toMatchObject({ phase: 'setup', exitCode: 3 })
-    expect(activeDriveInfo()).toMatchObject({
+    expect(activeDriveInfo(project.id)).toMatchObject({
       projectDrive: true,
       state: 'setup-failed',
       hookFailure: { phase: 'setup', command: 'exit 3', exitCode: 3 },
@@ -219,7 +219,7 @@ describe('the project drive', () => {
     )
     expect(existsSync(join(repo, '.runcastle', 'drive.env'))).toBe(false)
     expect((await g.revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe('topic')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
     expect(eventTypes()).toContain('projectdrive.stopped')
   })
 
@@ -236,8 +236,8 @@ describe('the project drive', () => {
     await configure('devCommand', `${captureEnv(seen)}; sleep 30`)
 
     await projectDrive(ctx, project, 'start')
-    expect(activeDriveInfo()).toMatchObject({ devConfigured: true })
-    expect(activeDriveInfo()?.devPaneId).toBeDefined()
+    expect(activeDriveInfo(project.id)).toMatchObject({ devConfigured: true })
+    expect(activeDriveInfo(project.id)?.devPaneId).toBeDefined()
     for (let i = 0; i < 100 && !existsSync(seen); i++) await delay(20)
     await delay(50)
 
@@ -266,14 +266,14 @@ describe('the project drive', () => {
 
     // Nothing but `projectDrive` ends it.
     expect(await testDrive(ctx, project, feature, 'stop')).toMatchObject({ ok: false, deniedReason: reason })
-    expect(activeDriveInfo()?.projectDrive).toBe(true)
+    expect(activeDriveInfo(project.id)?.projectDrive).toBe(true)
   })
 
   it('is refused while another drive holds the slot, naming that holder', async () => {
     const feature = seedFeature(ctx, project.id, { slug: 'drive' })
     await createFeatureBranch(project, feature.slug, 'main')
     expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
-    expect(activeDriveInfo()?.holderLabel).toBe('a test drive of feature/drive')
+    expect(activeDriveInfo(project.id)?.holderLabel).toBe('a test drive of feature/drive')
 
     expect(await projectDrive(ctx, project, 'start')).toMatchObject({
       ok: false,
@@ -284,7 +284,7 @@ describe('the project drive', () => {
     await testDrive(ctx, project, feature, 'stop')
 
     await dryRunDrive(ctx, project, 'start')
-    expect(activeDriveInfo()?.holderLabel).toBe('a preparation dry-run')
+    expect(activeDriveInfo(project.id)?.holderLabel).toBe('a preparation dry-run')
     expect(await projectDrive(ctx, project, 'start')).toMatchObject({
       ok: false,
       deniedReason: 'A preparation dry-run is running — stop it first',
@@ -313,7 +313,7 @@ describe('the project drive', () => {
 
     expect(res.ok).toBe(true)
     expect(existsSync(teardown)).toBe(true)
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
     expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
   }, 20_000)
 

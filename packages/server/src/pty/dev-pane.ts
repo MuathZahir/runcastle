@@ -24,7 +24,7 @@ const DRIVE_PREFIX = 'drive:'
 /**
  * The registry id for a drive's dev pane (never a session id). Keyed on whatever
  * the drive belongs to: a feature for a test drive, a project for a preparation
- * dry run — the two id spaces are disjoint, and at most one drive is ever live.
+ * dry run — the two id spaces are disjoint, and at most one drive per project is ever live.
  */
 export function drivePaneId(ownerId: string): string {
   return `${DRIVE_PREFIX}${ownerId}`

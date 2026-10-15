@@ -858,13 +858,13 @@ describe('testDrive', () => {
   })
 
   it('activeDriveInfo surfaces the driven branch and the sniffed dev URL, cleared on stop', async () => {
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
 
     await testDrive(ctx, project, feature, 'start')
     // No devCommand on the seeded project → no pane, but the drive is reported.
     // `devConfigured: false` is what lets the review card say the branch is
     // checked out and nothing was started, instead of "driving now" (F22).
-    expect(activeDriveInfo()).toMatchObject({
+    expect(activeDriveInfo(project.id)).toMatchObject({
       featureId: feature.id,
       // Whose drive it is, so the UI can tell this apart from a review agent's.
       purpose: 'human',
@@ -875,21 +875,21 @@ describe('testDrive', () => {
     })
 
     // A sniffed URL becomes the sticky "Open app" link and lands on the timeline.
-    recordDriveUrl(ctx, feature.id, 'http://localhost:5173/')
-    expect(activeDriveInfo()?.devUrl).toBe('http://localhost:5173/')
+    recordDriveUrl(ctx, project.id, feature.id, 'http://localhost:5173/')
+    expect(activeDriveInfo(project.id)?.devUrl).toBe('http://localhost:5173/')
     // Sticky: a later/different URL does not overwrite the first.
-    recordDriveUrl(ctx, feature.id, 'http://localhost:9999/')
-    expect(activeDriveInfo()?.devUrl).toBe('http://localhost:5173/')
+    recordDriveUrl(ctx, project.id, feature.id, 'http://localhost:9999/')
+    expect(activeDriveInfo(project.id)?.devUrl).toBe('http://localhost:5173/')
     expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.url')
 
     await testDrive(ctx, project, feature, 'stop')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   it('recordDriveUrl ignores a URL for a feature that is not the active drive', async () => {
     await testDrive(ctx, project, feature, 'start')
-    recordDriveUrl(ctx, 'feat_someone_else', 'http://localhost:3000/')
-    expect(activeDriveInfo()?.devUrl).toBeUndefined()
+    recordDriveUrl(ctx, project.id, 'feat_someone_else', 'http://localhost:3000/')
+    expect(activeDriveInfo(project.id)?.devUrl).toBeUndefined()
     await testDrive(ctx, project, feature, 'stop')
   })
 
@@ -902,19 +902,19 @@ describe('testDrive', () => {
     const url = `http://127.0.0.1:${port}/`
 
     await testDrive(ctx, project, feature, 'start')
-    recordDriveUrl(ctx, feature.id, url)
+    recordDriveUrl(ctx, project.id, feature.id, url)
 
     // Nothing is listening yet: the URL is known, the link is not live.
-    expect(activeDriveInfo()).toMatchObject({ devUrl: url, devReady: false })
+    expect(activeDriveInfo(project.id)).toMatchObject({ devUrl: url, devReady: false })
     await delay(60)
-    expect(activeDriveInfo()?.devReady).toBe(false)
+    expect(activeDriveInfo(project.id)?.devReady).toBe(false)
 
     // A 503 is still a server: it accepted the connection and spoke HTTP, which
     // is all "will the link load" asks.
     await serve(port, 503)
-    await waitFor(() => activeDriveInfo()?.devReady === true)
+    await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
 
-    expect(activeDriveInfo()?.devReadyTimedOut).toBeUndefined()
+    expect(activeDriveInfo(project.id)?.devReadyTimedOut).toBeUndefined()
     expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready')
 
     await testDrive(ctx, project, feature, 'stop')
@@ -925,16 +925,16 @@ describe('testDrive', () => {
     const url = `http://127.0.0.1:${await freePort()}/`
 
     await testDrive(ctx, project, feature, 'start')
-    recordDriveUrl(ctx, feature.id, url)
-    await waitFor(() => activeDriveInfo()?.devReadyTimedOut === true)
+    recordDriveUrl(ctx, project.id, feature.id, url)
+    await waitFor(() => activeDriveInfo(project.id)?.devReadyTimedOut === true)
 
-    expect(activeDriveInfo()?.devReady).toBe(false)
+    expect(activeDriveInfo(project.id)?.devReady).toBe(false)
     // The URL is kept: giving up on the poll is a warning, not a retraction.
-    expect(activeDriveInfo()?.devUrl).toBe(url)
+    expect(activeDriveInfo(project.id)?.devUrl).toBe(url)
     expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.ready_timeout')
 
     // The drive itself never noticed — it is live, and it stops normally.
-    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
     expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
   })
 
@@ -943,7 +943,7 @@ describe('testDrive', () => {
     const url = `http://127.0.0.1:${await freePort()}/`
 
     await testDrive(ctx, project, feature, 'start')
-    recordDriveUrl(ctx, feature.id, url)
+    recordDriveUrl(ctx, project.id, feature.id, url)
     await testDrive(ctx, project, feature, 'stop')
 
     // Long after the poll's own interval, nothing it could have said arrived.
@@ -951,7 +951,7 @@ describe('testDrive', () => {
     const types = listAfter(ctx, feature.id, 0).map((e) => e.type)
     expect(types).not.toContain('testdrive.ready')
     expect(types).not.toContain('testdrive.ready_timeout')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   // Test-drive hooks. runcastle holds no model of what "bringing the project
@@ -1712,8 +1712,8 @@ describe('mergeFeature', () => {
 
       expect(res.ok).toBe(true)
       expect(existsSync(join(project.repoPath, 'unblocked.txt'))).toBe(true)
-      // The other project's drive still holds the one shared slot.
-      expect(activeDriveInfo()).not.toBeNull()
+      // The other project's drive is still live, in its own project's slot.
+      expect(activeDriveInfo(other.id)).not.toBeNull()
     })
   })
 
@@ -1729,11 +1729,11 @@ describe('mergeFeature', () => {
     await createFeatureBranch(project, 'whichfeat', 'main')
     const feature = seedFeature(ctx, project.id, { slug: 'whichfeat' })
 
-    expect(activeTestDriveFeatureId()).toBeUndefined()
+    expect(activeTestDriveFeatureId(project.id)).toBeUndefined()
     await testDrive(ctx, project, feature, 'start')
-    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
     await testDrive(ctx, project, feature, 'stop')
-    expect(activeTestDriveFeatureId()).toBeUndefined()
+    expect(activeTestDriveFeatureId(project.id)).toBeUndefined()
   })
 
   it('ship flow: stopping the active drive first lets the merge proceed', async () => {
@@ -1748,7 +1748,7 @@ describe('mergeFeature', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'shipflow' })
     await testDrive(ctx, project, feature, 'start')
     // the merge handler stops this feature's active drive before merging:
-    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
     await testDrive(ctx, project, feature, 'stop')
 
     const res = await mergeFeature(project, feature)
