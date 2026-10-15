@@ -87,6 +87,7 @@ import {
   getFeatureRow,
   getProjectById,
   listRunsByFeature,
+  markOrchestrated,
   markTicketsReady,
   projectForFeature,
   tryGetRun,
@@ -106,6 +107,8 @@ import {
   type TicketContentPatch,
 } from '../services/tickets'
 import { withheldDriveFor } from '../workflows/review-ticket'
+import { registerOrchestratorRunTools } from './orchestrator-run-tools'
+import { registerOrchestratorTools } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
@@ -130,7 +133,7 @@ import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 // --- session resolution -----------------------------------------------------
 
-interface HeaderCarrier {
+export interface HeaderCarrier {
   requestInfo?: { headers?: Record<string, string | string[] | undefined> }
 }
 
@@ -1576,6 +1579,10 @@ export async function toolCreateFeature(
         brief: input.brief,
         draft: input.draft,
       })
+  // What the orchestrator creates is its own (`whole-cuts-plan-themselves`
+  // decision 9). It still launches nothing: it calls `plan_feature` when it
+  // judges the feature ready.
+  if (session.purpose === 'orchestrate') markOrchestrated(ctx, feature.id, 'created')
   if (dependencyIds.length === 0) {
     return { id: feature.id, slug: feature.slug, branch: feature.branch, phase: feature.phase }
   }
@@ -1854,15 +1861,17 @@ function featureIndexLine(feature: FeatureListItem): string {
   const edges = feature.dependsOn.length
     ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
     : ''
+  // The orchestrator's own features (`whole-cuts-plan-themselves` decision 9).
+  const owner = feature.orchestrated ? ' · orchestrated' : ''
   if (feature.status !== 'active') {
     const waiting = feature.status === 'draft' && feature.dependsOn.some((d) => !d.satisfied)
-    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}`
+    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}${owner}`
   }
   const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
+  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}${owner}`
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2185,6 +2194,21 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS],
+  // The orchestrator's tools (`whole-cuts-plan-themselves`): offered to the
+  // project session, refused at call time unless it is a live `orchestrate`
+  // session with the setting on (`requireOrchestratorSession`). Registered in
+  // `orchestrator-tools.ts` and `orchestrator-run-tools.ts`.
+  take_over_feature: ['project'],
+  start_feature: ['project'],
+  plan_feature: ['project'],
+  send_to_feature: ['project'],
+  stop_feature_run: ['project'],
+  burn_feature: ['project'],
+  drive: ['project'],
+  record_test_note: ['project'],
+  start_feature_lap: ['project'],
+  merge_feature: ['project'],
+  add_to_brief: ['project'],
 }
 
 /**
@@ -3046,6 +3070,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       },
     )
   }
+
+  registerOrchestratorTools(server, wants, resolveCtxSession)
+  registerOrchestratorRunTools(server, wants, resolveCtxSession)
 
   return server
 }
