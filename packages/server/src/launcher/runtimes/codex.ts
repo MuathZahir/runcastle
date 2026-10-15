@@ -130,9 +130,16 @@ interface CodexConfigInput {
  * `trust_level`, not through this key) and rejects it outright on config load —
  * `approval_policy = "untrusted" is no longer supported; remove this setting` —
  * which killed every interactive project session before it started.
+ *
+ * `bypassPermissions`, the orchestrator's posture (`whole-cuts-plan-themselves`
+ * decision 10), is `never` too: it works while the human is away.
  */
 function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-request' {
-  return permissionMode === undefined || permissionMode === 'acceptEdits' ? 'never' : 'on-request'
+  return permissionMode === undefined ||
+    permissionMode === 'acceptEdits' ||
+    permissionMode === 'bypassPermissions'
+    ? 'never'
+    : 'on-request'
 }
 
 /**
@@ -149,11 +156,16 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  * on `apply_patch` and the install guard on the shell (`renderCodexHooks`), not
  * the CLI's sandbox. A session that asks (`on-request`) keeps `workspace-write`:
  * a downgraded write there is a question to the human, not a dead end.
+ *
+ * The orchestrator (`bypassPermissions`) runs unsandboxed on every platform: it
+ * resolves conflicts in other features' worktrees under the data dir, outside
+ * its own workspace, which `workspace-write` would refuse.
  */
 function sandboxModeFor(
   permissionMode: string | undefined,
   platform: NodeJS.Platform,
 ): 'workspace-write' | 'danger-full-access' {
+  if (permissionMode === 'bypassPermissions') return 'danger-full-access'
   return platform === 'win32' && approvalPolicyFor(permissionMode) === 'never'
     ? 'danger-full-access'
     : 'workspace-write'

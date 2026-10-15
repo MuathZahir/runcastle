@@ -23,6 +23,7 @@ import { resolvePluginDir } from './skills-root'
 import {
   type ChatOpening,
   ENTRY_SKILLS,
+  ORCHESTRATING,
   PLANNING_WITHOUT_A_HUMAN,
   entrySkillsFor,
   skillRef,
@@ -877,6 +878,39 @@ export interface ProjectBrief {
    * stays live as notes are jotted mid-chat.
    */
   openNotes: number
+  /**
+   * The project's Orchestrator setting was on at launch (`whole-cuts-plan-themselves`
+   * decision 14): this session is the orchestrator, and its prompt says so.
+   */
+  orchestrate?: boolean
+  /**
+   * One line per thing that ended on the orchestrator's features since its last
+   * session ended — read only when {@link orchestrate} is set.
+   */
+  catchUp?: string[]
+}
+
+/**
+ * The orchestrating section of the project prompt: who this session is in the
+ * mode, where its judgement is written down, that nothing will prompt it, and
+ * what happened on its features while it was not live (decision 11).
+ */
+function renderOrchestratingSection(catchUp: string[], runtime: AgentRuntime): string[] {
+  return [
+    `## ${ORCHESTRATING}`,
+    "This project's Orchestrator setting (experimental) is on: **you are the orchestrator** for",
+    'this project. You run the features you create, and any the human hands you, from planning',
+    `through merge. Read and follow the "${ORCHESTRATING}" section of the`,
+    `\`${skillRef(runtime, 'project')}\` skill — it is how you judge every step; nothing here`,
+    'replaces it. In this mode it is you, not the human, who decides what to work on next.',
+    '',
+    'You run without permission prompts: you edit the repo and run commands without asking.',
+    '',
+    ...(catchUp.length > 0
+      ? ['### Since you were last live', ...catchUp.map((line) => `- ${line}`)]
+      : ['Nothing has happened on your features since you were last live.']),
+    '',
+  ]
 }
 
 /**
@@ -902,7 +936,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base, openNotes } = brief
+  const { project, branch, worktreePath, base, openNotes, orchestrate, catchUp } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -948,6 +982,7 @@ export function renderProjectPrompt(
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
     '',
+    ...(orchestrate ? renderOrchestratingSection(catchUp ?? [], runtime) : []),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
