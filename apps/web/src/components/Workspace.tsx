@@ -1125,8 +1125,8 @@ export function Workspace({
             openNotes,
             // A project drive of this project serves from the checkout the
             // merge commits in, so the server stops it first (decision 6).
-            ...(driveQ.data?.projectDrive && driveQ.data.projectId === feature.projectId
-              ? { projectDrive: { holderLabel: driveQ.data.holderLabel } }
+            ...(driveQ.data?.projectDrive
+              ?{ projectDrive: { holderLabel: driveQ.data.holderLabel } }
               : {}),
             freshness: reviewFreshness,
             conflict,
