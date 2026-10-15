@@ -3,16 +3,18 @@ import { and, asc, desc, eq, gt, inArray, isNotNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features, sessions, tickets } from '../db/schema'
 import { activeProjectSession, getSessionRow } from '../launcher/sessions'
-import { writeToLiveTerminal } from '../launcher/launcher'
 import { subscribeLive } from './bus'
 import { getEventRow } from './events'
+import { deliveryFor } from './orchestrator-delivery'
+import { queueOrchestratorLine } from './orchestrator-messages'
 import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
 /**
  * What the orchestrator hears about its features (`whole-cuts-plan-themselves`
- * decisions 11, 13): one `[runcastle]` line typed into its terminal while it is
- * live, and a catch-up list in its briefing when the human reopens it.
+ * decisions 11, 13, 20): one `[runcastle]` line delivered into its session
+ * while it is live (see `orchestrator-delivery.ts`), and a catch-up list in its
+ * briefing when the human reopens it.
  *
  * Two kinds of event reach it, both only on features it owns:
  *
@@ -40,7 +42,7 @@ import { getTicket } from './tickets'
  *
  * A lap starting is the `start-lap` session opening; a merge is its landing or
  * conflict above. Project-level events produce nothing except the orchestrator
- * setting turning off, which types the stop line.
+ * setting turning off, which sends the stop line.
  */
 
 /** What the notifier needs to know about an event beyond its row. */
@@ -176,7 +178,7 @@ function isOrchestratorTurnedOff(event: EventRow): boolean {
 }
 
 /**
- * The line to type into a live orchestrator for `event`, or null for none.
+ * The line to deliver to a live orchestrator for `event`, or null for none.
  * Pure: everything it needs about the feature, session and ticket is in `state`.
  */
 export function orchestratorLineFor(event: EventRow, state: NotifyState): string | null {
@@ -221,8 +223,9 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
 }
 
 /**
- * Type the line for one event into the project's live orchestrator. Best
- * effort: nothing is retried, and nothing here throws into the emitter.
+ * Add the line for one event to the project's live orchestrator's pending
+ * message and kick its runtime's delivery (decision 20). Best effort: nothing
+ * is retried, and nothing here throws into the emitter.
  */
 function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
   try {
@@ -231,7 +234,9 @@ function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): vo
     const event = getEventRow(ctx, eventId)
     if (!event) return
     const line = orchestratorLineFor(event, stateFor(ctx, event))
-    if (line) writeToLiveTerminal(orchestrator.id, line)
+    if (!line) return
+    queueOrchestratorLine(orchestrator.id, line)
+    deliveryFor(orchestrator).kick(orchestrator)
   } catch (err) {
     console.error('orchestrator notifier failed', err)
   }

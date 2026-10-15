@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { sessionDir } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Feature, Project, RuncastleConfig, SessionRow } from '@runcastle/core'
-import { RuncastleConfig as ConfigSchema, SessionKind } from '@runcastle/core'
+import { RuncastleConfig as ConfigSchema, SessionKind, SessionPurpose } from '@runcastle/core'
 import type { WriteArtifactsInput } from '../src/launcher/artifacts'
 import {
   RUNCASTLE_MCP_ALLOW_RULES,
@@ -333,6 +333,53 @@ describe('renderSettings', () => {
     // decision 18 gives the project session whole-repo write access — it is the
     // one kind whose commits are the point of the session
     expect(renderSettings('C:\\hooks\\hook-client.ts', 'project').hooks.PreToolUse).toBeUndefined()
+  })
+
+  /**
+   * `whole-cuts-plan-themselves` decision 20: the orchestrator hears about its
+   * features through an `asyncRewake` hook that long-polls for its lines, never
+   * through keystrokes typed into its terminal.
+   */
+  it('gives an orchestrate session the asyncRewake message waiter on SessionStart and Stop', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project', undefined, 'orchestrate')
+    const waiter = {
+      type: 'command',
+      command: 'bun run "C:\\hooks\\hook-client.ts" wait-messages',
+      timeout: 86_400,
+      async: true,
+      asyncRewake: true,
+    }
+
+    for (const entry of s.hooks.SessionStart) {
+      expect(entry.hooks.map((h) => h.command)).toEqual([
+        'bun run "C:\\hooks\\hook-client.ts" session-start',
+        waiter.command,
+      ])
+      expect(entry.hooks[1]).toEqual(waiter)
+    }
+    expect(s.hooks.Stop[0].hooks).toEqual([s.hooks.Stop[0].hooks[0], waiter])
+    expect(s.hooks.UserPromptSubmit[0].hooks).toHaveLength(1)
+    expect(s.hooks.SessionEnd[0].hooks).toHaveLength(1)
+  })
+
+  it('leaves every other session’s settings exactly as they were', () => {
+    const others = SessionPurpose.options.filter((p) => p !== 'orchestrate')
+    for (const kind of SessionKind.options) {
+      const plain = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack'))
+      expect(plain).not.toContain('wait-messages')
+      expect(plain).not.toContain('asyncRewake')
+      for (const purpose of others) {
+        expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
+      }
+    }
+    // An orchestrate session differs only by the waiter it adds.
+    const orchestrate = renderSettings('C:\\hooks\\hook-client.ts', 'project', 'C:\\pack', 'orchestrate')
+    const project = renderSettings('C:\\hooks\\hook-client.ts', 'project', 'C:\\pack')
+    expect(orchestrate.permissions).toEqual(project.permissions)
+    expect(orchestrate.hooks.SessionStart.map((e) => ({ ...e, hooks: e.hooks.slice(0, 1) }))).toEqual(
+      project.hooks.SessionStart,
+    )
+    expect(orchestrate.hooks.Stop[0].hooks.slice(0, 1)).toEqual(project.hooks.Stop[0].hooks)
   })
 })
 
