@@ -213,11 +213,17 @@ export function renderSystemPrompt(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
   planning?: PlanningArtifactFacts,
+  headless = false,
 ): string {
-  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
+  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
   const selfPlan = purpose === 'self-plan'
-  if (kind === 'chat' && !selfPlan && chatOpening(feature, planning) === 'revisit') {
-    return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
+  // A relay changes a record that exists, whatever the chat's opening would be.
+  if (
+    kind === 'chat' &&
+    !selfPlan &&
+    (purpose === 'relay' || chatOpening(feature, planning) === 'revisit')
+  ) {
+    return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
   }
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
@@ -415,6 +421,7 @@ export function renderRevisitPrompt(
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
+  headless = false,
 ): string {
   // Mutually exclusive briefings: a lap says "interview, amend the docs, emit
   // the lap's tickets", a conflict resolution says "you DO write code here and
@@ -535,9 +542,45 @@ export function renderRevisitPrompt(
     purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
     otherEntrySkillsRule(),
     '',
+    ...(headless ? [headlessRunRule(purpose, runtime), ''] : []),
     '## Your task',
-    `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
+    headless
+      ? `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and do what your opening prompt asks, in this one run.`
+      : `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
     '',
+  ].join('\n')
+}
+
+/**
+ * The section a headless revisit — a `relay` of the orchestrator's message, or a
+ * lap that plans itself — adds to its brief (`whole-cuts-plan-themselves`
+ * decision 16). Like {@link selfPlanRule}, it states that a question or a wait
+ * ends the run, and it overrides whatever the brief above says about the human.
+ */
+function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string {
+  const work =
+    purpose === 'relay'
+      ? [
+          "This is a relay run: the project's orchestrator sent this conversation a message.",
+          'Nobody is watching and nobody will reply.',
+          '- Apply the message by the change-handling rules: a decision it changes keeps or',
+          '  gains `**Assumed.**` and adds `**Changed by the orchestrator:** <why>`, unless the',
+          "  message relays the human's own answer, which removes both marks. Then redraw the",
+          '  preview and reconcile the spec and the tickets.',
+        ]
+      : [
+          'This lap plans itself: the orchestrator started it. Nobody is watching and nobody',
+          'will reply.',
+          `- Decide by the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" rules: every decision`,
+          '  you make is `**Assumed.**` with its alternative.',
+          `- Follow \`${skillRef(runtime, 'revisit')}\`'s Lap mode and end at the emitted tickets.`,
+        ]
+  return [
+    '## No human is present',
+    ...work,
+    '- Where this brief says to interview or tell the human, decide for yourself instead.',
+    '- Never end your turn to ask a question — ending the turn ends the run.',
+    '- A refused tool is not a wait: do not retry it or wait for approval.',
   ].join('\n')
 }
 
@@ -1362,6 +1405,7 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
       runtime,
       carried,
       planning,
+      session.headless,
     )
   }
   if (prepare) return renderPreparePrompt(prepare)

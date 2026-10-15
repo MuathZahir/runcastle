@@ -53,7 +53,8 @@ export interface RuntimeLaunchInput extends WriteArtifactsInput {
   permissionMode?: string
   /**
    * Run non-interactively to completion with {@link kickoffLine} as the prompt
-   * (a self-planning run): Claude Code's print mode, Codex's `exec`. Never resumes.
+   * (a self-planning, relay or headless start-lap run): Claude Code's print
+   * mode, Codex's `exec`. Resumes only when {@link resumeSessionId} is given.
    */
   headless?: boolean
 }

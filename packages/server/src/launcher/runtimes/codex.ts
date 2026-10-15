@@ -469,8 +469,10 @@ function gitInfoDir(worktreePath: string): string | null {
  * every lifecycle event is silently skipped — no `live` row, no kickoff, no
  * edit guard.
  *
- * `headless` is a self-planning run: `exec` runs the kickoff as its prompt to
- * completion with no terminal, and is always a fresh conversation (never `resume`).
+ * `headless` is a run with no terminal (self-plan, relay, headless start-lap):
+ * `exec` runs the kickoff as its prompt to completion, and `exec resume <id>`
+ * sends it to the recorded conversation instead (`codex exec resume [OPTIONS]
+ * [SESSION_ID] [PROMPT]`, checked against codex-cli 0.155.1).
  */
 export function buildCodexArgs(input: {
   resumeSessionId?: string
@@ -479,7 +481,15 @@ export function buildCodexArgs(input: {
 }): string[] {
   assertKickoffArgv(input.kickoffLine)
   assertHeadlessKickoff(input.headless, input.kickoffLine)
-  if (input.headless) return ['exec', '--dangerously-bypass-hook-trust', input.kickoffLine as string]
+  if (input.headless) {
+    return [
+      'exec',
+      ...(input.resumeSessionId ? ['resume'] : []),
+      '--dangerously-bypass-hook-trust',
+      ...(input.resumeSessionId ? [input.resumeSessionId] : []),
+      input.kickoffLine as string,
+    ]
+  }
   return [
     ...(input.resumeSessionId ? ['resume', input.resumeSessionId] : []),
     '--dangerously-bypass-hook-trust',

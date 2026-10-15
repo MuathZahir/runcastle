@@ -67,7 +67,9 @@ export interface BuildLaunchInput {
   strictMcp?: boolean
   /**
    * Print mode (`-p`): run the kickoff as the prompt to completion with no
-   * terminal — a self-planning run. Always a fresh conversation, never `--resume`.
+   * terminal — a self-planning, relay or headless start-lap run. With a
+   * `resumeSessionId` (a relay picking up the planning conversation) it resumes
+   * that conversation with the kickoff as its next prompt.
    */
   headless?: boolean
 }
@@ -77,7 +79,7 @@ export function buildClaudeArgs(input: BuildLaunchInput): string[] {
   assertKickoffArgv(input.kickoffLine)
   assertHeadlessKickoff(input.headless, input.kickoffLine)
   const permissionMode = input.permissionMode ?? 'acceptEdits'
-  const resume = input.resumeSessionId && !input.headless ? ['--resume', input.resumeSessionId] : []
+  const resume = input.resumeSessionId ? ['--resume', input.resumeSessionId] : []
   return [
     ...(input.headless ? ['-p'] : []),
     ...resume,

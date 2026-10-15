@@ -777,7 +777,7 @@ describe('buildClaudeArgs', () => {
     ).toThrow(/maximum/)
   })
 
-  it('runs a headless launch in print mode with the kickoff as its prompt, never resuming', () => {
+  it('runs a headless launch in print mode with the kickoff as its prompt', () => {
     const base = {
       pluginDir: 'C:\\repo\\pack',
       settingsPath: 'C:\\s\\settings.json',
@@ -786,23 +786,43 @@ describe('buildClaudeArgs', () => {
       model: 'claude-sonnet-5',
     }
     const kickoffLine = 'Plan this feature with no human present.'
-    const args = buildClaudeArgs({ ...base, kickoffLine, resumeSessionId: 'cc-42', headless: true })
-    expect(args).toContain('-p')
+    const args = buildClaudeArgs({ ...base, kickoffLine, headless: true })
+    expect(args[0]).toBe('-p')
     expect(args).not.toContain('--resume')
     expect(args.at(-1)).toBe(kickoffLine)
     // The same flags as the interactive launch, plus print mode.
     expect(args.filter((a) => a !== '-p')).toEqual(buildClaudeArgs({ ...base, kickoffLine }))
     expect(() => buildClaudeArgs({ ...base, headless: true })).toThrow(/kickoff/)
   })
+
+  it('resumes a headless launch given a conversation (a relay)', () => {
+    const args = buildClaudeArgs({
+      pluginDir: 'C:\\repo\\pack',
+      settingsPath: 'C:\\s\\settings.json',
+      mcpConfigPath: 'C:\\s\\mcp.json',
+      systemPromptPath: 'C:\\s\\system-prompt.md',
+      model: 'claude-sonnet-5',
+      kickoffLine: 'Apply the message.',
+      resumeSessionId: 'cc-42',
+      headless: true,
+    })
+    expect(args.slice(0, 3)).toEqual(['-p', '--resume', 'cc-42'])
+    expect(args.at(-1)).toBe('Apply the message.')
+  })
 })
 
 describe('buildCodexArgs', () => {
-  it('runs a headless launch as `exec` with the kickoff as its prompt, never resuming', () => {
+  it('runs a headless launch as `exec` with the kickoff as its prompt', () => {
     const kickoffLine = 'Plan this feature with no human present.'
-    expect(buildCodexArgs({ kickoffLine, resumeSessionId: 'thread-42', headless: true })).toEqual([
+    expect(buildCodexArgs({ kickoffLine, headless: true })).toEqual([
       'exec', '--dangerously-bypass-hook-trust', kickoffLine,
     ])
     expect(() => buildCodexArgs({ headless: true })).toThrow(/kickoff/)
+  })
+
+  it('resumes a headless launch as `exec resume <id> <prompt>` (a relay)', () => {
+    expect(buildCodexArgs({ kickoffLine: 'Apply it.', resumeSessionId: 'thread-42', headless: true }))
+      .toEqual(['exec', 'resume', '--dangerously-bypass-hook-trust', 'thread-42', 'Apply it.'])
   })
 
   it('keeps the trust flag and appends a fresh kickoff verbatim', () => {

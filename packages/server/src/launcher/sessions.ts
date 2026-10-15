@@ -28,7 +28,7 @@ import {
 } from '../services/carried-work'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
-import { prepareConfirmKickoffFor } from './runtimes/skills'
+import { PLANNING_WITHOUT_A_HUMAN, prepareConfirmKickoffFor, skillRef } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -57,6 +57,8 @@ export type CreateSessionInput = {
    * why a default is not stamped in its place.
    */
   model?: ModelEntry
+  /** The session runs with no terminal (a self-plan, relay or headless start-lap run). */
+  headless?: boolean
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
@@ -79,6 +81,7 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       worktreePath: input.worktreePath,
       model: input.model?.id ?? null,
       runtime: input.model?.runtime ?? null,
+      headless: input.headless ?? false,
       // Named lazily from the transcript once there is one (see
       // `services/conversations.ts`) — a row born a millisecond ago has
       // nothing to be called yet.
@@ -233,6 +236,33 @@ export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
     `emit_tickets for lap ${lap}'s work — they land pending, and Burn from review moves them onto ` +
     `lap ${lap}. Do NOT call complete_phase: the feature stays at review. Finish by telling me to ` +
     'review the cards and click Burn.'
+  )
+}
+
+/**
+ * The lap briefing for a lap the orchestrator has planned headless
+ * (`whole-cuts-plan-themselves`): the agenda {@link reviewLapKickoff} sets, with
+ * the orchestrator's message on it, and no interview — nobody is there to give
+ * one, so the session decides as a self-planning run does and ends at the
+ * tickets.
+ */
+export function headlessLapKickoff(
+  lap: number,
+  runtime: AgentRuntime,
+  carried?: CarriedWork,
+  message?: string,
+): string {
+  return (
+    'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
+    `${skillRef(runtime, 'revisit')} skill to PLAN LAP ${lap} FROM REVIEW by yourself, in this one ` +
+    `run; the feature stays at review until the orchestrator burns it. ` +
+    (message ? `The project's orchestrator asks this of the lap: ${message} ` : '') +
+    lapAgenda(carried) +
+    `Decide what the lap does by the ${skillRef(runtime, 'ideate')} skill's ` +
+    `"${PLANNING_WITHOUT_A_HUMAN}" rules: mark every decision you make **Assumed.** with its ` +
+    `alternative. Write them into decisions.md under "## Lap ${lap}" and amend spec.md for this ` +
+    `lap, then call emit_tickets for lap ${lap}'s work. Do NOT call complete_phase, and do not ` +
+    'wait for anyone.'
   )
 }
 

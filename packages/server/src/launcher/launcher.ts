@@ -22,7 +22,12 @@ import {
   type BackgroundSession,
   type RuntimeLaunchSpec,
 } from './runtimes'
-import { chatKickoffFor, prepareConfirmKickoffFor, selfPlanKickoffFor } from './runtimes/skills'
+import {
+  chatKickoffFor,
+  prepareConfirmKickoffFor,
+  relayKickoffFor,
+  selfPlanKickoffFor,
+} from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
@@ -60,6 +65,7 @@ import {
   createSessionRow,
   getSessionRow,
   hasCompletedProjectSession,
+  headlessLapKickoff,
   kickoffLineFor,
   landProjectSession,
   markSessionEnded,
@@ -126,6 +132,14 @@ export interface LaunchSessionInput {
   purpose?: SessionPurpose
   /** The merge a `resolve-conflict` session is about (base → feature, or ticket branch → feature). */
   purposeData?: MergeBranchPair
+  /**
+   * The orchestrator's message (`whole-cuts-plan-themselves`): what a `relay`
+   * run applies — required there — and what a headless start-lap adds to the
+   * lap's agenda.
+   */
+  message?: string
+  /** Run a `start-lap` launch with no terminal, planned by itself (the orchestrator's door). */
+  headless?: boolean
 }
 
 /**
@@ -293,10 +307,40 @@ function assertSelfPlannable(ctx: AppCtx, feature: Feature): void {
  * headless — there is no terminal to attach to or type into — and it is the
  * feature's one session, so the human has to stop it before the chat can open.
  */
-function selfPlanRunningError(feature: Feature): GateError {
+function headlessRunningError(feature: Feature, run: SessionRow): GateError {
   return new GateError(
-    `${feature.slug} is planning itself — stop the run first, then open the chat to pick up where it got to`,
+    run.purpose === 'self-plan'
+      ? `${feature.slug} is planning itself — stop the run first, then open the chat to pick up where it got to`
+      : `${feature.slug} is working by itself — stop the run first, then open the chat to pick up where it got to`,
   )
+}
+
+/**
+ * Whether this launch runs with no terminal: a self-planning run, a `relay` of
+ * the orchestrator's message, or a start-lap the orchestrator asked to be
+ * planned headless (`whole-cuts-plan-themselves`).
+ */
+function isHeadless(input: LaunchSessionInput): boolean {
+  if (input.kind !== 'chat') return false
+  return isSelfPlan(input) || input.purpose === 'relay' || (input.purpose === 'start-lap' && !!input.headless)
+}
+
+/**
+ * Refuse a headless run the orchestrator asked for that the feature cannot take,
+ * before the row exists: a relay carries a message, a headless lap is refused
+ * where the human's Start-lap door is (only at review), and neither shares the
+ * feature with another session.
+ */
+function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSessionInput): void {
+  if (input.purpose === 'relay' && !input.message?.trim()) {
+    throw new GateError('a message for the planning conversation is required to relay one')
+  }
+  if (input.purpose === 'start-lap' && !isStartLap(feature, input)) {
+    throw new GateError(
+      `${feature.slug} is at ${feature.phase}, not review, so there is no next lap to start`,
+    )
+  }
+  assertSpawnable(ctx, feature)
 }
 
 /**
@@ -500,13 +544,16 @@ export async function launchSession(
   // session, so the live chat is ended and the conversation relaunched below
   // with the lap prompt, as the carry road does from the web.
   //
-  // A self-planning run is never the conversation to answer with: it is headless,
-  // so there is nothing to attach to or brief, and ending it silently would throw
-  // away a plan in progress. Every chat launch is refused until the human stops it.
+  // A headless run (self-plan, relay, headless start-lap) is never the
+  // conversation to answer with: there is nothing to attach to or brief, and
+  // ending it silently would throw away work in progress. Every chat launch is
+  // refused until it is stopped.
+  const headless = isHeadless(input)
   if (input.kind === 'chat') {
     const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
-    if (liveChat?.purpose === 'self-plan') throw selfPlanRunningError(feature)
+    if (liveChat?.headless) throw headlessRunningError(feature, liveChat)
     if (isSelfPlan(input)) assertSelfPlannable(ctx, feature)
+    else if (headless) assertHeadlessRunnable(ctx, feature, input)
     else if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
     else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
@@ -529,6 +576,7 @@ export async function launchSession(
     purposeData: input.purposeData,
     worktreePath,
     model,
+    headless,
   })
 
   // What this terminal opens with, decided before anything else. An explicit
@@ -541,16 +589,27 @@ export async function launchSession(
   const carried = startLapCarriedWork(ctx, feature.id)
   const plan = planLaunchKickoff(feature, input, carried)
   const selfPlan = isSelfPlan(input)
+  const relay = input.kind === 'chat' && input.purpose === 'relay'
+  // A lap planned headless has nobody to interview: its briefing is the
+  // no-human lap line, carrying the orchestrator's message on the agenda.
+  if (headless && plan.lap !== undefined) {
+    plan.line = headlessLapKickoff(plan.lap, runtime.id, carried, input.message)
+  }
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
     // feature state rather than the state captured on the previous turn. A
-    // self-planning run opens on its own sentence: nobody is there to grill.
+    // self-planning or relay run opens on its own sentence: nobody is there to
+    // grill.
     const header = chatKickoffHeader(
       ctx,
       feature,
       runtime.id,
-      selfPlan ? selfPlanKickoffFor(runtime.id) : undefined,
+      selfPlan
+        ? selfPlanKickoffFor(runtime.id)
+        : relay
+          ? relayKickoffFor(runtime.id, input.message as string)
+          : undefined,
     )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
@@ -566,7 +625,8 @@ export async function launchSession(
   // kind, or a second chat that raced this one past the `ensureWorktree` await.
   // No resumable conversation is fine: the docs carry the state, so it starts
   // fresh and the timeline says so. A self-planning run never resumes — it plans
-  // a feature that has nothing on record, from its briefing alone.
+  // a feature that has nothing on record, from its briefing alone. A relay and a
+  // headless lap resume like the chat: the conversation is what they continue.
   if (input.kind === 'chat') {
     try {
       assertSpawnable(ctx, feature, session.id)
@@ -639,7 +699,13 @@ export async function launchSession(
     : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
     type: 'session.launching',
-    message: selfPlan ? 'launching a self-planning run' : `launching ${input.kind} session`,
+    message: selfPlan
+      ? 'launching a self-planning run'
+      : relay
+        ? "relaying the orchestrator's message to the planning conversation"
+        : headless
+          ? 'launching a lap that plans itself'
+          : `launching ${input.kind} session`,
     data: {
       sessionId: session.id,
       kind: input.kind,
@@ -688,7 +754,7 @@ export async function launchSession(
     resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
     // No terminal: the run takes its kickoff as its prompt and exits when done.
-    ...(selfPlan ? { headless: true } : {}),
+    ...(headless ? { headless: true } : {}),
   })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
@@ -1316,6 +1382,8 @@ export function handlePtyExit(
       message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
       data: { sessionId: session.id, complete, exitCode: exitCode ?? null },
     })
+  } else if (session.headless && feature) {
+    emitRunEnded(ctx, feature, session, exitCode)
   }
   emitForSession(ctx, session, {
     type: 'session.pty_exited',
@@ -1323,6 +1391,31 @@ export function handlePtyExit(
     data: { sessionId: session.id, exitCode: exitCode ?? null },
   })
   return resumeFailureReported
+}
+
+/**
+ * `session.run_ended` for a headless run the orchestrator started — a `relay`
+ * or a lap that plans itself — saying whether it finished. A relay finished when
+ * its process exited cleanly. A lap finished when its tickets are on the board:
+ * a lap planned at review never stamps `ticketsReadyLap` (it calls no
+ * `complete_phase`), so the pending tickets Burn would carry are the record.
+ */
+function emitRunEnded(
+  ctx: AppCtx,
+  feature: Feature,
+  session: SessionRow,
+  exitCode: number | undefined | null,
+): void {
+  const complete =
+    session.purpose === 'relay'
+      ? exitCode === 0
+      : listTicketsByFeature(ctx, feature.id).some((ticket) => ticket.status === 'pending')
+  const what = session.purpose === 'relay' ? "the orchestrator's change" : 'planning the next lap'
+  emitForSession(ctx, session, {
+    type: 'session.run_ended',
+    message: complete ? `${what} finished` : `${what} stopped before it was finished`,
+    data: { sessionId: session.id, purpose: session.purpose ?? null, complete, exitCode: exitCode ?? null },
+  })
 }
 
 /**
