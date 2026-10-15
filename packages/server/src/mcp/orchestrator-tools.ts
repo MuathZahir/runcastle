@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import type { Feature, SessionRow, TestNote } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -8,7 +9,12 @@ import * as z from 'zod'
 import { features } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { GateError, InvalidInputError } from '../errors'
-import { type EndSessionResult, endSession, launchSession } from '../launcher/launcher'
+import {
+  type EndSessionResult,
+  type LaunchSessionOptions,
+  endSession,
+  launchSession,
+} from '../launcher/launcher'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { landChatCommits } from '../services/chat-branch'
 import { emit, runAsActor } from '../services/events'
@@ -140,13 +146,14 @@ export const toolPlanFeature = orchestratorTool(
     ctx: AppCtx,
     session: SessionRow,
     input: { slug: string },
+    launch: LaunchSessionOptions = {},
   ): Promise<{ slug: string; sessionId: string }> => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    const { sessionId } = await launchSession(ctx, {
-      featureId: feature.id,
-      kind: 'chat',
-      purpose: 'self-plan',
-    })
+    const { sessionId } = await launchSession(
+      ctx,
+      { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
+      launch,
+    )
     return { slug: feature.slug, sessionId }
   },
 )
@@ -155,7 +162,11 @@ export const toolPlanFeature = orchestratorTool(
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    const run = activeSessionsForFeature(ctx, feature.id).find((s) => s.headless)
+    // A self-planning row is headless whether or not its launch stamped the
+    // column, so the run plan_feature starts is always one this can stop.
+    const run = activeSessionsForFeature(ctx, feature.id).find(
+      (s) => s.headless || s.purpose === 'self-plan',
+    )
     if (!run) throw new GateError(`\`${feature.slug}\` has no headless run going, so there is nothing to stop.`)
     return endSession(ctx, run.id)
   },
@@ -240,6 +251,7 @@ export const toolAddToBrief = orchestratorTool(
     const date = new Date().toISOString().slice(0, 10)
     const section = `## Added by the orchestrator, ${date}\n\n${text}\n`
     const separator = prior === '' ? '' : prior.endsWith('\n') ? '\n' : '\n\n'
+    mkdirSync(dirname(briefPath), { recursive: true })
     writeFileSync(briefPath, `${prior}${separator}${section}`, 'utf8')
     await git.commitDocs(
       worktree,
