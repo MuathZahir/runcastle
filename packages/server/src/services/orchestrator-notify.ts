@@ -17,7 +17,9 @@ import { getTicket } from './tickets'
  * Two kinds of event reach it, both only on features it owns:
  *
  * - END events — something it may be waiting on is over. Forwarded whoever
- *   started the work, and the only kind the catch-up lists.
+ *   started the work, except a merge's landing or conflict stamped
+ *   `actor: 'orchestrator'`, which `merge_feature` already returned. The only
+ *   kind the catch-up lists.
  * - ACT events — the human did something on its feature. Forwarded only when
  *   not stamped `actor: 'orchestrator'`, since the orchestrator's own tool call
  *   already answered it in the call's result.
@@ -74,6 +76,14 @@ const END_TYPES = [
   'merge.conflict',
   'testdrive.dev_failed',
 ]
+
+/**
+ * The END events a tool call's own result already reports: `merge_feature`
+ * returns the landing or the conflict synchronously. Stamped by the
+ * orchestrator, they are not typed back. Every other END event outlives the
+ * call that started its work, so it is forwarded even when stamped.
+ */
+const ANSWERED_END_TYPES = new Set(['feature.shipped', 'merge.conflict'])
 
 function record(data: unknown): Record<string, unknown> {
   return data && typeof data === 'object' && !Array.isArray(data)
@@ -174,7 +184,9 @@ export function orchestratorLineFor(event: EventRow, state: NotifyState): string
   if (!state.feature?.orchestrated) return null
   const described = describe(event, state.session, state.ticket, state.feature.slug)
   if (!described) return null
-  if (described.kind === 'act' && record(event.data).actor === 'orchestrator') return null
+  if (record(event.data).actor === 'orchestrator' && (described.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
+    return null
+  }
   return `${PREFIX} ${state.feature.slug} ${described.text}`
 }
 

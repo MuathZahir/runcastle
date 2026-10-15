@@ -114,10 +114,23 @@ describe('orchestratorLineFor — end events', () => {
     expect(orchestratorLineFor(e, state)).toBe(line)
   })
 
-  it.each(cases)('%s is forwarded even when the orchestrator caused it', (_name, e, state, line) => {
-    const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
-    expect(orchestratorLineFor(stamped, state)).toBe(line)
-  })
+  const answeredByMerge = (e: EventRow) => e.type === 'feature.shipped' || e.type === 'merge.conflict'
+
+  it.each(cases.filter(([, e]) => !answeredByMerge(e)))(
+    '%s is forwarded even when the orchestrator caused it',
+    (_name, e, state, line) => {
+      const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
+      expect(orchestratorLineFor(stamped, state)).toBe(line)
+    },
+  )
+
+  it.each(cases.filter(([, e]) => answeredByMerge(e)))(
+    '%s says nothing when its own merge_feature call caused it',
+    (_name, e, state) => {
+      const stamped = { ...e, data: { ...(e.data as object), actor: 'orchestrator' } }
+      expect(orchestratorLineFor(stamped, state)).toBeNull()
+    },
+  )
 
   it.each(cases)('%s says nothing on a feature it does not own', (_name, e, state) => {
     expect(orchestratorLineFor(e, { ...state, ...notOwned })).toBeNull()
@@ -296,7 +309,7 @@ describe('the notifier and the catch-up', () => {
     ])
   })
 
-  it('stays quiet about a feature it does not own, and about acts it took itself', () => {
+  it('stays quiet about a feature it does not own, and about acts and merges it took itself', () => {
     updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
     const typed = terminalFor(projectSession('orchestrate'))
     const human = seedFeature(ctx, projectId, { slug: 'human-one' })
@@ -304,6 +317,8 @@ describe('the notifier and the catch-up', () => {
 
     emit(ctx, human.id, { type: 'feature.shipped', message: 'merged to main' })
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'burn.started', message: 'burning' }))
+    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' }))
+    runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } }))
 
     expect(typed).toEqual([])
   })
