@@ -491,23 +491,68 @@ function briefLiveChat(
 }
 
 /**
- * Type `line` into a live session's terminal and submit it. Each write checks
- * the registry afresh, so a terminal that exits between the text and the `\r`
- * never gets a stray carriage return. The result makes the initial write
- * observable to the launcher: a database row is not proof that its terminal
- * still exists.
+ * Lines waiting behind a write still in flight, per session. A session is in
+ * the map from the moment its text is typed until its `\r` has gone out and the
+ * gap after it has passed; absent, the terminal is free to type into at once.
+ */
+const terminalQueues = new Map<string, string[]>()
+
+/** One write into a session's terminal, checking the registry afresh each time. */
+function writeToPty(sessionId: string, data: string): boolean {
+  const entry = ptyRegistry().get(sessionId)
+  if (!entry || entry.exited) return false
+  entry.pty.write(data)
+  return true
+}
+
+/** Run `fn` after `ms` without holding the process open (tests, shutdown). */
+function later(fn: () => void, ms: number): void {
+  const timer = setTimeout(fn, ms)
+  timer.unref?.()
+}
+
+/**
+ * Type one line, submit it, and only then the next queued one. The next text
+ * also waits a gap after the `\r`: written straight behind it, the two could
+ * reach the TUI as one burst, in which the `\r` is a pasted newline again.
+ */
+function typeAndSubmit(sessionId: string, line: string): boolean {
+  if (!writeToPty(sessionId, line)) return false
+  terminalQueues.set(sessionId, [])
+  later(() => {
+    writeToPty(sessionId, '\r')
+    later(() => {
+      const waiting = terminalQueues.get(sessionId) ?? []
+      terminalQueues.delete(sessionId)
+      while (waiting.length > 0) {
+        const next = waiting.shift() as string
+        if (typeAndSubmit(sessionId, next)) {
+          terminalQueues.get(sessionId)?.push(...waiting)
+          return
+        }
+      }
+    }, LIVE_BRIEFING_SUBMIT_MS)
+  }, LIVE_BRIEFING_SUBMIT_MS)
+  return true
+}
+
+/**
+ * Type `line` into a live session's terminal and submit it. Writes queue per
+ * session: a line starts only after the previous one's `\r` has been sent, so
+ * two writes never interleave into one joined submission (the lap 1 drive's
+ * `…list_tickets({ slug: "snake-core" }).[runcastle] snake-core burn finished…`).
+ * Each write checks the registry afresh, so a terminal that exits between the
+ * text and the `\r` never gets a stray carriage return. The result makes the
+ * write observable to the launcher — typed now, or queued behind one in flight
+ * on a terminal that is still there: a database row is not proof that its
+ * terminal still exists.
  */
 export function writeToLiveTerminal(sessionId: string, line: string): boolean {
-  const write = (data: string): boolean => {
-    const entry = ptyRegistry().get(sessionId)
-    if (!entry || entry.exited) return false
-    entry.pty.write(data)
-    return true
-  }
-  if (!write(line)) return false
-  const submit = setTimeout(() => write('\r'), LIVE_BRIEFING_SUBMIT_MS)
-  // Never hold the process open for a keystroke (tests, shutdown).
-  submit.unref?.()
+  const queued = terminalQueues.get(sessionId)
+  if (!queued) return typeAndSubmit(sessionId, line)
+  const entry = ptyRegistry().get(sessionId)
+  if (!entry || entry.exited) return false
+  queued.push(line)
   return true
 }
 

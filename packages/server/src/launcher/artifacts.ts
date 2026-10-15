@@ -18,6 +18,7 @@ import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
+import { WAIT_MESSAGES_MODE } from './hook-client'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
 import {
@@ -1044,7 +1045,18 @@ interface CommandHook {
   type: 'command'
   command: string
   timeout: number
+  /** Runs in the background and wakes Claude when it exits 2 (implies `async`). */
+  async?: true
+  asyncRewake?: true
 }
+
+/**
+ * The orchestrator's message waiter hook's timeout, in seconds. An async hook
+ * still gets the 10-minute default when none is set, and an orchestrator idles
+ * far longer than that waiting on a burn — a waiter killed at ten minutes would
+ * leave nothing listening until its next turn end. A day outlasts any wait.
+ */
+const MESSAGE_WAITER_TIMEOUT_S = 86_400
 
 export interface SessionSettings {
   permissions: { allow: string[]; deny: string[] }
@@ -1280,17 +1292,37 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   not know is not one to hand whole-repo write access to.
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
+ * - An `orchestrate` session (`purpose`) also gets the message waiter on
+ *   SessionStart and Stop: an `asyncRewake` hook running the hook client's
+ *   `wait-messages` mode, which long-polls for the orchestrator's pending
+ *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
+ *   or mid-turn (`whole-cuts-plan-themselves` decision 20). A fresh waiter starts
+ *   at every session start and turn end; the server answers only the newest.
+ *   Every other session's settings carry no trace of it.
  */
 export function renderSettings(
   hookClient: string,
   kind?: SessionKind,
   skillPackDir?: string,
+  purpose?: SessionPurpose,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
     timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
+  const waiter: CommandHook[] =
+    purpose === 'orchestrate'
+      ? [
+          {
+            type: 'command',
+            command: `bun run "${hookClient}" ${WAIT_MESSAGES_MODE}`,
+            timeout: MESSAGE_WAITER_TIMEOUT_S,
+            async: true,
+            asyncRewake: true,
+          },
+        ]
+      : []
   return {
     permissions: {
       allow: [
@@ -1303,10 +1335,10 @@ export function renderSettings(
     hooks: {
       SessionStart: SESSION_START_SOURCES.map((source) => ({
         matcher: source,
-        hooks: [cmd('session-start')],
+        hooks: [cmd('session-start'), ...waiter],
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
-      Stop: [{ hooks: [cmd('stop')] }],
+      Stop: [{ hooks: [cmd('stop'), ...waiter] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
         ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
@@ -1429,7 +1461,11 @@ export async function writeSessionArtifacts(
   writeFileSync(systemPromptPath, renderSessionPrompt(input), 'utf8')
   writeFileSync(
     settingsPath,
-    JSON.stringify(renderSettings(hookClientPath(), session.kind, pluginDir), null, 2),
+    JSON.stringify(
+      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose),
+      null,
+      2,
+    ),
     'utf8',
   )
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')

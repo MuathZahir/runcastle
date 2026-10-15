@@ -17,6 +17,7 @@ import {
   startOrchestratorNotifier,
   type NotifyState,
 } from '../src/services/orchestrator-notify'
+import { takeOrchestratorLines, waitForOrchestratorLines } from '../src/services/orchestrator-messages'
 import { openProject } from '../src/services/projects'
 import { updateSettings } from '../src/services/settings'
 import { withTempDataDir } from './helpers/data-dir'
@@ -297,21 +298,48 @@ describe('the notifier and the catch-up', () => {
     return opened
   }
 
-  it('types an owned feature’s end event into the live orchestrator', () => {
+  it('hands an owned feature’s end event to the live orchestrator’s waiter, typing nothing', async () => {
     updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const typed = terminalFor(projectSession('orchestrate'))
+    const id = projectSession('orchestrate')
+    const typed = terminalFor(id)
     const feature = seedFeature(ctx, projectId, { slug: 'export-csv', orchestrated: true })
+    const answer = waitForOrchestratorLines(id, 'w1', 5000)
 
     emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
 
-    expect(typed).toEqual([
-      '[runcastle] export-csv finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "export-csv" }).',
-    ])
+    expect(await answer).toEqual({
+      status: 'lines',
+      lines: [
+        '[runcastle] export-csv finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "export-csv" }).',
+      ],
+    })
+    expect(typed).toEqual([])
+  })
+
+  it('hands two events ending inside 350 ms over as one message with two separate lines', async () => {
+    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
+    const id = projectSession('orchestrate')
+    const typed = terminalFor(id)
+    const feature = seedFeature(ctx, projectId, { slug: 'snake-core', orchestrated: true })
+
+    // No waiter is up mid-turn: the lines wait together for the next one.
+    emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
+    emit(ctx, feature.id, { type: 'run.finished', message: 'x', data: { status: 'succeeded', summary: '5/5 tickets done' } })
+
+    expect(await waitForOrchestratorLines(id, 'w1', 5000)).toEqual({
+      status: 'lines',
+      lines: [
+        '[runcastle] snake-core finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "snake-core" }).',
+        '[runcastle] snake-core burn finished (5/5 tickets done). Read it with list_tickets({ slug: "snake-core" }).',
+      ],
+    })
+    expect(typed).toEqual([])
   })
 
   it('stays quiet about a feature it does not own, and about acts and merges it took itself', () => {
     updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const typed = terminalFor(projectSession('orchestrate'))
+    const id = projectSession('orchestrate')
+    const typed = terminalFor(id)
     const human = seedFeature(ctx, projectId, { slug: 'human-one' })
     const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
 
@@ -320,25 +348,43 @@ describe('the notifier and the catch-up', () => {
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' }))
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } }))
 
+    expect(takeOrchestratorLines(id)).toEqual([])
     expect(typed).toEqual([])
   })
 
-  it('types nothing when the project session is not orchestrating', () => {
-    const typed = terminalFor(projectSession())
+  it('sends nothing when the project session is not orchestrating', () => {
+    const id = projectSession()
+    const typed = terminalFor(id)
     const feature = seedFeature(ctx, projectId, { orchestrated: true })
 
     emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
 
+    expect(takeOrchestratorLines(id)).toEqual([])
     expect(typed).toEqual([])
   })
 
-  it('types the stop line into a live orchestrator when the mode is turned off', () => {
+  it('sends the stop line through the same path when the mode is turned off', async () => {
     updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const typed = terminalFor(projectSession('orchestrate'))
+    const id = projectSession('orchestrate')
+    const answer = waitForOrchestratorLines(id, 'w1', 5000)
 
     updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
 
-    expect(typed).toEqual([ORCHESTRATOR_STOP_LINE])
+    expect(await answer).toEqual({ status: 'lines', lines: [ORCHESTRATOR_STOP_LINE] })
+  })
+
+  it('drops an ended orchestrator’s lines and answers its waiter ended', async () => {
+    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
+    const id = projectSession('orchestrate')
+    const feature = seedFeature(ctx, projectId, { orchestrated: true })
+    emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
+
+    markSessionEnded(ctx, id)
+
+    expect(takeOrchestratorLines(id)).toEqual([])
+    const late = waitForOrchestratorLines(id, 'w1', 5000)
+    markSessionEnded(ctx, id)
+    expect(await late).toEqual({ status: 'ended' })
   })
 
   it('never lets a failure reach the service that emitted', () => {

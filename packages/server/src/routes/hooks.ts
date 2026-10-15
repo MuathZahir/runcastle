@@ -14,6 +14,7 @@ import {
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
+import { waitForOrchestratorLines } from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
@@ -40,6 +41,34 @@ hooks.use('*', async (c, next) => {
   await next()
   if (c.res.headers.get('content-type') === 'application/json') {
     c.res.headers.set('content-type', 'application/json; charset=utf-8')
+  }
+})
+
+/** How long the orchestrator's message waiter is held before it polls again. */
+export const ORCHESTRATOR_WAIT_HOLD_MS = 25_000
+
+/**
+ * The orchestrator's message waiter (`whole-cuts-plan-themselves` decision 20):
+ * the long-poll its `asyncRewake` hook makes in the hook client's
+ * `wait-messages` mode. Registering supersedes the session's older waiter, and
+ * only the newest is ever handed lines (see `orchestrator-messages.ts`). A
+ * session that is gone, ended, or not orchestrating is answered `ended`, so its
+ * waiter exits instead of polling forever.
+ */
+hooks.get('/orchestrator-messages', async (c) => {
+  try {
+    const sessionId = c.req.query('sessionId')
+    const waiter = c.req.query('waiter')
+    if (!sessionId || !waiter) return c.json({ status: 'ended' })
+    const ctx = await getRuntimeCtx()
+    const session = getSessionRow(ctx, sessionId)
+    if (!session || session.status === 'ended' || session.purpose !== 'orchestrate') {
+      return c.json({ status: 'ended' })
+    }
+    return c.json(await waitForOrchestratorLines(sessionId, waiter, ORCHESTRATOR_WAIT_HOLD_MS))
+  } catch (err) {
+    console.error('orchestrator message waiter failed', err)
+    return c.json({ status: 'empty' })
   }
 })
 

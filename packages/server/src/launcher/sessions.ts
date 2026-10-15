@@ -15,6 +15,7 @@ import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitForSession, emitProject } from '../services/events'
+import { endOrchestratorMessages } from '../services/orchestrator-messages'
 import {
   landProjectBranch,
   PROJECT_BRANCH,
@@ -529,6 +530,9 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // exit, the Stop hook, boot reconciliation — so this is the one place it must
   // happen.
   if (existing.featureId) stopDocsWatch(existing.featureId)
+  // An orchestrator's message waiter is answered `ended`, and lines it never
+  // heard are dropped: the catch-up briefing carries them to its next launch.
+  endOrchestratorMessages(id)
   // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
   // recorded fact rather than the row's age wearing an end-time label. Those
   // same three end paths can each fire on a row that is already ended (a Stop
