@@ -345,6 +345,31 @@ describe('the orchestrator’s acting tools', () => {
     expect(existsSync(join(repoPath, 'docs'))).toBe(false)
   })
 
+  it('add_to_brief appends to a draft’s parked brief, and Start lands it in brief.md', async () => {
+    const session = orchestrator()
+    const draft = seedFeature(ctx, projectId, {
+      slug: 'waiting',
+      status: 'draft',
+      orchestrated: true,
+      brief: 'The human wants a changelog.',
+    })
+    cleanup.push(worktreeDir(projectId, 'waiting'))
+
+    await toolAddToBrief(ctx, session, { slug: 'waiting', text: 'Run it autonomous.' })
+
+    const date = new Date().toISOString().slice(0, 10)
+    const expected = `The human wants a changelog.\n\n## Added by the orchestrator, ${date}\n\nRun it autonomous.\n`
+    expect(getFeatureRow(ctx, draft.id)).toMatchObject({ status: 'draft', brief: expected })
+    expect(listAfter(ctx, draft.id).find((e) => e.type === 'brief.added')?.data).toMatchObject({
+      actor: 'orchestrator',
+    })
+
+    await toolStartFeature(ctx, session, { slug: 'waiting', baseBranch: 'main' })
+    expect(await g.raw(['show', 'feature/waiting:docs/features/waiting/brief.md'])).toContain(
+      expected,
+    )
+  })
+
   describe('feature reads from the project session', () => {
     it('name any feature of the project by slug, owned or not, with the mode off', async () => {
       const f = await owned('readable')
