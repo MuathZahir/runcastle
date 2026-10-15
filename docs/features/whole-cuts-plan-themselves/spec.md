@@ -14,18 +14,21 @@ The human wants to say what they want once and come back to work in progress. Th
 
 **The orchestrator is the project session.** With the setting on, opening the project session opens the orchestrator. It grills the human about what they want, as the project session does today, and writes that intent into each feature's brief (decision 16). It creates the features, which become its own (decision 9), and runs them. Nothing about the order of its moves is fixed: whether a plan needs a subagent's review, whether merged siblings need an integration check, when to drive, when to run another lap, and when to call the human are all its judgement (decision 5). It has every click the human has, merge included, and no limits beyond what those buttons already refuse (decisions 4, 6).
 
-**Runcastle tells it what happened.** While it is live, each time something ends on one of its features, runcastle types a one-line message into its terminal naming the feature, what happened and what to read next (decision 11). When the human acts on one of its features, it hears about that the same way (decision 13). When the human reopens the project session after it was closed, its briefing opens with what happened on its features since. Nothing relaunches it by itself.
+**Runcastle tells it what happened.** While it is live, each time something ends on one of its features, runcastle tells it in a one-line message naming the feature, what happened and what to read next (decision 11). The message arrives through the CLI's own channel for putting a message into a live session, not typed into its terminal: on Claude Code a background hook wakes it, and on Codex the message is queued to its session (decision 20). Nothing touches what the human is typing, and things that end together arrive as one message. It works whatever the human's browser is showing. When the human acts on one of its features, it hears about that the same way (decision 13). When the human reopens the project session after it was closed, its briefing opens with what happened on its features since. Nothing relaunches it by itself.
 
-**It talks to the human in its terminal.** It asks a question only when the answer changes what the human gets and a wrong guess would cost a lap, one question at a time, and it keeps the rest of the cut moving while it waits (decision 12). When it wants the human to test, it starts the drive and says what to try; the human answers in the terminal.
+**It agrees how to work before it starts.** At the start of every cut, before it creates anything, it asks the human how they want the work run: autonomous to the end, checkpoints the human names, or a check-in after each feature. "You decide" means autonomous. The agreement goes into the brief of each feature in the cut (decision 18).
 
-**Its features are marked on the page.** A feature it owns shows an **Orchestrated** marker on its card and its page. Every human button still works on it (decision 13). A headless run it starts on a feature (sending a plan back, planning a lap) shows as working with **Stop**, as a self-planning run does today.
+**It talks to the human in its terminal.** It asks a question only when the answer changes what the human gets and a wrong guess would cost a lap, one question at a time, and it keeps the rest of the cut moving while it waits (decision 12). When the agreement calls for the human to test, it starts the drive and says what to try; the human answers in the terminal. When the agreement is autonomous, it does not stop for a test drive.
 
-**One move stops it.** Turning the setting off types a message into a live orchestrator telling it to start nothing new, and from that moment its tools refuse to start anything. Runs already going finish or are stopped as today. Telling it to stop in its terminal also works (decision 6).
+**Its features are marked.** In the sidebar, a feature it owns shows a second, accent-coloured ring around its phase glyph, which says "Orchestrated" on hover; the feature page's header shows an **Orchestrated** tag (decision 19). Every human button still works on it (decision 13). A headless run it starts on a feature (sending a plan back, planning a lap) shows as working with **Stop**, as a self-planning run does today.
+
+**One move stops it.** Turning the setting off sends a live orchestrator a message telling it to start nothing new, and from that moment its tools refuse to start anything. Runs already going finish or are stopped as today. Telling it to stop in its terminal also works (decision 6).
 
 ### What the orchestrator is told
 
 The orchestrator's behaviour is skill text in the project session's skill pack: a section for orchestrating, read only when the mode is on. It describes judgement, not a procedure (decision 5):
 
+- **The working agreement first.** Before creating anything for a cut, it asks the human how they want the work run (autonomous, checkpoints they name, or a check-in after each feature), treats "you decide" as autonomous, and writes the agreement into each feature's brief of that cut. It works within the agreement: when it is autonomous, it carries the cut through to merged without stopping for a test drive, relying on the review every lap's burn already runs (each batch closes with a review ticket the feature's planning creates; the orchestrator reads it and never creates one) and on its own integration subagents, and it calls the human only on decision 12's line (decision 18).
 - **A senior engineer leading a team.** It does not go into a feature's details unless something needs it. Its attention is on the project as a whole: no conflicts or contradictions between features, the features integrating well, the best tooling for the job, and nothing more complicated than it needs to be (decision 17).
 - **Guard its own context.** Reading goes to subagents on a cheaper model: Sonnet through Claude Code's Agent tool, the equivalent smaller model through Codex's `spawn_agent`. Subagents gather context, read a feature's docs, plan and tickets, and read reviews and outcomes. The orchestrator keeps what they conclude (decision 17). After a compaction or a relaunch it reorients from runcastle's record, not from memory.
 - **Judging a plan.** It judges against what the human said, which lives in each feature's brief. It sends back a decision that contradicts the human, and settles one the human never spoke to by its own judgement, naming it in its report. It asks the human only on the line decision 12 draws.
@@ -37,7 +40,7 @@ The orchestrator's behaviour is skill text in the project session's skill pack: 
 
 ### The shape of it
 
-Everything new is one of three kinds: MCP tools for the project session, messages typed into its terminal, and skill text. The services under each tool already exist.
+Everything new is one of three kinds: MCP tools for the project session, messages delivered into its session, and skill text. The services under each tool already exist.
 
 **The setting.** A per-project setting, `orchestrator`, on the existing settings surface (a per-project override with a default of off). The project session launch reads it.
 
@@ -75,7 +78,7 @@ A resumed orchestrator conversation is still `orchestrate`. A launch with the se
 
 A session row records that it runs headless, so the page, the chat refusal and the exit handling key on "headless", not on the `self-plan` purpose alone.
 
-**Messages into the orchestrator's terminal.** A notifier subscribes to the live event bus. For an event on an owned feature that ends something, while the project's `orchestrate` session is live, it types one line into that terminal through the same live-terminal write the chat briefing uses, and submits it. The events that count:
+**Messages to the orchestrator.** A notifier subscribes to the live event bus. For an event on an owned feature that ends something, while the project's `orchestrate` session is live, it adds one line to that session's pending messages. The events that count:
 - a headless run ending, finished or stopped short;
 - a burn finishing or failing;
 - a review or verification pass finishing;
@@ -84,11 +87,18 @@ A session row records that it runs headless, so the page, the chat refusal and t
 - a human-started session opening or ending on the feature;
 - a human click on the feature (burn, merge, drive, Start lap).
 
-Lines are prefixed `[runcastle]`. Events the orchestrator's own tool call just caused, and answered in that call's result, are not repeated. Turning the setting off types the stop line. Delivery is best-effort, as the chat briefing's is. The catch-up briefing covers anything missed while the orchestrator was down.
+Lines are prefixed `[runcastle]`. Events the orchestrator's own tool call just caused, and answered in that call's result, are not repeated. Turning the setting off adds the stop line. The catch-up briefing covers anything missed while the orchestrator was down.
+
+Pending lines are delivered as one message, by a delivery chosen per runtime (decision 20):
+- **Claude Code.** The `orchestrate` session's settings register an `asyncRewake` background hook that runs runcastle's hook client. It long-polls the server for that session's pending lines. When there are some, it prints them all and exits 2, which wakes Claude with them as one system reminder, whether the session is idle or mid-turn. A fresh waiter starts at each turn end and at session start, and the server answers only the newest waiter per session, so two waiters never deliver the same lines.
+- **Codex.** The server runs `codex queue --thread <the session's conversation id> --message <the lines>` with `CODEX_HOME` set to the session's generated home. Codex's queue service delivers it: it starts a turn when the thread is idle, or delivers after the current turn when the thread is busy, within about 10 seconds.
+- **Fallback.** A runtime whose channel cannot be shown working in the interactive session runcastle spawns keeps typing into the terminal, through a per-terminal queue that types and submits each batch whole before the next, so two messages can never run together.
+
+Nothing is typed into the orchestrator's terminal on a runtime whose channel works.
 
 **The page.**
 - The settings page gains the toggle.
-- An owned feature's card and page show the Orchestrated marker.
+- An owned feature shows the second ring on its sidebar phase glyph (hover: "Orchestrated") and the Orchestrated tag in its page header. The sidebar row carries no tag, so its title and its "Waits on …" meta keep their width.
 - The next-step resolver's planning-itself bar and stopped-short bar are keyed on a headless run, so a `relay` or headless start-lap run reads as working with Stop.
 - A started feature with nothing planned keeps today's Plan it yourself entry.
 
@@ -97,7 +107,7 @@ Lines are prefixed `[runcastle]`. Events the orchestrator's own tool call just c
 Claude Code and Codex can both orchestrate, on whichever runtime the project session's model belongs to (decision 14). The build checks both:
 - the orchestrator launch with prompts off;
 - a `relay` run resuming a conversation headless;
-- a typed message reaching a busy session and an idle one;
+- a message reaching a busy session and an idle one through that CLI's channel (decision 20);
 - a cheaper-model subagent spawned from the skill text's wording.
 
 ## Seams
@@ -105,11 +115,13 @@ Claude Code and Codex can both orchestrate, on whichever runtime the project ses
 - **The project session launcher with spawning off** (existing). Observable: launching with the setting on gives the session row the `orchestrate` purpose, the prompts-off mode in the rendered command for each runtime, and a briefing carrying the orchestrating section and the catch-up lines. Launching with it off is unchanged.
 - **The runtime launch description** (existing). Observable: the headless resume argv with a message for each runtime (`relay`), and the prompts-off posture for an `orchestrate` launch. Interactive launches are unchanged.
 - **The MCP tool functions** (existing seam, new tools). Each `tool*` function is called directly with a context and a session row. Observable: ownership marking on create and take-over; every acting tool's refusal when the session is not `orchestrate`, the setting is off, or the feature is not owned; and each tool reaching its service (`plan_feature` → a `self-plan` session row, `send_to_feature` → a `relay` row, `merge_feature` → shipped and the outcome doc, the same as the router's merge).
-- **The notifier** (new, at the highest point: a pure function from an event plus the project's state to an optional line, wired to the bus and the terminal write). Observable: which events on which features produce a line, the line's text, nothing for non-owned features or a non-`orchestrate` session, and the stop line when the setting turns off.
+- **The notifier** (existing since lap 1: a pure function from an event plus the project's state to an optional line, wired to the bus). Observable: which events on which features produce a line, the line's text, nothing for non-owned features or a non-`orchestrate` session, and the stop line when the setting turns off.
+- **The orchestrator's message delivery** (new in lap 2, one interface with a delivery per runtime). Observable: lines pending for a session are handed over as one message; the Claude Code waiter's long-poll returns them all and exits 2, and only the newest waiter is answered; the Codex delivery's rendered `codex queue` command and its `CODEX_HOME`; and the fallback's queue, which never lets two batches' keystrokes interleave. The orchestrate session's rendered Claude settings carry the `asyncRewake` hook, and other sessions' do not.
 - **The briefing renderers** (existing, pure). Observable: the orchestrating section, the catch-up list, and the `relay` and headless start-lap briefings, spelled per runtime.
 - **The process exit handler** (existing). Observable: a `relay` or headless start-lap run's exit event saying whether it finished.
 - **The next-step resolver** (existing, pure). Observable: the working bar with Stop for any headless run, the stopped-short bar after one, and unchanged bars for a human-run feature.
-- **The skill pack** (existing content). The project skill's orchestrating section, the change-handling skill's `**Changed by the orchestrator:**` rule, and the `relay` briefing are content. They are checked by reading them against decisions 5, 8, 12, 15, 16 and 17, and judged at the test drive.
+- **The skill pack** (existing content). The project skill's orchestrating section, the change-handling skill's `**Changed by the orchestrator:**` rule, and the `relay` briefing are content. They are checked by reading them against decisions 5, 8, 12, 15, 16, 17 and 18, and judged at the test drive.
+- **The sidebar row** (existing component). Observable: an owned feature's phase glyph carries the second ring and the "Orchestrated" hover text, and the row has no tag.
 
 ## Out of scope
 
@@ -123,7 +135,8 @@ Claude Code and Codex can both orchestrate, on whichever runtime the project ses
 
 ## Open questions
 
-- **Typing into a terminal the human is typing in.** A message arriving while the human has a half-typed line will join it. Accepted for an experiment. The drive should show how often it happens, and whether the orchestrator recognizes a mangled line.
+- **Whether each CLI's channel works in runcastle's interactive session** (lap 2). Claude Code's docs say an `asyncRewake` hook wakes Claude on exit code 2, but not what an idle interactive session does. Codex's queue watcher is in its source (`ext/queue/src/service.rs`), not its docs, and the interactive session runcastle spawns has a generated `CODEX_HOME`. Each is shown live, idle and mid-turn, before it replaces the typing; a runtime that fails keeps the queued typing fallback, and the lap's digest says so.
+- **Codex's external message.** Codex's SDK has an `ExternalMessage` that starts a turn when idle or joins the active one, for threads driven through its app-server. `codex queue` is used instead because it reaches the session runcastle already spawns. If queue latency (about 10 seconds) ever matters, the app-server route is the one to look at.
 - **Codex's cheaper subagent model.** Whether Codex's `spawn_agent` takes a model, and which smaller model is the equivalent of Sonnet, is checked in the build. If it takes none, the skill text says so and the orchestrator delegates on its own model.
 - **Long-lived context.** An orchestrator running a whole project will compact. The skill text tells it to reorient from runcastle's record. Whether that is enough is judged at the test drive.
 - **Cost.** A cut of several features runs several planners and burns at once, with no cap (decision 6). The first real cut is the measurement.
