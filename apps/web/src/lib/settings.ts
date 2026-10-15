@@ -220,7 +220,8 @@ export const STEP_KEYS: string[] = MODEL_STEPS.map(stepModelKey)
 // Field metadata
 // ---------------------------------------------------------------------------
 
-export type ControlKind = 'text' | 'number' | 'select' | 'textarea'
+/** `switch` is an on/off value, written as a boolean the moment it is flipped. */
+export type ControlKind = 'text' | 'number' | 'select' | 'textarea' | 'switch'
 
 interface FieldMeta {
   label: string
@@ -243,6 +244,8 @@ interface FieldMeta {
    * dropdown should read out (findings F17.7).
    */
   optionLabels?: Record<string, string>
+  /** A word tagged beside the label: what the field *is* (`experimental`). */
+  tag?: string
 }
 
 /**
@@ -452,6 +455,17 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'chat',
     placeholder: 'main (detected)',
   },
+  // The orchestrator IS the project session (`whole-cuts-plan-themselves`
+  // decisions 3, 10, 14), so it sits with the project chat's own fields.
+  orchestrator: {
+    label: 'Orchestrator',
+    tag: 'experimental',
+    tooltip:
+      'The project session runs your features for you: it creates them, has them plan themselves, burns, drives, runs laps and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
+    control: 'switch',
+    page: 'project',
+    group: 'chat',
+  },
 }
 
 /** Field order within a group — the order they are declared above. */
@@ -533,6 +547,8 @@ export interface ProvenanceChip {
 export interface SettingRow {
   key: string
   label: string
+  /** A word tagged beside the label (`experimental`). */
+  tag?: string
   /** The full explanation, behind the row's ⓘ. */
   tooltip: string
   /** The one short line shown always, where the label alone is ambiguous. */
@@ -748,6 +764,7 @@ export function describeField(
   return {
     key: field.key,
     label: meta.label,
+    ...(meta.tag ? { tag: meta.tag } : {}),
     tooltip: meta.tooltip,
     ...(meta.shortHelp ? { shortHelp: meta.shortHelp } : {}),
     placeholder: meta.placeholder ?? '',
