@@ -44,7 +44,7 @@ On the grill path, do not move on until the human confirms you have reached shar
 
 ## 1a. Planning without a human
 
-This is the **self-planning path**. It applies only when your briefing says no human is present; with a human here, §1 stands and this section does not. You still look up facts, model the domain and park scope creep as §1 says. What changes is who answers.
+This is the **self-planning path**. It applies only when your briefing says no human is present; with a human here, §1 stands and this section does not. You still look up facts, model the domain and park scope creep as §1 says. What changes is who answers. A run that resumes your planning conversation with the orchestrator's message (a relay), and a lap planned with no human present, follow this section too; a decision changed on the orchestrator's message is marked as `../revisit/SKILL.md` says.
 
 - **One turn.** Do the whole plan in this one turn. Never end the turn to ask a question or to report progress: nobody will reply, and ending the turn ends the run.
 - **Frontier rounds.** Work in rounds. A round is every open question that does not depend on an unanswered one. Write each as you would put it to the human, with your recommended answer and the main alternative, then accept your own recommendations and record them. Then ask what those answers opened: that is the next round. Write each round to `decisions.md` as it is decided (§2), not at the end, so a run that dies keeps what it had.
