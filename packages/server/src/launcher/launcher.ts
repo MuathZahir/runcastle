@@ -47,6 +47,8 @@ import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
+import { orchestratorCatchUp } from '../services/orchestrator-notify'
+import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
@@ -1037,6 +1039,10 @@ export async function launchDriveFixSession(
  * `purpose: 'triage'` is the Notes card's door: the launch carries an explicit
  * briefing to triage the project's open notes, and is fresh for the reason every
  * explicitly-briefed launch is (ADR-0009 #4).
+ *
+ * With the project's Orchestrator setting on, any other launch — a resume
+ * included — opens the orchestrator (`whole-cuts-plan-themselves`): purpose
+ * `orchestrate`, prompts off, and the orchestrating briefing with its catch-up.
  */
 export async function launchProjectSession(
   ctx: AppCtx,
@@ -1064,11 +1070,16 @@ export async function launchProjectSession(
         message: 'created runcastle: initial commit so branches can be cut',
       }),
   )
+  // The Orchestrator setting is read here, at launch, because the permission
+  // mode and the briefing are fixed for the session's life (decision 14). A
+  // triage launch is the Notes card's errand and stays an ordinary session.
+  const orchestrate = input.purpose !== 'triage' && orchestratorOn(ctx, project.id)
   const session = createSessionRow(ctx, {
     projectId: project.id,
     kind: 'project',
     worktreePath,
     model,
+    ...(orchestrate ? { purpose: 'orchestrate' as const } : {}),
   })
 
   // The chosen conversation's Claude Code id. Absent means the row never went
@@ -1143,6 +1154,7 @@ export async function launchProjectSession(
       worktreePath,
       base,
       openNotes: openProjectNoteCount(ctx, project.id),
+      ...(orchestrate ? { orchestrate: true, catchUp: orchestratorCatchUp(ctx, project) } : {}),
     },
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
@@ -1151,7 +1163,9 @@ export async function launchProjectSession(
     resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
     // Decision 18: whole-repo write access voids the acceptEdits justification.
-    permissionMode: 'default',
+    // The orchestrator works while the human is away, and a prompt with nobody
+    // there stalls the whole cut (`whole-cuts-plan-themselves` decision 10).
+    permissionMode: orchestrate ? 'bypassPermissions' : 'default',
   })
 
   if (opts.spawn === false) {

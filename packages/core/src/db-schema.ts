@@ -83,6 +83,11 @@ export const projects = sqliteTable('projects', {
   // Subject prefix for commits authored by runcastle's docs machinery. Null
   // uses the product default; burn-agent ticket subjects stay unchanged.
   docsCommitPrefix: text('docs_commit_prefix'),
+  // Project-only (no global twin, no env var): whether the project session
+  // launches as the orchestrator (`whole-cuts-plan-themselves` decision 14). An
+  // experiment is switched on one project at a time. Null means "not set",
+  // which resolves to off.
+  orchestrator: integer('orchestrator', { mode: 'boolean' }),
 })
 
 /**
@@ -159,6 +164,14 @@ export const features = sqliteTable('features', {
   baseBranch: text('base_branch'),
   status: text('status').notNull().$type<FeatureStatus>(),
   createdAt: integer('created_at').notNull(),
+  /**
+   * The orchestrator owns this feature (`whole-cuts-plan-themselves` decision
+   * 9): it created it from an `orchestrate` session, or took it over when the
+   * human handed it. Drives the page's marker, which events reach the
+   * orchestrator, and which features its acting tools accept. Every feature
+   * created before the column was the human's, which is what the default says.
+   */
+  orchestrated: integer('orchestrated', { mode: 'boolean' }).notNull().default(false),
 })
 
 /**
@@ -251,6 +264,13 @@ export const sessions = sqliteTable('sessions', {
    * row is working, not waiting: nothing has stopped for anyone yet.
    */
   awaitingInput: integer('awaiting_input', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * The session runs with no terminal (a `self-plan`, `relay` or headless
+   * start-lap run), so the page, the chat refusal and the exit handling key on
+   * this rather than on one purpose. Every session before the column had a
+   * terminal or was a `self-plan` run, whose purpose still says it.
+   */
+  headless: integer('headless', { mode: 'boolean' }).notNull().default(false),
   worktreePath: text('worktree_path').notNull(),
   /**
    * The model this session was launched with, and the agent runtime that model

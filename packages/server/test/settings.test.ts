@@ -8,7 +8,7 @@ import { InvalidInputError } from '../src/errors'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
-import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
+import { getSettings, orchestratorOn, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
@@ -183,6 +183,30 @@ describe('settings service (#46)', () => {
       value: 'docs(runcastle):',
       source: 'project',
     })
+  })
+
+  it('the orchestrator is a project-only switch, off by default, that a project write turns on and off', () => {
+    const project = seedProject(ctx)
+    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({
+      value: false,
+      source: 'default',
+      scope: 'project',
+      editable: true,
+    })
+    expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'orchestrator')).toBeUndefined()
+    expect(orchestratorOn(ctx, project.id)).toBe(false)
+
+    updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: true }, io())
+    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({ value: true, source: 'project' })
+    expect(orchestratorOn(ctx, project.id)).toBe(true)
+
+    updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: false }, io())
+    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({ value: false, source: 'project' })
+    expect(orchestratorOn(ctx, project.id)).toBe(false)
+
+    expect(() =>
+      updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: 'yes' }, io()),
+    ).toThrow(/invalid value for orchestrator/)
   })
 
   it('env override wins, reports source env, and is not editable', () => {

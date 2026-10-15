@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import type { SessionRow } from '@runcastle/core'
 import { EventRow } from '@runcastle/core'
 import { and, asc, desc, eq, gt, max } from 'drizzle-orm'
@@ -115,6 +116,30 @@ export function emitForSession(ctx: AppCtx, session: SessionRow, e: EmitInput): 
   return null
 }
 
+/**
+ * Who caused the events emitted inside a call. Only the orchestrator is named:
+ * its tool calls run inside {@link runAsActor}, so the notifier can tell an act
+ * the orchestrator took itself (and was answered in that call's result) from
+ * one the human took on its feature. Everything else is unstamped.
+ */
+export type EventActor = 'orchestrator'
+
+const actorContext = new AsyncLocalStorage<EventActor>()
+
+/** Run `fn` with every event it emits — synchronously or awaited — stamped `data.actor`. */
+export function runAsActor<T>(actor: EventActor, fn: () => T): T {
+  return actorContext.run(actor, fn)
+}
+
+/** `data` with the current actor stamped on, when there is one and `data` can carry it. */
+function stampActor(data: unknown): unknown {
+  const actor = actorContext.getStore()
+  if (!actor) return data
+  if (data === undefined || data === null) return { actor }
+  if (typeof data === 'object' && !Array.isArray(data)) return { ...data, actor }
+  return data
+}
+
 function insertEvent(
   ctx: AppCtx,
   projectId: string,
@@ -134,7 +159,7 @@ function insertEvent(
       ts: Date.now(),
       type: e.type,
       message: e.message,
-      data: e.data ?? null,
+      data: stampActor(e.data) ?? null,
     })
     .returning()
     .get()

@@ -106,8 +106,21 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * (`features-plan-themselves` decision 9): headless, with no human present, it
  * plans the feature through preview, spec and tickets in one run. The briefing,
  * the page and the exit handling key on it; a live one refuses every chat launch.
+ *
+ * `orchestrate` — the project session launched with the project's Orchestrator
+ * setting on (`whole-cuts-plan-themselves` decision 14): prompts off, the
+ * orchestrating briefing, and the tools that act on the features it owns.
+ *
+ * `relay` — a headless run that resumes a feature's planning conversation with
+ * a message from the orchestrator as its prompt.
  */
-export const SessionPurpose = z.enum(['resolve-conflict', 'start-lap', 'self-plan'])
+export const SessionPurpose = z.enum([
+  'resolve-conflict',
+  'start-lap',
+  'self-plan',
+  'orchestrate',
+  'relay',
+])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
 /**
@@ -494,6 +507,8 @@ export const Project = z.object({
   driveInstructions: z.string().optional(),
   /** Subject prefix for runcastle-owned docs checkpoint commits. */
   docsCommitPrefix: z.string().optional(),
+  /** The project session launches as the orchestrator; unset reads as off. */
+  orchestrator: z.boolean().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row
@@ -569,6 +584,8 @@ export const Feature = z.object({
   baseBranch: z.string().optional(),
   status: FeatureStatus,
   createdAt: z.number(),
+  /** The orchestrator owns this feature — see the db schema. */
+  orchestrated: z.boolean().default(false),
 })
 export type Feature = z.infer<typeof Feature>
 
@@ -594,6 +611,8 @@ export const SessionRow = z.object({
    * is the session's TURN state, which its lifecycle `status` cannot express.
    */
   awaitingInput: z.boolean(),
+  /** The session runs with no terminal — see the db schema; unset reads as false. */
+  headless: z.boolean().optional(),
   worktreePath: z.string(),
   /** The model this session launched with; unset on a row created outside a launch. */
   model: z.string().optional(),
