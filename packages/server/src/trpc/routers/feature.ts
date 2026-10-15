@@ -168,7 +168,9 @@ export const featureRouter = router({
 
   // Active test-drive info for the review-phase dev pane + Open app link. Polled
   // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
-  driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
+  driveInfo: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ input }) => git.activeDriveInfo(input.projectId)),
 
   // How many commits the branch actually carries over its merge target, for the
   // review summary and the merge confirmation (findings F23). Its own query
@@ -199,14 +201,14 @@ export const featureRouter = router({
       // A test drive of THIS feature holds the main checkout on the feature
       // branch; stop it first (restores main) so the merge can proceed. This lets
       // the Merge button work whether or not the branch is currently test-driven.
-      if (git.activeTestDriveFeatureId() === feature.id) {
+      if (git.activeTestDriveFeatureId(project.id) === feature.id) {
         await git.testDrive(ctx, project, feature, 'stop')
       }
       // A project drive serves from the very checkout the merge commits in;
       // merging underneath its dev server would leave it describing old code.
       // Stop it the same way (project-level-test-drive decision 6).
-      const drive = git.activeDriveInfo()
-      if (drive?.projectDrive && drive.projectId === project.id) {
+      const drive = git.activeDriveInfo(project.id)
+      if (drive?.projectDrive) {
         await git.projectDrive(ctx, project, 'stop')
       }
       const delta = await git.mergeDelta(project, feature)
