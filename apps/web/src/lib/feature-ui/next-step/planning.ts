@@ -69,19 +69,8 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   const facts = planningFacts(input)
   const missing = facts.hasTickets ? null : nextPlanningStep(facts)
 
-  // A self-planning run has no terminal and nobody to talk to (features-plan-
-  // themselves decision 11): the bar says it is working and offers the one
-  // thing the human can do to it. Built outside `step()`, which would put the
-  // Chat door in front — and a chat launch is refused while the run is live.
-  if (live && isSelfPlanRun(live))
-    return {
-      kick: 'PLANNING ITSELF',
-      title: 'Planning itself',
-      desc: 'No terminal to watch; the plan appears below as it is written.',
-      primary: { label: 'Stop', kind: 'stopSelfPlan' },
-      secondary: [],
-      busy: true,
-    }
+  // A live headless run's working bar is `resolveHeadlessRun`'s, answered
+  // before any state's resolver.
 
   // Tickets land before the session is done with them: it emits placeholder
   // contexts and enriches each afterwards, so the ledger on screen is not yet

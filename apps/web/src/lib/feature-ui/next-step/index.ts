@@ -6,6 +6,7 @@ import { pendingTickets } from '../laps'
 import { latestRun } from '../sidebar'
 import { resolveBuilding } from './building'
 import { resolveDraft } from './draft'
+import { resolveHeadlessRun } from './headless'
 import { resolvePlanning } from './planning'
 import { resolveReview } from './review'
 import { resolveShipped } from './shipped'
@@ -50,6 +51,10 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
       busy: false,
     }
   }
+
+  // A run with no terminal says so in every state, with Stop as its one control.
+  const headless = resolveHeadlessRun(input)
+  if (headless) return headless
 
   // One resolver per state (decision 3): the six the pipeline used to need
   // collapsed with it, and the three planning sub-steps are derived inside

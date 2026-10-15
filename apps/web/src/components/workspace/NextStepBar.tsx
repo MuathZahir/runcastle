@@ -23,7 +23,7 @@ const ACTION_ICON: Record<ActionKind, ReactNode> = {
   startDraft: <IconPlay />,
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
-  stopSelfPlan: <IconStop />,
+  stopHeadlessRun: <IconStop />,
   burn: <IconFlame />,
   cancelRun: <IconStop />,
   openBurnSettings: <IconSettings />,

@@ -36,6 +36,7 @@ import {
   effectivePhase,
   freshness,
   isReadonlyView,
+  isHeadlessRun,
   isSelfPlanRun,
   lastTestDriveLap,
   latestRun,
@@ -52,6 +53,7 @@ import {
   startOpensChat,
   planningFills,
   ticketsAreBody,
+  unfinishedRuns,
   unresolvedMergeConflict,
   unverifiedLap,
   verificationState,
@@ -592,6 +594,7 @@ export function Workspace({
     ...(unverifiedReview ? { unverifiedReview: { reason: unverifiedReview.reason } } : {}),
     laterLaps,
     interruptedBurn,
+    unfinishedRuns: unfinishedRuns(events),
   })
   // The terminal the resolve compound has to close on its way in — one read, so
   // the bar's "End session & resolve" and the click that follows it can never be
@@ -698,10 +701,15 @@ export function Workspace({
    * human arriving at a conversation they had lost sight of.
    */
   const openChat = () => {
-    // A self-planning run has no terminal to land on, and the server refuses a
-    // chat beside it — say so rather than open a tab with nothing to answer.
-    if (liveSession && isSelfPlanRun(liveSession))
-      toast.push('This feature is planning itself — stop the run to open the chat.', 'info')
+    // A headless run has no terminal to land on, and the server refuses a chat
+    // beside it — say so rather than open a tab with nothing to answer.
+    if (liveSession && isHeadlessRun(liveSession))
+      toast.push(
+        isSelfPlanRun(liveSession)
+          ? 'This feature is planning itself — stop the run to open the chat.'
+          : 'This feature is working by itself — stop the run to open the chat.',
+        'info',
+      )
     else if (liveSession) landOnChat()
     else launchChat()
   }
@@ -725,7 +733,7 @@ export function Workspace({
         else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
         break
       // Stop is ending the run: it has no terminal to type into (decision 9).
-      case 'stopSelfPlan':
+      case 'stopHeadlessRun':
         void endLiveSession()
         break
       case 'iterate':
