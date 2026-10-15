@@ -1039,6 +1039,10 @@ export async function launchDriveFixSession(
  * `purpose: 'triage'` is the Notes card's door: the launch carries an explicit
  * briefing to triage the project's open notes, and is fresh for the reason every
  * explicitly-briefed launch is (ADR-0009 #4).
+ *
+ * With the project's Orchestrator setting on, any other launch — a resume
+ * included — opens the orchestrator (`whole-cuts-plan-themselves`): purpose
+ * `orchestrate`, prompts off, and the orchestrating briefing with its catch-up.
  */
 export async function launchProjectSession(
   ctx: AppCtx,
