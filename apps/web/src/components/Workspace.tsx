@@ -267,7 +267,7 @@ export function Workspace({
   // Before recommending a test drive the bar has to know what the drive is about
   // to depend on that nothing has ever proven (decision 7) — that lives on the
   // project's findings, same query key the preparation surfaces poll. And a
-  // preparation dry run holds the one drive slot (decision 9), which only the
+  // preparation dry run holds this project's drive slot (decision 9), which only the
   // server's drive info knows; ReviewBody polls the same key, so this is one fetch.
   const projectId = q.data?.feature.projectId
   const prepQ = trpc.project.prep.useQuery(
@@ -583,7 +583,7 @@ export function Workspace({
     driveState: driveQ.data?.featureId === feature.id ? driveQ.data.state : 'idle',
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
-    // Whoever else holds the one drive slot, named as the server names it.
+    // Whoever else holds this project's drive slot, named as the server names it.
     ...(driveQ.data && driveQ.data.featureId !== feature.id
       ? { slotHolder: driveQ.data.holderLabel }
       : {}),

@@ -26,7 +26,7 @@ export type ProjectDriveCard =
   | { state: 'blocked'; reason: string }
   | { state: 'running' }
 
-/** Is the drive in the one slot this project's own project drive? */
+/** Is the drive in this project's slot its own project drive? */
 export function isThisProjectDrive(
   drive: SlotHolder | null | undefined,
   projectId: string,
@@ -39,7 +39,7 @@ export function isThisProjectDrive(
  * no card. A live drive of this project is the way back to it, whatever the
  * settings now say. With neither a setup nor a dev command a drive would do
  * literally nothing, so the button opens preparation instead of refusing. Any
- * other holder of the one slot blocks the start (decision 9).
+ * other holder of this project's slot blocks the start (decision 9).
  */
 export function projectDriveCard({
   empty,

@@ -280,7 +280,7 @@ export function ReviewBody({
     expanded: expanding && stageMounted,
     set: setExpanding,
   }
-  // The one drive slot is taken by somebody else — another feature, a
+  // This project's drive slot is taken by somebody else — another feature, a
   // preparation dry run (decision 9) or a project drive — named as the server
   // names it (project-level-test-drive decision 9).
   const slotHolder = drive.data && drive.data.featureId !== feature.id ? drive.data : undefined
