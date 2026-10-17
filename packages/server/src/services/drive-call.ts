@@ -46,6 +46,7 @@ export async function sendDriveCall(
       (opts.allowReview === true && drive.purpose === 'review'))
   if (!admitted || !drive.devUrl) return errorResult('No running drive with an app URL to send the call to')
 
+  if (request.url.trim() === '') return errorResult('No URL to send the call to')
   let url: URL
   try {
     url = new URL(request.url)

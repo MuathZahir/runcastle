@@ -481,6 +481,10 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
           request: { method: 'GET', url: `${url}ping`, headers: [] },
         }),
       ).toMatchObject({ ok: true, status: 200, body: 'app' })
+      // A cleared URL field is an unsendable request, answered as an error result.
+      expect(
+        await caller().feature.sendCall({ projectId: project.id, request: { method: 'GET', url: '', headers: [] } }),
+      ).toEqual({ ok: false, error: 'No URL to send the call to' })
     }, 30_000)
 
     it('answers runScenario with the refusal when there is no drive', async () => {

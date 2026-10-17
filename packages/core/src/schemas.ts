@@ -853,11 +853,13 @@ export type ScenarioEntry = z.infer<typeof ScenarioEntry>
 /**
  * An API scenario's `.http` request with its placeholders filled and its
  * target resolved against the drive URL — what Try it shows and sends.
- * Headers keep their order and repeats.
+ * Headers keep their order and repeats. The URL may be empty: Try it's field is
+ * editable, and an unsendable request answers as an error result, not a
+ * validation failure.
  */
 export const FilledHttpRequest = z.object({
   method: z.string().min(1),
-  url: z.string().min(1),
+  url: z.string(),
   headers: z.array(z.tuple([z.string(), z.string()])),
   body: z.string().optional(),
 })
