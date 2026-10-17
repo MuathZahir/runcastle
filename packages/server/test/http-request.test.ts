@@ -103,4 +103,16 @@ describe('fillHttpRequest', () => {
     )
     expect(filled).toEqual({ method: 'GET', url: 'http://other.test/x', headers: [['A', '{{token}}']] })
   })
+
+  it('shows an unknown or unfilled placeholder in the path as written, not percent-encoded', () => {
+    expect(
+      fillHttpRequest({ method: 'GET', target: '/api/{{foo}}', headers: [] }, { driveUrl: 'http://localhost:4000' }).url,
+    ).toBe('http://localhost:4000/api/{{foo}}')
+    expect(
+      fillHttpRequest(
+        { method: 'GET', target: '/users/{{ token }}/x%7By', headers: [] },
+        { run: 'r', driveUrl: 'http://localhost:4000' },
+      ).url,
+    ).toBe('http://localhost:4000/users/{{ token }}/x%7By')
+  })
 })
