@@ -47,6 +47,7 @@ vi.mock('../src/trpc', () => {
       feature: {
         list: { useQuery: query([]) },
         driveInfo: { useQuery: query(null) },
+        driveScenarios: { useQuery: query({ runnerConfigured: false, scenarios: [] }) },
         endSession: {
           useMutation: (opts: { onSuccess?: () => void }) => {
             endOptions = opts

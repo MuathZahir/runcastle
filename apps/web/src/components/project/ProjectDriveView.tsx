@@ -14,7 +14,7 @@ import {
   IconUser,
 } from '../../icons'
 import { AsideLayout, Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
-import { DrivePanel } from '../review/DrivePanel'
+import { ScenarioDrive } from '../review/ScenarioDrive'
 import { DriveFailureReport, DriveFooter } from '../review/drive-parts'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ProjectNotesRail } from './ProjectNotesRail'
@@ -216,7 +216,7 @@ function ProjectStage({
       if (drive.devUrl) {
         return (
           <div className="flex min-h-100 flex-1 flex-col">
-            <DrivePanel projectId={projectId} url={drive.devUrl} />
+            <ScenarioDrive projectId={projectId} drive={{ ...drive, devUrl: drive.devUrl }} />
           </div>
         )
       }

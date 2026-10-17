@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, IconButton, StatusLabel, TextArea } from '../../ui'
 import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
 import { trpc } from '../../trpc'
@@ -68,11 +68,20 @@ export function DrivePanel({
   agentDriving = false,
   /** Looking back at a shipped feature: the app is shown, nothing is written. */
   readonly = false,
+  frameKey = '',
+  toolbar,
   ...target
 }: CaptureTarget & {
   url: string
   agentDriving?: boolean
   readonly?: boolean
+  /**
+   * Remounts the frame when it changes — a scenario's landing id, so landing on
+   * the same entry URL twice still reloads the app (drive-scenarios decision 7).
+   */
+  frameKey?: string
+  /** More controls for the floating toolbar, after its own (the Scenario menu). */
+  toolbar?: ReactNode
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -112,7 +121,7 @@ export function DrivePanel({
     setSlow(false)
     const timer = setTimeout(() => setSlow(true), EMBED_TIMEOUT_MS)
     return () => clearTimeout(timer)
-  }, [url, generation])
+  }, [url, frameKey, generation])
 
   // The stream outlives every capture and dies with the panel — a drive that
   // ended still sharing the tab is a browser indicator over nothing.
@@ -275,7 +284,7 @@ export function DrivePanel({
   return (
     <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
       <iframe
-        key={generation}
+        key={`${frameKey}:${generation}`}
         className="min-h-0 flex-1 border-0"
         src={url}
         title="the app on this branch"
@@ -305,6 +314,11 @@ export function DrivePanel({
           />
           <IconButton label="Open app" href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
         </div>
+        {toolbar && (
+          <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">
+            {toolbar}
+          </div>
+        )}
         {!canCapture && !readonly && (
           <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
             This browser can’t capture its own tab — paste a screenshot into a note instead

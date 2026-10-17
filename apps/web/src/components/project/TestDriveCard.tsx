@@ -1,7 +1,9 @@
 import type { ProjectDriveCard } from '../../lib/project-drive'
+import type { ScenarioMenu } from '../../lib/feature-ui/scenarios'
 import { IconArrowRight, IconPlay, IconShield, IconTerminal } from '../../icons'
-import { Button, Disclosure, PropertyList, StatusLabel } from '../../ui'
+import { Button, Disclosure, PropertyList, SplitButton, StatusLabel } from '../../ui'
 import type { PropertyItem } from '../../ui'
+import { ScenarioMenuItems } from '../review/ScenarioMenuItems'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ActionRow } from './ActionRow'
 
@@ -26,6 +28,7 @@ export function TestDriveCard({
   devCommand,
   stopCommand,
   starting,
+  scenarios,
   onStart,
   onPrepare,
   onReturn,
@@ -37,7 +40,10 @@ export function TestDriveCard({
   devCommand?: string
   stopCommand?: string
   starting: boolean
-  onStart: () => void
+  /** What the drive can land on, from `scenarioMenu` without an own section. */
+  scenarios: ScenarioMenu
+  /** Start the drive on a scenario file, or on the blank app with `null`. */
+  onStart: (scenario: string | null) => void
   /** Neither command is set: preparation is where they are established. */
   onPrepare: () => void
   /** This project's drive is live: back to it. */
@@ -76,15 +82,19 @@ export function TestDriveCard({
               Return to drive
             </Button>
           ) : (
-            <Button
+            // A project drive has no feature to own a scenario, so the main
+            // click is always the blank app (drive-scenarios decision 7).
+            <SplitButton
               icon={<IconPlay />}
               loading={starting}
-              disabled={card.state === 'blocked' || starting}
+              disabled={card.state === 'blocked'}
               title={card.state === 'blocked' ? card.reason : undefined}
-              onClick={onStart}
+              onClick={() => onStart(null)}
+              menuLabel="Choose a scenario"
+              menu={<ScenarioMenuItems menu={scenarios} onPick={onStart} />}
             >
               Test drive
-            </Button>
+            </SplitButton>
           )
         }
         caption={

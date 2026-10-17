@@ -52,9 +52,22 @@ const SIZE_ALIAS: Record<ButtonSize, CanonicalSize> = { sm: 'sm', md: 'md', lg: 
 
 /** No `position`, margin or z-index: those are the caller's (the className rule above). */
 const BUTTON_BASE =
-  'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border font-medium select-none ' +
+  'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border font-medium select-none ' +
   'transition-[color,background-color,border-color,transform] duration-(--dur-1) ease-app ' +
   'enabled:active:translate-y-px disabled:cursor-not-allowed'
+
+/**
+ * Which corners are rounded: all of them for a button on its own, only the
+ * outer two for each half of a {@link SplitButton}. A lookup rather than a
+ * caller's `rounded-r-none`, which would be two utilities for one property.
+ */
+export type ButtonAttached = 'none' | 'start' | 'end'
+
+const BUTTON_EDGE: Record<ButtonAttached, string> = {
+  none: 'rounded-md',
+  start: 'rounded-l-md',
+  end: 'rounded-r-md',
+}
 
 const BUTTON_SIZE: Record<CanonicalSize, string> = {
   sm: 'h-(--control-sm) px-2 text-xs',
@@ -104,6 +117,8 @@ export type ButtonProps = ComponentPropsWithRef<'button'> & {
   kbd?: string
   /** In flight: shows a spinner, keeps the button's width, and disables it. */
   loading?: boolean
+  /** One half of a joined pair (the split button): only the outer corners round. */
+  attached?: ButtonAttached
 }
 
 /**
@@ -124,6 +139,7 @@ export function Button({
   icon,
   kbd,
   loading = false,
+  attached = 'none',
   disabled,
   className,
   children,
@@ -140,7 +156,7 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       data-variant={v}
-      className={cx(BUTTON_BASE, BUTTON_SIZE[s], BUTTON_VARIANT[v], className)}
+      className={cx(BUTTON_BASE, BUTTON_EDGE[attached], BUTTON_SIZE[s], BUTTON_VARIANT[v], className)}
       {...rest}
     >
       {icon !== undefined &&
@@ -250,6 +266,7 @@ export function IconButton({
   const count = typeof badge === 'number' && badge > 0 ? (badge > 99 ? '99+' : String(badge)) : null
   const classes = cx(
     BUTTON_BASE,
+    BUTTON_EDGE.none,
     'p-0',
     // The one position a primitive states, and only while the badge needs it.
     count && 'relative',
