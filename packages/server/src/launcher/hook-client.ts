@@ -8,8 +8,8 @@
  * consumes as context). Zero dependencies (plain `fetch`), 3s timeout. On ANY
  * error it prints `{}` and exits 0 — a hook must never break the user's session.
  *
- * One argument is not a route event: `wait-messages`, the orchestrator's
- * background message waiter (see {@link waitMessages}).
+ * One argument is not a route event: `wait-messages`, the background message
+ * waiter of the orchestrator and of a feature's lead (see {@link waitMessages}).
  */
 
 const FETCH_TIMEOUT_MS = 3000
