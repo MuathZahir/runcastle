@@ -985,17 +985,23 @@ export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId
  * The human's Stop (decision 15): stop the running round if there is one, flip
  * the feature to "Ask before each round" so nothing new is dispatched until the
  * human replies, and tell the lead.
+ *
+ * The flip lands and emits first: killing a round's sandboxes can take seconds,
+ * and the switch the human just pressed beside must not wait them out.
  */
 export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  const stopped = hasActiveRun(ctx, featureId) ? await stopRound(ctx, featureId) : null
+  const running = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
   ctx.db.update(features).set({ autonomy: 'ask' }).where(eq(features.id, featureId)).run()
   emit(ctx, featureId, {
     type: 'feature.stopped',
-    message: stopped ? 'stopped by the human — round cancelled, autonomy set to ask' : 'stopped by the human — autonomy set to ask',
-    data: { runId: stopped?.runId ?? null, autonomy: 'ask' },
+    message: running
+      ? 'stopped by the human — cancelling the round, autonomy set to ask'
+      : 'stopped by the human — autonomy set to ask',
+    data: { runId: running?.id ?? null, autonomy: 'ask' },
   })
+  const stopped = running ? await stopRound(ctx, featureId) : null
   const updated = getFeatureRow(ctx, featureId)
   await deliverToLead(ctx, updated, {
     text:
