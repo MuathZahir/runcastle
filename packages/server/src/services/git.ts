@@ -10,7 +10,16 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { DriveDenial, DriveDenialCode, DriveScenario, Feature, PreparedKey, Project, ScenarioEntry } from '@runcastle/core'
+import type {
+  DriveDenial,
+  DriveDenialCode,
+  DriveScenario,
+  Feature,
+  PreparedKey,
+  Project,
+  ScenarioEntry,
+  ScenarioFailure,
+} from '@runcastle/core'
 import { DEFAULT_DOCS_COMMIT_PREFIX, DRIVE_LOOP_KEYS, driveDenialOf, newId } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
@@ -30,7 +39,7 @@ import { emit, emitProject, emitScoped } from './events'
 import { markVerified } from './findings'
 import { getProjectById, hasActiveRun, tryGetFeature } from './repo'
 import type { ScenarioRunResult } from './scenarios'
-import { listScenarios, runScenario, scenarioName } from './scenarios'
+import { isScenarioPath, listScenarios, runScenario, scenarioName } from './scenarios'
 
 /**
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
@@ -3214,7 +3223,7 @@ const DENY_APP_NOT_READY = 'The app is not answering yet — a scenario runs onc
 const DENY_SCENARIO_RUNNING = 'A scenario is already running on this drive — wait for it to land'
 
 /** Why a scenario failed, in the words the timeline shows. */
-function describeScenarioFailure(failure: NonNullable<DriveScenario['failure']>): string {
+function describeScenarioFailure(failure: ScenarioFailure): string {
   switch (failure.reason) {
     case 'exit':
       return `exited ${failure.exitCode ?? 'without a code'}`
@@ -3263,6 +3272,7 @@ export function startScenarioOnDrive(
   projectId: string,
   file: string,
 ): ScenarioDenial | { ok: true; result: Promise<ScenarioRunResult> } {
+  if (!isScenarioPath(file)) return { ok: false, denied: `${file} is not a scenario under .runcastle/scenarios/` }
   const state = driveOf(projectId)
   if (!state || state.kind === 'dryRun' || (state.kind === 'feature' && state.purpose !== 'human')) {
     return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }

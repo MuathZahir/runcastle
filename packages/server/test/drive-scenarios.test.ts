@@ -251,6 +251,13 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       ok: false,
       denied: expect.stringContaining('not answering'),
     })
+    // Only a path under the scenarios dir ever reaches the runner's shell line.
+    for (const bad of ['package.json', '.runcastle/scenarios/../x.ts', '.runcastle/scenarios/a".ts']) {
+      expect(await runScenarioOnDrive(ctx, project.id, bad)).toMatchObject({
+        ok: false,
+        denied: expect.stringContaining('is not a scenario'),
+      })
+    }
     await testDrive(ctx, project, feature, 'stop')
 
     // A review agent's drive is not the human's to land on.

@@ -97,6 +97,19 @@ export async function listScenarios(
   ]
 }
 
+/**
+ * Whether `file` names a scenario a runner may be handed: a repo-relative path
+ * under {@link SCENARIOS_DIR}, with no `..` step out of it and no quote that
+ * could break out of the quoted `{file}` in the runner's shell line.
+ */
+export function isScenarioPath(file: string): boolean {
+  return (
+    file.startsWith(`${SCENARIOS_DIR}/`) &&
+    !file.split('/').includes('..') &&
+    !/["'`$\\]/.test(file)
+  )
+}
+
 /** The readable name of a scenario file, as the picker shows it. */
 export function scenarioName(file: string): string {
   const base = file.split('/').pop() ?? file
