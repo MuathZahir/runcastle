@@ -5,6 +5,7 @@ import { events } from '../db/schema'
 import { workflowClaimsFeatureBranch } from '../workflows/runner'
 import { getRunRow, listRunsByFeature } from './repo'
 import { listByFeature, listByIds } from './tickets'
+import { leadUsageReader } from './usage'
 
 /**
  * Run history (decision #15b). A feature accumulates one run per burn, and only
@@ -152,10 +153,12 @@ export function roundGatesOf(gates: ReviewGateRun | undefined): RoundGates | nul
  * The feature's rounds (`the-feature-lead-runs-rounds` decision 16): every
  * branch-claiming run, numbered from 1 in start order — derived, never stored,
  * the way the lap counter was. Each carries the tickets it held and how they
- * ended, its gates, and its workers' summed tokens.
+ * ended, its gates, and its tokens: its workers' summed tokens plus what the
+ * lead spent inside the round's [start, end] window (decision 3).
  */
 export function listRounds(ctx: AppCtx, featureId: string): RoundSummary[] {
   const byId = new Map(listByFeature(ctx, featureId).map((t) => [t.id, t]))
+  const leadUsage = leadUsageReader(ctx, featureId)
   return listRunsByFeature(ctx, featureId)
     .filter((run) => workflowClaimsFeatureBranch(run.workflow))
     .reverse()
@@ -165,6 +168,7 @@ export function listRounds(ctx: AppCtx, featureId: string): RoundSummary[] {
         .filter((t): t is Ticket => t !== undefined)
         .sort((a, b) => a.seq - b.seq)
       const counted = held.filter((t) => t.tokens !== undefined)
+      const lead = leadUsage({ from: run.startedAt, to: run.endedAt })
       return {
         round: i + 1,
         runId: run.id,
@@ -173,7 +177,10 @@ export function listRounds(ctx: AppCtx, featureId: string): RoundSummary[] {
         landed: held.filter((t) => t.status === 'done').map((t) => t.seq),
         failed: held.filter((t) => t.status === 'failed').map((t) => t.seq),
         gates: roundGatesOf(run.gates),
-        tokens: counted.length > 0 ? counted.reduce((sum, t) => sum + (t.tokens ?? 0), 0) : null,
+        tokens:
+          counted.length > 0 || lead > 0
+            ? counted.reduce((sum, t) => sum + (t.tokens ?? 0), 0) + lead
+            : null,
         startedAt: run.startedAt,
         finishedAt: run.endedAt ?? null,
       }

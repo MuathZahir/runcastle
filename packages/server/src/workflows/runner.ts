@@ -13,6 +13,7 @@ import { getFeatureRow, getRunRow, projectForFeature } from '../services/repo'
 import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
+import { refreshLeadTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
@@ -280,6 +281,7 @@ async function endRound(
     runId,
     data: result ?? { ok: null, failed: [] },
   })
+  refreshLeadTokens(ctx, featureId)
 
   const run = getRunRow(ctx, runId)
   if (run.status === 'cancelled') return
