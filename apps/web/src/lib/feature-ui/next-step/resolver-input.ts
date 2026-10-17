@@ -42,6 +42,8 @@ export interface NextStepContext {
   unverifiedReview?: { reason: string | null }
   laterLaps?: string | null
   interruptedBurn?: BurnInterruption
+  /** The headless runs the server said stopped before they were finished (`unfinishedRuns`). */
+  unfinishedRuns?: readonly string[]
 }
 
 export interface ResolverInput {

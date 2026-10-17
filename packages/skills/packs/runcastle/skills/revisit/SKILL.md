@@ -17,6 +17,7 @@ That is the ordinary revisit, and it is what the moves below describe. The one e
 3. **Docs.** Capture the change as decision prose:
    - Append to `docs/features/<slug>/decisions.md` under a dated `## Revisited <date>` heading — never rewrite old decisions, supersede them ("Supersedes: <old decision>").
    - **Clear the assumed mark.** A decision the session made without the human carries an `**Assumed.**` line, and perhaps a `**Challenged:**` line. When the human confirms or changes such a decision, remove both lines from it in the same edit. Decisions the human did not touch keep theirs.
+   - **A change on the orchestrator's message is not the human's.** When your briefing says the message is from the orchestrator, the decision you change keeps its `**Assumed.**` line, or gains one, and adds `**Changed by the orchestrator:** <why>` with the orchestrator's reason. The human has still not seen it, and the record must say who decided. **A message that relays the human's own answer** is the human confirming: remove the marks from that decision as above, `**Changed by the orchestrator:**` included.
    - If `spec.md` exists and the change touches it, amend the affected sections in place.
    - **Redraw the preview.** When the feature is at `planning` and `docs/features/<slug>/preview.html` exists, update `preview.html` in the same move as the decisions edit, before anything else, following `../ideate/references/preview.md`, check-first group included: a decision that lost its assumed mark leaves that group. The human reads the plan off the preview, so a preview that disagrees with `decisions.md` misleads them at Burn.
 4. **Ticket surgery.** Walk the ticket list against the new reality:
@@ -51,6 +52,8 @@ Your kickoff line reads `PLAN LAP <n> FROM REVIEW`. The human burned the last la
 8. **Hand to Burn.** Tell the human in a line or two what this lap does, then:
 
    > Lap `<n>` is specced and carded. Review the ticket cards and click **Burn** — I'll stop here.
+
+**When your briefing says no human is present**, the lap was started by the orchestrator and nobody will answer. Plan it straight through to tickets in this one turn, without waiting: read the evidence and the orchestrator's message in place of the interview, and decide the questions move 4 would have asked as `../ideate/SKILL.md` §1a "Planning without a human" says — frontier rounds, the depth rule, each decision marked `**Assumed.**` with its alternative. Then amend the docs, emit and disposition as moves 5 to 7 say, and end with one closing message on what the lap does. There is no human to hand to Burn; the orchestrator decides.
 
 If this lap turns out to be genuinely big — whole branches of design reopened, decisions hanging on material nobody has read — say so and recommend a thinner lap: card the part the human can test-drive now and defer the rest into the spec's `## Later laps`, rather than grinding it all out here.
 

@@ -109,6 +109,14 @@ export function chatKickoffFor(runtime: AgentRuntime, opening: ChatOpening): str
 export const PLANNING_WITHOUT_A_HUMAN = 'Planning without a human'
 
 /**
+ * The heading of the project skill's section for the orchestrator
+ * (`whole-cuts-plan-themselves`), read only when the project's Orchestrator
+ * setting is on. Named verbatim by the orchestrating briefing, so the skill's
+ * heading and the pointer to it agree.
+ */
+export const ORCHESTRATING = 'Orchestrating'
+
+/**
  * The opening of a self-planning run's prompt, spelled for `runtime` — the
  * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
  * on the other end, so the line says so before anything else and sends the
@@ -119,6 +127,24 @@ export function selfPlanKickoffFor(runtime: AgentRuntime): string {
     'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
     `${skillRef(runtime, 'ideate')} skill and follow its "${PLANNING_WITHOUT_A_HUMAN}" section ` +
     "to plan this feature by yourself, through the preview, the spec and the tickets, in this one run."
+  )
+}
+
+/**
+ * The opening of a `relay` run's prompt, spelled for `runtime`
+ * (`whole-cuts-plan-themselves` decision 16): the orchestrator's message to the
+ * feature's planning conversation, applied headless by the revisit skill's
+ * change-handling rules, with the record saying who decided.
+ */
+export function relayKickoffFor(runtime: AgentRuntime, message: string): string {
+  return (
+    'Proceed with your task: no human is present and nobody will reply to you. The message below ' +
+    `is from the project's orchestrator, not the human. Invoke the ${skillRef(runtime, 'revisit')} ` +
+    'skill and apply it by its change-handling rules: every decision it changes keeps or gains ' +
+    'its **Assumed.** line and adds **Changed by the orchestrator:** <why>, unless the message ' +
+    "says it relays the human's own answer, in which case remove both marks from that decision. " +
+    'Redraw the preview, reconcile the spec and the tickets, and do not wait for anyone. ' +
+    `The orchestrator's message: ${message}`
   )
 }
 

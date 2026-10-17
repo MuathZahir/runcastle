@@ -526,7 +526,10 @@ export function FeatureRowsSkeleton() {
  * One feature, as a one-line sidebar row (DESIGN.md: no two-line rows, no
  * progress bars, no per-row check buttons, no "…" at rest). The phase glyph
  * says where it is; one dot says whether it is moving or waiting on you; the
- * meta is its ticket progress, or what a waiting draft waits on. Selected is `surface-selected`, nothing else.
+ * meta is its ticket progress, or what a waiting draft waits on. A feature the
+ * orchestrator owns wears a second, accent ring on its glyph ("Orchestrated"
+ * on hover); the page header carries the tag. Selected is `surface-selected`,
+ * nothing else.
  */
 export function FeatureRow({
   f,
@@ -546,6 +549,8 @@ export function FeatureRow({
   return (
     <NavItem
       phase={rowPhase(f)}
+      // A ring, not a tag: a tag took the row's width from the title.
+      glyphRing={f.orchestrated ? 'Orchestrated' : undefined}
       label={f.title}
       title={reason ? `${f.title} — ${reason}` : f.title}
       dot={rowDot(f)}

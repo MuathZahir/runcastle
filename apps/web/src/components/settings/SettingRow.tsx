@@ -9,7 +9,17 @@ import {
   type SettingRow as Row,
   type SourceChip as SourceChipKind,
 } from '../../lib/settings'
-import { Button, cx, Skeleton, SkeletonBar, StatusDot, TextArea, TextField } from '../../ui'
+import {
+  Button,
+  cx,
+  Skeleton,
+  SkeletonBar,
+  StatusDot,
+  Switch,
+  Tag,
+  TextArea,
+  TextField,
+} from '../../ui'
 import type { StatusTone } from '../../ui'
 import {
   SELECT_FIELD,
@@ -291,7 +301,7 @@ export function SettingRow({
   }
 
   /** Write this field in whichever scope the row was rendered for. */
-  const write = (value: string | number | null) => {
+  const write = (value: string | number | boolean | null) => {
     setInvalid(null)
     update.mutate({ ...(projectId ? { projectId } : {}), key: row.key, value })
   }
@@ -333,7 +343,14 @@ export function SettingRow({
       htmlFor={controlId}
       description={row.tooltip || undefined}
       descriptionId={descriptionId}
-      aside={saved && <SaveMark />}
+      aside={
+        (row.tag || saved) && (
+          <>
+            {row.tag && <Tag>{row.tag}</Tag>}
+            {saved && <SaveMark />}
+          </>
+        )
+      }
       control={
         <RowControl
           id={controlId}
@@ -343,6 +360,10 @@ export function SettingRow({
           disabled={update.isPending}
           onDraft={edit}
           onCommit={save}
+          onToggle={(on) => {
+            edit(String(on))
+            write(on)
+          }}
           onRevert={() => setDraft(committed)}
         />
       }
@@ -426,6 +447,7 @@ function RowControl({
   disabled,
   onDraft,
   onCommit,
+  onToggle,
   onRevert,
 }: {
   id: string
@@ -435,6 +457,8 @@ function RowControl({
   disabled: boolean
   onDraft: (value: string) => void
   onCommit: (value: string) => void
+  /** A switch writes its boolean at once — there is no draft to leave. */
+  onToggle: (on: boolean) => void
   onRevert: () => void
 }) {
   const wiring = { id, 'aria-describedby': describedBy, disabled }
@@ -465,6 +489,18 @@ function RowControl({
         className="w-full"
         inputClassName={row.control === 'number' ? 'tabular-nums' : undefined}
         value={row.optionLabels[row.value] ?? row.value}
+      />
+    )
+  }
+
+  if (row.control === 'switch') {
+    return (
+      <Switch
+        id={id}
+        checked={draft === 'true'}
+        disabled={disabled}
+        onChange={onToggle}
+        className="flex min-h-(--control-h) items-center"
       />
     )
   }

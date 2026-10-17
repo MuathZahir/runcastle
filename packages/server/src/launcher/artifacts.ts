@@ -18,11 +18,13 @@ import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
+import { WAIT_MESSAGES_MODE } from './hook-client'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
 import {
   type ChatOpening,
   ENTRY_SKILLS,
+  ORCHESTRATING,
   PLANNING_WITHOUT_A_HUMAN,
   entrySkillsFor,
   skillRef,
@@ -212,11 +214,17 @@ export function renderSystemPrompt(
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
   planning?: PlanningArtifactFacts,
+  headless = false,
 ): string {
-  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
+  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
   const selfPlan = purpose === 'self-plan'
-  if (kind === 'chat' && !selfPlan && chatOpening(feature, planning) === 'revisit') {
-    return renderRevisitPrompt(feature, lap, purpose, runtime, carried)
+  // A relay changes a record that exists, whatever the chat's opening would be.
+  if (
+    kind === 'chat' &&
+    !selfPlan &&
+    (purpose === 'relay' || chatOpening(feature, planning) === 'revisit')
+  ) {
+    return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
   }
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
@@ -414,6 +422,7 @@ export function renderRevisitPrompt(
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
   carried?: CarriedWork,
+  headless = false,
 ): string {
   // Mutually exclusive briefings: a lap says "interview, amend the docs, emit
   // the lap's tickets", a conflict resolution says "you DO write code here and
@@ -534,9 +543,45 @@ export function renderRevisitPrompt(
     purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
     otherEntrySkillsRule(),
     '',
+    ...(headless ? [headlessRunRule(purpose, runtime), ''] : []),
     '## Your task',
-    `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
+    headless
+      ? `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and do what your opening prompt asks, in this one run.`
+      : `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
     '',
+  ].join('\n')
+}
+
+/**
+ * The section a headless revisit — a `relay` of the orchestrator's message, or a
+ * lap that plans itself — adds to its brief (`whole-cuts-plan-themselves`
+ * decision 16). Like {@link selfPlanRule}, it states that a question or a wait
+ * ends the run, and it overrides whatever the brief above says about the human.
+ */
+function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string {
+  const work =
+    purpose === 'relay'
+      ? [
+          "This is a relay run: the project's orchestrator sent this conversation a message.",
+          'Nobody is watching and nobody will reply.',
+          '- Apply the message by the change-handling rules: a decision it changes keeps or',
+          '  gains `**Assumed.**` and adds `**Changed by the orchestrator:** <why>`, unless the',
+          "  message relays the human's own answer, which removes both marks. Then redraw the",
+          '  preview and reconcile the spec and the tickets.',
+        ]
+      : [
+          'This lap plans itself: the orchestrator started it. Nobody is watching and nobody',
+          'will reply.',
+          `- Decide by the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" rules: every decision`,
+          '  you make is `**Assumed.**` with its alternative.',
+          `- Follow \`${skillRef(runtime, 'revisit')}\`'s Lap mode and end at the emitted tickets.`,
+        ]
+  return [
+    '## No human is present',
+    ...work,
+    '- Where this brief says to interview or tell the human, decide for yourself instead.',
+    '- Never end your turn to ask a question — ending the turn ends the run.',
+    '- A refused tool is not a wait: do not retry it or wait for approval.',
   ].join('\n')
 }
 
@@ -877,6 +922,39 @@ export interface ProjectBrief {
    * stays live as notes are jotted mid-chat.
    */
   openNotes: number
+  /**
+   * The project's Orchestrator setting was on at launch (`whole-cuts-plan-themselves`
+   * decision 14): this session is the orchestrator, and its prompt says so.
+   */
+  orchestrate?: boolean
+  /**
+   * One line per thing that ended on the orchestrator's features since its last
+   * session ended — read only when {@link orchestrate} is set.
+   */
+  catchUp?: string[]
+}
+
+/**
+ * The orchestrating section of the project prompt: who this session is in the
+ * mode, where its judgement is written down, that nothing will prompt it, and
+ * what happened on its features while it was not live (decision 11).
+ */
+function renderOrchestratingSection(catchUp: string[], runtime: AgentRuntime): string[] {
+  return [
+    `## ${ORCHESTRATING}`,
+    "This project's Orchestrator setting (experimental) is on: **you are the orchestrator** for",
+    'this project. You run the features you create, and any the human hands you, from planning',
+    `through merge. Read and follow the "${ORCHESTRATING}" section of the`,
+    `\`${skillRef(runtime, 'project')}\` skill — it is how you judge every step; nothing here`,
+    'replaces it. In this mode it is you, not the human, who decides what to work on next.',
+    '',
+    'You run without permission prompts: you edit the repo and run commands without asking.',
+    '',
+    ...(catchUp.length > 0
+      ? ['### Since you were last live', ...catchUp.map((line) => `- ${line}`)]
+      : ['Nothing has happened on your features since you were last live.']),
+    '',
+  ]
 }
 
 /**
@@ -902,7 +980,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base, openNotes } = brief
+  const { project, branch, worktreePath, base, openNotes, orchestrate, catchUp } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -948,6 +1026,7 @@ export function renderProjectPrompt(
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
     '',
+    ...(orchestrate ? renderOrchestratingSection(catchUp ?? [], runtime) : []),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
@@ -966,7 +1045,18 @@ interface CommandHook {
   type: 'command'
   command: string
   timeout: number
+  /** Runs in the background and wakes Claude when it exits 2 (implies `async`). */
+  async?: true
+  asyncRewake?: true
 }
+
+/**
+ * The orchestrator's message waiter hook's timeout, in seconds. An async hook
+ * still gets the 10-minute default when none is set, and an orchestrator idles
+ * far longer than that waiting on a burn — a waiter killed at ten minutes would
+ * leave nothing listening until its next turn end. A day outlasts any wait.
+ */
+const MESSAGE_WAITER_TIMEOUT_S = 86_400
 
 export interface SessionSettings {
   permissions: { allow: string[]; deny: string[] }
@@ -1202,17 +1292,37 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   not know is not one to hand whole-repo write access to.
  * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
+ * - An `orchestrate` session (`purpose`) also gets the message waiter on
+ *   SessionStart and Stop: an `asyncRewake` hook running the hook client's
+ *   `wait-messages` mode, which long-polls for the orchestrator's pending
+ *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
+ *   or mid-turn (`whole-cuts-plan-themselves` decision 20). A fresh waiter starts
+ *   at every session start and turn end; the server answers only the newest.
+ *   Every other session's settings carry no trace of it.
  */
 export function renderSettings(
   hookClient: string,
   kind?: SessionKind,
   skillPackDir?: string,
+  purpose?: SessionPurpose,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
     timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
+  const waiter: CommandHook[] =
+    purpose === 'orchestrate'
+      ? [
+          {
+            type: 'command',
+            command: `bun run "${hookClient}" ${WAIT_MESSAGES_MODE}`,
+            timeout: MESSAGE_WAITER_TIMEOUT_S,
+            async: true,
+            asyncRewake: true,
+          },
+        ]
+      : []
   return {
     permissions: {
       allow: [
@@ -1225,10 +1335,10 @@ export function renderSettings(
     hooks: {
       SessionStart: SESSION_START_SOURCES.map((source) => ({
         matcher: source,
-        hooks: [cmd('session-start')],
+        hooks: [cmd('session-start'), ...waiter],
       })),
       UserPromptSubmit: [{ hooks: [cmd('user-prompt')] }],
-      Stop: [{ hooks: [cmd('stop')] }],
+      Stop: [{ hooks: [cmd('stop'), ...waiter] }],
       SessionEnd: [{ hooks: [cmd('session-end')] }],
       ...(kind === undefined || guardsEdits(kind)
         ? { PreToolUse: [{ matcher: PRE_TOOL_MATCHER, hooks: [cmd('pre-tool')] }] }
@@ -1327,6 +1437,7 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
       runtime,
       carried,
       planning,
+      session.headless,
     )
   }
   if (prepare) return renderPreparePrompt(prepare)
@@ -1350,7 +1461,11 @@ export async function writeSessionArtifacts(
   writeFileSync(systemPromptPath, renderSessionPrompt(input), 'utf8')
   writeFileSync(
     settingsPath,
-    JSON.stringify(renderSettings(hookClientPath(), session.kind, pluginDir), null, 2),
+    JSON.stringify(
+      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose),
+      null,
+      2,
+    ),
     'utf8',
   )
   writeFileSync(mcpConfigPath, JSON.stringify(renderMcpConfig(session, config), null, 2), 'utf8')

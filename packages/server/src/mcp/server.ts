@@ -87,6 +87,7 @@ import {
   getFeatureRow,
   getProjectById,
   listRunsByFeature,
+  markOrchestrated,
   markTicketsReady,
   projectForFeature,
   tryGetRun,
@@ -106,6 +107,8 @@ import {
   type TicketContentPatch,
 } from '../services/tickets'
 import { withheldDriveFor } from '../workflows/review-ticket'
+import { registerOrchestratorRunTools } from './orchestrator-run-tools'
+import { registerOrchestratorTools } from './orchestrator-tools'
 import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 /**
@@ -130,7 +133,7 @@ import { MCP_READ_CEILING_CHARS, serializedLength } from './read-ceiling'
 
 // --- session resolution -----------------------------------------------------
 
-interface HeaderCarrier {
+export interface HeaderCarrier {
   requestInfo?: { headers?: Record<string, string | string[] | undefined> }
 }
 
@@ -230,6 +233,22 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
     )
   }
   return { featureId: requireFeatureId(caller.session) }
+}
+
+/**
+ * The feature a PROJECT session reads: any feature of its own project, named by
+ * slug. Reads are not gated on the orchestrator mode or on ownership — the
+ * project session already sees the whole portfolio, and the orchestrator reads
+ * features through these tools (`whole-cuts-plan-themselves`).
+ */
+export function projectFeatureReader(
+  ctx: AppCtx,
+  session: SessionRow,
+  slug: string,
+): FeatureReader {
+  const project = requireProject(ctx, session)
+  const [featureId] = featureIdsBySlug(ctx, project.id, [slug])
+  return { featureId: featureId as string }
 }
 
 /** A merge-order dependency as an agent sees it: the slug it holds, and whether it shipped. */
@@ -1576,6 +1595,10 @@ export async function toolCreateFeature(
         brief: input.brief,
         draft: input.draft,
       })
+  // What the orchestrator creates is its own (`whole-cuts-plan-themselves`
+  // decision 9). It still launches nothing: it calls `plan_feature` when it
+  // judges the feature ready.
+  if (session.purpose === 'orchestrate') markOrchestrated(ctx, feature.id, 'created')
   if (dependencyIds.length === 0) {
     return { id: feature.id, slug: feature.slug, branch: feature.branch, phase: feature.phase }
   }
@@ -1854,15 +1877,17 @@ function featureIndexLine(feature: FeatureListItem): string {
   const edges = feature.dependsOn.length
     ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
     : ''
+  // The orchestrator's own features (`whole-cuts-plan-themselves` decision 9).
+  const owner = feature.orchestrated ? ' · orchestrated' : ''
   if (feature.status !== 'active') {
     const waiting = feature.status === 'draft' && feature.dependsOn.some((d) => !d.satisfied)
-    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}`
+    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}${owner}`
   }
   const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
+  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}${owner}`
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2112,6 +2137,26 @@ async function resolveReader(
   return { ctx: rc.ctx, reader: resolveFeatureReader(rc.ctx, rc.caller) }
 }
 
+/** The caller of a feature READ from a project session: the feature `slug` names. */
+async function resolveProjectReader(
+  extra: HeaderCarrier,
+  slug: string,
+): Promise<{ ctx: AppCtx; reader: FeatureReader } | null> {
+  const rs = await resolveCtxSession(extra)
+  if (!rs) return null
+  return { ctx: rs.ctx, reader: projectFeatureReader(rs.ctx, rs.session, slug) }
+}
+
+/** The `slug` a project session names the feature it reads by. */
+const ReadSlug = z
+  .string()
+  .min(1)
+  .describe('The slug of the feature to read — any feature of this project.')
+
+/** Appended to a feature read's description when it is registered for a project session. */
+const PROJECT_READ_NOTE =
+  ' From the project session, name the feature with `slug`: any feature of this project.'
+
 // --- who gets which tools ---------------------------------------------------
 
 /**
@@ -2147,11 +2192,12 @@ const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KIND
 const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Feature reads. Also reachable by a burner agent under a run header, which
   // binds to ITS OWN feature (a review agent reviewing a branch legitimately
-  // wants that branch's context) — never to a live conversation's.
-  get_feature_context: [...FEATURE_KINDS, 'run'],
-  read_feature_doc: [...FEATURE_KINDS, 'run'],
-  list_tickets: [...FEATURE_KINDS, 'run'],
-  get_ticket: [...FEATURE_KINDS, 'run'],
+  // wants that branch's context) — never to a live conversation's. The project
+  // session reads any feature of its project by `slug` (`projectFeatureReader`).
+  get_feature_context: [...FEATURE_KINDS, 'run', 'project'],
+  read_feature_doc: [...FEATURE_KINDS, 'run', 'project'],
+  list_tickets: [...FEATURE_KINDS, 'run', 'project'],
+  get_ticket: [...FEATURE_KINDS, 'run', 'project'],
   emit_tickets: FEATURE_KINDS,
   update_ticket: FEATURE_KINDS,
   cancel_ticket: FEATURE_KINDS,
@@ -2185,6 +2231,21 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS],
+  // The orchestrator's tools (`whole-cuts-plan-themselves`): offered to the
+  // project session, refused at call time unless it is a live `orchestrate`
+  // session with the setting on (`requireOrchestratorSession`). Registered in
+  // `orchestrator-tools.ts` and `orchestrator-run-tools.ts`.
+  take_over_feature: ['project'],
+  start_feature: ['project'],
+  plan_feature: ['project'],
+  send_to_feature: ['project'],
+  stop_feature_run: ['project'],
+  burn_feature: ['project'],
+  drive: ['project'],
+  record_test_note: ['project'],
+  start_feature_lap: ['project'],
+  merge_feature: ['project'],
+  add_to_brief: ['project'],
 }
 
 /**
@@ -2242,6 +2303,9 @@ const EventType = z
 export function buildMcpServer(audience?: McpAudience): McpServer {
   const server = new McpServer({ name: 'runcastle', version: '0.1.0' })
   const wants = (tool: string): boolean => registeredFor(tool, audience)
+  // The feature reads take a `slug` from a project session, which has no
+  // feature of its own; every other audience reads exactly as before.
+  const projectReads = audience === 'project'
 
   if (wants('record_finding')) {
     server.registerTool(
@@ -2751,116 +2815,177 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
   }
 
   if (wants('get_feature_context')) {
-    server.registerTool(
-      'get_feature_context',
-      {
-        title: 'Get feature context',
-        description:
-          'Everything true of the current feature, as a summary that never grows past what you ' +
-          'can see. It opens with a header: the feature row, phase, lap, `dependsOn` (the ' +
-          'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
-          'drafts waiting on this feature), `annotatedModels` (the ' +
-          'models the operator described a use case for — the only ones `emit_tickets` may ' +
-          'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
-          'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-          'the newest burn went; absent only on a feature that has never burned), ' +
-          '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
-          'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
-          'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
-          '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
-          '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
-          'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
-          'Then this lap’s to-do in full: `openDefects`, ' +
-          '`carriedDefects`, `findings`, and `testNotes`. Last, ' +
-          'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
-          '`notInlined` was too large to include and MUST be read before acting ' +
-          '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
-          'docs/features/<slug>/.',
-        inputSchema: {},
-      },
-      async (_args, extra) => {
-        const r = await resolveReader(extra)
-        if (!r) return noSession()
-        return ok(featureContext(r.ctx, r.reader))
-      },
-    )
+    const config = {
+      title: 'Get feature context',
+      description:
+        'Everything true of the current feature, as a summary that never grows past what you ' +
+        'can see. It opens with a header: the feature row, phase, lap, `dependsOn` (the ' +
+        'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
+        'drafts waiting on this feature), `annotatedModels` (the ' +
+        'models the operator described a use case for — the only ones `emit_tickets` may ' +
+        'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
+        'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
+        'the newest burn went; absent only on a feature that has never burned), ' +
+        '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
+        'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
+        'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
+        '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
+        '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
+        'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
+        'Then this lap’s to-do in full: `openDefects`, ' +
+        '`carriedDefects`, `findings`, and `testNotes`. Last, ' +
+        'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
+        '`notInlined` was too large to include and MUST be read before acting ' +
+        '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
+        'docs/features/<slug>/.',
+    }
+    if (projectReads) {
+      server.registerTool(
+        'get_feature_context',
+        {
+          ...config,
+          description: config.description + PROJECT_READ_NOTE,
+          inputSchema: { slug: ReadSlug },
+        },
+        async ({ slug }, extra) => {
+          const r = await resolveProjectReader(extra, slug)
+          if (!r) return noSession()
+          return ok(featureContext(r.ctx, r.reader))
+        },
+      )
+    } else {
+      server.registerTool(
+        'get_feature_context',
+        { ...config, inputSchema: {} },
+        async (_args, extra) => {
+          const r = await resolveReader(extra)
+          if (!r) return noSession()
+          return ok(featureContext(r.ctx, r.reader))
+        },
+      )
+    }
   }
 
   if (wants('read_feature_doc')) {
-    server.registerTool(
-      'read_feature_doc',
-      {
-        title: 'Read a feature doc',
-        description:
-          'One doc from this feature’s docs/features/<slug>/ directory, in full — the other half ' +
-          'of the `moreDocs` index `get_feature_context` returns. A doc marked `withheld` there ' +
-          'is fetchable too; the reason says whether it is worth your context.',
-        inputSchema: {
-          relPath: z
-            .string()
-            .min(1)
-            .describe(
-              'Path relative to the feature’s docs dir, exactly as `moreDocs[].relPath` spells ' +
-                'it (`outcome.md`, `research/3-auth.md`). Refused if it escapes that dir.',
-            ),
+    const config = {
+      title: 'Read a feature doc',
+      description:
+        'One doc from this feature’s docs/features/<slug>/ directory, in full — the other half ' +
+        'of the `moreDocs` index `get_feature_context` returns. A doc marked `withheld` there ' +
+        'is fetchable too; the reason says whether it is worth your context.',
+    }
+    const relPath = z
+      .string()
+      .min(1)
+      .describe(
+        'Path relative to the feature’s docs dir, exactly as `moreDocs[].relPath` spells ' +
+          'it (`outcome.md`, `research/3-auth.md`). Refused if it escapes that dir.',
+      )
+    if (projectReads) {
+      server.registerTool(
+        'read_feature_doc',
+        {
+          ...config,
+          description: config.description + PROJECT_READ_NOTE,
+          inputSchema: { slug: ReadSlug, relPath },
         },
-      },
-      async (args, extra) => {
-        const r = await resolveReader(extra)
-        if (!r) return noSession()
-        return ok(toolReadFeatureDoc(r.ctx, r.reader, args))
-      },
-    )
+        async ({ slug, ...args }, extra) => {
+          const r = await resolveProjectReader(extra, slug)
+          if (!r) return noSession()
+          return ok(toolReadFeatureDoc(r.ctx, r.reader, args))
+        },
+      )
+    } else {
+      server.registerTool(
+        'read_feature_doc',
+        { ...config, inputSchema: { relPath } },
+        async (args, extra) => {
+          const r = await resolveReader(extra)
+          if (!r) return noSession()
+          return ok(toolReadFeatureDoc(r.ctx, r.reader, args))
+        },
+      )
+    }
   }
 
   if (wants('list_tickets')) {
-    server.registerTool(
-      'list_tickets',
-      {
-        title: 'List tickets',
-        description:
-          'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
-          'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
-          'from; use it instead of `get_feature_context` when you only need to find or name a ' +
-          'ticket. A ticket’s full body is `get_ticket({ seq })`.',
-        inputSchema: {
-          status: TicketStatus.optional().describe(
-            'Return only tickets in this state. Omit for all of them, across every lap.',
-          ),
-        },
-      },
-      async (args, extra) => {
-        const r = await resolveReader(extra)
-        if (!r) return noSession()
-        return ok(toolListTickets(r.ctx, r.reader, args))
-      },
+    const config = {
+      title: 'List tickets',
+      description:
+        'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
+        'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
+        'from; use it instead of `get_feature_context` when you only need to find or name a ' +
+        'ticket. A ticket’s full body is `get_ticket({ seq })`.',
+    }
+    const status = TicketStatus.optional().describe(
+      'Return only tickets in this state. Omit for all of them, across every lap.',
     )
+    if (projectReads) {
+      server.registerTool(
+        'list_tickets',
+        {
+          ...config,
+          description: config.description + PROJECT_READ_NOTE,
+          inputSchema: { slug: ReadSlug, status },
+        },
+        async ({ slug, ...args }, extra) => {
+          const r = await resolveProjectReader(extra, slug)
+          if (!r) return noSession()
+          return ok(toolListTickets(r.ctx, r.reader, args))
+        },
+      )
+    } else {
+      server.registerTool(
+        'list_tickets',
+        { ...config, inputSchema: { status } },
+        async (args, extra) => {
+          const r = await resolveReader(extra)
+          if (!r) return noSession()
+          return ok(toolListTickets(r.ctx, r.reader, args))
+        },
+      )
+    }
   }
 
   if (wants('get_ticket')) {
-    server.registerTool(
-      'get_ticket',
-      {
-        title: 'Get a ticket',
-        description:
-          'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
-          'blockedBy, status, error, and the burner’s `digest` of what the burn actually did. ' +
-          '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
-          'rest here before editing, reviewing or planning around a ticket.',
-        inputSchema: {
-          seq: z
-            .number()
-            .int()
-            .min(1)
-            .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.'),
+    const config = {
+      title: 'Get a ticket',
+      description:
+        'One of this feature’s tickets in full: goal, context, acceptanceCriteria, seams, ' +
+        'blockedBy, status, error, and the burner’s `digest` of what the burn actually did. ' +
+        '`get_feature_context` carries each ticket as a row with its goal only — fetch the ' +
+        'rest here before editing, reviewing or planning around a ticket.',
+    }
+    const seq = z
+      .number()
+      .int()
+      .min(1)
+      .describe('The ticket’s `seq`, as `get_feature_context`’s ticket rows and `blockedBy` show it.')
+    if (projectReads) {
+      server.registerTool(
+        'get_ticket',
+        {
+          ...config,
+          description: config.description + PROJECT_READ_NOTE,
+          inputSchema: { slug: ReadSlug, seq },
         },
-      },
-      async (args, extra) => {
-        const r = await resolveReader(extra)
-        if (!r) return noSession()
-        return ok(toolGetTicket(r.ctx, r.reader, args))
-      },
-    )
+        async ({ slug, ...args }, extra) => {
+          const r = await resolveProjectReader(extra, slug)
+          if (!r) return noSession()
+          return ok(toolGetTicket(r.ctx, r.reader, args))
+        },
+      )
+    } else {
+      server.registerTool(
+        'get_ticket',
+        { ...config, inputSchema: { seq } },
+        async (args, extra) => {
+          const r = await resolveReader(extra)
+          if (!r) return noSession()
+          return ok(toolGetTicket(r.ctx, r.reader, args))
+        },
+      )
+    }
   }
 
   if (wants('emit_tickets')) {
@@ -3046,6 +3171,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       },
     )
   }
+
+  registerOrchestratorTools(server, wants, resolveCtxSession)
+  registerOrchestratorRunTools(server, wants, resolveCtxSession)
 
   return server
 }

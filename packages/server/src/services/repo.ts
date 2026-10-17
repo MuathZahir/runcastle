@@ -42,6 +42,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     baseBranch: row.baseBranch ?? undefined,
     status: row.status,
     createdAt: row.createdAt,
+    orchestrated: row.orchestrated,
   })
 }
 
@@ -62,6 +63,7 @@ export function rowToProject(row: ProjectSelect): Project {
     driveStopCommand: row.driveStopCommand ?? undefined,
     driveInstructions: row.driveInstructions ?? undefined,
     docsCommitPrefix: row.docsCommitPrefix ?? undefined,
+    orchestrator: row.orchestrator ?? undefined,
     closedAt: row.closedAt ?? undefined,
   })
 }
@@ -92,6 +94,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     transcriptPath: row.transcriptPath ?? undefined,
     status: row.status,
     awaitingInput: row.awaitingInput,
+    headless: row.headless,
     worktreePath: row.worktreePath,
     model: row.model ?? undefined,
     runtime: row.runtime ?? undefined,
@@ -243,6 +246,26 @@ export function markTicketsReady(ctx: AppCtx, featureId: string, nextPhase: Phas
     data: { phase: current.phase, nextPhase, waitingOn: 'human burn' },
   })
   return { ...current, ticketsReadyLap: current.lap }
+}
+
+/**
+ * Hand a feature to the orchestrator (`whole-cuts-plan-themselves` decision 9):
+ * it created it from an `orchestrate` session, or the human handed it over.
+ * `how` says which, on the event.
+ */
+export function markOrchestrated(
+  ctx: AppCtx,
+  featureId: string,
+  how: 'created' | 'taken over',
+): Feature {
+  const current = getFeatureRow(ctx, featureId)
+  ctx.db.update(features).set({ orchestrated: true }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: 'feature.orchestrated',
+    message: how === 'created' ? 'created by the orchestrator' : 'handed to the orchestrator',
+    data: { how },
+  })
+  return { ...current, orchestrated: true }
 }
 
 export function setFeatureStatus(

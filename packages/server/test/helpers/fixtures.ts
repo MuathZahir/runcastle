@@ -66,6 +66,7 @@ export function seedFeature(
       baseBranch: overrides.baseBranch === undefined ? 'main' : overrides.baseBranch,
       status: overrides.status ?? 'active',
       createdAt: overrides.createdAt ?? Date.now(),
+      orchestrated: overrides.orchestrated ?? false,
     })
     .returning()
     .get()
