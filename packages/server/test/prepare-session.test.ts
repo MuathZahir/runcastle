@@ -412,6 +412,8 @@ describe('the prepare brief', () => {
     })
     expect(driveish).toContain('These keys are the drive loop')
     expect(driveish).toContain('.runcastle/drive.env')
+    // the drive.env rule scenarios depend on rides the drive framing, and only it
+    expect(driveish).toContain('above all the database URL')
 
     for (const key of ['knownFailures', 'dbResetCommand', 'verifyCommands']) {
       const out = renderPreparePrompt({
@@ -420,6 +422,7 @@ describe('the prepare brief', () => {
         established: [],
       })
       expect(out).not.toContain('These keys are the drive loop')
+      expect(out).not.toContain('above all the database URL')
       expect(out.length).toBeLessThan(driveish.length)
     }
   })

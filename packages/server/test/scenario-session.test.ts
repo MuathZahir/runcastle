@@ -368,6 +368,24 @@ describe('the scenario briefing', () => {
     expect(text).not.toContain('Setup mode')
   })
 
+  it('teaches TOKEN and the sibling .http call', () => {
+    const text = renderScenarioPrompt(brief())
+    for (const expected of [
+      '`TOKEN=<value>` (the last such line wins)',
+      'sibling `.http` file at the same path',
+      'request line `METHOD path`',
+      'One request per scenario.',
+      '`{{token}}` is',
+      '`{{run}}` with `RUNCASTLE_SCENARIO_RUN`',
+      'a relative path',
+      '**Try it**',
+    ]) {
+      expect(text).toContain(expected)
+    }
+    expect(renderScenarioPrompt(brief({ setup: true }))).toContain('mints one for the seeded user')
+    expect(text).not.toContain('mints one for the seeded user')
+  })
+
   it('renders the setup block exactly in setup mode', () => {
     const text = renderScenarioPrompt(brief({ setup: true, files: [], runner: undefined }))
     expect(text).toContain('Setup mode')
