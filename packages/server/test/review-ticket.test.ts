@@ -6,6 +6,7 @@ import type {
   Project,
   ReviewGateRun,
   RuncastleConfig,
+  ScenarioEntry,
   Ticket,
   WorkflowCtx,
   WorkflowDef,
@@ -42,6 +43,7 @@ import {
   AGENT_BROWSER_BIN,
   buildDriveAvailability,
   buildDriveInstructions,
+  buildScenarioBlock,
   buildGateNotes,
   checkExecutableHealth,
   composeReviewDigest,
@@ -662,6 +664,7 @@ describe('what the review agent is handed', () => {
       BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/usr/bin/agent-browser', 'bun dev'),
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Drive the sample project at /tmp/sample.'),
+      SCENARIOS: buildScenarioBlock([], false),
       GATE_NOTES: buildGateNotes(ranGates('bun run typecheck'), 'tkt_3', {}),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
@@ -737,6 +740,7 @@ describe('what the review agent is handed', () => {
       FEATURE_BRANCH: 'feature/demo', BASE_BRANCH: 'main',
       DRIVE_AVAILABILITY: buildDriveAvailability('/browser', 'bun dev', 'drive'),
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Log in as demo@example.com.'),
+      SCENARIOS: buildScenarioBlock([], false),
       GATE_NOTES: buildGateNotes(ranGates('bun test'), 'tkt_4', {}), DIGEST_PATH: '/digest',
       BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
       LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
@@ -748,6 +752,42 @@ describe('what the review agent is handed', () => {
     expect(prompt).toContain('#1 · Drive mode')
     expect(prompt).toContain(`auto-fix cap is ${AUTO_FIX_CAP}`)
     expect(prompt).toContain('verification pass')
+  })
+
+  it("hands both templates the drive's scenarios and the rules for replaying them", () => {
+    const entries: ScenarioEntry[] = [
+      { file: '.runcastle/scenarios/checkout/expired-coupon.ts', group: 'Checkout', name: 'Expired coupon', own: true, hasCall: false },
+      { file: '.runcastle/scenarios/feed/blocked-only.ts', group: 'Feed', name: 'Blocked only', own: false, hasCall: true },
+      { file: '.runcastle/scenarios/empty.ts', name: 'Empty', own: false, hasCall: false },
+    ]
+    const values = (SCENARIOS: string) => ({
+      TICKET_JSON: '{}', FEATURE_BRIEF: '', DOCS_DIGEST: '', LAP_DIGESTS: '', FEATURE_BRANCH: 'feature/demo',
+      BASE_BRANCH: 'main', DRIVE_AVAILABILITY: '', DRIVE_INSTRUCTIONS: '', SCENARIOS, GATE_NOTES: '',
+      DIGEST_PATH: '/d', BLOCKED_PATH: '/b', WALKTHROUGH_PATH: '/w', LANDED_FIXES: '', VERIFIES_PASS: '',
+      AUTO_FIX_CAP: '3',
+    })
+
+    for (const ticket of [review(3), review(4, { passKind: 'verification' })]) {
+      const prompt = renderReviewPrompt(ticket, values(buildScenarioBlock(entries, true)))
+      expect(prompt).not.toContain('{{')
+      expect(prompt).toContain("- `.runcastle/scenarios/checkout/expired-coupon.ts` — Checkout · Expired coupon (this feature's)")
+      expect(prompt).toContain('- `.runcastle/scenarios/feed/blocked-only.ts` — Feed · Blocked only (has an API call)')
+      expect(prompt).toContain('- `.runcastle/scenarios/empty.ts` — Empty\n')
+      expect(prompt).toContain('review_drive({ action: "scenario", file })')
+      expect(prompt).toMatch(/Prefer this feature's own scenarios/)
+      expect(prompt).toMatch(/with no restart/)
+      expect(prompt).toContain('review_drive({ action: "try_call", file })')
+      expect(prompt).toContain('"No scenario reaches <state>"')
+      expect(prompt).toMatch(/fails .* is a \*\*defect\*\* finding: cite its file, the reason, the exit code and the output tail/)
+      expect(prompt).toContain('Never write or edit a scenario.')
+
+      const bare = renderReviewPrompt(ticket, values(buildScenarioBlock(entries, false)))
+      expect(bare).toContain('**Scenarios:** none — this project has no scenario runner recorded')
+      expect(bare).not.toContain('expired-coupon')
+      expect(renderReviewPrompt(ticket, values(buildScenarioBlock([], true)))).toContain(
+        '**Scenarios:** none — this branch has no scenarios, so set up',
+      )
+    }
   })
 
   /**
