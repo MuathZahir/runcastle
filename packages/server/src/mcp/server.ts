@@ -442,6 +442,41 @@ export interface FeatureContext {
    * all, so the budget could only ever be guessed.
    */
   burnConcurrency: number
+  /**
+   * Whether this feature can ship a scenario, and what it would build on
+   * (drive-scenarios decision 13): the planner cards one only when `setUp`.
+   * Present on every MCP reply; a direct caller that read no git leaves it out.
+   */
+  scenarios?: FeatureScenarios
+}
+
+/** The project's scenario state as a planning session sees it. */
+export interface FeatureScenarios {
+  /** The base branch has `.runcastle/scenarios/` AND a scenario runner is recorded. */
+  setUp: boolean
+  runnerConfigured: boolean
+  /** The scenarios at the feature branch, this feature's own first. */
+  scenarios: ScenarioEntry[]
+  /** The `_` shared-code paths at the feature branch, to reuse rather than rewrite. */
+  fixtures: string[]
+}
+
+/** {@link FeatureScenarios}, read from git at the feature branch and its base. */
+export async function featureScenarios(ctx: AppCtx, featureId: string): Promise<FeatureScenarios> {
+  const feature = getFeatureRow(ctx, featureId)
+  const project = projectForFeature(ctx, feature)
+  const runnerConfigured = !!project.scenarioRunner
+  const [basePaths, branchPaths, scenarios] = await Promise.all([
+    listScenarioPaths(project.repoPath, feature.baseBranch ?? 'main'),
+    listScenarioPaths(project.repoPath, feature.branch),
+    listScenarios(project.repoPath, { ref: feature.branch, baseBranch: feature.baseBranch }),
+  ])
+  return {
+    setUp: basePaths.length > 0 && runnerConfigured,
+    runnerConfigured,
+    scenarios,
+    fixtures: branchPaths.filter((path) => path.split('/').some((segment) => segment.startsWith('_'))),
+  }
 }
 
 const DOCS_NOTE =
@@ -515,7 +550,11 @@ function latestBurnSummary(
  * laps' rows move out whole the same way, marked `goalNotInlined` and named in
  * `ticketsNotInlined`.
  */
-export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
+export function featureContext(
+  ctx: AppCtx,
+  reader: FeatureReader,
+  scenarios?: FeatureScenarios,
+): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
   const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
@@ -570,6 +609,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
+    ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
@@ -3051,7 +3091,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
         'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
         'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-        'the newest burn went; absent only on a feature that has never burned), ' +
+        'the newest burn went; absent only on a feature that has never burned), `scenarios` ' +
+        '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
+        'does a ticket ship a scenario for state the person driving would otherwise build by ' +
+        'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
+        'to reuse), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
@@ -3076,7 +3120,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async ({ slug }, extra) => {
           const r = await resolveProjectReader(extra, slug)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader))
+          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
         },
       )
     } else {
@@ -3086,7 +3130,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async (_args, extra) => {
           const r = await resolveReader(extra)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader))
+          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
         },
       )
     }
