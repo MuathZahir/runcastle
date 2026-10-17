@@ -40,6 +40,7 @@ vi.mock('../src/trpc', () => {
       }),
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },

@@ -31,7 +31,7 @@ export function LiveSessionBar({
       actions={
         <>
           <Button size="sm" variant="ghost" icon={<IconArrowRight />} onClick={onOpen}>
-            Open chat
+            Open agent
           </Button>
           <EndSessionButton featureId={featureId} sessionId={line.sessionId} />
         </>

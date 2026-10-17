@@ -207,4 +207,9 @@ describe('NoteRow', () => {
     expect(html).toContain(NOTE.screenshotUrl!)
     expect(html).toContain('>0:42<')
   })
+
+  it('says a note went to the agent once Send to agent carried it, and not before', () => {
+    expect(render(note({ sentAt: 1_700_000_000_000 }))).toContain('Sent to the agent')
+    expect(render(note())).not.toContain('Sent to the agent')
+  })
 })

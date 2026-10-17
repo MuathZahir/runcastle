@@ -1,5 +1,5 @@
 import { Aside } from '../../ui'
-import { OpenWorkPane, openTally, usePaneScroller, type OpenWorkProps } from './OpenWork'
+import { NOTES_HEADING, OpenWorkPane, openTally, usePaneScroller, type OpenWorkProps } from './OpenWork'
 
 /**
  * The review's notes as the ONE aside (DESIGN.md: one right-hand aside, opened
@@ -29,10 +29,10 @@ export function NotesRail({
 
   return (
     <Aside
-      label="Needs attention"
+      label={NOTES_HEADING}
       title={
         <span className="flex items-baseline gap-2">
-          Needs attention
+          {NOTES_HEADING}
           {tally && <span className="text-xs font-normal text-text-tertiary tabular-nums">{tally}</span>}
         </span>
       }

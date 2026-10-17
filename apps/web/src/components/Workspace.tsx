@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
+import { parsePhase, resolveAutonomy, type Autonomy, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -28,13 +28,12 @@ import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
   burnInterruption,
-  burnLap,
-  burnSummary,
   defaultBaseBranch,
   deferredScope,
   dependencyCandidates,
   effectivePhase,
   freshness,
+  goSummary,
   isReadonlyView,
   isHeadlessRun,
   isSelfPlanRun,
@@ -65,7 +64,7 @@ import { useReviewArtifacts } from '../lib/reviews'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { useSuccessSettle } from '../lib/use-success-settle'
 import { docPath, useFeatureDoc } from '../lib/use-feature-doc'
-import { BurnFeatureDialog } from './BurnFeatureDialog'
+import { GoFeatureDialog } from './GoFeatureDialog'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 import { MergeFeatureDialog } from './MergeFeatureDialog'
@@ -87,6 +86,8 @@ import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
+import { FeatureStatusLine } from './workspace/FeatureStatusLine'
+import { featureStatus, featureTokens, leadActions } from '../lib/feature-ui/status-line'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -284,6 +285,17 @@ export function Workspace({
     { enabled: !!projectId && burnable },
   )
   const defaultBurnModel = effectiveStepModel(settingsQ.data, 'implement')
+  // The status line's inputs (`the-feature-lead-runs-rounds` decision 21): the
+  // rounds and the agent's ready declarations, and the project's default
+  // autonomy the feature's switch falls back to.
+  const roundsQ = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: useLivePoll() })
+  const declarationsQ = trpc.feature.readyDeclarations.useQuery(
+    { featureId },
+    { refetchInterval: useLivePoll() },
+  )
+  const projectAutonomy = settingsQ.data?.fields.find((f) => f.key === 'autonomy')?.value as
+    | Autonomy
+    | undefined
   // What the next burn's docs digest will cost EVERY ticket in it, for the
   // pre-burn bar's warning — the burner's own read of the same files, so the bar
   // and the run timeline's event cannot report different sizes. Only on the two
@@ -348,6 +360,19 @@ export function Workspace({
     onSuccess: () => {
       invalidate()
       onViewPhase(null)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  // The autonomy switch and Stop beside the status line (decisions 1, 15).
+  const setAutonomy = trpc.feature.setAutonomy.useMutation({
+    onSuccess: invalidate,
+    onError: (e) => toast.push(e.message),
+  })
+  const stopAgent = trpc.feature.stop.useMutation({
+    onSuccess: () => {
+      invalidate()
+      void utils.feature.rounds.invalidate({ featureId })
+      toast.push('stopped — the agent asks before the next round', 'info')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -851,6 +876,27 @@ export function Workspace({
       : []),
   ]
 
+  // The one status line (decision 21) takes the row's left column on every
+  // started feature; a parked draft keeps the bar's own sentence, since nothing
+  // has been planned with anyone yet.
+  const rounds = roundsQ.data ?? []
+  const autonomy = resolveAutonomy(projectAutonomy ? { autonomy: projectAutonomy } : {}, feature)
+  const statusLine = isDraft ? undefined : (
+    <FeatureStatusLine
+      status={featureStatus({
+        feature,
+        rounds,
+        declarations: declarationsQ.data ?? [],
+        agentWorking: !!liveSession && !liveSession.awaitingInput,
+      })}
+      autonomy={autonomy}
+      tokens={featureTokens(rounds, full.sessions)}
+      busy={stopAgent.isPending || setAutonomy.isPending}
+      onAutonomy={(autonomy) => setAutonomy.mutate({ featureId, autonomy })}
+      onStop={() => stopAgent.mutate({ featureId })}
+    />
+  )
+
   const nextRow = readonly ? (
     <ReadonlyBanner
       phase={effective}
@@ -860,7 +906,8 @@ export function Workspace({
     />
   ) : (
     <NextStepBar
-      ns={ns}
+      ns={statusLine ? leadActions(ns, feature.phase) : ns}
+      status={statusLine}
       guidance={guidance}
       busy={busy}
       onAction={runAction}
@@ -1008,13 +1055,13 @@ export function Workspace({
       </AsideLayout>
 
       {confirmBurn && (
-        <BurnFeatureDialog
+        <GoFeatureDialog
           title={feature.title}
           branch={feature.branch}
-          summary={burnSummary({
+          summary={goSummary({
             branch: feature.branch,
             pendingTickets: pendingTickets(full.tickets),
-            lap: burnLap(full.runs),
+            autonomy,
             ...(defaultBurnModel ? { defaultModel: defaultBurnModel } : {}),
             warnings: burnWarningsQ.data,
           })}

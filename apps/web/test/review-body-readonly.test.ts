@@ -27,6 +27,8 @@ vi.mock('../src/trpc', () => {
       }),
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
+        list: { useQuery: () => ({ data: [] }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },

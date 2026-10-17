@@ -37,7 +37,7 @@ export function FeatureChat({
   const chat = featureChat(full.sessions)
   return (
     <ChatView
-      label="Feature chat"
+      label="Agent"
       session={live ?? null}
       contextLine={live ? chatContextLine(live) : 'Chat'}
       meta="One transcript per feature"
