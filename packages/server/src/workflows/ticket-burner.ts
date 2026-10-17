@@ -3090,11 +3090,9 @@ const NOTHING_LANDED = 'nothing landed — every implementation ticket in the ru
  * was cancelled cancels the review too, because nothing landed to review
  * (decision 6).
  *
- * It is also the one ticket that grows the schedule: every defect it reports
- * mints a fix ticket as it is reported, so when it goes terminal the feature
- * holds pending tickets this run never saw. `admitNewTickets` folds them in and
- * the same run burns them (decision 1) — which is the human click this feature
- * exists to remove.
+ * Its defects do NOT grow the schedule: they stay findings, and the round-end
+ * wake hands them to the feature's lead (the-feature-lead-runs-rounds decision
+ * 10). The one ticket a run still adds to itself is the verification pass.
  *
  * One failure ends the schedule rather than one ticket: an outcome carrying
  * `runFatal` is the account or the image saying no, and every remaining ticket
@@ -3159,8 +3157,8 @@ export async function burnTickets(
    * retried alongside it) both sides wait and the defensive fallback fails
    * everything with "unresolvable dependencies".
    *
-   * `mintedByReview` is the other half of the partition, and what
-   * {@link readmitMintedChildren} gives its turn once the review lands.
+   * Reviews no longer mint children; the exclusion stays for the fix tickets
+   * earlier runs minted, which still declare their review as a blocker.
    */
   const gatedImplementations = (reviewSeq: number): Ticket[] =>
     scheduled.filter((t) => !isReviewTicket(t) && !mintedByReview(t, reviewSeq))
@@ -3202,15 +3200,11 @@ export async function burnTickets(
   }
 
   /**
-   * Fold in the tickets minted while this run was live — the fix tickets a
-   * review's defects mint as each one is reported (decision 5). They are blocked
-   * by the review ticket alone, so by the time it is terminal they are ready,
-   * and admitting them here is what keeps the whole fix wave inside one `runs`
-   * row: the loop below simply has more to do.
+   * Fold in the tickets minted while this run was live — the verification pass
+   * this run appends for itself, so it burns inside the same `runs` row.
    *
-   * Called when a review ticket settles, the only moment new rows appear. A
-   * workflow whose ctx cannot re-read the store (a test fake) admits nothing and
-   * schedules exactly as it did before.
+   * A workflow whose ctx cannot re-read the store (a test fake) admits nothing
+   * and schedules exactly as it did before.
    */
   const admitNewTickets = (): void => {
     const added: number[] = []
@@ -3229,40 +3223,6 @@ export async function burnTickets(
       type: 'burn.admitted',
       message: `${added.length} ticket(s) minted during this run joined it: ${added.join(', ')}`,
       data: { seqs: added },
-    })
-  }
-
-  /**
-   * Give a landed review's own fix tickets their turn, whatever an earlier
-   * attempt of that review left them in.
-   *
-   * A review's children are minted blocked ON it, so an attempt that died left
-   * them unrunnable: they cascaded to `failed` behind their dead blocker, or
-   * were failed by the deadlock this exclusion exists to break. That verdict
-   * belonged to the attempt, not to the work — the review has now re-run and
-   * landed, and the defect each child answers for was either re-reported into
-   * it (`reportFinding` revives the fix ticket it already minted rather than
-   * minting a duplicate) or is gone. Either way the run that just produced the
-   * review is the run that should burn them, exactly as it burns the children
-   * that review minted for the first time.
-   *
-   * A `cancelled` child is left alone: a human waived that fix, and reviving it
-   * would overturn their decision.
-   */
-  const readmitMintedChildren = (reviewSeq: number): void => {
-    const readmitted: number[] = []
-    for (const child of scheduled.filter((t) => mintedByReview(t, reviewSeq))) {
-      if (status.get(child.seq) !== 'failed') continue
-      ctx.updateTicket(child.id, { status: 'pending', error: null })
-      status.set(child.seq, 'pending')
-      pending.add(child.seq)
-      readmitted.push(child.seq)
-    }
-    if (readmitted.length === 0) return
-    ctx.emitEvent({
-      type: 'burn.readmitted',
-      message: `${readmitted.length} fix ticket(s) of review ${reviewSeq} rejoined the run: ${readmitted.join(', ')}`,
-      data: { seqs: readmitted, reviewSeq },
     })
   }
 
@@ -3476,14 +3436,9 @@ export async function burnTickets(
         await haltRun(t, { error: outcome.error, runtime: outcome.runFatal.runtime })
       }
     }
-    // Before this lane leaves the pool, so the loop's next condition check
-    // already sees the fix tickets the review reported on its way through — a
-    // review that is the run's last ticket would otherwise end the loop. A
-    // review that LANDED also takes its earlier attempt's children with it.
-    if (isReviewTicket(t)) {
-      if (status.get(seq) === 'done') readmitMintedChildren(seq)
-      admitNewTickets()
-    }
+    // A review settling admits nothing: its defects stay findings for the
+    // feature's lead to decide on at the round's end (the-feature-lead-runs-rounds
+    // decision 10), never fix tickets burned in this same run.
   }
 
   while (pending.size > 0 || inFlight.size > 0 || !verificationChecked) {
@@ -3764,7 +3719,7 @@ export async function burnRun(
     deps.concurrency,
     deps.ticketRuntime,
   )
-  // Fix tickets minted by the review joined the run after it opened, so the
+  // A verification pass joins the run after it opens, so the
   // denominator is what the run ended up burning, not what it started with —
   // less whatever the schedule cancelled on the way, which is not work owed.
   const total = burnable.length + admitted - collapsed.length

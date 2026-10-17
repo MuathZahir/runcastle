@@ -78,11 +78,11 @@ export interface StartRunOptions {
    *
    * Set by the agentic-review mint, which is a request for ONE review pass, not
    * for the pending fix queue sitting beside it: scoping only `tickets` would
-   * not be enough, because the scheduler re-reads the store when a review
-   * settles (`admitNewTickets`) and would fold that queue in a moment later. So
+   * not be enough, because the scheduler re-reads the store when it mints
+   * (`admitNewTickets`) and would fold that queue in a moment later. So
    * the scope also narrows `listTickets`, by hiding exactly the rows that
    * existed at run start and were left out — tickets minted DURING the run (a
-   * review's own fix tickets) are never hidden and still join it.
+   * verification pass) are never hidden and still join it.
    */
   ticketIds?: string[]
   /**

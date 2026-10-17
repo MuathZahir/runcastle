@@ -2530,8 +2530,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Report a structured review finding',
         description:
-          'Report one typed finding for the feature under review. Actionable defects mint fix ' +
-          'tickets automatically up to the review cap; observations are retained for the digest.',
+          'Report one typed finding for the feature under review. Defects stay open for the ' +
+          'feature’s lead, which decides what each becomes; observations are retained for the digest.',
         inputSchema: ReviewFindingInput.shape,
       },
       async (args, extra) => {

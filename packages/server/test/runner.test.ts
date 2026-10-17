@@ -8,12 +8,13 @@ import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { commitDocs, createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
-import { listByFeature as listFindings, reportFinding } from '../src/services/review-findings'
+import { listByFeature as listFindings } from '../src/services/review-findings'
 import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { cancelRun, startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 const successDef: WorkflowDef = {
@@ -137,8 +138,8 @@ describe('workflow runner', () => {
       id: 'test-findings',
       async run(wctx) {
         opened = wctx.tickets.length
-        // What `report_finding` does while the review ticket is burning.
-        const { finding } = reportFinding(ctx, {
+        // A finding and a fix ticket stored while the run is live.
+        const { finding } = reportWithFixTicket(ctx, {
           featureId,
           reviewTicket,
           input: {
@@ -164,7 +165,7 @@ describe('workflow runner', () => {
     }
 
     // The snapshot the run opened with held only the review; the re-read sees
-    // the fix ticket its finding minted.
+    // the fix ticket stored mid-run.
     expect(opened).toBe(1)
     expect(reread).toEqual([reviewTicket.seq, reviewTicket.seq + 1])
     expect(listFindings(ctx, featureId)[0]).toMatchObject({

@@ -46,7 +46,7 @@ import {
  * project's real checkout, with the runcastle MCP wired in under the run's
  * identity, so the agent can boot the app through `review_drive`, walk it, and
  * report what it finds through `report_finding` — one typed row per finding,
- * each defect minting the fix ticket this same run goes on to burn.
+ * each defect left open for the feature's lead to decide on at the round's end.
  *
  * Semantics, from decision 6: **findings are not failure.** The ticket is done
  * when the review ran to completion, however many bugs it wrote up. It fails
@@ -974,8 +974,7 @@ async function reviewTicketOutcome(
     )
   }
   // Ran to completion: done, with no commits, because a review never writes
-  // code. Its findings are already stored, each defect's fix ticket already
-  // minted — the scheduler admits them the moment this outcome lands.
+  // code. Its findings are already stored, for the lead's round-end wake.
   const resolution = resolveReviewDeclaration(digest, {
     webmExists: existsSync(reviewWalkthroughPath(ticket.id)),
     offeredMode,

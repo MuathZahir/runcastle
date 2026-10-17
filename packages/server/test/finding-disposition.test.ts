@@ -11,10 +11,10 @@ import {
   dismiss,
   listByFeature as listFindings,
   markFixProgress,
-  reportFinding,
 } from '../src/services/review-findings'
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
@@ -62,7 +62,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
    * gave up, so the defect is the NEXT lap's to answer for.
    */
   function openDefect(title = 'Deletes are never retried'): string {
-    const { finding, fixTicket } = reportFinding(ctx, {
+    const { finding, fixTicket } = reportWithFixTicket(ctx, {
       featureId: feature.id,
       reviewTicket,
       input: {
@@ -75,7 +75,7 @@ describe('the lap session dispositions earlier laps’ defects', () => {
         reproStep: 'Click Retry on a dead-lettered job and watch nothing change.',
       },
     })
-    updateTicket(ctx, fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, fixTicket.id, { status: 'failed' })
     markFixProgress(ctx, finding.id, 'failed', 'the burner could not land it')
     return finding.id
   }

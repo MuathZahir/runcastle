@@ -1138,7 +1138,12 @@ describe('burnRun — cancelled tickets (revisit surgery)', () => {
  * one minting a fix ticket into the store, and the run those tickets were born
  * into burns them itself rather than leaving them for a human to start.
  */
-describe('burnRun — fix tickets minted while the run is live', () => {
+/**
+ * A review's findings go to the feature's lead at the round's end
+ * (the-feature-lead-runs-rounds decision 10): nothing stored while the review
+ * burns joins the running run.
+ */
+describe('burnRun — a review settling admits nothing', () => {
   const reviewTicket = (seq: number, blockedBy: number[] = []): Ticket => ({
     ...ticket(seq, blockedBy),
     kind: 'review',
@@ -1161,28 +1166,24 @@ describe('burnRun — fix tickets minted while the run is live', () => {
     return { ...base, findings }
   }
 
-  it('admits them once the review is terminal and burns them in the same run', async () => {
+  it('leaves tickets stored while the review burned out of the run', async () => {
     const tickets = [ticket(1), reviewTicket(2, [1])]
     const { ctx, events } = makeFixCtx(tickets)
     const calls: number[] = []
     const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
       calls.push(t.seq)
       if (t.kind !== 'review') return { status: 'done', commits: ['sha'] }
-      // What `report_finding` does while the review is still burning.
+      // Fix tickets appearing while the review is still burning.
       tickets.push(fixTicket(3, 'find_a', 2), fixTicket(4, 'find_b', 2))
       return { status: 'done', commits: [] }
     }
 
     const res = await burnRun(ctx, deps(execute))
 
-    expect(calls).toEqual([1, 2, 3, 4])
-    // The denominator counts what the run ended up burning, not what it opened
-    // with — and it finalizes once, after the fix wave is terminal too.
-    expect(res).toEqual({ status: 'succeeded', summary: '4/4 tickets done' })
-    expect(events.filter((e) => e.type === 'burn.summary')).toHaveLength(1)
-    expect(events.filter((e) => e.type === 'burn.admitted')).toMatchObject([
-      { data: { seqs: [3, 4] } },
-    ])
+    expect(calls).toEqual([1, 2])
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done' })
+    expect(events.map((e) => e.type)).not.toContain('burn.admitted')
+    expect(tickets.slice(2).map((t) => t.status)).toEqual(['pending', 'pending'])
   })
 
   it('leaves the run alone when the review minted nothing', async () => {
@@ -1200,16 +1201,13 @@ describe('burnRun — fix tickets minted while the run is live', () => {
     expect(findings).toEqual([]) // no ticket here came from a finding
   })
 
-  it('fails one fix ticket without touching its siblings, and marks each finding', async () => {
-    const tickets = [reviewTicket(1)]
+  it('fails one fix ticket the round named without touching its siblings, and marks each finding', async () => {
+    const tickets = [reviewTicket(1), fixTicket(2, 'find_a', 1), fixTicket(3, 'find_b', 1)]
     const { ctx, findings } = makeFixCtx(tickets)
     const calls: number[] = []
     const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
       calls.push(t.seq)
-      if (t.kind === 'review') {
-        tickets.push(fixTicket(2, 'find_a', 1), fixTicket(3, 'find_b', 1))
-        return { status: 'done', commits: [] }
-      }
+      if (t.kind === 'review') return { status: 'done', commits: [] }
       return t.seq === 2
         ? { status: 'failed', error: 'the repro still reproduces' }
         : { status: 'done', commits: ['sha'] }
