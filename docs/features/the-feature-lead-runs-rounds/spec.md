@@ -11,11 +11,12 @@ The human is the relay. The feature chat can plan and edit tickets but cannot st
 The feature's chat becomes **the agent** (internally, **the lead**). The human's whole model is: talk to the agent → see the plan (the preview) → **Go** → rounds run → **"Ready for you · Test drive ▸ <scenario>"** with a short paragraph on exactly what to test → drive, and send what they found to the agent → more rounds or **Merge**. Anything not in that story is removed or hidden (decision 17).
 
 - **Go replaces Burn** (decision 8). It approves the plan, moves planning → building and hands the feature to the agent, which dispatches round 1 itself. The human never clicks Burn again. Go carries today's burn warnings but has **no "no tickets" refusal**: the agent may do a small feature itself without any (decision 5).
-- **The autonomy switch** (decision 1): "Run until ready" (the project-wide default) or "Ask before each round", overridable per feature. In Ask mode the agent proposes the next round in chat and the human's reply is the approval, and may amend it. There is **no budget** of any kind (decision 2).
-- **One status line per feature** (decision 21), from a fixed set: *Planning with you* · *Working · Round N* · *Waiting for you · <why>* (plan ready for Go, round proposed, stuck, provider limit) · *Ready for you · Test drive ▸ <scenario>* · *Merged*. The four phases stay underneath as machine states. Beside the line sit the autonomy switch and **Stop** (only while working).
-- **A round trail replaces laps** (decision 16). Each run is a round, numbered per feature: what it dispatched (workers titled "{group}: {task}"), what landed, gate results, token total and the agent's one-line verdict. The agent's own fixes appear on the trail as "agent fix" entries, and ready declarations as the points where the human was asked to drive. Pending tickets read "not yet dispatched". Gone: Iterate and "Start lap N+1", the start-lap session, the review triage step, lap chips, "Lap N in progress", "carried from lap N", lap grouping. Shipped features' history reads as rounds too.
+- **No autonomy switch** (lap 2, decision 23). The agent judges when to ask: it carries on through anything the plan settled (fix rounds, small fixes it does itself) and stops to ask before anything the plan did not settle (a design decision, a scope change, a trade-off the human would have an opinion on). There is **no budget** of any kind (decision 2).
+- **One status line per feature** (decision 21), from a fixed set: *Planning with you* · *Working · Round N* · *Waiting for you · <why>* (plan ready for Go, a question for you, stopped, stuck, provider limit) · *Ready for you · Test drive ▸ <scenario>* · *Merged*. The four phases stay underneath as machine states, and the phase stepper is gone from the page.
+- **The header is two lines and one action row** (lap 2, decision 24): the title; one meta line (branch · started); the status line with exactly one primary button chosen by state (Go in planning, Start test drive when ready, Stop drive while driving, Stop while a round runs), Merge always present as a secondary, the rest in "⋯", and "What to test" one click away when ready. Nothing else sits above the content: no autonomy switch, no "Agent live" row (the top bar's Agent tab carries the live dot; End session lives inside the Agent tab), no header Agent button, no Review/Tickets/Test drive/Round fact list. The walkthrough-videos warning shows only where a drive starts and only when it applies; "Notes for the agent" shows only while driving or after a ready declaration. No burn or lap wording anywhere the human reads.
+- **A round trail replaces laps** (decision 16). Each run is a round, numbered per feature: what it dispatched (workers titled "{group}: {task}"), what landed, gate results and the agent's one-line verdict. The agent's own fixes appear on the trail as "agent fix" entries, and ready declarations as the points where the human was asked to drive. Pending tickets read "not yet dispatched". Gone: Iterate and "Start lap N+1", the start-lap session, the review triage step, lap chips, "Lap N in progress", "carried from lap N", lap grouping. Shipped features' history reads as rounds too.
 - **Drive notes**: the drive panel's composer stays (screenshots paste in), headed "Notes for the agent", with a **Send to agent** button that sends every unsent note as one message, screenshots attached as files, usable any time and more than once (decision 18). Typing in the chat works too. While a drive of the feature is active, **no round can start and the agent's own commits wait to land** (decision 19).
-- **Tokens**, not cost, shown in three places only: per round on the trail, a feature total in the header, and per worker on its ticket (decision 3).
+- **Tokens are recorded, never shown** (lap 2, decision 25): no token figure in the header, on the trail, on a ticket, or in the lead's feature context.
 - **Vocabulary** (decision 20): "agent" and "workers" in the UI. "Lead" is internal.
 
 ### The lead's loop
@@ -33,21 +34,22 @@ The feature's chat becomes **the agent** (internally, **the lead**). The human's
 - **The lead is live** (its terminal is open): the orchestrator's existing waiter is opened to feature leads. On Claude Code that is the rewake hook on SessionStart and Stop, long-polling the server. On Codex it is `codex queue` delivery. A wake that arrives mid-conversation waits until the lead's turn ends. The notifier that today routes `run.finished` to the project's orchestrate session also routes a feature's round end to **that feature's own lead**.
 - **The lead is not live** (terminal closed, session died, server restarted): runcastle resumes the feature's chat **headless** (`claude -p --resume` / `codex exec resume`) with the wake message. Unconditional chat resume later reopens the same conversation. While a headless lead runs, a human opening the chat sees it working, as today's one-headless-chat-at-a-time rule implies.
 - **No wake on a provider-limit halt.** The lead runs on the same provider. The status shows *Waiting for you · provider limit* and the human's next message picks it up.
-- **Live proof required**: a real round returning and visibly waking a real lead, once on Claude Code and once on Codex, both live and headless. The waiter's proof was never shown in "Whole cuts plan themselves".
+- **Live proof required**: a real round returning and visibly waking a real lead, once on Claude Code and once on Codex, both live and headless. The waiter's proof was never shown in "Whole cuts plan themselves". Lap 1 proved the live Claude Code wake only; lap 2 stands on the headless wake and both Codex wakes first, then fixes what fails (decision 26).
+- **Permissions after Go** (lap 2, decision 27): the feature's chat on Claude Code runs with `bypassPermissions` once Go is given (Codex's acceptEdits posture already never asks inside its workspace-write sandbox), so a headless wake never stalls on a prompt nobody can answer. Before Go it stays docs-only and asking. A guard hook that runs in every permission mode denies, with a reason: merging into or pushing to the base branch, git operations on the main checkout or on other features' worktrees, and deleting the feature branch.
 
 ### Stopping (decision 15)
 
-- **Stop** (feature page) stops the running round (landed work stays), sets the feature's autonomy override to Ask, and tells the lead it was stopped.
-- **Ask mode is enforced, not just advised:** in Ask mode, a dispatch is refused unless a human message has reached the lead since the last round was dispatched. Human messages are the human's chat turns, Send to agent, and the orchestrator's `send_to_feature`. Wake messages runcastle itself delivers don't count. That is what makes "Stop → nothing new until you reply" true.
+- **Stop** (feature page) stops the running round (landed work stays), marks the feature stopped, and tells the lead it was stopped. The status reads *Waiting for you · stopped*.
+- **After Stop, nothing dispatches until the human replies — enforced, not advised** (lap 2, decision 23): a dispatch is refused while the feature is stopped and no human message has reached the lead since the Stop. Human messages are the human's chat turns, Send to agent, and the orchestrator's `send_to_feature`; wake messages runcastle itself delivers don't count. The first human message clears the stop. This replaces lap 1's Ask mode, which is removed with the autonomy switch.
 - **The runaway guard is judgement in the lead skill:** when a round makes no progress on the same failure as the one before, stop, write the human a short status (what is stuck, what was tried, what is needed), and wait.
 
 ### The lead's MCP surface (new tools for feature-chat sessions)
 
-- **dispatch round** `{ seqs }` starts a run over those pending tickets. **Refused** (the only hard refusals) when: a run is already active; a drive of this feature holds the drive slot; the feature is still in planning (Go not given); Ask mode with no human message since the last dispatch. Each refusal says why.
+- **dispatch round** `{ seqs }` starts a run over those pending tickets. **Refused** (the only hard refusals) when: a run is already active; a drive of this feature holds the drive slot; the feature is still in planning (Go not given); the feature is stopped with no human message since the Stop. Each refusal says why.
 - **stop round** cancels the running run.
 - **declare ready** `{ scenario, whatToTest }` moves building → review on the first call, records the declaration on the trail, and returns warnings.
-- **wait for you** `{ why }` sets the *Waiting for you* reason the status line shows (a round proposal in Ask mode, stuck). It is cleared by the next human message or dispatch.
-- **feature context** gains: autonomy mode, round history (each round's tickets, outcome, gates, tokens), the latest ready declaration, and whether a drive is active.
+- **wait for you** `{ why }` sets the *Waiting for you* reason the status line shows (a question the plan did not settle, stuck). It is cleared by the next human message or dispatch.
+- **feature context** gains: round history (each round's tickets, outcome, gates), the latest ready declaration, whether a drive is active, and whether the feature is stopped. No autonomy mode and no tokens (lap 2).
 
 Digests stay readable per ticket, as today.
 
@@ -60,11 +62,11 @@ Digests stay readable per ticket, as today.
 
 ### Settings and data
 
-- **Autonomy:** a project-level setting (default "Run until ready"), on the Project settings page, plus a new nullable per-feature override. It resolves as feature ?? project ?? default.
+- **No autonomy setting** (lap 2): the project autonomy setting, the per-feature override and their UI are removed; a feature carries a stopped mark instead (set by Stop, cleared by the next human message).
 - **Rounds are runs:** a round number per feature is derived from the feature's runs in order. The `lap` column stays as a historical field. It no longer moves, and nothing in the UI reads it. Features already in flight get no migration.
 - **Ready declarations** are recorded (scenario, paragraph, after which round, timestamp) for the trail and the status line.
-- **Token usage** is recorded per ticket (workers) and per session (the lead, and any other session). It is summed over each session's transcript, per message or per turn, not taken from the last message's context-size snapshot that sandcastle reports for Claude Code. Codex usage comes from its per-turn usage. Tokens only, never cost, and never a limit.
-- **The waiting reason** and **the last-human-message mark** live with the feature, so the status line and the Ask-mode refusal both read them.
+- **Token usage** is recorded per ticket (workers) and per session (the lead, and any other session). It is summed over each session's transcript, per message or per turn, not taken from the last message's context-size snapshot that sandcastle reports for Claude Code. Codex usage comes from its per-turn usage. Tokens only, never cost, and never a limit. The record, split by kind with the session ids, is the durable telemetry (the CLIs' own transcripts expire); nothing displays it (decision 25).
+- **The waiting reason**, **the stopped mark** and **the last-human-message mark** live with the feature, so the status line and the after-Stop refusal both read them.
 
 ### The orchestrator (decision 11)
 
@@ -79,6 +81,7 @@ On orchestrated features the orchestrator plays the human's part through the lea
 
 - **A new lead skill** in the runcastle pack (it loads for a feature's chat once Go is given) carries the rules for the lead:
   - delegate by default, do it yourself when it's small;
+  - when to ask (lap 2): carry on through what the plan settled, stop and ask before what it did not;
   - every worker task names its deliverable and how it will be checked;
   - trust the record over the prose;
   - a soft cap on workers per round;
@@ -103,20 +106,21 @@ On orchestrated features the orchestrator plays the human's part through the lea
 - charter decisions 9 (approvals) and 15 (laps);
 - "talk sessions do not write code", for a feature's chat after Go;
 - the brief's own budget (settled item 5) and the run time limit it absorbed;
-- "it only delegates" (brief item 8), softened to "delegates by default".
+- "it only delegates" (brief item 8), softened to "delegates by default";
+- the brief's autonomy switch (settled item 5) — removed in lap 2; the lead judges when to ask.
 
 `one-chat-per-feature` decision 6 (no channel from burn agents to the chat) stands: workers still speak only through digests, events and ticket updates.
 
 ## Seams
 
 1. **The MCP tool surface** (existing seam, new tools): dispatch round, stop round, declare ready, wait for you, and the extended feature context, called as a feature chat would call them. Observe:
-   - each refusal and its reason (run active, drive active, still planning, Ask mode with no human message);
+   - each refusal and its reason (run active, drive active, still planning, stopped with no human message since);
    - the run created with exactly the named tickets;
    - the phase move on the first ready declaration and none after;
    - the warnings returned;
-   - the context's round history and autonomy.
-2. **The features service** (existing seam: today's burn and phase transitions): Go, round dispatch, ready declaration, Stop and autonomy resolution as service functions. Observe:
-   - DB state (phase, runs, override, waiting reason, last-human-message mark, declarations);
+   - the context's round history and stopped mark, with no autonomy and no tokens.
+2. **The features service** (existing seam: today's burn and phase transitions): Go, round dispatch, ready declaration and Stop as service functions. Observe:
+   - DB state (phase, runs, stopped mark, waiting reason, last-human-message mark, declarations);
    - the events each one emits, since every mutation emits.
 3. **Run finalization** (existing seam: the workflow runner). Observe:
    - no building → review auto-advance;
@@ -130,12 +134,12 @@ On orchestrated features the orchestrator plays the human's part through the lea
    - the headless resume launched when it is not;
    - the waiter no longer refusing feature leads.
 
-   The live proof (decision 12) is exercised here end to end.
-5. **Session guards** (existing seam: the edit-guard and install-guard decisions). Observe that a feature chat is docs-only in planning and unguarded from building on, and that chat landings defer while a drive of the feature is active.
-6. **Settings** (existing seam: project settings descriptors and updates). Observe the project autonomy default and the per-feature override resolving feature ?? project ?? default, with `settings.updated` emitted.
-7. **Token accounting** (new seam, the one new pure function): sum a captured session transcript (Claude Code JSONL, Codex rollout) into a token total. Observe correct sums on recorded fixtures, then the burner storing per-ticket totals and sessions storing their own.
+   The live proof (decision 12) is exercised here end to end; lap 2 adds the headless and Codex paths (decision 26).
+5. **Session guards** (existing seam: the edit-guard and install-guard decisions, plus the launcher's permission mode). Observe that a feature chat is docs-only in planning and unguarded from building on, that chat landings defer while a drive of the feature is active, that a Claude Code feature chat launches with `bypassPermissions` after Go and the default posture before it, and that the lap-2 guard hook denies merge/push to the base branch, git on the main checkout or other worktrees, and deleting the feature branch, in every permission mode.
+6. **Settings** (existing seam): lap 2 removes the project autonomy descriptor; observe it gone from the settings service and the Project settings page.
+7. **Token accounting** (new seam, the one new pure function): sum a captured session transcript (Claude Code JSONL, Codex rollout) into a token total. Observe correct sums on recorded fixtures, then the burner storing per-ticket totals and sessions storing their own. Since lap 2 the totals are recorded only — no read path renders them.
 8. **Web derivations** (existing seam: the pure feature-UI functions that today compute next steps and lap accounts). Observe:
-   - the status line for every state;
+   - the status line for every state, and the one primary action it picks;
    - the round trail derived from runs, declarations and agent fixes;
    - pending tickets as "not yet dispatched";
    - no lap vocabulary anywhere.
@@ -158,6 +162,6 @@ On orchestrated features the orchestrator plays the human's part through the lea
 
 ## Open questions
 
-- **How a human message is told apart from a runcastle wake**, for the Ask-mode refusal. The intent is fixed: human chat turns, Send to agent and `send_to_feature` count, while wakes and kickoffs don't. The mechanism is the builder's: tagging server-delivered prompts, or marking from the UI and hook side.
+- **How a human message is told apart from a runcastle wake**, for the after-Stop refusal (lap 1 built it for Ask mode). The intent is fixed: human chat turns, Send to agent and `send_to_feature` count, while wakes and kickoffs don't. The mechanism is the builder's: tagging server-delivered prompts, or marking from the UI and hook side.
 - **Codex parity for the live wake** rests on `codex queue` against a running interactive session. If the live proof shows it can't deliver at turn end, the fallback is the headless resume after the session's turn ends, and the digest must say so.
 - **The soft cap on workers per round** is a number in the lead skill. Start at the project's burn concurrency, and tune it from use.
