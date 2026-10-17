@@ -951,6 +951,45 @@ function scenarioFailureLine(failure: ScenarioFailure): string {
   }
 }
 
+/** The Fix it ask: the failed file, how it failed, its output tail, and what to do. */
+function scenarioFixLines(fix: NonNullable<ScenarioBrief['fix']>): string[] {
+  return [
+    `The human clicked **Fix it** on \`${fix.file}\`.`,
+    ...(fix.failure
+      ? [
+          `It ${scenarioFailureLine(fix.failure)}. Its output (tail):`,
+          '',
+          '```',
+          fix.failure.outputTail.length > 0 ? fix.failure.outputTail : '(the scenario produced no output)',
+          '```',
+        ]
+      : ['Its failure is no longer on the drive; run it with `run_scenario` to see it again.']),
+    '',
+    'Repair it — usually a fixture or model the app changed — commit, and land the human with',
+    '`run_scenario`.',
+  ]
+}
+
+/**
+ * What ＋ New scenario or Fix it hands a scenario chat that is already live and
+ * docked: the same ask its launch briefing would carry, typed into its terminal
+ * since a running session has no argv left. Undefined when the door carried
+ * nothing new (a plain ＋ New scenario reopening the chat).
+ */
+export function renderScenarioFollowUp(
+  ask: Pick<ScenarioBrief, 'description' | 'fix'>,
+): string | undefined {
+  if (ask.fix) return scenarioFixLines(ask.fix).join('\n')
+  if (ask.description) {
+    return [
+      `The human asked for a new scenario: ${ask.description}`,
+      '',
+      'Write it, commit, and land the human with `run_scenario`.',
+    ].join('\n')
+  }
+  return undefined
+}
+
 /**
  * The injected brief for a `scenario` session (drive-scenarios decision 8): the
  * ＋ New scenario chat, or Fix it on a failed scenario, docked beside a running
@@ -971,24 +1010,7 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
   const drive = feature ? `the test drive of ${feature.title}` : 'the project drive'
 
   const ask: string[] = brief.fix
-    ? [
-        '## Fix this scenario',
-        `The human clicked **Fix it** on \`${brief.fix.file}\`.`,
-        ...(brief.fix.failure
-          ? [
-              `It ${scenarioFailureLine(brief.fix.failure)}. Its output (tail):`,
-              '',
-              '```',
-              brief.fix.failure.outputTail.length > 0
-                ? brief.fix.failure.outputTail
-                : '(the scenario produced no output)',
-              '```',
-            ]
-          : ['Its failure is no longer on the drive; run it with `run_scenario` to see it again.']),
-        '',
-        'Repair it — usually a fixture or model the app changed — commit, and land the human with',
-        '`run_scenario`.',
-      ]
+    ? ['## Fix this scenario', ...scenarioFixLines(brief.fix)]
     : brief.description
       ? ['## What the human asked for', brief.description, '']
       : [
