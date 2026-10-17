@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectNote } from '@runcastle/core'
+import type { ProjectNote, ScenarioEntry } from '@runcastle/core'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
 
@@ -24,6 +24,12 @@ let project: Record<string, unknown> = {}
 let notes: ProjectNote[] = []
 let testDriveResult: { ok: boolean; deniedReason?: string } = { ok: true }
 const testDrive = vi.fn()
+const runScenario = vi.fn()
+const openScenarioChat = vi.fn()
+let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
+  runnerConfigured: false,
+  scenarios: [],
+}
 const toast = vi.fn()
 const addNote = vi.fn(async (input: { projectId: string; text: string }) => ({
   id: 'pnote_new',
@@ -90,6 +96,19 @@ vi.mock('../src/trpc', () => {
       feature: {
         list: { useQuery: () => ({ data: [] }) },
         driveInfo: { useQuery: () => ({ data: slot }) },
+        driveScenarios: { useQuery: () => ({ data: scenarios }) },
+        runScenario: {
+          useMutation: () => ({ isPending: false, mutate: (input: unknown) => runScenario(input) }),
+        },
+        openScenarioChat: {
+          useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
+            isPending: false,
+            mutate: (input: unknown) => {
+              openScenarioChat(input)
+              opts.onSuccess({ sessionId: 'sess_scn' })
+            },
+          }),
+        },
         endSession: { useMutation: mutation },
       },
     },
@@ -150,6 +169,7 @@ const note = (id: string, createdAt: number, over: Partial<ProjectNote> = {}): P
 beforeEach(() => {
   slot = null
   testDriveResult = { ok: true }
+  scenarios = { runnerConfigured: false, scenarios: [] }
   project = {
     id: 'proj_1',
     name: 'journal-app',

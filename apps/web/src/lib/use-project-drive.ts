@@ -17,8 +17,11 @@ export interface ProjectDriveApi {
   slot: SlotDrive | null
   /** This project's live drive, or null. */
   drive: SlotDrive | null
-  /** Start a drive; `onStarted` runs only when the server took it. */
-  start: (onStarted?: () => void) => void
+  /**
+   * Start a drive, landing on `scenario` once the app answers (null: the blank
+   * app); `onStarted` runs only when the server took it.
+   */
+  start: (scenario: string | null, onStarted?: () => void) => void
   stop: (onStopped?: () => void) => void
   starting: boolean
   stopping: boolean
@@ -34,9 +37,9 @@ export function useProjectDrive(projectId: string): ProjectDriveApi {
   })
   const slot = driveQ.data ?? null
 
-  const run = (action: 'start' | 'stop', then?: () => void): void =>
+  const run = (action: 'start' | 'stop', then?: () => void, scenario?: string | null): void =>
     testDrive.mutate(
-      { projectId, action },
+      { projectId, action, ...(scenario ? { scenario } : {}) },
       {
         onSuccess: (result) => {
           // A refusal is an answer, not an error: the slot is held, and the
@@ -50,7 +53,7 @@ export function useProjectDrive(projectId: string): ProjectDriveApi {
   return {
     slot,
     drive: isThisProjectDrive(slot, projectId) ? slot : null,
-    start: (onStarted) => run('start', onStarted),
+    start: (scenario, onStarted) => run('start', onStarted, scenario),
     stop: (onStopped) => run('stop', onStopped),
     starting: testDrive.isPending && testDrive.variables?.action === 'start',
     stopping: testDrive.isPending && testDrive.variables?.action === 'stop',

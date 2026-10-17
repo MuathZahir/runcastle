@@ -14,6 +14,7 @@ import { ProjectChat } from './project/ProjectChat'
 import { ProjectDriveView, ProjectViewSwitch, type ProjectView } from './project/ProjectDriveView'
 import { TestDriveCard } from './project/TestDriveCard'
 import { projectDriveCard } from '../lib/project-drive'
+import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive } from '../lib/use-project-drive'
 
 /**
@@ -73,6 +74,14 @@ export function ProjectWorkspace({
   const branchesQ = trpc.project.branches.useQuery({ projectId, includeFeatureBranches: true })
   const projectDrive = useProjectDrive(projectId)
   const drive = projectDrive.drive
+  // What a project drive can land on (drive-scenarios decision 7): every
+  // scenario at the checked-out HEAD. A project with no dev command drives a
+  // bare checkout with no URL to land on, so it offers none.
+  const scenariosQ = trpc.feature.driveScenarios.useQuery({ projectId })
+  const startScenarios = scenarioMenu(scenariosQ.data?.scenarios ?? [], {
+    withOwnSection: false,
+    runnerConfigured: (scenariosQ.data?.runnerConfigured ?? false) && !!project?.devCommand?.trim(),
+  })
   const session = talk.session
   const [viewing, setViewing] = useState<ProjectConversation | null>(null)
   // The same key the Notes aside reads, so knowing whether to offer it is free.
@@ -293,7 +302,8 @@ export function ProjectWorkspace({
                     devCommand={project?.devCommand}
                     stopCommand={project?.driveStopCommand}
                     starting={projectDrive.starting}
-                    onStart={() => projectDrive.start(showDrive)}
+                    scenarios={startScenarios}
+                    onStart={(scenario) => projectDrive.start(scenario, showDrive)}
                     onPrepare={() => onOpenPreparation?.()}
                     onReturn={showDrive}
                   />
