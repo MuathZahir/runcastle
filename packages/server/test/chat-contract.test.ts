@@ -23,6 +23,8 @@ describe('chat contract', () => {
       'cancel_ticket',
       'complete_phase',
       'create_feature',
+      'declare_ready',
+      'dispatch_round',
       'emit_tickets',
       'get_feature_context',
       'get_ticket',
@@ -30,7 +32,9 @@ describe('chat contract', () => {
       'read_feature_doc',
       'record_event',
       'resolve_finding',
+      'stop_round',
       'update_ticket',
+      'wait_for_you',
     ])
   })
 

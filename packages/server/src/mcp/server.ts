@@ -4,6 +4,7 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
+  Autonomy,
   DependencyRef,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
@@ -11,8 +12,10 @@ import type {
   PlanningStep,
   PreparedKey as PreparedKeyT,
   Project,
+  ReadyDeclaration,
   ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
+  RoundSummary,
   RunStatus as RunStatusT,
   SessionKind as SessionKindT,
   SessionRow,
@@ -32,6 +35,7 @@ import {
   isPastPhase,
   isProjectSessionKind,
   nextPlanningStep,
+  resolveAutonomy,
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
@@ -44,9 +48,14 @@ import { getRuntimeCtx } from '../launcher/runtime'
 import { getSessionRow, mostRecentLiveSession } from '../launcher/sessions'
 import {
   createFeature,
+  declareReady,
+  dispatchRound,
   type FeatureListItem,
   list as listFeatures,
+  listReadyDeclarations,
   quickChange,
+  setWaiting,
+  stopRound,
 } from '../services/features'
 import { burnWarnings } from '../services/burn-warnings'
 import { landChatCommits } from '../services/chat-branch'
@@ -92,7 +101,7 @@ import {
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
-import { activeBurnClaim, latestBurn, runClaimedTicketIds } from '../services/runs'
+import { activeBurnClaim, latestBurn, listRounds, runClaimedTicketIds } from '../services/runs'
 import { addNote, listByFeature as listTestNotes } from '../services/test-notes'
 import {
   type AnnotatedModel,
@@ -424,6 +433,18 @@ export interface FeatureContext {
    */
   annotatedModels: AnnotatedModel[]
   /**
+   * The lead's loop (`the-feature-lead-runs-rounds`): the autonomy it runs
+   * under, resolved feature ?? project ?? default; every round so far, numbered
+   * from 1; the newest ready declaration; whether a drive of this feature holds
+   * the drive slot (no round starts while it does); and why the feature waits
+   * on the human, if it does.
+   */
+  autonomy: Autonomy
+  rounds: RoundSummary[]
+  latestReady: ReadyDeclaration | null
+  driveActive: boolean
+  waitingReason: string | null
+  /**
    * How many tickets this project burns at once (`config.burnConcurrency`). The
    * tickets skill budgets the batch's parallelism against it — a lap whose
    * tickets chain end to end is one sandbox at a time however wide the pool is
@@ -518,7 +539,8 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   const carried = carriedWork(ctx, feature.id)
   const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
 
-  const docsDir = featureDocsDir(projectForFeature(ctx, feature), feature)
+  const project = projectForFeature(ctx, feature)
+  const docsDir = featureDocsDir(project, feature)
   const canonical: { doc: { relPath: string; content: string }; ref: NotInlinedDoc }[] = []
   const moreDocs: FeatureDocRef[] = []
   for (const summary of listDocs(ctx, feature)) {
@@ -555,6 +577,11 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     feature,
     phase: feature.phase,
     lap: feature.lap,
+    autonomy: resolveAutonomy(project, feature),
+    rounds: listRounds(ctx, feature.id),
+    latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
+    driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
+    waitingReason: feature.waitingReason,
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
     annotatedModels: annotatedModels(ctx),
@@ -832,6 +859,56 @@ export function toolCancelTicket(
 ): { ok: true; ticket: Ticket } {
   requireOwnTicket(ctx, session, input.id)
   return { ok: true, ticket: cancelTicket(ctx, input.id, input.reason) }
+}
+
+// --- the lead's rounds (`the-feature-lead-runs-rounds`) ------------------------
+
+/**
+ * The feature a LEAD tool acts on: the feature's own chat is its lead, and no
+ * other kind dispatches, stops or declares — a drive-fix session repairs one
+ * failed drive and is not the feature's owner.
+ */
+function requireLeadFeatureId(session: SessionRow): string {
+  const featureId = requireFeatureId(session)
+  if (session.kind !== 'chat') {
+    throw new GateError(`only the feature's chat leads its rounds — a ${session.kind} session cannot`)
+  }
+  return featureId
+}
+
+export function toolDispatchRound(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { seqs: number[] },
+): Promise<{ runId: string }> {
+  return dispatchRound(ctx, requireLeadFeatureId(session), input.seqs)
+}
+
+export function toolStopRound(
+  ctx: AppCtx,
+  session: SessionRow,
+): Promise<{ runId: string; confirmed: boolean }> {
+  return stopRound(ctx, requireLeadFeatureId(session))
+}
+
+export function toolDeclareReady(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { scenario: string; whatToTest: string },
+): { ok: true; phase: PhaseT; warnings: string[] } {
+  const featureId = requireLeadFeatureId(session)
+  const { warnings } = declareReady(ctx, featureId, input)
+  return { ok: true, phase: getFeatureRow(ctx, featureId).phase, warnings }
+}
+
+export function toolWaitForYou(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { why: string },
+): { ok: true; waitingReason: string | null } {
+  const featureId = requireLeadFeatureId(session)
+  setWaiting(ctx, featureId, input.why)
+  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
 }
 
 /**
@@ -2206,6 +2283,11 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
   resolve_finding: FEATURE_KINDS,
+  // The lead's rounds: the feature's chat is its lead (`requireLeadFeatureId`).
+  dispatch_round: ['chat'],
+  stop_round: ['chat'],
+  declare_ready: ['chat'],
+  wait_for_you: ['chat'],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -2819,7 +2901,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       title: 'Get feature context',
       description:
         'Everything true of the current feature, as a summary that never grows past what you ' +
-        'can see. It opens with a header: the feature row, phase, lap, `dependsOn` (the ' +
+        'can see. It opens with a header: the feature row, phase, lap, `autonomy` ' +
+        '("run-until-ready" or "ask"), `rounds` (every round so far, numbered from 1, with its ' +
+        'tickets, landed/failed seqs, gate result and tokens), `latestReady` (your newest ready ' +
+        'declaration), `driveActive` (the human is test-driving this feature — no round starts), ' +
+        '`waitingReason`, `dependsOn` (the ' +
         'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
         'drafts waiting on this feature), `annotatedModels` (the ' +
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
@@ -3168,6 +3254,103 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           checkpointDocsAfterReply(rs.ctx, rs.session, `phase '${args.phase}' complete`)
         }
         return ok(result)
+      },
+    )
+  }
+
+  if (wants('dispatch_round')) {
+    server.registerTool(
+      'dispatch_round',
+      {
+        title: 'Dispatch a round',
+        description:
+          'Start a round: one run of sandboxed workers over exactly the pending tickets you name ' +
+          '(a failed one is retried); every other pending ticket waits for a later round. Their ' +
+          'blockedBy edges order them inside the round. When the round returns you are woken ' +
+          'with its outcome, each ticket’s status and the verify-gate result. Refused, with the ' +
+          'reason, while a round is already running, while the human is test-driving this ' +
+          'feature, before Go, and in "Ask before each round" mode until the human has replied ' +
+          'since your last dispatch.',
+        inputSchema: {
+          seqs: z
+            .array(z.number().int().min(1))
+            .min(1)
+            .describe('The seqs of the tickets this round covers, from list_tickets or get_feature_context.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolDispatchRound(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('stop_round')) {
+    server.registerTool(
+      'stop_round',
+      {
+        title: 'Stop the running round',
+        description:
+          'Cancel the round that is running: its workers are stopped and work that already ' +
+          'landed stays on the feature branch. Refused when no round is running.',
+        inputSchema: {},
+      },
+      async (_args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolStopRound(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('declare_ready')) {
+    server.registerTool(
+      'declare_ready',
+      {
+        title: 'Declare the feature ready for the human',
+        description:
+          'Put a test drive in front of the human: "Ready for you · Test drive ▸ <scenario>". ' +
+          'The first declaration moves the feature to review; later ones (after the human’s ' +
+          'notes and more rounds) keep it there. A declaration, never refused for the work’s ' +
+          'state: it returns `warnings` — a last round with failures, work nothing has reviewed ' +
+          'since it changed — and you must relay each one to the human.',
+        inputSchema: {
+          scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
+          whatToTest: z
+            .string()
+            .min(1)
+            .describe(
+              'A short paragraph aimed at the drive: what changed, where to look, and what would ' +
+                'count as broken.',
+            ),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolDeclareReady(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('wait_for_you')) {
+    server.registerTool(
+      'wait_for_you',
+      {
+        title: 'Wait for the human',
+        description:
+          'Say that nothing moves until the human acts, and why, in a few words — the feature ' +
+          'shows "Waiting for you · <why>". Use it when you propose a round in Ask mode, or when ' +
+          'you are stuck. The human’s next message, or your next dispatch, clears it.',
+        inputSchema: {
+          why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolWaitForYou(rs.ctx, rs.session, args))
       },
     )
   }
