@@ -266,6 +266,30 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
     expect(await runScenarioOnDrive(ctx, project.id, file)).toMatchObject({ ok: false })
   }, 30_000)
 
+  it('runs scenarios on a review drive only when the review path asks, switching without a restart', async () => {
+    expect((await testDrive(ctx, project, feature, 'start', 'review')).ok).toBe(true)
+    recordDriveUrl(ctx, project.id, feature.id, await serveApp())
+    await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
+    const { scenario: _none, ...before } = activeDriveInfo(project.id) ?? {}
+
+    const land = '.runcastle/scenarios/checkout/land.ts'
+    // The human's surfaces never land on a review agent's drive.
+    expect(await runScenarioOnDrive(ctx, project.id, land)).toMatchObject({ ok: false })
+
+    expect(await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/slow.ts', { allowReview: true }))
+      .toMatchObject({ ok: true, entryUrl: expect.stringContaining('/slow') })
+    expect(scenario()).toMatchObject({ name: 'Slow', status: 'landed' })
+    expect(await runScenarioOnDrive(ctx, project.id, land, { allowReview: true }))
+      .toMatchObject({ ok: true, entryUrl: expect.stringContaining('/cart?slug=drive') })
+    expect(scenario()).toMatchObject({ name: 'Land', status: 'landed' })
+
+    // Same drive throughout: nothing restarted, and the events are the feature's.
+    const { scenario: _landed, ...after } = activeDriveInfo(project.id) ?? {}
+    expect(after).toEqual(before)
+    expect(types().filter((t) => t === 'testdrive.started')).toHaveLength(1)
+    expect(types().filter((t) => t === 'scenario.landed')).toHaveLength(2)
+  }, 30_000)
+
   it('carries the docked scenario session on the drive info until the drive stops', async () => {
     await testDrive(ctx, project, feature, 'start')
     attachScenarioSession(project.id, 'sess_1')

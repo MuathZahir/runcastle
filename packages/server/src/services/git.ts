@@ -2722,7 +2722,7 @@ export async function reviewDrive(
 }
 
 /** True while THIS feature's review drive holds its project's slot. */
-function reviewDriveFor(projectId: string, featureId: string): boolean {
+export function reviewDriveFor(projectId: string, featureId: string): boolean {
   const state = driveOf(projectId)
   return state?.kind === 'feature' && state.purpose === 'review' && state.featureId === featureId
 }
@@ -3251,9 +3251,20 @@ export async function runScenarioOnDrive(
   ctx: AppCtx,
   projectId: string,
   file: string,
+  opts: ScenarioDriveOptions = {},
 ): Promise<ScenarioRunResult | ScenarioDenial> {
-  const started = startScenarioOnDrive(ctx, projectId, file)
+  const started = startScenarioOnDrive(ctx, projectId, file, opts)
   return started.ok ? started.result : started
+}
+
+/** Which drives a scenario may run against beyond the human and project drives. */
+export interface ScenarioDriveOptions {
+  /**
+   * Admit a feature's review drive too (drive-scenarios decision 12). Only the
+   * review agent's `review_drive` passes it; the human's surfaces never drive a
+   * review drive.
+   */
+  allowReview?: boolean
 }
 
 /** A scenario run refused before it started; nothing about the drive changed. */
@@ -3272,10 +3283,12 @@ export function startScenarioOnDrive(
   ctx: AppCtx,
   projectId: string,
   file: string,
+  opts: ScenarioDriveOptions = {},
 ): ScenarioDenial | { ok: true; result: Promise<ScenarioRunResult> } {
   if (!isScenarioPath(file)) return { ok: false, denied: `${file} is not a scenario under .runcastle/scenarios/` }
   const state = driveOf(projectId)
-  if (!state || state.kind === 'dryRun' || (state.kind === 'feature' && state.purpose !== 'human')) {
+  const admitted = state?.kind === 'feature' && state.purpose === 'review' ? opts.allowReview === true : true
+  if (!state || state.kind === 'dryRun' || !admitted) {
     return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
   }
   const project = getProjectById(ctx, projectId)
