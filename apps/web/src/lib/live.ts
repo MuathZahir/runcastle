@@ -286,6 +286,11 @@ export function useLiveSync(): LiveStatus {
       void u.feature.list.invalidate()
       void u.feature.get.invalidate()
       void u.feature.driveInfo.invalidate()
+      // The scenarios a drive can land on. A scenario chat commits a new file
+      // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
+      // the Scenario menu and the Test drive picker have no poll of their own —
+      // without this the scenario just made stayed off the menu until a reload.
+      void u.feature.driveScenarios.invalidate()
       // Test-drive notes: the review checklist is a live surface — a note added,
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.
