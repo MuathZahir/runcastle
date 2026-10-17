@@ -50,6 +50,7 @@ vi.mock('../src/trpc', () => {
       ticket: { retry: { useMutation: mutation } },
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
@@ -311,14 +312,14 @@ describe('the review page’s arrival bands', () => {
       at('>Review</dt>'),
       at('data-tier="work"'),
       at('id="evidence-stage"'),
-      at('Needs attention</h2>'),
+      at('Notes for the agent</h2>'),
       at('data-tier="reference"'),
       at('>History</span>'),
       at('Full account'),
     ]
     expect(order).toEqual([...order].sort((a, b) => a - b))
     // The work keeps a real heading; the reference is introduced quietly.
-    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">Needs attention<\/h2>/)
+    expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">Notes for the agent<\/h2>/)
     expect(html).not.toMatch(/<h[1-3][^>]*>History/)
   })
 
@@ -658,16 +659,16 @@ describe('the review page as one document', () => {
   it('makes the open work a section with its rows and the composer', () => {
     const html = openWork()
     expect(html).toContain('id="open-work"')
-    expect(html).toMatch(/<h2[^>]*>Needs attention<\/h2>/)
+    expect(html).toMatch(/<h2[^>]*>Notes for the agent<\/h2>/)
     expect(html).toContain('the spilled-at column shows raw epoch millis')
     expect(html).toContain('the repaired read path is never called')
     expect(html).toContain('what did you just see?')
   })
 
-  /** Nothing open: the heading steps down, and a live page keeps only the composer. */
-  it('keeps no "needs attention" heading when nothing needs any', () => {
+  /** Nothing open: a live page keeps the heading and the composer. */
+  it('keeps the notes heading and the composer when nothing needs attention', () => {
     const html = render({})
-    expect(html).not.toMatch(/<h2[^>]*>Needs attention<\/h2>/)
+    expect(html).toMatch(/<h2[^>]*>Notes for the agent<\/h2>/)
     expect(html).toContain('what did you just see?')
   })
 

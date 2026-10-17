@@ -405,6 +405,7 @@ export function ReviewBody({
     highlight: spotlight.ids,
     scrollTo: spotlight.scrollTo,
     onViewLane,
+    driveActive: driveUp,
   }
 
   const expanded = expand.expanded
