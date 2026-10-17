@@ -9,10 +9,11 @@ import type {
   SessionRow,
 } from '@runcastle/core'
 import { DEFAULT_RUNTIME, newId } from '@runcastle/core'
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
+import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitForSession, emitProject } from '../services/events'
 import {
@@ -136,8 +137,19 @@ export function markAwaitingInput(ctx: AppCtx, id: string): void {
   setAwaitingInput(ctx, id, true)
 }
 
+/**
+ * Write the bit, and push when it actually moved: the feature header's status
+ * line ("Working" vs "Ready for you") reads it, and with no signal the browser
+ * would only see a turn end on the 30s safety poll.
+ */
 function setAwaitingInput(ctx: AppCtx, id: string, awaitingInput: boolean): void {
-  ctx.db.update(sessions).set({ awaitingInput }).where(eq(sessions.id, id)).run()
+  const changed = ctx.db
+    .update(sessions)
+    .set({ awaitingInput })
+    .where(and(eq(sessions.id, id), ne(sessions.awaitingInput, awaitingInput)))
+    .returning({ id: sessions.id })
+    .all()
+  if (changed.length > 0) publishLive({ kind: 'turn', sessionId: id })
 }
 
 export interface MarkLiveInput {

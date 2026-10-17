@@ -6,6 +6,7 @@ import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
+import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
 import { setPhase } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
@@ -568,6 +569,27 @@ describe('hooks route', () => {
       expect(awaiting()).toBe(false)
       await stop()
       expect(awaiting()).toBe(true)
+    })
+
+    // The feature header's status line reads this bit (agent working vs. ready
+    // for you), so a flip has to reach the browser on the push, not the 30s
+    // safety poll — and an unchanged bit pushes nothing.
+    it('pushes a live signal when the turn state flips, and only then', async () => {
+      const signals: LiveSignal[] = []
+      const unsubscribe = subscribeLive((s) => signals.push(s))
+      try {
+        await post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+        expect(signals).toEqual([{ kind: 'turn', sessionId }])
+        await post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+        expect(signals).toHaveLength(1)
+        await post(mount(), 'user-prompt', {
+          sessionId,
+          payload: { hook_event_name: 'UserPromptSubmit', prompt: 'more' },
+        })
+        expect(signals.filter((s) => s.kind === 'turn')).toHaveLength(2)
+      } finally {
+        unsubscribe()
+      }
     })
 
     it('returns {} for a stop on an unknown session', async () => {

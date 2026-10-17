@@ -329,6 +329,21 @@ describe('the feature lead runs rounds', () => {
       expect(leadMessages(ctx, featureId)).toEqual([expect.stringMatching(/pressed Stop/)])
     })
 
+    // Killing a round's sandboxes can take seconds; the switch beside the status
+    // line must read Ask (and push) the moment Stop lands, not after the kill.
+    it('Stop flips the feature to Ask before it waits on the round to die', async () => {
+      workflowRegistry.set('ticket-burner', hangingBurner)
+      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
+      await dispatchRound(ctx, featureId, [t.seq])
+
+      await stopFeature(ctx, featureId)
+
+      const [stopped] = eventsOf(ctx, featureId, 'feature.stopped')
+      const [roundStopped] = eventsOf(ctx, featureId, 'round.stopped')
+      expect(stopped?.id).toBeLessThan(roundStopped?.id ?? 0)
+    })
+
     it('a waiting reason is cleared by a human message and by a dispatch', async () => {
       const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])

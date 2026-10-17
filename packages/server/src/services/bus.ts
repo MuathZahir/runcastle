@@ -34,6 +34,15 @@ export type LiveSignal =
       /** Ticket whose in-memory agent transcript grew or changed state. */
       ticketId: string
     }
+  | {
+      /**
+       * A session's turn state flipped (working ↔ awaiting input). It writes no
+       * timeline row — a turn is not an event anyone reads back — but the
+       * status line and the triage lanes read the bit, so it pushes like one.
+       */
+      kind: 'turn'
+      sessionId: string
+    }
 
 type Subscriber = (signal: LiveSignal) => void
 
