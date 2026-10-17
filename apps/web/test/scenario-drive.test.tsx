@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DriveScenario, ScenarioEntry } from '@runcastle/core'
+import type { DriveCallResult, DriveScenario, ScenarioEntry } from '@runcastle/core'
 import { openMenu } from './floating'
 
 /**
@@ -18,8 +18,27 @@ const SCENARIOS: ScenarioEntry[] = [
   { file: '.runcastle/scenarios/checkout/expired-coupon.ts', name: 'Expired coupon', group: 'Checkout', own: true, hasCall: false },
   { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false, hasCall: false },
 ]
+const CALL: ScenarioEntry = {
+  file: '.runcastle/scenarios/feed/blocked-only.ts',
+  name: 'Blocked only',
+  group: 'Feed',
+  own: false,
+  hasCall: true,
+}
+// What the drive lists; a test swaps it before mounting.
+let listed: ScenarioEntry[] = SCENARIOS
 const runScenario = vi.fn()
 const openScenarioChat = vi.fn()
+const sendCall = vi.fn()
+const SENT: DriveCallResult = {
+  ok: true,
+  status: 201,
+  statusText: 'Created',
+  durationMs: 42,
+  headers: [['content-type', 'application/json']],
+  body: '{"id":7,"blocked":true}',
+  truncated: false,
+}
 
 vi.mock('../src/trpc', () => ({
   trpc: {
@@ -29,9 +48,18 @@ vi.mock('../src/trpc', () => ({
     }),
     notes: { add: { useMutation: () => ({ mutateAsync: vi.fn() }) } },
     feature: {
-      driveScenarios: { useQuery: () => ({ data: { runnerConfigured: true, scenarios: SCENARIOS } }) },
+      driveScenarios: { useQuery: () => ({ data: { runnerConfigured: true, scenarios: listed } }) },
       runScenario: {
         useMutation: () => ({ isPending: false, mutate: (input: unknown) => runScenario(input) }),
+      },
+      sendCall: {
+        useMutation: () => ({
+          isPending: false,
+          mutate: (input: unknown, opts?: { onSuccess?: (r: DriveCallResult) => void }) => {
+            sendCall(input)
+            opts?.onSuccess?.(SENT)
+          },
+        }),
       },
       openScenarioChat: {
         useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
@@ -206,5 +234,143 @@ describe('the docked scenario chat', () => {
     mount(undefined, 'sess_live')
     fireEvent.click(dock()!.querySelector('[data-terminal]')!)
     expect(dock()).toBeNull()
+  })
+
+  it('names a fix by its scenario, including when Fix it briefs the live chat', () => {
+    mount(
+      { file: SCENARIOS[0]!.file, name: 'Broken', status: 'failed', failure: { reason: 'no-entry-url', outputTail: '' } },
+      'sess_live',
+    )
+    expect(dock()?.textContent).toContain('New scenario · Describe the state you want to land in')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
+    expect(dock()?.textContent).toContain('Fix scenario · Broken')
+
+    openMenu(screen.getByRole('button', { name: /^Scenario/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
+    expect(dock()?.textContent).toContain('New scenario · Describe the state you want to land in')
+  })
+})
+
+describe('the API view', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    listed = SCENARIOS
+  })
+
+  const toggle = () => screen.queryByRole('radiogroup', { name: 'Drive view' })
+  const field = (name: string) => screen.getByRole('textbox', { name }) as HTMLInputElement
+  const landedCall = (landingId: string, body = '{"blocked":true}'): DriveScenario => ({
+    file: CALL.file,
+    name: CALL.name,
+    status: 'landed',
+    entryUrl: DEV,
+    landingId,
+    token: 't0k',
+    call: {
+      method: 'POST',
+      url: 'http://localhost:5173/api/feed',
+      headers: [['Authorization', 'Bearer t0k']],
+      body,
+    },
+  })
+
+  it('offers App | API only when some scenario has a call, App first, with the app left mounted', () => {
+    mount()
+    expect(toggle()).toBeNull()
+    cleanup()
+
+    listed = [...SCENARIOS, CALL]
+    mount()
+    expect(screen.getByRole('radio', { name: 'App' }).getAttribute('aria-checked')).toBe('true')
+    const app = frame()
+    fireEvent.click(screen.getByRole('radio', { name: 'API' }))
+    expect(screen.getByRole('navigation', { name: 'Calls' }).textContent).toContain('Blocked only')
+    expect(screen.queryByRole('button', { name: /Signed out/ })).toBeNull()
+    expect(frame()).toBe(app)
+
+    fireEvent.click(screen.getAllByRole('radio', { name: 'App' })[0]!)
+    expect(screen.queryByRole('navigation', { name: 'Calls' })).toBeNull()
+    expect(frame()).toBe(app)
+  })
+
+  it('runs the picked call’s scenario, fills its request, and sends the edit with Try it', () => {
+    listed = [...SCENARIOS, CALL]
+    const { rerender } = mount()
+    fireEvent.click(screen.getByRole('radio', { name: 'API' }))
+    fireEvent.click(screen.getByRole('button', { name: /Blocked only/ }))
+    expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: CALL.file })
+
+    rerender(landedCall('l1'))
+    expect(field('URL').value).toBe('http://localhost:5173/api/feed')
+    expect(field('Header 1 name').value).toBe('Authorization')
+    expect(field('Header 1 value').value).toBe('Bearer t0k')
+    expect(field('Body').value).toBe('{"blocked":true}')
+
+    fireEvent.change(field('Body'), { target: { value: '{"blocked":false}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Try it' }))
+    expect(sendCall).toHaveBeenCalledWith({
+      projectId: 'proj_1',
+      request: {
+        method: 'POST',
+        url: 'http://localhost:5173/api/feed',
+        headers: [['Authorization', 'Bearer t0k']],
+        body: '{"blocked":false}',
+      },
+    })
+    const response = screen.getByRole('region', { name: 'Response' })
+    expect(response.textContent).toContain('201 Created')
+    expect(response.textContent).toContain('42 ms')
+    expect(response.querySelector('pre')?.textContent).toBe('{\n  "id": 7,\n  "blocked": true\n}')
+
+    // Send again keeps the seeded state and the edit.
+    fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+    expect(sendCall).toHaveBeenCalledTimes(2)
+    expect(sendCall.mock.calls[1]![0].request.body).toBe('{"blocked":false}')
+    expect(runScenario).toHaveBeenCalledTimes(1)
+
+    // Re-run reseeds, and the new landing discards the edit.
+    fireEvent.click(screen.getByRole('button', { name: 'Re-run scenario' }))
+    expect(runScenario).toHaveBeenCalledTimes(2)
+    rerender(landedCall('l2'))
+    expect(field('Body').value).toBe('{"blocked":true}')
+    expect(screen.queryByRole('region', { name: 'Response' })).toBeNull()
+  })
+
+  it('shows a failed call scenario with Fix it', () => {
+    listed = [...SCENARIOS, CALL]
+    const { rerender } = mount()
+    fireEvent.click(screen.getByRole('radio', { name: 'API' }))
+    fireEvent.click(screen.getByRole('button', { name: /Blocked only/ }))
+    rerender({ file: CALL.file, name: CALL.name, status: 'failed', failure: { reason: 'exit', exitCode: 2, outputTail: 'boom' } })
+
+    expect(screen.getByRole('alert').textContent).toContain('Scenario “Blocked only” failed: exit 2')
+    fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
+    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1', fixFile: CALL.file })
+  })
+})
+
+describe('the Blank app nudge', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    listed = SCENARIOS
+  })
+
+  const nudge = () => screen.queryByText(/Setting this up by hand every time\?/)
+
+  it('opens New scenario from its link on a project with no scenarios, and ✕ hides it', () => {
+    listed = []
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Make it a scenario.' }))
+    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide this hint' }))
+    expect(nudge()).toBeNull()
+  })
+
+  it('is absent once any scenario exists', () => {
+    mount()
+    expect(nudge()).toBeNull()
   })
 })

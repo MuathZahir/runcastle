@@ -1,22 +1,29 @@
 import { useState } from 'react'
 import type { DriveScenario } from '@runcastle/core'
-import { Button, IconButton, StatusLabel } from '../../ui'
+import { Button, IconButton, LINK, SegmentedControl, StatusLabel, cx } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../ui/dropdown-menu'
 import { IconChevronDown, IconPlus, IconTerminal, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
-import { scenarioFailureLine, scenarioMenu, scenarioTarget } from '../../lib/feature-ui/scenarios'
+import { callMenu, hasCalls } from '../../lib/feature-ui/api-call'
+import { scenarioFailureLine, scenarioMenu, scenarioTarget, showsScenarioNudge } from '../../lib/feature-ui/scenarios'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
+import { ApiView } from './ApiView'
 import { DrivePanel } from './DrivePanel'
 import { ScenarioMenuItems } from './ScenarioMenuItems'
 
 /** The live drive as the scenario controls read it — `driveInfo`'s slice. */
 export interface ScenarioDriveInfo {
   devUrl: string
+  /** The branch under the wheel: a ✕ on the nudge holds for this drive only. */
+  branch?: string
   scenario?: DriveScenario
   scenarioSessionId?: string
 }
+
+/** What the docked chat was opened for, named in its header: ＋ New scenario, or Fix it on one. */
+type ChatErrand = { kind: 'new' } | { kind: 'fix'; name: string }
 
 /**
  * A human's running drive with its scenarios (drive-scenarios decisions 3, 7,
@@ -69,8 +76,15 @@ export function ScenarioDrive({
   // Closing the dock only hides it; ＋ New scenario brings the same chat back.
   const [hidden, setHidden] = useState<string | null>(null)
   const [ended, setEnded] = useState<readonly string[]>([])
+  // Set on the click, so Fix it renames the header even when the server
+  // briefs an already-live chat instead of opening a new one.
+  const [errand, setErrand] = useState<ChatErrand>({ kind: 'new' })
   // Blank app: back to the plain URL, until the next landing takes it again.
   const [blankOver, setBlankOver] = useState<string | null>(null)
+  // App | API: the app stays mounted (hidden) under the API view, so it is not reloaded.
+  const [view, setView] = useState<'app' | 'api'>('app')
+  // The nudge's ✕, held by the drive it was clicked on.
+  const [nudgeHiddenFor, setNudgeHiddenFor] = useState<string | null>(null)
 
   const scenario = drive.scenario
   const blank = !!scenario?.landingId && scenario.landingId === blankOver
@@ -79,11 +93,48 @@ export function ScenarioDrive({
   // elsewhere, or before a reload.
   const sessionId = opened && !ended.includes(opened) ? opened : drive.scenarioSessionId
   const docked = !!sessionId && sessionId !== hidden && !ended.includes(sessionId)
+  const withCalls = hasCalls(menu)
+  const api = withCalls && view === 'api'
+  const driveKey = drive.branch ?? drive.devUrl
+  const nudge = showsScenarioNudge({
+    scenario,
+    scenarios: scenariosQ.data?.scenarios,
+    dismissed: nudgeHiddenFor === driveKey,
+  })
 
   const pick = (file: string | null) => {
     if (file) run.mutate({ projectId, file })
     else setBlankOver(scenario?.landingId ?? null)
   }
+  const newScenario = () => {
+    setErrand({ kind: 'new' })
+    openChat.mutate({ projectId })
+  }
+  const fix = (failed: DriveScenario) => {
+    setErrand({ kind: 'fix', name: failed.name })
+    openChat.mutate({ projectId, fixFile: failed.file })
+  }
+
+  const strip =
+    scenario?.status === 'running' ? (
+      <ScenarioRunning scenario={scenario} />
+    ) : scenario?.status === 'failed' ? (
+      <ScenarioFailed scenario={scenario} fixing={openChat.isPending} onFix={() => fix(scenario)} />
+    ) : null
+
+  const viewToggle = withCalls && (
+    <SegmentedControl
+      size="sm"
+      label="Drive view"
+      className="w-24"
+      items={[
+        { value: 'app', label: 'App' },
+        { value: 'api', label: 'API' },
+      ]}
+      value={api ? 'api' : 'app'}
+      onChange={setView}
+    />
+  )
 
   const scenarioMenuControl = (
     <DropdownMenu>
@@ -96,30 +147,52 @@ export function ScenarioDrive({
       <DropdownMenuContent align="start">
         <ScenarioMenuItems menu={menu} onPick={pick} />
         <DropdownMenuSeparator />
-        <DropdownMenuItem icon={<IconPlus />} onSelect={() => openChat.mutate({ projectId })}>
+        <DropdownMenuItem icon={<IconPlus />} onSelect={newScenario}>
           New scenario
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
+  const toolbar = (
+    <>
+      {viewToggle}
+      {scenarioMenuControl}
+    </>
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 md:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        {scenario?.status === 'running' && <ScenarioRunning scenario={scenario} />}
-        {scenario?.status === 'failed' && (
-          <ScenarioFailed
+        {!api && strip}
+        {nudge && (
+          <p className="m-0 flex items-center gap-2 px-1 text-xs text-text-tertiary">
+            <span className="min-w-0 flex-1">
+              Setting this up by hand every time?{' '}
+              <button type="button" className={cx(LINK, 'font-medium')} onClick={newScenario}>
+                Make it a scenario.
+              </button>
+            </span>
+            <IconButton size="sm" label="Hide this hint" icon={<IconX />} onClick={() => setNudgeHiddenFor(driveKey)} />
+          </p>
+        )}
+        {api && (
+          <ApiView
+            projectId={projectId}
+            calls={callMenu(menu)}
             scenario={scenario}
-            fixing={openChat.isPending}
-            onFix={() => openChat.mutate({ projectId, fixFile: scenario.file })}
+            strip={strip}
+            toolbar={toolbar}
+            onRun={pick}
           />
         )}
-        <DrivePanel
-          {...(featureId ? { featureId } : { projectId })}
-          url={target.url}
-          frameKey={target.key}
-          toolbar={scenarioMenuControl}
-        />
+        <div className={api ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+          <DrivePanel
+            {...(featureId ? { featureId } : { projectId })}
+            url={target.url}
+            frameKey={target.key}
+            toolbar={toolbar}
+          />
+        </div>
       </div>
       {docked && (
         <aside
@@ -128,7 +201,15 @@ export function ScenarioDrive({
         >
           <header className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5">
             <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">
-              <span className="font-medium text-text">New scenario</span> · Describe the state you want to land in
+              {errand.kind === 'fix' ? (
+                <>
+                  <span className="font-medium text-text">Fix scenario</span> · {errand.name}
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-text">New scenario</span> · Describe the state you want to land in
+                </>
+              )}
             </span>
             <IconButton size="sm" label="Hide the scenario chat" icon={<IconX />} onClick={() => setHidden(sessionId)} />
           </header>
