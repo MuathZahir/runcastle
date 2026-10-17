@@ -37,7 +37,7 @@ This is the project-facing contract, a peer of the drive contract in the `prepar
 - **Output.** The scenario prints `ENTRY_URL=<url>` on stdout, and the last such line wins.
   - A relative URL (`/__drive/login?token=…&to=/cart`) resolves against the drive's URL; an absolute one is used as is.
   - Any other output is shown to the human but never parsed.
-  - An optional `TOKEN=` line is reserved for API scenarios in a later lap; lap 1 ignores it.
+  - An optional `TOKEN=<value>` line (last one wins) carries a credential for API calls (lap 2, see "API scenarios and Try it").
 - **Success and timeout.** Exit 0 together with an `ENTRY_URL` means success. A scenario that runs past a fixed timeout (two minutes) is killed and fails like any other.
 - **Login route.** For an app with sign-in, the app carries one drive-only route (e.g. `/__drive/login?token=…&to=…`).
   - It exists only when the drive environment is set, and never in production.
@@ -109,6 +109,63 @@ Runcastle's own repo ships one scenario, `.runcastle/scenarios/review/feature-at
 - The runcastle project's own scenario runner host setting (`bun {file}`) lives in the human's installed runcastle, which gains the setting only when this feature is published. So the human records it after merge; a burn cannot.
 - This lap's review exercises the UI in the *inner* runcastle, the branch build, on runcastle-demo, a throwaway repo: a project drive there, ＋ New scenario in setup mode, then the picker, switching and a failure.
 
+### API scenarios and Try it (lap 2)
+
+- **The request.** An API scenario is a scenario with a sibling `.http` file at the same path (`feed/blocked-only.ts` + `feed/blocked-only.http`), in the standard `.http` request format:
+  - a request line `METHOD path`;
+  - header lines;
+  - a blank line;
+  - an optional body.
+  Lines starting with `#` or `//` are comments, and a `###` separator ends the request: one request per scenario, and anything after the first is ignored.
+- **Placeholders.** `{{token}}` is the scenario's `TOKEN`, and `{{run}}` is its `RUNCASTLE_SCENARIO_RUN`. A relative path resolves against the drive URL. An unknown placeholder is left as is and shown, never an error.
+- **Discovery.** Discovery pairs a `.http` with its scenario (`hasCall`). A `.http` file alone is never a scenario, and a `.http` file with no scenario sibling is ignored.
+- **In the drive.** The drive panel header gains an **App | API** toggle.
+  - The API view lists the calls, grouped like the Scenario menu.
+  - Picking one runs its scenario against the live drive, then shows the filled request, editable in place.
+  - **Try it** sends it from runcastle's server to the drive and shows the status, duration, response headers and body (pretty-printed when it is JSON).
+  - **Send again** reuses the seeded state and token; **Re-run scenario** reseeds.
+  - A failed scenario shows the same failure strip and **Fix it** as the app view.
+  - Edits live only in the view and are never written back.
+- **Sending** is a server-side operation over the live drive, shared by the human's Try it and the review agent's `try_call`. A request that cannot be sent at all (connection refused, a bad URL) comes back as an error result, not a thrown failure. A response body is capped (e.g. 256 KB) and marked as truncated when it is cut.
+- **The scenario chat writes calls too.** Its briefing teaches the `.http` sibling and `TOKEN=`. In setup mode for an app with token-based API auth, minting a token is part of the base fixtures.
+
+### Review agents replay scenarios (lap 2)
+
+- **`review_drive` gains two actions,** both against the live review drive with no restart, so an agent switches scenarios freely, one per criterion if it likes:
+  - `scenario` ({ file }) runs the scenario through the same runner as the human's picker and returns the entry URL (or the failure). The agent opens it in `agent-browser`, so with sign-in it lands signed in.
+  - `try_call` ({ file }) sends the scenario's filled request through the same send path as Try it and returns the response.
+- **The review prompt lists the drive's scenarios** (file, group, name, own, hasCall) and tells the agent:
+  - reach each criterion's state through a scenario when one fits, the feature's own first;
+  - improvise only when none fits, and then file an observation, "no scenario reaches X";
+  - a scenario failing during review is a defect finding with its file, reason and output tail.
+- **Review agents never write scenarios.** Lap 1's rule that review drives ignore scenarios is superseded.
+
+### Features ship scenarios (lap 2)
+
+- **Planning judges.** The tickets step, and a lap session's re-carding, ask whether the person driving the feature would have to build state by hand to see it.
+  - If yes, the implementation ticket that builds that state gets an acceptance criterion to ship the scenario (plus a `.http` for an API change), reusing existing fixtures.
+  - The review ticket names it to replay.
+  - Copy changes and toggles get none.
+- **Only in a set-up project.** `get_feature_context` reports whether the project is set up (`.runcastle/scenarios/` on the base branch and a runner recorded), with the existing scenarios and `_` fixture paths. In a project that is not set up, the planner cards nothing and mentions ＋ New scenario once at close.
+- **The burn agent** writes and typechecks the scenario but cannot run it: a sandbox has no drive. Its first run is the review drive.
+
+### The Blank app nudge (lap 2)
+
+- **When.** On a Blank app drive of a project with no scenarios at all, one quiet line under the drive panel header: "Setting this up by hand every time? **Make it a scenario.**" The link opens ＋ New scenario.
+- **Going away.** It is gone once the project has a scenario. A ✕ hides it for the rest of that drive.
+- **No stored flag.**
+
+### `prepare` and scenarios (lap 2)
+
+- **The skill documents the scenario contract** beside the drive contract.
+- **The drive contract gains a rule:** every value the app needs to reach its data (above all the database URL) goes out through `drive.env`, because scenarios reach the drive's database only through that overlay. The closing dry run checks it, and an existing setup that bypasses `drive.env` is told and fixed in the session.
+- **The closing message** mentions ＋ New scenario in one line.
+- **What `prepare` still does not do:** record a runner, or write a route or fixtures.
+
+### Small fixes from lap 1's review (lap 2)
+
+- **The docked chat's header names its errand:** "New scenario · Describe the state you want to land in" for ＋ New scenario, and "Fix scenario · <name>" for **Fix it**.
+
 ## Seams
 
 1. **Scenario service** (new; the main seam). A server-side module with two operations, tested against a temp git repo with throwaway scenario scripts and a real runner command (`bun {file}`).
@@ -126,6 +183,23 @@ Runcastle's own repo ships one scenario, `.runcastle/scenarios/review/feature-at
    - the docked chat;
    - the panel navigating on each landing id.
 
+### Lap 2 seams
+
+8. **Scenario service, extended** (existing):
+   - `TOKEN=` parsing;
+   - `hasCall` pairing in discovery, with `.http` files never listed as scenarios;
+   - a pure `.http` parse-and-fill (request line, headers, body, `###` end, `{{token}}` / `{{run}}`).
+   Observable in unit tests.
+9. **Call sending over the live drive** (new): one server operation that sends a filled request to the drive and returns status, duration, headers, body (capped) or an error result. It is shared by the tRPC Try it procedure and `review_drive`'s `try_call`.
+10. **`review_drive`** (existing MCP tool, new `scenario` / `try_call` actions). Observable: runs against a live review drive without restart, and refuses when the drive is not this run's.
+11. **Review prompt rendering** (existing): a SCENARIOS block in both review templates.
+12. **`get_feature_context`** (existing): a `scenarios` field reporting set-up, runner, scenarios and fixtures.
+13. **Web drive views** (existing):
+    - the App | API toggle and API view;
+    - the Blank app nudge;
+    - the dock header naming its errand.
+14. **Prompts and skills** (content): the scenario chat briefing (`.http` and `TOKEN`), the tickets and revisit skills (shipping scenarios), and the prepare skill and prompt (scenario contract, the `drive.env` rule, the closing line). Burns and sessions on the installed runcastle see these only after publish.
+
 ## Out of scope
 
 - Captures, before/after comparison and determinism (the draft "Reliable captures of screens and calls").
@@ -142,8 +216,4 @@ Runcastle's own repo ships one scenario, `.runcastle/scenarios/review/feature-at
 
 ## Later laps
 
-- **API scenarios and Try it:** a scenario plus one request, with a Swagger-like **Try it** that runs it against the drive, authenticated with the scenario's `TOKEN`. Only the calls scenarios exercise are listed (brief item 8).
-- **Review agents replay scenarios** instead of improvising setup, so their drive matches the human's (brief item 9). The dogfood scenario is the first candidate to replace the prose in runcastle's drive instructions.
-- **Features ship a scenario** when the agent judges the state hard to reach; never required (brief item 7).
-- **The Blank app nudge:** the first time the human picks Blank app, one line, "Setting this up by hand every time? Make it a scenario."
-- **`prepare` learns about scenarios**, e.g. mentions them, or offers setup on a fresh project.
+All of lap 1's deferred scope was promoted into lap 2 (decisions 10–15). Nothing is parked on this feature now. Replacing the prose in runcastle's own drive instructions with the dogfood scenario is the human's edit to make after merge, in their installed runcastle's settings.
