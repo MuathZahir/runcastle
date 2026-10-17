@@ -203,7 +203,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Checkbox` | `checked`, `onChange(checked)`, `label`, `disabled`, `size` `sm` · `md`, `id`, `aria-label`, `className`. | A native checkbox on the tokens (`border-strong` box; `primary` fill + check when on); the label toggles it. No raw `type="checkbox"` elsewhere. |
 | `Switch` | `checked`, `onChange(checked)`, `label`, `disabled`, `id`, `aria-label`, `className`. | `role="switch"`, a sliding thumb; on = `primary`. For a setting that applies at once. |
 | `EmptyState` | `title`, `icon`, `hint`, `action`, `compact`, `className`. | No frame, no icon chip. |
-| `Timeline` · `TimelineNode` | `Timeline`: `label`, `className`, children (the nodes). `TimelineNode`: `variant` `ring` (default) · `milestone`; `tone` `success` · `warning` · `danger` · `neutral` (milestone); `icon` (milestone); `title`; `meta` (quiet 12px after the title); `aside` (right-aligned); children (under the heading). | An ordered list on one `border-strong` connector. A ring for an ordinary step; a milestone is a 23px disc with a 16% tint of its tone. The lap trail. |
+| `Timeline` · `TimelineNode` | `Timeline`: `label`, `className`, children (the nodes). `TimelineNode`: `variant` `ring` (default) · `milestone`; `tone` `success` · `warning` · `danger` · `neutral` (milestone); `icon` (milestone); `title`; `meta` (quiet 12px after the title); `aside` (right-aligned); children (under the heading). | An ordered list on one `border-strong` connector. A ring for an ordinary step; a milestone is a 23px disc with a 16% tint of its tone. |
 
 **Fields**
 
@@ -230,7 +230,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 | `Section` | `title`, `action`, `className`, children. | A SectionLabel over content, no border. |
 
 **Other**: `DimLine`, `FailureNote` (`danger-subtle` notice about a path),
-`BranchMenu`, `LapSections`, `NoteThumbnail`, `BARE_BUTTON`.
+`BranchMenu`, `RoundSections`, `NoteThumbnail`, `BARE_BUTTON`.
 
 ### Dialog
 
@@ -290,8 +290,8 @@ import a module directly, and removing the barrel is a later cleanup.
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel, the review drive's dirty-tree denial. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
-| `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
-| `timeline.ts` | A lap's timeline nodes in lap order: burns (work, then fixes) and review/verification passes. |
+| `rounds.ts` | The round trail: rounds numbered from runs, agent fixes and ready declarations between them, `groupByRound`, the latest round's account. |
+| `tickets.ts` | Ticket counts and labels, pending tickets, ticket model chips. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
 | `session.ts` | Session lifecycle: the Chat tab's session and context line, shipped QA sessions, shipped-at. |
 | `internal.ts` | Shared private helpers. **Not** re-exported by the barrel. |
@@ -329,7 +329,7 @@ Two tiers. Both run under the root `vitest run`; component tests live in
 **Tier 1 — static markup. The default.** For anything whose whole behaviour is
 the markup it emits. Zero dependencies: `createElement` from `react` plus
 `renderToStaticMarkup` from `react-dom/server`, in a plain `.ts` file. Assert on
-the rendered string. Pattern: `test/lap-sections.test.ts`.
+the rendered string. Pattern: `test/round-sections.test.ts`.
 
 **Tier 2 — a real DOM. Opt in per file.** For behaviour a string cannot show:
 portals, Escape handling, focus restore, events. Put

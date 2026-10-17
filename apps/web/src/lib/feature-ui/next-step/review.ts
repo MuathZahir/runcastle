@@ -42,9 +42,6 @@ export function resolveReview(input: ResolverInput): NextStep {
     ctx.driveState && ctx.driveState !== 'idle' ? ctx.driveState : ctx.driving ? 'serving' : 'idle'
   const driving = driveState !== 'idle'
   const view = driveView(driveState)
-  // Review offers two forward verbs (decision 21): Iterate — keep working, which
-  // is the triage door below — and Merge & ship. Test drive stays available
-  // throughout.
   // Any other drive — a dry run, another feature's, a project drive — holds the
   // same singleton slot, so the server refuses a feature drive outright while
   // one is up (decision 9) — said here rather than on click, naming the holder.
@@ -61,15 +58,10 @@ export function resolveReview(input: ResolverInput): NextStep {
   // The unverified-drive caveat is not the bar's any more: it is a chip in the
   // state line, beside the Test drive control it is about. The bar carries one
   // line and it is the count (decision 3).
-  // The review bar has exactly two forward decisions now — Merge & ship, or
-  // Iterate (decision 21). "Address notes" and "Fix N open defects" were the
-  // same decision as Iterate ("this isn't ready") entered through two more
-  // doors, with the fork duplicated inside one of them; the triage step behind
-  // Iterate is where that choice is made, once, over the whole list.
   const openNotes = ctx.openNotes ?? 0
   const openDefects = ctx.openDefects ?? 0
   const openWork = openNotes + openDefects
-  // The bar states its own reason (decision 3). Iterate leads BECAUSE work is
+  // The bar states its own reason (decision 3). The chat leads BECAUSE work is
   // open, and until now the count that decided it was said in a paragraph the
   // guidance flag could hide — so the human stared at a primary whose input was
   // nowhere on the page. One permanent line, on every review bar, carrying the

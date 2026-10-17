@@ -47,7 +47,7 @@ export function ReviewDriveDeniedCard({
   busy: boolean
   /** Why the mint was turned down, in the server's words, or null. */
   refusal: string | null
-  /** Mint another review pass for this lap and burn it. */
+  /** Mint another review pass and burn it. */
   onReview: () => void
   onDismiss: () => void
 }) {
@@ -76,7 +76,7 @@ export function ReviewDriveDeniedCard({
       <p className="m-0">
         The drive was refused because the working tree had uncommitted changes, so the review ran
         repo-only — the gates and the diff, with no app to walk. Commit or discard the files below,
-        then run another review: a fresh pass is minted for this lap and burns with the drive
+        then run another review: a fresh pass is minted and burns with the drive
         available to it.
       </p>
       {denial.dirtyFiles.length > 0 ? (

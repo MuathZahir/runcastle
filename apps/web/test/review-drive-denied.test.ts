@@ -181,7 +181,7 @@ describe('ReviewDriveDeniedCard', () => {
    *  fresh one — so the banner never claims to resume the reviewer it refused. */
   it('offers a fresh pass rather than a retry of the refused one', () => {
     const html = render()
-    expect(html).toContain('a fresh pass is minted for this lap')
+    expect(html).toContain('a fresh pass is minted and burns')
     expect(html).not.toContain('Retry review')
   })
 

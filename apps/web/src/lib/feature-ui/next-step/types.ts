@@ -44,7 +44,7 @@ export interface NextAction {
   disabled?: string
   /**
    * The one click that clears {@link disabled} and takes this road anyway —
-   * rendered on the reason line beside the dead button (decision 20). Iterate
+   * rendered on the reason line beside the dead button (decision 20). A launch
    * during a test drive is the case it exists for: "Stop the test drive first"
    * was a true sentence and a dead end, and the escape makes it a button.
    */
