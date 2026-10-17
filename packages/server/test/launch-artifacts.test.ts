@@ -369,6 +369,8 @@ describe('renderSettings', () => {
       expect(plain).not.toContain('wait-messages')
       expect(plain).not.toContain('asyncRewake')
       for (const purpose of others) {
+        // Setup mode widens a scenario session's `git add` on purpose (scenario-session.test.ts).
+        if (kind === 'scenario' && purpose === 'scenario-setup') continue
         expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
       }
     }

@@ -58,6 +58,18 @@ async function gitLines(repoPath: string, args: string[]): Promise<string[]> {
 }
 
 /**
+ * Every path under {@link SCENARIOS_DIR} at `ref`, `_` shared code included —
+ * what a scenario session is shown it can build on. Empty when there is none.
+ */
+export async function listScenarioPaths(repoPath: string, ref: string): Promise<string[]> {
+  try {
+    return await gitLines(repoPath, ['ls-tree', '-r', '--name-only', ref, '--', SCENARIOS_DIR])
+  } catch {
+    return []
+  }
+}
+
+/**
  * The scenarios at `ref`, read from git rather than the working tree so a
  * feature's scenarios list before its drive has checked the branch out. `own`
  * marks the files `ref` added or changed against `baseBranch`; own sort first,
@@ -68,12 +80,7 @@ export async function listScenarios(
   repoPath: string,
   opts: { ref: string; baseBranch?: string },
 ): Promise<ScenarioEntry[]> {
-  let files: string[]
-  try {
-    files = await gitLines(repoPath, ['ls-tree', '-r', '--name-only', opts.ref, '--', SCENARIOS_DIR])
-  } catch {
-    return []
-  }
+  const files = await listScenarioPaths(repoPath, opts.ref)
   let changed = new Set<string>()
   if (opts.baseBranch) {
     try {

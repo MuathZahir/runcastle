@@ -106,6 +106,8 @@ import {
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
+import { SCENARIO_FILE_PLACEHOLDER, type ScenarioRunResult } from '../services/scenarios'
+import { updateSettings } from '../services/settings'
 import { withheldDriveFor } from '../workflows/review-ticket'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { registerOrchestratorTools } from './orchestrator-tools'
@@ -1475,6 +1477,67 @@ export async function toolRetryDrive(
   }
 }
 
+// --- the scenario session's tools (drive-scenarios decision 8) ---------------
+
+/** Refuse anything but a `scenario` session, and resolve the project it belongs to. */
+function requireScenarioSession(ctx: AppCtx, session: SessionRow, what: string): Project {
+  if (session.kind !== 'scenario') {
+    throw new GateError(
+      `${what} belongs to a scenario session, and this is a ${session.kind} session. Scenarios ` +
+        'are written and landed from ＋ New scenario inside a running test drive.',
+    )
+  }
+  // Its scope follows its drive: a feature drive's session has a feature.
+  return session.featureId
+    ? projectForFeature(ctx, getFeatureRow(ctx, session.featureId))
+    : requireProject(ctx, session)
+}
+
+/**
+ * Land the human on a scenario (drive-scenarios decision 8): run it through the
+ * same runner the picker uses, against this session's drive, and point the
+ * drive panel at its `ENTRY_URL`. The result is the scenario service's own —
+ * the landing, or the failure the human sees (reason plus output tail) — or
+ * the drive's refusal. Refused outright when the drive this session is docked
+ * to is no longer the live one.
+ */
+export async function toolRunScenario(
+  ctx: AppCtx,
+  session: SessionRow,
+  file: string,
+): Promise<ScenarioRunResult | git.ScenarioDenial> {
+  const project = requireScenarioSession(ctx, session, 'Running a scenario')
+  const drive = git.activeDriveInfo(project.id)
+  if (drive?.scenarioSessionId !== session.id) {
+    throw new GateError(
+      'the drive this scenario session was opened on is no longer running, so there is nothing ' +
+        'to land on. Tell the human; a new drive opens its own scenario chat.',
+    )
+  }
+  return git.runScenarioOnDrive(ctx, project.id, file)
+}
+
+/**
+ * Record the project's scenario runner (decision 5's setup step) — the one
+ * setting a scenario session may write, through the settings service so
+ * `settings.updated` reaches the UI. The command must carry `{file}`.
+ */
+export function toolSetScenarioRunner(
+  ctx: AppCtx,
+  session: SessionRow,
+  command: string,
+): { scenarioRunner: string } {
+  const project = requireScenarioSession(ctx, session, 'Setting the scenario runner')
+  if (!command.includes(SCENARIO_FILE_PLACEHOLDER)) {
+    throw new InvalidInputError(
+      `the scenario runner must contain ${SCENARIO_FILE_PLACEHOLDER}, where runcastle puts the ` +
+        'scenario file — e.g. `bun {file}` or `bin/rails runner {file}`.',
+    )
+  }
+  updateSettings(ctx, { key: 'scenarioRunner', value: command, projectId: project.id })
+  return { scenarioRunner: getProjectById(ctx, project.id)?.scenarioRunner ?? command }
+}
+
 // --- the project session's three tools (decisions 15, 19, 21) ---------------
 
 export interface CreateFeatureResult {
@@ -2170,7 +2233,12 @@ const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'run']
+/**
+ * `scenario` is in neither list: its scope follows its drive (feature or
+ * project), so it is offered only the tools that work at either scope plus its
+ * own two.
+ */
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'run']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
@@ -2222,6 +2290,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Single-kind tools, each gated on that kind at call time.
   dry_run_drive: ['prepare'],
   retry_drive: ['drive-fix'],
+  run_scenario: ['scenario'],
+  set_scenario_runner: ['scenario'],
   // Run-scoped: `requireRunIdentity`.
   review_drive: ['run'],
   report_finding: ['run'],
@@ -2230,7 +2300,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   add_test_note: [],
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
-  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS],
+  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // The orchestrator's tools (`whole-cuts-plan-themselves`): offered to the
   // project session, refused at call time unless it is a live `orchestrate`
   // session with the setting on (`requireOrchestratorSession`). Registered in
@@ -2479,6 +2549,54 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(await toolRetryDrive(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('run_scenario')) {
+    server.registerTool(
+      'run_scenario',
+      {
+        title: 'Land the human on a scenario',
+        description:
+          'Run one scenario through the project’s scenario runner against the drive this session ' +
+          'is docked to — the same path the human’s picker takes — and, on success, point their ' +
+          'drive panel at its ENTRY_URL. Commit the scenario first. The reply is the landing ' +
+          '(`ok: true`, `entryUrl`) or the failure the human sees (`failure.reason`, ' +
+          '`failure.exitCode`, `failure.outputTail`), or `denied` when the drive refused the run. ' +
+          'Scenario sessions only.',
+        inputSchema: {
+          file: z
+            .string()
+            .min(1)
+            .describe('Repo-relative path of the scenario, e.g. `.runcastle/scenarios/checkout/expired-coupon.ts`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolRunScenario(rs.ctx, rs.session, args.file))
+      },
+    )
+  }
+
+  if (wants('set_scenario_runner')) {
+    server.registerTool(
+      'set_scenario_runner',
+      {
+        title: 'Record the scenario runner',
+        description:
+          'Record the project’s scenario runner: the command that runs one scenario file, with ' +
+          '`{file}` where its repo-relative path goes (e.g. `bun {file}`, `bin/rails runner {file}`). ' +
+          'The only setting this session may write. Scenario sessions only.',
+        inputSchema: {
+          command: z.string().min(1).describe('The runner command; must contain `{file}`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolSetScenarioRunner(rs.ctx, rs.session, args.command))
       },
     )
   }

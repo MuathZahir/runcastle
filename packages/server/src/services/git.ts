@@ -3282,17 +3282,9 @@ export function startScenarioOnDrive(
   if (state.devReadiness !== 'ready' || !state.devUrl) return { ok: false, denied: DENY_APP_NOT_READY }
   if (state.scenarioRunning) return { ok: false, denied: DENY_SCENARIO_RUNNING }
 
-  let scope: EmitScope
-  let identity: DriveIdentity
-  if (state.kind === 'feature') {
-    const feature = tryGetFeature(ctx, state.featureId)
-    if (!feature) return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
-    scope = { featureId: state.featureId }
-    identity = { slug: feature.slug, branch: state.branch }
-  } else {
-    scope = { projectId }
-    identity = { slug: PROJECT_DRIVE_SLUG, branch: state.branch }
-  }
+  const driven = scenarioDriveScope(ctx, state)
+  if (!driven) return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
+  const { scope, identity } = driven
 
   const name = scenarioName(file)
   state.scenarioRunning = true
@@ -3315,6 +3307,36 @@ export function startScenarioOnDrive(
     return outcome
   })
   return { ok: true, result }
+}
+
+/** Where a scenario drive emits and who it runs as, or null if its feature is gone. */
+function scenarioDriveScope(
+  ctx: AppCtx,
+  state: Extract<DriveState, { kind: 'feature' | 'project' }>,
+): { scope: EmitScope; identity: DriveIdentity } | null {
+  if (state.kind === 'project') {
+    return { scope: { projectId: state.projectId }, identity: { slug: PROJECT_DRIVE_SLUG, branch: state.branch } }
+  }
+  const feature = tryGetFeature(ctx, state.featureId)
+  if (!feature) return null
+  return { scope: { featureId: state.featureId }, identity: { slug: feature.slug, branch: state.branch } }
+}
+
+/**
+ * The environment a scenario on the project's live human or project drive runs
+ * with — the `RUNCASTLE_*` identity and the `drive.env` values — for the
+ * scenario session's briefing. Server-only: `driveInfo` carries names, never
+ * values. Null when no such drive is live.
+ */
+export function scenarioDriveEnv(
+  ctx: AppCtx,
+  projectId: string,
+): { identity: Record<string, string>; envOverlay: Record<string, string> } | null {
+  const state = driveOf(projectId)
+  if (!state || state.kind === 'dryRun') return null
+  const driven = scenarioDriveScope(ctx, state)
+  if (!driven) return null
+  return { identity: driveIdentityEnv(driven.identity), envOverlay: { ...state.envOverlay } }
 }
 
 /** Record a finished run on its drive, and say so at the drive's scope. */

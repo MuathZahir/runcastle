@@ -51,12 +51,19 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * decision 9). It belongs to a FEATURE — the one whose drive died — but runs on
  * the HOST in the real checkout like `prepare`, because the environment it is
  * there to repair is the developer's own machine.
+ * `scenario` = the ＋ New scenario / Fix it chat docked beside a running human
+ * drive (drive-scenarios decision 8). It runs on the HOST in the drive's
+ * checkout, and it is the one kind whose scope follows something else: the
+ * drive's. On a feature drive it has a `featureId`; on a project drive it is
+ * project-scoped (`featureId` null), so code that asks "does this session have
+ * a feature?" must ask the row, never {@link isProjectSessionKind}.
  */
 export const SessionKind = z.enum([
   'chat',
   'prepare',
   'project',
   'drive-fix',
+  'scenario',
 ])
 export type SessionKind = z.infer<typeof SessionKind>
 
@@ -113,6 +120,11 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  *
  * `relay` — a headless run that resumes a feature's planning conversation with
  * a message from the orchestrator as its prompt.
+ *
+ * `scenario-setup` — a `scenario` session launched while the driven branch had
+ * no `.runcastle/scenarios/` yet (drive-scenarios decision 5). Decided once at
+ * launch: it briefs the agent to set scenarios up (login route, typecheck,
+ * fixtures, runner) and opens the edit guard to the whole checkout.
  */
 export const SessionPurpose = z.enum([
   'resolve-conflict',
@@ -120,6 +132,7 @@ export const SessionPurpose = z.enum([
   'self-plan',
   'orchestrate',
   'relay',
+  'scenario-setup',
 ])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 

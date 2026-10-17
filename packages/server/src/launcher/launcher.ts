@@ -34,7 +34,7 @@ import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
 import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
-import { emit, emitForSession, emitProject } from '../services/events'
+import { type EmitScope, emit, emitForSession, emitProject, emitScoped } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
 import * as git from '../services/git'
 import {
@@ -55,6 +55,7 @@ import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { orchestratorCatchUp } from '../services/orchestrator-notify'
 import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
+import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import { projectTriageKickoffFor } from './runtimes/skills'
@@ -268,7 +269,11 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
  * land through the feature's queue (`one-chat-per-feature` decision 2).
  */
 function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: string): void {
-  const live = activeSessionsForFeature(ctx, feature.id).filter((s) => s.id !== excludeSessionId)
+  // A scenario session is docked to the drive, not to the feature's checkout
+  // slot, so it neither blocks nor is blocked by the feature's own terminal.
+  const live = activeSessionsForFeature(ctx, feature.id).filter(
+    (s) => s.id !== excludeSessionId && s.kind !== 'scenario',
+  )
   if (live.length > 0) {
     throw new GateError(
       `a ${live[0].kind} session is already live for ${feature.slug} — only one terminal per feature; end or resume it first`,
@@ -569,6 +574,14 @@ export async function launchSession(
     throw new GateError(
       'a drive-fix session is opened by "Fix drive" on the failed drive itself, not as a talk ' +
         'session — it needs the failure in hand and the developer\'s own checkout to repair.',
+    )
+  }
+  // Nor a scenario session: it belongs to a running drive, not to the feature,
+  // and has its own launcher — see {@link launchScenarioSession}.
+  if (input.kind === 'scenario') {
+    throw new GateError(
+      'a scenario session is opened by ＋ New scenario or Fix it inside a running test drive, ' +
+        'not as a talk session — it writes and lands scenarios against that drive.',
     )
   }
 
@@ -1128,12 +1141,118 @@ export async function launchDriveFixSession(
  * Open the `scenario` session docked beside the project's live drive (backs
  * `feature.openScenarioChat`, drive-scenarios decision 8): ＋ New scenario with
  * the human's `description`, or **Fix it** with the failed `fixFile`.
+ *
+ * Built from {@link launchDriveFixSession}: host-side, in the developer's own
+ * checkout where the drive has the driven branch checked out, so the scenario
+ * commits onto that branch (decision 4). Its scope follows the drive — a
+ * feature drive's session carries the `featureId`, a project drive's only the
+ * `projectId` — and it never counts toward the feature's one terminal.
+ *
+ * Refused unless a human feature drive or a project drive is live and its app
+ * answers: a scenario is proven by landing on that drive, so there must be one
+ * to land on. One per drive: while the docked session is live, this reopens it.
+ * Setup mode (decision 5) is decided here, once, from whether
+ * `.runcastle/scenarios/` exists, and recorded as the session's purpose — the
+ * guard must stay open after the agent creates that directory. Always a fresh
+ * conversation: the briefing is explicit (ADR-0009).
  */
 export async function launchScenarioSession(
-  _ctx: AppCtx,
-  _input: { projectId: string; description?: string; fixFile?: string },
+  ctx: AppCtx,
+  input: { projectId: string; description?: string; fixFile?: string },
+  opts: LaunchSessionOptions = {},
 ): Promise<{ sessionId: string }> {
-  throw new NotImplementedError('scenario session')
+  const project = requireProjectById(ctx, input.projectId)
+  const drive = git.activeDriveInfo(project.id)
+  const driveEnv = git.scenarioDriveEnv(ctx, project.id)
+  const humanDrive = drive && (drive.projectDrive || (drive.featureId && drive.purpose === 'human'))
+  if (!drive || !humanDrive || !drive.devReady || !driveEnv) {
+    throw new GateError(
+      'a scenario session lands scenarios on a running test drive, so it needs a human test drive ' +
+        'or project drive whose app is answering — start one and wait for Open app.',
+    )
+  }
+
+  const docked = drive.scenarioSessionId ? getSessionRow(ctx, drive.scenarioSessionId) : null
+  if (docked && docked.status !== 'ended') return { sessionId: docked.id }
+
+  const feature = drive.featureId ? getFeatureRow(ctx, drive.featureId) : undefined
+  const scope: EmitScope = feature ? { featureId: feature.id } : { projectId: project.id }
+  const setup = !existsSync(join(project.repoPath, '.runcastle', 'scenarios'))
+
+  // Prepare's step, as drive-fix uses it: host-side work in the developer's
+  // checkout, and a step of its own would be a settings field nobody asked for.
+  const model = resolveModelEntry('prepare', rosterConfig(ctx), project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
+  const session = createSessionRow(ctx, {
+    ...(feature ? { featureId: feature.id } : { projectId: project.id }),
+    kind: 'scenario',
+    ...(setup ? { purpose: 'scenario-setup' as const } : {}),
+    worktreePath: project.repoPath,
+    model,
+  })
+
+  emitScoped(ctx, scope, {
+    type: 'session.launching',
+    message: `launching scenario session${setup ? ' in setup mode' : ''} on ${drive.branch}`,
+    data: {
+      sessionId: session.id,
+      kind: 'scenario',
+      worktreePath: project.repoPath,
+      branch: drive.branch,
+      setup,
+      ...modelStamp(model),
+    },
+  })
+
+  const fixFailure =
+    input.fixFile && drive.scenario?.file === input.fixFile ? drive.scenario.failure : undefined
+  const kickoffLine = kickoffLineFor('scenario', undefined, runtime.id)
+  const spec = await runtime.writeArtifacts({
+    session,
+    project,
+    config: ctx.config,
+    scenario: {
+      project,
+      feature,
+      branch: drive.branch,
+      identity: driveEnv.identity,
+      envOverlay: driveEnv.envOverlay,
+      driveUrl: drive.devUrl,
+      runner: project.scenarioRunner ?? undefined,
+      files: await listScenarioPaths(project.repoPath, 'HEAD'),
+      description: input.description,
+      fix: input.fixFile ? { file: input.fixFile, failure: fixFailure } : undefined,
+      setup,
+    },
+    worktreePath: project.repoPath,
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
+    kickoffLine,
+  })
+
+  git.attachScenarioSession(project.id, session.id)
+  emitScoped(ctx, scope, {
+    type: 'scenario.chat_opened',
+    message: input.fixFile
+      ? `scenario chat opened to fix ${input.fixFile}`
+      : `scenario chat opened${setup ? ' — setting scenarios up' : ''}`,
+    data: { sessionId: session.id, setup, fixFile: input.fixFile ?? null },
+  })
+
+  if (opts.spawn === false) return { sessionId: session.id }
+
+  // No docs watch: this session writes scenarios, never the feature's docs.
+  const spawned = spawnEmbeddedPty(ctx, undefined, session, project.repoPath, runtime, spec, {})
+  if (spawned) {
+    emitScoped(ctx, scope, {
+      type: 'session.kickoff',
+      message: 'opening scenario session with its briefing',
+      data: { sessionId: session.id, kind: 'scenario', line: kickoffLine, mechanism: 'argv' },
+    })
+  }
+  return { sessionId: session.id }
 }
 
 /**

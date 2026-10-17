@@ -136,5 +136,7 @@ export function sessionKindName(
       return 'Preparation'
     case 'project':
       return 'Project'
+    case 'scenario':
+      return 'Scenario'
   }
 }

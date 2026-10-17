@@ -23,7 +23,8 @@ import { featureDocsRel } from '@runcastle/core/paths'
  * on a runcastle-owned branch, and its commits are the point of the session.
  *
  * A `prepare` session gets a narrow path exception instead of a kind exemption —
- * see {@link DRIVE_MACHINERY_WRITABLE}.
+ * see {@link DRIVE_MACHINERY_WRITABLE}. A `scenario` session gets `.runcastle/`,
+ * or its whole checkout while its purpose is `scenario-setup`.
  *
  * The one exempt PURPOSE is `resolve-conflict`, and only while a merge is
  * actually in progress in the session's worktree. Both conflict-resolve launch
@@ -82,6 +83,13 @@ export interface EditGuardInput {
  */
 export const DRIVE_MACHINERY_WRITABLE = ['.runcastle/', '.gitignore'] as const
 
+/**
+ * What a `scenario` session outside setup mode may write: the runcastle
+ * machinery dir its scenarios live under — {@link DRIVE_MACHINERY_WRITABLE}
+ * without `.gitignore`.
+ */
+export const SCENARIO_WRITABLE = '.runcastle/'
+
 /** Is `target` one of the {@link DRIVE_MACHINERY_WRITABLE} paths in this checkout? */
 function isDriveMachinery(worktreePath: string, target: string): boolean {
   return DRIVE_MACHINERY_WRITABLE.some((rel) => within(resolve(worktreePath, rel), target))
@@ -119,6 +127,21 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
         'A drive-fix session repairs one failing drive in the developer\'s own checkout, so it ' +
         `writes the drive machinery and nothing else: ${writablePaths()} — ${input.filePath} is ` +
         'outside them. A change to the app itself belongs in a ticket, not in this session.',
+    }
+  }
+
+  // A scenario session is host-side too, scoped to its drive. In setup mode it
+  // writes the login route and the typecheck config, so the whole checkout is
+  // open; afterwards only `.runcastle/`, where scenarios and their fixtures
+  // live. `.gitignore` is not on that list: a scenario has no business there.
+  if (input.kind === 'scenario') {
+    if (input.purpose === 'scenario-setup' && within(resolve(input.worktreePath), target)) return null
+    if (within(resolve(input.worktreePath, SCENARIO_WRITABLE), target)) return null
+    return {
+      reason:
+        'A scenario session writes scenarios and their shared code, so it may write only ' +
+        `\`${SCENARIO_WRITABLE}\` — ${input.filePath} is outside it. A change to the app itself ` +
+        'belongs in a ticket; tell the human what the scenario needs.',
     }
   }
 

@@ -808,6 +808,14 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')
     expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
+    // A scenario session's scope follows its drive, so it gets only the
+    // either-scope note plus its own two tools.
+    expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner'])
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+      expect(toolsForAudience(audience)).not.toContain('run_scenario')
+      expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')
+    }
+
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
       'get_feature_context',
@@ -844,7 +852,7 @@ describe('mcp tool registration by audience', () => {
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'scenario', 'run'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })

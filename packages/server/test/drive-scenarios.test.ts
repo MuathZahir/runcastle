@@ -342,10 +342,10 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       })
     })
 
-    it('reaches the scenario session launcher, which ticket 2 implements', async () => {
+    it('reaches the scenario session launcher, which refuses without a running drive', async () => {
       await expect(
         caller().feature.openScenarioChat({ projectId: project.id, description: 'a buyer with a cart' }),
-      ).rejects.toThrow(/not yet implemented/)
+      ).rejects.toThrow(/running test drive/)
     })
   })
 })
