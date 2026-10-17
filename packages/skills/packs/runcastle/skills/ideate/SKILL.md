@@ -7,7 +7,7 @@ disable-model-invocation: false
 
 # Ideate — runcastle's ideation session
 
-You are the front of the runcastle pipeline. One feature, one unbroken context window: you grill, decisions land, then spec and tickets fall out of the *same* conversation. After you, the human's only job is to click **Burn**. Do it right.
+You are the front of the runcastle pipeline. One feature, one unbroken context window: you grill, decisions land, then spec and tickets fall out of the *same* conversation. After you, the human's only job is to click **Go**. Do it right.
 
 ## Context hygiene is the whole game
 
@@ -44,14 +44,14 @@ On the grill path, do not move on until the human confirms you have reached shar
 
 ## 1a. Planning without a human
 
-This is the **self-planning path**. It applies only when your briefing says no human is present; with a human here, §1 stands and this section does not. You still look up facts, model the domain and park scope creep as §1 says. What changes is who answers. A run that resumes your planning conversation with the orchestrator's message (a relay), and a lap planned with no human present, follow this section too; a decision changed on the orchestrator's message is marked as `../revisit/SKILL.md` says.
+This is the **self-planning path**. It applies only when your briefing says no human is present; with a human here, §1 stands and this section does not. You still look up facts, model the domain and park scope creep as §1 says. What changes is who answers. A run that resumes your planning conversation with the orchestrator's message (a relay) follows this section too; a decision changed on the orchestrator's message is marked as `../revisit/SKILL.md` says.
 
 - **One turn.** Do the whole plan in this one turn. Never end the turn to ask a question or to report progress: nobody will reply, and ending the turn ends the run.
 - **Frontier rounds.** Work in rounds. A round is every open question that does not depend on an unanswered one. Write each as you would put it to the human, with your recommended answer and the main alternative, then accept your own recommendations and record them. Then ask what those answers opened: that is the next round. Write each round to `decisions.md` as it is decided (§2), not at the end, so a run that dies keeps what it had.
 - **Depth rule.** Record a decision only if it changes what the feature is or does for its users, or the human might reasonably overturn it. Anything an engineer would settle while building (wording, internal formats, test coverage) is not a question; it goes to the spec as detail.
 - **Exactly one challenger.** When a round would be empty, run one separate agent: the Agent tool in Claude Code, `spawn_agent` in Codex. Give it only the brief and `decisions.md`. Ask it for (a) design branches never asked, within the depth rule, and (b) decisions it would have made differently, with its reason. Do not tell it what you expect to hear. Ask its branches as one more round and decide them, with whatever they open. A decision it disagrees with is marked challenged with its reason (§2), and your own answer stands. There is no second pass, and no requirement that the pass come back empty. If you have no tool that runs a separate agent, challenge your own plan as a separate pass and write in `decisions.md` that the challenge was not independent.
 - **A refused tool is not a wait.** If a tool is refused, do not retry it and do not wait: decide on what you know, and treat that decision as a candidate to check first.
-- **A timed-out tool is not a refused one.** A refusal is runcastle's answer; a timeout is no answer, and the call may have landed anyway. Retry it once, checking first that it did not land: `complete_phase` is safe to repeat (a step already reported comes back ok with a note), but before repeating `emit_tickets`, `update_ticket` or `cancel_ticket`, read `list_tickets` and send only what is missing. If the retry times out too, carry on and say so in the closing message. Never leave `complete_phase({ phase: "tickets" })` on a timeout: until it lands, Burn is not armed.
+- **A timed-out tool is not a refused one.** A refusal is runcastle's answer; a timeout is no answer, and the call may have landed anyway. Retry it once, checking first that it did not land: `complete_phase` is safe to repeat (a step already reported comes back ok with a note), but before repeating `emit_tickets`, `update_ticket` or `cancel_ticket`, read `list_tickets` and send only what is missing. If the retry times out too, carry on and say so in the closing message. Never leave `complete_phase({ phase: "tickets" })` on a timeout: until it lands, Go is not armed.
 - **Check first.** Pick at most five decisions for the human to check first: guesses about the human's intent that the brief did not settle, decisions that force several others, and decisions the challenger disagreed with. They open the preview's decisions part (`./references/preview.md`).
 - **Straight through.** Then draw the preview and run its self-check (§3, steps 1 and 2), but do not tell the human to look and do not wait: complete ideation (§4), run `/runcastle:spec`, then `/runcastle:tickets` (§5). End with one closing message (§6) that covers the plan only: the plan was made without the human, how many decisions it holds, and which are to check first, plus anything that stopped you doing the job (a refused or failed tool the plan needed). Leave out the state of tools and connectors the plan did not need.
 
@@ -97,7 +97,7 @@ Keep `decisions.md` free of implementation minutiae — it is the record of *wha
 
 On the self-planning path (§1a) steps 1 and 2 are the whole of this section: go straight on to §4. Steps 3 to 5 are the grill path.
 
-3. **Tell the human to look, then wait.** Say the preview is on the feature's **Overview**, under the Burn row, and that the "Preview ready" notice in Chat leads there. Then stop and wait for their answer.
+3. **Tell the human to look, then wait.** Say the preview is on the feature's **Overview**, under the Go row, and that the "Preview ready" notice in Chat leads there. Then stop and wait for their answer.
 4. **A correction is a decision edit plus a redraw.** Edit the decision in `decisions.md` and redraw the preview in the same move, then ask them to look again.
 5. **Only after the human confirms**, complete ideation (§4).
 
@@ -121,8 +121,8 @@ Do not open a new session for these. They run here, on top of everything you jus
 
 `/runcastle:tickets` ends by emitting tickets to the runcastle store. When it returns, your job is **done**. Tell the human plainly:
 
-> Tickets are in the runcastle UI. Review the ticket cards and click **Burn** to start the AFK agents. That is the next step — I will stop here.
+> Tickets are in the runcastle UI. Review the ticket cards and click **Go** — the feature's agent takes it from there, dispatching rounds of workers. That is the next step — I will stop here.
 
 On the self-planning path (§1a), the closing message also says that the plan was made without the human, how many decisions it holds, and which are to check first, by number and title. It covers the plan only. Report anything that stopped you doing the job: a tool the plan needed that was refused or failed, and what you decided without it. Do not report the state of tools and connectors the plan did not need, such as MCP servers that failed to connect or connectors waiting to be authorised: the session inherits the human's own, and they are not part of the plan. Then end the turn; the run is done.
 
-Do **not** start burning. Burn and Merge are the only two clicks in the whole pipeline, and both belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)
+Do **not** start building. Go and Merge are the only two clicks in the whole pipeline, and both belong to the human. (You do not write code here either — that rule is in your injected prompt and enforced by the edit guard, not restated as advice.)

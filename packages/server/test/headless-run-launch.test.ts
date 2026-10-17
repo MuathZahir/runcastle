@@ -20,15 +20,14 @@ import { listAfter } from '../src/services/events'
 import { wakeLeadHeadless } from '../src/services/lead-delivery'
 import { leadMessageKey, queueOrchestratorLine } from '../src/services/orchestrator-messages'
 import { createFeatureBranch } from '../src/services/git'
-import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * The orchestrator's headless runs on a feature (`whole-cuts-plan-themselves`,
  * "Headless runs on a feature"): a `relay` of its message into the planning
- * conversation and a start-lap planned headless — what they render, what they
- * resume, what they refuse, and what their exit says.
+ * conversation — what it renders, what it resumes, what it refuses, and what
+ * its exit says.
  */
 
 describe('a headless run on a feature', () => {
@@ -105,27 +104,16 @@ describe('a headless run on a feature', () => {
     markSessionEnded(ctx, earlier)
   }
 
-  function pendingTicket(featureId: string): void {
-    storeTickets(ctx, featureId, [
-      {
-        title: 'Next lap', goal: 'Do it', context: '',
-        acceptanceCriteria: [], seams: [], blockedBy: [],
-      },
-    ])
-  }
-
   it('records headless on the session row of every headless launch, visible in FeatureFull', async () => {
     const plan = await feature('self-plan')
     const relayed = await feature('relayed')
-    const lap = await feature('lap', { phase: 'review' })
     const ordinary = await feature('ordinary')
 
     const ids = [
       await launch(plan.id, { purpose: 'self-plan' }),
       await launch(relayed.id, relay()),
-      await launch(lap.id, { purpose: 'start-lap', headless: true }),
     ]
-    for (const [i, f] of [plan, relayed, lap].entries()) {
+    for (const [i, f] of [plan, relayed].entries()) {
       const session = getFeatureFull(ctx, f.id).sessions.find((s) => s.id === ids[i])
       expect(session?.headless).toBe(true)
     }
@@ -274,70 +262,6 @@ describe('a headless run on a feature', () => {
     })
   })
 
-  describe('a headless start-lap', () => {
-    it('renders a print-mode command with the message and the no-human rule', async () => {
-      useRuntime('claude-code')
-      const f = await feature('lap-claude', { phase: 'review' })
-      const sessionId = await launch(f.id, {
-        purpose: 'start-lap',
-        headless: true,
-        message: 'Make the empty state say why it is empty.',
-      })
-
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).toMatch(/ claude -p /)
-      expect(command).toContain('no human is present and nobody will reply to you')
-      expect(command).toContain('PLAN LAP 2 FROM REVIEW by yourself')
-      expect(command).toContain(
-        "The project's orchestrator asks this of the lap: Make the empty state say why it is empty.",
-      )
-      expect(command).toContain('Planning without a human')
-      expect(command).not.toContain('Interview me')
-
-      const prompt = injectedPrompt(f.id, sessionId)
-      expect(prompt).toContain('## This is lap 2')
-      expect(prompt).toContain('This lap plans itself')
-    })
-
-    it('renders Codex `exec` with the skills spelled its way', async () => {
-      useRuntime('codex')
-      const f = await feature('lap-codex', { phase: 'review' })
-      const sessionId = await launch(f.id, { purpose: 'start-lap', headless: true })
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).toContain('codex exec --dangerously-bypass-hook-trust [runcastle] Proceed with your task:')
-      expect(command).toContain('$revisit')
-      expect(command).toContain('$ideate')
-    })
-
-    it('leaves the interactive start-lap as it was', async () => {
-      useRuntime('claude-code')
-      const f = await feature('lap-human', { phase: 'review' })
-      const sessionId = await launch(f.id, { purpose: 'start-lap' })
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).not.toContain(' -p ')
-      expect(command).toContain('Interview me about what the test drive taught')
-      expect(getSessionRow(ctx, sessionId)?.headless).toBe(false)
-      expect(injectedPrompt(f.id, sessionId)).not.toContain('## No human is present')
-    })
-
-    it('is refused where the Start-lap door is: away from review', async () => {
-      const f = await feature('lap-planning', { phase: 'building' })
-      await expect(launch(f.id, { purpose: 'start-lap', headless: true })).rejects.toThrow(
-        /not review, so there is no next lap to start/,
-      )
-    })
-
-    it('is refused while another session is live, rather than ending it', async () => {
-      const f = await feature('lap-busy', { phase: 'review' })
-      const chat = await launch(f.id)
-      markSessionLive(ctx, chat, { ccSessionId: 'cc-live' })
-      await expect(launch(f.id, { purpose: 'start-lap', headless: true })).rejects.toThrow(
-        /only one terminal per feature/,
-      )
-      expect(getSessionRow(ctx, chat)?.status).toBe('live')
-    })
-  })
-
   it('keeps every chat launch off a live headless run', async () => {
     const f = await feature('working')
     const run = await launch(f.id, relay())
@@ -373,25 +297,6 @@ describe('a headless run on a feature', () => {
       expect(runEnded(f.id)[0]?.data).toEqual({
         sessionId: run, purpose: 'relay', complete: false, exitCode: 1,
       })
-    })
-
-    it('says a lap finished when its tickets are on the board', async () => {
-      const f = await feature('lap-done', { phase: 'review' })
-      const run = await launch(f.id, { purpose: 'start-lap', headless: true })
-      pendingTicket(f.id)
-      handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
-      expect(runEnded(f.id)[0]?.data).toEqual({
-        sessionId: run, purpose: 'start-lap', complete: true, exitCode: 0,
-      })
-    })
-
-    it('says a lap stopped short with no tickets, even on a clean exit', async () => {
-      const f = await feature('lap-short', { phase: 'review' })
-      const run = await launch(f.id, { purpose: 'start-lap', headless: true })
-      handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
-      const [ended] = runEnded(f.id)
-      expect(ended?.message).toBe('planning the next lap stopped before it was finished')
-      expect(ended?.data?.complete).toBe(false)
     })
 
     it('leaves self-plan on its own event, and an interactive chat on none', async () => {

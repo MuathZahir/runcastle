@@ -213,12 +213,6 @@ describe('the revisit skill and the preview', () => {
     expect(docs).toContain('update `preview.html` in the same move as the decisions edit')
     expect(docs).toContain('`../ideate/references/preview.md`')
   })
-
-  it('does not redraw in a lap planned from review', () => {
-    const text = skill()
-    const lap = text.slice(text.indexOf('## Lap mode'), text.indexOf('### Stand on the failure'))
-    expect(lap).toContain('A lap planned from review does not redraw the preview')
-  })
 })
 
 describe('the tickets skill and the preview', () => {

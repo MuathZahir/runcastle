@@ -2328,10 +2328,9 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   plan_feature: ['project'],
   send_to_feature: ['project'],
   stop_feature_run: ['project'],
-  burn_feature: ['project'],
+  go_feature: ['project'],
   drive: ['project'],
   record_test_note: ['project'],
-  start_feature_lap: ['project'],
   merge_feature: ['project'],
   add_to_brief: ['project'],
 }

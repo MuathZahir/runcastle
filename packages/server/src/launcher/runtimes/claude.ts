@@ -67,7 +67,7 @@ export interface BuildLaunchInput {
   strictMcp?: boolean
   /**
    * Print mode (`-p`): run the kickoff as the prompt to completion with no
-   * terminal — a self-planning, relay or headless start-lap run. With a
+   * terminal — a self-planning or relay run. With a
    * `resumeSessionId` (a relay picking up the planning conversation) it resumes
    * that conversation with the kickoff as its next prompt.
    */

@@ -13,7 +13,6 @@ import type {
 } from '@runcastle/core'
 import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
 import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
-import { type CarriedWork, carriedWorkSummary } from '../services/carried-work'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
@@ -66,27 +65,12 @@ export interface WriteArtifactsInput {
    */
   purpose?: SessionPurpose
   /**
-   * The lap this session was opened to PLAN — `feature.lap + 1`, planned at
-   * review from the Start-lap briefing. Passed EXPLICITLY rather than read off
-   * the feature row, because a lap is not something the row can be asked about:
-   * the plain Chat toggle on a lap-3 feature at review is an ordinary revisit,
-   * and the lap counter only moves at Burn from review, after this session is
-   * done.
-   */
-  lap?: number
-  /**
    * What this feature has produced inside Planning, read off disk by the
-   * launcher. It decides which of its chat's two openings the briefing renders
+   * launcher. It decides which of its chat's openings the briefing renders
    * (see {@link chatOpening}); absent means "no artifact facts to go on", which
    * reads as a feature with a record to revisit.
    */
   planning?: PlanningArtifactFacts
-  /**
-   * What the previous lap carried into this one — stated in a lap briefing so
-   * the session opens knowing its agenda rather than being pointed at it. Read
-   * from the DB by the launcher; absent for every session that is not a lap.
-   */
-  carried?: CarriedWork
   /**
    * The runtime this session's agent runs on, which decides how the briefing
    * spells a skill invocation (see {@link skillRef}) — a Codex session told to
@@ -178,8 +162,20 @@ export function conflictResolutionRule(): string {
  * Read off the ARTIFACTS rather than off the phase alone, the same way Planning's
  * own progress is (`completedPlanningSteps`): a planning feature that has already
  * been grilled is a revisit, not a second ideation.
+ *
+ * Once Go is given (building or review) the chat is the feature's LEAD
+ * (`the-feature-lead-runs-rounds`): it runs rounds of workers rather than
+ * amending a record. Two errands keep the revisit brief whatever the state: a
+ * merge to resolve, and the orchestrator's relayed message — both amend what
+ * exists rather than run the feature.
  */
-export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts): ChatOpening {
+export function chatOpening(
+  feature: Feature,
+  planning?: PlanningArtifactFacts,
+  purpose?: SessionPurpose,
+): ChatOpening {
+  if (purpose === 'resolve-conflict' || purpose === 'relay') return 'revisit'
+  if (feature.phase === 'building' || feature.phase === 'review') return 'lead'
   if (feature.phase !== 'planning' || !planning) return 'revisit'
   return completedPlanningSteps(planning).length === 0 ? 'ideate' : 'revisit'
 }
@@ -188,17 +184,11 @@ export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts):
  * The injected system prompt (feature brief). Directs the session to the pack's
  * entry skill and lists the on-disk knowledge paths.
  *
- * PRECEDENCE — which layer owns "which skill opens this session":
- * **the LAP owns it, then the kind.** A session is a lap iff `lap` is set (see
- * {@link WriteArtifactsInput.lap}), and a lap's opening move is always
- * `/runcastle:revisit`, whatever kind row it rides — the same one `lapKickoff`
- * names.
- *
- * Below the lap, `chat` splits on {@link chatOpening}: a feature whose planning
- * artifacts do not exist yet gets the ideation brief (the generic feature brief
- * at the end of this function), and every other state gets the revisit brief.
- * `chatKickoffHeader` picks its opening line from the same predicate, so the two
- * cannot disagree.
+ * `chat` splits on {@link chatOpening}: a feature whose planning artifacts do
+ * not exist yet gets the ideation brief (the generic feature brief at the end of
+ * this function), a feature past Go gets the lead brief, and every other state
+ * gets the revisit brief. `chatKickoffHeader` picks its opening line from the
+ * same predicate, so the two cannot disagree.
  *
  * Deliberately NO MCP tool cheat-sheet in any renderer. Every tool a session can
  * call is already in its tool list with a longer, schema-backed description, and
@@ -209,22 +199,16 @@ export function chatOpening(feature: Feature, planning?: PlanningArtifactFacts):
 export function renderSystemPrompt(
   feature: Feature,
   kind: SessionKind,
-  lap?: number,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
-  carried?: CarriedWork,
   planning?: PlanningArtifactFacts,
   headless = false,
 ): string {
-  if (lap !== undefined) return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
   const selfPlan = purpose === 'self-plan'
-  // A relay changes a record that exists, whatever the chat's opening would be.
-  if (
-    kind === 'chat' &&
-    !selfPlan &&
-    (purpose === 'relay' || chatOpening(feature, planning) === 'revisit')
-  ) {
-    return renderRevisitPrompt(feature, lap, purpose, runtime, carried, headless)
+  if (kind === 'chat' && !selfPlan) {
+    const opening = chatOpening(feature, planning, purpose)
+    if (opening === 'lead') return renderLeadPrompt(feature, runtime, headless)
+    if (opening === 'revisit') return renderRevisitPrompt(feature, purpose, runtime, headless)
   }
 
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
@@ -244,7 +228,7 @@ export function renderSystemPrompt(
     'and it only ever moves forward. Ideation, spec and tickets are steps INSIDE',
     'planning: you report each one with the `complete_phase` MCP tool, which',
     'records the milestone on the timeline and never moves the feature. Two human',
-    'clicks move it — Burn (planning → building) and Merge (→ shipped).',
+    'clicks move it — Go (planning → building) and Merge (→ shipped).',
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
@@ -328,63 +312,6 @@ export function renderQaPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT
 }
 
 /**
- * The lap block's evidence section: the three things a lap session was observed
- * planning WITHOUT, in the order it needs them.
- *
- * The review evidence arrives as absolute paths because nothing else carries it.
- * A review agent reports through host scratch space outside the repo
- * (`~/.runcastle/reviews/<ticketId>/`), and `get_feature_context`'s ticket rows
- * carry no `digest` (only `get_ticket` does, one ticket at a time) — so the
- * previous lap's review once reached a lap session through no channel at all,
- * and one planned a whole lap on "No, I moved too quickly to Burn".
- *
- * The other two are policy, stated here because they are per-lap facts about
- * what this session owes the human before it plans: read out what the docs
- * themselves mark as not demonstrable (a lap-1 build whose own plan said "no UI,
- * nobody should demo this before ticket X" was handed over as a test drive), and
- * stand on every reported failure rather than carding a fix for a bug nobody has
- * reproduced. `revisit/SKILL.md` carries the procedure for both.
- */
-function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork): string[] {
-  const evidence = carried?.reviewEvidence ?? []
-  return [
-    '### Read the evidence before you plan',
-    ...(evidence.length > 0
-      ? [
-          `Lap ${lap - 1}'s review left this on disk — host scratch space, NOT the repo, and`,
-          "nothing else carries it: `get_feature_context`'s ticket rows have no `digest` (that",
-          'is one ticket at a time, via `get_ticket({ seq })`).',
-          ...evidence.flatMap((one) => [
-            `- Ticket ${one.seq}'s review pass ended \`${one.status}\` — that is the review`,
-            '  outcome. It left:',
-            ...(one.reviewVerdict === 'unverified'
-              ? [`  - **Nothing verified:** ${one.reviewVerdictReason ?? 'no reason recorded'}`]
-              : []),
-            `  - \`${one.digestPath}\` — the review agent's own account of what it found.`,
-            `  - \`${one.dir}\` — the screenshots and \`walkthrough.webm\`, beside it.`,
-          ]),
-          'Read them BEFORE you interview the human. A lap planned from the interview alone is',
-          'planned against a build whose own review nobody read.',
-        ]
-      : [
-          `Lap ${lap - 1} left NO review evidence on disk — no review pass of that lap finished.`,
-          'Say that plainly rather than implying you read one, and plan from the interview.',
-        ]),
-    '',
-    `**Say what is not demonstrable.** Grep \`${docs}/spec.md\` and this feature's tickets for`,
-    '`not demonstrable`, `do not demo` and `later laps`, and tell the human what they say BEFORE',
-    'you offer a test drive — a drive of a build its own plan says nobody should demo teaches',
-    'nothing, and costs the human the time to find that out.',
-    '',
-    '**Stand on the failure.** For every bug the human reports, exactly one of three things:',
-    'reproduce it; or trace it to a file and line, and say which; or say plainly that you could',
-    'not reproduce it — and then make reproduction the FIRST acceptance criterion of the ticket',
-    'that fixes it. Never card a fix for a failure nobody has stood on.',
-    '',
-  ]
-}
-
-/**
  * The kind=revisit system prompt. A revisit reopens a finished conversation
  * (usually the grilling) because the human remembered something or changed
  * their mind. The session amends the docs to match the new reality, then does
@@ -393,123 +320,18 @@ function reviewEvidenceSection(lap: number, docs: string, carried?: CarriedWork)
  * pipeline position stays wherever it is, and downstream phases pick up the
  * amended docs/tickets on their own.
  *
- * At the `review` phase the same session is surfaced as **Iterate** (CONTEXT.md,
- * "Laps: iteration without a mode"; cited by name because the locked-decision
- * numbers get renumbered): the human has just test-driven the burned branch and
- * found things to fix. The prompt below flags that purpose so the session knows
- * the amended docs + fix tickets feed a re-Burn that loops the feature back
- * through implementation. It points at the PER-TICKET facts (`status`,
- * `commits`, `lap`, `error`) rather than at a "run outcome": there is no run in
- * the `get_feature_context` payload, and `get_work_record` is gated shut for
- * feature sessions, so the old wording sent the session looking for something it
- * could not reach. The rows carry no `commits` or `digest`; `get_ticket` does.
- *
- * The `resolve-conflict` purpose is EXCLUDED from that briefing even though it
- * is also always at `review` — its whole job is a `git merge`, and a fix-ticket
- * interview is not a smaller version of that, it is a different job.
- *
- * `lap` — passed explicitly by the launcher, never inferred from the phase (see
- * {@link WriteArtifactsInput.lap}) — turns this into the LAP prompt: the human
- * clicked Start lap on the review page and this session plans that lap there.
- * The two review briefings are exclusive — a lap is not a fix-ticket interview
- * with extra steps, it is the whole of the next lap's planning. Neither calls
- * `complete_phase`: the feature stays at review until the human's Burn click,
- * which carries the pending tickets onto the new lap itself.
+ * Past Go the chat is the lead instead ({@link renderLeadPrompt}); this brief
+ * still serves a planning feature with a record, a shipped one, and the two
+ * errands {@link chatOpening} keeps on it in any state — a merge conflict to
+ * resolve and the orchestrator's relayed message.
  */
 export function renderRevisitPrompt(
   feature: Feature,
-  lap?: number,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
-  carried?: CarriedWork,
   headless = false,
 ): string {
-  // Mutually exclusive briefings: a lap says "interview, amend the docs, emit
-  // the lap's tickets", a conflict resolution says "you DO write code here and
-  // your whole job is the merge". Rendering both produces a session instructed
-  // to do two incompatible jobs. Unreachable through the UI today, but the tRPC
-  // route takes `purpose` as a free parameter, so the exclusion is asserted
-  // where the two actually meet rather than left to call-site luck.
-  if (lap !== undefined && purpose === 'resolve-conflict') {
-    throw new Error(
-      `cannot brief one revisit session as both lap ${lap} and a conflict resolution — ` +
-        'a lap plans tickets and writes no code; resolving a conflict writes code ' +
-        'and plans nothing. Launch them as separate sessions.',
-    )
-  }
   const docs = featureDocsRel(feature.slug)
-  const carriedSummary = carriedWorkSummary(carried)
-  const lapIteration = lap
-    ? [
-        // Per-session FACTS only — which lap, which work it carries, where that
-        // work is written, and that Burn — not this session — starts it. The lap procedure itself
-        // lives in `revisit/SKILL.md`, which is loaded before any of this is
-        // acted on; a second copy here is a second thing to keep true.
-        `## This is lap ${lap}`,
-        `This conversation plans **lap ${lap}** of this feature (ADR-0010). The human test-drove`,
-        `what lap ${lap - 1} burned and clicked **Start lap ${lap}** on the review page to get`,
-        'here — that door IS the start of the lap, so there is no other one to send them to.',
-        `The feature stays at **review** while you plan; lap ${lap} starts when they click Burn.`,
-        ...(carriedSummary
-          ? [
-              // The counts before the pointers: a session that knows how much is
-              // waiting reads the sources for it, where one told its inputs "may
-              // not exist" reads them for reassurance and stops at the first miss.
-              `**${carriedSummary} — address them.** They are this lap's opening agenda:`,
-              `- \`${docs}/test-notes.md\`, section \`## Carried, still open\` — every note carried`,
-              '  and not yet done, whatever lap captured it. It exists; read it.',
-              '- `get_feature_context` → `openDefects` — each open defect with its `id`, title,',
-              '  location, detail and repro step; and `carriedDefects`, the ones an earlier lap',
-              '  parked (agenda, never an obligation to re-carry). Every open defect from an',
-              '  EARLIER lap wants one of three answers: **link** it (emit this lap\'s ticket for',
-              '  it with `originFindingId` set), **carry** it, or **close it as addressed** — the',
-              '  last two are `resolve_finding`. Nothing refuses over the ones you leave; the',
-              '  human reads them back as warnings in the Burn dialog.',
-              `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps,`,
-              '  OPTIONAL; a missing one is normal, not an error.',
-            ]
-          : [
-              'Its inputs, both OPTIONAL — a missing one is normal, not an error:',
-              `- \`${docs}/test-notes.md\`, section \`## Carried, still open\` — every note carried`,
-              '  and not yet done, whatever lap captured it.',
-              `- \`${docs}/spec.md\`, section \`## Later laps\` — scope parked by earlier laps.`,
-            ]),
-        '',
-        ...reviewEvidenceSection(lap, docs, carried),
-        'Interview the human about what the drive taught. New decisions go under a',
-        `\`## Lap ${lap}\` heading in \`${docs}/decisions.md\`; amend \`${docs}/spec.md\` for this`,
-        'lap, pruning whatever you promote out of `## Later laps`. Then `emit_tickets` for',
-        `this lap's work: the cards land \`pending\`, and the Burn click moves them onto lap ${lap}.`,
-        '',
-        'Do NOT call `complete_phase` — there are no planning steps to report at review, and',
-        'the Burn click is what starts the lap. Finish by telling the human to review the cards',
-        'and click Burn. The `/runcastle:revisit` skill carries the rest of the procedure —',
-        'follow its Lap mode.',
-        '',
-      ]
-    : []
-  // A conflict-resolution revisit is ALWAYS at `review` (its only launch site is
-  // the review body's conflict card), and its whole job is a `git merge`. Told it
-  // was a fix-ticket interview as well, it got two mandates and picked one — the
-  // same failure shape as F18, which `conflictResolutionRule` fixed in the Rules
-  // block and missed here.
-  const reviewIteration =
-    !lap && feature.phase === 'review' && purpose !== 'resolve-conflict'
-      ? [
-          '## Review iteration',
-          'This feature is at **review**: its tickets were burned and the human has been',
-          'test-driving the branch. Treat this as a fix-ticket interview — call',
-          '`get_feature_context` and read what the burn actually did, ticket by ticket: each',
-          'row carries its `status`, the `lap` it belongs to, its `goal`, and an `error` when',
-          'it failed; `get_ticket({ seq })` adds the `commits` it landed and its `digest`, the',
-          "burner's own account of what it did. Ask what the test drive surfaced (bugs, rough edges,",
-          'tweaks), then emit fix tickets for that work and edit/cancel any stale pending',
-          'tickets. Moving the feature is not yours to do: once the cards are ready, tell',
-          'the human to review them and click Burn — burning from review takes the feature',
-          'through building and returns it here when the run finishes.',
-          '',
-        ]
-      : []
   return [
     `# runcastle — ${feature.title} (revisit session)`,
     '',
@@ -522,8 +344,6 @@ export function renderRevisitPrompt(
     'into the record, then reconcile the tickets with it. The docs are the',
     'artifact — later phases read them, never the transcripts.',
     '',
-    ...lapIteration,
-    ...reviewIteration,
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
@@ -535,7 +355,7 @@ export function renderRevisitPrompt(
     `- \`${docs}/spec.md\` — if it exists, amend the affected sections in place.`,
     '',
     '## Rules',
-    '- Do NOT call `complete_phase` — a revisit never moves the pipeline, and neither does a lap planned at review.',
+    '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
     '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
     // The conflict-resolution revisit is briefed to resolve the merge, so the
@@ -543,7 +363,7 @@ export function renderRevisitPrompt(
     purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
     otherEntrySkillsRule(),
     '',
-    ...(headless ? [headlessRunRule(purpose, runtime), ''] : []),
+    ...(headless ? [headlessRelayRule(), ''] : []),
     '## Your task',
     headless
       ? `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and do what your opening prompt asks, in this one run.`
@@ -553,45 +373,103 @@ export function renderRevisitPrompt(
 }
 
 /**
- * The section a headless revisit — a `relay` of the orchestrator's message, or a
- * lap that plans itself — adds to its brief (`whole-cuts-plan-themselves`
- * decision 16). Like {@link selfPlanRule}, it states that a question or a wait
- * ends the run, and it overrides whatever the brief above says about the human.
+ * The section a headless revisit — a `relay` of the orchestrator's message —
+ * adds to its brief (`whole-cuts-plan-themselves` decision 16). Like
+ * {@link selfPlanRule}, it states that a question or a wait ends the run, and it
+ * overrides whatever the brief above says about the human.
  */
-function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string {
-  if (purpose === 'lead-wake') {
-    return [
-      '## No terminal is open',
-      'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
-      'it was open. Nobody is watching this run.',
-      '- Act on your opening prompt as the lead, in this one run.',
-      '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
-      '  reply reaches you later in this same conversation.',
-    ].join('\n')
-  }
-  const work =
-    purpose === 'relay'
-      ? [
-          "This is a relay run: the project's orchestrator sent this conversation a message.",
-          'Nobody is watching and nobody will reply.',
-          '- Apply the message by the change-handling rules: a decision it changes keeps or',
-          '  gains `**Assumed.**` and adds `**Changed by the orchestrator:** <why>`, unless the',
-          "  message relays the human's own answer, which removes both marks. Then redraw the",
-          '  preview and reconcile the spec and the tickets.',
-        ]
-      : [
-          'This lap plans itself: the orchestrator started it. Nobody is watching and nobody',
-          'will reply.',
-          `- Decide by the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" rules: every decision`,
-          '  you make is `**Assumed.**` with its alternative.',
-          `- Follow \`${skillRef(runtime, 'revisit')}\`'s Lap mode and end at the emitted tickets.`,
-        ]
+function headlessRelayRule(): string {
   return [
     '## No human is present',
-    ...work,
+    "This is a relay run: the project's orchestrator sent this conversation a message.",
+    'Nobody is watching and nobody will reply.',
+    '- Apply the message by the change-handling rules: a decision it changes keeps or',
+    '  gains `**Assumed.**` and adds `**Changed by the orchestrator:** <why>`, unless the',
+    "  message relays the human's own answer, which removes both marks. Then redraw the",
+    '  preview and reconcile the spec and the tickets.',
     '- Where this brief says to interview or tell the human, decide for yourself instead.',
     '- Never end your turn to ask a question — ending the turn ends the run.',
     '- A refused tool is not a wait: do not retry it or wait for approval.',
+  ].join('\n')
+}
+
+/**
+ * The section a lead resumed headless — a `lead-wake`, because no terminal of it
+ * was open (`the-feature-lead-runs-rounds` decision 12) — adds to its brief.
+ */
+function headlessLeadWakeRule(): string {
+  return [
+    '## No terminal is open',
+    'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
+    'it was open. Nobody is watching this run.',
+    '- Act on your opening prompt as the lead, in this one run.',
+    '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
+    '  reply reaches you later in this same conversation.',
+  ].join('\n')
+}
+
+/**
+ * The rule that REPLACES {@link noCodeRule} for a feature's lead — its chat once
+ * Go is given (`the-feature-lead-runs-rounds` decisions 5 and 7). The edit and
+ * install guards lift for it from then on, so the brief says what the lead may
+ * do rather than what it may not, and how its commits travel.
+ */
+export function leadCodeRule(): string {
+  return (
+    '- **You may change code yourself.** Delegate to workers by default, but a change small ' +
+    'enough not to need a ticket is yours to make in this checkout, and you may install ' +
+    "dependencies here to typecheck and test it. Verify with the project's own checks before " +
+    'you commit.\n' +
+    '- **Your commits land through the feature\'s landing queue**, between ticket landings ' +
+    'during a round, and they wait while the human is driving the feature. Use a conventional ' +
+    '`feat(scope): …` subject; never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
+  )
+}
+
+/**
+ * The feature chat's brief once Go is given: the feature's LEAD
+ * (`the-feature-lead-runs-rounds`). It names the lead skill, which carries the
+ * whole loop — plan a round, dispatch it, wake when it returns, check, repeat,
+ * declare ready — so this brief carries only the per-feature facts and the
+ * rules the machine enforces.
+ */
+export function renderLeadPrompt(
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+  headless = false,
+): string {
+  const docs = featureDocsRel(feature.slug)
+  return [
+    `# runcastle — ${feature.title} (feature lead)`,
+    '',
+    feature.oneLiner,
+    '',
+    "You are this feature's **lead**. The human approved its plan with Go, so the feature is",
+    'yours to build: you dispatch rounds of sandboxed workers over its tickets, you are woken',
+    'when a round returns, you check what came back and plan the next round, until it is',
+    'ready for the human to drive. Where possible this terminal RESUMES the conversation that',
+    'planned it, so you may already have its context above.',
+    '',
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}**`,
+    '',
+    '## Knowledge (versioned in the target repo)',
+    `Feature docs live at \`${docs}/\` — brief, decisions, spec. Workers read them; keep them`,
+    'true when a round changes what was decided.',
+    '',
+    '## Rules',
+    '- The human owns Merge and the drive; you never merge, and you never start a draft.',
+    '- One round at a time. A dispatch is refused while a round runs, while the human is',
+    '  driving this feature, and in "Ask before each round" mode until the human replies.',
+    leadCodeRule(),
+    otherEntrySkillsRule(),
+    '',
+    ...(headless ? [headlessLeadWakeRule(), ''] : []),
+    '## Your task',
+    `Invoke the \`${skillRef(runtime, 'lead')}\` skill and run this feature in rounds until it is ready for the human.`,
+    '',
   ].join('\n')
 }
 
@@ -1005,8 +883,8 @@ export function renderProjectPrompt(
     '- **Portfolio Q&A** — "have we already decided X?", "did we ever build Y?" — the same',
     '  lookup intake needs anyway to avoid creating a duplicate feature.',
     '- **Routing** — an incoming thing is one of exactly five destinations: a new feature,',
-    '  a quick change, an existing feature\'s revisit, another lap on something in review',
-    '  (Iterate, then Burn from Review), or nothing. Say which, and why.',
+    '  a quick change, an existing feature\'s revisit, more rounds on something in review',
+    "  (a message to that feature's agent), or nothing. Say which, and why.",
     '- **Curation, advisory only** — you may report that two in-flight features are on a',
     '  collision course or that an ADR looks stale. You do NOT fix either. Every fix routes',
     '  back through a feature, through promotion at merge, or through the charter.',
@@ -1437,24 +1315,13 @@ export function renderSessionPrompt(input: WriteArtifactsInput): string {
     prepare,
     projectBrief,
     driveFix,
-    lap,
     purpose,
     runtime,
-    carried,
     planning,
   } = input
   if (driveFix) return renderDriveFixPrompt(driveFix)
   if (feature) {
-    return renderSystemPrompt(
-      feature,
-      session.kind,
-      lap,
-      purpose,
-      runtime,
-      carried,
-      planning,
-      session.headless,
-    )
+    return renderSystemPrompt(feature, session.kind, purpose, runtime, planning, session.headless)
   }
   if (prepare) return renderPreparePrompt(prepare)
   if (projectBrief) return renderProjectPrompt(projectBrief, runtime)

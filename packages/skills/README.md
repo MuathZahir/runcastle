@@ -4,9 +4,9 @@ Vendored, adapted Claude Code skill packs (SPEC §9, owner A2). Not a TypeScript
 package — content only, consumed by the launcher via `--plugin-dir`.
 
 ```
-packs/      runcastle/ — 8 skills that speak the MCP tools: 6 forks (ideate, spec,
-            tickets, qa, project, code-review) + 2 originals
-            (revisit, prepare)
+packs/      runcastle/ — 9 skills that speak the MCP tools: 6 forks (ideate, spec,
+            tickets, qa, project, code-review) + 3 originals
+            (revisit, prepare, lead)
 burner/     implement-ticket.md — prompt template for the ticket burner (NOT a skill)
 ```
 

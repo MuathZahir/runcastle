@@ -437,6 +437,7 @@ async function handlePreToolUse(
   const denial =
     evaluateEditGuard({
       kind: session.kind,
+      featurePhase: feature?.phase,
       purpose: session.purpose,
       mergeInProgress,
       worktreePath: session.worktreePath,
@@ -446,6 +447,7 @@ async function handlePreToolUse(
     }) ??
     evaluateInstallGuard({
       kind: session.kind,
+      featurePhase: feature?.phase,
       worktreePath: session.worktreePath,
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,

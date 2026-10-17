@@ -20,10 +20,9 @@ const ORCHESTRATOR_TOOLS = [
   'plan_feature',
   'send_to_feature',
   'stop_feature_run',
-  'burn_feature',
+  'go_feature',
   'drive',
   'record_test_note',
-  'start_feature_lap',
   'merge_feature',
   'add_to_brief',
   'get_feature_context',
@@ -117,12 +116,5 @@ describe('the revisit skill and the orchestrator', () => {
     expect(docs).toContain('`**Changed by the orchestrator:** <why>`')
     expect(docs).toContain('keeps its `**Assumed.**` line, or gains one')
     expect(docs).toContain("**A message that relays the human's own answer** is the human confirming")
-  })
-
-  it('plans a lap with no human present straight through to tickets', () => {
-    const lap = text().slice(text().indexOf('## Lap mode'), text().indexOf('### Stand on the failure'))
-    expect(lap).toContain('**When your briefing says no human is present**')
-    expect(lap).toContain('Plan it straight through to tickets in this one turn, without waiting')
-    expect(lap).toContain('"Planning without a human"')
   })
 })

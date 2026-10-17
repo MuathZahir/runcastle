@@ -18,7 +18,7 @@ import {
 } from '../src/launcher/sessions'
 import {
   toolAddToBrief,
-  toolBurnFeature,
+  toolGoFeature,
   toolDrive,
   toolMergeFeature,
   toolPlanFeature,
@@ -154,7 +154,7 @@ describe('the orchestrator’s acting tools', () => {
       start_feature: (c, s, slug) => toolStartFeature(c, s, { slug }),
       plan_feature: (c, s, slug) => toolPlanFeature(c, s, { slug }, { spawn: false }),
       stop_feature_run: (c, s, slug) => toolStopFeatureRun(c, s, { slug }),
-      burn_feature: (c, s, slug) => toolBurnFeature(c, s, { slug }),
+      go_feature: (c, s, slug) => toolGoFeature(c, s, { slug }),
       drive: (c, s, slug) => toolDrive(c, s, { slug, action: 'start' }),
       record_test_note: (c, s, slug) =>
         toolRecordTestNote(c, s, { slug, text: 'x', observedBy: 'orchestrator' }),
@@ -236,15 +236,26 @@ describe('the orchestrator’s acting tools', () => {
     expect(getSessionRow(ctx, chat.id)?.status).toBe('live')
   })
 
-  it('burn_feature burns an owned feature, and passes burn’s refusals through', async () => {
+  /**
+   * The orchestrator gives Go as the human does (`the-feature-lead-runs-rounds`
+   * decision 11): the feature moves to building and its lead dispatches — the
+   * orchestrator starts no run itself.
+   */
+  it('go_feature gives an owned feature Go, starting no run, and passes Go’s refusals through', async () => {
     const session = orchestrator()
-    const f = await owned('burnable', { phase: 'building' })
+    const f = await owned('approvable')
     storeTickets(ctx, f.id, [ticketInput('Do the work'), ticketInput('Review it', 'review')])
-    const { runId } = await toolBurnFeature(ctx, session, { slug: 'burnable' })
-    expect(runId).toMatch(/^run/)
+    const result = await toolGoFeature(ctx, session, { slug: 'approvable' })
+    expect(result.warnings).toEqual(expect.any(Array))
+    expect(getFeatureRow(ctx, f.id).phase).toBe('building')
+    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).toContain('feature.go')
+    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain('burn.started')
 
+    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'approvable' }))).toMatch(
+      /already past planning/,
+    )
     seedFeature(ctx, projectId, { slug: 'drafty', status: 'draft', orchestrated: true })
-    expect(await refusal(() => toolBurnFeature(ctx, session, { slug: 'drafty' }))).toMatch(/is a draft/)
+    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'drafty' }))).toMatch(/is a draft/)
   })
 
   it('drive starts and stops a feature drive, and the project drive is refused while it holds the slot', async () => {

@@ -6,9 +6,8 @@ import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { renderSystemPrompt } from '../src/launcher/artifacts'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, lapKickoff, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { toolGetFeatureContext } from '../src/mcp/server'
 import { carriedWork } from '../src/services/carried-work'
 import { carryFinding, openDefectsAcrossLaps } from '../src/services/review-findings'
@@ -181,51 +180,12 @@ describe('the carry channel into the next lap', () => {
     expect(doc).toContain('- [→] the toast never dismisses (captured lap 1, carried into lap 2)')
     // The section leads the doc, above the capture-lap sections it summarises.
     expect(doc.indexOf('## Carried, still open')).toBeLessThan(doc.indexOf('## Lap 1'))
-    expect(lapKickoff(3, carriedWork(ctx, feature.id))).toContain('1 note carried')
   })
 
   it('leaves the note lifecycle alone: a carried note is out of open work', () => {
     carry('the toast never dismisses')
     expect(listNotes(ctx, feature.id).filter((note) => note.status === 'open')).toEqual([])
     expect(listNotes(ctx, feature.id).map((note) => note.status)).toEqual(['carried'])
-  })
-
-  it('the lap kickoff leads with the counts, instructs, and drops the may-not-exist hedge', () => {
-    carry('the toast never dismisses')
-    carry('the empty state is confusing')
-    openDefect()
-
-    const line = lapKickoff(2, carriedWork(ctx, feature.id))
-    expect(line).toContain('2 notes carried and 1 defect open from earlier laps — address them.')
-    expect(line).toContain('## Carried, still open')
-    expect(line).toContain('openDefects')
-    expect(line).not.toContain('MAY NOT EXIST YET')
-  })
-
-  it('keeps the hedge, and states no counts, when nothing was carried', () => {
-    const line = lapKickoff(2, carriedWork(ctx, feature.id))
-    expect(line).toContain('MAY NOT EXIST YET')
-    expect(line).not.toContain('address them')
-    expect(line).toContain('## Carried, still open')
-  })
-
-  it('names the same work in the injected system prompt, pointing at both channels', () => {
-    carry('the toast never dismisses')
-    openDefect()
-
-    const prompt = renderSystemPrompt(
-      { ...feature, phase: 'planning', lap: 2 },
-      'revisit',
-      2,
-      undefined,
-      undefined,
-      carriedWork(ctx, feature.id),
-    )
-    expect(prompt).toContain('**1 note carried and 1 defect open from earlier laps — address them.**')
-    expect(prompt).toContain('## Carried, still open')
-    expect(prompt).toContain('It exists; read it.')
-    expect(prompt).toContain('`openDefects`')
-    expect(prompt).not.toMatch(/both OPTIONAL/)
   })
 
   /**
@@ -257,18 +217,6 @@ describe('the carry channel into the next lap', () => {
         digestPath: join(reviewDir(reviewTicket.id), 'DIGEST.md'),
       },
     ])
-    expect(lapKickoff(2, carriedWork(ctx, feature.id))).toContain(
-      'nothing verified: The browser could not attach.',
-    )
-    const prompt = renderSystemPrompt(
-      { ...feature, phase: 'planning', lap: 2 },
-      'revisit',
-      2,
-      undefined,
-      undefined,
-      carriedWork(ctx, feature.id),
-    )
-    expect(prompt).toContain('**Nothing verified:** The browser could not attach.')
   })
 
   it('names none while the feature is still on the lap that review belongs to', () => {
@@ -276,26 +224,5 @@ describe('the carry channel into the next lap', () => {
 
     // Lap 1's review is the CURRENT lap's review — the review loop still owns it.
     expect(toolGetFeatureContext(ctx, session).reviewEvidence).toEqual([])
-  })
-
-  it('states the disposition obligation and names all three verbs', () => {
-    openDefect()
-
-    const prompt = renderSystemPrompt(
-      { ...feature, phase: 'planning', lap: 2 },
-      'revisit',
-      2,
-      undefined,
-      undefined,
-      carriedWork(ctx, feature.id),
-    )
-    // "Address them" was the old instruction and it left the finding rows
-    // untouched: a lap fixed the defects and nothing said so. The obligation is
-    // now stated with the verb that discharges it, and with the gate that checks.
-    expect(prompt).toContain('originFindingId')
-    expect(prompt).toContain('resolve_finding')
-    expect(prompt).toMatch(/carry/i)
-    expect(prompt).toMatch(/addressed/i)
-    expect(prompt).toContain('complete_phase')
   })
 })

@@ -1378,6 +1378,44 @@ export async function branchCommitsAhead(
   }
 }
 
+/** One commit as a landing reports it. */
+export interface CommitSummary {
+  sha: string
+  subject: string
+}
+
+/**
+ * The commits `branch` carries over `base` (oldest first, with their subjects)
+ * and the files they touch — what a chat landing is about to bring onto the
+ * feature branch. Empty lists on anything git cannot answer, as
+ * {@link branchCommitsAhead} does.
+ */
+export async function branchChangesAhead(
+  repoPath: string,
+  base: string,
+  branch: string,
+): Promise<{ commits: CommitSummary[]; files: string[] }> {
+  try {
+    const g = git(repoPath)
+    const log = await g.raw(['log', '--reverse', '--format=%H%x09%s', `${base}..${branch}`])
+    const names = await g.raw(['diff', '--name-only', `${base}...${branch}`])
+    const commits = log
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => {
+        const tab = l.indexOf('\t')
+        return { sha: l.slice(0, tab), subject: l.slice(tab + 1) }
+      })
+    const files = names
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    return { commits, files }
+  } catch {
+    return { commits: [], files: [] }
+  }
+}
+
 /**
  * How many commits the feature branch carries that its base does not, and which
  * base that is — the honest answer to "what is about to be merged", read from git
@@ -2448,13 +2486,16 @@ export async function testDrive(
     const carriedChanges = await dirtyPaths(g)
 
     await g.checkout(previousBranch)
-    // The main checkout has released the feature branch — restore the talk
-    // worktree to it (best-effort) so a resumed session picks up where it left.
-    if (detachedWorktree) await reattachWorktree(detachedWorktree, branch)
     drives.delete(project.id)
     // Whoever stopped it — the agent, the burner's finally, or the human's Stop
     // reclaiming the slot from a dead agent — there is nothing left to release.
     reviewDriveReleases.delete(project.id)
+    // The main checkout has released the feature branch — land what the chat
+    // committed while the drive held it, and restore the talk worktree to it
+    // (best-effort) so a resumed session picks up where it left. Imported at
+    // call time: chat-branch is built on this module.
+    const { landChatCommitsAfterDrive } = await import('./chat-branch')
+    await landChatCommitsAfterDrive(ctx, project, feature, detachedWorktree)
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
       message:

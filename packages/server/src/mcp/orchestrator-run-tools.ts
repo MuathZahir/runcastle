@@ -7,6 +7,7 @@ import {
   type LaunchSessionOptions,
   type LaunchSessionResult,
 } from '../launcher/launcher'
+import { deliverToLead } from '../services/lead-delivery'
 import {
   noSession,
   ok,
@@ -16,53 +17,37 @@ import {
 } from './orchestrator-tools'
 
 /**
- * The orchestrator's tools that launch or end a headless run on a feature
- * (`whole-cuts-plan-themselves`): planning it, relaying a message to its
- * planning conversation, stopping its run, and planning its next lap.
+ * The orchestrator's tool that talks to a feature (`whole-cuts-plan-themselves`,
+ * `the-feature-lead-runs-rounds` decision 11): a message to its planning
+ * conversation before Go, and to its lead after.
  *
- * Each goes through the shared gate and then the very launch the human's door
- * uses, so it is refused exactly where that door is and nowhere else
- * (decision 6).
+ * A relay goes through the very launch the human's door uses, so it is refused
+ * exactly where that door is and nowhere else (decision 6).
  */
 
+/** What `send_to_feature` did with the message. */
+export type SendToFeatureResult = LaunchSessionResult | { deliveredToLead: true }
+
 /**
- * Send a message to an owned feature's planning conversation: a `relay` run,
- * headless, resuming that conversation (decision 16).
+ * Send a message to an owned feature. Before Go it is a `relay` run, headless,
+ * resuming the planning conversation (decision 16). From Go on the feature's
+ * chat is its lead, and the message reaches it as the human's would — drive
+ * notes, an answer — so it counts as a human message for Ask mode.
  */
 export async function toolSendToFeature(
   ctx: AppCtx,
   session: SessionRow,
   input: { slug: string; message: string },
   opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
+): Promise<SendToFeatureResult> {
   const feature = requireOrchestratedFeature(ctx, session, input.slug)
+  if (feature.phase !== 'planning') {
+    await deliverToLead(ctx, feature, { text: input.message, source: 'human' })
+    return { deliveredToLead: true }
+  }
   return launchSession(
     ctx,
     { featureId: feature.id, kind: 'chat', purpose: 'relay', message: input.message },
-    opts,
-  )
-}
-
-/**
- * Start an owned feature's next lap, planned by a headless run from the review,
- * the notes and the orchestrator's message — the Start-lap door, headless.
- */
-export async function toolStartFeatureLap(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { slug: string; message?: string },
-  opts: LaunchSessionOptions = {},
-): Promise<LaunchSessionResult> {
-  const feature = requireOrchestratedFeature(ctx, session, input.slug)
-  return launchSession(
-    ctx,
-    {
-      featureId: feature.id,
-      kind: 'chat',
-      purpose: 'start-lap',
-      headless: true,
-      ...(input.message ? { message: input.message } : {}),
-    },
     opts,
   )
 }
@@ -76,19 +61,20 @@ export function registerOrchestratorRunTools(
     server.registerTool(
       'send_to_feature',
       {
-        title: 'Send a feature a change',
+        title: 'Send a feature a message',
         description:
-          "Send a message to one of your features' planning conversation — a plan sent back with " +
-          'the change you want and why, or the human\'s answer relayed as theirs. It runs headless ' +
-          'and you are told when it ends. Refused while another session is live on the feature. ' +
-          'Orchestrator only.',
+          "Send a message to one of your features. Before Go it reaches the planning conversation " +
+          "— a plan sent back with the change you want and why, or the human's answer relayed as " +
+          'theirs — as a headless run you are told the end of, refused while another session is ' +
+          "live on the feature. From Go on it reaches the feature's agent as the human's message " +
+          '(drive notes, an answer), which approves its next round in Ask mode. Orchestrator only.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z
             .string()
             .min(1)
             .describe(
-              "What to change and why. Say so plainly when it relays the human's own answer.",
+              "What to change and why, or what you found. Say so plainly when it relays the human's own answer.",
             ),
         },
       },
@@ -96,32 +82,6 @@ export function registerOrchestratorRunTools(
         const rs = await resolve(extra)
         if (!rs) return noSession()
         return ok(await toolSendToFeature(rs.ctx, rs.session, args))
-      }),
-    )
-  }
-
-  if (wants('start_feature_lap')) {
-    server.registerTool(
-      'start_feature_lap',
-      {
-        title: 'Start a feature’s next lap',
-        description:
-          "Start the next lap of one of your features at review. It plans itself headless from the " +
-          'review, the test notes and your message, through to tickets, and you are told when it ' +
-          'ends. Refused where the human’s Start lap is. Orchestrator only.',
-        inputSchema: {
-          slug: z.string().describe('The slug of the feature.'),
-          message: z
-            .string()
-            .min(1)
-            .optional()
-            .describe('What you want the lap to take on, beside the carried notes and findings.'),
-        },
-      },
-      orchestratorTool(async (args, extra) => {
-        const rs = await resolve(extra)
-        if (!rs) return noSession()
-        return ok(await toolStartFeatureLap(rs.ctx, rs.session, args))
       }),
     )
   }
