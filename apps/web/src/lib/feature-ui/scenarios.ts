@@ -68,6 +68,24 @@ export function scenarioTarget(devUrl: string, scenario: DriveScenario | undefin
 }
 
 /**
+ * The Blank app nudge (decision 14): shown on a drive in no scenario while the
+ * project has none at all — a fact, not a stored flag, so it is gone for good
+ * with the first scenario. `scenarios` is undefined while the list loads, which
+ * shows nothing rather than a flash. `dismissed` is this drive's ✕.
+ */
+export function showsScenarioNudge({
+  scenario,
+  scenarios,
+  dismissed,
+}: {
+  scenario: DriveScenario | undefined
+  scenarios: readonly ScenarioEntry[] | undefined
+  dismissed: boolean
+}): boolean {
+  return !dismissed && !scenario && scenarios !== undefined && scenarios.length === 0
+}
+
+/**
  * The failure strip's headline, with the actual reason — the human asked that
  * the error itself be shown, not just the fact of a failure (decision 3).
  */
