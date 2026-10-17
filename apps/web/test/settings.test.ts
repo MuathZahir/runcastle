@@ -465,6 +465,7 @@ const projectView = (over: Record<string, Partial<SettingField>> = {}): Settings
         { key: 'dbResetCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveSetupCommand', value: null, scope: 'project', source: 'default' },
         { key: 'driveStopCommand', value: null, scope: 'project', source: 'default' },
+        { key: 'scenarioRunner', value: null, scope: 'project', source: 'default' },
         { key: 'driveInstructions', value: null, scope: 'project', source: 'default' },
         { key: 'docsCommitPrefix', value: 'runcastle:', scope: 'project', source: 'default' },
       ] satisfies Partial<SettingField>[]
@@ -525,6 +526,7 @@ describe('pageRows — one page per task', () => {
       'devCommand',
       'driveSetupCommand',
       'driveStopCommand',
+      'scenarioRunner',
       'dbResetCommand',
       'driveInstructions',
       'docsCommitPrefix',
@@ -534,6 +536,7 @@ describe('pageRows — one page per task', () => {
       'model',
       'model',
       'model',
+      'commands',
       'commands',
       'commands',
       'commands',
@@ -580,6 +583,7 @@ describe('pageRows — one page per task', () => {
     expect(placeholder('devCommand')).toBe('e.g. pnpm dev')
     expect(placeholder('driveSetupCommand')).toBe('e.g. docker compose up -d && pnpm db:migrate')
     expect(placeholder('driveStopCommand')).toBe('e.g. docker compose down')
+    expect(placeholder('scenarioRunner')).toBe('e.g. bun {file}')
     expect(placeholder('dbResetCommand')).toBe('e.g. pnpm db:reset')
     expect(placeholder('driveInstructions')).toContain('e.g. drive the sample project')
     expect(placeholder('sessionBranch')).toBe('main (detected)')

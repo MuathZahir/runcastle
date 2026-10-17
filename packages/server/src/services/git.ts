@@ -10,8 +10,17 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { DriveDenial, DriveDenialCode, Feature, PreparedKey, Project } from '@runcastle/core'
-import { DEFAULT_DOCS_COMMIT_PREFIX, DRIVE_LOOP_KEYS, driveDenialOf } from '@runcastle/core'
+import type {
+  DriveDenial,
+  DriveDenialCode,
+  DriveScenario,
+  Feature,
+  PreparedKey,
+  Project,
+  ScenarioEntry,
+  ScenarioFailure,
+} from '@runcastle/core'
+import { DEFAULT_DOCS_COMMIT_PREFIX, DRIVE_LOOP_KEYS, driveDenialOf, newId } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -28,7 +37,9 @@ import { describeDriveEnv, driveIdentityEnv, driveProcessEnv, parseEnvFile } fro
 import type { EmitScope } from './events'
 import { emit, emitProject, emitScoped } from './events'
 import { markVerified } from './findings'
-import { hasActiveRun } from './repo'
+import { getProjectById, hasActiveRun, tryGetFeature } from './repo'
+import type { ScenarioRunResult } from './scenarios'
+import { isScenarioPath, listScenarios, runScenario, scenarioName } from './scenarios'
 
 /**
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
@@ -170,6 +181,14 @@ export interface DriveInfo {
    * What the drive-fix session is told this drive actually ran with.
    */
   envKeys?: string[]
+  /**
+   * The scenario this drive is in (drive-scenarios spec, "Drive state and
+   * events"): running with its live output, landed on an entry URL, or failed
+   * with the reason the human is shown. Absent until one runs.
+   */
+  scenario?: DriveScenario
+  /** The `scenario` session docked beside this drive, while one is attached. */
+  scenarioSessionId?: string
 }
 
 type DriveStateInput = Omit<DriveInfo, 'state' | 'holderLabel'>
@@ -2111,8 +2130,24 @@ export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: st
  */
 export type DrivePurpose = 'human' | 'review'
 
+/**
+ * What a human or project drive carries for scenarios. The `drive.env` values
+ * are kept (not only their names) because a scenario runs with them long after
+ * setup read the file; they never leave the server.
+ */
+interface ScenarioDriveFields {
+  /** The parsed `drive.env` values setup handed back. */
+  envOverlay?: Record<string, string>
+  /** The scenario chosen at start, run once the app answers. */
+  pendingScenario?: string
+  scenario?: DriveScenario
+  scenarioSessionId?: string
+  /** True while a scenario process runs; a second run is refused. */
+  scenarioRunning?: boolean
+}
+
 type DriveState =
-  | {
+  | (ScenarioDriveFields & {
       kind: 'feature'
       purpose: DrivePurpose
       projectId: string
@@ -2132,7 +2167,7 @@ type DriveState =
       envKeys?: string[]
       /** The setup hook's Job Object, held for the drive's life (see {@link holdSetupJob}). */
       setupJob?: Containment
-    }
+    })
   | {
       kind: 'dryRun'
       projectId: string
@@ -2147,7 +2182,7 @@ type DriveState =
       observed: DryRunObservables
       setupJob?: Containment
     }
-  | {
+  | (ScenarioDriveFields & {
       kind: 'project'
       projectId: string
       /** The repo's real current branch — a project drive switches nothing. */
@@ -2163,7 +2198,7 @@ type DriveState =
       hookFailure?: DriveHookFailure
       envKeys?: string[]
       setupJob?: Containment
-    }
+    })
 
 /**
  * Where the sniffed URL is in its journey from printed to openable. Absent
@@ -2268,6 +2303,10 @@ export function activeDriveInfo(projectId: string): DriveInfo | null {
         : { dryRun: true }),
     ...(state.kind !== 'dryRun' && state.hookFailure ? { hookFailure: state.hookFailure } : {}),
     ...(state.kind !== 'dryRun' && state.envKeys ? { envKeys: state.envKeys } : {}),
+    ...(state.kind !== 'dryRun' && state.scenario ? { scenario: { ...state.scenario } } : {}),
+    ...(state.kind !== 'dryRun' && state.scenarioSessionId
+      ? { scenarioSessionId: state.scenarioSessionId }
+      : {}),
     branch: state.branch,
     devPaneId: state.devPaneId,
     devUrl: state.devUrl,
@@ -2372,6 +2411,13 @@ function watchAppReadiness(
             'still there to try by hand',
       data: { url },
     })
+    // The scenario chosen at start runs the moment the app answers — never
+    // awaited here, and a failure leaves the drive on its plain URL.
+    if (outcome === 'ready' && state.kind !== 'dryRun' && state.pendingScenario) {
+      const file = state.pendingScenario
+      state.pendingScenario = undefined
+      void runScenarioOnDrive(ctx, projectId, file)
+    }
   })
 }
 
@@ -2392,6 +2438,7 @@ export async function testDrive(
   feature: Feature,
   action: 'start' | 'stop',
   purpose: DrivePurpose = 'human',
+  opts: DriveStartOptions = {},
 ): Promise<TestDriveResult> {
   const g = git(project.repoPath)
   const branch = featureBranch(feature.slug)
@@ -2545,6 +2592,8 @@ export async function testDrive(
     previousBranch,
     detachedWorktree,
     devConfigured: !!project.devCommand,
+    // A review drive improvises its own setup; only the human's lands on a scenario.
+    ...(purpose === 'human' && opts.scenario ? { pendingScenario: opts.scenario } : {}),
   }
   drives.set(project.id, driving)
 
@@ -2584,6 +2633,7 @@ export async function testDrive(
   // panel reads the failure for the rest of the drive, and a drive-fix session
   // is briefed with what this drive actually ran with.
   driving.envKeys = envKeys
+  driving.envOverlay = fileVars
   if (setup?.failure) driving.hookFailure = setup.failure
 
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
@@ -3045,6 +3095,7 @@ export async function projectDrive(
   ctx: AppCtx,
   project: Project,
   action: 'start' | 'stop',
+  opts: DriveStartOptions = {},
 ): Promise<TestDriveResult> {
   const held = driveOf(project.id)
   if (action === 'stop') {
@@ -3068,6 +3119,7 @@ export async function projectDrive(
     commit,
     startedAt: Date.now(),
     devConfigured: !!project.devCommand,
+    ...(opts.scenario ? { pendingScenario: opts.scenario } : {}),
   }
   drives.set(project.id, state)
 
@@ -3093,6 +3145,7 @@ export async function projectDrive(
   const envKeys = Object.keys(fileVars)
   emitDriveEnv(ctx, scope, envKeys)
   state.envKeys = envKeys
+  state.envOverlay = fileVars
   if (setup?.failure) state.hookFailure = setup.failure
 
   if (project.devCommand) {
@@ -3155,6 +3208,177 @@ function recordProjectDriveUrl(ctx: AppCtx, projectId: string, url: string): voi
     data: { url },
   })
   watchAppReadiness(ctx, projectId, { projectId }, url, 'projectdrive')
+}
+
+// --- drive scenarios ----------------------------------------------------------
+
+/** What a human feature drive or a project drive may be started with. */
+export interface DriveStartOptions {
+  /** A scenario file to run once the app answers (drive-scenarios decision 7). */
+  scenario?: string
+}
+
+const DENY_NO_SCENARIO_DRIVE = 'No test drive or project drive is running for this project'
+const DENY_APP_NOT_READY = 'The app is not answering yet — a scenario runs once Open app is live'
+const DENY_SCENARIO_RUNNING = 'A scenario is already running on this drive — wait for it to land'
+
+/** Why a scenario failed, in the words the timeline shows. */
+function describeScenarioFailure(failure: ScenarioFailure): string {
+  switch (failure.reason) {
+    case 'exit':
+      return `exited ${failure.exitCode ?? 'without a code'}`
+    case 'no-entry-url':
+      return 'printed no ENTRY_URL'
+    case 'timeout':
+      return 'timed out'
+    case 'no-runner':
+      return 'no scenario runner is set'
+  }
+}
+
+/**
+ * Run one scenario against the project's live human or project drive, with no
+ * restart (drive-scenarios decision 7): the drive's identity plus its
+ * `drive.env` values plus a fresh `RUNCASTLE_SCENARIO_RUN`, in the drive's
+ * checkout. The drive records the run as it goes — running with live output,
+ * then landed (entry URL + a fresh landing id) or failed — and each status
+ * change emits at the drive's scope so the stream invalidates `driveInfo`. A
+ * failure leaves the drive exactly as it was. Refused, never queued, when there
+ * is no such drive, the app does not answer yet, or a run is in progress.
+ */
+export async function runScenarioOnDrive(
+  ctx: AppCtx,
+  projectId: string,
+  file: string,
+): Promise<ScenarioRunResult | ScenarioDenial> {
+  const started = startScenarioOnDrive(ctx, projectId, file)
+  return started.ok ? started.result : started
+}
+
+/** A scenario run refused before it started; nothing about the drive changed. */
+export interface ScenarioDenial {
+  ok: false
+  denied: string
+}
+
+/**
+ * {@link runScenarioOnDrive}'s start half, synchronous so a caller that does
+ * not wait for the landing (the fire-and-forget mutation) still hears a
+ * refusal: every guard runs, and the run is marked in progress, before this
+ * returns.
+ */
+export function startScenarioOnDrive(
+  ctx: AppCtx,
+  projectId: string,
+  file: string,
+): ScenarioDenial | { ok: true; result: Promise<ScenarioRunResult> } {
+  if (!isScenarioPath(file)) return { ok: false, denied: `${file} is not a scenario under .runcastle/scenarios/` }
+  const state = driveOf(projectId)
+  if (!state || state.kind === 'dryRun' || (state.kind === 'feature' && state.purpose !== 'human')) {
+    return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
+  }
+  const project = getProjectById(ctx, projectId)
+  if (!project) return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
+  if (state.devReadiness !== 'ready' || !state.devUrl) return { ok: false, denied: DENY_APP_NOT_READY }
+  if (state.scenarioRunning) return { ok: false, denied: DENY_SCENARIO_RUNNING }
+
+  let scope: EmitScope
+  let identity: DriveIdentity
+  if (state.kind === 'feature') {
+    const feature = tryGetFeature(ctx, state.featureId)
+    if (!feature) return { ok: false, denied: DENY_NO_SCENARIO_DRIVE }
+    scope = { featureId: state.featureId }
+    identity = { slug: feature.slug, branch: state.branch }
+  } else {
+    scope = { projectId }
+    identity = { slug: PROJECT_DRIVE_SLUG, branch: state.branch }
+  }
+
+  const name = scenarioName(file)
+  state.scenarioRunning = true
+  state.scenario = { file, name, status: 'running', output: '' }
+  emitScoped(ctx, scope, { type: 'scenario.started', message: `running ${name}`, data: { file } })
+
+  const result = runScenario({
+    runner: project.scenarioRunner,
+    file,
+    cwd: project.repoPath,
+    env: { ...driveIdentityEnv(identity), ...state.envOverlay },
+    driveUrl: state.devUrl,
+    onOutput: (tail) => {
+      if (state.scenario?.status === 'running') state.scenario.output = tail
+    },
+  }).then((outcome) => {
+    state.scenarioRunning = false
+    // A drive stopped (or replaced) mid-run has nothing left to land on.
+    if (driveOf(projectId) === state) recordScenarioOutcome(ctx, state, scope, file, outcome)
+    return outcome
+  })
+  return { ok: true, result }
+}
+
+/** Record a finished run on its drive, and say so at the drive's scope. */
+function recordScenarioOutcome(
+  ctx: AppCtx,
+  state: ScenarioDriveFields,
+  scope: EmitScope,
+  file: string,
+  result: ScenarioRunResult,
+): void {
+  const name = scenarioName(file)
+  if (result.ok) {
+    state.scenario = { file, name, status: 'landed', entryUrl: result.entryUrl, landingId: newId('land') }
+    emitScoped(ctx, scope, {
+      type: 'scenario.landed',
+      message: `landed on ${name} at ${result.entryUrl}`,
+      data: { file, entryUrl: result.entryUrl },
+    })
+  } else {
+    state.scenario = { file, name, status: 'failed', failure: result.failure }
+    emitScoped(ctx, scope, {
+      type: 'scenario.failed',
+      message: `scenario ${name} failed — ${describeScenarioFailure(result.failure)}`,
+      data: { file, reason: result.failure.reason, exitCode: result.failure.exitCode ?? null },
+    })
+  }
+}
+
+/**
+ * Dock (or undock, with `undefined`) the `scenario` session beside the
+ * project's live drive. A no-op when no human or project drive is live; the
+ * attachment ends with the drive.
+ */
+export function attachScenarioSession(projectId: string, sessionId: string | undefined): void {
+  const state = driveOf(projectId)
+  if (!state || state.kind === 'dryRun') return
+  state.scenarioSessionId = sessionId
+}
+
+/**
+ * The scenarios a drive can land on: a feature's (`feature/<slug>`, own ones
+ * against its base) or, with no feature, the project's checked-out `HEAD`.
+ * `runnerConfigured` says whether any of them can run at all.
+ */
+export async function listDriveScenarios(
+  ctx: AppCtx,
+  projectId: string,
+  featureId?: string,
+): Promise<{ runnerConfigured: boolean; scenarios: ScenarioEntry[] }> {
+  const project = getProjectById(ctx, projectId)
+  if (!project) throw new InvalidInputError(`unknown project ${projectId}`)
+  const runnerConfigured = !!project.scenarioRunner?.trim()
+  if (featureId === undefined) {
+    return { runnerConfigured, scenarios: await listScenarios(project.repoPath, { ref: 'HEAD' }) }
+  }
+  const feature = tryGetFeature(ctx, featureId)
+  if (!feature || feature.projectId !== projectId) {
+    throw new InvalidInputError(`unknown feature ${featureId}`)
+  }
+  const scenarios = await listScenarios(project.repoPath, {
+    ref: featureBranch(feature.slug),
+    ...(feature.baseBranch ? { baseBranch: feature.baseBranch } : {}),
+  })
+  return { runnerConfigured, scenarios }
 }
 
 /**

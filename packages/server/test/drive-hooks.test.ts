@@ -52,6 +52,19 @@ describe('tailLines', () => {
 })
 
 describe('runDriveHook', () => {
+  it('streams each chunk as it arrives and keeps stdout apart from stderr', async () => {
+    const chunks: { chunk: string; stream: string }[] = []
+    const res = await runDriveHook('echo to-out && echo to-err 1>&2', {
+      cwd: cwd(),
+      onData: (chunk, stream) => chunks.push({ chunk, stream }),
+    })
+    expect(res.stdout).toContain('to-out')
+    expect(res.stdout).not.toContain('to-err')
+    expect(res.output).toContain('to-err')
+    expect(chunks.some((c) => c.stream === 'stdout' && c.chunk.includes('to-out'))).toBe(true)
+    expect(chunks.some((c) => c.stream === 'stderr' && c.chunk.includes('to-err'))).toBe(true)
+  })
+
   it('reports success with the command output', async () => {
     const res = await runDriveHook('echo hook-ran', { cwd: cwd() })
     expect(res.ok).toBe(true)
@@ -229,7 +242,7 @@ describe('runDriveHook — the Job Object a hook runs in (win32)', () => {
 })
 
 describe('describeHookResult', () => {
-  const base = { exitCode: 0, timedOut: false, output: '', durationMs: 4200 }
+  const base = { exitCode: 0, timedOut: false, output: '', stdout: '', durationMs: 4200 }
 
   it('distinguishes the three outcomes a user must tell apart', () => {
     expect(describeHookResult('make up', { ...base, ok: true })).toBe('`make up` finished in 4s')

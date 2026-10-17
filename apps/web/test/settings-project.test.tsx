@@ -78,7 +78,7 @@ const DRIVE_INSTRUCTIONS =
   'Drive the sample project at ./examples/demo — change anything in it.\n' +
   'To reach a deep phase, tell the session agent this is a test and to advance.'
 
-/** The eleven fields a project may set, as the scoped view reports them. */
+/** The twelve fields a project may set, as the scoped view reports them. */
 const projectFields: SettingField[] = [
   // Twins, unset: the global value is what the ghost shows.
   field({ key: 'model', value: 'claude-opus-5[1m]', source: 'file' }),
@@ -91,6 +91,7 @@ const projectFields: SettingField[] = [
   field({ key: 'devCommand', value: 'bun dev', source: 'project' }),
   field({ key: 'driveSetupCommand', value: 'bun .runcastle/drive-setup.ts', source: 'project' }),
   field({ key: 'driveStopCommand', value: 'bun .runcastle/drive-stop.ts', source: 'project' }),
+  field({ key: 'scenarioRunner', value: 'bun {file}', source: 'project' }),
   field({ key: 'dbResetCommand', value: 'del runcastle.db', source: 'project' }),
   field({ key: 'driveInstructions', value: DRIVE_INSTRUCTIONS, source: 'project' }),
   field({ key: 'sessionBranch', value: '', source: 'default' }),
@@ -141,7 +142,7 @@ describe('Settings — This project', () => {
   })
   afterEach(cleanup)
 
-  it('shows the eleven fields in three groups, with example placeholders and no retired text', () => {
+  it('shows the twelve fields in three groups, with example placeholders and no retired text', () => {
     open()
 
     for (const title of ['Model & sandbox', 'Commands', 'Project chat']) {
@@ -156,6 +157,7 @@ describe('Settings — This project', () => {
       'Dev server',
       'Before a test drive',
       'After a test drive',
+      'Scenario runner',
       'Reset dev database',
       'How to drive this app',
       'Commits land on',

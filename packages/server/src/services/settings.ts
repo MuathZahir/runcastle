@@ -61,6 +61,7 @@ type ProjectColumn =
   | 'driveSetupCommand'
   | 'driveStopCommand'
   | 'driveInstructions'
+  | 'scenarioRunner'
   | 'docsCommitPrefix'
   | 'orchestrator'
 
@@ -284,6 +285,16 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
+  // Project-only (no global twin, no env var): the drive-scenario runner, one
+  // command with a `{file}` placeholder. Opaque like the drive hooks — runcastle
+  // substitutes the path, runs it, and reads `ENTRY_URL=` from what it prints.
+  {
+    key: 'scenarioRunner',
+    projectColumn: 'scenarioRunner',
+    restartRequired: false,
+    valueSchema: z.string().min(1),
+    parseEnv: idEnv,
+  },
   // Project-only (no global twin, no env var): the experimental orchestrator
   // (`whole-cuts-plan-themselves` decision 14). An experiment is switched on one
   // project at a time, and the project session reads it at launch.
@@ -378,6 +389,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       driveSetupCommand: projects.driveSetupCommand,
       driveStopCommand: projects.driveStopCommand,
       driveInstructions: projects.driveInstructions,
+      scenarioRunner: projects.scenarioRunner,
       docsCommitPrefix: projects.docsCommitPrefix,
       orchestrator: projects.orchestrator,
     })
@@ -397,6 +409,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     driveSetupCommand: row?.driveSetupCommand ?? null,
     driveStopCommand: row?.driveStopCommand ?? null,
     driveInstructions: row?.driveInstructions ?? null,
+    scenarioRunner: row?.scenarioRunner ?? null,
     docsCommitPrefix: row?.docsCommitPrefix ?? null,
     orchestrator: row?.orchestrator ?? null,
   }

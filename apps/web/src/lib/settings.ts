@@ -417,6 +417,14 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'commands',
     placeholder: 'e.g. docker compose down',
   },
+  scenarioRunner: {
+    label: 'Scenario runner',
+    tooltip: 'Runs one drive scenario. {file} is the scenario’s path under .runcastle/scenarios/.',
+    control: 'text',
+    page: 'project',
+    group: 'commands',
+    placeholder: 'e.g. bun {file}',
+  },
   dbResetCommand: {
     label: 'Reset dev database',
     tooltip:

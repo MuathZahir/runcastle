@@ -505,6 +505,11 @@ export const Project = z.object({
    * injected verbatim into every drive-mode review and verification prompt.
    */
   driveInstructions: z.string().optional(),
+  /**
+   * Runs one drive scenario: a command with a `{file}` placeholder, substituted
+   * with the scenario's repo-relative path (drive-scenarios decision 2).
+   */
+  scenarioRunner: z.string().optional(),
   /** Subject prefix for runcastle-owned docs checkpoint commits. */
   docsCommitPrefix: z.string().optional(),
   /** The project session launches as the orchestrator; unset reads as off. */
@@ -814,6 +819,52 @@ export function driveDenialOf(result: DriveDenial): DriveDenial {
     ...(result.dirtyFiles ? { dirtyFiles: result.dirtyFiles } : {}),
   }
 }
+
+/**
+ * One scenario a drive can land on (drive-scenarios spec, "Discovery"). Read
+ * from paths alone: `group` is the first subfolder under `.runcastle/scenarios/`
+ * made readable, `name` the file stem made readable, and `own` marks a file the
+ * feature's branch added or changed against its base.
+ */
+export const ScenarioEntry = z.object({
+  /** Repo-relative posix path, e.g. `.runcastle/scenarios/checkout/expired-coupon.ts`. */
+  file: z.string(),
+  group: z.string().optional(),
+  name: z.string(),
+  own: z.boolean(),
+})
+export type ScenarioEntry = z.infer<typeof ScenarioEntry>
+
+/**
+ * Why a scenario run failed: a non-zero `exit`, exit 0 with no `ENTRY_URL`
+ * line, the fixed timeout, or no scenario runner configured at all.
+ */
+export const ScenarioFailureReason = z.enum(['exit', 'no-entry-url', 'timeout', 'no-runner'])
+export type ScenarioFailureReason = z.infer<typeof ScenarioFailureReason>
+
+export const ScenarioFailure = z.object({
+  reason: ScenarioFailureReason,
+  exitCode: z.number().nullable().optional(),
+  /** The last ~40 lines of the scenario's combined output. */
+  outputTail: z.string(),
+})
+export type ScenarioFailure = z.infer<typeof ScenarioFailure>
+
+/**
+ * The scenario a live drive is in, as `driveInfo` reports it. `landingId` is
+ * fresh per landing so the panel reloads even when the entry URL repeats.
+ */
+export const DriveScenario = z.object({
+  file: z.string(),
+  name: z.string(),
+  status: z.enum(['running', 'landed', 'failed']),
+  /** Live output tail while running. */
+  output: z.string().optional(),
+  entryUrl: z.string().optional(),
+  landingId: z.string().optional(),
+  failure: ScenarioFailure.optional(),
+})
+export type DriveScenario = z.infer<typeof DriveScenario>
 
 export interface MergeConflictState {
   base: string

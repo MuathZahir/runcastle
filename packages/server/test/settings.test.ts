@@ -8,6 +8,7 @@ import { InvalidInputError } from '../src/errors'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
+import { getProjectById } from '../src/services/repo'
 import { getSettings, orchestratorOn, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
@@ -406,6 +407,23 @@ describe('settings service (#46)', () => {
     const project = seedProject(ctx)
     updateSettings(ctx, { projectId: project.id, key: 'driveInstructions', value: 'drive it' }, io())
     expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('settings.updated')
+  })
+
+  it('scenarioRunner is project-only, round-trips, and reaches the project row', () => {
+    const project = seedProject(ctx)
+    updateSettings(ctx, { projectId: project.id, key: 'scenarioRunner', value: 'bun {file}' }, io())
+
+    const f = field(getSettings(ctx, project.id, io()), 'scenarioRunner')
+    expect(f.value).toBe('bun {file}')
+    expect(f.scope).toBe('project')
+    expect(f.source).toBe('project')
+    expect(getProjectById(ctx, project.id)?.scenarioRunner).toBe('bun {file}')
+    expect(() =>
+      updateSettings(ctx, { key: 'scenarioRunner', value: 'bun {file}' }, io()),
+    ).toThrow(InvalidInputError)
+    expect(
+      getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'scenarioRunner'),
+    ).toBeUndefined()
   })
 
   it('a null value clears a project override, falling back to the global', () => {
