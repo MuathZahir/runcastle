@@ -845,8 +845,40 @@ export const ScenarioEntry = z.object({
   group: z.string().optional(),
   name: z.string(),
   own: z.boolean(),
+  /** A same-path `.http` sibling exists, so the scenario is an API call too. */
+  hasCall: z.boolean(),
 })
 export type ScenarioEntry = z.infer<typeof ScenarioEntry>
+
+/**
+ * An API scenario's `.http` request with its placeholders filled and its
+ * target resolved against the drive URL — what Try it shows and sends.
+ * Headers keep their order and repeats.
+ */
+export const FilledHttpRequest = z.object({
+  method: z.string().min(1),
+  url: z.string().min(1),
+  headers: z.array(z.tuple([z.string(), z.string()])),
+  body: z.string().optional(),
+})
+export type FilledHttpRequest = z.infer<typeof FilledHttpRequest>
+
+/**
+ * What sending a call over the live drive came back with: the response (body
+ * capped, `truncated` when cut), or an error for a request that could not be
+ * sent at all.
+ */
+export type DriveCallResult =
+  | {
+      ok: true
+      status: number
+      statusText: string
+      durationMs: number
+      headers: Array<[string, string]>
+      body: string
+      truncated: boolean
+    }
+  | { ok: false; error: string }
 
 /**
  * Why a scenario run failed: a non-zero `exit`, exit 0 with no `ENTRY_URL`
@@ -876,6 +908,14 @@ export const DriveScenario = z.object({
   entryUrl: z.string().optional(),
   landingId: z.string().optional(),
   failure: ScenarioFailure.optional(),
+  /** The landed run's `TOKEN=` value, if it printed one. */
+  token: z.string().optional(),
+  /** The landed run's `RUNCASTLE_SCENARIO_RUN`. */
+  run: z.string().optional(),
+  /** The scenario's `.http` request, filled for this run. */
+  call: FilledHttpRequest.optional(),
+  /** Why the `.http` sibling could not be parsed; the landing still counts. */
+  callError: z.string().optional(),
 })
 export type DriveScenario = z.infer<typeof DriveScenario>
 

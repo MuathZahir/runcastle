@@ -428,9 +428,9 @@ describe('a live chat beside a live drive', () => {
 // "This feature" section, and its main click is the blank app.
 describe('scenarios on a project drive', () => {
   const SCENARIOS: ScenarioEntry[] = [
-    { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false },
-    { file: '.runcastle/scenarios/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true },
-    { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false },
+    { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false, hasCall: false },
+    { file: '.runcastle/scenarios/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true, hasCall: false },
+    { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false, hasCall: false },
   ]
 
   it('starts on the blank app from the main click', () => {

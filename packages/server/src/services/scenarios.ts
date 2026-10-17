@@ -21,6 +21,9 @@ export const SCENARIO_TIMEOUT_MS = 120_000
 /** The placeholder the runner command carries for the scenario's path. */
 export const SCENARIO_FILE_PLACEHOLDER = '{file}'
 
+/** The extension of an API scenario's request file, never a scenario itself. */
+const HTTP_EXTENSION = '.http'
+
 /** `expired-coupon` → `Expired coupon`: separators to spaces, first letter up. */
 function readable(segment: string): string {
   const spaced = segment.replace(/[-_]+/g, ' ').trim()
@@ -38,7 +41,8 @@ function stem(name: string): string {
  * `scenarios/` starting with `_` (`_fixtures/`) is a helper, never listed.
  * Dot-names (`.gitkeep`) are not scenarios either.
  */
-function toEntry(file: string, own: boolean): ScenarioEntry | null {
+function toEntry(file: string, own: boolean, hasCall: boolean): ScenarioEntry | null {
+  if (file.endsWith(HTTP_EXTENSION)) return null
   const rel = file.slice(SCENARIOS_DIR.length + 1)
   const segments = rel.split('/')
   if (segments.some((s) => s === '' || s.startsWith('_') || s.startsWith('.'))) return null
@@ -49,7 +53,17 @@ function toEntry(file: string, own: boolean): ScenarioEntry | null {
     ...(segments.length > 1 ? { group: readable(segments[0] ?? '') } : {}),
     name,
     own,
+    hasCall,
   }
+}
+
+/**
+ * The same-path `.http` sibling of a scenario file
+ * (`feed/blocked-only.ts` → `feed/blocked-only.http`).
+ */
+export function callFileOf(file: string): string {
+  const slash = file.lastIndexOf('/')
+  return `${file.slice(0, slash + 1)}${stem(file.slice(slash + 1))}${HTTP_EXTENSION}`
 }
 
 async function gitLines(repoPath: string, args: string[]): Promise<string[]> {
@@ -93,8 +107,9 @@ export async function listScenarios(
       // An unreachable base leaves nothing marked own; the list still stands.
     }
   }
+  const present = new Set(files)
   const entries = files
-    .map((file) => toEntry(file, changed.has(file)))
+    .map((file) => toEntry(file, changed.has(file), present.has(callFileOf(file))))
     .filter((e): e is ScenarioEntry => e !== null)
   const byPath = (a: ScenarioEntry, b: ScenarioEntry): number =>
     a.file < b.file ? -1 : a.file > b.file ? 1 : 0
@@ -128,8 +143,12 @@ export function scenarioRunId(): string {
   return randomBytes(3).toString('hex')
 }
 
+/**
+ * One run's outcome. `run` is the `RUNCASTLE_SCENARIO_RUN` it ran with, so a
+ * landing can fill its `.http` request's `{{run}}`.
+ */
 export type ScenarioRunResult =
-  | { ok: true; entryUrl: string; outputTail: string }
+  | { ok: true; entryUrl: string; outputTail: string; run: string; token?: string }
   | { ok: false; failure: ScenarioFailure }
 
 export interface RunScenarioOptions {
@@ -158,6 +177,16 @@ function lastEntryUrl(stdout: string): string | undefined {
   return found
 }
 
+/** The last `TOKEN=` line on stdout, trimmed; undefined when absent or empty. */
+function lastToken(stdout: string): string | undefined {
+  let found: string | undefined
+  for (const line of stdout.split(/\r?\n/)) {
+    const m = /^TOKEN=(.*)$/.exec(line.trim())
+    if (m) found = m[1]?.trim()
+  }
+  return found === '' ? undefined : found
+}
+
 /**
  * Run one scenario once: no retry, no fallback. Success is exit 0 together
  * with an `ENTRY_URL` line; anything else fails with the reason and the tail of
@@ -169,9 +198,10 @@ export async function runScenario(opts: RunScenarioOptions): Promise<ScenarioRun
   }
   const command = opts.runner.split(SCENARIO_FILE_PLACEHOLDER).join(`"${opts.file}"`)
   let live = ''
+  const run = scenarioRunId()
   const result = await runDriveHook(command, {
     cwd: opts.cwd,
-    env: driveProcessEnv({ ...opts.env, RUNCASTLE_SCENARIO_RUN: scenarioRunId() }),
+    env: driveProcessEnv({ ...opts.env, RUNCASTLE_SCENARIO_RUN: run }),
     timeoutMs: opts.timeoutMs ?? SCENARIO_TIMEOUT_MS,
     ...(opts.onOutput
       ? {
@@ -199,5 +229,6 @@ export async function runScenario(opts: RunScenarioOptions): Promise<ScenarioRun
   if (entryUrl === undefined) {
     return { ok: false, failure: { reason: 'no-entry-url', exitCode: 0, outputTail } }
   }
-  return { ok: true, entryUrl, outputTail }
+  const token = lastToken(result.stdout)
+  return { ok: true, entryUrl, outputTail, run, ...(token !== undefined ? { token } : {}) }
 }

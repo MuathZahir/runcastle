@@ -20,6 +20,7 @@ const entry = (file: string, name: string, own: boolean, group?: string): Scenar
   file: `.runcastle/scenarios/${file}`,
   name,
   own,
+  hasCall: false,
   ...(group ? { group } : {}),
 })
 

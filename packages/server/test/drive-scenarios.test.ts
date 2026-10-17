@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { createNativePtySession } from '../src/pty/pty'
+import { DRIVE_CALL_BODY_CAP, sendDriveCall } from '../src/services/drive-call'
 import { listAfter, listByProject } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
 import {
@@ -297,6 +298,107 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
     await projectDrive(ctx, project, 'stop')
   }, 30_000)
 
+  describe('API calls', () => {
+    /** Commit an API scenario and its `.http` sibling onto the driven feature branch. */
+    async function addCall(name: string, http: string): Promise<string> {
+      await g.checkout('feature/drive')
+      put(
+        project.repoPath,
+        `.runcastle/scenarios/api/${name}.ts`,
+        "console.log('TOKEN=tok_' + process.env.RUNCASTLE_SCENARIO_RUN); console.log('ENTRY_URL=/')",
+      )
+      put(project.repoPath, `.runcastle/scenarios/api/${name}.http`, http)
+      await g.add('.')
+      await g.commit(`call ${name}`)
+      await g.checkout('main')
+      return `.runcastle/scenarios/api/${name}.ts`
+    }
+
+    it('fills the landed call with the run token, run id and the drive URL', async () => {
+      const file = await addCall(
+        'feed',
+        ['# blocked only', 'POST /api/feed?run={{run}} HTTP/1.1', 'Authorization: Bearer {{token}}', '', '{"a":1}'].join('\n'),
+      )
+      const url = await driveUp({ scenario: file })
+      await waitFor(() => scenario()?.status === 'landed')
+      const landed = scenario()
+      expect(landed?.run).toMatch(/^[0-9a-f]{6}$/)
+      expect(landed?.token).toBe(`tok_${landed?.run}`)
+      expect(landed?.call).toEqual({
+        method: 'POST',
+        url: `${url}api/feed?run=${landed?.run}`,
+        headers: [['Authorization', `Bearer tok_${landed?.run}`]],
+        body: '{"a":1}',
+      })
+      expect(landed?.callError).toBeUndefined()
+    }, 30_000)
+
+    it('lands anyway with a callError when the .http is malformed', async () => {
+      const file = await addCall('bad', 'GET /a\nnot a header\n')
+      await driveUp({ scenario: file })
+      await waitFor(() => scenario()?.status === 'landed')
+      expect(scenario()?.call).toBeUndefined()
+      expect(scenario()?.callError).toContain('not a header')
+    }, 30_000)
+
+    it('sends a call to the live drive, refusing other origins and capping the body', async () => {
+      const port = await freePort()
+      const seen: string[] = []
+      const server = createServer((req, res) => {
+        let body = ''
+        req.on('data', (c: Buffer) => (body += c.toString()))
+        req.on('end', () => {
+          seen.push(`${req.method} ${req.url} ${req.headers['x-run']} ${body}`)
+          if (req.url === '/big') return res.end('x'.repeat(DRIVE_CALL_BODY_CAP + 10))
+          res.writeHead(201, { 'content-type': 'application/json' })
+          res.end('{"made":true}')
+        })
+      })
+      servers.push(server)
+      await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()))
+      const url = `http://127.0.0.1:${port}/`
+
+      const request = { method: 'POST', url: `${url}items`, headers: [['X-Run', '7f3a']] as Array<[string, string]>, body: 'hi' }
+      expect(await sendDriveCall(ctx, project.id, request)).toMatchObject({ ok: false })
+
+      expect((await testDrive(ctx, project, feature, 'start', 'human')).ok).toBe(true)
+      recordDriveUrl(ctx, project.id, feature.id, url)
+      const sent = await sendDriveCall(ctx, project.id, request)
+      expect(sent).toMatchObject({ ok: true, status: 201, body: '{"made":true}', truncated: false })
+      expect(sent.ok && sent.headers).toContainEqual(['content-type', 'application/json'])
+      expect(sent.ok && sent.durationMs).toBeGreaterThanOrEqual(0)
+      // The readiness poll's GETs land here too; the call is the one POST.
+      expect(seen.filter((s) => s.startsWith('POST'))).toEqual(['POST /items 7f3a hi'])
+
+      const big = await sendDriveCall(ctx, project.id, { method: 'GET', url: `${url}big`, headers: [] })
+      expect(big.ok && big.truncated).toBe(true)
+      expect(big.ok && big.body.length).toBe(DRIVE_CALL_BODY_CAP)
+
+      expect(
+        await sendDriveCall(ctx, project.id, { method: 'GET', url: 'http://127.0.0.1:1/x', headers: [] }),
+      ).toEqual({ ok: false, error: expect.stringContaining('not the drive') })
+      expect(await sendDriveCall(ctx, project.id, { method: 'GET', url: 'nope', headers: [] })).toMatchObject({
+        ok: false,
+      })
+      // A network failure is an error result, never a throw.
+      const failing = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch
+      expect(await sendDriveCall(ctx, project.id, request, { fetchFn: failing })).toEqual({
+        ok: false,
+        error: 'ECONNREFUSED',
+      })
+      await testDrive(ctx, project, feature, 'stop')
+
+      // A review agent's drive is admitted only when asked for.
+      await reviewDrive(ctx, project, { ...feature, phase: 'review' }, 'start')
+      recordDriveUrl(ctx, project.id, feature.id, url)
+      expect(await sendDriveCall(ctx, project.id, request)).toMatchObject({ ok: false })
+      expect(await sendDriveCall(ctx, project.id, request, { allowReview: true })).toMatchObject({
+        ok: true,
+        status: 201,
+      })
+    }, 30_000)
+  })
+
   describe('over tRPC', () => {
     const caller = () => createCallerFactory(appRouter)(ctx)
 
@@ -333,6 +435,26 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
         .toEqual({ ok: true })
       expect(scenario()?.status).toBe('running')
       await waitFor(() => scenario()?.status === 'failed')
+    }, 30_000)
+
+    it('lists hasCall and sends a call through feature.sendCall', async () => {
+      await g.checkout('feature/drive')
+      put(project.repoPath, '.runcastle/scenarios/api/ping.ts', "console.log('ENTRY_URL=/')")
+      put(project.repoPath, '.runcastle/scenarios/api/ping.http', 'GET /ping')
+      await g.add('.')
+      await g.commit('call')
+      await g.checkout('main')
+      const list = await caller().feature.driveScenarios({ projectId: project.id, featureId: feature.id })
+      expect(list.scenarios.map((s) => [s.file, s.hasCall])).toContainEqual(['.runcastle/scenarios/api/ping.ts', true])
+      expect(list.scenarios.map((s) => s.file)).not.toContain('.runcastle/scenarios/api/ping.http')
+
+      const url = await driveUp()
+      expect(
+        await caller().feature.sendCall({
+          projectId: project.id,
+          request: { method: 'GET', url: `${url}ping`, headers: [] },
+        }),
+      ).toMatchObject({ ok: true, status: 200, body: 'app' })
     }, 30_000)
 
     it('answers runScenario with the refusal when there is no drive', async () => {

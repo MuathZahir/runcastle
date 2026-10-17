@@ -15,8 +15,8 @@ import { openMenu } from './floating'
  * calls are what is asserted.
  */
 const SCENARIOS: ScenarioEntry[] = [
-  { file: '.runcastle/scenarios/checkout/expired-coupon.ts', name: 'Expired coupon', group: 'Checkout', own: true },
-  { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false },
+  { file: '.runcastle/scenarios/checkout/expired-coupon.ts', name: 'Expired coupon', group: 'Checkout', own: true, hasCall: false },
+  { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false, hasCall: false },
 ]
 const runScenario = vi.fn()
 const openScenarioChat = vi.fn()

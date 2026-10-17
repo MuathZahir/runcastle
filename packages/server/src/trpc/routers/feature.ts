@@ -1,4 +1,4 @@
-import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import {
   endSession,
@@ -8,6 +8,7 @@ import {
 } from '../../launcher/launcher'
 import { burnWarnings } from '../../services/burn-warnings'
 import { setDependencies } from '../../services/dependencies'
+import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
 import { mergeFeatureFlow } from '../../services/merge'
@@ -196,6 +197,12 @@ export const featureRouter = router({
       void started.result
       return { ok: true }
     }),
+
+  // Try it: send an API scenario's filled request from the server to the live
+  // human or project drive. A request that cannot be sent answers `ok: false`.
+  sendCall: publicProcedure
+    .input(z.object({ projectId: z.string(), request: FilledHttpRequest }))
+    .mutation(({ ctx, input }) => sendDriveCall(ctx, input.projectId, input.request)),
 
   // ＋ New scenario / Fix it: the `scenario` session docked beside the drive.
   openScenarioChat: publicProcedure

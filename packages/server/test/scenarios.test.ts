@@ -58,21 +58,23 @@ describe('listScenarios', () => {
 
     const list = await listScenarios(repo, { ref: 'feature/x', baseBranch: 'main' })
     expect(list).toEqual([
-      { file: '.runcastle/scenarios/admin/refund.ts', group: 'Admin', name: 'Refund', own: true },
+      { file: '.runcastle/scenarios/admin/refund.ts', group: 'Admin', name: 'Refund', own: true, hasCall: false },
       {
         file: '.runcastle/scenarios/checkout/deep/gift-card.ts',
         group: 'Checkout',
         name: 'Gift card',
         own: true,
+        hasCall: false,
       },
-      { file: '.runcastle/scenarios/auth/signed_out.ts', group: 'Auth', name: 'Signed out', own: false },
+      { file: '.runcastle/scenarios/auth/signed_out.ts', group: 'Auth', name: 'Signed out', own: false, hasCall: false },
       {
         file: '.runcastle/scenarios/checkout/expired-coupon.ts',
         group: 'Checkout',
         name: 'Expired coupon',
         own: false,
+        hasCall: false,
       },
-      { file: '.runcastle/scenarios/empty-cart.ts', name: 'Empty cart', own: false },
+      { file: '.runcastle/scenarios/empty-cart.ts', name: 'Empty cart', own: false, hasCall: false },
     ])
   })
 
@@ -80,9 +82,30 @@ describe('listScenarios', () => {
     put('.runcastle/scenarios/a.ts', '')
     await commitAll('base')
     expect(await listScenarios(repo, { ref: 'HEAD' })).toEqual([
-      { file: '.runcastle/scenarios/a.ts', name: 'A', own: false },
+      { file: '.runcastle/scenarios/a.ts', name: 'A', own: false, hasCall: false },
     ])
     expect(await listScenarios(repo, { ref: 'no-such-branch' })).toEqual([])
+  })
+
+  it('never lists a .http file, marks a scenario with a same-path .http sibling hasCall, ignores an orphan', async () => {
+    put('.runcastle/scenarios/feed/blocked-only.ts', '')
+    put('.runcastle/scenarios/feed/blocked-only.http', 'GET /api/feed')
+    put('.runcastle/scenarios/feed/all.ts', '')
+    put('.runcastle/scenarios/feed/orphan.http', 'GET /api/x')
+    put('.runcastle/scenarios/top.rb', '')
+    put('.runcastle/scenarios/top.http', 'GET /')
+    await commitAll('calls')
+    expect(await listScenarios(repo, { ref: 'HEAD' })).toEqual([
+      { file: '.runcastle/scenarios/feed/all.ts', group: 'Feed', name: 'All', own: false, hasCall: false },
+      {
+        file: '.runcastle/scenarios/feed/blocked-only.ts',
+        group: 'Feed',
+        name: 'Blocked only',
+        own: false,
+        hasCall: true,
+      },
+      { file: '.runcastle/scenarios/top.rb', name: 'Top', own: false, hasCall: true },
+    ])
   })
 })
 
@@ -112,7 +135,31 @@ describe.skipIf(!RUNNER)('runScenario (real bun runner)', () => {
       ok: true,
       entryUrl: 'http://localhost:5199/__drive/login?token=t&to=/cart',
       outputTail: expect.stringContaining('seeded'),
+      run: expect.stringMatching(/^[0-9a-f]{6}$/),
+      token: 'abc',
     })
+  }, 30_000)
+
+  it('takes the last TOKEN line, trimmed, and returns the run id it ran with', async () => {
+    put(
+      '.runcastle/scenarios/tok.ts',
+      [
+        "console.log('TOKEN=first')",
+        "console.log('TOKEN=  second  ')",
+        'console.log(`ran ${process.env.RUNCASTLE_SCENARIO_RUN}`)',
+        "console.log('ENTRY_URL=/')",
+      ].join('\n'),
+    )
+    const res = await run('.runcastle/scenarios/tok.ts')
+    expect(res.ok && res.token).toBe('second')
+    expect(res.ok && res.outputTail).toContain(`ran ${res.ok ? res.run : ''}`)
+  }, 30_000)
+
+  it('carries no token when none, or an empty one, is printed', async () => {
+    put('.runcastle/scenarios/notok.ts', "console.log('TOKEN=x'); console.log('TOKEN='); console.log('ENTRY_URL=/')")
+    const res = await run('.runcastle/scenarios/notok.ts')
+    expect(res.ok).toBe(true)
+    expect(res.ok && 'token' in res).toBe(false)
   }, 30_000)
 
   it('keeps an absolute ENTRY_URL as is', async () => {
