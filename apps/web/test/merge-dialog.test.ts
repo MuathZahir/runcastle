@@ -55,7 +55,7 @@ describe('MergeFeatureDialog', () => {
       expect(html).toContain('What lands')
       expect(html).toContain('12 commits · 9 files')
       expect(html).toContain('1/1 tickets done')
-      expect(html).toContain('Lap 1')
+      expect(html).toContain('Taken')
       expect(html).toContain('Reviewed ✓ · this build')
     })
 

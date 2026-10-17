@@ -14,7 +14,7 @@ import type { Freshness } from '../src/lib/feature-ui'
 const FRESH: Freshness = { tone: 'fresh', text: 'Reviewed ✓ · this build' }
 const STALE: Freshness = {
   tone: 'stale',
-  text: 'Reviewed 2 laps ago · 5 tickets landed since — evidence may be outdated',
+  text: 'Reviewed earlier · 5 tickets landed since — evidence may be outdated',
 }
 
 const ticket = (status: string, lap = 2, kind: 'implementation' | 'review' = 'implementation') => ({
@@ -128,14 +128,14 @@ describe('mergeSummary', () => {
     })
 
     it('names the lap the drive was taken in, green when it is this lap', () => {
-      expect(row(mergeSummary(clean), 'test drive')).toEqual({ key: 'test drive', value: 'Lap 2', tone: 'ok' })
+      expect(row(mergeSummary(clean), 'test drive')).toEqual({ key: 'test drive', value: 'Taken', tone: 'ok' })
     })
 
     /** Decision 8a: "any lap" used to read "taken" after an undriven lap 2. */
     it('ambers a drive an undriven later lap has left behind', () => {
       expect(row(mergeSummary({ ...clean, lap: 2, driveLap: 1 }), 'test drive')).toEqual({
         key: 'test drive',
-        value: 'Lap 1 · not since',
+        value: 'Taken · not since',
         tone: 'warn',
       })
     })
@@ -226,15 +226,14 @@ describe('mergeSummary', () => {
     })
 
     /** Decision 26(d): the debt that rides along at triage, caught here too. */
-    it('names unburned fix tickets earlier laps left standing, per lap', () => {
+    it('names the unburned fix tickets earlier work left standing, in one line', () => {
       const s = mergeSummary({
         ...clean,
         lap: 3,
         tickets: [ticket('done', 3), ticket('pending', 1), ticket('pending', 1), ticket('pending', 2)],
       })
       expect(s.warnings).toEqual([
-        '1 unburned fix ticket from lap 2 — merging leaves them behind.',
-        '2 unburned fix tickets from lap 1 — merging leaves them behind.',
+        '3 unburned fix tickets — merging leaves them behind.',
       ])
     })
 

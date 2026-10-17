@@ -1,6 +1,6 @@
 import type { TicketTally } from '@runcastle/core'
 import { settingsLocationFromMessage } from '../../settings'
-import { burnLabel, ticketCountText } from '../laps'
+import { burnLabel, ticketCountText } from '../tickets'
 import { burnExpectation } from '../run'
 import { burnWarningLine } from './burn-warnings'
 import { CHAT_ACTION } from './chat'
@@ -123,9 +123,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
       desc: `Read the card — edit it if it is not quite right — then burn it into commits. ${expectation}`,
-      // Whose tickets these are, when laps mix (decision 28a) — the burn takes
-      // every pending ticket on the branch, and the count alone never said so.
-      primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
+      primary: { label: burnLabel(pendingTickets), kind: 'burn' },
       secondary: [CHAT_ACTION, mergeAction],
       busy: false,
       ...(shape ? { note: shape } : {}),

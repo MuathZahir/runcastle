@@ -125,7 +125,7 @@ describe('ChatView', () => {
 /** The strip names whichever session kind the Chat tab is hosting (decision 9). */
 describe('chatContextLine', () => {
   it('names each kind of feature session', () => {
-    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat · lap 2')
+    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat')
     expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
   })
 })
@@ -159,7 +159,7 @@ describe('FeatureChat', () => {
   }
 
   for (const [kind, line] of [
-    ['chat', 'Chat · lap 1'],
+    ['chat', 'Chat'],
     ['drive-fix', 'Drive fix'],
   ] as const) {
     it(`hosts a live ${kind} session full-area`, () => {
@@ -178,7 +178,7 @@ describe('FeatureChat', () => {
 
   it('with nothing live, reads back the chat transcript over Resume', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
-    expect(out).toContain('Chat · lap 2')
+    expect(out).toContain('Chat')
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
   })
@@ -250,10 +250,10 @@ describe('the live-session line', () => {
   it('names the live session and its lap', () => {
     expect(liveSessionLine([session({ kind: 'drive-fix', lap: 3 })])).toEqual({
       sessionId: 'sess_1',
-      text: 'Drive fix live · lap 3',
+      text: 'Drive fix live',
     })
     // A launching terminal is as live as a live one — it is holding the seat.
-    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Chat live · lap 1')
+    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Chat live')
   })
 
   it('says nothing about an ended session, or about no session', () => {
@@ -270,11 +270,11 @@ describe('the live-session line', () => {
     const out = html(
       createElement(LiveSessionBar, {
         featureId: 'feat_1',
-        line: { sessionId: 'sess_1', text: 'Chat live · lap 2' },
+        line: { sessionId: 'sess_1', text: 'Chat live' },
         onOpen: () => undefined,
       }),
     )
-    expect(out).toContain('Chat live · lap 2')
+    expect(out).toContain('Chat live')
     expect(out).toContain('Open chat')
     expect(out).toContain('End session')
   })

@@ -32,6 +32,7 @@ vi.mock('../src/lib/reviews', () => ({ useReviewArtifacts: () => ({ data: [] }) 
 vi.mock('../src/trpc', () => ({ trpc: {
   useUtils: () => ({ feature: { get: { invalidate: async () => undefined } } }),
   feature: {
+    rounds: { useQuery: () => ({ data: [] }) },
     get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 1, branch: 'feature/demo' }, tickets: server.tickets, sessions: [] } }) },
     launchSession: { useMutation: () => ({ isPending: false, mutate: record('launch') }) },
   },

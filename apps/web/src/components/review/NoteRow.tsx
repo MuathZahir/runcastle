@@ -46,11 +46,6 @@ export function itemId(item: NoteItem): string {
   return item.kind === 'note' ? item.note.id : item.finding.id
 }
 
-/** Which lap this row belongs under, for the list's lap grouping. */
-export function itemLap(item: NoteItem): number {
-  return item.kind === 'note' ? item.note.lap : item.finding.lap
-}
-
 /** The DOM id a jump or a highlight addresses a row by, from its item id. */
 export function rowElementId(id: string): string {
   return `work-${id}`
@@ -93,7 +88,6 @@ export function NoteRow({
   controls,
   editor,
   highlighted = false,
-  showLap = false,
   onSeek,
   onOpenImage,
   onViewLane,
@@ -103,14 +97,12 @@ export function NoteRow({
   onStage: { ticketId: string } | null
   /** Looking back at review on a shipped feature — evidence, never an action. */
   readonly: boolean
-  /** Edit / Delete / Dismiss / Reopen, or the triage step's checkbox. */
+  /** Edit / Delete / Dismiss / Reopen. */
   controls?: ReactNode
   /** The in-place editor; it takes the text's place and leaves the evidence up. */
   editor?: ReactNode
   /** Briefly marked — a jump landed here, or this row was just captured. */
   highlighted?: boolean
-  /** Laps span this list, so say which one this is from (decision 25a). */
-  showLap?: boolean
   onSeek?: (seconds: number) => void
   onOpenImage: (url: string) => void
   /** Go to the lane fixing this defect in the running burn (decision 18c). */
@@ -124,7 +116,7 @@ export function NoteRow({
     note?.status === 'promoted'
       ? `Promoted to ${item.kind === 'note' && item.ticket ? `#${item.ticket.seq} ${item.ticket.title}` : 'a ticket'}`
       : note?.status === 'carried'
-        ? `carried into lap ${note.carriedLap}`
+        ? 'carried'
         : null
   const text = note?.text ?? finding?.title ?? ''
   const moment = note?.videoTimestamp
@@ -138,7 +130,7 @@ export function NoteRow({
   )
   const why = finding ? findingOpenReason(finding) : null
   // The defect's half of the same statement: where a carried one was parked, or
-  // — for one that is closed — whether a fix ticket verified it or a lap session
+  // — for one that is closed — whether a fix ticket verified it or a session
   // attested it. Part of the record too, so it survives `readonly`.
   const disposition = finding ? findingStanding(finding) : null
   const fixing = item.kind === 'defect' ? item.fixTicket : undefined
@@ -170,7 +162,6 @@ export function NoteRow({
         <div className="flex min-h-4 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-tertiary">
           {finding && <FindingSeverityChip severity={finding.severity} />}
           {note && <NoteAuthorChip author={note.author} />}
-          {showLap && <span>Lap {itemLap(item)}</span>}
           {moment !== undefined &&
             (mode === 'live-seek' ? (
               <button

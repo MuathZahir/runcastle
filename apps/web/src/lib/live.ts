@@ -286,6 +286,10 @@ export function useLiveSync(): LiveStatus {
       void u.feature.list.invalidate()
       void u.feature.get.invalidate()
       void u.feature.driveInfo.invalidate()
+      // The round trail: a round that starts, lands a ticket or ends, and a
+      // ready declaration, all move it while it is on screen.
+      void u.feature.rounds.invalidate()
+      void u.feature.readyDeclarations.invalidate()
       // Test-drive notes: the review checklist is a live surface — a note added,
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.

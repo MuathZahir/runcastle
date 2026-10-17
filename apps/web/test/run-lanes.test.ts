@@ -332,11 +332,10 @@ describe('Lane model menu', () => {
 })
 
 describe('RunLanes', () => {
-  const render = (tickets: (RunTicket & { lap: number })[], currentLap: number) =>
+  const render = (tickets: (RunTicket & { lap: number })[]) =>
     renderToStaticMarkup(
       createElement(RunLanes<RunTicket & { lap: number }>, {
         tickets,
-        currentLap,
         lane: (t) => createElement('span', { key: t.id }, `#${t.seq}`),
       }),
     )
@@ -349,7 +348,6 @@ describe('RunLanes', () => {
         { ...row({ seq: 3, originFindingId: 'fnd_1' }), lap: 1 },
         { ...row({ seq: 4, kind: 'review', passKind: 'verification' }), lap: 1 },
       ],
-      1,
     )
     expect(html).toContain('Review fixes')
     expect(html).toContain('Verifying 1 fixes — recording a fresh walkthrough')
@@ -357,25 +355,15 @@ describe('RunLanes', () => {
     expect(html.indexOf('#3')).toBeLessThan(html.indexOf('Verifying 1 fixes'))
   })
 
-  /**
-   * A Burn burns every pending ticket across laps (decision #28a), so a lap-2
-   * run legitimately carries lap-1 leftovers — unlabelled, they read as this
-   * lap's work.
-   */
-  it('divides the lanes by lap once the ledger spans laps', () => {
-    const spanning = render(
-      [
-        { ...row({ seq: 1 }), lap: 1 },
-        { ...row({ seq: 2 }), lap: 2 },
-      ],
-      2,
-    )
-    expect(spanning).toContain('Lap 1')
-    expect(spanning).toContain('Lap 2')
-    expect(spanning).toContain('1 lane')
-
-    // A feature that never iterated gets no lap ceremony at all (ADR-0010 §4).
-    expect(render([{ ...row({ seq: 1 }), lap: 1 }], 1)).not.toContain('Lap 1')
+  /** A run is one round (decision 16): its lanes carry no lap or round headers. */
+  it('lists one round’s lanes with no lap headers, whatever lap a ticket was stamped with', () => {
+    const html = render([
+      { ...row({ seq: 1 }), lap: 1 },
+      { ...row({ seq: 2 }), lap: 2 },
+    ])
+    expect(html).toContain('#1')
+    expect(html).toContain('#2')
+    expect(html).not.toMatch(/\bLap \d/)
   })
 })
 

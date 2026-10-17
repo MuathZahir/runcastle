@@ -39,7 +39,7 @@ export function FeatureChat({
     <ChatView
       label="Feature chat"
       session={live ?? null}
-      contextLine={live ? chatContextLine(live) : `Chat · lap ${full.feature.lap}`}
+      contextLine={live ? chatContextLine(live) : 'Chat'}
       meta="One transcript per feature"
       featureId={full.feature.id}
       notices={live && <SessionNotices featureId={full.feature.id} session={live} />}

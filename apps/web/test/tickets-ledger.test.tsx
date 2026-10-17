@@ -6,7 +6,6 @@ import type { ModelEntry, Ticket } from '@runcastle/core'
 const { ModelMenu } = await import('../src/components/bodies/tickets/ModelMenu')
 const { TicketRow } = await import('../src/components/bodies/tickets/TicketRow')
 const { TicketLedger, ticketLedgerMeta } = await import('../src/components/bodies/tickets/TicketLedger')
-const { pendingTicketsForLap } = await import('../src/components/bodies/tickets/TicketsBody')
 
 const roster: ModelEntry[] = [
   { id: 'claude-opus-5', runtime: 'claude-code', note: 'hard problems' },
@@ -96,8 +95,8 @@ describe('TicketRow', () => {
 })
 
 describe('TicketLedger', () => {
-  it('counts only non-cancelled implementation tickets in the current lap', () => {
-    expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })], 2)).toBe('0 of 1 ticket done · Lap 2')
+  it('counts only non-cancelled implementation tickets, with no lap in it', () => {
+    expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })])).toBe('1 of 2 tickets done')
   })
 
   it('leaves the review ticket out of its failed and burning figures', () => {
@@ -106,19 +105,22 @@ describe('TicketLedger', () => {
       ticket({ id: 't2', seq: 2, kind: 'review', status: 'burning' }),
       ticket({ id: 't3', seq: 3, kind: 'review', status: 'failed' }),
     ]
-    expect(ticketLedgerMeta(rows, 2)).toBe('0 of 1 ticket done · Lap 2 · 1 failed')
+    expect(ticketLedgerMeta(rows)).toBe('0 of 1 ticket done · 1 failed')
   })
 
   it('offers one bulk model control when pending tickets exist', () => {
     const bulk = vi.fn()
-    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} currentLap={2} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
     fireEvent.click(screen.getByRole('combobox', { name: 'Model for all pending' }))
     fireEvent.click(screen.getAllByRole('option', { name: /gpt-5.6-sol/ })[0]!)
     expect(bulk).toHaveBeenCalledWith('gpt-5.6-sol')
   })
 
-  it('bulk targeting includes only pending tickets in the current lap', () => {
-    const rows = [ticket(), ticket({ id: 't2', lap: 1 }), ticket({ id: 't3', status: 'failed' })]
-    expect(pendingTicketsForLap(rows, 2).map((row) => row.id)).toEqual(['t1'])
+  it('groups its rows by the round that ran them, pending ones as not yet dispatched', () => {
+    render(<TicketLedger tickets={[ticket({ status: 'done' }), ticket({ id: 't2', seq: 2, status: 'done' }), ticket({ id: 't3', seq: 3 })]} rounds={[{ round: 1, ticketSeqs: [1] }, { round: 2, ticketSeqs: [2] }]} roster={roster} readonly docs={[]} />)
+    expect(screen.getByText('Round 1')).toBeTruthy()
+    expect(screen.getByText('Round 2')).toBeTruthy()
+    expect(screen.getByText('Not yet dispatched')).toBeTruthy()
+    expect(screen.queryByText(/\bLap\b/)).toBeNull()
   })
 })

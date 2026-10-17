@@ -1,7 +1,7 @@
 import type { TallyTicket } from '@runcastle/core'
 import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
 import { IconCube, IconPlay, IconShield, IconUndo } from '../../icons'
-import type { CheckTone, LapChipFigure, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
+import type { CheckTone, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
 import { statusProperties, type StatusBuilding, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
 
@@ -105,7 +105,7 @@ export function StatusStrip({
     blocked?: string
   }
   /**
-   * The shipped record's own strip: the lap chip states what shipped rather than
+   * The shipped record's own strip: the rows state what shipped rather than
    * where the feature stands, and the chips are statements — the open-work and
    * full-accounts bands this strip anchors into are not on that page.
    */
@@ -167,38 +167,19 @@ export function StatusStrip({
 }
 
 /**
- * Where this lap stands, and the scope the spec deliberately left for a later
- * one, in the spec's own words — closed by default.
+ * The scope the spec deliberately left out, in the spec's own words — closed
+ * by default.
  */
-export function LapStory({
-  lap,
-  laterLaps,
-  currentLap,
-  readonly,
-}: {
-  lap: LapChipFigure
-  laterLaps: string | null
-  currentLap: number
-  readonly: boolean
-}) {
-  if (!laterLaps) return null
+export function DeferredScope({ deferred, readonly }: { deferred: string | null; readonly: boolean }) {
+  if (!deferred) return null
   return (
-    <Disclosure title="Deferred to a later lap" icon={<IconUndo />}>
-      {/* Tense-accurate (decision 27a): the past tense only once the lap's own
-          session has actually run. */}
-      <p className="m-0">{lap.story}.</p>
-      {lap.promotedFromEarlier > 0 && (
-        <p className="m-0 mt-2 text-text-tertiary">
-          Includes {lap.promotedFromEarlier} ticket{lap.promotedFromEarlier === 1 ? '' : 's'} promoted
-          in an earlier lap.
-        </p>
-      )}
-      <p className="m-0 mt-3 text-text-tertiary">
+    <Disclosure title="Deferred scope" icon={<IconUndo />}>
+      <p className="m-0 text-text-tertiary">
         {readonly
-          ? `The spec kept this out of lap ${currentLap} on purpose, and it was still deferred when this feature shipped.`
-          : `The spec kept this out of lap ${currentLap} on purpose. Start lap ${currentLap + 1} from the next step to take it on — or ship what landed, if lap ${currentLap} is enough.`}
+          ? 'The spec kept this out on purpose, and it was still deferred when this feature shipped.'
+          : 'The spec kept this out on purpose. Tell the agent to take it on — or merge what landed, if that is enough.'}
       </p>
-      <Markdown source={laterLaps} className="mt-2" />
+      <Markdown source={deferred} className="mt-2" />
     </Disclosure>
   )
 }

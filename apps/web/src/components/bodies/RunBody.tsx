@@ -14,6 +14,7 @@ import {
   ticketConflictKickoff,
   ticketDurations,
   ticketModelChip,
+  roundNumberOf,
   runHeadline,
   stampedOutcome,
   stampedReview,
@@ -81,6 +82,8 @@ export function RunBody({
     { refetchInterval: record ? false : poll, enabled: !!shownRunId },
   )
   const runs = trpc.run.listByFeature.useQuery({ featureId }, { refetchInterval: poll })
+  // Which round each run is (decision 16), for the history select.
+  const rounds = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: poll })
   const events = useEventLog(featureId)
   const projectId = feature.data?.feature.projectId
   // Where a model's runtime is declared (decisions.md #3) — a lane says which
@@ -127,7 +130,7 @@ export function RunBody({
   // which is exactly the lanes it had and nothing minted since.
   const ledger = feature.data?.tickets ?? []
   const tickets = record ? (run.data?.tickets ?? []) : ledger
-  // The lap's review, for the Status tier's Review row — the same feed and
+  // The latest review, for the Status tier's Review row — the same feed and
   // the same stamp the review page reads, so the two pages cannot disagree.
   const passes = useReviewArtifacts(featureId).data ?? []
   const stamped = stampedReview(passes, ledger)
@@ -344,7 +347,7 @@ export function RunBody({
   return (
     <div className="flex flex-col">
       {/* The Status tier (simplify-the-pages decision 9a): the burn on screen,
-          its tickets and the lap's review, as the review page states them. */}
+          its tickets and the latest review, as the review page states them. */}
       {run.data && (
         <div data-tier="status" className="mb-10">
           <StatusStrip
@@ -387,7 +390,10 @@ export function RunBody({
                   },
                 )
         }
-        runs={runs.data ?? []}
+        runs={(runs.data ?? []).map((r) => {
+          const round = roundNumberOf(rounds.data ?? [], r.id)
+          return round === null ? r : { ...r, round }
+        })}
         selectedRunId={shownRunId}
         latestRunId={runId}
         onPickRun={setPickedRunId}
@@ -403,7 +409,7 @@ export function RunBody({
           hint="This run has nothing to burn — a session breaks the work into tickets, and they appear here as lanes."
         />
       ) : (
-        <RunLanes tickets={tickets} currentLap={lap} lane={lane} />
+        <RunLanes tickets={tickets} lane={lane} />
       )}
 
       <div className="mt-8 flex flex-col">

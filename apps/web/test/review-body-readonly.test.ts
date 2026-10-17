@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { DriveState, ReviewFinding, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
-import { lapChip } from '../src/lib/feature-ui'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 
 /**
@@ -49,7 +48,7 @@ const { ConflictAlert } = await import('../src/components/review/ConflictCard')
 const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const { FullAccounts } = await import('../src/components/review/FullAccounts')
 const { OpenWork } = await import('../src/components/review/OpenWork')
-const { LapStory, StatusStrip } = await import('../src/components/review/StatusStrip')
+const { DeferredScope, StatusStrip } = await import('../src/components/review/StatusStrip')
 const { WorkList, partitionWork } = await import('../src/components/review/WorkList')
 
 const RECORDING: ReviewArtifacts = {
@@ -140,17 +139,14 @@ function bands(readonly: boolean): ReactNode[] {
       // none, exactly as the orchestrator omits it there.
       ...(readonly ? {} : { testDrive: { onStart: () => undefined } }),
     }),
-    createElement(LapStory, {
+    createElement(DeferredScope, {
       key: 'story',
-      lap: lapChip([], { lap: 2, lapSessionRan: true }),
-      laterLaps: 'A settings pane for the roster.',
-      currentLap: 2,
+      deferred: 'A settings pane for the roster.',
       readonly,
     }),
     createElement(OpenWork, {
       key: 'work',
       featureId: 'ftr_1',
-      lap: 2,
       rows: attention,
       readonly,
       onStage: { ticketId: RECORDING.ticketId },
@@ -158,7 +154,7 @@ function bands(readonly: boolean): ReactNode[] {
     createElement(FullAccounts, {
       key: 'accounts',
       account: { source: 'review', prose: 'the lap landed the player rebuild' },
-      tickets: [{ seq: 1, title: 'rebuild the player', lap: 2, digest: 'done' }],
+      tickets: [{ seq: 1, title: 'rebuild the player', digest: 'done' }],
       carried: createElement(WorkList, {
         featureId: 'ftr_1',
         rows: settled,

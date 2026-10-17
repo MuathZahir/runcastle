@@ -3,7 +3,6 @@ import {
   AFK_BURN_EXPLAINER,
   agentName,
   BURN_EXPLAINER,
-  lapExplainer,
   sessionAgentName,
 } from '../src/lib/vocabulary'
 
@@ -27,18 +26,6 @@ describe('the explainers', () => {
 
   it('defines AFK as unattended', () => {
     expect(AFK_BURN_EXPLAINER).toContain('unattended')
-  })
-
-  it('names the lap it is explaining, and what opened it', () => {
-    expect(lapExplainer(3)).toMatch(/^Lap 3 —/)
-    expect(lapExplainer(3)).toContain('Iterate')
-  })
-
-  // A form printing "lap 1" must not be told Iterate sent it back — nothing has.
-  it('does not claim a first lap was sent back', () => {
-    expect(lapExplainer(1)).toMatch(/^Lap 1 —/)
-    expect(lapExplainer(1)).toContain('first pass')
-    expect(lapExplainer(1)).not.toContain('sent this feature back')
   })
 })
 

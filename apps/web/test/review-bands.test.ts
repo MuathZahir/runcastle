@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { EventRow, ReviewFinding, TestNote } from '@runcastle/core'
+import type { EventRow, ReviewFinding, RoundSummary, TestNote } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { ReviewArtifacts } from '../src/lib/reviews'
 import { full } from './fixtures'
@@ -28,6 +28,7 @@ const state = vi.hoisted(() => ({
   driveInstructions: undefined as string | undefined,
   events: [] as EventRow[],
   driveMissing: [] as { piece: string; reason: string; notice: string }[],
+  rounds: [] as RoundSummary[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
@@ -81,6 +82,8 @@ vi.mock('../src/trpc', () => {
         },
       },
       feature: {
+        rounds: { useQuery: () => ({ data: state.rounds }) },
+        readyDeclarations: { useQuery: () => ({ data: [] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },
@@ -222,6 +225,22 @@ function render(
     driveMissing?: { piece: string; reason: string; notice: string }[]
   } = {},
 ): string {
+  const tickets = over.tickets ?? [REVIEW_TICKET]
+  // The run that burned the tickets, as `feature.rounds` reports it: round 1.
+  state.rounds = tickets.length === 0
+    ? []
+    : [{
+        round: 1,
+        runId: 'run_1',
+        status: 'succeeded',
+        ticketSeqs: tickets.map((t) => t.seq),
+        landed: tickets.filter((t) => t.status === 'done').map((t) => t.seq),
+        failed: [],
+        gates: null,
+        tokens: null,
+        startedAt: 1,
+        finishedAt: 2,
+      }]
   state.driveMissing = over.driveMissing ?? []
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
@@ -238,7 +257,7 @@ function render(
       full: {
         ...feature,
         feature: { ...feature.feature, lap: 1 },
-        tickets: over.tickets ?? [REVIEW_TICKET],
+        tickets,
         sessions: over.sessions ?? [],
         runs: over.runs ?? [],
       },
@@ -271,12 +290,10 @@ describe('the review page’s arrival bands', () => {
     expect(html).not.toContain('session still live')
   })
 
-  /** Decision 8: the lap account is ONE line — the rest of the digest is not here. */
-  it('lifts the digest’s first line out and leaves the account behind the disclosure', () => {
+  /** Decision 8: the review's account is read behind the disclosure, never on arrival. */
+  it('leaves the review’s account behind the disclosure', () => {
     const html = openWork()
-    expect(html).toContain('DLQ spill retention landed<')
-    expect(html.indexOf('DLQ spill retention landed')).toBeLessThan(html.indexOf('Full account'))
-    // The long account renders once, and only inside the disclosure.
+    expect(html.indexOf('DLQ spill retention landed')).toBeGreaterThan(html.indexOf('Full account'))
     expect(html.indexOf('The cap bounds rows')).toBeGreaterThan(html.indexOf('Full account'))
   })
 
@@ -313,13 +330,13 @@ describe('the review page’s arrival bands', () => {
       at('id="evidence-stage"'),
       at('Needs attention</h2>'),
       at('data-tier="reference"'),
-      at('>History</span>'),
+      at('id="round-trail"'),
       at('Full account'),
     ]
     expect(order).toEqual([...order].sort((a, b) => a - b))
     // The work keeps a real heading; the reference is introduced quietly.
     expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">Needs attention<\/h2>/)
-    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
+    expect(html).not.toMatch(/<h[12][^>]*>Rounds/)
   })
 
   /**
@@ -381,13 +398,10 @@ describe('the review page’s arrival bands', () => {
   })
 
   /**
-   * Decisions #5: the figures on the page are the server's, scoped to this lap.
-   * Handed an earlier lap's finding among the rows, the review row and the
-   * lap's review pass still report what THIS lap's pass found — the all-laps
-   * count is the inflated "N still open" that sent the human back through
-   * Iterate.
+   * Decisions #5: the figures on the page are the server's. Handed an earlier
+   * finding among the rows, the page still states only what the server counts.
    */
-  it('reports the counts the server sends for this lap, never the rows it holds', () => {
+  it('reports the counts the server sends, never the rows it holds', () => {
     const html = render({
       findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
       openDefects: [DEFECT],
@@ -395,34 +409,25 @@ describe('the review page’s arrival bands', () => {
       tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
     })
     expect(html).not.toContain('3 findings')
-    expect(html).toMatch(/Review #\d+<\/span><span[^>]*>1 defect found</)
     expect(html).not.toContain('2 defects found')
   })
 
   /**
-   * Decisions #5: what a lap parked is a band of its own, between the open work
-   * and the disclosure — visible as the next lap's agenda, and out of the tally
-   * the human reads "is there anything left?" off.
+   * The triage step and the carried band are gone (decision 16): a parked
+   * defect is settled work, behind the disclosure, with the human's Reopen —
+   * and outside the open work, so it inflates nothing.
    */
-  it('gives what a lap carried its own band, outside the open count', () => {
+  it('files a carried defect with the settled work, reopenable, outside the open count', () => {
     const html = render({
       findings: [DEFECT, CARRIED],
       openDefects: [DEFECT],
       carriedFindings: [CARRIED],
     })
-    expect(html).toContain('Carried, still open')
-    expect(html).toContain('captured lap 1, carried into lap 2')
-    expect(html).toContain('lap 2 rewrites the purge, which decides these rows')
-    // The human's two verbs, and only the human's.
+    expect(html).not.toContain('Carried, still open')
+    expect(html).toContain('carried for later')
     expect(html).toContain('>Reopen<')
-    // The open work's heading carries no open count — that is the bar's
-    // (decision 8b) — so the carried defect cannot inflate one here.
     expect(html).not.toContain('2 open')
-    // The band sits between the open work and the laps: the next lap's agenda
-    // before the history it came out of.
-    const carriedAt = html.indexOf('Carried, still open')
-    expect(carriedAt).toBeGreaterThan(html.indexOf('id="open-work"'))
-    expect(carriedAt).toBeLessThan(html.indexOf('id="lap-trail"'))
+    expect(html.indexOf('carried for later')).toBeGreaterThan(html.indexOf('Full account'))
   })
 
   // A disclosure that opens on emptiness is worse than no disclosure.
@@ -520,8 +525,8 @@ describe('the review page’s arrival bands', () => {
 
     it('leads the page with "nothing verified this lap", above the stage', () => {
       const html = arrival()
-      expect(html).toContain('Nothing verified this lap')
-      expect(html.indexOf('Nothing verified this lap')).toBeLessThan(html.indexOf('>Review</dt>'))
+      expect(html).toContain('Nothing verified')
+      expect(html.indexOf('Nothing verified')).toBeLessThan(html.indexOf('>Review</dt>'))
     })
 
     /** Runcastle's own words — the agent's prose stays in the Full account. */
@@ -549,12 +554,12 @@ describe('the review page’s arrival bands', () => {
     it('keeps one hairline mint when the denied-drive notice is up beside it', () => {
       const html = arrival({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
-      expect(html).toContain('Nothing verified this lap')
+      expect(html).toContain('Nothing verified')
       expect(primaryButtons(html)).toEqual([])
       const notices = html.slice(0, html.indexOf('>Review</dt>'))
       expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
       // And it is this notice's: the denial above it steps down.
-      expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified this lap')))).toEqual([])
+      expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified')))).toEqual([])
     })
 
     /** With no unverified lap the denial's mint keeps its hairline. */
@@ -570,36 +575,35 @@ describe('the review page’s arrival bands', () => {
       const html = render({
         recordings: [{ ...UNVERIFIED, reviewVerdict: 'verified', reviewVerdictReason: null }],
       })
-      expect(html).not.toContain('Nothing verified this lap')
+      expect(html).not.toContain('Nothing verified')
     })
 
     /** An earlier lap's silence is history — the trail carries it, not the top
      *  line, which is about the lap the human is standing in. */
     it('says nothing when the unverified pass belongs to an earlier lap', () => {
       expect(arrival({ recordings: [{ ...UNVERIFIED, lap: 0 }] })).not.toContain(
-        'Nothing verified this lap',
+        'Nothing verified',
       )
     })
 
     it('renders no banner at all on a readonly view', () => {
-      expect(arrival({ readonly: true })).not.toContain('Nothing verified this lap')
+      expect(arrival({ readonly: true })).not.toContain('Nothing verified')
     })
   })
 
-  /**
-   * The lap trail (decisions 4–5) — the history band the page grew, rendered
-   * from the same per-pass feed the stage plays from.
-   */
-  describe('the lap trail band', () => {
-    it('opens on the lap’s account, above the full-account disclosure', () => {
+  /** The round trail (decision 16) — the history band, above the full-account disclosure. */
+  describe('the round trail band', () => {
+    it('numbers the run as a round and lists its workers, above the full account', () => {
       const html = render({ recordings: [RECORDING] })
-      expect(html).toContain('id="lap-trail"')
-      expect(html.indexOf('DLQ spill retention landed')).toBeGreaterThan(html.indexOf('id="lap-trail"'))
-      expect(html.indexOf('id="lap-trail"')).toBeLessThan(html.indexOf('Full account'))
+      expect(html).toContain('id="round-trail"')
+      expect(html).toContain('Round 1')
+      expect(html).toContain('#4 · review the lap')
+      expect(html.indexOf('id="round-trail"')).toBeLessThan(html.indexOf('Full account'))
+      expect(html).not.toContain('id="lap-trail"')
     })
 
-    it('is not there at all before anything was reviewed or burned', () => {
-      expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('id="lap-trail"')
+    it('is not there at all before anything was burned', () => {
+      expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('id="round-trail"')
     })
   })
 
@@ -684,7 +688,7 @@ describe('the review page as one document', () => {
     expect(html).not.toContain('what did you just see?')
   })
 
-  /** The page, top to bottom: notices, state, stage, open work, carried, laps, the closed text. */
+  /** The page, top to bottom: notices, state, stage, open work, rounds, the closed text. */
   it('keeps its band order', () => {
     const html = render({
       sessions: [LIVE_CHAT],
@@ -698,9 +702,7 @@ describe('the review page as one document', () => {
       '>Review</dt>',
       'id="evidence-stage"',
       'id="open-work"',
-      'Carried, still open',
-      'id="lap-trail"',
-      'DLQ spill retention landed',
+      'id="round-trail"',
       'How to drive this app',
       'Full account',
     ]

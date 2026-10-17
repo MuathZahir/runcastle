@@ -67,6 +67,15 @@ vi.mock('../src/trpc', () => {
         list: { useQuery: () => ({ data: [{ id: 'proj_1' }] }) },
       },
       feature: {
+        rounds: {
+          useQuery: () => ({
+            data: [
+              { round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [4], landed: [4], failed: [], gates: null, tokens: null, startedAt: 1, finishedAt: 2 },
+              { round: 2, runId: 'run_2', status: 'succeeded', ticketSeqs: [9], landed: [9], failed: [], gates: null, tokens: null, startedAt: 3, finishedAt: 4 },
+            ],
+          }),
+        },
+        readyDeclarations: { useQuery: () => ({ data: [] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: undefined }) },
         testDrive: { useMutation: mutation },
@@ -146,29 +155,23 @@ function page(lap = 2): void {
 
 const video = (): HTMLVideoElement => screen.getByLabelText('review walkthrough') as HTMLVideoElement
 
-describe('picking a recording off the lap trail', () => {
+describe('picking a recording off the round trail', () => {
   it('stages it in the player the page already has', () => {
     page()
     expect(video().getAttribute('src')).toBe('/lap-2.webm')
 
-    // The trail reads oldest first, so lap 1's recording is the first one.
+    // The trail reads oldest first, so round 1's review worker is the first one.
     const [earlier] = screen.getAllByRole('button', { name: 'Recording' })
     fireEvent.click(earlier!)
 
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
-    expect(screen.getByText(/Lap 1 · Walkthrough/)).toBeTruthy()
   })
 
-  /**
-   * Decision 4: the stage is never lap-scoped. A lap that has recorded nothing
-   * keeps the previous lap's recording up, named by the lap it is from, rather
-   * than blanking the moment the lap flips.
-   */
-  it('keeps the latest recording on the stage when the lap has none of its own', () => {
+  /** Decision 4: the stage is never round-scoped — the latest recording stays up. */
+  it('keeps the latest recording on the stage when the latest round recorded none', () => {
     state.recordings = [LAP_1]
     page(3)
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
-    expect(screen.getByText(/Lap 1 · Walkthrough/)).toBeTruthy()
   })
 })
 

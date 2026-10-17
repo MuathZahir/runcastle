@@ -2,7 +2,7 @@ import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { holderSentence } from './drive'
 import { testDriveFigure, type MergeConflictState } from './gates'
-import { noun } from './laps'
+import { noun } from './tickets'
 import type { CheckRow, Freshness } from './review'
 
 const HEADLINE_MAX = 80
@@ -285,11 +285,8 @@ export function mergeSummary(input: {
   }
   // The debt decision 26(d) surfaces at triage, surfaced again at the last door:
   // these tickets exist, have never burned, and merging leaves them behind.
-  for (const debt of standingFixTickets(tickets, input.lap ?? 1)) {
-    warnings.push(
-      `${noun(debt.count, 'unburned fix ticket')} from lap ${debt.lap} — merging leaves them behind.`,
-    )
-  }
+  const unburned = standingFixTickets(tickets, input.lap ?? 1).reduce((sum, debt) => sum + debt.count, 0)
+  if (unburned > 0) warnings.push(`${noun(unburned, 'unburned fix ticket')} — merging leaves them behind.`)
   const stale = staleEvidenceWarning(input.freshness)
   if (stale) warnings.push(stale)
   // The last catch (decisions #7). The bar has already stopped recommending this

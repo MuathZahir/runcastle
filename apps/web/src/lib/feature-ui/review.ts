@@ -158,10 +158,7 @@ export function freshness(
   }
   if (!artifact) return { tone: 'none', text: 'no review yet' }
   if (branch.landedSince === 0) return { tone: 'fresh', text: 'Reviewed ✓ · this build' }
-  const age = branch.lap !== undefined && branch.lap > artifact.lap
-    ? `${branch.lap - artifact.lap} ${branch.lap - artifact.lap === 1 ? 'lap' : 'laps'} ago`
-    : 'earlier this lap'
-  return { tone: 'stale', text: `Reviewed ${age} · ${branch.landedSince} tickets landed since — evidence may be outdated` }
+  return { tone: 'stale', text: `Reviewed earlier · ${branch.landedSince} tickets landed since — evidence may be outdated` }
 }
 
 /** A ticket as the verification stamp reads it. */
@@ -228,8 +225,8 @@ export function statusChips(input: {
   const landed = implementation.filter((t) => t.status === 'done').length
   const waived = implementation.filter((t) => t.status === 'cancelled').length
   const lapLabel = input.shipped
-    ? `Shipped after ${input.currentLap} lap${input.currentLap === 1 ? '' : 's'}`
-    : `Lap ${input.currentLap} · ${landed} of ${implementation.length} tickets landed · ${waived} waived`
+    ? `Shipped · ${landed} of ${implementation.length} tickets landed`
+    : `${landed} of ${implementation.length} tickets landed · ${waived} waived`
   return [
     { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
     { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
@@ -249,7 +246,7 @@ export function statusChips(input: {
       : [
           input.driveLap === null
             ? { key: 'drive' as const, label: 'never test-driven', tone: 'warn' as const }
-            : { key: 'drive' as const, label: `test drive taken · lap ${input.driveLap}`, tone: 'ok' as const },
+            : { key: 'drive' as const, label: 'test drive taken', tone: 'ok' as const },
         ]),
     { key: 'run', label: input.runState, tone: input.runState === 'succeeded' ? 'ok' : input.runState === 'failed' ? 'danger' : 'warn' },
   ]
@@ -312,9 +309,7 @@ function reviewProperty(input: {
     const mode = outcome.kind === 'verified' && outcome.mode ? `${outcome.mode} mode · ` : ''
     return { ...row, value: word, sub: sub(`${mode}this build`), tone: 'ok' }
   }
-  const laps = input.currentLap - input.artifact.lap
-  const age = laps > 0 ? `${laps} ${laps === 1 ? 'lap' : 'laps'} ago` : 'earlier this lap'
-  return { ...row, value: `${word} ${age}`, sub: sub(`${input.landedSince} landed since`), tone: 'warn' }
+  return { ...row, value: `${word} earlier`, sub: sub(`${input.landedSince} landed since`), tone: 'warn' }
 }
 
 /**
@@ -522,7 +517,7 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
   const note = finding.resolutionNote?.trim() || undefined
   if (finding.status === 'carried') {
     return {
-      text: `captured lap ${finding.lap}, carried into lap ${finding.carriedLap}`,
+      text: 'carried for later',
       evidence: 'carried',
       ...(note ? { note } : {}),
     }
@@ -530,7 +525,7 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
   if (finding.status !== 'fixed') return null
   if (finding.resolvedBy === 'session') {
     return {
-      text: 'closed by a lap session as addressed — no fix ticket verified it',
+      text: 'closed by a session as addressed — no fix ticket verified it',
       evidence: 'attested',
       ...(note ? { note } : {}),
     }
@@ -541,7 +536,7 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
   return null
 }
 
-// --- the lap trail ----------------------------------------------------------
+// --- review passes -------------------------------------------------------------
 
 /** One review pass as the trail reads it — the artifacts feed row, narrowed. */
 export interface ReviewPassFigure {
@@ -568,15 +563,6 @@ interface TrailTicketFigure {
   digest?: string
 }
 
-/** A finding as the trail counts it — its lap, its kind and where it ended. */
-interface TrailFindingFigure {
-  lap: number
-  kind: 'defect' | 'observation'
-  status: FindingStatus
-  /** The fix ticket it minted, which is the other half of "fixed" (see below). */
-  fixTicketId?: string | null
-}
-
 /**
  * What a lap's review amounted to, as its trail entry's chip states it.
  *
@@ -592,47 +578,6 @@ export type TrailOutcome =
   | { kind: 'unverified'; line: string | null; reason: string | null }
   | { kind: 'could-not-run' }
   | { kind: 'none' }
-
-/** One review pass in a lap's entry, as the compact row renders it. */
-export interface TrailPass {
-  ticketId: string
-  seq: number
-  passKind: 'review' | 'verification'
-  mode: 'drive' | 'gates' | null
-  verdict: 'verified' | 'unverified' | null
-  /** The pass never ran at all — its ticket failed (`couldNotReview`). */
-  couldNotRun: boolean
-  /** Where to stream its recording, or null when it left none. */
-  videoUrl: string | null
-  /** The checks the server ran before this pass, or null when none were recorded. */
-  gateRun: ReviewGateRunWire | null
-}
-
-/** One lap in the trail: what burned, how the review went, what it found. */
-export interface TrailEntry {
-  lap: number
-  /** A pass of the lap has finished ({@link stampedReview}). */
-  reviewed: boolean
-  /** When the lap's latest completed pass finished; null while none has, or it predates the stamp. */
-  completedAt: number | null
-  outcome: TrailOutcome
-  /** Implementation tickets the lap burned and landed — the run view holds the detail. */
-  burned: number
-  /** Every review pass of the lap, in the order they ran. */
-  passes: TrailPass[]
-  /** Defects only: observations render in the Full account and nowhere else. */
-  defects: { found: number; fixed: number; carried: number }
-  /** Test notes taken in the lap. */
-  notes: number
-}
-
-interface TrailInput {
-  passes?: readonly ReviewPassFigure[]
-  tickets?: readonly TrailTicketFigure[]
-  findings?: readonly TrailFindingFigure[]
-  notes?: readonly { lap: number }[]
-  currentLap: number
-}
 
 /** The first line of an agent-or-runcastle digest, or null when there is none. */
 function firstLine(text: string | undefined): string | null {
@@ -663,78 +608,6 @@ function passOutcome(
     return { kind: 'unverified', line, reason: line && reason && line.includes(reason) ? null : reason }
   }
   return { kind: 'none' }
-}
-
-/**
- * The feature's laps as the trail band renders them — newest first, ALL of
- * them, one entry per lap (decisions 4–5).
- *
- * Newest first and undisclosed, which is the whole point: the popover this
- * replaces hid "lap 2 found six defects, lap 3 verified nothing" behind a
- * click. The current lap is always an entry even before anything has landed in
- * it, so a fresh lap reads as a lap that has not been reviewed yet rather than
- * as a lap that does not exist.
- *
- * A lap can hold several passes — the review, its verification, and any agentic
- * re-reviews — so the entry is the LAP and the passes are rows inside it.
- */
-export function lapTrail(input: TrailInput): TrailEntry[] {
-  const passes = input.passes ?? []
-  const tickets = input.tickets ?? []
-  const findings = input.findings ?? []
-  const notes = input.notes ?? []
-  const laps = [
-    ...new Set([
-      input.currentLap,
-      ...passes.map((p) => p.lap),
-      ...tickets.map((t) => t.lap),
-      ...findings.map((f) => f.lap),
-      ...notes.map((n) => n.lap),
-    ]),
-  ].sort((a, b) => b - a)
-
-  return laps.map((lap) => {
-    const lapPasses = passes.filter((p) => p.lap === lap)
-    const stamp = stampedReview(lapPasses, tickets)
-    const defects = findings.filter((f) => f.lap === lap && f.kind === 'defect')
-    return {
-      lap,
-      reviewed: stamp !== null,
-      completedAt: stamp?.completedAt ?? null,
-      outcome: passOutcome(stamp, tickets),
-      // Only rows that landed: the lap the page is most often read in has fix
-      // tickets minted and sitting pending, and a lap whose tickets all failed
-      // burned nothing that stands. Counting either would overclaim the same
-      // way the run headline did before the verdict columns.
-      burned: tickets.filter((t) => t.lap === lap && t.kind !== 'review' && t.status === 'done')
-        .length,
-      passes: lapPasses.map((pass) => ({
-        ticketId: pass.ticketId,
-        seq: pass.seq,
-        passKind: pass.passKind,
-        mode: pass.reviewMode,
-        verdict: pass.reviewVerdict,
-        couldNotRun: tickets.find((t) => t.id === pass.ticketId)?.status === 'failed',
-        videoUrl: pass.videoUrl,
-        gateRun: pass.gateRun ?? null,
-      })),
-      defects: {
-        found: defects.length,
-        // The fix-ticket join is the server's own rule for "fixed"
-        // (`defectState` in services/review-findings.ts): a burner that landed
-        // the fix without stamping the row leaves a fixed defect reading as
-        // open, and a trail that counted the row alone would disagree with the
-        // strip above it about the same lap.
-        fixed: defects.filter(
-          (d) =>
-            d.status === 'fixed' ||
-            (d.fixTicketId && tickets.find((t) => t.id === d.fixTicketId)?.status === 'done'),
-        ).length,
-        carried: defects.filter((d) => d.status === 'carried').length,
-      },
-      notes: notes.filter((n) => n.lap === lap).length,
-    }
-  })
 }
 
 /** The unverified half of {@link TrailOutcome}, as the arrival banner reads it. */

@@ -185,9 +185,9 @@ export function lastTestDriveLap(events: EventRow[]): number | null {
 
 /** The test drive as one fact: the lap it was taken in, and whether that is now. */
 export interface TestDriveFigure {
-  /** "Lap 2", or "Not run" when the branch was never driven. */
+  /** "Taken", or "Not run" when the branch was never driven. */
   value: string
-  /** "not since" when the drive predates the current lap. */
+  /** "not since" when the build it drove has moved on. */
   sub?: string
   tone: 'ok' | 'warn' | 'idle'
 }
@@ -200,8 +200,8 @@ export interface TestDriveFigure {
  */
 export function testDriveFigure(driveLap: number | null, currentLap: number): TestDriveFigure {
   if (driveLap === null) return { value: 'Not run', tone: 'idle' }
-  if (driveLap < currentLap) return { value: `Lap ${driveLap}`, sub: 'not since', tone: 'warn' }
-  return { value: `Lap ${driveLap}`, tone: 'ok' }
+  if (driveLap < currentLap) return { value: 'Taken', sub: 'not since', tone: 'warn' }
+  return { value: 'Taken', tone: 'ok' }
 }
 
 /** The wall clock a `ticket.timing` event carries, if it carries a usable one. */

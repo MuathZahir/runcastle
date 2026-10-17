@@ -1,6 +1,6 @@
 import { nextPlanningStep, type PlanningArtifactFacts, type PlanningStep } from '@runcastle/core'
 import { hasResumable } from '../internal'
-import { burnLabel } from '../laps'
+import { burnLabel } from '../tickets'
 import { sessionAgentName } from '../../vocabulary'
 import { burnWarningLine } from './burn-warnings'
 import { isSelfPlanRun } from '../session'
@@ -31,19 +31,9 @@ export function resolvePlanning(input: ResolverInput): NextStep {
   const mergeAction: NextAction = { label: 'Merge & ship', kind: 'merge' }
   /**
    * The bar while a session is live and there is nothing ready to burn: a
-   * status line, never a counsel to do the agent's job. From lap 2 on it names
-   * the lap rather than a step, because the lap session does all three in one
-   * sitting and naming one of them would be picking the wrong one.
+   * status line, never a counsel to do the agent's job.
    */
   const liveStatus = (missing: PlanningStep): NextStep => {
-    if (feature.lap > 1)
-      return step(
-        'LAP LIVE',
-        `Lap ${feature.lap} in progress`,
-        'The lap session digests the drive, amends the docs and emits this lap’s tickets.',
-        undefined,
-        [mergeAction],
-      )
     if (missing === 'tickets')
       return step(
         'WAITING',
@@ -55,7 +45,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     return step(
       'SESSION LIVE',
       'Planning session in progress',
-      `Shape the feature with ${sessionAgentName(live!)} in the terminal. It writes each decision to the pane on the left, then the spec, then this lap’s tickets.`,
+      `Shape the feature with ${sessionAgentName(live!)} in the terminal. It writes each decision to the pane on the left, then the spec, then the tickets.`,
       undefined,
       [mergeAction],
     )
@@ -81,7 +71,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     return step(
       'WAITING',
       'Finishing the tickets',
-      'The session is finishing the tickets — enriching them, then closing out this lap’s planning. Burn arms the moment it does.',
+      'The session is finishing the tickets — enriching them, then closing out the planning. Burn arms the moment it does.',
       undefined,
       [mergeAction],
     )
@@ -99,7 +89,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
     )
 
   // Tickets ready to burn outrank everything below: the click the human came
-  // for is right there, and no lap road is more urgent than it.
+  // for is right there, and nothing below is more urgent than it.
   if (missing === null) {
     // The other road into a burn reads the shape of what it would run — and
     // what the docs digest will cost every ticket in it — in the same words the
@@ -110,9 +100,7 @@ export function resolvePlanning(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: 'Review the tickets, then burn',
       desc: `${pending} ticket${pending === 1 ? '' : 's'} ready. Each one runs as its own sandboxed agent, in parallel, committing to the feature branch. Set a model per ticket, or for all of them, before you burn.`,
-      // Whose tickets these are, when laps mix (decision 28a) — the burn takes
-      // every pending ticket on the branch, and the count alone never said so.
-      primary: { label: burnLabel(pendingTickets, feature.lap), kind: 'burn' },
+      primary: { label: burnLabel(pendingTickets), kind: 'burn' },
       // "Ask for changes" was this bar's own wording for the one door every bar
       // carries now (decision 8) — the hint is what it had to say that the
       // constant label cannot.
@@ -123,24 +111,6 @@ export function resolvePlanning(input: ResolverInput): NextStep {
       busy: false,
       ...(shape ? { note: shape } : {}),
     }
-  }
-
-  // A session open right now IS the lap being worked, whatever it is stamped
-  // with — the stamp only answers for the laps nobody is sitting in.
-  const lapWorked =
-    !!live ||
-    sessions.some(
-      (session) => session.lap === feature.lap && session.kind === 'chat',
-    )
-  if (feature.lap > 1 && !lapWorked) {
-    const resumable = hasResumable(sessions, 'chat')
-    return step(
-      'NEXT STEP',
-      `Work lap ${feature.lap}`,
-      'Your test-drive notes are waiting. The lap session reads them, amends the spec, and emits this lap’s tickets — then hands back to Burn.',
-      { label: `${resumable ? 'Resume' : 'Start'} lap ${feature.lap} session`, kind: 'chat' },
-      [mergeAction],
-    )
   }
 
   // Nothing to do but watch: a live session owns every step it has not

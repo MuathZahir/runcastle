@@ -11,7 +11,6 @@ import {
   IconMessage,
   IconMore,
   IconPlay,
-  IconRefresh,
   IconSettings,
   IconSparkle,
   IconStop,
@@ -29,12 +28,9 @@ const ACTION_ICON: Record<ActionKind, ReactNode> = {
   openBurnSettings: <IconSettings />,
   testDriveStart: <IconPlay />,
   testDriveStop: <IconStop />,
-  stopDriveAndIterate: <IconStop />,
   fixDrive: <IconTerminal />,
   merge: <IconGitMerge />,
   resolveConflict: <IconAlert />,
-  iterate: <IconRefresh />,
-  endSessionAndIterate: <IconRefresh />,
   unarchive: <IconArchive />,
 }
 

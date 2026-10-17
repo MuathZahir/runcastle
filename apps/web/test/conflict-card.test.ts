@@ -201,7 +201,6 @@ describe('the next-step bar beside the conflict card', () => {
         secondary: [
           { label: 'Retry Merge & ship', kind: 'merge' as const },
           { label: 'Start test drive', kind: 'testDriveStart' as const },
-          { label: 'Iterate', kind: 'iterate' as const },
         ],
         busy: false,
       },

@@ -145,8 +145,8 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
         onStage={null}
         onClose={() => undefined}
@@ -162,8 +162,8 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
         onStage={null}
         highlight={[NOTE.id]}
@@ -187,8 +187,8 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
         onStage={null}
         scrollTo={null}

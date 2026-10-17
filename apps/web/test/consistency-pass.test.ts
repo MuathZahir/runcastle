@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { lapTicketCount, phaseFacts, phaseSummary, ticketCountText } from '../src/lib/feature-ui'
+import { phaseFacts, phaseSummary, ticketCount, ticketCountText } from '../src/lib/feature-ui'
 import type { FeatureFull } from '../src/lib/api'
 import { full } from './fixtures'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
@@ -22,7 +22,7 @@ describe('the one ticket count', () => {
     ...over,
   })
 
-  it('counts this lap’s implementation tickets, never the review step or a waived one', () => {
+  it('counts every implementation ticket, never the review step or a waived one', () => {
     const tickets = [
       t({ status: 'done' }),
       t({ status: 'pending' }),
@@ -30,11 +30,7 @@ describe('the one ticket count', () => {
       t({ status: 'cancelled' }),
       t({ status: 'done', lap: 2 }),
     ]
-    expect(lapTicketCount(tickets, 1)).toEqual({ done: 1, total: 2 })
-  })
-
-  it('follows a ticket promoted into a later lap', () => {
-    expect(lapTicketCount([t({ lap: 1, landedLap: 2, status: 'done' })], 2)).toEqual({ done: 1, total: 1 })
+    expect(ticketCount(tickets)).toEqual({ done: 2, total: 3 })
   })
 
   it('pluralises on the total', () => {
@@ -50,8 +46,8 @@ describe('the one ticket count', () => {
       feature: { ...base.feature, lap: 2 },
       tickets: [t({ status: 'done' }), t({ lap: 2 }), t({ lap: 2, kind: 'review' }), t({ lap: 2, status: 'cancelled' })],
     } as unknown as FeatureFull
-    expect(phaseFacts({ phase: 'planning', full: record, events: [] })).toBe('1 tickets')
-    expect(phaseSummary({ phase: 'planning', full: record, events: [] })).toBe('Planning · 1 tickets')
+    expect(phaseFacts({ phase: 'planning', full: record, events: [] })).toBe('2 tickets')
+    expect(phaseSummary({ phase: 'planning', full: record, events: [] })).toBe('Planning · 2 tickets')
   })
 })
 

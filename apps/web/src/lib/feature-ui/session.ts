@@ -55,10 +55,10 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
 
 /**
  * The Chat tab strip's context line for whichever session is live
- * (decision 9): "Chat · lap 2", "Drive fix".
+ * (decision 9): "Chat", "Drive fix".
  */
 export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>): string {
-  return session.kind === 'chat' ? `Chat · lap ${session.lap}` : sessionKindName(session)
+  return sessionKindName(session)
 }
 
 // --- the shipped body's chat terminal ---------------------------------------
@@ -102,7 +102,7 @@ export function shippedAt(events: EventRow[]): number | null {
 
 /**
  * The one line a live session gets on Overview, in every state
- * (one-chat-layout-everywhere decision 7): "● Chat live · lap 2", with Open
+ * (one-chat-layout-everywhere decision 7): "● Chat live", with Open
  * chat — which switches to the Chat tab, where every session kind lives — and
  * End session. An ended session says nothing, and neither does a headless run:
  * it is no chat to open, and the bar above already says it is working by itself
@@ -110,14 +110,14 @@ export function shippedAt(events: EventRow[]): number | null {
  */
 export interface LiveSessionLine {
   sessionId: string
-  /** "Chat live · lap 1" — what is up, and the lap it opened in. */
+  /** "Chat live" — what is up. */
   text: string
 }
 
 export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionLine | null {
   const live = activeSession(sessions)
   if (!live || isHeadlessRun(live)) return null
-  return { sessionId: live.id, text: `${sessionKindName(live)} live · lap ${live.lap}` }
+  return { sessionId: live.id, text: `${sessionKindName(live)} live` }
 }
 
 /**

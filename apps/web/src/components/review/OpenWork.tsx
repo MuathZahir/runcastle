@@ -18,8 +18,7 @@ import { WorkList, type WorkRow } from './WorkList'
  * They were two lists with two designs and two vocabularies even though they
  * share their triage destinations, and the split is what let a defect being
  * fixed in the running burn be invisible while a note about the same thing sat
- * three cards away. One list, one row anatomy ({@link WorkList}), one lap
- * grouping.
+ * three cards away. One list, one row anatomy ({@link WorkList}).
  *
  * Only what is genuinely unaddressed is here: the page's one partition (see
  * `partitionWork`) files everything already dealt with into the settled half,
@@ -29,8 +28,6 @@ import { WorkList, type WorkRow } from './WorkList'
  */
 export interface OpenWorkProps {
   featureId: string
-  /** The feature's current lap — which group the lap sections open on. */
-  lap: number
   /** What still needs attention, from {@link partitionWork}. */
   rows: readonly WorkRow[]
   readonly: boolean
@@ -65,7 +62,7 @@ export function openTally(rows: readonly WorkRow[]): string {
  * only the composer under a quiet "Notes" heading, and a history view renders
  * nothing at all.
  */
-export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkProps) {
+export function OpenWork({ featureId, rows, readonly, ...rest }: OpenWorkProps) {
   if (rows.length === 0 && readonly) return null
   const empty = rows.length === 0
   // The open count is the next-step bar's, always visible above (review-arrival
@@ -86,7 +83,7 @@ export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkPr
           along.
         </p>
       ) : (
-        <WorkList featureId={featureId} rows={rows} readonly={readonly} currentLap={lap} {...rest} />
+        <WorkList featureId={featureId} rows={rows} readonly={readonly} {...rest} />
       )}
       {!readonly && (
         <div className="mt-2">
@@ -104,7 +101,6 @@ export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkPr
  */
 export function OpenWorkPane({
   featureId,
-  lap,
   rows,
   readonly,
   scroller,
@@ -129,7 +125,6 @@ export function OpenWorkPane({
             featureId={featureId}
             rows={rows}
             readonly={readonly}
-            currentLap={lap}
             scroller={scroller}
             {...rest}
           />

@@ -1,15 +1,14 @@
 import { useEffect, useState, type RefObject } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
-import { Button, IconButton, LapSections } from '../../ui'
+import { Button, IconButton } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
 import { IconCheck, IconMore, IconPencil, IconTrash, IconUndo, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
-import { groupByLap } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
 import { DeleteNoteDialog, NoteEditor } from './NoteComposer'
 import { Lightbox } from './Lightbox'
-import { NoteRow, itemId, itemLap, rowElementId, type NoteItem } from './NoteRow'
+import { NoteRow, itemId, rowElementId, type NoteItem } from './NoteRow'
 
 /**
  * The rows of the review page's work — and the one place that renders them.
@@ -24,7 +23,6 @@ import { NoteRow, itemId, itemLap, rowElementId, type NoteItem } from './NoteRow
 
 /** One row of the list, and where it stands. */
 export interface WorkRow {
-  lap: number
   item: NoteItem
   /** Still the human's own to act on — a defect the server calls open, or an open note. */
   open: boolean
@@ -60,7 +58,7 @@ function defectStanding(
 }
 
 /**
- * Newest first, defects before notes within a lap: the review agent's report is
+ * Newest first, defects before notes: the review agent's report is
  * what a returning human came to read, and their own notes are what they wrote
  * while reading it.
  */
@@ -75,7 +73,7 @@ function byUrgency(a: WorkRow, b: WorkRow): number {
  * The review's defects and the human's notes, split into what still needs
  * attention and what has been dealt with (decision 27b).
  *
- * Everything carried into a lap, quick-fixed into a ticket, scratched off, fixed
+ * Everything carried, quick-fixed into a ticket, scratched off, fixed
  * or dismissed leaves the attention list at the moment it is dealt with and
  * lands in the settled half, where it keeps its evidence and can be reopened. So
  * the rows on arrival are only ever what is genuinely unaddressed.
@@ -95,16 +93,13 @@ export function partitionWork(input: {
   const attention: WorkRow[] = []
   const settled: WorkRow[] = []
   const file = (item: NoteItem, open: boolean, needsAttention: boolean): void => {
-    ;(needsAttention ? attention : settled).push({ lap: itemLap(item), item, open })
+    ;(needsAttention ? attention : settled).push({ item, open })
   }
   for (const finding of input.findings) {
     if (finding.kind !== 'defect') continue
     const fix = ticketOf(finding.fixTicketId)
     const standing = defectStanding(finding, openIds, fix)
-    // A parked defect is neither open work nor settled work: it has its own
-    // band (`CarriedFindings`), fed by the server's own carried pile, so filing
-    // it here as well would render it twice.
-    if (standing === 'carried') continue
+    // A parked defect is settled work: it keeps its Reopen and Dismiss there.
     file(
       {
         kind: 'defect',
@@ -136,7 +131,6 @@ export function WorkList({
   featureId,
   rows,
   readonly,
-  currentLap,
   onStage,
   onSeek,
   onViewLane,
@@ -147,11 +141,6 @@ export function WorkList({
   featureId: string
   rows: readonly WorkRow[]
   readonly: boolean
-  /**
-   * Group the rows under their `Lap N` headers, opened on this lap. Omitted
-   * where the rows are a flat list and each row names its own lap instead.
-   */
-  currentLap?: number
   /** The recording the stage is playing, or null when none is (decision 22). */
   onStage: { ticketId: string } | null
   /** Send that recording to a moment — the stage comes into view with it. */
@@ -225,7 +214,6 @@ export function WorkList({
       item={row.item}
       onStage={onStage}
       readonly={readonly}
-      showLap={currentLap === undefined}
       highlighted={marked.has(itemId(row.item))}
       editor={
         row.item.kind === 'note' && editing === row.item.note.id ? (
@@ -328,17 +316,7 @@ export function WorkList({
 
   return (
     <div className="flex flex-col">
-      {currentLap === undefined ? (
-        rows.map((row) => rowFor(row))
-      ) : (
-        <LapSections
-          groups={groupByLap(rows, currentLap)}
-          currentLap={currentLap}
-          meta={(g) => `${g.rows.length} open`}
-        >
-          {(grouped) => grouped.map((row) => rowFor(row))}
-        </LapSections>
-      )}
+      {rows.map((row) => rowFor(row))}
 
       <Lightbox url={picture} onClose={() => setPicture(null)} />
       <DeleteNoteDialog note={deleting} onClose={() => setDeleting(null)} />

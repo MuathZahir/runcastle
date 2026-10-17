@@ -190,7 +190,7 @@ describe('statusProperties', () => {
 
     it('ambers a verified pass later work has left behind, laps ago and what landed since', () => {
       const row = rowOf({ ...base, artifact: { lap: 1 }, currentLap: 3, landedSince: 3 }, 'review')
-      expect(row).toMatchObject({ value: 'Verified 2 laps ago', sub: '3 landed since', tone: 'warn' })
+      expect(row).toMatchObject({ value: 'Verified earlier', sub: '3 landed since', tone: 'warn' })
     })
 
     it('says "Not reviewed yet" when no pass has finished', () => {
@@ -282,8 +282,8 @@ describe('statusProperties', () => {
   })
 
   it('reads the Test drive row as the lap it was taken in, amber when a later lap went undriven', () => {
-    expect(rowOf({ ...base, driveLap: 1 }, 'drive')).toMatchObject({ value: 'Lap 1', sub: 'not since', tone: 'warn' })
-    expect(rowOf({ ...base, driveLap: 2 }, 'drive')).toMatchObject({ value: 'Lap 2', tone: 'ok' })
+    expect(rowOf({ ...base, driveLap: 1 }, 'drive')).toMatchObject({ value: 'Taken', sub: 'not since', tone: 'warn' })
+    expect(rowOf({ ...base, driveLap: 2 }, 'drive')).toMatchObject({ value: 'Taken', tone: 'ok' })
     expect(rowOf(base, 'drive')).toMatchObject({ value: 'Not run' })
   })
 })
@@ -305,8 +305,8 @@ describe('review freshness', () => {
   it.each([
     [undefined, { landedSince: 0 }, undefined, 'none', 'no review yet'],
     [artifact, { landedSince: 0, lap: 1 }, undefined, 'fresh', 'Reviewed ✓ · this build'],
-    [artifact, { landedSince: 2, lap: 1 }, undefined, 'stale', 'Reviewed earlier this lap · 2 tickets landed since — evidence may be outdated'],
-    [artifact, { landedSince: 5, lap: 3 }, undefined, 'stale', 'Reviewed 2 laps ago · 5 tickets landed since — evidence may be outdated'],
+    [artifact, { landedSince: 2, lap: 1 }, undefined, 'stale', 'Reviewed earlier · 2 tickets landed since — evidence may be outdated'],
+    [artifact, { landedSince: 5, lap: 3 }, undefined, 'stale', 'Reviewed earlier · 5 tickets landed since — evidence may be outdated'],
     [artifact, { landedSince: 2 }, { state: 'running' as const }, 'verifying', 'Verification running — evidence below predates it'],
     [artifact, { landedSince: 2 }, { state: 'failed' as const, reason: 'recorder exited' }, 'failed', 'verification could not run: recorder exited'],
   ])('derives %s freshness', (a, branch, verification, tone, text) => expect(freshness(a, branch, verification)).toEqual({ tone, text }))
@@ -316,7 +316,7 @@ describe('status chips', () => {
   it('orders chips and excludes review tickets while surfacing waived work', () => {
     const chips = statusChips({ artifact: { lap: 2 }, currentLap: 2, landedSince: 0, checks: { passed: 2, total: 2 }, runState: 'succeeded', tickets: [{ kind: 'implementation', status: 'done', lap: 2 }, { kind: 'implementation', status: 'cancelled', lap: 2 }, { kind: 'review', status: 'done', lap: 2 }] })
     expect(chips.map((chip) => chip.key)).toEqual(['review', 'checks', 'lap', 'run'])
-    expect(chips[2]?.label).toBe('Lap 2 · 1 of 2 tickets landed · 1 waived')
+    expect(chips[2]?.label).toBe('1 of 2 tickets landed · 1 waived')
   })
 
   /**

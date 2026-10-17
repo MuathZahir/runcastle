@@ -18,7 +18,7 @@ const bar = (ns: Partial<NextStep>, guidance = false): string =>
     createElement(NextStepBar, {
       ns: {
         kick: 'NEXT STEP',
-        primary: { label: 'Iterate', kind: 'iterate' as const },
+        primary: { label: 'Chat', kind: 'chat' as const },
         secondary: [{ label: 'Merge & ship', kind: 'merge' as const }],
         busy: false,
         ...ns,
@@ -91,14 +91,14 @@ describe('the next-step bar’s count line', () => {
       secondary: [
         { label: 'Merge & ship', kind: 'merge' },
         { label: 'Start test drive', kind: 'testDriveStart' },
-        { label: 'Iterate', kind: 'endSessionAndIterate' },
+        { label: 'Burn 2 tickets', kind: 'burn' },
       ],
     })
     expect(html).toContain('Merge &amp; ship')
     expect(html).toContain('Start test drive')
     expect(html).toContain('aria-label="More actions"')
     // The overflow item is in the closed menu, not on the row.
-    expect(html).not.toContain('>Iterate</button>')
+    expect(html).not.toContain('>Burn 2 tickets</button>')
   })
 
   it('still gates the explanatory paragraph on guidance where one exists', () => {

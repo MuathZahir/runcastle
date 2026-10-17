@@ -111,10 +111,6 @@ describe('NoteRow', () => {
     expect(render(note())).not.toContain('>Agent<')
   })
 
-  it('names the lap only when the list spans more than one', () => {
-    expect(render(note(), { showLap: true })).toContain('Lap 2')
-    expect(render(note())).not.toContain('Lap 2')
-  })
 
   it('renders a defect in the same anatomy, with its severity and why it is open', () => {
     const html = render({ kind: 'defect', finding: DEFECT })
@@ -153,7 +149,7 @@ describe('NoteRow', () => {
         resolutionNote: 'the merge rebuild in lap 3 covers this dialog',
       },
     })
-    expect(html).toContain('captured lap 2, carried into lap 3')
+    expect(html).toContain('carried for later')
     expect(html).toContain('the merge rebuild in lap 3 covers this dialog')
   })
 
@@ -174,7 +170,7 @@ describe('NoteRow', () => {
         resolutionNote: 'addressed by lap 2’s ticket 7',
       },
     })
-    expect(attested).toContain('closed by a lap session as addressed')
+    expect(attested).toContain('closed by a session as addressed')
     expect(attested).toContain('addressed by lap 2’s ticket 7')
     expect(attested).toContain('text-warning')
 
@@ -183,7 +179,7 @@ describe('NoteRow', () => {
       finding: { ...DEFECT, status: 'fixed', openReason: null, resolvedBy: 'fix-ticket' },
     })
     expect(verified).toContain('fixed by its fix ticket')
-    expect(verified).not.toContain('closed by a lap session')
+    expect(verified).not.toContain('closed by a session')
     expect(verified).toContain('text-success')
   })
 

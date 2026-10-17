@@ -10,18 +10,15 @@ export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
-  'stopHeadlessRun', // feature.endSession on the live headless run (self-plan, relay, a lap planning itself)
+  'stopHeadlessRun', // feature.endSession on the live headless run (self-plan, relay)
   'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
   'openBurnSettings', // opens Settings → Burns where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
-  'stopDriveAndIterate', // feature.testDrive { action: 'stop' }, then the Iterate road
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
   'merge', // feature.merge — crosses to shipped, reachable from every state
   'resolveConflict', // launchSession { kind: 'chat', kickoffLine: mergeConflictKickoff(…) }
-  'iterate', // opens the triage step over the open notes and defects (decision 21)
-  'endSessionAndIterate', // feature.endSession, then the Iterate road above (decision 4)
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
 ] as const
 

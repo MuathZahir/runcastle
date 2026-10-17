@@ -87,6 +87,8 @@ vi.mock('../src/trpc', () => {
         },
       },
       feature: {
+        rounds: { useQuery: () => ({ data: [] }) },
+        readyDeclarations: { useQuery: () => ({ data: [] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },

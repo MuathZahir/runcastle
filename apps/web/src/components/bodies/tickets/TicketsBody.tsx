@@ -14,7 +14,10 @@ import type { TicketPatch } from './TicketEditor'
 export function TicketsBody({ featureId }: { featureId: string }) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
+  const poll = useLivePoll()
+  const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: poll })
+  // The rounds the rows group under (decision 16).
+  const rounds = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: poll })
   const [peek, setPeek] = useState<string | null>(null)
   const edit = trpc.ticket.edit.useMutation({
     onSuccess: () => { void utils.feature.get.invalidate({ id: featureId }) },
@@ -35,7 +38,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
 
   if (full.isLoading) return <TicketsSkeleton />
   if (!data) return <DimLine>Could not load tickets: {full.error?.message ?? 'unknown'}</DimLine>
-  const { feature, tickets, docs } = data
+  const { tickets, docs } = data
 
   // The row awaits this so the editor stays open — and keeps the human's text —
   // when the save fails; the mutation's own handler raises the error toast.
@@ -47,7 +50,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
   // One edit per ticket, in sequence: the wire takes a single ticket at a time
   // and a burst of parallel writes would race the invalidation below.
   const bulkModel = async (model: string) => {
-    const pending = pendingTicketsForLap(tickets, feature.lap)
+    const pending = tickets.filter((ticket) => ticket.status === 'pending')
     try {
       for (const ticket of pending) await utils.client.ticket.edit.mutate({ ticketId: ticket.id, model })
       await utils.feature.get.invalidate({ id: featureId })
@@ -56,7 +59,7 @@ export function TicketsBody({ featureId }: { featureId: string }) {
       toast.push(error instanceof Error ? error.message : 'could not update ticket models')
     }
   }
-  const ledger = <TicketLedger tickets={tickets} currentLap={feature.lap} roster={roster} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
+  const ledger = <TicketLedger tickets={tickets} rounds={rounds.data ?? []} roster={roster} docs={docs} sandbox={SANDBOX_MODE} defaultModel={defaultModel} onDoc={setPeek} onEdit={save} onModel={setModel} onBulkModel={(model) => { void bulkModel(model) }} onCancel={(ticketId) => cancel.mutate({ ticketId })} onCopySha={(sha) => { void navigator.clipboard.writeText(sha); toast.push(`copied ${shortSha(sha)}`, 'info') }} />
 
   // `flex-1` because the workspace's two-pane wrapper lays its body out in a
   // row: a stack that only takes its content width leaves the ledger's titles,
@@ -103,8 +106,4 @@ export function TicketsSkeleton() {
       </div>
     </Skeleton>
   )
-}
-
-export function pendingTicketsForLap<T extends { lap: number; status: string }>(tickets: readonly T[], lap: number): T[] {
-  return tickets.filter((ticket) => ticket.lap === lap && ticket.status === 'pending')
 }

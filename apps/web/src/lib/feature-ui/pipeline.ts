@@ -1,6 +1,6 @@
 import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../api'
-import { lapTicketCount } from './laps'
+import { ticketCount } from './tickets'
 
 export const PHASE_ORDER: Phase[] = ['planning', 'building', 'review', 'shipped']
 
@@ -60,7 +60,7 @@ export function ticketsAreBody({ full, phase, readonly, hasRun }: {
   hasRun: boolean
 }): boolean {
   if (phase === 'building') return !hasRun
-  return phase === 'planning' && !readonly && lapTicketCount(full.tickets, full.feature.lap).total > 0
+  return phase === 'planning' && !readonly && ticketCount(full.tickets).total > 0
 }
 
 /**

@@ -9,13 +9,14 @@ import {
   conflictResolveEnded,
   deferredScope,
   driveFailure,
-  lapAccount,
-  lapChip,
+  roundOfSeq,
   lastTestDriveLap,
+  latestRoundTickets,
   latestRun,
   liveSessionLine,
   mergeConflictResolved,
   reviewDriveDenial,
+  roundAccount,
   slotHeldReason,
   specDocPath,
   stampedOutcome,
@@ -27,10 +28,10 @@ import {
 import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
+import { useRoundTrail } from '../../lib/round-trail'
 import type { StageExpand } from '../../lib/stage-expand'
 import { AsideLayout } from '../../ui'
 import { useToast } from '../../lib/toast'
-import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert, ConflictResolvedLine } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
@@ -40,9 +41,9 @@ import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
-import { ReviewTrail } from '../review/ReviewTrail'
+import { RoundTrail } from '../review/RoundTrail'
 import { DrivePrerequisitesNotice } from '../review/DrivePrerequisitesNotice'
-import { LapStory, StatusStrip } from '../review/StatusStrip'
+import { DeferredScope, StatusStrip } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -52,7 +53,7 @@ import type { WalkthroughHandle } from '../WalkthroughPlayer'
  * (DESIGN.md §Page anatomy): notices only when something is really wrong, the
  * state as a property list with the two things you can start from it, the
  * evidence stage only when there is evidence, the open work as a section only
- * when there is some, what an earlier lap carried, the laps, and the long
+ * when there is some, the rounds, and the long
  * read-once text in closed disclosures at the foot.
  *
  * There is no permanent right rail any more: an empty "What still needs
@@ -130,9 +131,9 @@ export function ReviewBody({
     { featureId: feature.id },
     { refetchInterval: reviewPoll },
   )
-  // Scope the spec left for a later lap. Same read the next-step bar makes (one
-  // query key, one fetch), so the lap chip and the bar cannot disagree about
-  // whether this lap is the last one.
+  // Scope the spec deliberately left out. Same read the next-step bar makes (one
+  // query key, one fetch), so the disclosure and the bar cannot disagree about
+  // what is still deferred.
   const specRelPath = specDocPath(full)
   const specQ = trpc.docs.read.useQuery(
     { featureId: feature.id, relPath: specRelPath ?? 'spec.md' },
@@ -173,7 +174,7 @@ export function ReviewBody({
     onError: (e) => toast.push(e.message),
   })
   // Another review pass, on demand (decisions 6–7): a fresh review ticket is
-  // minted on this lap and burned. The server refuses it while a run is live or
+  // minted and burned. The server refuses it while a run is live or
   // while the tree would deny the drive again, and those refusals are the
   // server's own words — a toast here, and inside the banner where the banner
   // is what asked.
@@ -292,7 +293,7 @@ export function ReviewBody({
   // at review on a feature that has moved on, and a denial answered by a later
   // phase is a record, not something to act on.
   const denial = feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
-  // This lap's review ran and verified nothing (decision 5) — the page's top
+  // The latest review ran and verified nothing (decision 5) — the page's top
   // line, in runcastle's own words. A history view states nothing and offers
   // nothing (decision 33a), so the banner is the live page's alone.
   const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
@@ -318,14 +319,11 @@ export function ReviewBody({
     openDefects: findings.data?.openDefects ?? [],
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
-  const account = lapAccount(tickets, feature.lap)
-  const lapFigure = lapChip(tickets, {
-    lap: feature.lap,
-    // The lap's own session has run once it has emitted this lap's tickets —
-    // exactly what the past tense in its story claims.
-    lapSessionRan: tickets.some((t) => t.lap === feature.lap),
-  })
-  const laterLaps = deferredScope(specQ.data?.content)
+  // Every run is a round (decision 16) — the trail, and what the latest one landed.
+  const { rounds, trail } = useRoundTrail(full, events, readonly ? false : poll)
+  const account = roundAccount(latestRoundTickets(tickets, rounds))
+  const roundOf = roundOfSeq(rounds)
+  const deferred = deferredScope(specQ.data?.content)
 
   // The stage is one element in both states — expanding changes what is AROUND
   // it, never what it is, which is what lets a drive ↔ walkthrough switch happen
@@ -382,10 +380,10 @@ export function ReviewBody({
           onDismiss={() => setDismissedDenial(denial.eventId)}
         />
       )}
-      {/* The lap that verified nothing says so before anything else on the
+      {/* A review that verified nothing says so before anything else on the
           page (decision 5) — loud, and blocking nothing. */}
       {unverified && (
-        <NothingVerifiedAlert lap={feature.lap} outcome={unverified} agenticReview={agenticReviewControl} />
+        <NothingVerifiedAlert outcome={unverified} agenticReview={agenticReviewControl} />
       )}
       {!readonly && !driveUp && slotHolder && blockingProjectDrive && (
         <ProjectDriveBlocking projectId={blockingProjectDrive} holderLabel={slotHolder.holderLabel} />
@@ -395,7 +393,6 @@ export function ReviewBody({
 
   const workProps = {
     featureId: feature.id,
-    lap: feature.lap,
     rows: attention,
     readonly,
     // Nothing is on the stage when there is no stage, so a timestamp on a row
@@ -473,31 +470,21 @@ export function ReviewBody({
           {!expanded && stage}
 
           <OpenWork {...workProps} />
-
-          {/* What earlier laps parked instead of answering (decisions #5) —
-              outside the open count, since the server keeps carried defects out
-              of the summary the page leads with. */}
-          <CarriedFindings
-            featureId={feature.id}
-            findings={findings.data?.carriedFindings ?? []}
-            readonly={readonly}
-          />
         </div>
 
-        {/* The feature's laps, oldest first (decision 5) — history, below the
-            state and the open work it is the record behind. Clicking a pass's
-            recording stages it above. The long text is read once, so closed
-            (DESIGN.md principle 6). */}
+        {/* The feature's rounds, oldest first (decision 16) — history, below
+            the state and the open work it is the record behind. Clicking a
+            review worker's recording stages it above. The long text is read
+            once, so closed (DESIGN.md principle 6). */}
         <ReferenceTier
           history={
-            <ReviewTrail
-              passes={rows}
-              tickets={tickets}
-              findings={findings.data?.findings ?? []}
-              notes={notes.data ?? []}
-              currentLap={feature.lap}
-              staged={staged?.ticketId ?? null}
-              onStage={stageRecording}
+            <RoundTrail
+              trail={trail}
+              recordings={{
+                byTicket: new Map(recordings.map((r) => [r.ticketId, r.videoUrl!])),
+                staged: staged?.ticketId ?? null,
+                onStage: stageRecording,
+              }}
               {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
             />
           }
@@ -506,6 +493,7 @@ export function ReviewBody({
           <FullAccounts
             account={account}
             tickets={tickets}
+            roundOf={roundOf}
             observations={observations}
             carried={
               settled.length > 0 ? (
@@ -520,7 +508,7 @@ export function ReviewBody({
               ) : null
             }
           />
-          <LapStory lap={lapFigure} laterLaps={laterLaps} currentLap={feature.lap} readonly={readonly} />
+          <DeferredScope deferred={deferred} readonly={readonly} />
         </ReferenceTier>
       </div>
       {overlay && (typeof document === 'undefined' ? overlay : createPortal(overlay, document.body))}

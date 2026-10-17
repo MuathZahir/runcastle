@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { ReviewFinding, TicketKind } from '@runcastle/core'
 import { Disclosure, SectionLabel } from '../../ui'
 import { IconDoc } from '../../icons'
-import { headline, type LapAccount } from '../../lib/feature-ui'
+import { headline, type RoundAccount } from '../../lib/feature-ui'
 import { Markdown } from '../Markdown'
 
 /** A ticket as the accounts band reads it — its own words and whose they are. */
@@ -10,16 +10,15 @@ export interface AccountTicket {
   seq: number
   title: string
   kind?: TicketKind
-  lap: number
   digest?: string
 }
 
 /**
  * ONE collapsed disclosure at the bottom of the review page (decision 8).
  *
- * Everything written in words about this lap is behind it: the lap's write-up
+ * Everything written in words about the latest round is behind it: its write-up
  * in full — the page lifts its first line out and renders that alone above as
- * the lap account, and this is where the account it opens is read — every
+ * the round account, and this is where the account it opens is read — every
  * burner's own account of its ticket, the work already dealt with, and the
  * observations. It used to OPEN the page: a wall of ~200-word
  * digests above the evidence, which is the "far too much text… confusing rather
@@ -37,19 +36,23 @@ export interface AccountTicket {
 export function FullAccounts({
   account,
   tickets,
+  roundOf,
   observations = [],
   carried,
 }: {
-  /** What this lap landed, in prose (decisions #8), or null when nobody said. */
-  account: LapAccount | null
+  /** What the latest round landed, in prose (decisions #8), or null when nobody said. */
+  account: RoundAccount | null
   tickets: readonly AccountTicket[]
+  /** The round that ran a ticket, by seq — said beside its digest when known. */
+  roundOf?: ReadonlyMap<number, number>
+
   /** What the review saw that no fix ticket could act on (decision 2). */
   observations?: readonly ReviewFinding[]
   /** The rows already carried, quick-fixed or handled, or null when there are none. */
   carried?: ReactNode
 }) {
-  // A review pass's digest is not listed (decision 6c): the lap write-up above
-  // is that account, and the trail's pass carries its one line.
+  // A review pass's digest is not listed (decision 6c): the round write-up above
+  // is that account.
   const digests = tickets
     .filter((ticket) => ticket.kind !== 'review' && (ticket.digest ?? '').trim().length > 0)
     .sort((a, b) => a.seq - b.seq)
@@ -68,7 +71,7 @@ export function FullAccounts({
     <div id="full-accounts">
       <Disclosure title="Full account" icon={<IconDoc />} aside={summary.join(' · ')}>
         <div className="flex flex-col gap-6 pt-1">
-          {account && <LapAccountBlock account={account} />}
+          {account && <RoundAccountBlock account={account} />}
 
           {digests.length > 0 && (
             <section>
@@ -78,7 +81,9 @@ export function FullAccounts({
                   <div key={ticket.seq}>
                     <div className="text-sm font-medium text-text">
                       #{ticket.seq} {ticket.title}
-                      <span className="ml-2 font-normal text-text-tertiary">lap {ticket.lap}</span>
+                      {roundOf?.has(ticket.seq) && (
+                        <span className="ml-2 font-normal text-text-tertiary">round {roundOf.get(ticket.seq)}</span>
+                      )}
                     </div>
                     <Markdown source={ticket.digest!.trim()} className="mt-2" />
                   </div>
@@ -125,24 +130,24 @@ function Observation({ detail }: { detail: string }) {
 }
 
 /**
- * What this lap landed, in prose (decisions #8).
+ * What the latest round landed, in prose (decisions #8).
  *
  * The review agent's own digest is the summary: it ran last, held the spec plus
- * every implementation digest, and actually saw the result working. The burners'
+ * every implementation digest, and actually saw the result working. The workers'
  * per-ticket digests are the fallback, and they are LABELLED as the fallback,
  * because several agents each saying what they did is a different (and weaker)
- * thing than one account of the lap.
+ * thing than one account of the round.
  */
-function LapAccountBlock({ account }: { account: LapAccount }) {
+function RoundAccountBlock({ account }: { account: RoundAccount }) {
   return (
     <section>
-      <SectionLabel>What landed this lap</SectionLabel>
+      <SectionLabel>What the latest round landed</SectionLabel>
       {account.source === 'review' ? (
         <Markdown source={account.prose} className="mt-2" />
       ) : (
         <>
           <div className="mt-2 text-sm text-text-tertiary">
-            No review summary this lap — below is each burner’s own account of the ticket it ran.
+            No review summary this round — below is each worker’s own account of the ticket it ran.
           </div>
           <div className="mt-3 flex flex-col gap-4">
             {account.entries.map((entry) => (
