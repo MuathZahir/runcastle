@@ -7,6 +7,7 @@ import {
   promoteMany,
   promoteNote,
   reopenNote,
+  sendNotes,
   triageNotes,
   triagePreview,
   toggleNote,
@@ -86,4 +87,10 @@ export const testNotesRouter = router({
   triagePreview: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => triagePreview(ctx, input.featureId)),
+
+  // Send to agent (decision 18): every unsent note, as one human message to the
+  // feature's lead; an empty send says the drive went fine.
+  send: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => sendNotes(ctx, input.featureId)),
 })

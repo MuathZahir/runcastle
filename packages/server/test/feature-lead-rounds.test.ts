@@ -9,6 +9,10 @@ import type { AppCtx } from '../src/db/types'
 import { resolveAutonomy } from '@runcastle/core'
 import { listAfter, listByProject } from '../src/services/events'
 import { getSettings, updateSettings } from '../src/services/settings'
+import { addNote, attachScreenshot } from '../src/services/test-notes'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
+import { annotationPath } from '@runcastle/core/paths'
 import {
   declareReady,
   dispatchRound,
@@ -376,6 +380,69 @@ describe('the feature lead runs rounds', () => {
     it('refuses a value that is not an autonomy', () => {
       expect(() => updateSettings(ctx, { projectId, key: 'autonomy', value: 'yolo' }, io)).toThrow(/invalid value/)
     })
+  })
+})
+
+describe('the rounds over tRPC', () => {
+  let ctx: AppCtx
+  let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
+  let featureId: string
+  let restoreEnv: (() => void) | undefined
+  let home: string
+  let original: WorkflowDef | undefined
+
+  beforeEach(async () => {
+    home = mkdtempSync(join(tmpdir(), 'rc-home-'))
+    restoreEnv = useDataDir(home)
+    ctx = await makeTestCtx()
+    caller = createCallerFactory(appRouter)(ctx)
+    featureId = seedFeature(ctx, seedProject(ctx).id).id
+    original = workflowRegistry.get('ticket-burner')
+    workflowRegistry.set('ticket-burner', landingBurner)
+  })
+
+  afterEach(() => {
+    if (original) workflowRegistry.set('ticket-burner', original)
+    else workflowRegistry.delete('ticket-burner')
+    restoreEnv?.()
+    rmTemp(home)
+  })
+
+  it('go, setAutonomy, rounds, readyDeclarations and stop', async () => {
+    const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
+    await expect(caller.feature.go({ featureId })).resolves.toEqual({ warnings: [expect.stringMatching(/no spec/)] })
+    const { runId, done } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: [t.id] })
+    await done
+
+    await expect(caller.feature.rounds({ featureId })).resolves.toEqual([
+      expect.objectContaining({ round: 1, runId, landed: [t.seq] }),
+    ])
+    declareReady(ctx, featureId, { scenario: 'S', whatToTest: 'W' })
+    await expect(caller.feature.readyDeclarations({ featureId })).resolves.toEqual([
+      expect.objectContaining({ scenario: 'S', whatToTest: 'W', runId }),
+    ])
+    await expect(caller.feature.setAutonomy({ featureId, autonomy: 'ask' })).resolves.toMatchObject({ autonomy: 'ask' })
+    await expect(caller.feature.setAutonomy({ featureId, autonomy: null })).resolves.toMatchObject({ autonomy: null })
+    await expect(caller.feature.stop({ featureId })).resolves.toMatchObject({ autonomy: 'ask' })
+  })
+
+  it('notes.send delivers every unsent note, screenshot paths included, as one human message', async () => {
+    const shot = addNote(ctx, featureId, 'The coupon field is cut off')
+    attachScreenshot(ctx, shot.id, new Uint8Array([137, 80, 78, 71]))
+    addNote(ctx, featureId, 'Totals look right')
+
+    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 2 })
+
+    const [message] = leadMessages(ctx, featureId)
+    expect(message).toMatch(/1\. The coupon field is cut off \(screenshot: .*\.png\)/)
+    expect(message).toContain(annotationPath(shot.id))
+    expect(message).toMatch(/2\. Totals look right/)
+    expect(getFeatureRow(ctx, featureId).lastHumanMessageAt).toBeGreaterThan(0)
+    expect((await caller.notes.list({ featureId })).every((n) => n.sentAt !== undefined)).toBe(true)
+
+    // Sent notes do not travel again; an empty send says the drive went fine.
+    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 0 })
+    expect(leadMessages(ctx, featureId)[1]).toMatch(/Drive done, all good/)
   })
 })
 
