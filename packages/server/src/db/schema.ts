@@ -5,6 +5,7 @@ import {
   projectFindings,
   projectNotes,
   projects,
+  readyDeclarations,
   reviewFindings,
   runs,
   sessions,
@@ -30,6 +31,7 @@ export const schema = {
   events,
   projectFindings,
   projectNotes,
+  readyDeclarations,
 }
 
 export type Schema = typeof schema
@@ -41,6 +43,7 @@ export {
   projectFindings,
   projectNotes,
   projects,
+  readyDeclarations,
   reviewFindings,
   runs,
   sessions,

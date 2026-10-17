@@ -43,6 +43,10 @@ export function rowToFeature(row: FeatureSelect): Feature {
     status: row.status,
     createdAt: row.createdAt,
     orchestrated: row.orchestrated,
+    autonomy: row.autonomy,
+    waitingReason: row.waitingReason,
+    lastHumanMessageAt: row.lastHumanMessageAt,
+    lastDispatchAt: row.lastDispatchAt,
   })
 }
 
@@ -64,6 +68,7 @@ export function rowToProject(row: ProjectSelect): Project {
     driveInstructions: row.driveInstructions ?? undefined,
     docsCommitPrefix: row.docsCommitPrefix ?? undefined,
     orchestrator: row.orchestrator ?? undefined,
+    autonomy: row.autonomy ?? undefined,
     closedAt: row.closedAt ?? undefined,
   })
 }
@@ -78,6 +83,7 @@ export function rowToRun(row: RunSelect): Run {
     endedAt: row.endedAt ?? undefined,
     summary: row.summary ?? undefined,
     digest: row.digest ?? undefined,
+    gates: row.gates ?? undefined,
   })
 }
 
@@ -101,6 +107,7 @@ export function rowToSession(row: SessionSelect): SessionRow {
     title: row.title ?? undefined,
     createdAt: row.createdAt ?? undefined,
     endedAt: row.endedAt ?? undefined,
+    tokens: row.tokens ?? undefined,
   })
 }
 

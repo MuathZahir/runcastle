@@ -46,6 +46,7 @@ function rowToTicket(row: TicketSelect): Ticket {
     conflictFiles: row.conflictFiles ?? undefined,
     digest: row.digest ?? undefined,
     originFindingId: row.originFindingId ?? undefined,
+    tokens: row.tokens ?? undefined,
   })
 }
 
@@ -221,6 +222,8 @@ export function storeTickets(
     conflictFiles: null,
     digest: null,
     originFindingId: t.originFindingId ?? null,
+    tokens: null,
+    tokenBreakdown: null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()

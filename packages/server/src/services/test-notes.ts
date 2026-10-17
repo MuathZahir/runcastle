@@ -59,6 +59,7 @@ function rowToNote(row: TestNoteSelect): TestNote {
     carriedLap: row.carriedLap ?? undefined,
     videoTimestamp: row.videoTimestamp ?? undefined,
     screenshotUrl: existsSync(annotationPath(row.id)) ? noteScreenshotUrl(row.id) : undefined,
+    sentAt: row.sentAt ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   })
