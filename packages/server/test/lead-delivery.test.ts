@@ -7,6 +7,7 @@ import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } fr
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
+import { go } from '../src/services/features'
 import {
   deliverToLead,
   leadDeliveryFor,
@@ -157,6 +158,30 @@ describe('deliverToLead', () => {
     expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toBeGreaterThan(0)
     expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(true)
     takeOrchestratorLines(leadMessageKey(f.id))
+  })
+})
+
+describe('Go, to a chat that planned live', () => {
+  // The chat opened on ideate/revisit and never saw the lead brief, so Go's wake
+  // is the only thing that can tell it to load the lead skill.
+  it('tells a live Claude Code chat to invoke /runcastle:lead', async () => {
+    const f = feature({ phase: 'planning' })
+    chat(f.id)
+
+    await go(ctx, f.id)
+
+    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([
+      expect.stringMatching(/^\[runcastle\] Go given.*invoke \/runcastle:lead first/),
+    ])
+  })
+
+  it('spells it $lead for a live Codex chat', async () => {
+    const f = feature({ phase: 'planning' })
+    chat(f.id, { runtime: 'codex', live: false })
+
+    await go(ctx, f.id)
+
+    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([expect.stringMatching(/invoke \$lead first/)])
   })
 })
 

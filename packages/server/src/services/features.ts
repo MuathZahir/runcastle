@@ -13,6 +13,7 @@ import type {
   TicketInput,
 } from '@runcastle/core'
 import {
+  DEFAULT_RUNTIME,
   newId,
   resolveAutonomy,
   shapeCheckedTickets,
@@ -49,6 +50,7 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
+import { goWakeText } from './lead-prompt'
 import { latestBurn, runClaimedTicketIds } from './runs'
 import { featureTokensTotal } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
@@ -877,10 +879,9 @@ export async function go(ctx: AppCtx, featureId: string): Promise<{ warnings: st
     .where(eq(features.id, featureId))
     .run()
   const building = setPhase(ctx, featureId, 'building', 'feature.go', 'Go given — the agent builds from here')
+  const chat = activeSessionsForFeature(ctx, featureId).find((s) => s.kind === 'chat')
   await deliverToLead(ctx, building, {
-    text:
-      '[runcastle] Go given — the human approved the plan. Dispatch round 1 with ' +
-      'dispatch_round({ seqs }), or do it yourself if it is small.',
+    text: goWakeText(chat?.runtime ?? DEFAULT_RUNTIME),
     source: 'runcastle',
   })
   return { warnings }

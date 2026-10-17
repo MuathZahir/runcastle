@@ -9,6 +9,9 @@
  * and the hook route can all share it without an import cycle.
  */
 
+import type { AgentRuntime } from '@runcastle/core'
+import { skillRef } from '../launcher/runtimes/skills'
+
 /** The leading marker on every prompt runcastle delivers. */
 export const RUNCASTLE_PROMPT_TAG = '[runcastle]'
 
@@ -28,6 +31,20 @@ export function leadWakeKickoff(message: string): string {
     'conversation headless to deliver what follows. Nobody is watching this run: act on it ' +
     'as the lead — fix, dispatch a round, declare ready, or call wait_for_you to ask the ' +
     `human — then end your turn.\n\n${message}\n\n`
+  )
+}
+
+/**
+ * The wake Go sends the feature's chat. A chat that was live through planning
+ * opened on `ideate` or `revisit` and never saw the lead brief (only a launch
+ * past Go renders it), so this names the lead skill the way the fresh-launch
+ * kickoff does — spelled for the chat's `runtime`.
+ */
+export function goWakeText(runtime: AgentRuntime): string {
+  return (
+    `Go given — the human approved the plan. You are now this feature's lead: invoke ` +
+    `${skillRef(runtime, 'lead')} first, then dispatch round 1 with dispatch_round({ seqs }), ` +
+    'or do it yourself if it is small.'
   )
 }
 
