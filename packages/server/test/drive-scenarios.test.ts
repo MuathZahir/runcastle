@@ -4,12 +4,14 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { Feature, PreparedKey, Project } from '@runcastle/core'
+import { newId } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { projects } from '../src/db/schema'
+import { projects, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
+import { toolReviewDrive, toolReviewScenario } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { DRIVE_CALL_BODY_CAP, sendDriveCall } from '../src/services/drive-call'
 import { listAfter, listByProject } from '../src/services/events'
@@ -493,5 +495,94 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
         caller().feature.openScenarioChat({ projectId: project.id, description: 'a buyer with a cart' }),
       ).rejects.toThrow(/running test drive/)
     })
+  })
+
+  describe("over the review agent's review_drive", () => {
+    let runId: string
+
+    beforeEach(() => {
+      runId = ctx.db
+        .insert(runs)
+        .values({ id: newId('run'), featureId: feature.id, workflow: 'ticket-burner', status: 'running', startedAt: Date.now() })
+        .returning()
+        .get().id
+    })
+
+    const replay = (action: 'scenario' | 'try_call', file?: string) =>
+      toolReviewScenario(ctx, { runId }, { action, file })
+
+    /** Start this run's review drive and bring its app up at a live URL. */
+    async function reviewUp(): Promise<string> {
+      expect((await toolReviewDrive(ctx, { runId }, { action: 'start' })).ok).toBe(true)
+      const url = await serveApp()
+      recordDriveUrl(ctx, project.id, feature.id, url)
+      await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
+      return url
+    }
+
+    it("refuses both actions unless the live drive is this run's review drive", async () => {
+      const file = '.runcastle/scenarios/checkout/land.ts'
+      expect(await replay('scenario', file)).toMatchObject({ ok: false, action: 'scenario', retriable: false })
+      // Another feature's review drive holds the slot, up and answering.
+      const other = seedFeature(ctx, project.id, { slug: 'other' })
+      await createFeatureBranch(project, other.slug, 'main')
+      expect((await testDrive(ctx, project, other, 'start', 'review')).ok).toBe(true)
+      recordDriveUrl(ctx, project.id, other.id, await serveApp())
+      await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
+      for (const action of ['scenario', 'try_call'] as const) {
+        expect(await replay(action, file)).toEqual({
+          ok: false,
+          action,
+          deniedReason: expect.stringContaining('No review drive'),
+          retriable: false,
+        })
+      }
+      expect(scenario()).toBeUndefined()
+    }, 30_000)
+
+    it('lands scenarios one after another and reports a failing one, while tRPC keeps refusing', async () => {
+      await reviewUp()
+      expect(await replay('scenario')).toMatchObject({ ok: false, deniedReason: expect.stringContaining('needs `file`') })
+
+      const land = '.runcastle/scenarios/checkout/land.ts'
+      expect(await createCallerFactory(appRouter)(ctx).feature.runScenario({ projectId: project.id, file: land }))
+        .toMatchObject({ ok: false, denied: expect.any(String) })
+
+      expect(await replay('scenario', land)).toEqual({
+        ok: true,
+        action: 'scenario',
+        entryUrl: expect.stringContaining('/cart?slug=drive&db=app_drive'),
+      })
+      expect(await replay('scenario', '.runcastle/scenarios/broken.ts')).toEqual({
+        ok: false,
+        action: 'scenario',
+        failure: { reason: 'exit', exitCode: 2, outputTail: expect.stringContaining('no such table') },
+      })
+      expect(types().filter((t) => t === 'testdrive.started')).toHaveLength(1)
+    }, 30_000)
+
+    it('sends a call only for the scenario that just landed with one', async () => {
+      await g.checkout('feature/drive')
+      const ping = '.runcastle/scenarios/api/ping.ts'
+      put(project.repoPath, ping, "console.log('TOKEN=tok_1'); console.log('ENTRY_URL=/')")
+      put(project.repoPath, '.runcastle/scenarios/api/ping.http', 'GET /ping\nAuthorization: Bearer {{token}}')
+      await g.add('.')
+      await g.commit('call')
+      await g.checkout('main')
+      await reviewUp()
+
+      expect(await replay('try_call', ping)).toMatchObject({
+        ok: false,
+        deniedReason: expect.stringContaining('run the scenario first'),
+      })
+      const land = '.runcastle/scenarios/checkout/land.ts'
+      await replay('scenario', land)
+      expect(await replay('try_call', land)).toMatchObject({
+        ok: false,
+        deniedReason: 'this scenario has no .http call',
+      })
+      expect(await replay('scenario', ping)).toMatchObject({ ok: true, token: 'tok_1' })
+      expect(await replay('try_call', ping)).toMatchObject({ ok: true, action: 'try_call', status: 200, body: 'app' })
+    }, 30_000)
   })
 })
