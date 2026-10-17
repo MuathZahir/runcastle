@@ -559,6 +559,16 @@ export function renderRevisitPrompt(
  * ends the run, and it overrides whatever the brief above says about the human.
  */
 function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string {
+  if (purpose === 'lead-wake') {
+    return [
+      '## No terminal is open',
+      'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
+      'it was open. Nobody is watching this run.',
+      '- Act on your opening prompt as the lead, in this one run.',
+      '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
+      '  reply reaches you later in this same conversation.',
+    ].join('\n')
+  }
   const work =
     purpose === 'relay'
       ? [
@@ -1298,6 +1308,11 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
  *   or mid-turn (`whole-cuts-plan-themselves` decision 20). A fresh waiter starts
  *   at every session start and turn end; the server answers only the newest.
+ *   A feature's chat with a terminal — its lead — gets the same waiter for the
+ *   lead's messages (`the-feature-lead-runs-rounds` decision 12); the server
+ *   lets it go when a turn starts, so they arrive at the turn's end. A headless
+ *   run gets none: its process exits at its turn end, taking a waiter's lines
+ *   with it, so its messages wait for the next resume instead.
  *   Every other session's settings carry no trace of it.
  */
 export function renderSettings(
@@ -1305,6 +1320,7 @@ export function renderSettings(
   kind?: SessionKind,
   skillPackDir?: string,
   purpose?: SessionPurpose,
+  headless = false,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
@@ -1312,7 +1328,7 @@ export function renderSettings(
     timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
   const waiter: CommandHook[] =
-    purpose === 'orchestrate'
+    purpose === 'orchestrate' || (kind === 'chat' && !headless)
       ? [
           {
             type: 'command',
@@ -1462,7 +1478,7 @@ export async function writeSessionArtifacts(
   writeFileSync(
     settingsPath,
     JSON.stringify(
-      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose),
+      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose, session.headless),
       null,
       2,
     ),

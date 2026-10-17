@@ -173,7 +173,7 @@ describe('the Chat door on a live chat', () => {
     }
 
     expect(again.sessionId).toBe(first)
-    expect(typed).toEqual(['OVERRIDE', '\r'])
+    expect(typed).toEqual(['[runcastle] OVERRIDE', '\r'])
     expect(kickoffs(feature.id).at(-1)?.data).toMatchObject({
       sessionId: first,
       kind: 'chat',

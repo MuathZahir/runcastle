@@ -124,6 +124,10 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  *
  * `relay` — a headless run that resumes a feature's planning conversation with
  * a message from the orchestrator as its prompt.
+ *
+ * `lead-wake` — a headless run that resumes a feature's chat (its lead) with
+ * runcastle's pending messages as its prompt, because no terminal of it was open
+ * to take them (`the-feature-lead-runs-rounds` decision 12).
  */
 export const SessionPurpose = z.enum([
   'resolve-conflict',
@@ -131,6 +135,7 @@ export const SessionPurpose = z.enum([
   'self-plan',
   'orchestrate',
   'relay',
+  'lead-wake',
 ])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 

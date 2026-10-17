@@ -14,7 +14,15 @@ import {
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
-import { waitForOrchestratorLines } from '../services/orchestrator-messages'
+import { isLiveLeadSession, leadDeliveryFor } from '../services/lead-delivery'
+import { isRuncastlePrompt } from '../services/lead-prompt'
+import { markHumanMessage } from '../services/lead-status'
+import {
+  hasOrchestratorLines,
+  leadMessageKey,
+  releaseOrchestratorWaiter,
+  waitForOrchestratorLines,
+} from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
@@ -51,9 +59,12 @@ export const ORCHESTRATOR_WAIT_HOLD_MS = 25_000
  * The orchestrator's message waiter (`whole-cuts-plan-themselves` decision 20):
  * the long-poll its `asyncRewake` hook makes in the hook client's
  * `wait-messages` mode. Registering supersedes the session's older waiter, and
- * only the newest is ever handed lines (see `orchestrator-messages.ts`). A
- * session that is gone, ended, or not orchestrating is answered `ended`, so its
- * waiter exits instead of polling forever.
+ * only the newest is ever handed lines (see `orchestrator-messages.ts`).
+ *
+ * A feature's lead with a terminal waits here too, for its feature's messages
+ * (`the-feature-lead-runs-rounds` decision 12, see `lead-delivery.ts`). A
+ * session that is gone, ended, or neither orchestrating nor a lead with a
+ * terminal is answered `ended`, so its waiter exits instead of polling forever.
  */
 hooks.get('/orchestrator-messages', async (c) => {
   try {
@@ -62,15 +73,29 @@ hooks.get('/orchestrator-messages', async (c) => {
     if (!sessionId || !waiter) return c.json({ status: 'ended' })
     const ctx = await getRuntimeCtx()
     const session = getSessionRow(ctx, sessionId)
-    if (!session || session.status === 'ended' || session.purpose !== 'orchestrate') {
-      return c.json({ status: 'ended' })
+    const key = session && session.status !== 'ended' ? waiterKeyOf(session) : null
+    if (!session || !key) return c.json({ status: 'ended' })
+    const answer = await waitForOrchestratorLines(key, waiter, ORCHESTRATOR_WAIT_HOLD_MS)
+    if (answer.status === 'lines' && session.featureId) {
+      emit(ctx, session.featureId, {
+        type: 'lead.woke',
+        message: 'the agent took its messages at its turn end',
+        data: { sessionId, route: 'waiter', lines: answer.lines.length },
+      })
     }
-    return c.json(await waitForOrchestratorLines(sessionId, waiter, ORCHESTRATOR_WAIT_HOLD_MS))
+    return c.json(answer)
   } catch (err) {
     console.error('orchestrator message waiter failed', err)
     return c.json({ status: 'empty' })
   }
 })
+
+/** The message-store key a session's waiter waits on, or null for a session that has none. */
+function waiterKeyOf(session: SessionRow): string | null {
+  if (session.purpose === 'orchestrate') return session.id
+  if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
+  return null
+}
 
 interface HookBody {
   event?: string
@@ -128,9 +153,13 @@ hooks.post('/:event', async (c) => {
     if (!feature) return c.json({})
 
     switch (event) {
-      case 'session-start':
-        return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
+      case 'session-start': {
+        const answer = handleSessionStart(ctx, sessionId, feature, body.payload)
+        kickLeadAtStart(ctx, sessionId)
+        return c.json(answer)
+      }
       case 'user-prompt':
+        if (isLiveLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
@@ -313,6 +342,32 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
       additionalContext: `[runcastle] feature=${feature.slug} phase=${feature.phase} tickets=${tickets}`,
     },
   }
+}
+
+/**
+ * A lead's turn starts (`the-feature-lead-runs-rounds` decision 12, spec
+ * "Stopping"). Its waiter is let go, lines kept, so a message arriving now waits
+ * for the turn's end, where the Stop hook starts the next waiter. And a prompt
+ * without runcastle's tag is one the human typed: it stamps the feature's
+ * last-human-message mark. A payload with no prompt text says nothing about who
+ * wrote it, so it stamps nothing.
+ */
+function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
+  releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
+  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id)
+}
+
+/**
+ * A lead's session started: messages that queued while it was launching go now.
+ * On Claude Code its own waiter starts with this hook and takes them; Codex has
+ * a conversation id to `codex queue` to only from this point.
+ */
+function kickLeadAtStart(ctx: AppCtx, sessionId: string): void {
+  const session = getSessionRow(ctx, sessionId)
+  if (!session?.featureId || !isLiveLeadSession(session)) return
+  const key = leadMessageKey(session.featureId)
+  if (hasOrchestratorLines(key)) leadDeliveryFor(session).kick(session, key)
 }
 
 async function handleSessionEnd(

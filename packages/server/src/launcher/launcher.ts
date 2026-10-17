@@ -56,6 +56,7 @@ import { orchestratorCatchUp } from '../services/orchestrator-notify'
 import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
+import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
 import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
 import { projectTriageKickoffFor } from './runtimes/skills'
 import {
@@ -325,6 +326,7 @@ function isHeadless(input: LaunchSessionInput): boolean {
   return (
     isSelfPlan(input) ||
     input.purpose === 'relay' ||
+    input.purpose === 'lead-wake' ||
     (input.purpose === 'start-lap' && !!input.headless)
   )
 }
@@ -338,6 +340,9 @@ function isHeadless(input: LaunchSessionInput): boolean {
 function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSessionInput): void {
   if (input.purpose === 'relay' && !input.message?.trim()) {
     throw new GateError('a message for the planning conversation is required to relay one')
+  }
+  if (input.purpose === 'lead-wake' && !input.message?.trim()) {
+    throw new GateError('a message for the agent is required to wake it')
   }
   if (input.purpose === 'start-lap' && !isStartLap(feature, input)) {
     throw new GateError(
@@ -477,7 +482,7 @@ function briefLiveChat(
   const plan = planLaunchKickoff(feature, input, startLapCarriedWork(ctx, feature.id))
   if (!plan.line) return { sessionId: liveChat.id }
 
-  if (!writeToLiveTerminal(liveChat.id, plan.line)) {
+  if (!writeToLiveTerminal(liveChat.id, tagRuncastlePrompt(plan.line))) {
     throw new GateError(
       'the live chat terminal is not available, so its briefing was not delivered',
     )
@@ -639,6 +644,7 @@ export async function launchSession(
   const plan = planLaunchKickoff(feature, input, carried)
   const selfPlan = isSelfPlan(input)
   const relay = input.kind === 'chat' && input.purpose === 'relay'
+  const leadWake = input.kind === 'chat' && input.purpose === 'lead-wake'
   // A lap planned headless has nobody to interview: its briefing is the
   // no-human lap line, carrying the orchestrator's message on the agenda.
   if (headless && plan.lap !== undefined) {
@@ -658,7 +664,9 @@ export async function launchSession(
         ? selfPlanKickoffFor(runtime.id)
         : relay
           ? relayKickoffFor(runtime.id, input.message as string)
-          : undefined,
+          : leadWake
+            ? leadWakeKickoff(input.message as string)
+            : undefined,
     )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
@@ -743,16 +751,22 @@ export async function launchSession(
     })
   }
 
+  // A chat's kickoff is runcastle's prompt, not the human's: tagged, so the
+  // UserPromptSubmit hook does not count it as a human message.
   const kickoffLine = resumeSessionId && input.kind !== 'chat'
     ? undefined
-    : kickoffLineFor(input.kind, plan.line, runtime.id)
+    : input.kind === 'chat'
+      ? tagRuncastlePrompt(kickoffLineFor(input.kind, plan.line, runtime.id))
+      : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: selfPlan
       ? 'launching a self-planning run'
       : relay
         ? "relaying the orchestrator's message to the planning conversation"
-        : headless
+        : leadWake
+          ? 'waking the agent headless — no terminal of it was open'
+          : headless
           ? 'launching a lap that plans itself'
           : `launching ${input.kind} session`,
     data: {
@@ -1431,7 +1445,9 @@ export function handlePtyExit(
       message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
       data: { sessionId: session.id, complete, exitCode: exitCode ?? null },
     })
-  } else if (session.headless && feature) {
+  } else if (session.headless && feature && session.purpose !== 'lead-wake') {
+    // A lead woken headless reports through its own MCP calls; the
+    // orchestrator's `session.run_ended` is for the runs it started.
     emitRunEnded(ctx, feature, session, exitCode)
   }
   emitForSession(ctx, session, {

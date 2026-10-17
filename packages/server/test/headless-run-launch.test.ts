@@ -17,6 +17,8 @@ import {
 } from '../src/launcher/sessions'
 import { getFeatureFull } from '../src/services/features'
 import { listAfter } from '../src/services/events'
+import { wakeLeadHeadless } from '../src/services/lead-delivery'
+import { leadMessageKey, queueOrchestratorLine } from '../src/services/orchestrator-messages'
 import { createFeatureBranch } from '../src/services/git'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
@@ -154,7 +156,7 @@ describe('a headless run on a feature', () => {
       const sessionId = await launch(f.id, relay())
       const command = launchedCommand(f.id, sessionId)
       expect(command).toContain(
-        'codex exec resume --dangerously-bypass-hook-trust thread-plan Proceed with your task: no human is present',
+        'codex exec resume --dangerously-bypass-hook-trust thread-plan [runcastle] Proceed with your task: no human is present',
       )
       expect(command).toContain('$revisit')
     })
@@ -214,6 +216,64 @@ describe('a headless run on a feature', () => {
     })
   })
 
+  /**
+   * `the-feature-lead-runs-rounds` decision 12: a lead with no terminal open is
+   * resumed headless with its messages, through the lead waker.
+   */
+  describe('a lead wake', () => {
+    const wake = async (featureId: string, text: string): Promise<string> => {
+      queueOrchestratorLine(leadMessageKey(featureId), `[runcastle] ${text}`)
+      const sessionId = await wakeLeadHeadless(ctx, featureId, (c, input) =>
+        launchSession(c, input, { spawn: false }),
+      )
+      if (!sessionId) throw new Error('nothing was launched')
+      cleanup.push(sessionDir(sessionId))
+      return sessionId
+    }
+
+    it('resumes the feature’s chat on Claude Code as `-p --resume <id>` with the tagged message', async () => {
+      const f = await feature('lead-claude', { phase: 'building' })
+      await earlierChat(f.id, 'cc-lead')
+
+      const sessionId = await wake(f.id, 'Round 1 returned: succeeded')
+
+      const row = getSessionRow(ctx, sessionId)
+      expect(row).toMatchObject({ kind: 'chat', purpose: 'lead-wake', headless: true })
+      const command = launchedCommand(f.id, sessionId)
+      expect(command).toMatch(/ claude -p --resume cc-lead --settings /)
+      expect(command).toContain('[runcastle] No terminal of yours was open')
+      expect(command).toContain('[runcastle] Round 1 returned: succeeded')
+      expect(injectedPrompt(f.id, sessionId)).toContain('## No terminal is open')
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'lead.woken_headless')).toBe(true)
+      expect(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')).not.toContain('wait-messages')
+    })
+
+    it('resumes on Codex as `exec resume <id>` with the message', async () => {
+      useRuntime('codex')
+      const f = await feature('lead-codex', { phase: 'building' })
+      await earlierChat(f.id, 'thread-lead')
+
+      const sessionId = await wake(f.id, 'Go given')
+
+      expect(launchedCommand(f.id, sessionId)).toContain(
+        'codex exec resume --dangerously-bypass-hook-trust thread-lead [runcastle] No terminal of yours was open',
+      )
+      expect(launchedCommand(f.id, sessionId)).toContain('[runcastle] Go given')
+    })
+
+    it('tells the orchestrator nothing: no human act, and no run of its own ended', async () => {
+      const f = await feature('lead-quiet', { phase: 'building', orchestrated: true })
+      const sessionId = await wake(f.id, 'Round 1 returned')
+      handlePtyExit(ctx, f, getSessionRow(ctx, sessionId)!, {}, 0)
+      expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.run_ended')).toEqual([])
+    })
+
+    it('is refused without a message', async () => {
+      const f = await feature('lead-empty', { phase: 'building' })
+      await expect(launch(f.id, { purpose: 'lead-wake' })).rejects.toThrow(/message for the agent/)
+    })
+  })
+
   describe('a headless start-lap', () => {
     it('renders a print-mode command with the message and the no-human rule', async () => {
       useRuntime('claude-code')
@@ -244,7 +304,7 @@ describe('a headless run on a feature', () => {
       const f = await feature('lap-codex', { phase: 'review' })
       const sessionId = await launch(f.id, { purpose: 'start-lap', headless: true })
       const command = launchedCommand(f.id, sessionId)
-      expect(command).toContain('codex exec --dangerously-bypass-hook-trust Proceed with your task:')
+      expect(command).toContain('codex exec --dangerously-bypass-hook-trust [runcastle] Proceed with your task:')
       expect(command).toContain('$revisit')
       expect(command).toContain('$ideate')
     })
