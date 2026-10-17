@@ -754,8 +754,9 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
  * and no active run — the Iterate loop (CONTEXT.md, "Laps: iteration without a
  * mode"; cited by name because the locked-decision numbers get renumbered):
  * fresh fix tickets emitted during review are burned from where the feature
- * stands, and the runner's auto-advance returns it to `review` when they
- * finish. Repeatable until the human clicks Merge & ship.
+ * stands. Nothing returns it to `review` when they finish any more — that is
+ * the lead's ready declaration ({@link declareReady}). Kept for the
+ * orchestrator's `burn_feature`; the human's door is {@link go}.
  *
  * Exactly two things refuse: a burn already running on this feature, and git
  * safety (which surfaces as a launch failure). Everything the old gates refused
