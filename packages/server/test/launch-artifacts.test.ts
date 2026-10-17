@@ -109,6 +109,16 @@ describe('renderSettings', () => {
         'mcp__runcastle__update_project_note',
       ]),
     )
+    // the feature lead's round tools — "Run until ready" dispatches with no
+    // human present, and a headless wake has no one to answer a prompt
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__dispatch_round',
+        'mcp__runcastle__stop_round',
+        'mcp__runcastle__declare_ready',
+        'mcp__runcastle__wait_for_you',
+      ]),
+    )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
     // every rule is either anchored to our own MCP server or a scoped git Bash

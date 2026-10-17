@@ -1005,6 +1005,13 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__update_project_note',
   // Re-ordering parked drafts (ADR-0013) — project-only at the server, likewise.
   'mcp__runcastle__set_feature_dependencies',
+  // The feature lead's round tools. "Run until ready" dispatches and declares
+  // with nobody watching, and a headless wake (`claude -p --resume`) has no one
+  // to answer a prompt at all — an un-allowed one stops the loop dead.
+  'mcp__runcastle__dispatch_round',
+  'mcp__runcastle__stop_round',
+  'mcp__runcastle__declare_ready',
+  'mcp__runcastle__wait_for_you',
 ]
 
 /**
