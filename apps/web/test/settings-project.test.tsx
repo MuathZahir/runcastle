@@ -414,3 +414,32 @@ describe('Settings — the Orchestrator toggle', () => {
     expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'orchestrator', value: false }])
   })
 })
+
+describe('Settings — the default autonomy', () => {
+  const withAutonomy = (value: string, source: SettingField['source']) =>
+    view([...projectFields, field({ key: 'autonomy', value, source })])
+
+  beforeEach(() => {
+    server.globals = view([])
+    server.findings = []
+    server.updates = []
+    server.invalidated = []
+  })
+  afterEach(cleanup)
+
+  it('reads out the project default in words, Run until ready when unset', () => {
+    server.scoped = withAutonomy('run-until-ready', 'default')
+    open()
+
+    expect(screen.getByLabelText('Default autonomy').textContent).toContain('Run until ready')
+  })
+
+  it('writes Ask before each round as this project’s default', () => {
+    server.scoped = withAutonomy('run-until-ready', 'default')
+    open()
+
+    pickOption(screen.getByLabelText('Default autonomy'), 'Ask before each round')
+
+    expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'autonomy', value: 'ask' }])
+  })
+})

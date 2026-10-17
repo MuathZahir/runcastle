@@ -189,6 +189,7 @@ export function NoteRow({
             ))}
           {why && <span className="text-warning">{why}</span>}
           {standing && <span>{standing}</span>}
+          {note?.sentAt !== undefined && <span>Sent to the agent</span>}
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
           {fixing &&
             (readonly || !onViewLane ? (

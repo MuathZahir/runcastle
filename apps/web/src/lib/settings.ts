@@ -19,6 +19,7 @@ import {
   relativeAge,
   type FindingLike,
 } from './prep-findings'
+import { AUTONOMY_LABEL } from './vocabulary'
 
 /**
  * Settings presentation logic. `settings.get` returns the per-field
@@ -465,6 +466,18 @@ const FIELD_META: Record<string, FieldMeta> = {
     control: 'switch',
     page: 'project',
     group: 'chat',
+  },
+  // How far a feature's agent goes on its own (`the-feature-lead-runs-rounds`
+  // decision 1); each feature's header switch overrides it.
+  autonomy: {
+    label: 'Default autonomy',
+    tooltip:
+      'What a feature’s agent does after you click Go. Run until ready: it runs round after round until it has something for you to test drive. Ask before each round: it proposes each round in its chat and waits for your reply. Each feature can switch it from its own page.',
+    control: 'select',
+    page: 'project',
+    group: 'chat',
+    options: ['run-until-ready', 'ask'],
+    optionLabels: AUTONOMY_LABEL,
   },
 }
 

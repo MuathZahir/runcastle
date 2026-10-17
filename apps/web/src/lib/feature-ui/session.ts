@@ -129,7 +129,7 @@ export function sessionKindName(
 ): string {
   switch (session.kind) {
     case 'chat':
-      return 'Chat'
+      return 'Agent'
     case 'drive-fix':
       return 'Drive fix'
     case 'prepare':

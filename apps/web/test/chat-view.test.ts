@@ -227,17 +227,17 @@ describe('FeatureViewTabs', () => {
       }),
     )
 
-  it('shows the two views, Chat last, and no Tickets tab', () => {
+  it('shows the two views, Agent last, and no Tickets tab', () => {
     const out = tabs()
     const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
       m[1]!.replace(/<[^>]+>/g, ''),
     )
-    expect(labels).toEqual(['Overview', 'Chat'])
+    expect(labels).toEqual(['Overview', 'Agent'])
     expect(out).not.toContain('Session live')
   })
 
-  it('puts a live dot on Chat while a session is live', () => {
-    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Chat[\s\S]*aria-label="Session live"/)
+  it('puts a live dot on Agent while a session is live', () => {
+    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Agent[\s\S]*aria-label="Session live"/)
   })
 
   it('gives a draft no views at all', () => {
@@ -253,7 +253,7 @@ describe('the live-session line', () => {
       text: 'Drive fix live · lap 3',
     })
     // A launching terminal is as live as a live one — it is holding the seat.
-    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Chat live · lap 1')
+    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Agent live · lap 1')
   })
 
   it('says nothing about an ended session, or about no session', () => {
@@ -266,7 +266,7 @@ describe('the live-session line', () => {
     expect(liveSessionLine([session({ purpose: 'self-plan', status: 'launching' })])).toBeNull()
   })
 
-  it('offers Open chat and End session', () => {
+  it('offers Open agent and End session', () => {
     const out = html(
       createElement(LiveSessionBar, {
         featureId: 'feat_1',
@@ -275,7 +275,7 @@ describe('the live-session line', () => {
       }),
     )
     expect(out).toContain('Chat live · lap 2')
-    expect(out).toContain('Open chat')
+    expect(out).toContain('Open agent')
     expect(out).toContain('End session')
   })
 })

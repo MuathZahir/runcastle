@@ -2,6 +2,7 @@ import { useRef, type RefObject } from 'react'
 import { EmptyState } from '../../ui'
 import { IconInbox } from '../../icons'
 import { NoteComposer } from './NoteComposer'
+import { SendToAgent } from './SendToAgent'
 import { WorkList, type WorkRow } from './WorkList'
 
 /**
@@ -43,7 +44,12 @@ export interface OpenWorkProps {
   highlight?: readonly string[]
   /** A row to bring into view — the other direction of the same jump. */
   scrollTo?: string | null
+  /** A drive of this feature is up — the agent's rounds and landings wait on it. */
+  driveActive?: boolean
 }
+
+/** The notes' heading (`the-feature-lead-runs-rounds` decision 18): they are for the agent. */
+export const NOTES_HEADING = 'Notes for the agent'
 
 /** Defects the running burn is fixing — still to watch, but not the human's problem. */
 function beingFixedCount(rows: readonly WorkRow[]): number {
@@ -65,7 +71,7 @@ export function openTally(rows: readonly WorkRow[]): string {
  * only the composer under a quiet "Notes" heading, and a history view renders
  * nothing at all.
  */
-export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkProps) {
+export function OpenWork({ featureId, lap, rows, readonly, driveActive, ...rest }: OpenWorkProps) {
   if (rows.length === 0 && readonly) return null
   const empty = rows.length === 0
   // The open count is the next-step bar's, always visible above (review-arrival
@@ -75,7 +81,7 @@ export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkPr
   return (
     <section id="open-work" className="flex flex-col gap-2">
       <div className="flex min-h-7 items-baseline gap-3">
-        <h2 className="m-0 text-lg font-semibold text-text">{empty ? 'Notes' : 'Needs attention'}</h2>
+        <h2 className="m-0 text-lg font-semibold text-text">{NOTES_HEADING}</h2>
         {beingFixed > 0 && (
           <span className="text-xs text-text-tertiary tabular-nums">{beingFixed} being fixed</span>
         )}
@@ -83,14 +89,15 @@ export function OpenWork({ featureId, lap, rows, readonly, ...rest }: OpenWorkPr
       {empty ? (
         <p className="m-0 text-sm text-text-tertiary">
           Nothing needs attention. Write down what you see while you drive — a pasted screenshot rides
-          along.
+          along — then send it to the agent.
         </p>
       ) : (
         <WorkList featureId={featureId} rows={rows} readonly={readonly} currentLap={lap} {...rest} />
       )}
       {!readonly && (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-col gap-3">
           <NoteComposer featureId={featureId} />
+          <SendToAgent featureId={featureId} driveActive={driveActive} />
         </div>
       )}
     </section>
@@ -108,6 +115,7 @@ export function OpenWorkPane({
   rows,
   readonly,
   scroller,
+  driveActive,
   ...rest
 }: OpenWorkProps & { scroller: RefObject<HTMLDivElement | null> }) {
   return (
@@ -136,8 +144,11 @@ export function OpenWorkPane({
         )}
       </div>
       {!readonly && (
-        <div className="shrink-0 border-t border-border-subtle p-3">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border-subtle p-3">
           <NoteComposer featureId={featureId} />
+          {/* The expanded stage and its notes are the whole window, so Send
+              is the one primary on it. */}
+          <SendToAgent featureId={featureId} driveActive={driveActive} primary />
         </div>
       )}
     </>

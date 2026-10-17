@@ -41,6 +41,7 @@ vi.mock('../src/trpc', () => {
       ticket: { retry: { useMutation: mutation } },
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
@@ -216,7 +217,7 @@ describe('the review page expanded', () => {
     const inOverlay = within(overlay)
     expect(overlay.querySelector('#evidence-stage')).toBeTruthy()
     // The notes are the one aside beside the stage.
-    expect(inOverlay.getByRole('complementary').textContent).toContain('Needs attention')
+    expect(inOverlay.getByRole('complementary').textContent).toContain('Notes for the agent')
     expect(inOverlay.getByLabelText(/what did you just see/i)).toBeTruthy()
     expect(inOverlay.getByText(NOTE.text)).toBeTruthy()
     for (const band of BANDS) expect.soft(inOverlay.queryByText(new RegExp(band))).toBeNull()

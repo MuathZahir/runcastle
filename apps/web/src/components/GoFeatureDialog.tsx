@@ -1,21 +1,20 @@
 import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, SectionLabel, Spinner } from '../ui'
-import { IconFlame } from '../icons'
+import { IconPlay } from '../icons'
 import { ConfirmWarnings } from './MergeFeatureDialog'
-import type { BurnSummary } from '../lib/feature-ui'
+import type { GoSummary } from '../lib/feature-ui'
 
 /**
- * Confirmation for `feature.burn` (decisions §5) — the first of the two human
- * clicks, and the door every ex-gate now warns at instead of refusing at.
+ * Confirmation for `feature.go` (`the-feature-lead-runs-rounds` decision 8) —
+ * the human's one click that approves the plan and hands the feature to its
+ * agent, which dispatches every round from here. Go replaces Burn.
  *
  * Shaped after {@link MergeFeatureDialog} on purpose: the same figures-then-warn-
  * box-then-one-line grammar, so the operator learns ONE confirmation pattern
  * for both clicks. The warnings are computed server-side and arrive verbatim;
- * the primary is never disabled behind them, because the friction at Burn is
- * *reading*. The two things that genuinely refuse a burn — a run already
- * burning this feature, and git safety — are physics and surface as a launch
- * failure, not as a dead button here.
+ * the primary is never disabled behind them, and a plan with no tickets is not
+ * refused — the agent may do a small feature itself.
  */
-export function BurnFeatureDialog({
+export function GoFeatureDialog({
   title,
   branch,
   summary,
@@ -26,7 +25,7 @@ export function BurnFeatureDialog({
 }: {
   title: string
   branch: string
-  summary: BurnSummary
+  summary: GoSummary
   busy: boolean
   /** The warnings query is still in flight — said, never waited for. */
   warningsPending?: boolean
@@ -37,11 +36,11 @@ export function BurnFeatureDialog({
     <Dialog
       open
       onClose={onCancel}
-      labelledBy="burn-feature-title"
+      labelledBy="go-feature-title"
       size="sm"
       className="flex max-h-[82vh] flex-col overflow-hidden"
     >
-      <BurnConfirmation
+      <GoConfirmation
         title={title}
         branch={branch}
         summary={summary}
@@ -61,7 +60,7 @@ export function BurnFeatureDialog({
  * (tier 1), while the portal, Escape and backdrop mechanics stay covered once
  * in `dialog.test.tsx`.
  */
-export function BurnConfirmation({
+export function GoConfirmation({
   title,
   branch,
   summary,
@@ -72,7 +71,7 @@ export function BurnConfirmation({
 }: {
   title: string
   branch: string
-  summary: BurnSummary
+  summary: GoSummary
   busy: boolean
   warningsPending?: boolean
   onConfirm: () => void
@@ -81,20 +80,20 @@ export function BurnConfirmation({
   return (
     <>
       <DialogHeader
-        id="burn-feature-title"
-        title="Burn tickets"
+        id="go-feature-title"
+        title="Go"
         onClose={onCancel}
         description={
           <>
-            Burn <span className="font-medium text-text">{title}</span> on{' '}
-            <code className="font-mono text-xs">{branch}</code>? Each ticket runs as its own sandboxed agent.
+            Approve the plan for <span className="font-medium text-text">{title}</span> on{' '}
+            <code className="font-mono text-xs">{branch}</code>? The agent takes it from here.
           </>
         }
       />
 
       <DialogBody className="flex min-h-0 flex-col gap-5 overflow-y-auto">
         <section>
-          <SectionLabel>What burns</SectionLabel>
+          <SectionLabel>What you approve</SectionLabel>
           {summary.rows.map((row) => (
             <CheckLine key={row.key} row={row} />
           ))}
@@ -119,8 +118,8 @@ export function BurnConfirmation({
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
-        <Button variant="primary" icon={<IconFlame />} onClick={onConfirm} disabled={busy}>
-          {busy ? 'Burning…' : 'Burn'}
+        <Button variant="primary" icon={<IconPlay />} onClick={onConfirm} disabled={busy}>
+          {busy ? 'Going…' : 'Go'}
         </Button>
       </DialogFooter>
     </>

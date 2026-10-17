@@ -30,6 +30,8 @@ vi.mock('../src/trpc', () => {
       }),
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
+        list: { useQuery: () => ({ data: [] }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
@@ -153,7 +155,7 @@ describe('the marker-to-note spotlight', () => {
       />,
     )
     expect(screen.getByRole('complementary')).toBeTruthy()
-    expect(screen.getByText('Needs attention')).toBeTruthy()
+    expect(screen.getByText('Notes for the agent')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
     expect(screen.getByLabelText(/what did you just see/i)).toBeTruthy()
   })
