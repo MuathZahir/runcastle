@@ -31,7 +31,8 @@ type ChatErrand = { kind: 'new' } | { kind: 'fix'; name: string }
  * restart, the panel follows each landing, a running scenario shows its output
  * and a failed one its actual error with Fix it, and the scenario chat docks
  * beside the panel — never in the Chat tab, which would hide the panel the
- * result lands in.
+ * result lands in. Lap 2 (decisions 11, 14): an App | API toggle when some
+ * scenario has a call, and the Blank app nudge while the project has none.
  *
  * `featureId` is set on a feature drive (its own scenarios list first, notes
  * land on the feature); absent on a project drive.
