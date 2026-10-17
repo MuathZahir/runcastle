@@ -370,7 +370,7 @@ export function CreateMenu({
         <CreateItem
           icon={<IconMessage />}
           label="New chat"
-          hint="Features and quick changes alike — a conversation that cuts burn-ready tickets"
+          hint="Features and quick changes alike — a conversation that plans the work and runs it in rounds"
           onSelect={onNewChat}
         />
         <CreateItem
