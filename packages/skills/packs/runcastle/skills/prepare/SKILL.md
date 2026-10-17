@@ -1,6 +1,6 @@
 ---
 name: prepare
-description: Establish a project's host settings with evidence — the dev command, the drive setup/stop scripts, the dev-database reset — by running them on the developer's own machine rather than guessing them from config. Covers the drive contract, discovering a project's shape, and the closing dry-run drive. Entry skill for kind=prepare sessions.
+description: Establish a project's host settings with evidence — the dev command, the drive setup/stop scripts, the dev-database reset — by running them on the developer's own machine rather than guessing them from config. Covers the drive contract, the scenario contract it feeds, discovering a project's shape, and the closing dry-run drive. Entry skill for kind=prepare sessions.
 disable-model-invocation: false
 ---
 
@@ -42,7 +42,7 @@ The eighth is what a later agent needs once the app is actually up:
 
 ## The drive contract
 
-A drive is a script **you** write, committed to the project, plus the two things only the server can do. Everything else — ports, database names, redis indexes, compose project names, URLs — the script computes for itself. Runcastle mandates these seven points and nothing else:
+A drive is a script **you** write, committed to the project, plus the two things only the server can do. Everything else — ports, database names, redis indexes, compose project names, URLs — the script computes for itself. Runcastle mandates these eight points and nothing else:
 
 1. **The machinery lives in `.runcastle/`, committed to the repo.** Write the steps as real scripts and commit them. Versioning them with the code they prepare is the load-bearing part: a branch that adds a package, a service or a migration amends its own script, and the drive on that branch runs the amended version. Nothing inspects a diff, ever.
 2. **`driveSetupCommand` / `driveStopCommand` are one line each** — how to invoke those scripts. Logic in the setting instead of the script is logic no branch can amend.
@@ -51,10 +51,22 @@ A drive is a script **you** write, committed to the project, plus the two things
 5. **`.runcastle/drive.env` MUST be gitignored.** Add the entry yourself. The server deletes the file when a drive ends, but a scratch file holding a connection string must never be one `git add -A` away from a commit.
 6. **Every step is unconditionally idempotent.** Install, migrate, seed, compose up — run them every time, never behind a "has anything changed?" check. A no-op on a clean tree is cheap; a skipped install on a branch that added a package is a dead drive. This is how the loop absorbs whatever a feature branch changed with no delta detection anywhere.
 7. **Exit 0 means the services are actually up.** The waits belong INSIDE the script — `docker compose up --wait`, a `pg_isready` loop, curl-until-healthy — because the dev pane starts the instant setup returns. The server waits for the app itself; it will not wait for your database.
+8. **Everything the app needs to reach its data goes out through `.runcastle/drive.env`** — above all the database URL, plus any cache or queue URL the app reads. Scenarios (below) and the dev server both get exactly that overlay and nothing else. A setup that hands the database to the dev server some other way — writing the app's own `.env.local`, say — leaves every scenario seeding the wrong database, or none, while the app looks fine.
 
 Stop undoes what setup made, **for this identity only**: drop the database it created, take its compose project down with its volumes, free its ports. The human's own stack is never yours.
 
 Writing those files is the one exception to a preparation session not editing the repo: you may write `.runcastle/` and `.gitignore` in this checkout and nothing else — a hook enforces it. Show the human the script before you commit it; it is their repo and their PR.
+
+## Scenarios
+
+A drive can land the human in a seeded state instead of a blank app. That is the **scenario contract**, a peer of the drive contract above:
+
+- A scenario is a file at `.runcastle/scenarios/<group>/<name>.<ext>`, committed. The folder is the group (`checkout/` → Checkout), the file name the display name (`expired-coupon.ts` → Expired coupon). Files and folders starting with `_` (e.g. `_fixtures/`) are shared code, never listed.
+- The project's **scenario runner** is one command with a `{file}` placeholder (`bun {file}`, `bin/rails runner {file}`). Runcastle runs it in the drive's checkout with the `RUNCASTLE_*` identity, the `drive.env` overlay (point 8 is why that overlay must carry the database), and a fresh `RUNCASTLE_SCENARIO_RUN` per run that keeps entities unique.
+- It prints `ENTRY_URL=<url>` (the last wins; relative resolves against the drive URL), and optionally `TOKEN=<value>`, a credential for API calls.
+- A sibling `.http` file at the same path (`feed/blocked-only.ts` + `feed/blocked-only.http`) is that scenario's API call, sent from the drive's API view with **Try it**.
+
+**You do not set scenarios up.** Record no runner, write no drive-only login route, add no fixtures. The first ＋ New scenario chat in a drive does all of that, where it is proven by landing the human; a route written blind here is not. Your part is point 8: a `drive.env` that carries the data.
 
 ## Discover the shape before you author anything
 
@@ -122,12 +134,14 @@ Once the open drive keys are recorded, end the session by proposing one. Recorde
 On a yes, `dry_run_drive({ action })` runs it in two halves and you inspect between them:
 
 1. **`start`** — the server runs `driveSetupCommand` with the identity variables, reads back the `.runcastle/drive.env` it wrote (the reply lists the variable NAMES it parsed) and spawns `devCommand` in a real drive pane under that overlay. Identity is the reserved slug `prep-dry-run`, so `RUNCASTLE_ID` is `prep_dry_run` (in every project — the id is unique within a project only) and a script deriving from it makes e.g. `myapp_prep_dry_run`, on the current branch. Nothing is checked out.
-2. **While it is up**, check what the server cannot: the variable names came back as you meant them, the temp database exists and is FRESH, the migrations applied, and the app actually RESPONDS at the sniffed URL — the server waits for it to answer before "Open app" goes live, but only you can say the page is the right one. `status` gives you the pane and the URL while you work.
+2. **While it is up**, check what the server cannot: the variable names came back as you meant them — and they include the database URL, or whatever the app reaches its data by (point 8). If they do not, the app is getting its data some other way that scenarios cannot see: tell the human, fix the setup script to write it to `drive.env`, and drive again. That holds for an existing setup you did not write, too. Then: the temp database exists and is FRESH, the migrations applied, and the app actually RESPONDS at the sniffed URL — the server waits for it to answer before "Open app" goes live, but only you can say the page is the right one. `status` gives you the pane and the URL while you work.
 3. **`stop`** — the server runs `driveStopCommand` under the same overlay. Then check the cleanup: temp database gone, no orphaned process, container or volume left behind.
 
 Anything off at any step, fix it — amend the script, or `record_finding` for a key — and run the WHOLE thing again until a pass is clean. Watch especially for a `myapp_prep_dry_run` left standing after the stop: an idempotent setup will happily reuse it on the next start, so a teardown that never worked reads exactly like a drive that did.
 
 The verified stamps are computed server-side from what the machinery observed, and only on a clean full pass. You cannot mark your own homework: your deeper checks decide whether to retry, never what gets stamped.
+
+Close with one line telling the human that ＋ New scenario in their next test drive sets up scenarios, so a drive can land them in the state they want to test.
 
 ## When nothing is open
 

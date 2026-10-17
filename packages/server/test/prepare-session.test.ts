@@ -542,6 +542,19 @@ describe('the prepare skill', () => {
     expect(skill).toContain('override: true')
   })
 
+  it('documents scenarios and requires drive.env to carry the data', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    expect(skill).toContain('## Scenarios')
+    expect(skill).toContain('.runcastle/scenarios/<group>/<name>.<ext>')
+    expect(skill).toContain('`{file}`')
+    expect(skill).toContain('`TOKEN=<value>`')
+    expect(skill).toContain('`.http`')
+    expect(skill).toContain('above all the database URL')
+    // prepare still sets none of it up; the first scenario chat does
+    expect(skill).toContain('Record no runner, write no drive-only login route, add no fixtures')
+    expect(skill).toContain('＋ New scenario in their next test drive')
+  })
+
   /**
    * All EIGHT prepared keys are accounted for. The prompt used to explain four
    * and leave `setupCommand`, `verifyCommands` and `knownFailures` defined
