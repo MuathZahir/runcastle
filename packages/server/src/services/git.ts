@@ -37,9 +37,10 @@ import { describeDriveEnv, driveIdentityEnv, driveProcessEnv, parseEnvFile } fro
 import type { EmitScope } from './events'
 import { emit, emitProject, emitScoped } from './events'
 import { markVerified } from './findings'
+import { fillHttpRequest, parseHttpRequest } from './http-request'
 import { getProjectById, hasActiveRun, tryGetFeature } from './repo'
 import type { ScenarioRunResult } from './scenarios'
-import { isScenarioPath, listScenarios, runScenario, scenarioName } from './scenarios'
+import { callFileOf, isScenarioPath, listScenarios, runScenario, scenarioName } from './scenarios'
 
 /**
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
@@ -3287,6 +3288,7 @@ export function startScenarioOnDrive(
   const { scope, identity } = driven
 
   const name = scenarioName(file)
+  const driveUrl = state.devUrl
   state.scenarioRunning = true
   state.scenario = { file, name, status: 'running', output: '' }
   emitScoped(ctx, scope, { type: 'scenario.started', message: `running ${name}`, data: { file } })
@@ -3296,14 +3298,16 @@ export function startScenarioOnDrive(
     file,
     cwd: project.repoPath,
     env: { ...driveIdentityEnv(identity), ...state.envOverlay },
-    driveUrl: state.devUrl,
+    driveUrl,
     onOutput: (tail) => {
       if (state.scenario?.status === 'running') state.scenario.output = tail
     },
   }).then((outcome) => {
     state.scenarioRunning = false
     // A drive stopped (or replaced) mid-run has nothing left to land on.
-    if (driveOf(projectId) === state) recordScenarioOutcome(ctx, state, scope, file, outcome)
+    if (driveOf(projectId) === state) {
+      recordScenarioOutcome(ctx, state, scope, file, outcome, { repoPath: project.repoPath, driveUrl })
+    }
     return outcome
   })
   return { ok: true, result }
@@ -3339,6 +3343,36 @@ export function scenarioDriveEnv(
   return { identity: driveIdentityEnv(driven.identity), envOverlay: { ...state.envOverlay } }
 }
 
+/**
+ * A landed scenario's API call (drive-scenarios decision 10): its `.http`
+ * sibling read from the drive checkout — the chat commits before landing, so
+ * the checkout holds it — filled with this run's token, run id and the drive
+ * URL. Nothing when there is no sibling; a request that will not parse or
+ * resolve is reported as `callError`, never a failed landing. Only the `.http`
+ * is read, never the scenario itself.
+ */
+function scenarioCall(
+  file: string,
+  result: Extract<ScenarioRunResult, { ok: true }>,
+  drive: { repoPath: string; driveUrl: string },
+): Pick<DriveScenario, 'call' | 'callError'> {
+  const callPath = join(drive.repoPath, ...callFileOf(file).split('/'))
+  if (!existsSync(callPath)) return {}
+  try {
+    const parsed = parseHttpRequest(readFileSync(callPath, 'utf8'))
+    if (!parsed.ok) return { callError: parsed.error }
+    return {
+      call: fillHttpRequest(parsed.request, {
+        ...(result.token !== undefined ? { token: result.token } : {}),
+        run: result.run,
+        driveUrl: drive.driveUrl,
+      }),
+    }
+  } catch (err) {
+    return { callError: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 /** Record a finished run on its drive, and say so at the drive's scope. */
 function recordScenarioOutcome(
   ctx: AppCtx,
@@ -3346,10 +3380,20 @@ function recordScenarioOutcome(
   scope: EmitScope,
   file: string,
   result: ScenarioRunResult,
+  drive: { repoPath: string; driveUrl: string },
 ): void {
   const name = scenarioName(file)
   if (result.ok) {
-    state.scenario = { file, name, status: 'landed', entryUrl: result.entryUrl, landingId: newId('land') }
+    state.scenario = {
+      file,
+      name,
+      status: 'landed',
+      entryUrl: result.entryUrl,
+      landingId: newId('land'),
+      run: result.run,
+      ...(result.token !== undefined ? { token: result.token } : {}),
+      ...scenarioCall(file, result, drive),
+    }
     emitScoped(ctx, scope, {
       type: 'scenario.landed',
       message: `landed on ${name} at ${result.entryUrl}`,
