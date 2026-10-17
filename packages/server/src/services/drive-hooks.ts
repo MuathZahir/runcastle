@@ -40,6 +40,11 @@ export interface DriveHookResult {
   timedOut: boolean
   /** Trailing lines of combined stdout+stderr (interleaved as received). */
   output: string
+  /**
+   * The whole of stdout, untailed and unmixed with stderr — for a caller that
+   * reads a contract line out of it (a scenario's `ENTRY_URL=`).
+   */
+  stdout: string
   durationMs: number
   /**
    * The hook's still-open Job Object, present only when the caller asked to
@@ -118,6 +123,8 @@ export interface RunDriveHookOptions {
    * killed the moment the hook finishes, so nothing it started outlives it.
    */
   holdJob?: boolean
+  /** Called with each chunk as it arrives, for a caller that shows output live. */
+  onData?: (chunk: string, stream: 'stdout' | 'stderr') => void
   now?: () => number
 }
 
@@ -144,6 +151,7 @@ export function runDriveHook(
 
   return new Promise<DriveHookResult>((resolve) => {
     let output = ''
+    let stdout = ''
     let timedOut = false
     let settled = false
     // Declared before `finish` because the spawn-failure path calls it before
@@ -162,6 +170,7 @@ export function runDriveHook(
         exitCode,
         timedOut,
         output: tailLines(output),
+        stdout,
         durationMs: now() - startedAt,
         ...(held ? { containment: held } : {}),
       })
@@ -215,10 +224,15 @@ export function runDriveHook(
     timer.unref?.()
 
     child.stdout?.on('data', (d: Buffer) => {
-      output += d.toString()
+      const chunk = d.toString()
+      output += chunk
+      stdout += chunk
+      opts.onData?.(chunk, 'stdout')
     })
     child.stderr?.on('data', (d: Buffer) => {
-      output += d.toString()
+      const chunk = d.toString()
+      output += chunk
+      opts.onData?.(chunk, 'stderr')
     })
     child.on('error', (err) => {
       output += `\n${err instanceof Error ? err.message : String(err)}`
