@@ -120,7 +120,11 @@ describe('the orchestrator’s headless-run tools', () => {
       const events = listAfter(ctx, f.id, 0)
       expect(events.some((e) => e.type === 'session.launched')).toBe(false)
       const pending = events.find((e) => e.type === 'lead.message_pending')
-      expect(pending?.data).toEqual({ source: 'human', text: 'The empty state still says nothing.' })
+      expect(pending?.data).toEqual({
+        source: 'human',
+        text: 'The empty state still says nothing.',
+        sessionId: null,
+      })
       expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toEqual(expect.any(Number))
     }
   })
