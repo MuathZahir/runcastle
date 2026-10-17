@@ -232,15 +232,13 @@ describe('the review agent wires', () => {
       reproStep: 'Edit the title, click Save, and reload.',
     })
 
+    // The defect is the lead's to decide on: no fix ticket is minted for it.
     expect(result).toEqual({
       findingId: expect.any(String),
-      fixTicketSeq: 2,
+      fixTicketSeq: null,
       overCap: false,
     })
-    expect(listTickets(ctx, feature.id)[1]).toMatchObject({
-      blockedBy: [reviewTicket.seq],
-      originFindingId: result.findingId,
-    })
+    expect(listTickets(ctx, feature.id)).toHaveLength(1)
   })
 
   it('still denies a dirty tree, and leaves the checkout where it was', async () => {

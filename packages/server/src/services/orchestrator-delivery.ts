@@ -15,8 +15,12 @@ import { answerOrchestratorWaiter, hasOrchestratorLines, takeOrchestratorLines }
  * arrive joined into one line.
  */
 export interface OrchestratorDelivery {
-  /** Lines are pending for `session`: deliver them now, or when the channel next can. */
-  kick(session: SessionRow): void
+  /**
+   * Lines are pending for `session` under `key` (its own id unless said
+   * otherwise — a feature lead's are under `leadMessageKey`): deliver them now,
+   * or when the channel next can.
+   */
+  kick(session: SessionRow, key?: string): void
 }
 
 /**
@@ -26,7 +30,7 @@ export interface OrchestratorDelivery {
  * or session start.
  */
 export const asyncRewakeDelivery: OrchestratorDelivery = {
-  kick: (session) => answerOrchestratorWaiter(session.id),
+  kick: (session, key = session.id) => answerOrchestratorWaiter(key),
 }
 
 /** One `codex queue` spawn: the program, its argv, and the env it runs with. */
@@ -89,30 +93,40 @@ export const CODEX_GATHER_MS = 1000
  * turn with them when the thread is idle, or delivers them after the current
  * turn when it is busy (it polls about every 10 s). The first kick opens a
  * `gatherMs` window and the lines are taken when it closes. One spawn at a time
- * per session: lines arriving while one gathers or runs go in it or the next.
- * Best effort — a failed spawn is logged and its lines dropped.
+ * per key: lines arriving while one gathers or runs go in it or the next.
+ * Best effort — a failed spawn is handed to `onFailed`, which by default logs it
+ * and drops its lines; it returns whether to carry on with lines that queued
+ * meanwhile (`false` holds them for the next kick).
  */
-export function codexQueueDelivery(run: RunCommand = runCommand, gatherMs = CODEX_GATHER_MS): OrchestratorDelivery {
+export function codexQueueDelivery(
+  run: RunCommand = runCommand,
+  gatherMs = CODEX_GATHER_MS,
+  onFailed: (key: string, lines: string[], code: number | null) => boolean = dropFailedLines,
+): OrchestratorDelivery {
   const busy = new Set<string>()
-  const send = (session: SessionRow): void => {
+  const send = (session: SessionRow, key = session.id): void => {
     const conversationId = session.ccSessionId
-    if (busy.has(session.id) || !conversationId || !hasOrchestratorLines(session.id)) return
-    busy.add(session.id)
+    if (busy.has(key) || !conversationId || !hasOrchestratorLines(key)) return
+    busy.add(key)
     const deliver = (): void => {
-      const lines = takeOrchestratorLines(session.id)
+      const lines = takeOrchestratorLines(key)
       if (lines.length === 0) {
-        busy.delete(session.id)
+        busy.delete(key)
         return
       }
       void run(codexQueueCommand(session, conversationId, lines.join('\n'))).then((code) => {
-        if (code !== 0) console.error(`codex queue exited ${code}; dropped ${lines.length} line(s)`)
-        busy.delete(session.id)
-        send(session)
+        busy.delete(key)
+        if (code === 0 || onFailed(key, lines, code)) send(session, key)
       })
     }
     setTimeout(deliver, gatherMs).unref?.()
   }
   return { kick: send }
+}
+
+function dropFailedLines(_key: string, lines: string[], code: number | null): boolean {
+  console.error(`codex queue exited ${code}; dropped ${lines.length} line(s)`)
+  return true
 }
 
 /**
@@ -123,8 +137,8 @@ export function codexQueueDelivery(run: RunCommand = runCommand, gatherMs = CODE
  * queue submits each batch whole before the next one starts.
  */
 export const typingDelivery: OrchestratorDelivery = {
-  kick(session) {
-    const lines = takeOrchestratorLines(session.id)
+  kick(session, key = session.id) {
+    const lines = takeOrchestratorLines(key)
     if (lines.length > 0) writeToLiveTerminal(session.id, bracketedPaste(lines.join('\n')))
   },
 }

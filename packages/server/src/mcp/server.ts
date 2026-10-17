@@ -406,7 +406,10 @@ export interface FeatureContext {
   /**
    * Every finding this lap's review reported, resolved ones included — the
    * record of the pass, where `openDefects` and `carriedDefects` are the work it
-   * left. Empty when this lap's review reported nothing.
+   * left. A defect already stated there is not repeated here: with reviews no
+   * longer minting fix tickets every defect starts open, and stating each one
+   * twice would push the lead's to-do past the ceiling. Empty when this lap's
+   * review reported nothing.
    */
   findings: ReviewFinding[]
   /**
@@ -528,7 +531,6 @@ function latestBurnSummary(
 export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
-  const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
   const testNotes = listTestNotes(ctx, feature.id).filter(
     (note) => note.lap === feature.lap || note.status === 'carried',
   )
@@ -537,6 +539,10 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
   // outright, and whether `test-notes.md` may still claim to be already-triaged
   // (it may not, once a note was carried rather than triaged).
   const carried = carriedWork(ctx, feature.id)
+  const stated = new Set([...carried.openDefects, ...carried.carriedDefects].map((defect) => defect.id))
+  const findings = listReviewFindings(ctx, feature.id).filter(
+    (finding) => finding.lap === feature.lap && !stated.has(finding.id),
+  )
   const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
 
   const project = projectForFeature(ctx, feature)
@@ -2529,8 +2535,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Report a structured review finding',
         description:
-          'Report one typed finding for the feature under review. Actionable defects mint fix ' +
-          'tickets automatically up to the review cap; observations are retained for the digest.',
+          'Report one typed finding for the feature under review. Defects stay open for the ' +
+          'feature’s lead, which decides what each becomes; observations are retained for the digest.',
         inputSchema: ReviewFindingInput.shape,
       },
       async (args, extra) => {

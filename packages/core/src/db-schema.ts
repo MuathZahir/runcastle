@@ -22,6 +22,7 @@ import type {
   TicketStatus,
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
+import type { TokenBreakdown } from './usage'
 
 /**
  * Drizzle SQLite tables mirroring the zod schemas. JSON columns use
@@ -352,7 +353,7 @@ export const sessions = sqliteTable('sessions', {
   /** Tokens summed over this session's transcript (decision 3); null until counted. */
   tokens: integer('tokens'),
   /** The per-kind split behind `tokens` (input, output, cache…), as JSON; null until counted. */
-  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<Record<string, number>>(),
+  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<TokenBreakdown>(),
 })
 
 export const tickets = sqliteTable('tickets', {
@@ -410,7 +411,7 @@ export const tickets = sqliteTable('tickets', {
   /** Tokens the worker spent on this ticket, summed over its transcript; null until counted. */
   tokens: integer('tokens'),
   /** The per-kind split behind `tokens`, as JSON; null until counted. */
-  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<Record<string, number>>(),
+  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<TokenBreakdown>(),
 })
 
 export const reviewFindings = sqliteTable('review_findings', {

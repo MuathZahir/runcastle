@@ -364,9 +364,28 @@ describe('renderSettings', () => {
     expect(s.hooks.SessionEnd[0].hooks).toHaveLength(1)
   })
 
+  /**
+   * `the-feature-lead-runs-rounds` decision 12: a feature's chat is its lead,
+   * woken by the same waiter at its turn end — but not a headless run, whose
+   * process exits at its turn end with whatever a waiter took.
+   */
+  it('gives a feature chat with a terminal the same waiter, and a headless chat none', () => {
+    const chat = renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack')
+    const orchestrate = renderSettings('C:\\hooks\\hook-client.ts', 'project', undefined, 'orchestrate')
+    const waiterOf = (s: typeof chat) => s.hooks.Stop[0].hooks.slice(1)
+    expect(waiterOf(chat)).toEqual(waiterOf(orchestrate))
+    expect(chat.hooks.SessionStart.every((e) => e.hooks[1]?.command.endsWith('wait-messages'))).toBe(true)
+
+    for (const purpose of [undefined, ...SessionPurpose.options.filter((p) => p !== 'orchestrate')]) {
+      const headless = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack', purpose, true))
+      expect(headless).not.toContain('wait-messages')
+      expect(headless).not.toContain('asyncRewake')
+    }
+  })
+
   it('leaves every other session’s settings exactly as they were', () => {
     const others = SessionPurpose.options.filter((p) => p !== 'orchestrate')
-    for (const kind of SessionKind.options) {
+    for (const kind of SessionKind.options.filter((k) => k !== 'chat')) {
       const plain = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack'))
       expect(plain).not.toContain('wait-messages')
       expect(plain).not.toContain('asyncRewake')

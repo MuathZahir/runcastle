@@ -1,10 +1,19 @@
-import type { Feature, ReviewGateRun } from '@runcastle/core'
+import { DEFAULT_RUNTIME, type Feature, type ReviewGateRun, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { writeToLiveTerminal } from '../launcher/launcher'
+import { launchSession, type LaunchSessionInput } from '../launcher/launcher'
 import { activeSessionsForFeature } from '../launcher/sessions'
-import { emit } from './events'
+import { subscribeLive } from './bus'
+import { emit, getEventRow } from './events'
+import { tagRuncastlePrompt } from './lead-prompt'
 import { markHumanMessage } from './lead-status'
-import { bracketedPaste } from './orchestrator-delivery'
+import { asyncRewakeDelivery, codexQueueDelivery, type OrchestratorDelivery } from './orchestrator-delivery'
+import {
+  hasOrchestratorLines,
+  leadMessageKey,
+  queueOrchestratorLine,
+  requeueOrchestratorLines,
+  takeOrchestratorLines,
+} from './orchestrator-messages'
 import { getRunRow } from './repo'
 import { listByFeature as listFindings } from './review-findings'
 import { listRounds, runClaimedTicketIds } from './runs'
@@ -16,7 +25,9 @@ import { listByIds } from './tickets'
  * the human's messages (Send to agent, the orchestrator's `send_to_feature`).
  *
  * `source` is what tells the two apart for the Ask-mode dispatch check: only a
- * `human` message stamps the feature's last-human-message mark.
+ * `human` message stamps the feature's last-human-message mark. Either way the
+ * prompt that reaches the lead carries runcastle's tag, so the
+ * `UserPromptSubmit` hook does not count it again as a typed one.
  */
 export interface LeadMessage {
   text: string
@@ -24,31 +35,152 @@ export interface LeadMessage {
 }
 
 /**
- * Deliver `msg` to the feature's lead. The SIGNATURE is the contract — the
- * waiter, `codex queue` and headless-resume paths replace the internals, never
- * the shape.
+ * Deliver `msg` to the feature's lead (decision 12). The SIGNATURE is the
+ * contract; this is what is behind it.
  *
- * For now: a live chat terminal gets the message typed in, as one bracketed
- * paste so its lines stay lines; with no live chat the message is recorded as
- * `lead.message_pending`, where the timeline shows it.
+ * The message is tagged as runcastle's ({@link tagRuncastlePrompt}) and queued
+ * under the feature's {@link leadMessageKey}, then:
+ *
+ * - a lead with a terminal (its chat is up and not headless) is kicked through
+ *   its runtime's own channel ({@link leadDeliveryFor}) — never typed in, so a
+ *   message that arrives mid-turn waits for the turn's end — and
+ *   `lead.message_queued` says which channel;
+ * - otherwise `lead.message_pending` is emitted and the message waits: for a
+ *   headless run already going, until it exits; with no chat up at all, the
+ *   lead waker ({@link startLeadWaker}) resumes the conversation headless with
+ *   it.
  */
 export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMessage): Promise<void> {
   if (msg.source === 'human') markHumanMessage(ctx, feature.id)
-  const live = activeSessionsForFeature(ctx, feature.id).find(
-    (s) => s.kind === 'chat' && s.status === 'live' && !s.headless,
-  )
-  if (live && writeToLiveTerminal(live.id, bracketedPaste(msg.text))) {
+  const key = leadMessageKey(feature.id)
+  queueOrchestratorLine(key, tagRuncastlePrompt(msg.text))
+  const lead = activeLead(ctx, feature.id)
+  if (lead && !lead.headless) {
+    leadDeliveryFor(lead).kick(lead, key)
     emit(ctx, feature.id, {
-      type: 'lead.message_delivered',
-      message: `message delivered to the agent (${msg.source})`,
-      data: { source: msg.source, sessionId: live.id, text: msg.text },
+      type: 'lead.message_queued',
+      message: `message queued for the agent at its turn end (${msg.source})`,
+      data: { source: msg.source, sessionId: lead.id, route: liveRouteOf(lead), text: msg.text },
     })
     return
   }
   emit(ctx, feature.id, {
     type: 'lead.message_pending',
-    message: `message waiting for the agent (${msg.source})`,
-    data: { source: msg.source, text: msg.text },
+    message: lead
+      ? `message waiting for the agent's run to end (${msg.source})`
+      : `message waiting for the agent (${msg.source})`,
+    data: { source: msg.source, sessionId: lead?.id ?? null, text: msg.text },
+  })
+}
+
+/** The feature's chat session that is up (launching or live), if any. */
+function activeLead(ctx: AppCtx, featureId: string): SessionRow | undefined {
+  return activeSessionsForFeature(ctx, featureId).find((s) => s.kind === 'chat')
+}
+
+/** Whether `session` is a feature's lead with a terminal: the one a live wake reaches. */
+export function isLiveLeadSession(session: Pick<SessionRow, 'kind' | 'featureId' | 'headless'>): boolean {
+  return session.kind === 'chat' && !!session.featureId && !session.headless
+}
+
+/** Which live channel a lead's runtime takes, as `lead.message_queued` names it. */
+function liveRouteOf(session: Pick<SessionRow, 'runtime'>): 'waiter' | 'codex-queue' {
+  return (session.runtime ?? DEFAULT_RUNTIME) === 'codex' ? 'codex-queue' : 'waiter'
+}
+
+/**
+ * A lead's Codex delivery: `codex queue`, as the orchestrator's, except that a
+ * failed spawn keeps its lines rather than dropping them. They then wait for the
+ * next kick or for the session to end, when the headless resume takes them —
+ * the fallback the spec names if Codex cannot take a message live. Built on
+ * first use: this module sits in an import cycle with the launcher.
+ */
+let leadCodexDelivery: OrchestratorDelivery | undefined
+
+function holdFailedLines(key: string, lines: string[], code: number | null): boolean {
+  console.error(`codex queue exited ${code}; holding ${lines.length} lead message line(s)`)
+  requeueOrchestratorLines(key, lines)
+  return false
+}
+
+/** The live delivery for a lead's runtime: the Stop-hook waiter on Claude Code, `codex queue` on Codex. */
+export function leadDeliveryFor(session: Pick<SessionRow, 'runtime'>): OrchestratorDelivery {
+  if (liveRouteOf(session) !== 'codex-queue') return asyncRewakeDelivery
+  leadCodexDelivery ??= codexQueueDelivery(undefined, undefined, holdFailedLines)
+  return leadCodexDelivery
+}
+
+/** Opens the headless resume of a feature's chat — `launchSession`, or a test's stand-in. */
+export type LeadLauncher = (ctx: AppCtx, input: LaunchSessionInput) => Promise<{ sessionId: string }>
+
+/** The event types after which a feature's pending lead messages may need a headless resume. */
+const WAKE_TRIGGERS = new Set(['lead.message_pending', 'session.pty_exited', 'session.spawn_failed'])
+
+/** Features whose headless resume is being opened right now. */
+const waking = new Set<string>()
+
+/**
+ * Resume the feature's chat headless with every pending lead message as its
+ * prompt, when there are any and no session of the feature is up. A live lead
+ * takes its messages itself; a headless run already going, or a terminal of
+ * another kind (the feature's one slot), gets them retried when it exits. A
+ * launch that is refused puts the messages back and says why. Resolves with the
+ * new session id, or null when nothing was launched.
+ */
+export async function wakeLeadHeadless(
+  ctx: AppCtx,
+  featureId: string,
+  launch: LeadLauncher = launchSession,
+): Promise<string | null> {
+  const key = leadMessageKey(featureId)
+  if (waking.has(featureId) || !hasOrchestratorLines(key)) return null
+  if (activeSessionsForFeature(ctx, featureId).length > 0) return null
+  waking.add(featureId)
+  const lines = takeOrchestratorLines(key)
+  try {
+    const { sessionId } = await launch(ctx, {
+      featureId,
+      kind: 'chat',
+      purpose: 'lead-wake',
+      message: lines.join('\n\n'),
+    })
+    emit(ctx, featureId, {
+      type: 'lead.woken_headless',
+      message: 'the agent was not open — resumed its conversation headless with the message',
+      data: { sessionId, messages: lines.length },
+    })
+    return sessionId
+  } catch (err) {
+    requeueOrchestratorLines(key, lines)
+    emit(ctx, featureId, {
+      type: 'lead.wake_failed',
+      message: `could not resume the agent headless: ${err instanceof Error ? err.message : String(err)}`,
+      data: { messages: lines.length },
+    })
+    return null
+  } finally {
+    waking.delete(featureId)
+  }
+}
+
+/**
+ * Subscribe the lead waker to the live event bus; returns the unsubscribe.
+ * Called once at boot, beside the orchestrator notifier. A message left pending,
+ * or a feature's session ending with messages still pending, resumes the lead
+ * headless ({@link wakeLeadHeadless}). Best effort: nothing here throws into the
+ * emitter.
+ */
+export function startLeadWaker(ctx: AppCtx, launch: LeadLauncher = launchSession): () => void {
+  return subscribeLive((signal) => {
+    if (signal.kind !== 'event' || !signal.featureId) return
+    const featureId = signal.featureId
+    try {
+      const event = getEventRow(ctx, signal.eventId)
+      if (!event || !WAKE_TRIGGERS.has(event.type)) return
+      void wakeLeadHeadless(ctx, featureId, launch).catch((err) => console.error('lead waker failed', err))
+    } catch (err) {
+      console.error('lead waker failed', err)
+    }
   })
 }
 

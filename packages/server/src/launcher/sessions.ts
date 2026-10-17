@@ -15,7 +15,11 @@ import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitForSession, emitProject } from '../services/events'
-import { endOrchestratorMessages } from '../services/orchestrator-messages'
+import {
+  endOrchestratorMessages,
+  leadMessageKey,
+  releaseOrchestratorWaiter,
+} from '../services/orchestrator-messages'
 import {
   landProjectBranch,
   PROJECT_BRANCH,
@@ -396,6 +400,12 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // An orchestrator's message waiter is answered `ended`, and lines it never
   // heard are dropped: the catch-up briefing carries them to its next launch.
   endOrchestratorMessages(id)
+  // A lead's waiter goes with its session, but its feature's messages stay: the
+  // lead waker resumes the conversation headless with them. Only on the first
+  // ending: by a repeat one, the feature's next chat may own the waiter.
+  if (existing.kind === 'chat' && existing.featureId && existing.status !== 'ended') {
+    releaseOrchestratorWaiter(leadMessageKey(existing.featureId), 'ended')
+  }
   // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
   // recorded fact rather than the row's age wearing an end-time label. Those
   // same three end paths can each fire on a row that is already ended (a Stop

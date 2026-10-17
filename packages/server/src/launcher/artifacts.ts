@@ -207,7 +207,7 @@ export function renderSystemPrompt(
   const selfPlan = purpose === 'self-plan'
   if (kind === 'chat' && !selfPlan) {
     const opening = chatOpening(feature, planning, purpose)
-    if (opening === 'lead') return renderLeadPrompt(feature, runtime)
+    if (opening === 'lead') return renderLeadPrompt(feature, runtime, headless)
     if (opening === 'revisit') return renderRevisitPrompt(feature, purpose, runtime, headless)
   }
 
@@ -394,6 +394,21 @@ function headlessRelayRule(): string {
 }
 
 /**
+ * The section a lead resumed headless — a `lead-wake`, because no terminal of it
+ * was open (`the-feature-lead-runs-rounds` decision 12) — adds to its brief.
+ */
+function headlessLeadWakeRule(): string {
+  return [
+    '## No terminal is open',
+    'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
+    'it was open. Nobody is watching this run.',
+    '- Act on your opening prompt as the lead, in this one run.',
+    '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
+    '  reply reaches you later in this same conversation.',
+  ].join('\n')
+}
+
+/**
  * The rule that REPLACES {@link noCodeRule} for a feature's lead — its chat once
  * Go is given (`the-feature-lead-runs-rounds` decisions 5 and 7). The edit and
  * install guards lift for it from then on, so the brief says what the lead may
@@ -418,7 +433,11 @@ export function leadCodeRule(): string {
  * declare ready — so this brief carries only the per-feature facts and the
  * rules the machine enforces.
  */
-export function renderLeadPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT_RUNTIME): string {
+export function renderLeadPrompt(
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+  headless = false,
+): string {
   const docs = featureDocsRel(feature.slug)
   return [
     `# runcastle — ${feature.title} (feature lead)`,
@@ -447,6 +466,7 @@ export function renderLeadPrompt(feature: Feature, runtime: AgentRuntime = DEFAU
     leadCodeRule(),
     otherEntrySkillsRule(),
     '',
+    ...(headless ? [headlessLeadWakeRule(), ''] : []),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'lead')}\` skill and run this feature in rounds until it is ready for the human.`,
     '',
@@ -1166,6 +1186,11 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
  *   or mid-turn (`whole-cuts-plan-themselves` decision 20). A fresh waiter starts
  *   at every session start and turn end; the server answers only the newest.
+ *   A feature's chat with a terminal — its lead — gets the same waiter for the
+ *   lead's messages (`the-feature-lead-runs-rounds` decision 12); the server
+ *   lets it go when a turn starts, so they arrive at the turn's end. A headless
+ *   run gets none: its process exits at its turn end, taking a waiter's lines
+ *   with it, so its messages wait for the next resume instead.
  *   Every other session's settings carry no trace of it.
  */
 export function renderSettings(
@@ -1173,6 +1198,7 @@ export function renderSettings(
   kind?: SessionKind,
   skillPackDir?: string,
   purpose?: SessionPurpose,
+  headless = false,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
@@ -1180,7 +1206,7 @@ export function renderSettings(
     timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
   })
   const waiter: CommandHook[] =
-    purpose === 'orchestrate'
+    purpose === 'orchestrate' || (kind === 'chat' && !headless)
       ? [
           {
             type: 'command',
@@ -1319,7 +1345,7 @@ export async function writeSessionArtifacts(
   writeFileSync(
     settingsPath,
     JSON.stringify(
-      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose),
+      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose, session.headless),
       null,
       2,
     ),

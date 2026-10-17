@@ -13,7 +13,7 @@ You review it in **exactly one of two modes**, and you pick which before you do 
 
 You leave two deliverables behind: the **findings** (one report per finding, typed) and the **digest** (the lap's account — see step 5; it is not an afterthought). Its first line is a standalone one-liner naming the lap, what landed, the counts and the mode you ran: that line is the one the review page renders on arrival, and the account behind it is what the human opens when they want more.
 
-You are **not** implementing anything. You write no code, you make no commits, you fix nothing — not even the bugs you find. Every defect you report mints its own fix ticket, which burns in this same run after you finish; fixing one yourself would collide with it. Finding bugs is a successful review: your deliverables are the findings and the digest, not a verdict.
+You are **not** implementing anything. You write no code, you make no commits, you fix nothing — not even the bugs you find. Every defect you report goes to the feature's lead when this round ends, and the lead decides how it is fixed; fixing one yourself would collide with that. Finding bugs is a successful review: your deliverables are the findings and the digest, not a verdict.
 
 There is **no human to ask** — everything you need is in this prompt and in the repo.
 
@@ -180,7 +180,7 @@ A defect is also what a fix ticket can act on, so it carries something to act *f
 
 **Severity is `high` when an acceptance criterion is unmet, when data/flow is broken, or when every criterion passes and the human's problem is still not solved**; `medium` for a real defect that is not that, `low` for the rest. It orders and labels; it never gates.
 
-**Report defects highest severity first.** Each defect mints a fix ticket that burns in this same run, and only the first {{AUTO_FIX_CAP}} do — everything after the cap is stored for the human to decide on, so the order you report in decides what gets fixed.
+**Report defects highest severity first.** Your defects reach the feature's lead in the order you report them, and the lead reads them in that order to decide what gets fixed first.
 
 Report as you find things, never in a batch at the end: a finding you have sent survives an iteration that ends early, and one you were saving up does not. There is no closing wrap-up call — the digest (step 5) is the summary, and your observations render inside the page's collapsed *Full account* disclosure, alongside the digest's long account.
 
@@ -204,7 +204,7 @@ Its shape — `Lap <N>: <what landed, in the language of the product> · <X> def
 Lap 2: the review page now opens on state and one action · 3 defects found, 2 fixed in-run · Gates mode
 ```
 
-The counts are the ones you know as you write: how many defects you reported, and how many of those fall inside the auto-fix cap and so burn as fix tickets in this same run. The lap number is `lap` on `mcp__runcastle__get_feature_context`. If you could not drive, the line still names the mode you actually ran.
+The counts are the ones you know as you write: how many defects you reported, and how many of those were fixed in-run — `0`, since nothing burns a fix while the round is still running; the lead fixes them afterwards. The lap number is `lap` on `mcp__runcastle__get_feature_context`. If you could not drive, the line still names the mode you actually ran.
 
 **The rest is not a review log. It is the lap's long account**, and the page keeps it behind a collapsed *Full account* disclosure at the bottom, with your observations — it is what the human opens when the one-liner is not enough, so it is neither the first thing they read nor rendered verbatim at the top. Write it anyway and write it well: they arrive wanting one question answered — *what did this lap actually do?* — and you are the agent best placed to answer it: you ran last, you hold the spec, and you have every implementer's own account above.
 
