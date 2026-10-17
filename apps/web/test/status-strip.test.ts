@@ -43,7 +43,7 @@ describe('StatusStrip', () => {
   /** simplify-the-pages decisions 3, 4, 6a: each row owns its facts, once. */
   it('leads with the review verdict and freshness, then tickets, test drive and the burn', () => {
     const html = render({ driveLap: null })
-    const order = ['>Review<', '>Verified<', 'gates mode · this build', '>Tickets<', '>Test drive<', '>Burn<', 'Succeeded']
+    const order = ['>Review<', '>Verified<', 'gates mode · this build', '>Tickets<', '>Test drive<', '>Round<', 'Succeeded']
     let cursor = -1
     for (const fragment of order) {
       const at = html.indexOf(fragment)
@@ -161,10 +161,10 @@ describe('StatusStrip', () => {
    * rather than an instruction, and the burn is history the page leaves out.
    */
   describe('on a shipped feature', () => {
-    it('leaves the burn and the laps out', () => {
+    it('leaves the round and the laps out', () => {
       const html = render({ shipped: true })
       expect(html).not.toContain('>Laps<')
-      expect(html).not.toContain('>Burn<')
+      expect(html).not.toContain('>Round<')
     })
 
     it('states the lap the drive was taken in', () => {

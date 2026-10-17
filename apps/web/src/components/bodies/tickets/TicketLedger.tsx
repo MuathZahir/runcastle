@@ -119,7 +119,7 @@ export function TicketLedger({
       )}
       {!readonly && (
         <p className="mt-3 mb-0 text-xs text-text-tertiary">
-          Edit and Cancel are available on pending and failed tickets until you burn.
+          Edit and Cancel are available on pending and failed tickets until a round dispatches them.
         </p>
       )}
     </div>

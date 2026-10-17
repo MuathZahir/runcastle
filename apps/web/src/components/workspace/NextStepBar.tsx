@@ -6,7 +6,7 @@ import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feat
 import {
   IconAlert,
   IconArchive,
-  IconFlame,
+  IconArrowRight,
   IconGitMerge,
   IconMessage,
   IconMore,
@@ -23,7 +23,7 @@ const ACTION_ICON: Record<ActionKind, ReactNode> = {
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
   stopHeadlessRun: <IconStop />,
-  burn: <IconFlame />,
+  burn: <IconArrowRight />,
   cancelRun: <IconStop />,
   openBurnSettings: <IconSettings />,
   testDriveStart: <IconPlay />,

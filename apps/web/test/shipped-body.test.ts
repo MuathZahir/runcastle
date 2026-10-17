@@ -266,7 +266,7 @@ describe('ShippedBody', () => {
       for (const key of ['>Review<', '>Tickets<', '>Test drive<']) {
         expect(html).toContain(key)
       }
-      for (const key of ['>Checks<', '>Laps<', '>Burn<']) {
+      for (const key of ['>Checks<', '>Laps<', '>Round<']) {
         expect(html).not.toContain(key)
       }
     })

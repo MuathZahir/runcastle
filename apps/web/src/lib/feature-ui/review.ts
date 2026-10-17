@@ -324,8 +324,8 @@ export interface StatusBuilding {
 }
 
 /**
- * The Status tier as a property list: Review · Tickets · Test drive (· Burn on
- * the live page) on review and shipped, and Burn · Tickets · Review while
+ * The Status tier as a property list: Review · Tickets · Test drive (· Round on
+ * the live page) on review and shipped, and Round · Tickets · Review while
  * building (decision 9a). Each row owns its facts (decision 4): a check that is
  * not fine turns its own row amber or red rather than feeding a separate tally.
  * Words, not glyph soup — "Verified", "Not run", "this build".
@@ -412,11 +412,11 @@ function driveProperty(input: {
   ]
 }
 
-/** The Burn row: the run's status, and while building how long it has taken. */
+/** The Round row: the latest round's status, and while building how long it has taken. */
 function burnProperty(run: string, elapsed?: string): StatusProperty {
   return {
     key: 'run',
-    label: 'Burn',
+    label: 'Round',
     value: run === 'no run recorded' ? 'None recorded' : run.charAt(0).toUpperCase() + run.slice(1),
     ...(elapsed ? { sub: elapsed } : {}),
     tone: run === 'succeeded' ? 'ok' : run === 'failed' ? 'danger' : run === 'no run recorded' ? 'idle' : 'warn',

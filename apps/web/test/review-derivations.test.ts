@@ -109,12 +109,12 @@ describe('statusProperties', () => {
   const rowOf = (props: Parameters<typeof statusProperties>[0], key: string) =>
     statusProperties(props).find((p) => p.key === key)
 
-  it('states Review, Tickets, Test drive and Burn on review — no Checks or Laps', () => {
+  it('states Review, Tickets, Test drive and Round on review — no Checks or Laps', () => {
     expect(statusProperties({ ...base, runState: 'succeeded' }).map((p) => p.label)).toEqual([
       'Review',
       'Tickets',
       'Test drive',
-      'Burn',
+      'Round',
     ])
   })
 
@@ -141,9 +141,9 @@ describe('statusProperties', () => {
       ],
     }
 
-    it('states Burn, Tickets and Review — no Test drive', () => {
+    it('states Round, Tickets and Review — no Test drive', () => {
       expect(statusProperties({ ...building, driveLap: null }).map((p) => p.label)).toEqual([
-        'Burn',
+        'Round',
         'Tickets',
         'Review',
       ])

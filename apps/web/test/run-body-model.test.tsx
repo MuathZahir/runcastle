@@ -78,10 +78,10 @@ function pick(laneId: string, menu: string, option: RegExp) {
 
 /** simplify-the-pages decision 9a: building gets the review page's Status tier. */
 describe('the building page’s tiers', () => {
-  it('states Burn, Tickets and Review above the run’s own heading', () => {
+  it('states Round, Tickets and Review above the run’s own heading', () => {
     mount()
     const status = document.querySelector('[data-tier="status"]')!
-    expect([...status.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Burn', 'Tickets', 'Review'])
+    expect([...status.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Round', 'Tickets', 'Review'])
     expect(within(status as HTMLElement).getByText('Running')).toBeTruthy()
     expect(within(status as HTMLElement).getByText('0 of 3 landed')).toBeTruthy()
     const heading = screen.getByRole('heading', { name: 'Run' })
