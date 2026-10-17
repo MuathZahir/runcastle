@@ -88,6 +88,8 @@ import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
+import { ScenarioMenuItems } from './review/ScenarioMenuItems'
+import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -280,6 +282,17 @@ export function Workspace({
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
+  // What a drive of this feature can land on (drive-scenarios decision 7), for
+  // the Test drive split button. Review is the only phase that offers a drive,
+  // and the list is two git reads, so it waits for review like the merge delta.
+  const scenariosQ = trpc.feature.driveScenarios.useQuery(
+    { projectId: projectId ?? '', featureId },
+    { enabled: !!projectId && atReview, refetchInterval: useLivePoll(5000) },
+  )
+  const startMenu = scenarioMenu(scenariosQ.data?.scenarios ?? [], {
+    withOwnSection: true,
+    runnerConfigured: scenariosQ.data?.runnerConfigured ?? false,
+  })
   // How long tickets have actually been taking in THIS project, for the pre-burn
   // bar's time expectation (decision #16b). History, so it does not poll — a
   // median over every ticket the project has ever finished cannot move within a
@@ -717,6 +730,19 @@ export function Workspace({
     else launchChat()
   }
 
+  /** Start this feature's drive on a scenario, or on the blank app with `null`. */
+  const startDrive = (scenario: string | null) =>
+    testDrive.mutate(
+      { featureId, action: 'start', ...(scenario ? { scenario } : {}) },
+      {
+        onSuccess: (res) => {
+          invalidate()
+          if (res.ok && res.branch) onDriveChange({ featureId, branch: res.branch })
+          else if (!res.ok) toast.push(res.deniedReason ?? 'test drive denied')
+        },
+      },
+    )
+
   const runAction = (kind: ActionKind) => {
     switch (kind) {
       case 'startDraft':
@@ -769,17 +795,10 @@ export function Workspace({
       case 'unarchive':
         unarchive.mutate({ featureId })
         break
+      // The split button's main click: the feature's first own scenario, or the
+      // blank app when it has none (drive-scenarios decision 7).
       case 'testDriveStart':
-        testDrive.mutate(
-          { featureId, action: 'start' },
-          {
-            onSuccess: (res) => {
-              invalidate()
-              if (res.ok && res.branch) onDriveChange({ featureId, branch: res.branch })
-              else if (!res.ok) toast.push(res.deniedReason ?? 'test drive denied')
-            },
-          },
-        )
+        startDrive(startMenu.defaultScenario?.file ?? null)
         break
       case 'testDriveStop':
         testDrive.mutate(
@@ -960,6 +979,12 @@ export function Workspace({
       // Merge is reachable from every state (decision 3) but it is review's
       // step: before that it waits in the row's "More" menu.
       {...(bodyPhase === 'planning' || bodyPhase === 'building' ? { demote: ['merge'] as const } : {})}
+      split={{
+        kind: 'testDriveStart',
+        label: testDriveLabel(startMenu.defaultScenario, 'Start test drive'),
+        menuLabel: 'Choose a scenario',
+        menu: <ScenarioMenuItems menu={startMenu} onPick={startDrive} />,
+      }}
       draftBranch={
         isDraft
           ? {
