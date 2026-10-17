@@ -39,7 +39,7 @@ export function FeatureViewTabs({
           id: 'chat',
           label: (
             <span className="inline-flex items-center gap-1.5">
-              Chat
+              Agent
               {sessionLive && <StatusDot tone="live" label="Session live" />}
             </span>
           ),

@@ -191,6 +191,11 @@ describe('the bar’s actions beside the status line', () => {
     expect(out.secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
   })
 
+  it('calls the chat door Agent', () => {
+    const out = leadActions(ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }), 'review')
+    expect(out.secondary).toEqual([{ label: 'Agent', kind: 'chat' }])
+  })
+
   it('drops the bar’s run cancel — Stop beside the status line is the one move', () => {
     const out = leadActions(ns({ primary: { label: 'Cancel run', kind: 'cancelRun' } }), 'building')
     expect(out.primary).toBeUndefined()

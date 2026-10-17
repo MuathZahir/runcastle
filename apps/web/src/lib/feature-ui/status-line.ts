@@ -111,11 +111,13 @@ function trimZero(fixed: string): string {
  * 8): the human never burns — the plan's Burn is Go, and past planning the
  * agent dispatches every round, so no burn action is offered at all. Stop sits
  * beside the status line and is the one move that halts the agent (decision
- * 15), so the bar's own run cancel goes too.
+ * 15), so the bar's own run cancel goes too. The chat door reads "Agent".
  */
 export function leadActions(ns: NextStep, phase: Feature['phase']): NextStep {
   const keep = (action: NextAction): NextAction | null => {
     if (action.kind === 'cancelRun') return null
+    // The feature's chat is "the agent" to the human (decision 20).
+    if (action.kind === 'chat' && action.label === 'Chat') return { ...action, label: 'Agent' }
     if (action.kind !== 'burn') return action
     return phase === 'planning' ? { ...action, label: 'Go' } : null
   }

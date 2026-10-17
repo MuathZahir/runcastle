@@ -19,7 +19,7 @@ export const PHASE_TIP: Record<Phase, string> = {
   shipped: 'Merged to main',
 }
 export const PHASE_UNLOCK = {
-  building: 'Opens when you click Burn', review: 'Opens when the burn finishes', shipped: 'Opens when you merge',
+  building: 'Opens when you click Go', review: 'Opens when the agent is ready for you', shipped: 'Opens when you merge',
 } satisfies Record<Exclude<Phase, 'planning'>, string>
 
 /** A step's name in sentence case, for the stepper's tooltips. */

@@ -336,7 +336,7 @@ describe('the review page’s arrival bands', () => {
       openDefects: [DEFECT],
     })
     expect(html).not.toContain('live · lap')
-    expect(html).not.toContain('Open chat')
+    expect(html).not.toContain('Open agent')
     expect(html).not.toContain('End session')
     expect(html).not.toContain('data-chat-terminal')
   })
