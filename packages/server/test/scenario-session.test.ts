@@ -7,7 +7,7 @@ import type { Feature, Project, SessionRow } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { projects } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError } from '../src/errors'
@@ -30,6 +30,7 @@ import {
   testDrive,
 } from '../src/services/git'
 import { createNativePtySession } from '../src/pty/pty'
+import { type PtyEntry, ptyRegistry } from '../src/pty/registry'
 import { getProjectById } from '../src/services/repo'
 import { resolveBun } from './helpers/bun'
 import { useDataDir } from './helpers/data-dir'
@@ -229,6 +230,42 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       expect(text).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
       expect(text).toContain('exited 2')
       expect(text).toContain('no such table')
+    }, 30_000)
+
+    it('hands a live docked chat the failed file, its reason and its output tail on Fix it', async () => {
+      await driveUp()
+      const first = await launch()
+      const typed: string[] = []
+      const entry = {
+        sessionId: first.sessionId,
+        exited: false,
+        pty: { write: (data: string) => typed.push(data) },
+      } as unknown as PtyEntry
+      const get = vi
+        .spyOn(ptyRegistry(), 'get')
+        .mockImplementation((id) => (id === first.sessionId ? entry : undefined))
+      try {
+        await runScenarioOnDrive(ctx, project.id, '.runcastle/scenarios/broken.ts')
+        const fixed = await launch({ fixFile: '.runcastle/scenarios/broken.ts' })
+        expect(fixed.sessionId).toBe(first.sessionId)
+        const line = typed[0] ?? ''
+        expect(line).toContain('**Fix it** on `.runcastle/scenarios/broken.ts`')
+        expect(line).toContain('exited 2')
+        expect(line).toContain('no such table')
+        const kickoff = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'session.kickoff').at(-1)
+        expect(kickoff?.data).toMatchObject({ sessionId: first.sessionId, mechanism: 'pty', line })
+
+        await launch({ description: 'a buyer with an expired coupon' })
+        await waitFor(() => typed.some((t) => t.includes('a buyer with an expired coupon')))
+      } finally {
+        get.mockRestore()
+      }
+    }, 30_000)
+
+    it('refuses to hand a live chat its ask when its terminal is gone', async () => {
+      await driveUp()
+      await launch()
+      await expect(launch({ description: 'anything' })).rejects.toThrow(GateError)
     }, 30_000)
 
     it.runIf(PTY)('opens a project-scoped session on a project drive', async () => {

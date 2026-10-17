@@ -57,7 +57,13 @@ import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
-import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
+import {
+  chatOpening,
+  renderScenarioFollowUp,
+  serverUrlFor,
+  type PrepareBrief,
+  type PrepareHost,
+} from './artifacts'
 import { projectTriageKickoffFor } from './runtimes/skills'
 import {
   activeProjectSession,
@@ -1150,7 +1156,8 @@ export async function launchDriveFixSession(
  *
  * Refused unless a human feature drive or a project drive is live and its app
  * answers: a scenario is proven by landing on that drive, so there must be one
- * to land on. One per drive: while the docked session is live, this reopens it.
+ * to land on. One per drive: while the docked session is live, this reopens it,
+ * typing the new ask (the failed file or the description) into its terminal.
  * Setup mode (decision 5) is decided here, once, from whether
  * `.runcastle/scenarios/` exists, and recorded as the session's purpose — the
  * guard must stay open after the agent creates that directory. Always a fresh
@@ -1172,11 +1179,33 @@ export async function launchScenarioSession(
     )
   }
 
-  const docked = drive.scenarioSessionId ? getSessionRow(ctx, drive.scenarioSessionId) : null
-  if (docked && docked.status !== 'ended') return { sessionId: docked.id }
-
   const feature = drive.featureId ? getFeatureRow(ctx, drive.featureId) : undefined
   const scope: EmitScope = feature ? { featureId: feature.id } : { projectId: project.id }
+  const fixFailure =
+    input.fixFile && drive.scenario?.file === input.fixFile ? drive.scenario.failure : undefined
+  const fix = input.fixFile ? { file: input.fixFile, failure: fixFailure } : undefined
+
+  const docked = drive.scenarioSessionId ? getSessionRow(ctx, drive.scenarioSessionId) : null
+  if (docked && docked.status !== 'ended') {
+    // The chat is live, so the ask goes into its terminal, as briefLiveChat
+    // does for the Chat door.
+    const line = renderScenarioFollowUp({ description: input.description, fix })
+    if (!line) return { sessionId: docked.id }
+    if (!writeToLiveTerminal(docked.id, line)) {
+      throw new GateError(
+        'the live scenario chat terminal is not available, so its briefing was not delivered',
+      )
+    }
+    emitScoped(ctx, scope, {
+      type: 'session.kickoff',
+      message: input.fixFile
+        ? `handing the live scenario chat ${input.fixFile} to fix`
+        : 'handing the live scenario chat a new scenario',
+      data: { sessionId: docked.id, kind: 'scenario', line, mechanism: 'pty' },
+    })
+    return { sessionId: docked.id }
+  }
+
   const setup = !existsSync(join(project.repoPath, '.runcastle', 'scenarios'))
 
   // Prepare's step, as drive-fix uses it: host-side work in the developer's
@@ -1206,8 +1235,6 @@ export async function launchScenarioSession(
     },
   })
 
-  const fixFailure =
-    input.fixFile && drive.scenario?.file === input.fixFile ? drive.scenario.failure : undefined
   const kickoffLine = kickoffLineFor('scenario', undefined, runtime.id)
   const spec = await runtime.writeArtifacts({
     session,
@@ -1223,7 +1250,7 @@ export async function launchScenarioSession(
       runner: project.scenarioRunner ?? undefined,
       files: await listScenarioPaths(project.repoPath, 'HEAD'),
       description: input.description,
-      fix: input.fixFile ? { file: input.fixFile, failure: fixFailure } : undefined,
+      fix,
       setup,
     },
     worktreePath: project.repoPath,
