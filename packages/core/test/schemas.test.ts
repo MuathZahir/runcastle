@@ -107,7 +107,7 @@ describe('enums', () => {
   })
 
   it('SessionKind no longer accepts the retired waypoint/converge kinds (ADR-0012)', () => {
-    expect(SessionKind.options).toEqual(['chat', 'prepare', 'project', 'drive-fix'])
+    expect(SessionKind.options).toEqual(['chat', 'prepare', 'project', 'drive-fix', 'scenario'])
     expect(SessionKind.safeParse('waypoint').success).toBe(false)
     expect(SessionKind.safeParse('converge').success).toBe(false)
   })
