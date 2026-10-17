@@ -47,7 +47,7 @@ This is the project-facing contract, a peer of the drive contract in the `prepar
 
 ### Discovery
 
-Runcastle lists scenarios by walking `.runcastle/scenarios/` in the drive's checkout, which is the branch under the wheel. Paths only: it never reads a scenario's contents.
+Runcastle lists scenarios from git: the paths under `.runcastle/scenarios/` at the branch to be driven, which is `feature/<slug>` for a feature and the checked-out `HEAD` for a project drive. Reading git rather than the working tree lets the picker list a feature's scenarios before its drive has checked the branch out. A scenario chat always commits before landing, so a new scenario is listed as soon as it exists. Paths only: runcastle never reads a scenario's contents.
 
 A feature's **own** scenarios are the scenario files its branch added or changed against its base branch, found by git diff. This matches how the drive already relates the feature branch to its base. Own scenarios sort first, in path order; "first own scenario" means the first in that order.
 
@@ -80,10 +80,10 @@ A new session kind, `scenario`.
   - add base fixtures under `_fixtures/`;
   - record the scenario runner;
   - write the requested scenario.
-- **Edit guard.** In setup mode the guard allows the whole checkout. Otherwise the session may write only `.runcastle/`, like Fix drive. The guard decides from whether `.runcastle/scenarios/` exists in the session's working directory: a path check, nothing more.
+- **Edit guard.** In setup mode the guard allows the whole checkout. Otherwise the session may write only `.runcastle/`, like Fix drive. Setup mode is decided once, at launch, from whether `.runcastle/scenarios/` exists (a path check, nothing more), and recorded on the session as its purpose. Deciding it per edit would close the guard as soon as the agent creates the directory, before it writes the login route.
 - **Tools.** Two tools are new to this kind:
   - `run_scenario({ file })` runs the named scenario through the same runner the picker uses, against this session's drive. It lands the human's drive panel on success, and returns either the landing or the same failure the human would see (exit reason plus output tail). It refuses when the session's drive is no longer the live drive.
-  - Recording the scenario runner host setting. Only that one key is writable by this kind; the existing `record_finding` path is the natural door, restricted to that key for `scenario` sessions.
+  - `set_scenario_runner({ command })` records the scenario runner host setting. It is the only setting this kind can write. The command must contain `{file}`. A dedicated tool keeps the runner out of `prepare`'s provenance machinery, which a later lap may still join.
 - Where a slot/collision rule in the existing session machinery assumes one live session per feature, a scenario session docked to a drive must not be blocked by, nor block, the feature's ordinary chat. The ordinary chat is in any case blocked during a feature drive because the drive detaches the talk worktree. That is existing behaviour, unchanged.
 
 ### Drive state and events
@@ -106,7 +106,8 @@ Runcastle's own repo ships one scenario, `.runcastle/scenarios/review/feature-at
 - The feature sits at review with its tickets done, and the scenario prints the inner runcastle's URL for that feature's page.
 - Runcastle has no sign-in, so this scenario prints a plain URL.
 - It seeds through the driven instance's own data dir and code (from the `drive.env` overlay runcastle's drive setup already writes), never the owner's real data dir.
-- The runcastle project's scenario runner host setting is recorded as part of the lap, so the shipped scenario works on the first drive.
+- The runcastle project's own scenario runner host setting (`bun {file}`) lives in the human's installed runcastle, which gains the setting only when this feature is published. So the human records it after merge; a burn cannot.
+- This lap's review exercises the UI in the *inner* runcastle, the branch build, on runcastle-demo, a throwaway repo: a project drive there, ＋ New scenario in setup mode, then the picker, switching and a failure.
 
 ## Seams
 
