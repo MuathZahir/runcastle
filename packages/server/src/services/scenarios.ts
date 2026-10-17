@@ -21,6 +21,9 @@ export const SCENARIO_TIMEOUT_MS = 120_000
 /** The placeholder the runner command carries for the scenario's path. */
 export const SCENARIO_FILE_PLACEHOLDER = '{file}'
 
+/** The extension of an API scenario's request file, never a scenario itself. */
+const HTTP_EXTENSION = '.http'
+
 /** `expired-coupon` → `Expired coupon`: separators to spaces, first letter up. */
 function readable(segment: string): string {
   const spaced = segment.replace(/[-_]+/g, ' ').trim()
@@ -53,9 +56,6 @@ function toEntry(file: string, own: boolean, hasCall: boolean): ScenarioEntry | 
     hasCall,
   }
 }
-
-/** The extension of an API scenario's request file. */
-const HTTP_EXTENSION = '.http'
 
 /**
  * The same-path `.http` sibling of a scenario file
