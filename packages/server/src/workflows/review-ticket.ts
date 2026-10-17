@@ -19,7 +19,7 @@ import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { headSha, releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
-import { listScenarios } from '../services/scenarios'
+import { listFeatureScenarios } from '../services/scenarios'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import type { runReviewGates } from './review-gates'
@@ -900,9 +900,8 @@ async function reviewTicketOutcome(
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserFailure, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
-    SCENARIOS: buildScenarioBlock(
-      await listScenarios(project.repoPath, { ref: feature.branch, baseBranch: feature.baseBranch }),
-      !!project.scenarioRunner,
+    SCENARIOS: await listFeatureScenarios(project, feature).then(({ scenarios, runnerConfigured }) =>
+      buildScenarioBlock(scenarios, runnerConfigured),
     ),
     GATE_NOTES: buildGateNotes(gateRun, ticket.id, deps.config, project),
     DIGEST_PATH: artifacts.digestPath,
