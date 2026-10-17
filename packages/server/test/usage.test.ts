@@ -1,16 +1,17 @@
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { newId, type WorkflowCtx, type WorkflowDef } from '@runcastle/core'
+import { newId, type TokenUsage, type WorkflowCtx, type WorkflowDef } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { sessions, tickets } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { getFeatureFull } from '../src/services/features'
 import { listRounds } from '../src/services/runs'
 import { storeTickets } from '../src/services/tickets'
-import { refreshSessionTokens } from '../src/services/usage'
+import { addTicketTokens, refreshSessionTokens } from '../src/services/usage'
+import { harvestTicketTokens } from '../src/workflows/ticket-burner'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
 import { makeTestCtx } from './helpers/db'
@@ -111,6 +112,70 @@ describe('token telemetry', () => {
 
       utimesSync(lead.path, new Date(counted + 60_000), new Date(counted + 60_000))
       expect(refreshSessionTokens(ctx, lead.id, { lazy: true })).toBe(120)
+    })
+  })
+
+  describe('the burner’s harvest after a ticket attempt', () => {
+    /** The slice of the run's WorkflowCtx the harvest touches, wired to the real services. */
+    const harvestCtx = (): WorkflowCtx =>
+      ({
+        emitEvent: (e: { type: string; message: string; ticketId?: string; data?: unknown }) =>
+          emit(ctx, featureId, e),
+        addTicketTokens: (id: string, usage: TokenUsage, sessionIds: string[]) =>
+          addTicketTokens(ctx, id, usage, sessionIds),
+      }) as unknown as WorkflowCtx
+
+    const ticketRow = (id: string) => ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
+    const seedTicket = () =>
+      storeTickets(ctx, featureId, [
+        { title: 'Add the form', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
+      ])[0]
+
+    it('sums every iteration’s whole transcript — not the last-message snapshot — and accumulates across attempts', () => {
+      const t = seedTicket()
+      const first = join(dir, 'iter-1.jsonl')
+      writeFileSync(first, `${[ccLine('m1', 1, 100), ccLine('m1', 2, 100), ccLine('m2', 3, 50)].join('\n')}\n`)
+      mkdirSync(join(dir, 'iter-1', 'subagents'), { recursive: true })
+      writeFileSync(join(dir, 'iter-1', 'subagents', 'agent-x.jsonl'), `${ccLine('s1', 4, 5)}\n`)
+      const second = join(dir, 'iter-2.jsonl')
+      writeFileSync(second, `${ccLine('m3', 5, 45)}\n`)
+      const snapshot = { inputTokens: 1, cacheCreationInputTokens: 1, cacheReadInputTokens: 1, outputTokens: 1 }
+
+      harvestTicketTokens(
+        harvestCtx(),
+        t,
+        [
+          { sessionId: 'cc-1', sessionFilePath: first, usage: snapshot },
+          { sessionId: 'cc-2', sessionFilePath: second, usage: snapshot },
+        ],
+        'claude-code',
+      )
+      expect(ticketRow(t.id)).toMatchObject({
+        tokens: 200,
+        tokenBreakdown: { input: 0, cacheCreation: 0, cacheRead: 0, output: 200, sessionIds: ['cc-1', 'cc-2'] },
+      })
+
+      // A retry attempt adds to what the ticket already spent.
+      harvestTicketTokens(harvestCtx(), t, [{ sessionId: 'cc-3', sessionFilePath: second }], 'claude-code')
+      expect(ticketRow(t.id)?.tokens).toBe(245)
+      expect(ticketRow(t.id)?.tokenBreakdown?.sessionIds).toEqual(['cc-1', 'cc-2', 'cc-3'])
+      expect(getFeatureFull(ctx, featureId).tickets[0].tokens).toBe(245)
+    })
+
+    it('leaves tokens null and reports it when no transcript can be read', () => {
+      const t = seedTicket()
+      expect(() =>
+        harvestTicketTokens(
+          harvestCtx(),
+          t,
+          [{ sessionId: 'cc-1', sessionFilePath: join(dir, 'gone.jsonl') }, {}],
+          'claude-code',
+        ),
+      ).not.toThrow()
+      expect(ticketRow(t.id)?.tokens).toBeNull()
+      const unreadable = listAfter(ctx, featureId, 0).filter((e) => e.type === 'ticket.tokens_unreadable')
+      expect(unreadable).toHaveLength(1)
+      expect(unreadable[0].ticketId).toBe(t.id)
     })
   })
 

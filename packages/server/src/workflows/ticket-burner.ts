@@ -11,11 +11,14 @@ import type {
   SandboxImageOwner,
   Ticket,
   TicketStatus,
+  TokenUsage,
   WorkflowCtx,
   WorkflowDef,
 } from '@runcastle/core'
 import {
   WITHHELD_FEATURE_DOCS,
+  ZERO_USAGE,
+  addUsage,
   agentDigestDocOrder,
   discoveredEntries,
   docsDigestSizeWarning,
@@ -77,6 +80,7 @@ import {
 } from '../services/git'
 import type { TempBranchMergeResult } from '../services/git'
 import { featureLandingQueue } from '../services/landing-queue'
+import { readTranscriptUsage } from '../services/usage'
 import type {
   AgentCommandOptions,
   AgentProvider,
@@ -2273,6 +2277,50 @@ export function emitTicketTiming(
     ticketId: ticket.id,
     data: timing,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Token harvest (the-feature-lead-runs-rounds decision 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Add one sandcastle run's real token spend to the ticket: each iteration's
+ * captured session transcript (and, on Claude Code, its subagent transcripts)
+ * summed in full. Sandcastle's own per-iteration `usage` is NOT used — for
+ * Claude Code it is the last message's context snapshot, not what was spent.
+ *
+ * Never fails the ticket: an iteration whose transcript is missing or
+ * unreadable is reported as `ticket.tokens_unreadable` and adds nothing, so a
+ * ticket none of whose transcripts could be read keeps its tokens null.
+ */
+export function harvestTicketTokens(
+  ctx: WorkflowCtx,
+  ticket: Pick<Ticket, 'id' | 'seq'>,
+  iterations: RunResult['iterations'],
+  runtime: AgentRuntime,
+): void {
+  if (!ctx.addTicketTokens) return
+  let usage: TokenUsage | null = null
+  const sessionIds: string[] = []
+  const unreadable: string[] = []
+  for (const [i, iteration] of iterations.entries()) {
+    if (iteration.sessionId) sessionIds.push(iteration.sessionId)
+    const counted = iteration.sessionFilePath ? readTranscriptUsage(iteration.sessionFilePath, runtime) : null
+    if (!counted) {
+      unreadable.push(iteration.sessionFilePath ?? `iteration ${i + 1}: no captured session`)
+      continue
+    }
+    usage = addUsage(usage ?? ZERO_USAGE, counted)
+  }
+  if (unreadable.length > 0) {
+    ctx.emitEvent({
+      type: 'ticket.tokens_unreadable',
+      message: `ticket ${ticket.seq}: ${unreadable.length} transcript(s) could not be read for token counting`,
+      ticketId: ticket.id,
+      data: { transcripts: unreadable },
+    })
+  }
+  if (usage) ctx.addTicketTokens(ticket.id, usage, sessionIds)
 }
 
 // ---------------------------------------------------------------------------
@@ -4746,6 +4794,7 @@ async function burnTicket(
           : {}),
         logging: { type: 'file', path: logFilePath, onAgentStreamEvent: onStreamEvent },
       })
+      harvestTicketTokens(ctx, ticket, result.iterations, model.runtime)
     } catch (err) {
       // Nothing reads a dead resolver's worktree — `result` never got assigned,
       // so the BLOCKED.md read below cannot reach it either.
@@ -4989,6 +5038,7 @@ async function burnTicket(
         beginSetupSpan(tempBranch)
         makeKillable(containerName)
         result = await run(runOptions)
+        harvestTicketTokens(ctx, ticket, result.iterations, model.runtime)
         // Before anything lands: a preserved worktree must not keep the images.
         await clearAttachmentsFor(tempBranch)
         break

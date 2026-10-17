@@ -11,9 +11,9 @@ import {
   ZERO_USAGE,
 } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
-import { sessions } from '../db/schema'
+import { sessions, tickets } from '../db/schema'
 import type { AppCtx } from '../db/types'
-import { emitForSession } from './events'
+import { emit, emitForSession } from './events'
 import { listSessionsByFeature, rowToSession } from './repo'
 import { listByFeature as listTickets } from './tickets'
 
@@ -88,6 +88,42 @@ export function readTranscriptUsage(path: string, runtime: AgentRuntime): TokenU
 export function breakdownOf(usage: TokenUsage): TokenBreakdown {
   const { total: _total, ...parts } = usage
   return parts
+}
+
+/**
+ * Add one worker run's usage to a ticket's tokens (decision 3), accumulating
+ * across the ticket's iterations, attempts and rounds, and remember the agent
+ * session ids it came from — the parked "Open a worker while it works" wants
+ * them. Emits `ticket.tokens_counted`.
+ */
+export function addTicketTokens(ctx: AppCtx, ticketId: string, usage: TokenUsage, sessionIds: string[]): void {
+  const row = ctx.db.select().from(tickets).where(eq(tickets.id, ticketId)).get()
+  if (!row) return
+  const prior = row.tokenBreakdown
+  const sum = addUsage(
+    prior
+      ? {
+          input: prior.input,
+          cacheCreation: prior.cacheCreation,
+          cacheRead: prior.cacheRead,
+          output: prior.output,
+          total: row.tokens ?? 0,
+        }
+      : ZERO_USAGE,
+    usage,
+  )
+  const ids = [...new Set([...(prior?.sessionIds ?? []), ...sessionIds])]
+  ctx.db
+    .update(tickets)
+    .set({ tokens: sum.total, tokenBreakdown: { ...breakdownOf(sum), ...(ids.length > 0 ? { sessionIds: ids } : {}) } })
+    .where(eq(tickets.id, ticketId))
+    .run()
+  emit(ctx, row.featureId, {
+    type: 'ticket.tokens_counted',
+    message: `ticket ${row.seq} tokens: ${sum.total}`,
+    ticketId,
+    data: { tokens: sum.total, added: usage.total },
+  })
 }
 
 /**

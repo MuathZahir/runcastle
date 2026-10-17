@@ -13,7 +13,7 @@ import { getFeatureRow, getRunRow, projectForFeature } from '../services/repo'
 import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
-import { refreshLeadTokens } from '../services/usage'
+import { addTicketTokens, refreshLeadTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
@@ -187,6 +187,7 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     listTickets: listRunTickets,
+    addTicketTokens: (id, usage, sessionIds) => addTicketTokens(ctx, id, usage, sessionIds),
     storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
     listFindings: () => listFindingsByFeature(ctx, featureId),
     updateFinding: (findingId, progress, reason) => {
