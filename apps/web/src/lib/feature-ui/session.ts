@@ -58,7 +58,7 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
  * (decision 9): "Chat", "Drive fix".
  */
 export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>): string {
-  return sessionKindName(session)
+  return session.kind === 'chat' ? 'Chat' : sessionKindName(session)
 }
 
 // --- the shipped body's chat terminal ---------------------------------------
