@@ -36,7 +36,8 @@ export { cx } from './ui/floating'
 export { Kbd } from './ui/kbd'
 export { Tooltip, TooltipProvider } from './ui/tooltip'
 export { BARE_BUTTON, Button, IconButton, LINK, Spinner } from './ui/button'
-export type { ButtonProps, ButtonSize, ButtonVariant, IconButtonProps } from './ui/button'
+export { SplitButton } from './ui/split-button'
+export type { ButtonAttached, ButtonProps, ButtonSize, ButtonVariant, IconButtonProps } from './ui/button'
 export {
   CHECK_TONE,
   CheckLine,
