@@ -566,6 +566,11 @@ export function isReviewTicket(ticket: Pick<Ticket, 'kind'>): boolean {
  * change again. So a run holding ANY failed ticket owes no verification — the
  * operator retries or cancels the failure through the ADR-0006 controls, and
  * the re-burn appends the pass against the complete set.
+ *
+ * Only work that landed AFTER a completed review in this run owes the pass. A
+ * round with no review owes none: whether to review is the feature lead's call
+ * (the-feature-lead-runs-rounds decision 10), and an unreviewed round's tickets
+ * are ordinary implementation work, not fixes to verify.
  */
 export function verificationDue(
   tickets: Ticket[],
@@ -586,14 +591,15 @@ export function verificationDue(
   const failed = inRun.some((ticket) => !isReviewTicket(ticket) && ticket.status === 'failed')
   if (failed) return { due: false, landed: [], verifies }
 
-  const cutoff = verifies?.completedAt ?? Number.NEGATIVE_INFINITY
+  if (verifies === null) return { due: false, landed: [], verifies }
+  const cutoff = verifies.completedAt ?? Number.NEGATIVE_INFINITY
   const landed = inRun.filter(
     (ticket) =>
       !isReviewTicket(ticket) &&
       ticket.status === 'done' &&
       ticket.completedAt !== null &&
       (ticket.completedAt > cutoff ||
-        (ticket.completedAt === cutoff && verifies !== null && ticket.seq > verifies.seq)),
+        (ticket.completedAt === cutoff && ticket.seq > verifies.seq)),
   )
   return { due: landed.length > 0, landed, verifies }
 }

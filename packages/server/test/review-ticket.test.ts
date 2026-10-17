@@ -1909,14 +1909,13 @@ describe('a run containing a review ticket still lands the feature in review', (
     expect(run?.digest).toContain('reviewed the app: 1 finding')
   })
 
-  it('appends, admits, and completes one verification when landed work had no review', async () => {
+  it('appends no verification pass to a round with one trivial ticket and no review', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
     storeTickets(ctx, featureId, [{
-      title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
+      title: 'trivial change', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
-    // A review-less lap only reaches the burner through the G3 override — which
-    // is exactly the state the verification mint exists to catch, so the human
-    // who waived the gate still gets the landed work looked at.
+    // Whether a round is reviewed is the feature lead's call (decision 10): the
+    // round runs exactly the one worker it was dispatched with.
 
     await burn(ctx, featureId)
     for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
@@ -1924,16 +1923,10 @@ describe('a run containing a review ticket still lands the feature in review', (
     }
 
     const stored = listByFeature(ctx, featureId)
-    expect(stored).toHaveLength(2)
-    expect(stored[1]).toMatchObject({
-      // The feature's own lap: a burn from planning runs the lap it is on.
-      kind: 'review', passKind: 'verification', status: 'done', lap: 2,
-      title: 'Verify the fixes that landed',
-    })
-    expect(stored[1].context).toContain('#1 quick fix')
+    expect(stored.map((t) => t.title)).toEqual(['trivial change'])
+    expect(stored[0]).toMatchObject({ status: 'done' })
     const eventTypes = listAfter(ctx, featureId).map((event) => event.type)
-    expect(eventTypes).toContain('ticket.verification_minted')
-    expect(eventTypes.filter((type) => type === 'ticket.verification_minted')).toHaveLength(1)
+    expect(eventTypes).not.toContain('ticket.verification_minted')
   })
 })
 
