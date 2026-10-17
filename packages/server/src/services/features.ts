@@ -755,8 +755,8 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
  * mode"; cited by name because the locked-decision numbers get renumbered):
  * fresh fix tickets emitted during review are burned from where the feature
  * stands. Nothing returns it to `review` when they finish any more — that is
- * the lead's ready declaration ({@link declareReady}). Kept for the
- * orchestrator's `burn_feature`; the human's door is {@link go}.
+ * the lead's ready declaration ({@link declareReady}). Kept for the engine's
+ * own retries and restarts; the human's and the orchestrator's door is {@link go}.
  *
  * Exactly two things refuse: a burn already running on this feature, and git
  * safety (which surfaces as a launch failure). Everything the old gates refused

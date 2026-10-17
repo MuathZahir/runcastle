@@ -8,7 +8,8 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { toolSendToFeature, toolStartFeatureLap } from '../src/mcp/orchestrator-run-tools'
+import { toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
+import { getFeatureRow } from '../src/services/repo'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { openProject } from '../src/services/projects'
@@ -18,8 +19,8 @@ import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * `send_to_feature` and `start_feature_lap` (`whole-cuts-plan-themselves`,
- * "Headless runs on a feature"): each reaches its headless launch for a feature
+ * `send_to_feature` (`whole-cuts-plan-themselves`, `the-feature-lead-runs-rounds`,
+ * "Headless runs on a feature"): it reaches a relay or the lead of a feature
  * the orchestrator owns, and refuses through the shared gate otherwise.
  */
 
@@ -100,26 +101,28 @@ describe('the orchestrator’s headless-run tools', () => {
     expect(String(launched?.data?.command)).toContain('Keep the list; drop the grid.')
   })
 
-  it('start_feature_lap starts an owned feature’s next lap, headless', async () => {
-    await feature('next-lap', { phase: 'review' })
-    const { sessionId } = await toolStartFeatureLap(
-      ctx,
-      orchestrator(),
-      { slug: 'next-lap', message: 'Fix the empty state.' },
-      spawnOff,
-    )
-    cleanup.push(sessionDir(sessionId))
+  /**
+   * Past Go the chat is the feature's lead (`the-feature-lead-runs-rounds`
+   * decision 11): the orchestrator's drive notes reach it as the human's would,
+   * through the one lead-delivery path, and count as a human message.
+   */
+  it('send_to_feature reaches a building feature’s lead as a human message, launching nothing', async () => {
+    for (const phase of ['building', 'review'] as const) {
+      const f = await feature(`led-${phase}`, { phase })
+      const result = await toolSendToFeature(
+        ctx,
+        orchestrator(),
+        { slug: f.slug, message: 'The empty state still says nothing.' },
+        spawnOff,
+      )
 
-    const row = getSessionRow(ctx, sessionId)
-    expect(row?.purpose).toBe('start-lap')
-    expect(row?.headless).toBe(true)
-  })
-
-  it('start_feature_lap is refused where the human’s Start lap is', async () => {
-    await feature('still-planning')
-    await expect(
-      toolStartFeatureLap(ctx, orchestrator(), { slug: 'still-planning' }, spawnOff),
-    ).rejects.toThrow(/not review, so there is no next lap to start/)
+      expect(result).toEqual({ deliveredToLead: true })
+      const events = listAfter(ctx, f.id, 0)
+      expect(events.some((e) => e.type === 'session.launched')).toBe(false)
+      const pending = events.find((e) => e.type === 'lead.message_pending')
+      expect(pending?.data).toEqual({ source: 'human', text: 'The empty state still says nothing.' })
+      expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toEqual(expect.any(Number))
+    }
   })
 
   describe('refuses through the shared gate', () => {
@@ -129,9 +132,6 @@ describe('the orchestrator’s headless-run tools', () => {
       await expect(
         toolSendToFeature(ctx, session, { slug: 'humans', message: 'x' }, spawnOff),
       ).rejects.toThrow(/the human's feature, not yours/)
-      await expect(toolStartFeatureLap(ctx, session, { slug: 'humans' }, spawnOff)).rejects.toThrow(
-        /the human's feature, not yours/,
-      )
     })
 
     it('from a session that is not orchestrating', async () => {
@@ -140,7 +140,6 @@ describe('the orchestrator’s headless-run tools', () => {
       const ordinary = projectSession()
       for (const call of [
         () => toolSendToFeature(ctx, ordinary, { slug: 'owned', message: 'x' }, spawnOff),
-        () => toolStartFeatureLap(ctx, ordinary, { slug: 'owned' }, spawnOff),
       ]) {
         await expect(call()).rejects.toBeInstanceOf(GateError)
         await expect(call()).rejects.toThrow(/only the orchestrator/)
@@ -154,9 +153,6 @@ describe('the orchestrator’s headless-run tools', () => {
       await expect(
         toolSendToFeature(ctx, session, { slug: 'stopped', message: 'x' }, spawnOff),
       ).rejects.toThrow(/Orchestrator setting is off/)
-      await expect(toolStartFeatureLap(ctx, session, { slug: 'stopped' }, spawnOff)).rejects.toThrow(
-        /Orchestrator setting is off/,
-      )
     })
   })
 })

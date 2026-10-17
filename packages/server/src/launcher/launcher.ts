@@ -30,9 +30,8 @@ import {
 } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
-import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
-import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
+import { currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { emit, emitForSession, emitProject } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -65,7 +64,6 @@ import {
   createSessionRow,
   getSessionRow,
   hasCompletedProjectSession,
-  headlessLapKickoff,
   kickoffLineFor,
   landProjectSession,
   markSessionEnded,
@@ -76,7 +74,6 @@ import {
   reportProjectLanding,
   resumeCapExceeded,
   transcriptBytes,
-  type KickoffPlan,
   type ResumeCapVerdict,
 } from './sessions'
 
@@ -134,12 +131,9 @@ export interface LaunchSessionInput {
   purposeData?: MergeBranchPair
   /**
    * The orchestrator's message (`whole-cuts-plan-themselves`): what a `relay`
-   * run applies — required there — and what a headless start-lap adds to the
-   * lap's agenda.
+   * run applies — required there.
    */
   message?: string
-  /** Run a `start-lap` launch with no terminal, planned by itself (the orchestrator's door). */
-  headless?: boolean
 }
 
 /**
@@ -316,33 +310,22 @@ function headlessRunningError(feature: Feature, run: SessionRow): GateError {
 }
 
 /**
- * Whether this launch runs with no terminal: a self-planning run, a `relay` of
- * the orchestrator's message, or a start-lap the orchestrator asked to be
- * planned headless (`whole-cuts-plan-themselves`).
+ * Whether this launch runs with no terminal: a self-planning run, or a `relay`
+ * of the orchestrator's message (`whole-cuts-plan-themselves`).
  */
 function isHeadless(input: LaunchSessionInput): boolean {
   if (input.kind !== 'chat') return false
-  return (
-    isSelfPlan(input) ||
-    input.purpose === 'relay' ||
-    (input.purpose === 'start-lap' && !!input.headless)
-  )
+  return isSelfPlan(input) || input.purpose === 'relay'
 }
 
 /**
- * Refuse a headless run the orchestrator asked for that the feature cannot take,
- * before the row exists: a relay carries a message, a headless lap is refused
- * where the human's Start-lap door is (only at review), and neither shares the
- * feature with another session.
+ * Refuse a relay the orchestrator asked for that the feature cannot take, before
+ * the row exists: it carries a message, and it does not share the feature with
+ * another session.
  */
 function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSessionInput): void {
   if (input.purpose === 'relay' && !input.message?.trim()) {
     throw new GateError('a message for the planning conversation is required to relay one')
-  }
-  if (input.purpose === 'start-lap' && !isStartLap(feature, input)) {
-    throw new GateError(
-      `${feature.slug} is at ${feature.phase}, not review, so there is no next lap to start`,
-    )
   }
   assertSpawnable(ctx, feature)
 }
@@ -405,42 +388,6 @@ function applyResumeCap(
 }
 
 /**
- * A feature launch's kickoff plan, read off FEATURE STATE and the door it came
- * through — shared by a fresh launch and the live-chat answer, so both brief
- * alike. A `start-lap` launch at review is the "Start lap N+1" door, whose lap
- * briefing is built here from `carried` rather than by the web.
- */
-function planLaunchKickoff(
-  feature: Feature,
-  input: LaunchSessionInput,
-  carried: CarriedWork,
-): KickoffPlan {
-  return planKickoff({
-    kind: input.kind,
-    kickoffLine: input.kickoffLine,
-    ...(isStartLap(feature, input) ? { startLap: feature.lap, carried } : {}),
-  })
-}
-
-/** Whether this launch came through the review page's "Start lap N+1" door. */
-function isStartLap(feature: Feature, input: LaunchSessionInput): boolean {
-  return input.purpose === 'start-lap' && feature.phase === 'review'
-}
-
-/**
- * What a lap planned from review is handed: the carry channel, with the review
- * evidence of the lap the feature is still ON. At review the feature sits on lap
- * N and this session plans N+1, so the review to read is lap N's — the build the
- * human just drove — not the carry channel's lap N-1, which on lap 1 is nothing.
- */
-function startLapCarriedWork(ctx: AppCtx, featureId: string): CarriedWork {
-  return {
-    ...carriedWork(ctx, featureId),
-    reviewEvidence: currentLapReviewEvidence(ctx, featureId),
-  }
-}
-
-/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -455,9 +402,7 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine` (the Start-lap door never lands here: its lap needs a fresh
- * injected prompt, so {@link launchSession} relaunches the chat instead) — and
- * losing it is the whole defect this closes: the door foregrounded the terminal
+ * `kickoffLine` — and losing it is the whole defect this closes: the door foregrounded the terminal
  * and silently dropped the reason the human opened it.
  *
  * ADR-0009 put a launch's briefing in the CLI's argv precisely so nothing had to
@@ -474,7 +419,7 @@ function briefLiveChat(
   liveChat: SessionRow,
   input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planLaunchKickoff(feature, input, startLapCarriedWork(ctx, feature.id))
+  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
   if (!plan.line) return { sessionId: liveChat.id }
 
   if (!writeToLiveTerminal(liveChat.id, plan.line)) {
@@ -586,14 +531,10 @@ export async function launchSession(
   // session of any OTHER kind is still `assertSpawnable`'s
   // one-terminal-per-feature refusal below.
   //
-  // The Start-lap door is the exception: its lap changes the session's injected
-  // prompt, not just its opening line, and a live chat's prompt was rendered for
-  // whatever opened it — at review, the plain Chat toggle's fix-ticket "Review
-  // iteration". Typing the lap briefing in would leave both framings in one
-  // session, so the live chat is ended and the conversation relaunched below
-  // with the lap prompt, as the carry road does from the web.
+  // A `start-lap` launch (the retired Start-lap door, still a historical
+  // purpose) is a plain chat open: there is no lap to plan, the lead runs rounds.
   //
-  // A headless run (self-plan, relay, headless start-lap) is never the
+  // A headless run (self-plan, relay) is never the
   // conversation to answer with: there is nothing to attach to or brief, and
   // ending it silently would throw away work in progress. Every chat launch is
   // refused until it is stopped.
@@ -603,7 +544,6 @@ export async function launchSession(
     if (liveChat?.headless) throw headlessRunningError(feature, liveChat)
     if (isSelfPlan(input)) assertSelfPlannable(ctx, feature)
     else if (headless) assertHeadlessRunnable(ctx, feature, input)
-    else if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
     else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
@@ -630,20 +570,10 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else. An explicit
   // briefing makes non-chat sessions fresh; chat briefings ride the persistent
-  // conversation's resume. A lap planned from review (the Start-lap door)
-  // additionally tells the artifacts which lap they are rendering for.
-  //
-  // What the last lap handed this one rides along with it: the same counts brief
-  // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
-  const carried = startLapCarriedWork(ctx, feature.id)
-  const plan = planLaunchKickoff(feature, input, carried)
+  // conversation's resume.
+  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
   const selfPlan = isSelfPlan(input)
   const relay = input.kind === 'chat' && input.purpose === 'relay'
-  // A lap planned headless has nobody to interview: its briefing is the
-  // no-human lap line, carrying the orchestrator's message on the agenda.
-  if (headless && plan.lap !== undefined) {
-    plan.line = headlessLapKickoff(plan.lap, runtime.id, carried, input.message)
-  }
   if (input.kind === 'chat') {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
@@ -658,7 +588,7 @@ export async function launchSession(
         ? selfPlanKickoffFor(runtime.id)
         : relay
           ? relayKickoffFor(runtime.id, input.message as string)
-          : undefined,
+          : chatKickoffFor(runtime.id, chatOpening(feature, planningFacts(ctx, feature), input.purpose)),
     )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
@@ -752,9 +682,7 @@ export async function launchSession(
       ? 'launching a self-planning run'
       : relay
         ? "relaying the orchestrator's message to the planning conversation"
-        : headless
-          ? 'launching a lap that plans itself'
-          : `launching ${input.kind} session`,
+        : `launching ${input.kind} session`,
     data: {
       sessionId: session.id,
       kind: input.kind,
@@ -791,9 +719,7 @@ export async function launchSession(
     feature,
     project,
     config: ctx.config,
-    lap: plan.lap,
-    carried: plan.lap === undefined ? undefined : carried,
-    // Which of the chat's two openings its brief renders (see `chatOpening`).
+    // Which of the chat's openings its brief renders (see `chatOpening`).
     planning: planningFacts(ctx, feature),
     purpose: input.purpose,
     worktreePath,
@@ -1432,7 +1358,7 @@ export function handlePtyExit(
       data: { sessionId: session.id, complete, exitCode: exitCode ?? null },
     })
   } else if (session.headless && feature) {
-    emitRunEnded(ctx, feature, session, exitCode)
+    emitRunEnded(ctx, session, exitCode)
   }
   emitForSession(ctx, session, {
     type: 'session.pty_exited',
@@ -1443,23 +1369,16 @@ export function handlePtyExit(
 }
 
 /**
- * `session.run_ended` for a headless run the orchestrator started — a `relay`
- * or a lap that plans itself — saying whether it finished. A relay finished when
- * its process exited cleanly. A lap finished when its tickets are on the board:
- * a lap planned at review never stamps `ticketsReadyLap` (it calls no
- * `complete_phase`), so the pending tickets Burn would carry are the record.
+ * `session.run_ended` for a headless run the orchestrator started — a `relay` —
+ * saying whether it finished: it did when its process exited cleanly.
  */
 function emitRunEnded(
   ctx: AppCtx,
-  feature: Feature,
   session: SessionRow,
   exitCode: number | undefined | null,
 ): void {
-  const complete =
-    session.purpose === 'relay'
-      ? exitCode === 0
-      : listTicketsByFeature(ctx, feature.id).some((ticket) => ticket.status === 'pending')
-  const what = session.purpose === 'relay' ? "the orchestrator's change" : 'planning the next lap'
+  const complete = exitCode === 0
+  const what = "the orchestrator's change"
   emitForSession(ctx, session, {
     type: 'session.run_ended',
     message: complete ? `${what} finished` : `${what} stopped before it was finished`,

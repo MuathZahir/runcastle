@@ -22,14 +22,9 @@ import {
   resolveSessionBranch,
   type ProjectLandResult,
 } from '../services/git'
-import {
-  type CarriedWork,
-  carriedWorkSummary,
-  reviewEvidenceSentence,
-} from '../services/carried-work'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
-import { PLANNING_WITHOUT_A_HUMAN, prepareConfirmKickoffFor, skillRef } from './runtimes/skills'
+import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -184,115 +179,6 @@ export function markSessionLive(
 export const SESSION_READY_TIMEOUT_MS = 25_000
 
 /**
- * The lap briefing (SPEC §15.2) — the `revisit` kickoff override for the lap
- * being planned at review, and the whole of a lap's ceremony: one terminal
- * digests what the test drive taught, amends the docs, emits the lap's tickets
- * and hands back to the human's Burn click (ADR-0010 §5), which is what starts
- * the lap — so it never calls `complete_phase`.
- *
- * `carried` is what the last lap handed this one (see {@link CarriedWork}). When
- * there is any, the line LEADS with the counts and an instruction to address
- * them, and drops the hedging about the notes file: it demonstrably exists, and
- * a session told its inputs "may not exist yet" goes looking half-heartedly for
- * the very work it was launched to do. With nothing carried the hedge is honest
- * and stays — `test-notes.md` is created lazily on the first note (a feature
- * that never captured one has no file at all), and `## Later laps` only exists
- * when the slicing conversation parked scope there. An agent that treats a
- * missing file as a broken environment stalls the lap on its first move.
- *
- * The notes pointer is the `## Carried, still open` section, never a
- * lap-numbered one, so a note lap N+1 skips is still named at lap N+2.
- *
- * It also names the previous lap's review evidence by absolute path (see
- * {@link reviewEvidenceSentence}), states the two things a lap session has been
- * observed skipping — the "not demonstrable" markers it must read out before
- * offering a test drive, and standing on each reported failure — and leaves the
- * procedure for those to `revisit/SKILL.md`.
- */
-export function lapKickoff(lap: number, carried?: CarriedWork): string {
-  return reviewLapKickoff(lap, carried)
-}
-
-/**
- * The lap briefing for a lap planned FROM REVIEW — what the review page's
- * "Start lap N+1" door opens the feature chat with (the `start-lap` purpose),
- * whether it comes empty-handed or after a triage that carried work. It is the
- * only lap briefing there is; {@link lapKickoff} is the same line.
- *
- * The feature is still at review on lap `lap - 1` when this conversation runs,
- * and it stays there. The lap's tickets land `pending` and Burn from review is
- * what moves them onto lap `lap` (`carryPendingTicketsIntoLap`) and bumps the
- * counter — so there is no phase to complete, and the briefing forbids
- * `complete_phase`. A stray call is not refused (the pipeline answers it as an
- * `iterating` report, `toolCompletePhase`), which is why the ban is in the words.
- */
-export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
-  return (
-    `Proceed with your task: invoke the /runcastle:revisit skill to PLAN LAP ${lap} FROM REVIEW. ` +
-    `This conversation plans lap ${lap}; the feature stays at review until I click Burn. ` +
-    lapAgenda(carried) +
-    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
-    `what I want next. Write what we settle on into decisions.md under "## Lap ${lap}" and amend ` +
-    'spec.md for this lap (pruning anything you promote out of "## Later laps"), then call ' +
-    `emit_tickets for lap ${lap}'s work — they land pending, and Burn from review moves them onto ` +
-    `lap ${lap}. Do NOT call complete_phase: the feature stays at review. Finish by telling me to ` +
-    'review the cards and click Burn.'
-  )
-}
-
-/**
- * The lap briefing for a lap the orchestrator has planned headless
- * (`whole-cuts-plan-themselves`): the agenda {@link reviewLapKickoff} sets, with
- * the orchestrator's message on it, and no interview — nobody is there to give
- * one, so the session decides as a self-planning run does and ends at the
- * tickets.
- */
-export function headlessLapKickoff(
-  lap: number,
-  runtime: AgentRuntime,
-  carried?: CarriedWork,
-  message?: string,
-): string {
-  return (
-    'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
-    `${skillRef(runtime, 'revisit')} skill to PLAN LAP ${lap} FROM REVIEW by yourself, in this one ` +
-    `run; the feature stays at review until the orchestrator burns it. ` +
-    (message ? `The project's orchestrator asks this of the lap: ${message} ` : '') +
-    lapAgenda(carried) +
-    `Decide what the lap does by the ${skillRef(runtime, 'ideate')} skill's ` +
-    `"${PLANNING_WITHOUT_A_HUMAN}" rules: mark every decision you make **Assumed.** with its ` +
-    `alternative. Write them into decisions.md under "## Lap ${lap}" and amend spec.md for this ` +
-    `lap, then call emit_tickets for lap ${lap}'s work. Do NOT call complete_phase, and do not ` +
-    'wait for anyone.'
-  )
-}
-
-/**
- * What a lap briefing sets as the lap's agenda — the carried notes, the open
- * defects and `## Later laps` — plus the two things a lap session has been
- * observed skipping.
- */
-function lapAgenda(carried?: CarriedWork): string {
-  const summary = carriedWorkSummary(carried)
-  const evidence = reviewEvidenceSentence(carried)
-  return (
-    (summary ? `${summary} — address them. ` : '') +
-    `Call get_feature_context, then read this feature's test-notes.md (its "## Carried, still ` +
-    'open" section — every note carried and not yet done, whatever lap captured it), the open ' +
-    'defects in that payload\'s openDefects, and the "## Later laps" section of its spec.md. ' +
-    (summary
-      ? 'THE "## Later laps" SECTION MAY NOT EXIST; that is normal, not an error. '
-      : 'ANY OF THOSE MAY NOT EXIST YET; that is normal, not an error — say so and carry on from ' +
-        'what I tell you. ') +
-    (evidence ?? '') +
-    'Before you offer me a test drive, grep spec.md and the tickets for "not demonstrable", ' +
-    '"do not demo" and "later laps" and tell me what they say. For every bug I report, stand on ' +
-    'the failure: reproduce it, or trace it to a file and line, or say plainly you could not — ' +
-    "and then make reproduction the fix ticket's first acceptance criterion. "
-  )
-}
-
-/**
  * The kickoff line for a session: an explicit override wins, else the per-kind
  * default of the runtime the session runs on — the skill invocation is spelled
  * differently per runtime, so the line comes from the adapter and never from a
@@ -319,48 +205,25 @@ export interface KickoffPlan {
   /** The briefing to type; absent means the per-kind default line. */
   line?: string
   /**
-   * The briefing IS this session's opening move (a lap briefing, a merge-conflict
+   * The briefing IS this session's opening move (a merge-conflict
    * hand-off) rather than a nudge to carry on. Such a launch must be FRESH: a
    * `--resume` shows Claude Code's "start from a summary?" chooser, which eats
    * the very keystrokes carrying the briefing (F2), and even when it survives, a
    * restored transcript argues with an instruction that means to start over.
    */
   explicit: boolean
-  /** Set when this session plans a lap from review: which lap (see {@link planKickoff}). */
-  lap?: number
 }
 
 /**
  * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}): an
  * override passed by the caller is an explicit briefing, and no override means
- * the per-kind default.
- *
- * There is no planning-phase lap to brief. A lap used to be the front half of
- * the pipeline run again, parked at `planning` on lap N until its session
- * reported ideation → spec → tickets; nothing moves a feature backwards any
- * more, and the lap counter moves only at Burn from review, straight into
- * `building`. A lap is planned at review instead, from the Start-lap briefing:
- * the review page's "Start lap N+1" door (`startLap`, the feature's current
- * lap) briefs lap N+1's planning ({@link reviewLapKickoff}) while the feature is
- * still at review, and sets `lap` on the plan so the artifacts render the lap
- * prompt for that lap.
+ * the per-kind default. There is no lap to plan any more: the lead runs rounds
+ * (`the-feature-lead-runs-rounds`), so nothing here briefs one.
  */
-export function planKickoff(input: {
-  kind: SessionKind
-  kickoffLine?: string
-  /**
-   * Opened by the review page's "Start lap N+1" door at review: the feature's
-   * current lap N, whose successor this session plans.
-   */
-  startLap?: number
-  /** What the last lap handed this one — stated in the briefing this plans. */
-  carried?: CarriedWork
-}): KickoffPlan {
-  const lap = input.startLap === undefined ? undefined : input.startLap + 1
-  const line =
-    input.kickoffLine ?? (lap === undefined ? undefined : reviewLapKickoff(lap, input.carried))
+export function planKickoff(input: { kind: SessionKind; kickoffLine?: string }): KickoffPlan {
+  const line = input.kickoffLine
   if (!line) return { explicit: false }
-  return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }
+  return { line, explicit: true }
 }
 
 /** Is this session's terminal still running? False once it has exited or gone. */

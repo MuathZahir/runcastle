@@ -10,8 +10,8 @@ import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * The `burn` service, which the orchestrator's `burn_feature` still calls (the
- * human's door is Go now, and the lead dispatches rounds). Fresh pending
+ * The `burn` service, kept for the engine's own retries and restarts (the
+ * human's and the orchestrator's door is Go now, and the lead dispatches rounds). Fresh pending
  * tickets let a burn start from review: it crosses to Building, and the feature
  * stays there when the run finishes — only the lead's ready declaration moves
  * it to review (`the-feature-lead-runs-rounds` decision 9).
