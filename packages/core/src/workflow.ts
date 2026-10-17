@@ -1,4 +1,5 @@
 import type { ReviewGateRun } from './review-gates'
+import type { TokenUsage } from './usage'
 import type { Feature, FixProgress, Project, ReviewFinding, Ticket, TicketInput } from './schemas'
 
 /**
@@ -59,6 +60,12 @@ export interface WorkflowCtx {
    * `reason` is the ticket's error and belongs to `failed` alone.
    */
   updateFinding?(findingId: string, progress: FixProgress, reason?: string): void
+  /**
+   * Add one agent run's summed token usage to the ticket's running total, with
+   * the agent session ids it was summed from (decision 3). Accumulates across
+   * a ticket's iterations and attempts. Optional: a test fake counts nothing.
+   */
+  addTicketTokens?(ticketId: string, usage: TokenUsage, sessionIds: string[]): void
   /**
    * Per-run payload wired by the runner (`StartRunOptions.input`); the
    * ticket-burner ignores it.

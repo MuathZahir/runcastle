@@ -1,0 +1,8 @@
+{"type":"user","uuid":"u1","timestamp":"2026-10-17T10:00:00.000Z","message":{"role":"user","content":"Implement the ticket."}}
+{"type":"assistant","uuid":"a1","timestamp":"2026-10-17T10:00:05.000Z","message":{"id":"msg_A","type":"message","role":"assistant","content":[{"type":"thinking","thinking":""}],"usage":{"input_tokens":10,"cache_creation_input_tokens":1000,"cache_read_input_tokens":0,"output_tokens":50}}}
+{"type":"assistant","uuid":"a2","timestamp":"2026-10-17T10:00:05.100Z","message":{"id":"msg_A","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{}}],"usage":{"input_tokens":10,"cache_creation_input_tokens":1000,"cache_read_input_tokens":0,"output_tokens":50}}}
+{"type":"user","uuid":"u2","timestamp":"2026-10-17T10:00:06.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}}
+{"type":"assistant","uuid":"a3","timestamp":"2026-10-17T10:05:00.000Z","message":{"id":"msg_B","type":"message","role":"assistant","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":2,"cache_creation_input_tokens":200,"cache_read_input_tokens":1000,"output_tokens":30}}}
+{"type":"system","uuid":"s1","timestamp":"2026-10-17T10:05:01.000Z","content":"turn ended"}
+{"type":"assistant","uuid":"a4","timestamp":"2026-10-17T10:10:00.000Z","message":{"id":"msg_C","type":"message","role":"assistant","content":[{"type":"text","text":"Later."}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":1200,"output_tokens":9}}}
+{"type":"assistant","uuid":"a5","timestamp":"2026-10-17T10:10

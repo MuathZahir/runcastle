@@ -664,7 +664,7 @@ export const RoundSummary = z.object({
   landed: z.array(z.number()),
   failed: z.array(z.number()),
   gates: RoundGates.nullable(),
-  /** Summed worker tokens of the round's tickets; null when none were counted. */
+  /** The round's tickets' summed tokens plus the lead's inside the round's window; null when none were counted. */
   tokens: z.number().nullable(),
   startedAt: z.number(),
   finishedAt: z.number().nullable(),

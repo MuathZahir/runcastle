@@ -11,10 +11,11 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, lapKickoff, markSessionLive } from '../src/launcher/sessions'
 import { toolGetFeatureContext } from '../src/mcp/server'
 import { carriedWork } from '../src/services/carried-work'
-import { carryFinding, openDefectsAcrossLaps, reportFinding } from '../src/services/review-findings'
+import { carryFinding, openDefectsAcrossLaps } from '../src/services/review-findings'
 import { addNote, carryNotes, listByFeature as listNotes, reopenNote } from '../src/services/test-notes'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
@@ -71,7 +72,7 @@ describe('the carry channel into the next lap', () => {
    * counts — a defect still being fixed is the run's problem, not the lap's.
    */
   function openDefect(title = 'Deletes are never retried'): void {
-    const { fixTicket } = reportFinding(ctx, {
+    const { fixTicket } = reportWithFixTicket(ctx, {
       featureId: feature.id,
       reviewTicket,
       input: {
@@ -84,7 +85,7 @@ describe('the carry channel into the next lap', () => {
         reproStep: 'Click Retry on a dead-lettered job and watch nothing change.',
       },
     })
-    updateTicket(ctx, fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, fixTicket.id, { status: 'failed' })
   }
 
   function testNotesDoc(): string {
@@ -153,8 +154,8 @@ describe('the carry channel into the next lap', () => {
 
   it('carries no defect that the run is still fixing, and none at all by default', () => {
     expect(toolGetFeatureContext(ctx, session).openDefects).toEqual([])
-    // Reported and minted a fix ticket, which is pending: the run owns it.
-    reportFinding(ctx, {
+    // Reported with a fix ticket that is pending: the run owns it.
+    reportWithFixTicket(ctx, {
       featureId: feature.id,
       reviewTicket,
       input: {

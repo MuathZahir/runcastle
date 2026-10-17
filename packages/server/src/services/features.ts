@@ -50,6 +50,7 @@ import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
 import { latestBurn, runClaimedTicketIds } from './runs'
+import { featureTokensTotal } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
@@ -138,6 +139,8 @@ export interface FeatureFull {
   preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
+  /** Every token the feature has spent — its workers and its sessions (decision 3); null until counted. */
+  tokensTotal: number | null
 }
 
 export interface CreateFeatureInput {
@@ -683,6 +686,7 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     preview: previewSummary(ctx, feature),
     dependsOn: dependsOnOf(ctx, id),
     blocks: blocksOf(ctx, id),
+    tokensTotal: featureTokensTotal(ctx, id),
   }
 }
 

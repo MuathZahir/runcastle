@@ -13,6 +13,7 @@ import { getFeatureRow, getRunRow, projectForFeature } from '../services/repo'
 import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
+import { addTicketTokens, refreshLeadTokens } from '../services/usage'
 import type { KillOutcome } from './kill-registry'
 import { killRegistry } from './kill-registry'
 import { getWorkflow } from './registry'
@@ -77,11 +78,11 @@ export interface StartRunOptions {
    *
    * Set by the agentic-review mint, which is a request for ONE review pass, not
    * for the pending fix queue sitting beside it: scoping only `tickets` would
-   * not be enough, because the scheduler re-reads the store when a review
-   * settles (`admitNewTickets`) and would fold that queue in a moment later. So
+   * not be enough, because the scheduler re-reads the store when it mints
+   * (`admitNewTickets`) and would fold that queue in a moment later. So
    * the scope also narrows `listTickets`, by hiding exactly the rows that
    * existed at run start and were left out — tickets minted DURING the run (a
-   * review's own fix tickets) are never hidden and still join it.
+   * verification pass) are never hidden and still join it.
    */
   ticketIds?: string[]
   /**
@@ -186,6 +187,7 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     listTickets: listRunTickets,
+    addTicketTokens: (id, usage, sessionIds) => addTicketTokens(ctx, id, usage, sessionIds),
     storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
     listFindings: () => listFindingsByFeature(ctx, featureId),
     updateFinding: (findingId, progress, reason) => {
@@ -280,6 +282,7 @@ async function endRound(
     runId,
     data: result ?? { ok: null, failed: [] },
   })
+  refreshLeadTokens(ctx, featureId)
 
   const run = getRunRow(ctx, runId)
   if (run.status === 'cancelled') return

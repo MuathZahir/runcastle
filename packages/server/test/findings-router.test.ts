@@ -13,6 +13,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
@@ -84,9 +85,9 @@ describe('findings router', () => {
     severity: 'low' as const,
   })
 
-  /** Report a defect and take its fix ticket to a terminal state. */
+  /** Report a defect with the fix ticket a review used to mint for it. */
   const report = (title: string) =>
-    reportFinding(ctx, { featureId: feature.id, reviewTicket, input: defect(title) })
+    reportWithFixTicket(ctx, { featureId: feature.id, reviewTicket, input: defect(title) })
 
   it('lists findings with a summary computed from the fix tickets', async () => {
     const landed = report('the save drops the value')
@@ -96,8 +97,8 @@ describe('findings router', () => {
       reviewTicket,
       input: observation('mobile was not verified'),
     })
-    updateTicket(ctx, landed.fixTicket!.id, { status: 'done', commits: ['def'] })
-    updateTicket(ctx, broke.fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, landed.fixTicket.id, { status: 'done', commits: ['def'] })
+    updateTicket(ctx, broke.fixTicket.id, { status: 'failed' })
     markFailed(ctx, broke.finding.id, 'tests still red')
 
     const view = await caller.findings.listByFeature({ featureId: feature.id })
@@ -118,20 +119,21 @@ describe('findings router', () => {
     })
   })
 
-  it('counts a defect over the auto-fix cap as open, with no ticket of its own', async () => {
-    for (let index = 1; index <= 9; index += 1) report(`defect ${index}`)
+  it('counts a freshly reported defect as open, with no ticket of its own', async () => {
+    for (let index = 1; index <= 8; index += 1) report(`defect ${index}`)
+    reportFinding(ctx, { featureId: feature.id, reviewTicket, input: defect('defect 9') })
 
     const view = await caller.findings.listByFeature({ featureId: feature.id })
 
     expect(view.summary).toMatchObject({ found: 9, open: 1, observations: 0 })
     expect(view.openDefects).toHaveLength(1)
-    expect(view.openDefects[0]).toMatchObject({ openReason: 'over-cap', fixTicketId: null })
+    expect(view.openDefects[0]).toMatchObject({ title: 'defect 9', openReason: null, fixTicketId: null })
     expect(view.findings.filter((f) => f.fixTicketId === null)).toHaveLength(1)
   })
 
   it('dismisses a finding, and the open count drops', async () => {
     const capped = report('over the cap')
-    updateTicket(ctx, capped.fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, capped.fixTicket.id, { status: 'failed' })
     markFailed(ctx, capped.finding.id, 'could not land')
     expect((await caller.findings.listByFeature({ featureId: feature.id })).summary.open).toBe(1)
 
@@ -144,7 +146,7 @@ describe('findings router', () => {
 
   it('reopens a carried finding, and refuses one that was never carried', async () => {
     const parked = report('the toast never dismisses')
-    updateTicket(ctx, parked.fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, parked.fixTicket.id, { status: 'failed' })
     markFailed(ctx, parked.finding.id, 'could not land')
     carryFinding(ctx, feature.id, parked.finding.id)
     expect((await caller.findings.listByFeature({ featureId: feature.id })).summary.open).toBe(0)
@@ -162,10 +164,11 @@ describe('findings router', () => {
 
   it('fixes every open defect in one call: a ticket each on this lap, then a burn', async () => {
     const failed = report('the save drops the value')
-    updateTicket(ctx, failed.fixTicket!.id, { status: 'failed' })
+    updateTicket(ctx, failed.fixTicket.id, { status: 'failed' })
     markFailed(ctx, failed.finding.id, 'tests still red')
-    // A ninth defect never got a ticket at all — the cap held it back.
-    for (let index = 2; index <= 9; index += 1) report(`defect ${index}`)
+    for (let index = 2; index <= 8; index += 1) report(`defect ${index}`)
+    // A ninth defect never got a ticket at all — reviews no longer mint them.
+    reportFinding(ctx, { featureId: feature.id, reviewTicket, input: defect('defect 9') })
     for (const ticket of listTickets(ctx, feature.id)) {
       if (ticket.status === 'pending') updateTicket(ctx, ticket.id, { status: 'done', commits: ['abc'] })
     }
@@ -205,7 +208,7 @@ describe('findings router', () => {
 
   it('refuses a fix with nothing open, minting no tickets', async () => {
     const landed = report('the save drops the value')
-    updateTicket(ctx, landed.fixTicket!.id, { status: 'done', commits: ['def'] })
+    updateTicket(ctx, landed.fixTicket.id, { status: 'done', commits: ['def'] })
     const before = listTickets(ctx, feature.id).length
 
     await expect(caller.findings.fixOpenDefects({ featureId: feature.id })).rejects.toThrow(
