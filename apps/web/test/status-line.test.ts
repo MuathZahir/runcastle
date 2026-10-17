@@ -93,6 +93,32 @@ describe('featureStatus', () => {
     }
   })
 
+  it('waits for the human once a stopped round’s agent is idle, with no Stop to offer', () => {
+    expect(featureStatus(input({ feature: { phase: 'review' }, rounds: [round(2, 'cancelled', 20)] }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'stopped',
+    })
+  })
+
+  it('waits for the human once a failed round’s agent is idle', () => {
+    expect(featureStatus(input({ rounds: [round(1, 'failed', 10)] }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'round 1 failed',
+    })
+  })
+
+  it('reads Working while the agent is mid-turn after a stopped or failed round', () => {
+    for (const status of ['cancelled', 'failed'] as const) {
+      expect(featureStatus(input({ rounds: [round(2, status, 20)], agentWorking: true }))).toEqual({
+        kind: 'working',
+        label: 'Working · Round 2',
+        round: 2,
+      })
+    }
+  })
+
   it('a running round outranks a standing reason', () => {
     expect(
       featureStatus(input({ feature: { waitingReason: 'round 2 proposed' }, rounds: [round(2, 'running', 20)] })).kind,
