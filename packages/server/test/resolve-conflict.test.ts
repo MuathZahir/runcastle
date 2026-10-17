@@ -192,7 +192,8 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
     git(worktree, 'commit', '-am', 'feature moves')
 
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' })
+    // In planning: past it the feature's chat is the lead, which no guard binds.
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
       kind: 'chat',

@@ -7,6 +7,7 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { listAfter, listByProject } from '../src/services/events'
+import { setPhase } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -310,6 +311,28 @@ describe('hooks route', () => {
       })
       expect(noPath.json).toEqual({})
     })
+
+    /**
+     * From Go on the feature's chat is its lead and may edit code (decision 7).
+     * The phase is read per call, so the same session — opened in planning —
+     * gains the permission the moment its feature leaves planning.
+     */
+    it('lifts for the feature chat once its feature has left planning, decided per call', async () => {
+      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
+        'deny',
+      )
+      setPhase(ctx, featureId, 'building')
+      expect(await preTool(talkSession, 'Edit', 'src/theme.ts')).toEqual({})
+      setPhase(ctx, featureId, 'review')
+      expect(await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).toEqual({})
+    })
+
+    it('keeps binding every other feature-scoped kind after Go', async () => {
+      setPhase(ctx, featureId, 'building')
+      const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: '/repo' }).id
+      const json = await preTool(fix, 'Edit', '/repo/src/theme.ts')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
   })
 
   /**
@@ -407,6 +430,17 @@ describe('hooks route', () => {
         worktreePath: worktreeDir(projectId, PROJECT_WORKTREE_SLUG),
       }).id
       expect(await install(chat)).toEqual({})
+    })
+
+    it('allows the feature chat to install once its feature has left planning', async () => {
+      const lead = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: talkPath,
+      }).id
+      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('deny')
+      setPhase(ctx, talkFeatureId, 'building')
+      expect(await install(lead)).toEqual({})
     })
   })
 
