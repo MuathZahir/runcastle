@@ -217,7 +217,7 @@ export function RoundTrail({
         <ol aria-label="Round trail" className="m-0 flex list-none flex-col p-0">
           {entries.map((entry, i) => (
             <li
-              key={i}
+              key={entry.type === 'round' ? entry.runId : `${entry.type}-${i}`}
               data-entry={entry.type}
               className="flex min-w-0 flex-col gap-1 border-t border-border-subtle py-3 first:border-t-0 first:pt-1"
             >

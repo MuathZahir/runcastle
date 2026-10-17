@@ -5,7 +5,6 @@ import {
   groupByRound,
   latestRoundTickets,
   roundAccount,
-  roundAccountLine,
   roundTrail,
 } from '../src/lib/feature-ui/rounds'
 
@@ -171,7 +170,6 @@ describe('roundAccount', () => {
     ])
     const account = roundAccount(latest)
     expect(account).toEqual({ source: 'review', prose: 'Round 2: the coupons work · 2 landed' })
-    expect(roundAccountLine(account)).toBe('The coupons work')
   })
 
   it('falls back to the workers’ digests when no review wrote one', () => {

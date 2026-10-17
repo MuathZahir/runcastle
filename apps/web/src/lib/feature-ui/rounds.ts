@@ -229,18 +229,3 @@ export function roundAccount(
   })
   return entries.length > 0 ? { source: 'tickets', entries } : null
 }
-
-/**
- * The account at ONE line: the review agent's digest opens with a standalone
- * one-liner, so it is lifted off the front of the prose — minus any "Lap N:" /
- * "Round N:" prefix and the trailing " · counts · mode", which the page states
- * beside it already. The workers' fallback has no such line.
- */
-export function roundAccountLine(account: RoundAccount | null): string | null {
-  if (account?.source !== 'review') return null
-  const [first] = account.prose.trim().split('\n')
-  const line = first?.trim()
-  if (!line) return null
-  const sentence = line.replace(/^(Lap|Round) \d+\s*[:—–-]\s*/i, '').split(' · ')[0]?.trim() || line
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1)
-}
