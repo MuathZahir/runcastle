@@ -1,4 +1,5 @@
 import type { Feature, ReadyDeclaration, RoundSummary } from '@runcastle/core'
+import type { NextAction, NextStep } from './next-step/types'
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21):
@@ -77,4 +78,52 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
     }
   }
   return working()
+}
+
+/**
+ * The feature's token total (decision 3): its rounds' workers plus its own
+ * sessions — the agent among them. Null while nothing has been counted, so the
+ * header says nothing rather than "0 tokens".
+ */
+export function featureTokens(
+  rounds: readonly Pick<RoundSummary, 'tokens'>[],
+  sessions: readonly { tokens?: number | null }[],
+): number | null {
+  const counted = [...rounds.map((r) => r.tokens), ...sessions.map((s) => s.tokens)].filter(
+    (n): n is number => typeof n === 'number',
+  )
+  return counted.length > 0 ? counted.reduce((sum, n) => sum + n, 0) : null
+}
+
+/** "1.8M tokens", "940k tokens", "512 tokens" — tokens only, never cost. */
+export function tokensText(n: number): string {
+  if (n >= 1_000_000) return `${trimZero((n / 1_000_000).toFixed(1))}M tokens`
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k tokens`
+  return `${n} tokens`
+}
+
+function trimZero(fixed: string): string {
+  return fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed
+}
+
+/**
+ * The next-step row's actions once the status line tells the state (decision
+ * 8): the human never burns — the plan's Burn is Go, and past planning the
+ * agent dispatches every round, so no burn action is offered at all. Stop sits
+ * beside the status line and is the one move that halts the agent (decision
+ * 15), so the bar's own run cancel goes too.
+ */
+export function leadActions(ns: NextStep, phase: Feature['phase']): NextStep {
+  const keep = (action: NextAction): NextAction | null => {
+    if (action.kind === 'cancelRun') return null
+    if (action.kind !== 'burn') return action
+    return phase === 'planning' ? { ...action, label: 'Go' } : null
+  }
+  const { primary: was, ...rest } = ns
+  const primary = was ? keep(was) : null
+  return {
+    ...rest,
+    ...(primary ? { primary } : {}),
+    secondary: ns.secondary.flatMap((a) => keep(a) ?? []),
+  }
 }

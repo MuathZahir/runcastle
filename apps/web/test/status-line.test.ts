@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { featureStatus, type FeatureStatusInput } from '../src/lib/feature-ui/status-line'
+import type { NextStep } from '../src/lib/feature-ui'
+import {
+  featureStatus,
+  featureTokens,
+  leadActions,
+  tokensText,
+  type FeatureStatusInput,
+} from '../src/lib/feature-ui/status-line'
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
@@ -144,5 +151,48 @@ describe('featureStatus', () => {
         }),
       ),
     ).toEqual({ kind: 'merged', label: 'Merged' })
+  })
+})
+
+describe('the feature’s token total', () => {
+  it('sums the rounds’ workers and the feature’s sessions', () => {
+    expect(featureTokens([{ tokens: 1_000_000 }, { tokens: null }], [{ tokens: 800_000 }, {}])).toBe(1_800_000)
+  })
+
+  it('is null while nothing has been counted', () => {
+    expect(featureTokens([{ tokens: null }], [{}])).toBeNull()
+  })
+
+  it('reads in millions, thousands or units — tokens, never cost', () => {
+    expect(tokensText(1_800_000)).toBe('1.8M tokens')
+    expect(tokensText(2_000_000)).toBe('2M tokens')
+    expect(tokensText(940_400)).toBe('940k tokens')
+    expect(tokensText(512)).toBe('512 tokens')
+  })
+})
+
+describe('the bar’s actions beside the status line', () => {
+  const ns = (over: Partial<NextStep>): NextStep => ({ kick: '', secondary: [], busy: false, ...over })
+
+  it('turns the plan’s Burn into Go', () => {
+    const out = leadActions(ns({ primary: { label: 'Burn 3 tickets', kind: 'burn' } }), 'planning')
+    expect(out.primary).toEqual({ label: 'Go', kind: 'burn' })
+  })
+
+  it('offers no burn past planning — the agent dispatches every round', () => {
+    const out = leadActions(
+      ns({
+        primary: { label: 'Resume burn', kind: 'burn' },
+        secondary: [{ label: 'Burn 1 ticket', kind: 'burn' }, { label: 'Merge & ship', kind: 'merge' }],
+      }),
+      'review',
+    )
+    expect(out.primary).toBeUndefined()
+    expect(out.secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
+  })
+
+  it('drops the bar’s run cancel — Stop beside the status line is the one move', () => {
+    const out = leadActions(ns({ primary: { label: 'Cancel run', kind: 'cancelRun' } }), 'building')
+    expect(out.primary).toBeUndefined()
   })
 })
