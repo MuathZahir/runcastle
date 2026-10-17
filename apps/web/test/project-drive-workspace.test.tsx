@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectNote } from '@runcastle/core'
+import type { ProjectNote, ScenarioEntry } from '@runcastle/core'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
+import { openMenu } from './floating'
 
 /**
  * The project drive on the project workspace (project-level-test-drive
@@ -24,6 +25,12 @@ let project: Record<string, unknown> = {}
 let notes: ProjectNote[] = []
 let testDriveResult: { ok: boolean; deniedReason?: string } = { ok: true }
 const testDrive = vi.fn()
+const runScenario = vi.fn()
+const openScenarioChat = vi.fn()
+let scenarios: { runnerConfigured: boolean; scenarios: ScenarioEntry[] } = {
+  runnerConfigured: false,
+  scenarios: [],
+}
 const toast = vi.fn()
 const addNote = vi.fn(async (input: { projectId: string; text: string }) => ({
   id: 'pnote_new',
@@ -90,6 +97,19 @@ vi.mock('../src/trpc', () => {
       feature: {
         list: { useQuery: () => ({ data: [] }) },
         driveInfo: { useQuery: () => ({ data: slot }) },
+        driveScenarios: { useQuery: () => ({ data: scenarios }) },
+        runScenario: {
+          useMutation: () => ({ isPending: false, mutate: (input: unknown) => runScenario(input) }),
+        },
+        openScenarioChat: {
+          useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
+            isPending: false,
+            mutate: (input: unknown) => {
+              openScenarioChat(input)
+              opts.onSuccess({ sessionId: 'sess_scn' })
+            },
+          }),
+        },
         endSession: { useMutation: mutation },
       },
     },
@@ -150,6 +170,7 @@ const note = (id: string, createdAt: number, over: Partial<ProjectNote> = {}): P
 beforeEach(() => {
   slot = null
   testDriveResult = { ok: true }
+  scenarios = { runnerConfigured: false, scenarios: [] }
   project = {
     id: 'proj_1',
     name: 'journal-app',
@@ -400,5 +421,62 @@ describe('a live chat beside a live drive', () => {
     const drive = document.querySelector<HTMLElement>('[data-project-drive]')!
     expect(within(drive).getByRole('tab', { name: 'Overview' })).toBeTruthy()
     expect(within(drive).queryByRole('tab', { name: 'Live chat' })).toBeNull()
+  })
+})
+
+// drive-scenarios decision 7: a project drive lists every scenario with no
+// "This feature" section, and its main click is the blank app.
+describe('scenarios on a project drive', () => {
+  const SCENARIOS: ScenarioEntry[] = [
+    { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false, hasCall: false },
+    { file: '.runcastle/scenarios/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true, hasCall: false },
+    { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false, hasCall: false },
+  ]
+
+  it('starts on the blank app from the main click', () => {
+    scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
+    expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
+  })
+
+  it('lists every scenario by group, Blank app last, and starts on the one picked', () => {
+    scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
+    mount()
+    openMenu(screen.getByRole('button', { name: 'Choose a scenario' }))
+
+    const menu = screen.getByRole('menu')
+    expect(menu.textContent).not.toContain('This feature')
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Signed outAuth',
+      'Feature at reviewReview',
+      'Smoke',
+      'Blank app',
+    ])
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Feature at review/ }))
+    expect(testDrive).toHaveBeenCalledWith({
+      projectId: 'proj_1',
+      action: 'start',
+      scenario: '.runcastle/scenarios/review/feature-at-review.ts',
+    })
+  })
+
+  it('offers only Blank app with no scenario runner set', () => {
+    scenarios = { runnerConfigured: false, scenarios: SCENARIOS }
+    mount()
+    openMenu(screen.getByRole('button', { name: 'Choose a scenario' }))
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Blank app'])
+  })
+
+  it('carries the Scenario menu in the running drive, which runs the one picked without a restart', () => {
+    scenarios = { runnerConfigured: true, scenarios: SCENARIOS }
+    slot = LIVE
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    openMenu(screen.getByRole('button', { name: 'Scenario' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Smoke/ }))
+
+    expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: '.runcastle/scenarios/smoke.ts' })
+    expect(testDrive).not.toHaveBeenCalled()
   })
 })

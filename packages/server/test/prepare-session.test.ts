@@ -412,6 +412,8 @@ describe('the prepare brief', () => {
     })
     expect(driveish).toContain('These keys are the drive loop')
     expect(driveish).toContain('.runcastle/drive.env')
+    // the drive.env rule scenarios depend on rides the drive framing, and only it
+    expect(driveish).toContain('above all the database URL')
 
     for (const key of ['knownFailures', 'dbResetCommand', 'verifyCommands']) {
       const out = renderPreparePrompt({
@@ -420,6 +422,7 @@ describe('the prepare brief', () => {
         established: [],
       })
       expect(out).not.toContain('These keys are the drive loop')
+      expect(out).not.toContain('above all the database URL')
       expect(out.length).toBeLessThan(driveish.length)
     }
   })
@@ -537,6 +540,19 @@ describe('the prepare skill', () => {
     expect(skill).toContain('mark your own homework')
     // the env-loading audit
     expect(skill).toContain('override: true')
+  })
+
+  it('documents scenarios and requires drive.env to carry the data', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    expect(skill).toContain('## Scenarios')
+    expect(skill).toContain('.runcastle/scenarios/<group>/<name>.<ext>')
+    expect(skill).toContain('`{file}`')
+    expect(skill).toContain('`TOKEN=<value>`')
+    expect(skill).toContain('`.http`')
+    expect(skill).toContain('above all the database URL')
+    // prepare still sets none of it up; the first scenario chat does
+    expect(skill).toContain('Record no runner, write no drive-only login route, add no fixtures')
+    expect(skill).toContain('＋ New scenario in their next test drive')
   })
 
   /**

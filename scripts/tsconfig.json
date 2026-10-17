@@ -7,6 +7,8 @@
     "allowImportingTsExtensions": true
   },
   // scripts/, plus the repo-root config files that belong to no workspace —
-  // otherwise they are the next thing nothing typechecks.
-  "include": [".", "../vitest.config.ts", "../vitest.setup.ts"]
+  // otherwise they are the next thing nothing typechecks — and `.runcastle/`
+  // (drive scripts, scenarios), named by an explicit `**/*.ts` glob because
+  // tsc's wildcards skip dot-folders otherwise.
+  "include": [".", "../.runcastle/**/*.ts", "../vitest.config.ts", "../vitest.setup.ts"]
 }

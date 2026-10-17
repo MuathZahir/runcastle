@@ -14,10 +14,8 @@
  */
 import { existsSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
-
-/** The prefix `drive-setup.ts` builds every drive tree with. */
-const DRIVE_PREFIX = '.runcastle-drive-'
+import { join, resolve } from 'node:path'
+import { DRIVE_PREFIX, isDriveDataDir } from './drive-dir.ts'
 
 /**
  * Prefer what setup computed, fall back to recomputing it from the identity.
@@ -42,7 +40,7 @@ const dir = targetDir()
  * Refuse anything that is not a drive tree. This guard is the reason the naming
  * convention is load-bearing rather than cosmetic.
  */
-if (!basename(dir).startsWith(DRIVE_PREFIX)) {
+if (!isDriveDataDir(dir)) {
   throw new Error(`refusing to delete ${dir} — not a ${DRIVE_PREFIX}* tree`)
 }
 

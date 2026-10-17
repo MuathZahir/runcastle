@@ -168,7 +168,9 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     const conflicts = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'merge.conflict')
     expect(conflicts).toHaveLength(2)
     expect(conflicts[1]?.data).toMatchObject({ base: 'main', files: ['NOTES.md', 'README.md'] })
-    expect(conflicts[1]!.ts).toBeGreaterThanOrEqual(conflicts[0]!.ts)
+    // Order by insertion id, not wall-clock ts: the clock can step back between
+    // two emits (seen in a sandbox gate run), so ts proves nothing about order.
+    expect(conflicts[1]!.id).toBeGreaterThan(conflicts[0]!.id)
     // Two merge attempts, each ensuring the talk worktree and committing the
     // outcome doc — too much git for the 5s default under a parallel suite run.
   }, 20_000)

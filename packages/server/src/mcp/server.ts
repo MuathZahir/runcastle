@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
   DependencyRef,
+  DriveCallResult,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
@@ -14,6 +15,8 @@ import type {
   ReviewFinding,
   ReviewFindingInput as ReviewFindingInputT,
   RunStatus as RunStatusT,
+  ScenarioEntry,
+  ScenarioFailure,
   SessionKind as SessionKindT,
   SessionRow,
   TestNote,
@@ -106,6 +109,14 @@ import {
   storeTickets,
   type TicketContentPatch,
 } from '../services/tickets'
+import { sendDriveCall } from '../services/drive-call'
+import {
+  SCENARIO_FILE_PLACEHOLDER,
+  listFeatureScenarios,
+  listScenarioPaths,
+  type ScenarioRunResult,
+} from '../services/scenarios'
+import { updateSettings } from '../services/settings'
 import { withheldDriveFor } from '../workflows/review-ticket'
 import { registerOrchestratorRunTools } from './orchestrator-run-tools'
 import { registerOrchestratorTools } from './orchestrator-tools'
@@ -431,6 +442,41 @@ export interface FeatureContext {
    * all, so the budget could only ever be guessed.
    */
   burnConcurrency: number
+  /**
+   * Whether this feature can ship a scenario, and what it would build on
+   * (drive-scenarios decision 13): the planner cards one only when `setUp`.
+   * Present on every MCP reply; a direct caller that read no git leaves it out.
+   */
+  scenarios?: FeatureScenarios
+}
+
+/** The project's scenario state as a planning session sees it. */
+export interface FeatureScenarios {
+  /** The base branch has `.runcastle/scenarios/` AND a scenario runner is recorded. */
+  setUp: boolean
+  runnerConfigured: boolean
+  /** The scenarios at the feature branch, this feature's own first. */
+  scenarios: ScenarioEntry[]
+  /** The `_` shared-code paths at the feature branch, to reuse rather than rewrite. */
+  fixtures: string[]
+}
+
+/** {@link FeatureScenarios}, read from git at the feature branch and its base. */
+export async function featureScenarios(ctx: AppCtx, featureId: string): Promise<FeatureScenarios> {
+  const feature = getFeatureRow(ctx, featureId)
+  const project = projectForFeature(ctx, feature)
+  // No recorded base (a draft) means no base to be set up on — never a guessed `main`.
+  const [basePaths, branchPaths, { runnerConfigured, scenarios }] = await Promise.all([
+    feature.baseBranch ? listScenarioPaths(project.repoPath, feature.baseBranch) : [],
+    listScenarioPaths(project.repoPath, feature.branch),
+    listFeatureScenarios(project, feature),
+  ])
+  return {
+    setUp: basePaths.length > 0 && runnerConfigured,
+    runnerConfigured,
+    scenarios,
+    fixtures: branchPaths.filter((path) => path.split('/').some((segment) => segment.startsWith('_'))),
+  }
 }
 
 const DOCS_NOTE =
@@ -504,7 +550,11 @@ function latestBurnSummary(
  * laps' rows move out whole the same way, marked `goalNotInlined` and named in
  * `ticketsNotInlined`.
  */
-export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureContext {
+export function featureContext(
+  ctx: AppCtx,
+  reader: FeatureReader,
+  scenarios?: FeatureScenarios,
+): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
   const findings = listReviewFindings(ctx, feature.id).filter((finding) => finding.lap === feature.lap)
@@ -559,6 +609,7 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
+    ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
@@ -1377,6 +1428,87 @@ export async function toolReviewDrive(
   return git.reviewDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
 }
 
+/** A refused `scenario` / `try_call`: nothing ran and nothing was sent. */
+export interface ReviewScenarioDenial {
+  ok: false
+  action: 'scenario' | 'try_call'
+  deniedReason: string
+  /** False for a refusal no wait fixes; absent when the drive was merely busy or not ready. */
+  retriable?: boolean
+}
+
+/** `review_drive({ action: 'scenario' })`: the landing, the scenario's failure, or a refusal. */
+export type ReviewScenarioResult =
+  | { ok: true; action: 'scenario'; entryUrl: string; token?: string }
+  | { ok: false; action: 'scenario'; failure: ScenarioFailure }
+  | ReviewScenarioDenial
+
+/** `review_drive({ action: 'try_call' })`: the response (or send error), or a refusal. */
+export type ReviewCallResult = ({ action: 'try_call' } & DriveCallResult) | ReviewScenarioDenial
+
+const reviewScenarioDenial = (action: 'scenario' | 'try_call', deniedReason: string): ReviewScenarioDenial => ({
+  ok: false,
+  action,
+  deniedReason,
+  retriable: false,
+})
+
+/**
+ * Replay a scenario on the run's live review drive (drive-scenarios decision
+ * 12): `scenario` runs it through the human's runner, with no restart, and
+ * `try_call` sends the landed scenario's filled `.http` request through the
+ * same path as the human's Try it. Both act only on THIS run's review drive.
+ */
+export async function toolReviewScenario(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { action: 'scenario'; file?: string },
+): Promise<ReviewScenarioResult>
+export async function toolReviewScenario(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { action: 'try_call'; file?: string },
+): Promise<ReviewCallResult>
+export async function toolReviewScenario(
+  ctx: AppCtx,
+  caller: RunCaller,
+  input: { action: 'scenario' | 'try_call'; file?: string },
+): Promise<ReviewScenarioResult | ReviewCallResult>
+export async function toolReviewScenario(
+  ctx: AppCtx,
+  caller: RunCaller,
+  { action, file }: { action: 'scenario' | 'try_call'; file?: string },
+): Promise<ReviewScenarioResult | ReviewCallResult> {
+  const identity = requireRunIdentity(ctx, caller, 'the review drive')
+  const withheld = withheldDriveFor(identity.runId)
+  if (withheld) return reviewScenarioDenial(action, withheld)
+  const featureId = identity.featureId
+  const projectId = projectForFeature(ctx, getFeatureRow(ctx, featureId)).id
+  if (!git.reviewDriveFor(projectId, featureId)) {
+    return reviewScenarioDenial(
+      action,
+      "No review drive of this feature is running — review_drive({ action: 'start' }) first.",
+    )
+  }
+  if (!file) return reviewScenarioDenial(action, `\`${action}\` needs \`file\`, the scenario's repo-relative path.`)
+
+  if (action === 'scenario') {
+    const result = await git.runScenarioOnDrive(ctx, projectId, file, { allowReview: true })
+    if ('denied' in result) return { ok: false, action, deniedReason: result.denied }
+    if (!result.ok) return { ok: false, action, failure: result.failure }
+    return { ok: true, action, entryUrl: result.entryUrl, ...(result.token ? { token: result.token } : {}) }
+  }
+
+  const scenario = git.activeDriveInfo(projectId)?.scenario
+  if (scenario?.file !== file || scenario.status !== 'landed') {
+    return reviewScenarioDenial(action, `run the scenario first: review_drive({ action: 'scenario', file: '${file}' })`)
+  }
+  if (!scenario.call) {
+    return reviewScenarioDenial(action, scenario.callError ?? 'this scenario has no .http call')
+  }
+  return { action, ...(await sendDriveCall(ctx, projectId, scenario.call, { allowReview: true })) }
+}
+
 /**
  * Append one review finding as a test note, attributed to the agent
  * (improve-workflow decision 2). Findings ride the channel the human's own
@@ -1473,6 +1605,67 @@ export async function toolRetryDrive(
     ...(start.branch ? { branch: start.branch } : {}),
     ...(drive ? { drive } : {}),
   }
+}
+
+// --- the scenario session's tools (drive-scenarios decision 8) ---------------
+
+/** Refuse anything but a `scenario` session, and resolve the project it belongs to. */
+function requireScenarioSession(ctx: AppCtx, session: SessionRow, what: string): Project {
+  if (session.kind !== 'scenario') {
+    throw new GateError(
+      `${what} belongs to a scenario session, and this is a ${session.kind} session. Scenarios ` +
+        'are written and landed from ＋ New scenario inside a running test drive.',
+    )
+  }
+  // Its scope follows its drive: a feature drive's session has a feature.
+  return session.featureId
+    ? projectForFeature(ctx, getFeatureRow(ctx, session.featureId))
+    : requireProject(ctx, session)
+}
+
+/**
+ * Land the human on a scenario (drive-scenarios decision 8): run it through the
+ * same runner the picker uses, against this session's drive, and point the
+ * drive panel at its `ENTRY_URL`. The result is the scenario service's own —
+ * the landing, or the failure the human sees (reason plus output tail) — or
+ * the drive's refusal. Refused outright when the drive this session is docked
+ * to is no longer the live one.
+ */
+export async function toolRunScenario(
+  ctx: AppCtx,
+  session: SessionRow,
+  file: string,
+): Promise<ScenarioRunResult | git.ScenarioDenial> {
+  const project = requireScenarioSession(ctx, session, 'Running a scenario')
+  const drive = git.activeDriveInfo(project.id)
+  if (drive?.scenarioSessionId !== session.id) {
+    throw new GateError(
+      'the drive this scenario session was opened on is no longer running, so there is nothing ' +
+        'to land on. Tell the human; a new drive opens its own scenario chat.',
+    )
+  }
+  return git.runScenarioOnDrive(ctx, project.id, file)
+}
+
+/**
+ * Record the project's scenario runner (decision 5's setup step) — the one
+ * setting a scenario session may write, through the settings service so
+ * `settings.updated` reaches the UI. The command must carry `{file}`.
+ */
+export function toolSetScenarioRunner(
+  ctx: AppCtx,
+  session: SessionRow,
+  command: string,
+): { scenarioRunner: string } {
+  const project = requireScenarioSession(ctx, session, 'Setting the scenario runner')
+  if (!command.includes(SCENARIO_FILE_PLACEHOLDER)) {
+    throw new InvalidInputError(
+      `the scenario runner must contain ${SCENARIO_FILE_PLACEHOLDER}, where runcastle puts the ` +
+        'scenario file — e.g. `bun {file}` or `bin/rails runner {file}`.',
+    )
+  }
+  updateSettings(ctx, { key: 'scenarioRunner', value: command, projectId: project.id })
+  return { scenarioRunner: getProjectById(ctx, project.id)?.scenarioRunner ?? command }
 }
 
 // --- the project session's three tools (decisions 15, 19, 21) ---------------
@@ -2170,7 +2363,12 @@ const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 
-const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'run']
+/**
+ * `scenario` is in neither list: its scope follows its drive (feature or
+ * project), so it is offered only the tools that work at either scope plus its
+ * own two.
+ */
+const ALL_AUDIENCES: readonly McpAudience[] = [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario', 'run']
 
 /**
  * Which audiences each tool is registered for — derived from the RUNTIME gates
@@ -2222,6 +2420,8 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // Single-kind tools, each gated on that kind at call time.
   dry_run_drive: ['prepare'],
   retry_drive: ['drive-fix'],
+  run_scenario: ['scenario'],
+  set_scenario_runner: ['scenario'],
   // Run-scoped: `requireRunIdentity`.
   review_drive: ['run'],
   report_finding: ['run'],
@@ -2230,7 +2430,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   add_test_note: [],
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
-  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS],
+  record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
   // The orchestrator's tools (`whole-cuts-plan-themselves`): offered to the
   // project session, refused at call time unless it is a live `orchestrate`
   // session with the setting on (`requireOrchestratorSession`). Registered in
@@ -2393,22 +2593,40 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           "files in `dirtyFiles` are the human's to clear and no wait will do it, so report it " +
           'and review without the app. When your prompt said a drive is not available, every ' +
           'action is refused (`retriable: false`) with the missing prerequisite as `deniedReason`. ' +
-          'Refused unless your call carries a live run identity.',
+          'Once the app answers, `scenario` and `try_call` replay the scenarios your prompt lists ' +
+          'against this same drive, with no restart: run as many as you need, one per criterion ' +
+          'if you like. Both are refused (`retriable: false`) unless your own review drive is the ' +
+          'live one. Refused unless your call carries a live run identity.',
         inputSchema: {
           action: z
-            .enum(['start', 'status', 'stop'])
+            .enum(['start', 'status', 'stop', 'scenario', 'try_call'])
             .describe(
               '`start` switches the checkout to the feature branch, renders driveEnv (per-branch ' +
                 'database), runs driveSetupCommand and spawns devCommand. `status` reports the ' +
                 'drive and hands back the localhost URL once the dev server has printed one — ' +
                 'poll it, the URL is not ready at start. `stop` tears the environment down and ' +
-                'puts the checkout back.',
+                'puts the checkout back. `scenario` runs the scenario `file` through the ' +
+                "project's runner, waits for it, and returns its `entryUrl` (open it with " +
+                'agent-browser) and `token`, or its `failure` (reason, exitCode, outputTail). ' +
+                '`try_call` sends the filled `.http` request of the scenario `file`, which must be ' +
+                'the one that just landed, and returns status, headers and body.',
+            ),
+          file: z
+            .string()
+            .optional()
+            .describe(
+              'For `scenario` and `try_call`: the repo-relative scenario path, e.g. ' +
+                '`.runcastle/scenarios/checkout/expired-coupon.ts`.',
             ),
         },
       },
       async (args, extra) => {
         const rc = await resolveRunCaller(extra)
-        return ok(await toolReviewDrive(rc.ctx, rc.caller, args))
+        const { action, file } = args
+        if (action === 'scenario' || action === 'try_call') {
+          return ok(await toolReviewScenario(rc.ctx, rc.caller, { action, file }))
+        }
+        return ok(await toolReviewDrive(rc.ctx, rc.caller, { action }))
       },
     )
   }
@@ -2479,6 +2697,54 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(await toolRetryDrive(rs.ctx, rs.session))
+      },
+    )
+  }
+
+  if (wants('run_scenario')) {
+    server.registerTool(
+      'run_scenario',
+      {
+        title: 'Land the human on a scenario',
+        description:
+          'Run one scenario through the project’s scenario runner against the drive this session ' +
+          'is docked to — the same path the human’s picker takes — and, on success, point their ' +
+          'drive panel at its ENTRY_URL. Commit the scenario first. The reply is the landing ' +
+          '(`ok: true`, `entryUrl`) or the failure the human sees (`failure.reason`, ' +
+          '`failure.exitCode`, `failure.outputTail`), or `denied` when the drive refused the run. ' +
+          'Scenario sessions only.',
+        inputSchema: {
+          file: z
+            .string()
+            .min(1)
+            .describe('Repo-relative path of the scenario, e.g. `.runcastle/scenarios/checkout/expired-coupon.ts`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolRunScenario(rs.ctx, rs.session, args.file))
+      },
+    )
+  }
+
+  if (wants('set_scenario_runner')) {
+    server.registerTool(
+      'set_scenario_runner',
+      {
+        title: 'Record the scenario runner',
+        description:
+          'Record the project’s scenario runner: the command that runs one scenario file, with ' +
+          '`{file}` where its repo-relative path goes (e.g. `bun {file}`, `bin/rails runner {file}`). ' +
+          'The only setting this session may write. Scenario sessions only.',
+        inputSchema: {
+          command: z.string().min(1).describe('The runner command; must contain `{file}`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolSetScenarioRunner(rs.ctx, rs.session, args.command))
       },
     )
   }
@@ -2825,7 +3091,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
         'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
         'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +
-        'the newest burn went; absent only on a feature that has never burned), ' +
+        'the newest burn went; absent only on a feature that has never burned), `scenarios` ' +
+        '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
+        'does a ticket ship a scenario for state the person driving would otherwise build by ' +
+        'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
+        'to reuse), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
@@ -2850,7 +3120,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async ({ slug }, extra) => {
           const r = await resolveProjectReader(extra, slug)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader))
+          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
         },
       )
     } else {
@@ -2860,7 +3130,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async (_args, extra) => {
           const r = await resolveReader(extra)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader))
+          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
         },
       )
     }

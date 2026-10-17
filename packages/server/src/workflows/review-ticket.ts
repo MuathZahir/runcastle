@@ -2,7 +2,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, w
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
 import { resolvePreparedSettings } from '@runcastle/core'
-import type { GateCommandResult, ModelEntry, ReviewGateRun, RuncastleConfig, Ticket, WorkflowCtx } from '@runcastle/core'
+import type {
+  GateCommandResult,
+  ModelEntry,
+  ReviewGateRun,
+  RuncastleConfig,
+  ScenarioEntry,
+  Ticket,
+  WorkflowCtx,
+} from '@runcastle/core'
 import { logsDir, reviewDir, reviewGateLogPath, reviewWalkthroughPath } from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
@@ -11,6 +19,7 @@ import { renderRunMcpConfig } from '../launcher/artifacts'
 import { appendTranscript, beginTranscript, endTranscript } from '../services/agent-stream'
 import { headSha, releaseReviewDrive } from '../services/git'
 import { AUTO_FIX_CAP } from '../services/review-findings'
+import { listFeatureScenarios } from '../services/scenarios'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import type { runReviewGates } from './review-gates'
@@ -92,6 +101,8 @@ const PLACEHOLDERS = [
   'DRIVE_AVAILABILITY',
   /** How to drive THIS app, in the project's own words (see {@link buildDriveInstructions}). */
   'DRIVE_INSTRUCTIONS',
+  /** The drive's scenarios and how to replay them (see {@link buildScenarioBlock}). */
+  'SCENARIOS',
   /** The server's gate run on the branch and the known-failure baseline. */
   'GATE_NOTES',
   'DIGEST_PATH',
@@ -457,6 +468,38 @@ export function buildDriveInstructions(instructions: string | null | undefined):
     '```',
     text,
     '```',
+  ].join('\n')
+}
+
+/**
+ * The `{{SCENARIOS}}` block: the scenarios the review drive can land on, and
+ * the rules for replaying them (drive-scenarios decision 12), so the agent's
+ * drive starts where the human's does instead of from improvised setup.
+ *
+ * With no runner or no scenarios it says so in one line, for the same reason
+ * {@link buildDriveInstructions} names an absence: an agent told nothing goes
+ * looking for what it assumes it was denied.
+ */
+export function buildScenarioBlock(entries: ScenarioEntry[], runnerConfigured: boolean): string {
+  if (!runnerConfigured || entries.length === 0) {
+    const why = runnerConfigured ? 'this branch has no scenarios' : 'this project has no scenario runner recorded'
+    return `**Scenarios:** none — ${why}, so set up each criterion's state by hand in the app as usual.`
+  }
+  const lines = entries.map((e) => {
+    const markers = [e.own ? "(this feature's)" : '', e.hasCall ? '(has an API call)' : ''].filter(Boolean)
+    return `- \`${e.file}\` — ${e.group ? `${e.group} · ` : ''}${e.name}${markers.length ? ` ${markers.join(' ')}` : ''}`
+  })
+  return [
+    "**Reach each criterion's state through a scenario.** A scenario is a project command that seeds a state in the drive's database and returns the URL that lands on it. This drive can run these:",
+    '',
+    ...lines,
+    '',
+    '- Once `drive.devUrl` answers, reach each acceptance criterion\'s state with `mcp__runcastle__review_drive({ action: "scenario", file })`, then open the `entryUrl` it returns with `agent-browser open`. Prefer this feature\'s own scenarios when more than one fits.',
+    '- Run as many as you need, one per criterion if you like: each runs against the live drive with no restart, and entities are unique per run, so earlier scenarios never get in the way.',
+    '- For a scenario with an API call, call `mcp__runcastle__review_drive({ action: "try_call", file })` after that scenario has landed; it sends the scenario\'s filled request and returns the status, headers and body.',
+    "- If no scenario reaches a criterion's state, set it up by hand in the app as before, and file a `report_finding` observation titled \"No scenario reaches <state>\".",
+    '- A scenario that fails (`ok: false` with a `failure`) is a **defect** finding: cite its file, the reason, the exit code and the output tail.',
+    '- Never write or edit a scenario. They are the project\'s code, and you review it; you do not change it.',
   ].join('\n')
 }
 
@@ -857,6 +900,9 @@ async function reviewTicketOutcome(
     BASE_BRANCH: feature.baseBranch,
     DRIVE_AVAILABILITY: buildDriveAvailability(browserPath, project.devCommand, inheritedMode, browserFailure, ffmpegPath),
     DRIVE_INSTRUCTIONS: buildDriveInstructions(project.driveInstructions),
+    SCENARIOS: await listFeatureScenarios(project, feature).then(({ scenarios, runnerConfigured }) =>
+      buildScenarioBlock(scenarios, runnerConfigured),
+    ),
     GATE_NOTES: buildGateNotes(gateRun, ticket.id, deps.config, project),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,

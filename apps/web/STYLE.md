@@ -169,6 +169,7 @@ Every prop list below is the contract; the JSDoc on each export says the same.
 |---|---|---|
 | `Button` | `variant` `primary` · `secondary` (default) · `ghost` · `danger` · `danger-ghost` (a destructive action in a row of ghosts: no border, `danger` word, `danger-subtle` hover); `size` `sm` 24 · `md` 28 (default) · `lg` 32; `icon` (leading); `kbd`; `loading`; every `<button>` attribute and `ref`. | Legacy `variant="solid"` → primary, `"accent"` → secondary, `size="xs"` → sm. `type` defaults to `button`. `loading` swaps the icon for a spinner (or overlays one, keeping the width) and disables. Carries `data-variant`. **At most one `primary` per view.** |
 | `IconButton` | `label` (required: tooltip + `aria-label`), `icon` (or children), `size`, `variant` (default `ghost`; `danger-ghost` = quiet at rest, `danger` on hover — a row's Delete), `active` (→ `aria-pressed`), `kbd`, `tooltipSide`, `href` + `target` / `rel` (renders an `<a>`; `_blank` gets `noreferrer noopener`), `badge` (a small neutral count in the corner, `99+` cap, nothing at 0; read out as "Label (N)"), button attributes and `ref`. | The chrome button. Can be a Radix `asChild` trigger. |
+| `SplitButton` | `variant`, `size`, `icon`, `disabled`, `loading`, `title`, `onClick` (the default), `menu` (the `DropdownMenu*` items behind the caret), `menuLabel` (the caret's name), children (the main label), `className` (placement). | A `Button` and an attached caret opening a `DropdownMenu`; the halves join through `Button`'s `attached` (`start` · `end`). Test drive with its scenarios. |
 | `LINK` | — | The one link look for an `<a>` or a link-like `<button>` in text: `accent-text`, underline on hover. Markdown links use it too. |
 | `Kbd` | children, `className`. | One key or a short chord. |
 | `Spinner` | `size` `md` · `sm`; `tone` `quiet` (default) · `current`. | `aria-hidden`; only beside a word. Legacy tones `work`/`accent` render quiet. For inline busy states — a pending button, a dialog step; a content area loads as a `Skeleton`. |
@@ -289,6 +290,8 @@ import a module directly, and removing the barrel is a later cleanup.
 | `sidebar.ts` | Feature rows: needs-me, row chips, ticket progress, sort, triage lanes and their caps. |
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel, the review drive's dirty-tree denial. |
+| `scenarios.ts` | Drive scenarios: the picker's and Scenario menu's sections and default, the panel's target per landing, a failed scenario's headline, the Blank app nudge's rule. Not in the barrel. |
+| `api-call.ts` | Try it in a drive's API view: the calls, the request form ⇄ request, a response's status tone and pretty body. Not in the barrel. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
 | `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `timeline.ts` | A lap's timeline nodes in lap order: burns (work, then fixes) and review/verification passes. |

@@ -80,6 +80,11 @@ export const projects = sqliteTable('projects', {
   // so the only honest generic answer is to run the project's own string.
   driveSetupCommand: text('drive_setup_command'),
   driveStopCommand: text('drive_stop_command'),
+  // Drive scenarios: one command with a `{file}` placeholder that runs a file
+  // under `.runcastle/scenarios/` inside a drive. Project-only and opaque, like
+  // the drive hooks; recorded by hand or by the scenario session, never by
+  // `prepare` (so no provenance row).
+  scenarioRunner: text('scenario_runner'),
   // Subject prefix for commits authored by runcastle's docs machinery. Null
   // uses the product default; burn-agent ticket subjects stay unchanged.
   docsCommitPrefix: text('docs_commit_prefix'),

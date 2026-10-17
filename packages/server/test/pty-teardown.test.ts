@@ -131,9 +131,11 @@ describe('tearDownEntry', () => {
       killTree: () => new Promise<void>(() => {}),
     })
 
-    const started = Date.now()
+    // Monotonic, like the setTimeout behind the deadline: a wall-clock step in the
+    // sandbox once made Date.now() read 3476ms across a 5000ms timer that fired on time.
+    const started = performance.now()
     await tearDownEntry(entry)
-    const elapsed = Date.now() - started
+    const elapsed = performance.now() - started
 
     expect(elapsed).toBeGreaterThanOrEqual(TEARDOWN_TIMEOUT_MS - 500)
     expect(elapsed).toBeLessThan(TEARDOWN_TIMEOUT_MS * 2)

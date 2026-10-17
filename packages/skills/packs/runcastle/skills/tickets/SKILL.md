@@ -67,6 +67,19 @@ Two things are not chain problems. The **review ticket** is blocked by every imp
 And width only counts if it lands: parallel tickets touching the same files collide on landing (the file-disjoint rule above), so a reslice that buys width by overlapping files has bought a re-burn instead.
 </parallelism-budget>
 
+<ship-a-scenario>
+**Ship a scenario when the state is hard to reach.** A scenario is a project command under `.runcastle/scenarios/` that seeds a state and prints the URL to land on, so a test drive starts where the feature is instead of on a blank app. Read `get_feature_context`'s `scenarios` field — `{ setUp, runnerConfigured, scenarios, fixtures }` — before you decide anything.
+
+**When `setUp` is true**, ask of each ticket: will the person driving this have to build state by hand to see it — an account, a cart with an expired coupon, a feature sitting at review?
+
+- If yes, give the implementation ticket that builds that state an acceptance criterion: "Ship `.runcastle/scenarios/<group>/<name>.<ext>` that seeds <state> (reusing `_fixtures`) and prints `ENTRY_URL=<where>`". Name the fixtures from `fixtures` it should reuse. When the change is an API call, the criterion also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
+- Name that scenario in the review ticket's `context`, so the reviewer replays it rather than improvising the setup.
+- Copy changes and settings toggles get none. A scenario is never required; it earns its place only where reaching the state is the chore.
+- The burn agent writes and typechecks the scenario but cannot run it — a sandbox has no drive. Its first run is the review drive, where a failure is a defect.
+
+**When `setUp` is false**, card nothing about scenarios. Say once in your closing message that ＋ New scenario in a test drive sets scenarios up for this project.
+</ship-a-scenario>
+
 <wide-refactor-exception>
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
@@ -111,6 +124,7 @@ There is no in-session quiz — the human's review is the **Burn** click in the 
 4. Are the blocking edges minimal and genuinely true gates — each one a ticket that reads its blocker's output? State the critical path and the width it leaves against `burnConcurrency`, and reslice if the chain runs longer than roughly total / concurrency. Where two are independent, do they touch different files — or will they collide on landing?
 5. Is every `context` self-sufficient for an agent that cannot ask — covering every file and pattern the ticket touches?
 6. Does the batch close with exactly one `kind: "review"` ticket, blocked by every implementation ticket? It is not optional and there is no feature that skips it.
+7. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it, and does the review ticket name it? If not set up, have you carded none and kept the one ＋ New scenario line for your close?
 
 Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a Burn landing mid-enrichment burns agents on the placeholders.

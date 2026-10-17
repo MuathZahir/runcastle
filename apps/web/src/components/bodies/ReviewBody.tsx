@@ -333,6 +333,7 @@ export function ReviewBody({
   const stage = stageMounted ? (
     <EvidenceStage
       featureId={feature.id}
+      projectId={feature.projectId}
       branch={feature.branch}
       recordings={recordings}
       picked={picked}
