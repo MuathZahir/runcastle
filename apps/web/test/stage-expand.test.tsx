@@ -201,7 +201,7 @@ const expandControl = (): HTMLElement => screen.getByRole('button', { name: /^Ex
 const key = (k: string): void => void fireEvent.keyDown(document.body, { key: k })
 
 /** The bands the expand puts away, one phrase each. */
-const BANDS = ['^Burn$', 'How to drive this app', 'Full account']
+const BANDS = ['^Round$', 'How to drive this app', 'Full account']
 
 describe('the review page expanded', () => {
   it('leaves the stage and the rail, and puts every other band away', () => {
