@@ -4,7 +4,8 @@ import type { FilledHttpRequest } from '@runcastle/core'
  * An API scenario's request (drive-scenarios decision 10): the sibling `.http`
  * file in the standard request format VS Code REST Client and JetBrains read —
  * a request line, header lines, a blank line, an optional body. One request
- * per file; a `###` separator ends it. Pure: no IO, so the drive and Try it
+ * per file; a `###` separator after the request ends it, one before it is
+ * skipped. Pure: no IO, so the drive and Try it
  * share one reading of the text.
  */
 
@@ -36,10 +37,13 @@ const REQUEST_LINE = /^(?:([A-Za-z]+)\s+)?(\S+)(?:\s+HTTP\/\d+(?:\.\d+)?)?$/
 
 export function parseHttpRequest(text: string): ParseHttpRequestResult {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  // A leading `### Name` separates nothing — no request precedes it — so it is
+  // skipped like a comment; the usual REST Client/JetBrains file opens with one.
+  const isPreamble = (line: string): boolean => line === '' || isSeparator(line) || isComment(line)
   let i = 0
-  while (i < lines.length && (lines[i]?.trim() === '' || isComment(lines[i]?.trim() ?? ''))) i++
+  while (i < lines.length && isPreamble(lines[i]?.trim() ?? '')) i++
   const first = lines[i]?.trim()
-  if (first === undefined || isSeparator(first)) return { ok: false, error: 'no request line' }
+  if (first === undefined) return { ok: false, error: 'no request line' }
   const m = REQUEST_LINE.exec(first)
   if (!m?.[2]) return { ok: false, error: `not a request line: ${first}` }
   const method = (m[1] ?? 'GET').toUpperCase()

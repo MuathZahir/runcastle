@@ -58,6 +58,16 @@ describe('parseHttpRequest', () => {
       request: { method: 'GET', target: '/a', headers: [['X-A', '1']] },
     },
     {
+      name: 'a leading "### Name" line, the usual REST Client/JetBrains layout',
+      text: '### Blocked only\nGET /api/entries?mood=blocked\n',
+      request: { method: 'GET', target: '/api/entries?mood=blocked', headers: [] },
+    },
+    {
+      name: 'a leading ### then comments, with a later ### still ending the request',
+      text: ['###', '# note', '', 'POST /a', '', 'one', '### second', 'GET /b'].join('\n'),
+      request: { method: 'POST', target: '/a', headers: [], body: 'one' },
+    },
+    {
       name: 'a whitespace-only body as none',
       text: 'POST /a\n\n   \n\n',
       request: { method: 'POST', target: '/a', headers: [] },
@@ -71,7 +81,7 @@ describe('parseHttpRequest', () => {
   it.each([
     ['an empty file', ''],
     ['only comments', '# nothing\n// here\n'],
-    ['only a separator', '###\nGET /a'],
+    ['only separators', '### Name\n###\n'],
     ['a malformed request line', 'GET /a b c'],
     ['a malformed header', 'GET /a\nnot a header'],
   ])('fails on %s', (_name, text) => {
