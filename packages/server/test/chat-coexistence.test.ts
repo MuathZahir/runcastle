@@ -21,6 +21,7 @@ import {
   commitDocs,
   createFeatureBranch,
   ensureTalkWorktree,
+  testDrive,
 } from '../src/services/git'
 import { featureLandingQueue } from '../src/services/landing-queue'
 import { startRun } from '../src/workflows/runner'
@@ -251,5 +252,72 @@ describe('the chat beside a burn', () => {
       if (original) workflowRegistry.set('ticket-burner', original)
       else workflowRegistry.delete('ticket-burner')
     }
+  })
+
+  /**
+   * While a drive of the feature holds the slot it runs the feature branch on
+   * the main checkout, so nothing the chat commits may land under it
+   * (`the-feature-lead-runs-rounds` decision 19) — it lands when the drive stops.
+   */
+  describe('while the feature is being driven', () => {
+    const typesOf = (prefix: string) =>
+      listAfter(ctx, feature.id, 0)
+        .filter((e) => e.type.startsWith(prefix))
+        .map((e) => e.type)
+
+    it('defers a mid-round chat landing until the drive stops, then lands it', async () => {
+      seedBurn()
+      await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+      const note = await chatCommits('drive-note.md')
+      const chatBranch = await chatBranchInWorktree(talkWt)
+      // A review drive is the one kind that can start mid-round.
+      expect((await testDrive(ctx, project, feature, 'start', 'review')).ok).toBe(true)
+
+      const deferred = await landChatCommits(ctx, project, feature)
+      expect(deferred).toMatchObject({ deferred: true, branch: chatBranch, commits: 1 })
+      expect(await landedOnFeature(note)).toBe(false)
+      expect(await chatBranchInWorktree(talkWt)).toBe(chatBranch) // no rollover
+      const deferredEvent = listAfter(ctx, feature.id, 0).find((e) => e.type === 'chat.landing_deferred')
+      expect(deferredEvent?.data).toEqual({ branch: chatBranch, commits: 1 })
+
+      expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+      expect(await landedOnFeature(note)).toBe(true)
+      expect(await chatBranchInWorktree(talkWt)).toBeDefined() // the round still runs
+      expect(typesOf('chat.')).toContain('chat.landed')
+      // docs only: no "agent fix" on the trail
+      expect(typesOf('lead.')).toEqual([])
+    })
+
+    it('lands what the lead committed on the drive`s detached worktree, announcing its code fix', async () => {
+      expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+      // The drive detached the talk worktree; the lead keeps committing there.
+      mkdirSync(join(talkWt, 'src'), { recursive: true })
+      writeFileSync(join(talkWt, 'src', 'fix.ts'), 'export const fixed = true\n')
+      writeFileSync(join(talkWt, 'src', 'other.ts'), 'export const other = true\n')
+      const wt = simpleGit(talkWt)
+      await wt.add(['src'])
+      await wt.commit('feat(app): a tiny fix')
+      const fix = (await wt.revparse(['HEAD'])).trim()
+      expect(await landedOnFeature(fix)).toBe(false)
+
+      expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+
+      expect(await landedOnFeature(fix)).toBe(true)
+      expect((await wt.revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe(feature.branch)
+      const codeLanded = listAfter(ctx, feature.id, 0).filter((e) => e.type === 'lead.code_landed')
+      expect(codeLanded).toHaveLength(1)
+      expect(codeLanded[0]?.data).toEqual({
+        commits: [{ sha: fix, subject: 'feat(app): a tiny fix' }],
+        files: 2,
+        afterRunId: null,
+      })
+    })
+
+    it('hands the worktree straight back when nothing was committed during the drive', async () => {
+      expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+      expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+      expect((await simpleGit(talkWt).revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe(feature.branch)
+      expect(typesOf('chat.')).toEqual([])
+    })
   })
 })
