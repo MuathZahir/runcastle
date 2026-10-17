@@ -112,8 +112,8 @@ import {
 import { sendDriveCall } from '../services/drive-call'
 import {
   SCENARIO_FILE_PLACEHOLDER,
+  listFeatureScenarios,
   listScenarioPaths,
-  listScenarios,
   type ScenarioRunResult,
 } from '../services/scenarios'
 import { updateSettings } from '../services/settings'
@@ -465,11 +465,11 @@ export interface FeatureScenarios {
 export async function featureScenarios(ctx: AppCtx, featureId: string): Promise<FeatureScenarios> {
   const feature = getFeatureRow(ctx, featureId)
   const project = projectForFeature(ctx, feature)
-  const runnerConfigured = !!project.scenarioRunner
-  const [basePaths, branchPaths, scenarios] = await Promise.all([
-    listScenarioPaths(project.repoPath, feature.baseBranch ?? 'main'),
+  // No recorded base (a draft) means no base to be set up on — never a guessed `main`.
+  const [basePaths, branchPaths, { runnerConfigured, scenarios }] = await Promise.all([
+    feature.baseBranch ? listScenarioPaths(project.repoPath, feature.baseBranch) : [],
     listScenarioPaths(project.repoPath, feature.branch),
-    listScenarios(project.repoPath, { ref: feature.branch, baseBranch: feature.baseBranch }),
+    listFeatureScenarios(project, feature),
   ])
   return {
     setUp: basePaths.length > 0 && runnerConfigured,

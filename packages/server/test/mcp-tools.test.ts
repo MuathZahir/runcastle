@@ -33,7 +33,9 @@ import mcpApp, {
   toolsForAudience,
 } from '../src/mcp/server'
 import { emit, listAfter } from '../src/services/events'
-import { getFeatureRow } from '../src/services/repo'
+import { listDriveScenarios } from '../src/services/git'
+import { getFeatureRow, getProjectById } from '../src/services/repo'
+import { listFeatureScenarios } from '../src/services/scenarios'
 import { reportFinding } from '../src/services/review-findings'
 import { writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { addNote } from '../src/services/test-notes'
@@ -973,6 +975,29 @@ describe('get_feature_context scenarios', () => {
       runnerConfigured: true,
       scenarios: [],
       fixtures: [],
+    })
+  })
+
+  it('agrees with the drive and the review prompt that a whitespace-only runner is no runner', async () => {
+    setRunner('  ')
+    const feature = seedFeature(ctx, projectId, { slug: 'shipped' })
+    expect(await featureScenarios(ctx, feature.id)).toMatchObject({ setUp: false, runnerConfigured: false })
+    expect(await listDriveScenarios(ctx, projectId, feature.id)).toMatchObject({ runnerConfigured: false })
+    expect(await listFeatureScenarios(getProjectById(ctx, projectId)!, feature)).toMatchObject({
+      runnerConfigured: false,
+    })
+  })
+
+  it('reads a feature with no recorded base as not set up, never measuring it against main', async () => {
+    setRunner('bun {file}')
+    const draft = seedFeature(ctx, projectId, { slug: 'shipped', baseBranch: null })
+    expect(await featureScenarios(ctx, draft.id)).toMatchObject({
+      setUp: false,
+      runnerConfigured: true,
+      scenarios: [
+        { file: '.runcastle/scenarios/checkout/land.ts', own: false },
+        { file: '.runcastle/scenarios/feed/blocked-only.ts', own: false },
+      ],
     })
   })
 

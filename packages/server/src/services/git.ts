@@ -40,7 +40,15 @@ import { markVerified } from './findings'
 import { fillHttpRequest, parseHttpRequest } from './http-request'
 import { getProjectById, hasActiveRun, tryGetFeature } from './repo'
 import type { ScenarioRunResult } from './scenarios'
-import { callFileOf, isScenarioPath, listScenarios, runScenario, scenarioName } from './scenarios'
+import {
+  callFileOf,
+  isScenarioPath,
+  isScenarioRunnerSet,
+  listFeatureScenarios,
+  listScenarios,
+  runScenario,
+  scenarioName,
+} from './scenarios'
 
 /**
  * Git service (SPEC §7) — the only wave-B service that shells out to real git
@@ -3445,19 +3453,17 @@ export async function listDriveScenarios(
 ): Promise<{ runnerConfigured: boolean; scenarios: ScenarioEntry[] }> {
   const project = getProjectById(ctx, projectId)
   if (!project) throw new InvalidInputError(`unknown project ${projectId}`)
-  const runnerConfigured = !!project.scenarioRunner?.trim()
   if (featureId === undefined) {
-    return { runnerConfigured, scenarios: await listScenarios(project.repoPath, { ref: 'HEAD' }) }
+    return {
+      runnerConfigured: isScenarioRunnerSet(project.scenarioRunner),
+      scenarios: await listScenarios(project.repoPath, { ref: 'HEAD' }),
+    }
   }
   const feature = tryGetFeature(ctx, featureId)
   if (!feature || feature.projectId !== projectId) {
     throw new InvalidInputError(`unknown feature ${featureId}`)
   }
-  const scenarios = await listScenarios(project.repoPath, {
-    ref: featureBranch(feature.slug),
-    ...(feature.baseBranch ? { baseBranch: feature.baseBranch } : {}),
-  })
-  return { runnerConfigured, scenarios }
+  return listFeatureScenarios(project, feature)
 }
 
 /**

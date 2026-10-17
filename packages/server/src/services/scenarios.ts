@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { ScenarioEntry, ScenarioFailure } from '@runcastle/core'
+import type { Feature, Project, ScenarioEntry, ScenarioFailure } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { runDriveHook, tailLines } from './drive-hooks'
 import { driveProcessEnv } from './drive-env'
@@ -120,6 +120,34 @@ export async function listScenarios(
 }
 
 /**
+ * Whether a scenario runner is recorded that a drive can actually run. The
+ * settings schema accepts a whitespace-only value, which runs nothing, so it
+ * counts as none — the one rule the drive, planning and review all share.
+ */
+export function isScenarioRunnerSet(runner: string | null | undefined): runner is string {
+  return !!runner?.trim()
+}
+
+/**
+ * "The feature's scenarios and whether a runner is set", worked out once for
+ * the drive picker, `get_feature_context` and the review prompt: the scenarios
+ * at the feature's recorded branch, own against its recorded base. A feature
+ * with no base yet (a draft) marks nothing own rather than guessing one.
+ */
+export async function listFeatureScenarios(
+  project: Pick<Project, 'repoPath' | 'scenarioRunner'>,
+  feature: Pick<Feature, 'branch' | 'baseBranch'>,
+): Promise<{ runnerConfigured: boolean; scenarios: ScenarioEntry[] }> {
+  return {
+    runnerConfigured: isScenarioRunnerSet(project.scenarioRunner),
+    scenarios: await listScenarios(project.repoPath, {
+      ref: feature.branch,
+      ...(feature.baseBranch ? { baseBranch: feature.baseBranch } : {}),
+    }),
+  }
+}
+
+/**
  * Whether `file` names a scenario a runner may be handed: a repo-relative path
  * under {@link SCENARIOS_DIR}, with no `..` step out of it and no quote that
  * could break out of the quoted `{file}` in the runner's shell line.
@@ -193,7 +221,7 @@ function lastToken(stdout: string): string | undefined {
  * the combined output, which is what the human is shown. Never throws.
  */
 export async function runScenario(opts: RunScenarioOptions): Promise<ScenarioRunResult> {
-  if (!opts.runner?.trim()) {
+  if (!isScenarioRunnerSet(opts.runner)) {
     return { ok: false, failure: { reason: 'no-runner', exitCode: null, outputTail: '' } }
   }
   const command = opts.runner.split(SCENARIO_FILE_PLACEHOLDER).join(`"${opts.file}"`)
