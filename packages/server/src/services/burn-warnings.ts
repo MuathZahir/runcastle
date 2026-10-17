@@ -54,6 +54,19 @@ export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   return warnings
 }
 
+/**
+ * What the human reads before clicking Go (`the-feature-lead-runs-rounds`
+ * decision 8). Go starts no burn — the lead plans its own rounds, and may do a
+ * small feature with no tickets at all — so the batch-shaped warnings above do
+ * not apply; only a plan with no written spec behind it is worth saying.
+ */
+export function goWarnings(ctx: AppCtx, featureId: string): string[] {
+  const feature = getFeatureRow(ctx, featureId)
+  return hasPlanningDoc(ctx, feature, 'spec.md')
+    ? []
+    : ['no spec.md on disk — the agent will build from a plan no written spec backs.']
+}
+
 function undispositionedWarning(defects: readonly ReviewFinding[]): string {
   const titles = defects.map((defect) => `"${defect.title}"`).join(', ')
   return (

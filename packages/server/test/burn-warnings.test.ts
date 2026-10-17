@@ -8,7 +8,7 @@ import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { toolCompletePhase } from '../src/mcp/server'
-import { burnWarnings } from '../src/services/burn-warnings'
+import { burnWarnings, goWarnings } from '../src/services/burn-warnings'
 import { markFixProgress, reportFinding } from '../src/services/review-findings'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
@@ -173,11 +173,15 @@ describe('burn warnings', () => {
     ])
   })
 
-  it('reaches the Burn dialog through the feature router, unchanged', async () => {
+  it('Go hears only the missing spec, through the feature router', async () => {
+    openDefectFromLapOne()
     storeTickets(ctx, feature.id, [ticketInput('Add the thing')])
-    await expect(caller.feature.burnWarnings({ featureId: feature.id })).resolves.toEqual(
-      burnWarnings(ctx, feature.id),
+    expect(goWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no spec.md')])
+    await expect(caller.feature.goWarnings({ featureId: feature.id })).resolves.toEqual(
+      goWarnings(ctx, feature.id),
     )
+    writeSpec()
+    expect(goWarnings(ctx, feature.id)).toEqual([])
   })
 
   describe('complete_phase("tickets") hears the same list', () => {

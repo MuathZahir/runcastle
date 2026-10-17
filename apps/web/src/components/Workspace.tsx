@@ -240,7 +240,7 @@ export function Workspace({
   // is every one but shipped, so the box is already populated when the dialog
   // opens rather than popping in after it.
   const burnable = !!q.data && q.data.feature.phase !== 'shipped'
-  const burnWarningsQ = trpc.feature.burnWarnings.useQuery(
+  const burnWarningsQ = trpc.feature.goWarnings.useQuery(
     { featureId },
     { refetchInterval: useLivePoll(), enabled: burnable },
   )
@@ -357,7 +357,7 @@ export function Workspace({
     landOnChat()
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
-  const burn = trpc.feature.burn.useMutation({
+  const burn = trpc.feature.go.useMutation({
     onSuccess: () => {
       invalidate()
       onViewPhase(null)

@@ -1,9 +1,11 @@
 import type {
+  Autonomy,
   BlockRef,
   DependencyRef,
   Feature,
   FeatureStatus,
   Project,
+  ReadyDeclaration,
   Run,
   SessionRow,
   SessionStatus,
@@ -12,6 +14,7 @@ import type {
 } from '@runcastle/core'
 import {
   newId,
+  resolveAutonomy,
   shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
@@ -19,11 +22,20 @@ import {
 } from '@runcastle/core'
 import type { TicketTally } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
-import { desc, eq, or } from 'drizzle-orm'
+import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
 import type { AppCtx } from '../db/types'
-import { events, featureDependencies, features, runs, sessions, tickets } from '../db/schema'
+import {
+  events,
+  featureDependencies,
+  features,
+  readyDeclarations,
+  runs,
+  sessions,
+  tickets,
+} from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
+import { goWarnings } from './burn-warnings'
 import {
   blocksOf,
   dependencyMaps,
@@ -36,6 +48,8 @@ import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
+import { deliverToLead } from './lead-delivery'
+import { latestBurn, runClaimedTicketIds } from './runs'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
@@ -832,6 +846,256 @@ export async function burn(
     ...(opts.onlyTicketIds ? { ticketIds: opts.onlyTicketIds } : {}),
   })
   return { runId }
+}
+
+export { markHumanMessage, setWaiting } from './lead-status'
+
+/**
+ * Go (`the-feature-lead-runs-rounds` decision 8) — the human's one click that
+ * approves the plan. It moves planning → building and hands the feature to its
+ * lead, which dispatches round 1 itself; NO run starts here. Zero tickets is
+ * fine: the lead may do a small feature itself (decision 5).
+ *
+ * Go is the human's approval of round 1, so it stamps the last-human-message
+ * mark too — otherwise an Ask-mode feature could never dispatch its first round.
+ */
+export async function go(ctx: AppCtx, featureId: string): Promise<{ warnings: string[] }> {
+  const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
+  if (feature.phase !== 'planning') {
+    throw new GateError(`Go approves a plan — \`${feature.slug}\` is already past planning (${feature.phase})`)
+  }
+  const warnings = goWarnings(ctx, featureId)
+  ctx.db
+    .update(features)
+    .set({ lastHumanMessageAt: Date.now(), waitingReason: null })
+    .where(eq(features.id, featureId))
+    .run()
+  const building = setPhase(ctx, featureId, 'building', 'feature.go', 'Go given — the agent builds from here')
+  await deliverToLead(ctx, building, {
+    text:
+      '[runcastle] Go given — the human approved the plan. Dispatch round 1 with ' +
+      'dispatch_round({ seqs }), or do it yourself if it is small.',
+    source: 'runcastle',
+  })
+  return { warnings }
+}
+
+/**
+ * Dispatch a round (decision 13): one ticket-burner run over exactly the named
+ * tickets; every other pending ticket waits for a later round. The engine
+ * underneath is the burn's, unchanged.
+ *
+ * The only hard refusals, each saying why: the feature is still in planning (no
+ * Go yet), a round is already running, a drive of this feature holds the drive
+ * slot (decision 19), Ask mode with no human message since the last dispatch
+ * (decision 15), or a seq that is unknown or has nothing left to burn. A named
+ * `failed` ticket is reset to `pending` first, as the burn's restart does.
+ */
+export async function dispatchRound(
+  ctx: AppCtx,
+  featureId: string,
+  seqs: number[],
+): Promise<{ runId: string }> {
+  const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
+  if (feature.phase === 'planning') {
+    throw new GateError('the plan has no Go yet — the human approves it before any round is dispatched')
+  }
+  if (feature.phase === 'shipped') throw new GateError(`\`${feature.slug}\` has shipped — there is nothing left to dispatch`)
+  if (hasActiveRun(ctx, featureId)) {
+    throw new GateError('a round is already running — wait for it to return, or stop it with stop_round')
+  }
+  const project = projectForFeature(ctx, feature)
+  if (git.activeTestDriveFeatureId(project.id) === featureId) {
+    throw new GateError('the human is test-driving this feature — no round starts until the drive stops')
+  }
+  if (
+    resolveAutonomy(project, feature) === 'ask' &&
+    !((feature.lastHumanMessageAt ?? 0) > (feature.lastDispatchAt ?? 0))
+  ) {
+    throw new GateError(
+      'this feature is in "Ask before each round" — propose the round to the human and wait for ' +
+        'their reply before dispatching it',
+    )
+  }
+  if (seqs.length === 0) throw new InvalidInputError('name at least one ticket seq to dispatch')
+
+  // No run is live (refused above), so a `burning` row is an orphan of a dead run.
+  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
+  const bySeq = new Map(listByFeature(ctx, featureId).map((t) => [t.seq, t]))
+  const named = [...new Set(seqs)].map((seq) => {
+    const ticket = bySeq.get(seq)
+    if (!ticket) throw new GateError(`ticket ${seq} does not exist on this feature`)
+    if (ticket.status !== 'pending' && ticket.status !== 'failed') {
+      throw new GateError(`ticket ${seq} is ${ticket.status} — only pending (or failed) tickets can be dispatched`)
+    }
+    return ticket
+  })
+  for (const t of named) {
+    // Keep `attemptBranch`/`conflictFiles` so the retry resumes, as burn()'s restart does.
+    if (t.status === 'failed') updateTicket(ctx, t.id, { status: 'pending', error: null })
+  }
+
+  const { runId } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: named.map((t) => t.id) })
+  ctx.db
+    .update(features)
+    .set({ lastDispatchAt: Date.now(), waitingReason: null })
+    .where(eq(features.id, featureId))
+    .run()
+  emit(ctx, featureId, {
+    type: 'round.dispatched',
+    message: `round dispatched over ${named.map((t) => `#${t.seq}`).join(', ')}`,
+    runId,
+    data: { seqs: named.map((t) => t.seq) },
+  })
+  return { runId }
+}
+
+/** The feature's running round, or a refusal saying there is none. */
+function requireRunningRound(ctx: AppCtx, featureId: string): Run {
+  const run = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
+  if (!run) throw new GateError('no round is running')
+  return run
+}
+
+/**
+ * Stop the running round (decision 15): its agents are killed and the run reads
+ * cancelled; work that already landed stays on the feature branch.
+ */
+export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId: string; confirmed: boolean }> {
+  const run = requireRunningRound(ctx, featureId)
+  const { confirmed } = await cancelRun(run.id)
+  emit(ctx, featureId, {
+    type: 'round.stopped',
+    message: confirmed ? 'round stopped' : 'round stopped — an agent of it may still be running',
+    runId: run.id,
+    data: { confirmed },
+  })
+  return { runId: run.id, confirmed }
+}
+
+/**
+ * The human's Stop (decision 15): stop the running round if there is one, flip
+ * the feature to "Ask before each round" so nothing new is dispatched until the
+ * human replies, and tell the lead.
+ */
+export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
+  const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
+  const stopped = hasActiveRun(ctx, featureId) ? await stopRound(ctx, featureId) : null
+  ctx.db.update(features).set({ autonomy: 'ask' }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: 'feature.stopped',
+    message: stopped ? 'stopped by the human — round cancelled, autonomy set to ask' : 'stopped by the human — autonomy set to ask',
+    data: { runId: stopped?.runId ?? null, autonomy: 'ask' },
+  })
+  const updated = getFeatureRow(ctx, featureId)
+  await deliverToLead(ctx, updated, {
+    text:
+      `[runcastle] The human pressed Stop${stopped ? ' — the running round was cancelled; landed work stays' : ''}. ` +
+      'The feature is now "Ask before each round": dispatch nothing until the human replies.',
+    source: 'runcastle',
+  })
+  return updated
+}
+
+/** Set (`null`: clear) the feature's autonomy override; it then resolves feature ?? project ?? default. */
+export function setAutonomy(ctx: AppCtx, featureId: string, autonomy: Autonomy | null): Feature {
+  getFeatureRow(ctx, featureId)
+  ctx.db.update(features).set({ autonomy }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: 'feature.autonomy_set',
+    message: autonomy ? `autonomy set to ${autonomy}` : 'autonomy override cleared — the project default applies',
+    data: { autonomy },
+  })
+  return getFeatureRow(ctx, featureId)
+}
+
+/** The feature's ready declarations, oldest first. */
+export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDeclaration[] {
+  return ctx.db
+    .select()
+    .from(readyDeclarations)
+    .where(eq(readyDeclarations.featureId, featureId))
+    .orderBy(asc(readyDeclarations.createdAt), asc(readyDeclarations.id))
+    .all()
+}
+
+/**
+ * The lead declares the feature ready for the human (decision 9): the record
+ * goes on the trail, and the first declaration moves building → review — later
+ * ones leave review as it is, since states only move forward. A declaration,
+ * never a gate: what the human should hear about comes back as warnings the
+ * lead must relay.
+ */
+export function declareReady(
+  ctx: AppCtx,
+  featureId: string,
+  input: { scenario: string; whatToTest: string },
+): { declaration: ReadyDeclaration; warnings: string[] } {
+  const feature = getFeatureRow(ctx, featureId)
+  requireNotDraft(feature)
+  if (feature.phase === 'planning') throw new GateError('the plan has no Go yet — there is nothing to drive')
+  if (feature.phase === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
+  const scenario = input.scenario.trim()
+  const whatToTest = input.whatToTest.trim()
+  if (!scenario || !whatToTest) throw new InvalidInputError('a ready declaration needs a scenario and what to test')
+
+  const lastRound = latestBurn(ctx, featureId)
+  const declaration = ctx.db
+    .insert(readyDeclarations)
+    .values({
+      id: newId('ready'),
+      featureId,
+      runId: lastRound?.id ?? null,
+      scenario,
+      whatToTest,
+      createdAt: Date.now(),
+    })
+    .returning()
+    .get()
+  if (feature.phase === 'building') {
+    setPhase(ctx, featureId, 'review', 'phase.advanced', 'the agent declared it ready for you')
+  }
+  ctx.db.update(features).set({ waitingReason: null }).where(eq(features.id, featureId)).run()
+
+  const warnings = readyWarnings(ctx, featureId, lastRound)
+  emit(ctx, featureId, {
+    type: 'feature.ready_declared',
+    message: `ready for you · test drive ▸ ${scenario}`,
+    data: { declarationId: declaration.id, runId: declaration.runId, scenario, warnings },
+  })
+  return { declaration, warnings }
+}
+
+/**
+ * What the lead must tell the human alongside "Ready for you": a last round
+ * that did not come back clean, and work no review has looked at since it
+ * landed (decision 10 — the review is the lead's tool, so its absence is said
+ * out loud rather than refused).
+ */
+function readyWarnings(ctx: AppCtx, featureId: string, lastRound: Run | undefined): string[] {
+  const warnings: string[] = []
+  const tickets = listByFeature(ctx, featureId)
+  if (lastRound) {
+    const held = new Set(runClaimedTicketIds(ctx, lastRound.id))
+    if (lastRound.status !== 'succeeded' || tickets.some((t) => held.has(t.id) && t.status === 'failed')) {
+      warnings.push('the last round had failures — tell the human what failed before they drive it.')
+    }
+  }
+  const lastChange = Math.max(
+    0,
+    ...tickets.filter((t) => t.kind === 'implementation' && t.status === 'done').map((t) => t.completedAt ?? 0),
+  )
+  const lastReview = Math.max(
+    0,
+    ...tickets.filter((t) => t.kind === 'review' && t.status === 'done').map((t) => t.completedAt ?? 0),
+  )
+  if (lastChange > 0 && lastReview < lastChange) {
+    warnings.push('nothing has reviewed the work since the last change — say so, or run a round with a review ticket first.')
+  }
+  return warnings
 }
 
 /**

@@ -340,7 +340,7 @@ export function useLiveSync(): LiveStatus {
       // three sentences is about tickets, findings or a doc an agent is moving
       // WHILE the human reads them, and a warning that outlives the thing it
       // warns about is worse than none.
-      void u.feature.burnWarnings.invalidate()
+      void u.feature.goWarnings.invalidate()
       void u.project.prepSession.invalidate()
       void u.project.projectSession.invalidate()
       // The review agent's walkthrough appears mid-burn, at the tail of a run

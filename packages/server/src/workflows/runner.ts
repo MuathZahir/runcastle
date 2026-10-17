@@ -1,12 +1,16 @@
-import type { RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
-import { newId } from '@runcastle/core'
-import { eq } from 'drizzle-orm'
+import type { Feature, Project, ReviewGateRun, RunStatus, Ticket, WorkflowCtx } from '@runcastle/core'
+import { newId, resolvePreparedSettings } from '@runcastle/core'
+import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { runs } from '../db/schema'
+import { events, runs } from '../db/schema'
 import { NotFoundError } from '../errors'
 import { parkTalkWorktreeForRun, releaseTalkWorktreeAfterRun } from '../services/chat-branch'
 import { emit } from '../services/events'
-import { getFeatureRow, projectForFeature, setPhase } from '../services/repo'
+import { headSha } from '../services/git'
+import { composeRoundWake, deliverToLead } from '../services/lead-delivery'
+import { setWaiting } from '../services/lead-status'
+import { getFeatureRow, getRunRow, projectForFeature } from '../services/repo'
+import { roundGatesOf } from '../services/runs'
 import { listByFeature as listFindingsByFeature, markFixProgress } from '../services/review-findings'
 import { listByFeature, storeTickets, sweepOrphanedBurning, updateTicket } from '../services/tickets'
 import type { KillOutcome } from './kill-registry'
@@ -17,8 +21,10 @@ import { getWorkflow } from './registry'
  * Workflow runner (SPEC §3, task item 6). `startRun` creates the run row, wires
  * a `WorkflowCtx` to live services (emitEvent→events, updateTicket→tickets,
  * signal from a per-run AbortController), invokes the registered `WorkflowDef`,
- * catches, and finalizes the run row + a `run.finished` event. On a succeeded
- * run it auto-advances a `building` feature to `review`.
+ * catches, and finalizes the run row + a `run.finished` event. A branch-claiming
+ * run is a round: once finalized, its verify gates run against the branch tip
+ * and the feature's lead is woken with what came back. Nothing auto-advances —
+ * the lead declares the feature ready.
  *
  * The workflow itself runs in the background (AFK); `startRun` returns as soon
  * as the run row exists. `done` resolves when the run finalizes — the tRPC
@@ -78,7 +84,21 @@ export interface StartRunOptions {
    * review's own fix tickets) are never hidden and still join it.
    */
   ticketIds?: string[]
+  /**
+   * The round-end gate run (decision 10). The sandbox is a system boundary, so
+   * only seam-level tests override it; unset runs the project's verify commands
+   * against the feature branch tip in a burn-style sandbox.
+   */
+  roundGates?: RoundGateRunner
 }
+
+/** Run the project's verify commands for one finished round. Never throws for a broken environment. */
+export type RoundGateRunner = (input: {
+  ctx: AppCtx
+  project: Project
+  feature: Feature
+  runId: string
+}) => Promise<ReviewGateRun>
 
 export async function startRun(
   ctx: AppCtx,
@@ -176,12 +196,103 @@ export async function startRun(
     signal: controller.signal,
   }
 
-  const done = executeRun(ctx, runId, featureId, workflowId, def.run(wctx), controller, async () => {
-    // The chat's last landing, then the feature branch back where it expects it.
-    if (claimsBranch) await releaseTalkWorktreeAfterRun(ctx, project, feature)
-  })
+  const done = executeRun(
+    ctx,
+    runId,
+    featureId,
+    workflowId,
+    def.run(wctx),
+    controller,
+    async () => {
+      // The chat's last landing, then the feature branch back where it expects it.
+      if (claimsBranch) await releaseTalkWorktreeAfterRun(ctx, project, feature)
+    },
+    // A branch-claiming run is a round: its end runs the gates and wakes the lead.
+    claimsBranch ? () => endRound(ctx, runId, featureId, opts.roundGates ?? branchRoundGates) : undefined,
+  )
   return { runId, done }
 }
+
+/**
+ * The default {@link RoundGateRunner}: the project's verify commands against
+ * the feature branch's tip, through the review pass's own gate runner.
+ */
+const branchRoundGates: RoundGateRunner = async ({ ctx, project, feature, runId }) => {
+  // Loaded lazily for the reason review-ticket.ts gives: review-gates imports
+  // ticket-burner, whose module graph reaches back here.
+  const { parseVerifyCommands, runReviewGates } = await import('./review-gates')
+  if (parseVerifyCommands(resolvePreparedSettings(ctx.config, project).verifyCommands).length === 0) {
+    return { status: 'none_configured' }
+  }
+  const sha = await headSha(project.repoPath, feature.branch)
+  if (!sha) {
+    return { status: 'couldnt_run', commit: '', reason: `\`${feature.branch}\` did not resolve to a commit`, log: null }
+  }
+  // The gate logs and throwaway branch are keyed by the run, as a review's are by its ticket.
+  return runReviewGates({ config: ctx.config, project, ticketId: runId, sha })
+}
+
+/** A run halt (`run.halted`) the burner recorded for this run, if any — the account said no. */
+function runHaltHeadline(ctx: AppCtx, featureId: string, runId: string): string | undefined {
+  const halt = ctx.db
+    .select({ message: events.message })
+    .from(events)
+    .where(and(eq(events.featureId, featureId), eq(events.runId, runId), eq(events.type, 'run.halted')))
+    .get()
+  return halt?.message
+}
+
+/**
+ * A round has returned (decisions 9, 10, 12, 15): run the verify gates against
+ * the branch tip and record them on the run, then wake the lead with the one
+ * composed message — unless Stop cancelled the round (Stop tells the lead
+ * itself), or the provider halted it, which would only halt the lead too: the
+ * feature waits for the human instead.
+ */
+async function endRound(
+  ctx: AppCtx,
+  runId: string,
+  featureId: string,
+  runGates: RoundGateRunner,
+): Promise<void> {
+  const feature = getFeatureRow(ctx, featureId)
+  const project = projectForFeature(ctx, feature)
+  let gates: ReviewGateRun
+  try {
+    gates = await runGates({ ctx, project, feature, runId })
+  } catch (err) {
+    gates = {
+      status: 'couldnt_run',
+      commit: '',
+      reason: `the gate run failed: ${err instanceof Error ? err.message : String(err)}`,
+      log: null,
+    }
+  }
+  ctx.db.update(runs).set({ gates }).where(eq(runs.id, runId)).run()
+  const result = roundGatesOf(gates)
+  emit(ctx, featureId, {
+    type: 'round.gates',
+    message: !result
+      ? 'round gates: no verify commands configured'
+      : result.ok
+        ? 'round gates passed'
+        : `round gates failed: ${result.failed.join(', ')}`,
+    runId,
+    data: result ?? { ok: null, failed: [] },
+  })
+
+  const run = getRunRow(ctx, runId)
+  if (run.status === 'cancelled') return
+  const halt = runHaltHeadline(ctx, featureId, runId)
+  if (halt) {
+    setWaiting(ctx, featureId, PROVIDER_LIMIT.test(halt) ? 'provider limit' : halt)
+    return
+  }
+  await deliverToLead(ctx, feature, { text: composeRoundWake(ctx, featureId, runId), source: 'runcastle' })
+}
+
+/** A run halt that is the provider's limit or balance rather than lapsed credentials. */
+const PROVIDER_LIMIT = /usage limit|rate limit|quota|credit balance|billing/i
 
 /**
  * Cancel an in-flight run: abort its signal, then kill every agent it has
@@ -208,6 +319,7 @@ async function executeRun(
   runPromise: Promise<{ status: 'succeeded' | 'failed'; summary: string; digest?: string }>,
   controller: AbortController,
   cleanup?: () => Promise<void>,
+  endOfRound?: () => Promise<void>,
 ): Promise<void> {
   let status: RunStatus = 'failed'
   let summary = 'run failed'
@@ -265,7 +377,8 @@ async function executeRun(
     data: { status, summary },
   })
 
-  if (status === 'succeeded') maybeAutoAdvance(ctx, featureId)
+  // No building → review advance here (decision 9): the lead declares the
+  // feature ready, because a round succeeding is not the same as worth driving.
 
   if (cleanup) {
     try {
@@ -274,11 +387,15 @@ async function executeRun(
       // best-effort talk-worktree reattach — never fail a finalized run on it
     }
   }
-}
-
-/** A successful burn reaches review unless the feature was already shipped. */
-function maybeAutoAdvance(ctx: AppCtx, featureId: string): void {
-  const feature = getFeatureRow(ctx, featureId)
-  if (feature.phase !== 'building') return
-  setPhase(ctx, featureId, 'review', 'phase.advanced', 'auto-advanced to review after successful run')
+  if (endOfRound) {
+    try {
+      await endOfRound()
+    } catch (err) {
+      emit(ctx, featureId, {
+        type: 'round.end_failed',
+        message: `round end failed: ${err instanceof Error ? err.message : String(err)}`,
+        runId,
+      })
+    }
+  }
 }

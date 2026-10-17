@@ -8,6 +8,8 @@ import type {
   SettingsView,
 } from '@runcastle/core'
 import {
+  Autonomy,
+  DEFAULT_AUTONOMY,
   MODEL_STEPS,
   ModelEntry,
   DEFAULT_DOCS_COMMIT_PREFIX,
@@ -63,6 +65,7 @@ type ProjectColumn =
   | 'driveInstructions'
   | 'docsCommitPrefix'
   | 'orchestrator'
+  | 'autonomy'
 
 /** A project override column's value: text for most, a boolean for the switches; null inherits. */
 type ProjectOverride = string | boolean | null
@@ -295,6 +298,17 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: idEnv,
     defaultValue: false,
   },
+  // Project-only (no global twin, no env var): how far a feature's lead goes on
+  // its own (`the-feature-lead-runs-rounds` decision 1). Each feature may
+  // override it; resolution is feature ?? project ?? this default.
+  {
+    key: 'autonomy',
+    projectColumn: 'autonomy',
+    restartRequired: false,
+    valueSchema: Autonomy,
+    parseEnv: idEnv,
+    defaultValue: DEFAULT_AUTONOMY,
+  },
 ]
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
@@ -380,6 +394,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       driveInstructions: projects.driveInstructions,
       docsCommitPrefix: projects.docsCommitPrefix,
       orchestrator: projects.orchestrator,
+      autonomy: projects.autonomy,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -399,6 +414,7 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     driveInstructions: row?.driveInstructions ?? null,
     docsCommitPrefix: row?.docsCommitPrefix ?? null,
     orchestrator: row?.orchestrator ?? null,
+    autonomy: row?.autonomy ?? null,
   }
 }
 

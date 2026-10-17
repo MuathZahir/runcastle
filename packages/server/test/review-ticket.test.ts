@@ -28,6 +28,7 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { emit, listAfter } from '../src/services/events'
+import { burn } from '../src/services/features'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
   AUTO_FIX_CAP,
@@ -1885,7 +1886,7 @@ describe('a run containing a review ticket still lands the feature in review', (
     else workflowRegistry.delete('ticket-burner')
   })
 
-  it('auto-advances on G4 and keeps the review digest in the run digest', async () => {
+  it('stays in building after the run and keeps the review digest in the run digest', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
@@ -1900,12 +1901,12 @@ describe('a run containing a review ticket still lands the feature in review', (
       },
     ])
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    expect(getFeatureRow(ctx, featureId).phase).toBe('review')
+    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
     // A review ticket lands `done` with no commits — its deliverable is notes.
     const reviewTicket = listByFeature(ctx, featureId).find((t) => t.kind === 'review')
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
@@ -1922,8 +1923,8 @@ describe('a run containing a review ticket still lands the feature in review', (
     // is exactly the state the verification mint exists to catch, so the human
     // who waived the gate still gets the landed work looked at.
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
 
@@ -2014,8 +2015,8 @@ describe('the burner mints its verification pass into a lap that already has a r
       },
     ])
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
 
