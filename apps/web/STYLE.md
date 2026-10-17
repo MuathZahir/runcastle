@@ -290,6 +290,7 @@ import a module directly, and removing the barrel is a later cleanup.
 | `sidebar.ts` | Feature rows: needs-me, row chips, ticket progress, sort, triage lanes and their caps. |
 | `gates.ts` | Gates and what blocks them: merge/ticket conflict kickoffs, overrides, check-in and kickoff trouble, session activity. |
 | `drive.ts` | Test drive: the open-app URL and its wait state, drive failures, the drive wheel, the review drive's dirty-tree denial. |
+| `scenarios.ts` | Drive scenarios: the picker's and Scenario menu's sections and default, the panel's target per landing, a failed scenario's headline. Not in the barrel. |
 | `review.ts` | Review figures — run/commit/review rows, `CheckRow`/`CheckTone`, outcome, finding counts and reasons. |
 | `laps.ts` | Lap grouping: lap accounts, `groupByLap`, ticket model chips, lap aborts. |
 | `timeline.ts` | A lap's timeline nodes in lap order: burns (work, then fixes) and review/verification passes. |

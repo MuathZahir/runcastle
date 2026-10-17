@@ -75,7 +75,9 @@ export function ScenarioDrive({
   const scenario = drive.scenario
   const blank = !!scenario?.landingId && scenario.landingId === blankOver
   const target = blank ? { url: drive.devUrl, key: 'plain' } : scenarioTarget(drive.devUrl, scenario)
-  const sessionId = drive.scenarioSessionId ?? opened
+  // This browser's own open is the newest; the drive's id covers a chat opened
+  // elsewhere, or before a reload.
+  const sessionId = opened && !ended.includes(opened) ? opened : drive.scenarioSessionId
   const docked = !!sessionId && sessionId !== hidden && !ended.includes(sessionId)
 
   const pick = (file: string | null) => {
