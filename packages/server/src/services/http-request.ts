@@ -73,6 +73,15 @@ export function parseHttpRequest(text: string): ParseHttpRequestResult {
 }
 
 /**
+ * `new URL` percent-encodes `{`, `}` and spaces in a path, which would hide an
+ * unfilled `{{foo}}` as `%7B%7Bfoo%7D%7D`; put each such placeholder back as
+ * written so the human sees it.
+ */
+const ENCODED_PLACEHOLDER = /%7B%7B((?:%20)*\w+(?:%20)*)%7D%7D/gi
+const unencodePlaceholders = (url: string): string =>
+  url.replace(ENCODED_PLACEHOLDER, (_whole, inner: string) => `{{${inner.replace(/%20/g, ' ')}}}`)
+
+/**
  * Fill `{{token}}` and `{{run}}` (whitespace inside the braces allowed) in the
  * target, header values and body, and resolve the target against the drive
  * URL. An unknown placeholder, or `{{token}}` with no token, stays verbatim.
@@ -90,7 +99,7 @@ export function fillHttpRequest(
   const body = tpl.body === undefined ? undefined : fill(tpl.body)
   return {
     method: tpl.method,
-    url: new URL(fill(tpl.target), values.driveUrl).toString(),
+    url: unencodePlaceholders(new URL(fill(tpl.target), values.driveUrl).toString()),
     headers: tpl.headers.map(([name, value]) => [name, fill(value)]),
     ...(body !== undefined ? { body } : {}),
   }
