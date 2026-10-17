@@ -171,7 +171,7 @@ describe('the review agent wires', () => {
     const stop = await drive('stop')
     expect(stop).toMatchObject({ ok: true, drive: null })
     expect(await currentBranch()).toBe('main')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   it('refuses to drive a pass whose drive the host withheld, naming why', async () => {
@@ -188,7 +188,7 @@ describe('the review agent wires', () => {
         drive: null,
       })
       expect(await currentBranch()).toBe('main')
-      expect(activeDriveInfo()).toBeNull()
+      expect(activeDriveInfo(project.id)).toBeNull()
     } finally {
       reopen()
     }
@@ -201,11 +201,11 @@ describe('the review agent wires', () => {
   it('tells the wire the UI polls that a review agent — not a human — is driving', async () => {
     await drive('start')
 
-    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo()
+    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: project.id })
     expect(driveInfo).toMatchObject({ featureId: feature.id, purpose: 'review' })
 
     await drive('stop')
-    expect(await createCallerFactory(appRouter)(ctx).feature.driveInfo()).toBeNull()
+    expect(await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: project.id })).toBeNull()
   })
 
   it('reports a structured finding under the burning review ticket', () => {
@@ -260,7 +260,7 @@ describe('the review agent wires', () => {
       dirtyFiles: ['scratch.txt'],
     })
     expect(await currentBranch()).toBe('main')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   it('says so on the timeline the moment a dirty tree refuses the review drive', async () => {
@@ -322,7 +322,7 @@ describe('the review agent wires', () => {
     // No run yet — the human started their drive the ordinary way.
     ctx.db.delete(runs).run()
     expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
-    const held = activeDriveInfo()
+    const held = activeDriveInfo(project.id)
 
     const start = await drive('start', seedRun('running').id)
 
@@ -331,7 +331,7 @@ describe('the review agent wires', () => {
       deniedReason: 'A test drive is already active — stop it first',
     })
     // Fail fast means the human's drive is exactly as it was, right now.
-    expect(activeDriveInfo()).toEqual(held)
+    expect(activeDriveInfo(project.id)).toEqual(held)
 
     await testDrive(ctx, project, feature, 'stop')
   })
@@ -350,7 +350,7 @@ describe('the review agent wires', () => {
       deniedReason: 'No review drive is in progress for this feature',
     })
     // The human's drive is still up — the refusal cost them nothing.
-    expect(activeDriveInfo()).toMatchObject({ featureId: feature.id })
+    expect(activeDriveInfo(project.id)).toMatchObject({ featureId: feature.id })
 
     await testDrive(ctx, project, feature, 'stop')
   })
@@ -362,7 +362,7 @@ describe('the review agent wires', () => {
 
     expect(stop.ok).toBe(true)
     expect(await currentBranch()).toBe('main')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
     expect(events().map((e) => e.type)).toContain('testdrive.stopped')
   })
 
@@ -407,7 +407,7 @@ describe('the review agent wires', () => {
     )
     expect(() => toolAddTestNote(ctx, { session }, { text: 'nope' })).toThrow(GateError)
 
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
     expect(listNotes(ctx, feature.id)).toEqual([])
   })
 
@@ -418,7 +418,7 @@ describe('the review agent wires', () => {
       /no run identity/,
     )
     expect(() => toolAddTestNote(ctx, { runId: finished.id }, { text: 'nope' })).toThrow(GateError)
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   // --- the notes wire -------------------------------------------------------

@@ -160,7 +160,9 @@ export const featureRouter = router({
 
   // Active test-drive info for the review-phase dev pane + Open app link. Polled
   // at 1.5s so the async-sniffed localhost URL surfaces once the dev server boots.
-  driveInfo: publicProcedure.query(() => git.activeDriveInfo()),
+  driveInfo: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ input }) => git.activeDriveInfo(input.projectId)),
 
   // How many commits the branch actually carries over its merge target, for the
   // review summary and the merge confirmation (findings F23). Its own query

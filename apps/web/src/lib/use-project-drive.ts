@@ -4,7 +4,7 @@ import { useLivePoll } from './live'
 import { isThisProjectDrive } from './project-drive'
 import { useToast } from './toast'
 
-/** Whatever holds the one drive slot, as `feature.driveInfo` reports it. */
+/** Whatever holds this project's drive slot, as `feature.driveInfo` reports it. */
 export type SlotDrive = NonNullable<RouterOutputs['feature']['driveInfo']>
 
 /**
@@ -13,7 +13,7 @@ export type SlotDrive = NonNullable<RouterOutputs['feature']['driveInfo']>
  * start/stop mutation.
  */
 export interface ProjectDriveApi {
-  /** Whatever holds the slot — this project's drive or any other. */
+  /** Whatever holds this project's slot — its project drive or any other kind. */
   slot: SlotDrive | null
   /** This project's live drive, or null. */
   drive: SlotDrive | null
@@ -27,7 +27,7 @@ export interface ProjectDriveApi {
 export function useProjectDrive(projectId: string): ProjectDriveApi {
   const utils = trpc.useUtils()
   const toast = useToast()
-  const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  const driveQ = trpc.feature.driveInfo.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const testDrive = trpc.project.testDrive.useMutation({
     onSuccess: () => void utils.feature.driveInfo.invalidate(),
     onError: (e) => toast.push(e.message),

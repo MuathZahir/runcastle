@@ -269,14 +269,17 @@ export function Workspace({
   // Before recommending a test drive the bar has to know what the drive is about
   // to depend on that nothing has ever proven (decision 7) — that lives on the
   // project's findings, same query key the preparation surfaces poll. And a
-  // preparation dry run holds the one drive slot (decision 9), which only the
+  // preparation dry run holds this project's drive slot (decision 9), which only the
   // server's drive info knows; ReviewBody polls the same key, so this is one fetch.
   const projectId = q.data?.feature.projectId
   const prepQ = trpc.project.prep.useQuery(
     { projectId: projectId ?? '' },
     { enabled: !!projectId, refetchInterval: useLivePoll() },
   )
-  const driveQ = trpc.feature.driveInfo.useQuery(undefined, { refetchInterval: useLivePoll() })
+  const driveQ = trpc.feature.driveInfo.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId, refetchInterval: useLivePoll() },
+  )
   // How long tickets have actually been taking in THIS project, for the pre-burn
   // bar's time expectation (decision #16b). History, so it does not poll — a
   // median over every ticket the project has ever finished cannot move within a
@@ -582,7 +585,7 @@ export function Workspace({
     driveState: driveQ.data?.featureId === feature.id ? driveQ.data.state : 'idle',
     conflict,
     unverifiedDriveKeys: unverifiedDriveKeys((prepQ.data as PrepView | undefined)?.findings ?? []),
-    // Whoever else holds the one drive slot, named as the server names it.
+    // Whoever else holds this project's drive slot, named as the server names it.
     ...(driveQ.data && driveQ.data.featureId !== feature.id
       ? { slotHolder: driveQ.data.holderLabel }
       : {}),
@@ -1130,8 +1133,8 @@ export function Workspace({
             openNotes,
             // A project drive of this project serves from the checkout the
             // merge commits in, so the server stops it first (decision 6).
-            ...(driveQ.data?.projectDrive && driveQ.data.projectId === feature.projectId
-              ? { projectDrive: { holderLabel: driveQ.data.holderLabel } }
+            ...(driveQ.data?.projectDrive
+              ?{ projectDrive: { holderLabel: driveQ.data.holderLabel } }
               : {}),
             freshness: reviewFreshness,
             conflict,

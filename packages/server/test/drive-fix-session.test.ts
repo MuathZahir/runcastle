@@ -257,7 +257,7 @@ describe('retry_drive', () => {
     })
     project = getProjectById(ctx, project.id) as Project
     await testDrive(ctx, project, feature, 'start')
-    expect(activeDriveInfo()?.hookFailure).toBeDefined()
+    expect(activeDriveInfo(project.id)?.hookFailure).toBeDefined()
 
     const retry = await toolRetryDrive(ctx, session('drive-fix'))
 

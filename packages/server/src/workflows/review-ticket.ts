@@ -704,14 +704,14 @@ export function shouldStopAfterDigest(
  * Give the drive slot back, whatever happened. The agent is told to stop what it
  * started, but an agent that crashed — or that ended its turn holding the slot —
  * would otherwise leave the human's checkout parked on the feature branch with a
- * dev server running and the machine-wide slot taken.
+ * dev server running and the project's drive slot taken.
  *
  * Never fails the ticket: the review's outcome is what it is, and a teardown
  * that could not complete is the drive's problem to report, not this path's.
  */
-async function releaseDriveQuietly(): Promise<void> {
+async function releaseDriveQuietly(projectId: string): Promise<void> {
   try {
-    await releaseReviewDrive()
+    await releaseReviewDrive(projectId)
   } catch {
     /* best-effort — the ticket's outcome stands */
   }
@@ -945,7 +945,7 @@ async function reviewTicketOutcome(
     // Before the harvest below, so the review is never read off a machine the
     // drive still holds.
     if (deps.releaseDrive) await deps.releaseDrive()
-    else await releaseDriveQuietly()
+    else await releaseDriveQuietly(project.id)
   }
 
   const recorderNote = recorderConfirmed ? '' : '; recorder may still be running'

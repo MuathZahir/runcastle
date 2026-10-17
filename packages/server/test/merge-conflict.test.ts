@@ -237,13 +237,13 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
     const start = await testDrive(ctx, project, feature, 'start')
     expect(start.ok).toBe(true)
-    expect(activeTestDriveFeatureId()).toBe(feature.id)
+    expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
     expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
-    expect(activeTestDriveFeatureId()).toBeUndefined()
+    expect(activeTestDriveFeatureId(project.id)).toBeUndefined()
   }, 15_000)
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {

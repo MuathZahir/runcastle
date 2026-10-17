@@ -252,13 +252,13 @@ describe('the orchestrator’s acting tools', () => {
     const f = await owned('drivable')
 
     expect((await toolDrive(ctx, session, { slug: 'drivable', action: 'start' })).ok).toBe(true)
-    expect(activeTestDriveFeatureId()).toBe(f.id)
+    expect(activeTestDriveFeatureId(projectId)).toBe(f.id)
     expect(await toolDrive(ctx, session, { action: 'start' })).toMatchObject({
       ok: false,
       deniedReason: 'A test drive of feature/drivable is running — stop it first',
     })
     expect((await toolDrive(ctx, session, { slug: 'drivable', action: 'stop' })).ok).toBe(true)
-    expect(activeTestDriveFeatureId()).toBeUndefined()
+    expect(activeTestDriveFeatureId(projectId)).toBeUndefined()
 
     expect((await toolDrive(ctx, session, { action: 'start' })).ok).toBe(true)
     expect((await toolDrive(ctx, session, { action: 'stop' })).ok).toBe(true)

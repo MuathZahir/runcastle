@@ -13,6 +13,8 @@ Write the real thing in **whatever language this host actually runs**, which the
 
 The one thing that must NOT change when you translate: the contract (identity in via `RUNCASTLE_*`, computed values out via `.runcastle/drive.env`, unconditional idempotence, exit 0 means up).
 
+`RUNCASTLE_ID` is unique within a project only — every project's dry run is `prep_dry_run` and every project drive is `project_drive`, and two projects can drive at once — so anything shared across projects (a local Redis, a schema in a shared database) is named with the app prefix, `myapp_$RUNCASTLE_ID`, never the bare id.
+
 ## Postgres, one database per drive
 
 Name the database from `RUNCASTLE_ID`, create it if it is not there, migrate, and hand the URL back:
@@ -42,13 +44,13 @@ The compose file maps `"${PG_PORT}:5432"`. Stop is `docker compose down -v`, whi
 
 ## Redis
 
-Do not run a second server. Take a logical database index or a key prefix derived in-script from `RUNCASTLE_ID` — a small hash into 1..15 for the index — and leave db 0 to the human, whose own work is already in it. Write `REDIS_URL=redis://localhost:6379/7` or `REDIS_PREFIX=$RUNCASTLE_ID:` out, and have stop flush only that index or prefix.
+Do not run a second server. Take a logical database index or a key prefix derived in-script from `myapp_$RUNCASTLE_ID` — a small hash into 1..15 for the index — and leave db 0 to the human, whose own work is already in it. Derive from the prefixed name, not the bare id: two projects' drives can share an id, and stop must flush only its own. Write `REDIS_URL=redis://localhost:6379/7` or `REDIS_PREFIX=myapp_$RUNCASTLE_ID:` out, and have stop flush only that index or prefix.
 
 ## Hosted databases
 
 Where the vendor has branches (Neon and its kin), setup creates one named for `RUNCASTLE_ID` with the vendor CLI and writes the connection string it prints to `drive.env`; stop deletes that branch.
 
-Where the role has no CREATEDB grant, take a schema per drive instead — `CREATE SCHEMA IF NOT EXISTS "$RUNCASTLE_ID"` plus a URL with the search path pinned to it, and `DROP SCHEMA ... CASCADE` at stop.
+Where the role has no CREATEDB grant, take a schema per drive instead — `CREATE SCHEMA IF NOT EXISTS "myapp_$RUNCASTLE_ID"` plus a URL with the search path pinned to it, and `DROP SCHEMA ... CASCADE` at stop.
 
 Ask the human which they have: it is their bill and their production neighbour.
 

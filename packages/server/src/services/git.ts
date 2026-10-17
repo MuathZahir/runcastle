@@ -98,7 +98,7 @@ export interface DriveInfo {
   featureId?: string
   /**
    * True for a preparation dry-run drive (decision 9). It holds the same
-   * singleton slot as a real test drive, so the UI shows it as the active drive
+   * per-project slot as a real test drive, so the UI shows it as the active drive
    * with a working Stop — `dryRun` with no `featureId` is how it is told apart.
    */
   dryRun?: boolean
@@ -2095,10 +2095,10 @@ export async function driveBlockingPaths(repoPath: string, docsCommitPrefix?: st
 
 // --- test drive -------------------------------------------------------------
 
-/** Module-level in-memory drive state (SPEC §7). At most one active, of any
- *  kind — a preparation dry run, a feature test drive and a project drive all
- *  collide over the same repo, ports, dev pane and database server, so they
- *  share one slot (decision 9).
+/** Module-level in-memory drive state (SPEC §7). At most one active per project,
+ *  of any kind — inside a project a preparation dry run, a feature test drive
+ *  and a project drive all collide over the same repo, ports, dev pane and
+ *  database server, so they share that project's slot (decision 9, ADR-0014).
  *  `detachedWorktree` records the talk worktree we detached to free the feature
  *  branch for the main checkout, so `stop` reattaches exactly what it detached.
  *  `devPaneId`/`devUrl` track the embedded dev pane and its sniffed localhost URL. */
@@ -2172,10 +2172,22 @@ type DriveState =
  */
 type DevReadiness = 'starting' | 'ready' | 'timedOut'
 
-let testDriveState: DriveState | undefined
+/**
+ * The drive slots, one per project, keyed by project id. Inside a project the
+ * slot is single (decision 9 of preparation-proves-its-findings and of
+ * project-level-test-drive); across projects nothing is shared — their
+ * checkouts, dev panes and drive env files are all distinct (ADR-0014).
+ */
+const drives = new Map<string, DriveState>()
+
+/** The drive holding `projectId`'s slot, or `undefined` when it is free. */
+function driveOf(projectId: string): DriveState | undefined {
+  return drives.get(projectId)
+}
 
 /**
- * How to end the live review drive, remembered from the call that started it.
+ * How to end each project's live review drive, remembered from the call that
+ * started it, keyed by project id.
  *
  * The burner has to be able to release the slot on every exit path — an agent
  * that crashes holding the drive would otherwise leave the human's checkout
@@ -2185,7 +2197,7 @@ let testDriveState: DriveState | undefined
  * {@link releaseReviewDrive}. Cleared whenever the drive stops, by whoever
  * stopped it.
  */
-let reviewDriveRelease: (() => Promise<unknown>) | undefined
+const reviewDriveReleases = new Map<string, () => Promise<unknown>>()
 
 /**
  * The machinery's own account of a dry run, accumulated as it goes: the only
@@ -2200,12 +2212,14 @@ interface DryRunObservables {
   teardownOk?: boolean
 }
 
-/** Test-only: clear the in-memory test-drive state (not called by any router). */
+/** Test-only: clear every project's in-memory drive state (not called by any router). */
 export function __resetTestDriveState(): void {
-  testDriveState?.readyPoll?.abort()
-  void testDriveState?.setupJob?.kill()
-  testDriveState = undefined
-  reviewDriveRelease = undefined
+  for (const state of drives.values()) {
+    state.readyPoll?.abort()
+    void state.setupJob?.kill()
+  }
+  drives.clear()
+  reviewDriveReleases.clear()
 }
 
 /** Overridden only by the test hook below; `undefined` means the shipped timing. */
@@ -2221,17 +2235,21 @@ export function __setAppReadinessTiming(timing?: AppReadyTiming): void {
 }
 
 /**
- * Feature id of the currently-active test drive, or `undefined` when none is
+ * Feature id of the project's active test drive, or `undefined` when none is
  * active. The merge flow uses this to stop a drive of the SAME feature (which
  * holds the main checkout on the feature branch) before merging.
  */
-export function activeTestDriveFeatureId(): string | undefined {
-  return testDriveState?.kind === 'feature' ? testDriveState.featureId : undefined
+export function activeTestDriveFeatureId(projectId: string): string | undefined {
+  const state = driveOf(projectId)
+  return state?.kind === 'feature' ? state.featureId : undefined
 }
 
-/** The active drive's info for the UI (dev pane + Open app link), or null. */
-export function activeDriveInfo(): DriveInfo | null {
-  const state = testDriveState
+/**
+ * The project's active drive info for the UI (dev pane + Open app link), or
+ * null. Asked per project on purpose: no caller can see another project's drive.
+ */
+export function activeDriveInfo(projectId: string): DriveInfo | null {
+  const state = driveOf(projectId)
   if (!state) return null
   const info: DriveStateInput = {
     // What a feature drive has and a dry run does not: the feature it belongs
@@ -2289,8 +2307,9 @@ function slotHeldReason(state: DriveState): string {
 export function activeProjectDriveStamp(
   projectId: string,
 ): { driveBranch: string; driveCommit: string } | undefined {
-  if (testDriveState?.kind !== 'project' || testDriveState.projectId !== projectId) return undefined
-  return { driveBranch: testDriveState.branch, driveCommit: testDriveState.commit }
+  const state = driveOf(projectId)
+  if (state?.kind !== 'project') return undefined
+  return { driveBranch: state.branch, driveCommit: state.commit }
 }
 
 /**
@@ -2299,16 +2318,22 @@ export function activeProjectDriveStamp(
  * has stopped or moved to another feature. Emits `testdrive.url` for the timeline
  * and starts the readiness poll that eventually makes the link clickable.
  */
-export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): void {
-  if (testDriveState?.kind !== 'feature') return
-  if (testDriveState.featureId !== featureId || testDriveState.devUrl) return
-  testDriveState.devUrl = url
+export function recordDriveUrl(
+  ctx: AppCtx,
+  projectId: string,
+  featureId: string,
+  url: string,
+): void {
+  const state = driveOf(projectId)
+  if (state?.kind !== 'feature') return
+  if (state.featureId !== featureId || state.devUrl) return
+  state.devUrl = url
   emit(ctx, featureId, {
     type: 'testdrive.url',
     message: `dev server printed ${url} — waiting for it to answer`,
     data: { url },
   })
-  watchAppReadiness(ctx, { featureId }, url, 'testdrive')
+  watchAppReadiness(ctx, projectId, { featureId }, url, 'testdrive')
 }
 
 /**
@@ -2318,22 +2343,24 @@ export function recordDriveUrl(ctx: AppCtx, featureId: string, url: string): voi
  * dev server that takes a minute to compile costs the human nothing but a
  * "starting…" label. A poll that outlives its drive — stopped, or replaced by
  * another — reports nothing at all, which is what keeps a late answer from
- * landing on the timeline of a drive that has already gone.
+ * landing on the timeline of a drive that has already gone. Only `projectId`'s
+ * own slot is consulted, so another project's drives never silence it.
  */
 function watchAppReadiness(
   ctx: AppCtx,
+  projectId: string,
   scope: EmitScope,
   url: string,
   eventPrefix: 'testdrive' | 'prep.dryrun' | 'projectdrive',
 ): void {
-  const state = testDriveState
+  const state = driveOf(projectId)
   if (!state) return
   const poll = new AbortController()
   state.readyPoll = poll
   state.devReadiness = 'starting'
 
   void pollAppReady(url, { ...readinessTiming, signal: poll.signal }).then((outcome) => {
-    if (testDriveState !== state || outcome === 'cancelled') return
+    if (driveOf(projectId) !== state || outcome === 'cancelled') return
     state.readyPoll = undefined
     state.devReadiness = outcome === 'ready' ? 'ready' : 'timedOut'
     emitScoped(ctx, scope, {
@@ -2371,22 +2398,23 @@ export async function testDrive(
   const scope: EmitScope = { featureId: feature.id }
 
   if (action === 'stop') {
-    if (!testDriveState) return { ok: false, deniedReason: DENY_NONE_ACTIVE }
+    const held = driveOf(project.id)
+    if (!held) return { ok: false, deniedReason: DENY_NONE_ACTIVE }
     // The dry run holds the slot but has no branch to come back from, and only
     // `dryRunDrive` knows how to end it — stopping it from here would strand it.
     // A project drive is the same: only `projectDrive` ends it.
-    if (testDriveState.kind === 'project') {
-      return { ok: false, deniedReason: slotHeldReason(testDriveState) }
+    if (held.kind === 'project') {
+      return { ok: false, deniedReason: slotHeldReason(held) }
     }
-    if (testDriveState.kind !== 'feature') return { ok: false, deniedReason: DENY_DRY_RUN_ACTIVE }
-    const previousBranch = testDriveState.previousBranch
-    const detachedWorktree = testDriveState.detachedWorktree
-    const devPaneId = testDriveState.devPaneId
-    const stoppedPurpose = testDriveState.purpose
-    const setupJob = testDriveState.setupJob
+    if (held.kind !== 'feature') return { ok: false, deniedReason: DENY_DRY_RUN_ACTIVE }
+    const previousBranch = held.previousBranch
+    const detachedWorktree = held.detachedWorktree
+    const devPaneId = held.devPaneId
+    const stoppedPurpose = held.purpose
+    const setupJob = held.setupJob
     // Cancel any in-flight readiness poll: the app is about to stop answering,
     // and a timer still ticking against a dead drive is an orphan by definition.
-    testDriveState.readyPoll?.abort()
+    held.readyPoll?.abort()
     // Kill the whole dev-server process tree first so its port is freed with no
     // orphan (the drive owns the pane; its URL is cleared when state resets).
     if (devPaneId) await stopDevPane(devPaneId)
@@ -2423,10 +2451,10 @@ export async function testDrive(
     // The main checkout has released the feature branch — restore the talk
     // worktree to it (best-effort) so a resumed session picks up where it left.
     if (detachedWorktree) await reattachWorktree(detachedWorktree, branch)
-    testDriveState = undefined
+    drives.delete(project.id)
     // Whoever stopped it — the agent, the burner's finally, or the human's Stop
     // reclaiming the slot from a dead agent — there is nothing left to release.
-    reviewDriveRelease = undefined
+    reviewDriveReleases.delete(project.id)
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
       message:
@@ -2457,8 +2485,9 @@ export async function testDrive(
   // A project drive runs on the checkout as it is, uncommitted edits included —
   // so it is refused as the slot holder it is, before the dirty check would
   // blame the human's edits (non-retriable) or commit docs underneath it.
-  if (testDriveState?.kind === 'project') {
-    return deniedStart(slotHeldReason(testDriveState), 'slot_held')
+  const projectHeld = driveOf(project.id)
+  if (projectHeld?.kind === 'project') {
+    return deniedStart(slotHeldReason(projectHeld), 'slot_held')
   }
 
   // action === 'start' — deny checks in SPEC order: dirty | active | active-run.
@@ -2479,11 +2508,9 @@ export async function testDrive(
     }
     return deniedStart(DENY_DIRTY, 'dirty', dirtyFiles)
   }
-  if (testDriveState) {
-    return deniedStart(
-      testDriveState.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE,
-      'slot_held',
-    )
+  const held = driveOf(project.id)
+  if (held) {
+    return deniedStart(held.kind === 'dryRun' ? DENY_DRY_RUN_ACTIVE : DENY_ACTIVE, 'slot_held')
   }
   // The review carve-out (improve-workflow decision 4): a review ticket burns at
   // the tail of its own run, once every implementation ticket is terminal and
@@ -2509,7 +2536,7 @@ export async function testDrive(
 
   const previousBranch = (await g.revparse(['--abbrev-ref', 'HEAD'])).trim()
   await g.checkout(branch)
-  testDriveState = {
+  const driving: Extract<DriveState, { kind: 'feature' }> = {
     kind: 'feature',
     purpose,
     projectId: project.id,
@@ -2519,6 +2546,7 @@ export async function testDrive(
     detachedWorktree,
     devConfigured: !!project.devCommand,
   }
+  drives.set(project.id, driving)
 
   emit(ctx, feature.id, {
     type: 'testdrive.started',
@@ -2534,7 +2562,6 @@ export async function testDrive(
   // project's business — we hand it the drive's identity, run its string and
   // report the exit code.
   const identity: DriveIdentity = { slug: feature.slug, branch }
-  const driving = testDriveState
   const setup = await runDriveHookStep(
     ctx,
     scope,
@@ -2556,8 +2583,8 @@ export async function testDrive(
   // Both outlive the click that produced them, on the drive itself: the review
   // panel reads the failure for the rest of the drive, and a drive-fix session
   // is briefed with what this drive actually ran with.
-  testDriveState.envKeys = envKeys
-  if (setup?.failure) testDriveState.hookFailure = setup.failure
+  driving.envKeys = envKeys
+  if (setup?.failure) driving.hookFailure = setup.failure
 
   // Best-effort: spawn the dev command in a drive-owned embedded PTY pane and
   // sniff its localhost URL for the "Open app" link. A spawn failure never fails
@@ -2571,9 +2598,9 @@ export async function testDrive(
       repoPath: project.repoPath,
       devCommand: project.devCommand,
       env: driveEnv,
-      onUrl: (url) => recordDriveUrl(ctx, feature.id, url),
+      onUrl: (url) => recordDriveUrl(ctx, project.id, feature.id, url),
     })
-    if (devPaneId) testDriveState.devPaneId = devPaneId
+    if (devPaneId) driving.devPaneId = devPaneId
   }
 
   return { ok: true, branch, ...(setup?.failure ? { hookFailure: setup.failure } : {}) }
@@ -2628,37 +2655,34 @@ export async function reviewDrive(
   // human's drive holding the slot is somebody else's — and the human's Stop in
   // the UI remains able to end a review drive, which is how the slot is
   // reclaimed if a review agent dies still holding it.
-  if (!reviewDriveFor(feature.id)) {
+  if (!reviewDriveFor(project.id, feature.id)) {
     return { ok: false, action, deniedReason: DENY_NO_REVIEW_DRIVE, drive: null }
   }
-  if (action === 'status') return { ok: true, action: 'status', drive: activeDriveInfo() }
+  if (action === 'status') return { ok: true, action: 'status', drive: activeDriveInfo(project.id) }
 
   const stop = await testDrive(ctx, project, feature, 'stop')
   return {
     ok: stop.ok,
     action: 'stop',
     ...driveDenialOf(stop),
-    drive: activeDriveInfo(),
+    drive: activeDriveInfo(project.id),
     ...(stop.hookFailure ? { hookFailure: stop.hookFailure } : {}),
   }
 }
 
-/** True while THIS feature's review drive holds the slot. */
-function reviewDriveFor(featureId: string): boolean {
-  return (
-    testDriveState?.kind === 'feature' &&
-    testDriveState.purpose === 'review' &&
-    testDriveState.featureId === featureId
-  )
+/** True while THIS feature's review drive holds its project's slot. */
+function reviewDriveFor(projectId: string, featureId: string): boolean {
+  const state = driveOf(projectId)
+  return state?.kind === 'feature' && state.purpose === 'review' && state.featureId === featureId
 }
 
 /**
- * Stop the live review drive, if there still is one. The burner's `finally`
- * path: a no-op when the agent already stopped what it started, which is the
- * ordinary case.
+ * Stop the project's live review drive, if there still is one. The burner's
+ * `finally` path: a no-op when the agent already stopped what it started, which
+ * is the ordinary case. Another project's review drive is never touched.
  */
-export async function releaseReviewDrive(): Promise<void> {
-  const release = reviewDriveRelease
+export async function releaseReviewDrive(projectId: string): Promise<void> {
+  const release = reviewDriveReleases.get(projectId)
   if (!release) return
   await release()
 }
@@ -2678,19 +2702,19 @@ async function startReviewDrive(
   try {
     start = await testDrive(ctx, project, feature, 'start', 'review')
   } catch (e) {
-    if (reviewDriveFor(feature.id)) await testDrive(ctx, project, feature, 'stop')
+    if (reviewDriveFor(project.id, feature.id)) await testDrive(ctx, project, feature, 'stop')
     throw e
   }
   // The slot is now the review's; remember how to give it back (see
-  // `reviewDriveRelease`). A denied start took no slot and gets no releaser.
-  if (reviewDriveFor(feature.id)) {
-    reviewDriveRelease = () => reviewDrive(ctx, project, feature, 'stop')
+  // `reviewDriveReleases`). A denied start took no slot and gets no releaser.
+  if (reviewDriveFor(project.id, feature.id)) {
+    reviewDriveReleases.set(project.id, () => reviewDrive(ctx, project, feature, 'stop'))
   }
   return {
     ok: start.ok,
     action: 'start',
     ...driveDenialOf(start),
-    drive: activeDriveInfo(),
+    drive: activeDriveInfo(project.id),
     ...(start.hookFailure ? { hookFailure: start.hookFailure } : {}),
   }
 }
@@ -2754,7 +2778,7 @@ type DryRunState = Extract<DriveState, { kind: 'dryRun' }>
  *
  * Everything a feature drive does except the branch switch — there is no feature
  * and no branch to move to, so the repo stays exactly where it is. It takes the
- * singleton drive slot (decision 9), which is what makes it mutually exclusive
+ * project's drive slot (decision 9), which is what makes it mutually exclusive
  * with feature drives and visible to the UI as a stoppable active drive.
  *
  * Three actions, because the flow has a hole in the middle by design: `start`
@@ -2769,10 +2793,10 @@ export async function dryRunDrive(
 ): Promise<DryRunResult> {
   if (action === 'start') return startDryRun(ctx, project)
 
-  if (testDriveState?.kind !== 'dryRun') {
+  const state = driveOf(project.id)
+  if (state?.kind !== 'dryRun') {
     return { ok: false, action, deniedReason: DENY_NO_DRY_RUN }
   }
-  const state = testDriveState
   if (action === 'status') return { ok: true, action, ...liveFields(state) }
   return stopDryRun(ctx, project, state)
 }
@@ -2784,15 +2808,16 @@ export async function dryRunDrive(
  * it at all.
  */
 async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult> {
-  if (testDriveState) {
+  const held = driveOf(project.id)
+  if (held) {
     return {
       ok: false,
       action: 'start',
       deniedReason:
-        testDriveState.kind === 'dryRun'
+        held.kind === 'dryRun'
           ? DENY_DRY_RUN_ACTIVE
-          : testDriveState.kind === 'project'
-            ? slotHeldReason(testDriveState)
+          : held.kind === 'project'
+            ? slotHeldReason(held)
             : DENY_ACTIVE,
     }
   }
@@ -2814,7 +2839,7 @@ async function startDryRun(ctx: AppCtx, project: Project): Promise<DryRunResult>
     devConfigured: !!project.devCommand,
     observed: {},
   }
-  testDriveState = state
+  drives.set(project.id, state)
 
   const setup = await runDriveHookStep(
     ctx,
@@ -2889,7 +2914,7 @@ async function stopDryRun(
   await state.setupJob?.kill()
   // As a feature drive does: the file belongs to the drive, not to the repo.
   rmSync(driveEnvFilePath(project.repoPath), { force: true })
-  testDriveState = undefined
+  drives.delete(project.id)
 
   emitProject(ctx, project.id, {
     type: 'prep.dryrun.stopped',
@@ -2926,15 +2951,15 @@ async function stopDryRun(
  * `status` reads the same state the human's drive panel does.
  */
 export function recordDryRunUrl(ctx: AppCtx, projectId: string, url: string): void {
-  if (testDriveState?.kind !== 'dryRun') return
-  if (testDriveState.projectId !== projectId || testDriveState.devUrl) return
-  testDriveState.devUrl = url
+  const state = driveOf(projectId)
+  if (state?.kind !== 'dryRun' || state.devUrl) return
+  state.devUrl = url
   emitProject(ctx, projectId, {
     type: 'prep.dryrun.url',
     message: `dry-run dev server printed ${url} — waiting for it to answer`,
     data: { url },
   })
-  watchAppReadiness(ctx, { projectId }, url, 'prep.dryrun')
+  watchAppReadiness(ctx, projectId, { projectId }, url, 'prep.dryrun')
 }
 
 /**
@@ -3013,22 +3038,21 @@ type ProjectDriveState = Extract<DriveState, { kind: 'project' }>
  *
  * Shaped on the preparation dry run, which already drives the current HEAD:
  * no checkout, no worktree detach, no dirty-tree guard, and so no branch to
- * restore and no database drift to detect on `stop`. It holds the one drive
- * slot like any other drive; nothing preempts it (decision 9).
+ * restore and no database drift to detect on `stop`. It holds its project's
+ * drive slot like any other drive; nothing preempts it (decision 9).
  */
 export async function projectDrive(
   ctx: AppCtx,
   project: Project,
   action: 'start' | 'stop',
 ): Promise<TestDriveResult> {
+  const held = driveOf(project.id)
   if (action === 'stop') {
-    if (testDriveState?.kind !== 'project' || testDriveState.projectId !== project.id) {
-      return { ok: false, deniedReason: DENY_NO_PROJECT_DRIVE }
-    }
-    return stopProjectDrive(ctx, project, testDriveState)
+    if (held?.kind !== 'project') return { ok: false, deniedReason: DENY_NO_PROJECT_DRIVE }
+    return stopProjectDrive(ctx, project, held)
   }
 
-  if (testDriveState) return deniedStart(slotHeldReason(testDriveState), 'slot_held')
+  if (held) return deniedStart(slotHeldReason(held), 'slot_held')
 
   const scope: EmitScope = { projectId: project.id }
   const g = git(project.repoPath)
@@ -3045,7 +3069,7 @@ export async function projectDrive(
     startedAt: Date.now(),
     devConfigured: !!project.devCommand,
   }
-  testDriveState = state
+  drives.set(project.id, state)
 
   emitProject(ctx, project.id, {
     type: 'projectdrive.started',
@@ -3105,7 +3129,7 @@ async function stopProjectDrive(
   )
   await state.setupJob?.kill()
   rmSync(driveEnvFilePath(project.repoPath), { force: true })
-  testDriveState = undefined
+  drives.delete(project.id)
 
   emitProject(ctx, project.id, {
     type: 'projectdrive.stopped',
@@ -3122,15 +3146,15 @@ async function stopProjectDrive(
 
 /** Record the project drive's first sniffed URL and start its readiness poll. */
 function recordProjectDriveUrl(ctx: AppCtx, projectId: string, url: string): void {
-  if (testDriveState?.kind !== 'project') return
-  if (testDriveState.projectId !== projectId || testDriveState.devUrl) return
-  testDriveState.devUrl = url
+  const state = driveOf(projectId)
+  if (state?.kind !== 'project' || state.devUrl) return
+  state.devUrl = url
   emitProject(ctx, projectId, {
     type: 'projectdrive.url',
     message: `project drive dev server printed ${url} — waiting for it to answer`,
     data: { url },
   })
-  watchAppReadiness(ctx, { projectId }, url, 'projectdrive')
+  watchAppReadiness(ctx, projectId, { projectId }, url, 'projectdrive')
 }
 
 /**
@@ -3200,7 +3224,7 @@ interface DriveHookRun {
 function holdSetupJob(state: DriveState, setup: DriveHookRun | undefined): void {
   const job = setup?.result.containment
   if (!job) return
-  if (testDriveState === state) state.setupJob = job
+  if (driveOf(state.projectId) === state) state.setupJob = job
   else void job.kill()
 }
 
@@ -3363,7 +3387,7 @@ async function detectDbDrift(
 export async function mergeFeature(project: Project, feature: Feature): Promise<MergeResult> {
   const target = featureBase(feature)
 
-  if (testDriveState?.projectId === project.id) {
+  if (driveOf(project.id)) {
     throw new GateError('Cannot merge while a test drive is active — stop it first')
   }
 

@@ -151,7 +151,7 @@ async function isEmptyRepo(repoPath: string): Promise<boolean> {
 }
 
 export async function prepView(ctx: AppCtx, project: Project): Promise<PrepView> {
-  const drive = activeDriveInfo()
+  const drive = activeDriveInfo(project.id)
   return {
     pendingKeys: keysToPrepare(ctx, project),
     findings: await listFindings(ctx, project),

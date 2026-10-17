@@ -38,17 +38,23 @@ describe('projectDriveCard', () => {
     expect(projectDriveCard({ ...base, setupCommand: undefined })).toEqual({ state: 'ready' })
   })
 
-  it('is blocked by another drive, named by its holder label', () => {
-    const feature = { featureId: 'feat_1', holderLabel: 'a test drive of feature/x' }
+  it("is blocked by this project's other drive, named by its holder label", () => {
+    const feature = { featureId: 'feat_1', projectId: 'proj_1', holderLabel: 'a test drive of feature/x' }
     expect(projectDriveCard({ ...base, drive: feature })).toEqual({
       state: 'blocked',
       reason: 'A test drive of feature/x is running',
     })
-    const other = { ...projectDrive, projectId: 'proj_2' }
-    expect(projectDriveCard({ ...base, drive: other })).toEqual({
+    const dryRun = { projectId: 'proj_1', holderLabel: 'a preparation dry-run' }
+    expect(projectDriveCard({ ...base, drive: dryRun })).toEqual({
       state: 'blocked',
-      reason: 'A project drive of main is running',
+      reason: 'A preparation dry-run is running',
     })
+  })
+
+  it('is ready while only another project drives — its drive info for this project is null', () => {
+    // `feature.driveInfo({ projectId })` answers per project (ADR-0014), so a
+    // drive in proj_2 reaches proj_1's card as no drive at all.
+    expect(projectDriveCard({ ...base, drive: null })).toEqual({ state: 'ready' })
   })
 
   it("is running while this project's drive holds the slot", () => {

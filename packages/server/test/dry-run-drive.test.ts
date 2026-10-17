@@ -246,24 +246,24 @@ describe('the preparation dry-run drive', () => {
   })
 
   it('is the active drive the UI polls — project-scoped, with a branch and no feature', async () => {
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
 
     await drive('start')
 
-    expect(activeDriveInfo()).toMatchObject({ dryRun: true, branch: 'main', devConfigured: false })
+    expect(activeDriveInfo(project.id)).toMatchObject({ dryRun: true, branch: 'main', devConfigured: false })
     // `dryRun` with no feature at all is how the UI tells the two drives apart.
-    expect(activeDriveInfo()).not.toHaveProperty('featureId')
+    expect(activeDriveInfo(project.id)).not.toHaveProperty('featureId')
     // A dry run belongs to no feature, so it belongs to neither drive purpose.
-    expect(activeDriveInfo()?.purpose).toBeUndefined()
+    expect(activeDriveInfo(project.id)?.purpose).toBeUndefined()
     // The same shape reaches the wire the drive UI already polls.
-    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo()
+    const driveInfo = await createCallerFactory(appRouter)(ctx).feature.driveInfo({ projectId: project.id })
     expect(driveInfo).toMatchObject({ dryRun: true, branch: 'main' })
     expect(driveInfo).not.toHaveProperty('featureId')
     // The prep workspace reads the same drive, which is how it offers a Stop.
     expect((await prepView(ctx, project)).dryRun).toMatchObject({ dryRun: true, branch: 'main' })
 
     await drive('stop')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
     expect((await prepView(ctx, project)).dryRun).toBeNull()
   })
 
@@ -276,7 +276,7 @@ describe('the preparation dry-run drive', () => {
 
     expect(stop.ok).toBe(true)
     expect(stop.teardown?.output).toContain('torn-down')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   // --- status, between the halves -------------------------------------------
@@ -305,7 +305,7 @@ describe('the preparation dry-run drive', () => {
     // Stand in for the pane's sniffer, which needs a real dev server to fire.
     recordDryRunUrl(ctx, project.id, url)
     // Synchronously after the sniff, nothing has answered yet.
-    expect(activeDriveInfo()?.devReady).toBe(false)
+    expect(activeDriveInfo(project.id)?.devReady).toBe(false)
 
     let status = await drive('status')
     for (let i = 0; i < 100 && !status.devReady; i++) {
@@ -344,7 +344,7 @@ describe('the preparation dry-run drive', () => {
 
     // Stop frees the port: the pane is killed before the stop hook goes looking
     // for what it has to drop.
-    const paneId = activeDriveInfo()?.devPaneId
+    const paneId = activeDriveInfo(project.id)?.devPaneId
     expect(paneId).toBeDefined()
     await drive('stop')
     expect(ptyRegistry().has(paneId!)).toBe(false)
@@ -362,7 +362,7 @@ describe('the preparation dry-run drive', () => {
     expect(stop.teardown).toMatchObject({ ok: true, exitCode: 0 })
     expect(stop.teardown?.output).toContain('teardown-ran')
     expect(eventTypes()).toContain('prep.dryrun.stopped')
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   it('stamps exactly the keys that participated on a clean full pass', async () => {
@@ -440,13 +440,13 @@ describe('the preparation dry-run drive', () => {
     await expect(toolDryRunDrive(ctx, other, { action: 'start' })).rejects.toThrow(
       /preparation conversation/,
     )
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 
   it('leaves no dry-run state behind for the next session', async () => {
     await drive('start')
     await drive('stop')
     expect(existsSync(join(repo, '.git'))).toBe(true)
-    expect(activeDriveInfo()).toBeNull()
+    expect(activeDriveInfo(project.id)).toBeNull()
   })
 })
