@@ -29,7 +29,7 @@ import {
   selfPlanKickoffFor,
 } from './runtimes/skills'
 import { runs } from '../db/schema'
-import { GateError, isNotImplemented } from '../errors'
+import { GateError, NotImplementedError, isNotImplemented } from '../errors'
 import { endSession } from '../pty/end-session'
 import { ptyRegistry } from '../pty/registry'
 import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
@@ -1122,6 +1122,18 @@ export async function launchDriveFixSession(
     })
   }
   return { sessionId: session.id }
+}
+
+/**
+ * Open the `scenario` session docked beside the project's live drive (backs
+ * `feature.openScenarioChat`, drive-scenarios decision 8): ＋ New scenario with
+ * the human's `description`, or **Fix it** with the failed `fixFile`.
+ */
+export async function launchScenarioSession(
+  _ctx: AppCtx,
+  _input: { projectId: string; description?: string; fixFile?: string },
+): Promise<{ sessionId: string }> {
+  throw new NotImplementedError('scenario session')
 }
 
 /**

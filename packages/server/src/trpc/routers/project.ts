@@ -192,8 +192,17 @@ export const projectRouter = router({
    * live state is read through the one `feature.driveInfo` query.
    */
   testDrive: publicProcedure
-    .input(z.object({ projectId: z.string(), action: z.enum(['start', 'stop']) }))
+    .input(
+      z.object({
+        projectId: z.string(),
+        action: z.enum(['start', 'stop']),
+        // A scenario file to land on once the app answers (drive-scenarios).
+        scenario: z.string().optional(),
+      }),
+    )
     .mutation(({ ctx, input }) =>
-      git.projectDrive(ctx, requireProjectById(ctx, input.projectId), input.action),
+      git.projectDrive(ctx, requireProjectById(ctx, input.projectId), input.action, {
+        ...(input.scenario ? { scenario: input.scenario } : {}),
+      }),
     ),
 })
