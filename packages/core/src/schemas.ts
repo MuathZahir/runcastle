@@ -108,10 +108,10 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * lets it write files while that merge is actually in progress in its worktree
  * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
  *
- * `start-lap` — the feature chat opened by the review page's "Start lap N+1"
- * door (empty-handed, or after a triage that carried work). At review it tells
- * the launcher to brief the conversation to plan lap N+1 (`reviewLapKickoff`);
- * the lap counter itself only moves at Burn from review.
+ * `start-lap` — historical: the feature chat opened by the retired "Start lap
+ * N+1" door. Laps gave way to the lead's rounds (`the-feature-lead-runs-rounds`),
+ * so the launcher treats such a launch as a plain chat open; the value stays so
+ * old rows and the web keep reading.
  *
  * `self-plan` — the feature's planning session launched by "Plan it yourself"
  * (`features-plan-themselves` decision 9): headless, with no human present, it

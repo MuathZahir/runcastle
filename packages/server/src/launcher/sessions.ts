@@ -53,7 +53,7 @@ export type CreateSessionInput = {
    * why a default is not stamped in its place.
    */
   model?: ModelEntry
-  /** The session runs with no terminal (a self-plan, relay or headless start-lap run). */
+  /** The session runs with no terminal (a self-plan or relay run). */
   headless?: boolean
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 

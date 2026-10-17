@@ -402,8 +402,8 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine` — and losing it is the whole defect this closes: the door foregrounded the terminal
- * and silently dropped the reason the human opened it.
+ * `kickoffLine` — and losing it is the whole defect this closes: the door
+ * foregrounded the terminal and silently dropped the reason the human opened it.
  *
  * ADR-0009 put a launch's briefing in the CLI's argv precisely so nothing had to
  * be typed at a terminal, and that is still how every LAUNCH briefs. A session
