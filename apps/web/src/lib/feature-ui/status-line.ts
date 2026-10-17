@@ -34,6 +34,9 @@ export interface FeatureStatusInput {
 /** The reason Go waits on, when the plan is finished and the preview stands. */
 export const PLAN_READY = 'plan ready for Go'
 
+/** The reason an idle agent waits on after the human stopped its round. */
+export const STOPPED = 'stopped'
+
 /**
  * Derive the line. Precedence, highest first:
  *
@@ -46,6 +49,9 @@ export const PLAN_READY = 'plan ready for Go'
  * - Ready for you · Test drive ▸ <scenario> — the latest declaration is newer
  *   than the latest round, and the agent is not working on something since
  *   (notes the human sent wake it, and it is Working again).
+ * - Waiting for you · stopped / round N failed — the last round was stopped or
+ *   failed and the agent's turn is over: nothing is running and nothing will
+ *   be dispatched until the human replies.
  * - Working · Round N — otherwise: the agent is between rounds.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
@@ -76,6 +82,13 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
       scenario: declared.scenario,
       whatToTest: declared.whatToTest,
     }
+  }
+  // A stopped or failed round wakes nobody to finish it: Stop flips the
+  // feature to Ask, and a provider-limit halt is not woken (decision 15). Once
+  // the agent's turn is over, nothing moves until the human replies.
+  if (!agentWorking && latest && latest.status !== 'succeeded') {
+    const why = latest.status === 'cancelled' ? STOPPED : `round ${latest.round} failed`
+    return { kind: 'waiting', label: 'Waiting for you', why }
   }
   return working()
 }
