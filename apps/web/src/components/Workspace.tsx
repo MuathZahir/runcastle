@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { DEFAULT_AUTONOMY, parsePhase, type Autonomy, type EventRow, type Phase } from '@runcastle/core'
+import { parsePhase, resolveAutonomy, type Autonomy, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -973,6 +973,7 @@ export function Workspace({
   // started feature; a parked draft keeps the bar's own sentence, since nothing
   // has been planned with anyone yet.
   const rounds = roundsQ.data ?? []
+  const autonomy = resolveAutonomy(projectAutonomy ? { autonomy: projectAutonomy } : {}, feature)
   const statusLine = isDraft ? undefined : (
     <FeatureStatusLine
       status={featureStatus({
@@ -981,7 +982,7 @@ export function Workspace({
         declarations: declarationsQ.data ?? [],
         agentWorking: !!liveSession && !liveSession.awaitingInput,
       })}
-      autonomy={feature.autonomy ?? projectAutonomy ?? DEFAULT_AUTONOMY}
+      autonomy={autonomy}
       tokens={featureTokens(rounds, full.sessions)}
       busy={stopAgent.isPending || setAutonomy.isPending}
       onAutonomy={(autonomy) => setAutonomy.mutate({ featureId, autonomy })}
@@ -1153,7 +1154,7 @@ export function Workspace({
           summary={goSummary({
             branch: feature.branch,
             pendingTickets: pendingTickets(full.tickets),
-            autonomy: feature.autonomy ?? projectAutonomy ?? DEFAULT_AUTONOMY,
+            autonomy,
             ...(defaultBurnModel ? { defaultModel: defaultBurnModel } : {}),
             warnings: burnWarningsQ.data,
           })}
