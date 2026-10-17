@@ -190,10 +190,10 @@ describe('findings router', () => {
       blockedBy: [],
     })
     expect(result.findings.every((f) => f.status === 'fixing')).toBe(true)
-    // One click, one burn, one lap: the fix burn opens the next one and the
-    // stub run hands the feature straight back to review.
+    // One click, one burn, one lap: the fix burn opens the next one, and the
+    // feature stays in building until a ready declaration moves it on.
     const after = getFeatureRow(ctx, feature.id)
-    expect(after.phase).toBe('review')
+    expect(after.phase).toBe('building')
     expect(after.lap).toBe(feature.lap + 1)
     // Nothing is open any more, and nothing was minted twice. The summary
     // counts the lap the feature is ON, which this click just moved forward —
