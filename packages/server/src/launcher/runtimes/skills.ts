@@ -45,6 +45,7 @@ export const ENTRY_SKILLS = [
   'ideate',
   'qa',
   'revisit',
+  'lead',
   'project',
   'prepare',
 ] as const
@@ -54,9 +55,10 @@ export type EntrySkill = (typeof ENTRY_SKILLS)[number]
  * The entry skill(s) a session of `kind` may open — everything else in
  * {@link ENTRY_SKILLS} is denied to it.
  *
- * - `chat` gets both of its openings (see {@link chatKickoffFor}): the one
+ * - `chat` gets all three of its openings (see {@link chatKickoffFor}): the one
  *   conversation persists across feature states, so a chat that opened on
- *   `ideate` can legitimately be resumed into `revisit` territory.
+ *   `ideate` can legitimately be resumed into `revisit` territory, and into
+ *   `lead` once Go is given.
  * - `qa` is allowed nowhere: no live kind opens on it (the qa session kind was
  *   retired with one-chat-per-feature), which matches its pre-flip reachability
  *   of exactly zero.
@@ -68,7 +70,7 @@ export type EntrySkill = (typeof ENTRY_SKILLS)[number]
 export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
   switch (kind) {
     case 'chat':
-      return ['ideate', 'revisit']
+      return ['ideate', 'revisit', 'lead']
     case 'prepare':
       return ['prepare']
     case 'project':
@@ -81,26 +83,39 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
 }
 
 /** Which skill the feature's one chat opens on — see `chatOpening` in artifacts.ts. */
-export type ChatOpening = 'ideate' | 'revisit'
+export type ChatOpening = 'ideate' | 'revisit' | 'lead'
 
 /**
  * The chat's opening move, spelled for `runtime`.
  *
- * The one chat has TWO of them, because one kind now covers the whole feature: a
- * feature that has not produced a decision, a spec or a ticket yet opens on
- * `ideate` — the grilling that creates them — and every other state opens on
- * `revisit`, amending a record that exists. Which one is a question about the
+ * The one chat has THREE of them, because one kind now covers the whole feature:
+ * a feature that has not produced a decision, a spec or a ticket yet opens on
+ * `ideate` — the grilling that creates them — a planning feature with a record
+ * opens on `revisit`, amending it, and a feature past Go opens on `lead`, running
+ * rounds of workers (`the-feature-lead-runs-rounds`). Which one is a question about the
  * feature's artifacts, so only a caller holding the feature can answer it; the
  * per-kind table below can hold just one line and holds the revisit form, while
  * the launcher composes the real line (`chatKickoffHeader`) with the opening the
  * artifacts call for and the system prompt names.
  */
 export function chatKickoffFor(runtime: AgentRuntime, opening: ChatOpening): string {
-  return opening === 'ideate'
-    ? `Proceed with your task: invoke the ${skillRef(runtime, 'ideate')} skill and drive this ` +
+  switch (opening) {
+    case 'ideate':
+      return (
+        `Proceed with your task: invoke the ${skillRef(runtime, 'ideate')} skill and drive this ` +
         "feature's ideation to completion."
-    : `Proceed with your task: invoke the ${skillRef(runtime, 'revisit')} skill and continue this ` +
+      )
+    case 'revisit':
+      return (
+        `Proceed with your task: invoke the ${skillRef(runtime, 'revisit')} skill and continue this ` +
         "feature's conversation."
+      )
+    case 'lead':
+      return (
+        `Proceed as the feature's lead: invoke ${skillRef(runtime, 'lead')} and run this ` +
+        'feature in rounds until it is ready for the human to drive.'
+      )
+  }
 }
 
 /**

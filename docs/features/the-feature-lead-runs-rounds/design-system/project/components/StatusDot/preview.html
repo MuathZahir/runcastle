@@ -1,0 +1,13 @@
+<!-- @dsCard group="Status" height=72 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>StatusDot — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('span',{className:'rc-meta__item',style:{color:'var(--text-secondary)'}},h(R.StatusDot,{tone:'live'}),'Live'),h('span',{style:{width:16}}),h('span',{className:'rc-meta__item',style:{color:'var(--text-secondary)'}},h(R.StatusDot,{tone:'success'}),'Server ok'),h('span',{style:{width:16}}),h('span',{className:'rc-meta__item',style:{color:'var(--text-secondary)'}},h(R.StatusDot,{tone:'warning'}),'Needs you'),h('span',{style:{width:16}}),h('span',{className:'rc-meta__item',style:{color:'var(--text-secondary)'}},h(R.StatusDot,{tone:'danger'}),'Failed'),h('span',{style:{width:16}}),h('span',{className:'rc-meta__item',style:{color:'var(--text-secondary)'}},h(R.StatusDot),'Ended')));
+</script>
+</body>
+</html>

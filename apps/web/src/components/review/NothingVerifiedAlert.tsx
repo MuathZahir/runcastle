@@ -4,12 +4,12 @@ import { Notice } from './Notice'
 import type { UnverifiedLap } from '../../lib/feature-ui'
 
 /**
- * "Nothing verified this lap" — the page's top line when the current lap's
- * review pass ran and verified nothing (decision 5).
+ * "Nothing verified" — the page's top line when the latest review pass ran
+ * and verified nothing (decision 5).
  *
  * This is the whole point of the feature: a pass that could not attach a
  * browser used to land as a clean bill of health, and the human planned the
- * next lap off an empty defects list. So it arrives loudly — an alert band,
+ * next round off an empty defects list. So it arrives loudly — an alert band,
  * above the stage, before anything else on the page — and blocks nothing:
  * auto-advance already happened, the findings are stored, and Merge is still
  * one click away in the bar. What it changes is which click is the obvious one.
@@ -23,11 +23,9 @@ import type { UnverifiedLap } from '../../lib/feature-ui'
  * burn is already holding the feature, exactly as the strip's control does.
  */
 export function NothingVerifiedAlert({
-  lap,
   outcome,
   agenticReview,
 }: {
-  lap: number
   outcome: UnverifiedLap
   /** Mint another review pass, or null where nothing on the page acts. */
   agenticReview: { onStart: () => void; blocked?: string } | null
@@ -35,8 +33,7 @@ export function NothingVerifiedAlert({
   return (
     <Notice
       tone="accent"
-      title="Nothing verified this lap"
-      meta={`lap ${lap}`}
+      title="Nothing verified"
       actions={
         agenticReview && (
           <Button
@@ -52,8 +49,8 @@ export function NothingVerifiedAlert({
       }
     >
       <p className="m-0">
-        The review pass ran and produced no evidence, so nothing on this branch has been checked
-        this lap. Nothing is blocked — run another review, or drive it yourself, before you ship.
+        The review pass ran and produced no evidence, so nothing on this branch has been checked.
+        Nothing is blocked — run another review, or drive it yourself, before you ship.
       </p>
       {outcome.line && <p className="m-0 mt-1.5 break-words text-text">{outcome.line}</p>}
       {outcome.reason && (

@@ -202,7 +202,7 @@ export function TicketStatusChip({ status }: { status: TicketStatus }) {
     case 'pending':
       return <StatusLabel tone="neutral">Pending</StatusLabel>
     case 'burning':
-      return <StatusLabel spinning>Burning</StatusLabel>
+      return <StatusLabel spinning>Running</StatusLabel>
     case 'done':
       return (
         <StatusLabel tone="success" icon={<IconCheck />}>

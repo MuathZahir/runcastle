@@ -26,7 +26,7 @@ import type { FilterState, SettingsPageProps } from './types'
  * It stays a dialog rather than becoming a route (decision 10) because settings
  * is opened from the middle of work — Esc and the backdrop hand back whatever
  * was underneath. `location` is where the opener wants to land, so an error
- * message that says "Settings → Burns (Rebuild image)" can be a link onto that
+ * message that says "Settings → Workers (Rebuild image)" can be a link onto that
  * row instead of an instruction to go looking.
  */
 
@@ -34,7 +34,7 @@ import type { FilterState, SettingsPageProps } from './types'
 const PAGE_SUBTITLE: Record<SettingsPage, string> = {
   general: 'How runcastle looks, where its server listens, and how sessions are sandboxed.',
   models: 'The default model, the roster this machine offers, and which model runs each step.',
-  burns: 'What an unattended run needs before it starts, and how hard it tries once it does.',
+  burns: 'What workers need before a round can start, and how hard they try once it does.',
   project: 'Values this project sets for itself. Unset fields inherit the global value, shown as ghost text.',
 }
 

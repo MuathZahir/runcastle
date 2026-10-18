@@ -8,12 +8,13 @@ import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { toolCompletePhase } from '../src/mcp/server'
-import { burnWarnings } from '../src/services/burn-warnings'
-import { markFixProgress, reportFinding } from '../src/services/review-findings'
+import { burnWarnings, goWarnings } from '../src/services/burn-warnings'
+import { markFixProgress } from '../src/services/review-findings'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
 /**
@@ -88,7 +89,7 @@ describe('burn warnings', () => {
       { ...ticketInput('Lap 1 review'), kind: 'review' },
     ])[0]
     updateTicket(ctx, reviewTicket.id, { status: 'done' })
-    const { finding, fixTicket } = reportFinding(ctx, {
+    const { finding, fixTicket } = reportWithFixTicket(ctx, {
       featureId: feature.id,
       reviewTicket,
       input: {
@@ -103,7 +104,7 @@ describe('burn warnings', () => {
     })
     ctx.db.update(features).set({ phase: 'review' }).where(eq(features.id, feature.id)).run()
     feature = { ...feature, phase: 'review' }
-    return { finding, fixTicket: fixTicket! }
+    return { finding, fixTicket }
   }
 
   /**
@@ -173,11 +174,15 @@ describe('burn warnings', () => {
     ])
   })
 
-  it('reaches the Burn dialog through the feature router, unchanged', async () => {
+  it('Go hears only the missing spec, through the feature router', async () => {
+    openDefectFromLapOne()
     storeTickets(ctx, feature.id, [ticketInput('Add the thing')])
-    await expect(caller.feature.burnWarnings({ featureId: feature.id })).resolves.toEqual(
-      burnWarnings(ctx, feature.id),
+    expect(goWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no spec.md')])
+    await expect(caller.feature.goWarnings({ featureId: feature.id })).resolves.toEqual(
+      goWarnings(ctx, feature.id),
     )
+    writeSpec()
+    expect(goWarnings(ctx, feature.id)).toEqual([])
   })
 
   describe('complete_phase("tickets") hears the same list', () => {

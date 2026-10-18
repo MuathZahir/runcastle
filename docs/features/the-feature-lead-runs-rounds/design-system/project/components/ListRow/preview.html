@@ -1,0 +1,13 @@
+<!-- @dsCard group="Data" height=200 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>ListRow — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{className:'rc-list',style:{width:560}},h(R.ListRow,{dot:'live',title:'Untitled chat',meta:'22m'}),h(R.ListRow,{icon:'message',title:'Problem: runcastle sandbox image is stale',meta:'2d'}),h(R.ListRow,{icon:'message',title:'Many small UI/UX issues',meta:'5d'}),h(R.ListRow,{icon:'message',title:'Why can’t I start the burn?',meta:'9d'}))));
+</script>
+</body>
+</html>

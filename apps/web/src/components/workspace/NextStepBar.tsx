@@ -6,12 +6,11 @@ import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feat
 import {
   IconAlert,
   IconArchive,
-  IconFlame,
+  IconArrowRight,
   IconGitMerge,
   IconMessage,
   IconMore,
   IconPlay,
-  IconRefresh,
   IconSettings,
   IconSparkle,
   IconStop,
@@ -24,17 +23,15 @@ const ACTION_ICON: Record<ActionKind, ReactNode> = {
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
   stopHeadlessRun: <IconStop />,
-  burn: <IconFlame />,
+  burn: <IconArrowRight />,
   cancelRun: <IconStop />,
+  stopAgent: <IconStop />,
   openBurnSettings: <IconSettings />,
   testDriveStart: <IconPlay />,
   testDriveStop: <IconStop />,
-  stopDriveAndIterate: <IconStop />,
   fixDrive: <IconTerminal />,
   merge: <IconGitMerge />,
   resolveConflict: <IconAlert />,
-  iterate: <IconRefresh />,
-  endSessionAndIterate: <IconRefresh />,
   unarchive: <IconArchive />,
 }
 
@@ -69,6 +66,7 @@ export function NextStepBar({
   onAction,
   draftBranch,
   demote,
+  status,
   split,
 }: {
   ns: NextStep
@@ -88,6 +86,12 @@ export function NextStepBar({
    * the same gate — a disabled one is disabled there too.
    */
   demote?: readonly ActionKind[]
+  /**
+   * The feature's one status line (`the-feature-lead-runs-rounds` decision
+   * 21). Given, it IS the row's left column — the resolver's sentence, count
+   * line and note are not said beside it, so the header states its status once.
+   */
+  status?: ReactNode
   /**
    * The one action that carries choices behind a caret (Test drive and its
    * scenarios, drive-scenarios decision 7): wherever that kind sits on the row
@@ -112,7 +116,7 @@ export function NextStepBar({
   // A demoted action's refusal is said in its menu item's title, not under
   // the row — the row does not show that button.
   const refusedShown = refused.filter((a) => !demote?.includes(a.kind) || a === ns.primary)
-  if (!hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
+  if (!status && !hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
 
   const labelOf = (a: NextAction): string => (split?.kind === a.kind ? split.label : a.label)
   /** One action's button — the split one where `split` names its kind. */
@@ -154,38 +158,42 @@ export function NextStepBar({
       className="flex flex-wrap items-start gap-x-6 gap-y-3 animate-fade-in"
       role={ns.alert ? 'alert' : undefined}
     >
-      <div className="min-w-0 flex-1 basis-80 text-sm text-text-secondary">
-        {(lead || guide) && (
-          <p className="m-0 text-pretty">
-            {ns.busy ? (
-              <Spinner size="sm" className="mr-2 inline-block align-[-2px]" />
-            ) : ns.alert ? (
-              <StatusDot tone="warning" className="mr-2 align-middle" />
-            ) : null}
-            {lead && <span className="font-medium text-text">{guide ? sentence(lead) : lead}</span>}
-            {lead && guide && ' '}
-            {guide}
-          </p>
-        )}
-        {/* The count line is the ONE thing here guidance cannot hide
-            (decision 3): the primary follows the count, so a row that hid it
-            would be a button whose reason is nowhere on the page. */}
-        {ns.counts && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-            {ns.counts.pills.map((pill) => (
-              <StatusLabel key={pill.label} tone={COUNT_TONE[pill.tone]} size="sm">
-                {pill.label}
-              </StatusLabel>
-            ))}
-            {ns.counts.trailing && <span className="text-sm text-text-tertiary">{ns.counts.trailing}</span>}
-          </div>
-        )}
-        {ns.note && (
-          <p className="mt-1.5 mb-0 text-xs text-text-tertiary first-letter:uppercase" role="note">
-            {ns.note}
-          </p>
-        )}
-      </div>
+      {status ? (
+        <div className="min-w-0 flex-1 basis-80">{status}</div>
+      ) : (
+        <div className="min-w-0 flex-1 basis-80 text-sm text-text-secondary">
+          {(lead || guide) && (
+            <p className="m-0 text-pretty">
+              {ns.busy ? (
+                <Spinner size="sm" className="mr-2 inline-block align-[-2px]" />
+              ) : ns.alert ? (
+                <StatusDot tone="warning" className="mr-2 align-middle" />
+              ) : null}
+              {lead && <span className="font-medium text-text">{guide ? sentence(lead) : lead}</span>}
+              {lead && guide && ' '}
+              {guide}
+            </p>
+          )}
+          {/* The count line is the ONE thing here guidance cannot hide
+              (decision 3): the primary follows the count, so a row that hid it
+              would be a button whose reason is nowhere on the page. */}
+          {ns.counts && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              {ns.counts.pills.map((pill) => (
+                <StatusLabel key={pill.label} tone={COUNT_TONE[pill.tone]} size="sm">
+                  {pill.label}
+                </StatusLabel>
+              ))}
+              {ns.counts.trailing && <span className="text-sm text-text-tertiary">{ns.counts.trailing}</span>}
+            </div>
+          )}
+          {ns.note && (
+            <p className="mt-1.5 mb-0 text-xs text-text-tertiary first-letter:uppercase" role="note">
+              {ns.note}
+            </p>
+          )}
+        </div>
+      )}
 
       {hasActions && (
         // The group shrinks and wraps; the buttons inside it never do — a

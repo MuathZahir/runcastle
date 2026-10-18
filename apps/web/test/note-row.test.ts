@@ -111,10 +111,6 @@ describe('NoteRow', () => {
     expect(render(note())).not.toContain('>Agent<')
   })
 
-  it('names the lap only when the list spans more than one', () => {
-    expect(render(note(), { showLap: true })).toContain('Lap 2')
-    expect(render(note())).not.toContain('Lap 2')
-  })
 
   it('renders a defect in the same anatomy, with its severity and why it is open', () => {
     const html = render({ kind: 'defect', finding: DEFECT })
@@ -138,7 +134,7 @@ describe('NoteRow', () => {
       { kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } },
       { readonly: true, onViewLane: () => undefined },
     )
-    expect(html).toContain('fixed in the burn by #9')
+    expect(html).toContain('being fixed by #9')
     expect(html).not.toContain('being fixed in the running burn')
   })
 
@@ -153,7 +149,7 @@ describe('NoteRow', () => {
         resolutionNote: 'the merge rebuild in lap 3 covers this dialog',
       },
     })
-    expect(html).toContain('captured lap 2, carried into lap 3')
+    expect(html).toContain('carried for later')
     expect(html).toContain('the merge rebuild in lap 3 covers this dialog')
   })
 
@@ -174,7 +170,7 @@ describe('NoteRow', () => {
         resolutionNote: 'addressed by lap 2’s ticket 7',
       },
     })
-    expect(attested).toContain('closed by a lap session as addressed')
+    expect(attested).toContain('closed by a session as addressed')
     expect(attested).toContain('addressed by lap 2’s ticket 7')
     expect(attested).toContain('text-warning')
 
@@ -183,7 +179,7 @@ describe('NoteRow', () => {
       finding: { ...DEFECT, status: 'fixed', openReason: null, resolvedBy: 'fix-ticket' },
     })
     expect(verified).toContain('fixed by its fix ticket')
-    expect(verified).not.toContain('closed by a lap session')
+    expect(verified).not.toContain('closed by a session')
     expect(verified).toContain('text-success')
   })
 
@@ -210,5 +206,16 @@ describe('NoteRow', () => {
     // (decision 25d).
     expect(html).toContain(NOTE.screenshotUrl!)
     expect(html).toContain('>0:42<')
+  })
+
+  it('says a note went to the agent once Send to agent carried it, and not before', () => {
+    expect(render(note({ sentAt: 1_700_000_000_000 }))).toContain('Sent to the agent')
+    expect(render(note())).not.toContain('Sent to the agent')
+  })
+
+  it('says a sent note is waiting for the agent while no agent has taken it', () => {
+    const html = render(note({ sentAt: 1_700_000_000_000 }), { waitingForAgent: true })
+    expect(html).toContain('Waiting for the agent')
+    expect(html).not.toContain('Sent to the agent')
   })
 })

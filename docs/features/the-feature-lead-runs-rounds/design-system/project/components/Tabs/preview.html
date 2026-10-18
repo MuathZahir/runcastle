@@ -1,0 +1,13 @@
+<!-- @dsCard group="Navigation" height=72 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Tabs — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h(R.Tabs,{value:'overview',items:[{id:'overview',label:'Overview',icon:'doc'},{id:'tickets',label:'Tickets',icon:'cube',count:2},{id:'activity',label:'Activity',icon:'activity'},{id:'chat',label:'Chat',icon:'message'}]})));
+</script>
+</body>
+</html>

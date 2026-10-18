@@ -469,7 +469,7 @@ function gitInfoDir(worktreePath: string): string | null {
  * every lifecycle event is silently skipped — no `live` row, no kickoff, no
  * edit guard.
  *
- * `headless` is a run with no terminal (self-plan, relay, headless start-lap):
+ * `headless` is a run with no terminal (self-plan, relay):
  * `exec` runs the kickoff as its prompt to completion, and `exec resume <id>`
  * sends it to the recorded conversation instead (`codex exec resume [OPTIONS]
  * [SESSION_ID] [PROMPT]`, checked against codex-cli 0.155.1).

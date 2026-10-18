@@ -73,7 +73,7 @@ describe('RunHeader in record mode', () => {
   const record = (over: Partial<Parameters<typeof RunHeader>[0]> = {}) =>
     renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burned 2 tickets · 2 done',
+        headline: 'Ran 2 tickets · 2 done',
         status: 'succeeded' as const,
         burning: 0,
         runs: [run({ id: 'r1' }), run({ id: 'r2' })],
@@ -89,7 +89,7 @@ describe('RunHeader in record mode', () => {
     const html = record()
     expect(html).toContain('Past run')
     expect(html).toContain('Back to latest')
-    expect(html).not.toContain('Cancel run')
+    expect(html).not.toContain('Stop round')
   })
 
   it('is the ordinary run header again once the latest run is back on screen', () => {
@@ -110,10 +110,10 @@ describe('RunHeader in record mode', () => {
       { seq: 2, status: 'failed', error: 'agent made no commits' },
     ]
     expect(runHeadline(tickets, { status: 'succeeded' })).toBe(
-      'Burned 2 tickets · 1 done · 1 failed',
+      'Ran 2 tickets · 1 done · 1 failed',
     )
     expect(runHeadline(tickets, { status: 'running' })).toBe(
-      'Burning 2 tickets · 1 done · 1 failed',
+      'Running 2 tickets · 1 done · 1 failed',
     )
   })
 
@@ -127,7 +127,7 @@ describe('RunHeader in record mode', () => {
       { seq: 4, status: 'done' },
       { seq: 5, status: 'failed', kind: 'review', orphaned: true },
     ]
-    expect(runHeadline(tickets, { status: 'running' })).toBe('Burning 1 ticket · 1 done')
+    expect(runHeadline(tickets, { status: 'running' })).toBe('Running 1 ticket · 1 done')
   })
 
 })

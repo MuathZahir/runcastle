@@ -1,0 +1,13 @@
+<!-- @dsCard group="Feedback" height=250 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Menu — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h(R.Menu,{items:[{label:'Open chat',icon:'message',kbd:'O',active:true},{label:'Rename',icon:'pencil',kbd:'R'},{label:'Copy branch name',icon:'branch'},'-',{label:'Archive',icon:'folder'},{label:'Delete feature',icon:'trash',danger:true}]})));
+</script>
+</body>
+</html>

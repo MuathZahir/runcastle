@@ -172,7 +172,7 @@ describe('Lane', () => {
       onStop: () => {},
     })
     expect(html).toContain('animate-breathe')
-    expect(html).toContain('Burning')
+    expect(html).toContain('Running')
     expect(html).toContain('2m 04s')
     expect(html).toContain('Stop ticket')
   })
@@ -332,11 +332,10 @@ describe('Lane model menu', () => {
 })
 
 describe('RunLanes', () => {
-  const render = (tickets: (RunTicket & { lap: number })[], currentLap: number) =>
+  const render = (tickets: (RunTicket & { lap: number })[]) =>
     renderToStaticMarkup(
       createElement(RunLanes<RunTicket & { lap: number }>, {
         tickets,
-        currentLap,
         lane: (t) => createElement('span', { key: t.id }, `#${t.seq}`),
       }),
     )
@@ -349,7 +348,6 @@ describe('RunLanes', () => {
         { ...row({ seq: 3, originFindingId: 'fnd_1' }), lap: 1 },
         { ...row({ seq: 4, kind: 'review', passKind: 'verification' }), lap: 1 },
       ],
-      1,
     )
     expect(html).toContain('Review fixes')
     expect(html).toContain('Verifying 1 fixes — recording a fresh walkthrough')
@@ -357,25 +355,15 @@ describe('RunLanes', () => {
     expect(html.indexOf('#3')).toBeLessThan(html.indexOf('Verifying 1 fixes'))
   })
 
-  /**
-   * A Burn burns every pending ticket across laps (decision #28a), so a lap-2
-   * run legitimately carries lap-1 leftovers — unlabelled, they read as this
-   * lap's work.
-   */
-  it('divides the lanes by lap once the ledger spans laps', () => {
-    const spanning = render(
-      [
-        { ...row({ seq: 1 }), lap: 1 },
-        { ...row({ seq: 2 }), lap: 2 },
-      ],
-      2,
-    )
-    expect(spanning).toContain('Lap 1')
-    expect(spanning).toContain('Lap 2')
-    expect(spanning).toContain('1 lane')
-
-    // A feature that never iterated gets no lap ceremony at all (ADR-0010 §4).
-    expect(render([{ ...row({ seq: 1 }), lap: 1 }], 1)).not.toContain('Lap 1')
+  /** A run is one round (decision 16): its lanes carry no lap or round headers. */
+  it('lists one round’s lanes with no lap headers, whatever lap a ticket was stamped with', () => {
+    const html = render([
+      { ...row({ seq: 1 }), lap: 1 },
+      { ...row({ seq: 2 }), lap: 2 },
+    ])
+    expect(html).toContain('#1')
+    expect(html).toContain('#2')
+    expect(html).not.toMatch(/\bLap \d/)
   })
 })
 
@@ -388,18 +376,18 @@ describe('RunHeader', () => {
   it('says only what the Status tier does not: fixes, stops, a retry', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burning 3 tickets · +2 fixes from review · 2 done · 1 failed · 1 stopped',
+        headline: 'Running 3 tickets · +2 fixes from review · 2 done · 1 failed · 1 stopped',
         status: 'running',
         burning: 1,
         onCancelRun: () => {},
       }),
     )
     expect(html).toContain('+2 fixes from review, 1 stopped')
-    expect(html).not.toContain('Burning 3 tickets')
+    expect(html).not.toContain('Running 3 tickets')
     expect(html).not.toContain('2 done')
     expect(html).not.toContain('1 failed')
     expect(html).not.toContain('Running')
-    expect(html).toContain('Cancel run')
+    expect(html).toContain('Stop round')
   })
 
   it('draws no fact line at all when the counts were all it had', () => {
@@ -413,7 +401,7 @@ describe('RunHeader', () => {
   it('says Stopping… while the cancel waits for the run’s agents to die', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burning 3 tickets',
+        headline: 'Running 3 tickets',
         burning: 3,
         busy: true,
         cancelling: true,
@@ -423,14 +411,14 @@ describe('RunHeader', () => {
     expect(html).toContain('Stopping…')
     // The confirmation dialog is closed by then, so the only "Cancel run" left
     // would be the button itself.
-    expect(html).not.toContain('Cancel run')
+    expect(html).not.toContain('Stop round')
   })
 
   /** simplify-the-pages decision 6d: the next-step bar says the latest run's reason, once. */
   it('leaves the latest failed run’s reason to the next-step bar', () => {
     const summary = 'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282'
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burned 2 tickets', burning: 0, status: 'failed', summary }),
+      createElement(RunHeader, { headline: 'Ran 2 tickets', burning: 0, status: 'failed', summary }),
     )
     expect(html).not.toContain(summary)
   })
@@ -440,7 +428,7 @@ describe('RunHeader', () => {
     const header = (status: 'failed' | 'cancelled') =>
       renderToStaticMarkup(
         createElement(RunHeader, {
-          headline: 'Burned 2 tickets',
+          headline: 'Ran 2 tickets',
           burning: 0,
           status,
           summary,
@@ -453,10 +441,10 @@ describe('RunHeader', () => {
 
   it('gives a failed run’s reason its own wrapping line, so the fix at its end is never ellipsized', () => {
     const summary =
-      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Workers (only the CLI layer rebuilds).'
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burned 2 tickets',
+        headline: 'Ran 2 tickets',
         burning: 0,
         status: 'failed',
         summary,
@@ -470,8 +458,8 @@ describe('RunHeader', () => {
 
   it('drops the cancel control when nothing is running', () => {
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burning 1 ticket · 1 done', burning: 0 }),
+      createElement(RunHeader, { headline: 'Running 1 ticket · 1 done', burning: 0 }),
     )
-    expect(html).not.toContain('Cancel run')
+    expect(html).not.toContain('Stop round')
   })
 })

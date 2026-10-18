@@ -2,7 +2,7 @@ import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { holderSentence } from './drive'
 import { testDriveFigure, type MergeConflictState } from './gates'
-import { noun } from './laps'
+import { noun } from './tickets'
 import type { CheckRow, Freshness } from './review'
 
 const HEADLINE_MAX = 80
@@ -264,7 +264,7 @@ export function mergeSummary(input: {
   // What they cannot see from here is that the agents are still committing.
   if (input.burning) {
     warnings.push(
-      'A burn is live — work landing after this merge stays unshipped on the branch.',
+      'A round is running — work landing after this merge stays unshipped on the branch.',
     )
   }
   // Said before the click, not discovered after it: the notes are saved, but
@@ -285,11 +285,8 @@ export function mergeSummary(input: {
   }
   // The debt decision 26(d) surfaces at triage, surfaced again at the last door:
   // these tickets exist, have never burned, and merging leaves them behind.
-  for (const debt of standingFixTickets(tickets, input.lap ?? 1)) {
-    warnings.push(
-      `${noun(debt.count, 'unburned fix ticket')} from lap ${debt.lap} — merging leaves them behind.`,
-    )
-  }
+  const unburned = standingFixTickets(tickets, input.lap ?? 1).reduce((sum, debt) => sum + debt.count, 0)
+  if (unburned > 0) warnings.push(`${noun(unburned, 'unburned fix ticket')} — merging leaves them behind.`)
   const stale = staleEvidenceWarning(input.freshness)
   if (stale) warnings.push(stale)
   // The last catch (decisions #7). The bar has already stopped recommending this
@@ -310,39 +307,34 @@ export function mergeSummary(input: {
   }
 }
 
-/** What the burn confirmation shows: the figures, and the server's warnings. */
-export interface BurnSummary {
-  /** The figures, in reading order — what burns, the lap it stamps, on what. */
+/** What the Go confirmation shows: the figures, and the server's warnings. */
+export interface GoSummary {
+  /** The figures, in reading order — the plan, then the model it runs on. */
   rows: CheckRow[]
   /**
-   * One sentence per thing the human is burning over, verbatim from
-   * `feature.burnWarnings`. Never re-derived here: the same three sentences
-   * reach the ticket-writing session through `complete_phase("tickets")`, and
-   * two implementations of one policy is how they would drift apart.
+   * One sentence per thing the human is approving over, verbatim from
+   * `feature.goWarnings`. Never re-derived here: the same sentences reach the
+   * ticket-writing session through `complete_phase("tickets")`, and two
+   * implementations of one policy is how they would drift apart.
    */
   warnings: readonly string[]
   /** What the button does, said once at the bottom. */
   next: string
 }
 
-/** A ticket as the burn confirmation reads it: whose lap, and on which model. */
-interface BurnTicketFigure {
-  lap: number
+/** A ticket as the Go confirmation reads it: the model it is assigned, if any. */
+interface PlanTicketFigure {
   model?: string | null
 }
 
-/** The lap a Burn click stamps — derived from the runs, never managed by hand. */
-export function burnLap(runs: readonly { workflow: string }[]): number {
-  return runs.filter((run) => run.workflow === 'ticket-burner').length + 1
-}
-
 /**
- * What burns, on which model. Unassigned tickets burn on the project's own
- * model, so the row names that rather than going quiet — "on what" is the one
- * figure the ledger behind this dialog may have been edited ticket by ticket.
+ * Which model the plan's workers run on. Unassigned tickets run on the
+ * project's own model, so the row names that rather than going quiet — "on
+ * what" is the one figure the ledger behind this dialog may have been edited
+ * ticket by ticket.
  */
 function modelRow(
-  tickets: readonly BurnTicketFigure[],
+  tickets: readonly PlanTicketFigure[],
   defaultModel: string | undefined,
 ): CheckRow {
   const assigned = [
@@ -360,43 +352,37 @@ function modelRow(
 }
 
 /**
- * The burn confirmation's summary (decision 5): what is about to burn, the lap
- * it stamps, and every warning the server computed for it.
+ * The Go confirmation's summary (`the-feature-lead-runs-rounds` decision 8):
+ * the plan being approved, how far the agent will go on its own, and every
+ * warning the server computed.
  *
  * Deliberately the same grammar as {@link mergeSummary} — figures, then a warn
  * box, then one line saying what the button does — because the operator should
- * learn ONE confirmation pattern. What it never does is disable anything: the
- * friction at Burn is reading, and the only two things that refuse a burn are
- * physics (a run already burning this feature, and git safety).
+ * learn ONE confirmation pattern. What it never does is disable anything, and a
+ * plan with no tickets is not refused: the agent may do a small feature itself
+ * (decision 5).
  */
-export function burnSummary(input: {
+export function goSummary(input: {
   branch: string
-  /** The non-terminal tickets the burn would run. */
-  pendingTickets: readonly BurnTicketFigure[]
-  /** The lap this click stamps ({@link burnLap}). */
-  lap: number
+  /** The tickets not yet dispatched — what the agent's rounds will start from. */
+  pendingTickets: readonly PlanTicketFigure[]
   /** The project's own model, for tickets that carry no assignment of their own. */
   defaultModel?: string
-  /** `feature.burnWarnings`, verbatim; empty while the query is still in flight. */
+  /** `feature.goWarnings`, verbatim; empty while the query is still in flight. */
   warnings?: readonly string[]
-}): BurnSummary {
+}): GoSummary {
   const tickets = input.pendingTickets
-  const carried = tickets.filter((ticket) => ticket.lap !== input.lap).length
   return {
     rows: [
       {
-        key: 'what burns',
-        value:
-          carried > 0
-            ? `${noun(tickets.length, 'ticket')} · ${carried} carried from earlier laps`
-            : noun(tickets.length, 'ticket'),
-        tone: tickets.length > 0 ? 'ok' : 'warn',
+        key: 'plan',
+        value: tickets.length > 0 ? noun(tickets.length, 'ticket') : 'No tickets — the agent may do it itself',
+        tone: 'ok',
       },
-      { key: 'lap', value: `lap ${input.lap} — stamped by this click`, tone: 'ok' },
-      modelRow(tickets, input.defaultModel),
+      ...(tickets.length > 0 ? [modelRow(tickets, input.defaultModel)] : []),
     ],
     warnings: input.warnings ?? [],
-    next: `Burns ${noun(tickets.length, 'ticket')} in parallel sandboxes, each committing to ${input.branch}, and moves the feature to Building.`,
+    next: `Moves the feature to Building. The agent runs rounds of workers on ${input.branch} until it is ready for you to test drive, and asks you before anything the plan did not settle.`,
   }
 }
 

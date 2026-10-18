@@ -221,6 +221,8 @@ export function storeTickets(
     conflictFiles: null,
     digest: null,
     originFindingId: t.originFindingId ?? null,
+    tokens: null,
+    tokenBreakdown: null,
   }))
 
   ctx.db.insert(tickets).values(rows).run()

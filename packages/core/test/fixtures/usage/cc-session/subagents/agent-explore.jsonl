@@ -1,0 +1,2 @@
+{"type":"user","uuid":"su1","isSidechain":true,"timestamp":"2026-10-17T10:01:00.000Z","message":{"role":"user","content":"Find the burner's run call."}}
+{"type":"assistant","uuid":"sa1","isSidechain":true,"timestamp":"2026-10-17T10:01:10.000Z","message":{"id":"msg_S1","type":"message","role":"assistant","content":[{"type":"text","text":"ticket-burner.ts:4729"}],"usage":{"input_tokens":5,"cache_creation_input_tokens":400,"cache_read_input_tokens":0,"output_tokens":20}}}

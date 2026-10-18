@@ -34,6 +34,7 @@ import { REVIEW_ARTIFACTS_KEY } from './reviews'
 type LiveSignal =
   | { kind: 'event'; projectId: string; featureId?: string; eventId: number }
   | { kind: 'transcript'; ticketId: string }
+  | { kind: 'turn'; sessionId: string }
 
 export type LiveStatus = 'connecting' | 'live' | 'offline'
 
@@ -126,10 +127,20 @@ export const PULSE_TIMEOUT_MS = 35_000
  */
 const WATCHDOG_INTERVAL_MS = 5_000
 
+/**
+ * The longest one full resync may hold the next one back. A refetch that never
+ * answers (a request the server dropped) must not freeze every later signal.
+ */
+export const RESYNC_HOLD_MS = 10_000
+
 /** What the stream asks the app to refetch when it (re)proves itself. */
 export interface LiveSyncHandlers {
-  /** Everything the events table backs — the reconnect resync. */
-  resyncAll: () => void
+  /**
+   * Everything the events table backs — the reconnect resync. A returned
+   * promise settles when the refetches it started have; signals arriving
+   * before then fold into one trailing resync rather than cancelling them.
+   */
+  resyncAll: () => void | Promise<unknown>
   /** The agent transcript only. */
   resyncTranscript: () => void
 }
@@ -147,6 +158,39 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
   let releaseSource: (() => void) | null = null
   let lastFrameAt = Date.now()
   let disposed = false
+  let resyncing = false
+  let resyncAgain = false
+
+  /**
+   * One full resync at a time. An invalidation cancels the refetch already in
+   * flight for the same query, and a busy feed signals on every flush (120ms)
+   * — so while a round landed or the agent worked, each refetch was cancelled
+   * by the next signal and none ever landed: the header kept showing the state
+   * from before Go or Stop until a reload. Signals during a resync instead mark
+   * it dirty, and exactly one more runs once it settles, so the last change is
+   * still read by a fetch that started after it.
+   */
+  const resyncAll = (): void => {
+    if (resyncing) {
+      resyncAgain = true
+      return
+    }
+    const pending = handlers.resyncAll()
+    if (!pending) return
+    resyncing = true
+    let hold: ReturnType<typeof setTimeout> | undefined
+    const held = new Promise<void>((resolve) => {
+      hold = setTimeout(resolve, RESYNC_HOLD_MS)
+    })
+    void Promise.race([pending.catch(() => {}), held]).then(() => {
+      clearTimeout(hold)
+      resyncing = false
+      if (resyncAgain && !disposed) {
+        resyncAgain = false
+        resyncAll()
+      }
+    })
+  }
 
   const closeSource = (): void => {
     releaseSource?.()
@@ -173,7 +217,7 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
       // Reconnect resync: while the stream was down (server restart, laptop
       // asleep, network blip) signals were missed by definition. Refetch
       // everything once so the UI is correct without a page reload.
-      handlers.resyncAll()
+      resyncAll()
       handlers.resyncTranscript()
     }
 
@@ -186,11 +230,11 @@ export function startLiveSync(handlers: LiveSyncHandlers): () => void {
       } catch {
         // Malformed frame: fall back to refreshing everything rather than
         // silently going stale.
-        handlers.resyncAll()
+        resyncAll()
         return
       }
       if (signal.kind === 'transcript') handlers.resyncTranscript()
-      else handlers.resyncAll()
+      else resyncAll()
     }
 
     // The server's idle heartbeat. It carries no news, so it invalidates
@@ -279,50 +323,58 @@ export function useLiveSync(): LiveStatus {
      * Everything whose data is derived from the events table or the run state.
      * Deliberately an allowlist: `setup.doctor` shells out to probe the
      * machine, so a blanket invalidate would re-run real work on every signal.
+     *
+     * Settles once every refetch it started has, so the stream can hold the
+     * next resync until then instead of cancelling them (see `startLiveSync`).
      */
-    const invalidateDbBacked = (): void => {
+    const invalidateDbBacked = (): Promise<unknown> => {
       const u = utilsRef.current
-      void u.events.invalidate()
-      void u.feature.list.invalidate()
-      void u.feature.get.invalidate()
-      void u.feature.driveInfo.invalidate()
+      const refetches: Promise<unknown>[] = []
+      refetches.push(u.events.invalidate())
+      refetches.push(u.feature.list.invalidate())
+      refetches.push(u.feature.get.invalidate())
+      refetches.push(u.feature.driveInfo.invalidate())
+      // The round trail: a round that starts, lands a ticket or ends, and a
+      // ready declaration, all move it while it is on screen.
+      refetches.push(u.feature.rounds.invalidate())
+      refetches.push(u.feature.readyDeclarations.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
       // the Scenario menu and the Test drive picker have no poll of their own —
       // without this the scenario just made stayed off the menu until a reload.
-      void u.feature.driveScenarios.invalidate()
+      refetches.push(u.feature.driveScenarios.invalidate())
       // Test-drive notes: the review checklist is a live surface — a note added,
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.
-      void u.notes.invalidate()
+      refetches.push(u.notes.invalidate())
       // Project notes: the rail's badge and the inbox are both counts of a pile
       // two writers add to — the capture popover on this screen, and a triaging
       // project session in a terminal beside it. A note jotted or triaged has to
       // move both on the same push.
-      void u.projectNotes.invalidate()
+      refetches.push(u.projectNotes.invalidate())
       // The review agent's findings: `finding.*` events arrive one per finding
       // AS the review reports them, and the fix wave that follows moves them
       // again — the review page's counts line and its open-defects list are only
       // honest if they move on the same push.
-      void u.findings.invalidate()
+      refetches.push(u.findings.invalidate())
       // Findings carry the dry-run stamps the next-step bar warns on, and a
       // clean dry run stamps them mid-session — without this the warning would
       // outlive the run that disproved it until the next remount.
-      void u.project.prep.invalidate()
-      void u.run.get.invalidate()
+      refetches.push(u.project.prep.invalidate())
+      refetches.push(u.run.get.invalidate())
       // The run history behind the runs counter (decision #15b) — a burn that
       // starts adds a row to it, and the counter is on screen while that happens.
-      void u.run.listByFeature.invalidate()
-      void u.project.list.invalidate()
+      refetches.push(u.run.listByFeature.invalidate())
+      refetches.push(u.project.list.invalidate())
       // Spec/plan documents — their text, and the size of the digest a burn
       // would hand every ticket off them. These queries have no polling interval
       // at all, so before push they only ever refreshed on remount — this is
       // what made an agent-written spec invisible until a page reload.
-      void u.docs.invalidate()
+      refetches.push(u.docs.invalidate())
       // Settings, commit counts and the prep/project session rows: all of them
       // change under a running agent, and each one used to depend on its own
       // hardcoded interval (or on a remount) to notice.
-      void u.settings.get.invalidate()
+      refetches.push(u.settings.get.invalidate())
       // The image a click would build. It moves on settings writes nobody types
       // — the machine-wide `sandboxImage` clear, and the doctor's decision-8
       // heal of an orphaned project column — and both emit `settings.updated`,
@@ -331,27 +383,28 @@ export function useLiveSync(): LiveStatus {
       // left behind until a hard reload. It belongs on the allowlist where
       // `setup.doctor` does not: it probes nothing, it reads the project row and
       // one `existsSync`.
-      void u.setup.imageBuildTarget.invalidate()
+      refetches.push(u.setup.imageBuildTarget.invalidate())
       // The project chat's landing branch is a settings write like any other, so
       // the picker that shows it has to move on the same push — it has no
       // polling interval of its own, and the settings overlay carries a row for
       // the same value.
-      void u.project.sessionBranch.invalidate()
-      void u.feature.commitCount.invalidate()
+      refetches.push(u.project.sessionBranch.invalidate())
+      refetches.push(u.feature.commitCount.invalidate())
       // The merge confirmation's "what lands" row is the same git read one step
       // further on (commits AND files), so it moves when the count does.
-      void u.feature.mergeDelta.invalidate()
+      refetches.push(u.feature.mergeDelta.invalidate())
       // The burn confirmation's warn box, for the same reason: every one of its
       // three sentences is about tickets, findings or a doc an agent is moving
       // WHILE the human reads them, and a warning that outlives the thing it
       // warns about is worse than none.
-      void u.feature.burnWarnings.invalidate()
-      void u.project.prepSession.invalidate()
-      void u.project.projectSession.invalidate()
+      refetches.push(u.feature.goWarnings.invalidate())
+      refetches.push(u.project.prepSession.invalidate())
+      refetches.push(u.project.projectSession.invalidate())
       // The review agent's walkthrough appears mid-burn, at the tail of a run
       // the human is already watching — so the player has to arrive on the same
       // push as everything else, not on a reload.
-      void queryClient.invalidateQueries({ queryKey: [REVIEW_ARTIFACTS_KEY] })
+      refetches.push(queryClient.invalidateQueries({ queryKey: [REVIEW_ARTIFACTS_KEY] }))
+      return Promise.allSettled(refetches)
     }
 
     const invalidateTranscript = (): void => {

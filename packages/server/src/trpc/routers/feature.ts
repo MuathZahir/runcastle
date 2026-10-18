@@ -6,7 +6,7 @@ import {
   launchScenarioSession,
   launchSession,
 } from '../../launcher/launcher'
-import { burnWarnings } from '../../services/burn-warnings'
+import { goWarnings } from '../../services/burn-warnings'
 import { setDependencies } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
@@ -14,6 +14,7 @@ import * as git from '../../services/git'
 import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
+import { listRounds } from '../../services/runs'
 import { publicProcedure, router } from '../context'
 
 export const featureRouter = router({
@@ -136,23 +137,39 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.deleteFeature(ctx, input.featureId)),
 
-  burn: publicProcedure
-    // `model` is a per-run override (issue #48) — the scripted smoke passes its
-    // cheap model here instead of the retired RUNCASTLE_MODEL env hack.
-    .input(z.object({ featureId: z.string(), model: z.string().min(1).optional() }))
-    .mutation(({ ctx, input }) => features.burn(ctx, input.featureId, { modelOverride: input.model })),
+  // Go (`the-feature-lead-runs-rounds` decision 8): approve the plan, move
+  // planning → building and hand the feature to its lead. Starts no run — the
+  // lead dispatches every round. Replaces the human's Burn.
+  go: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.go(ctx, input.featureId)),
+
+  // Stop (decision 23): cancel the running round, mark the feature stopped so
+  // nothing dispatches until the human replies, tell the lead.
+  stop: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => features.stopFeature(ctx, input.featureId)),
+
+  // The round trail's record (decision 16): every round, numbered from 1.
+  rounds: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => listRounds(ctx, input.featureId)),
+
+  readyDeclarations: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => features.listReadyDeclarations(ctx, input.featureId)),
 
   agenticReview: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.agenticReview(ctx, input.featureId)),
 
-  // What the Burn confirm dialog prints in its warn box (decisions §5), in the
-  // `mergeDelta` pattern: computed server-side so the UI never re-derives
-  // policy, and never a refusal — the primary button stays enabled. Empty is
-  // the common answer and means the dialog shows no box at all.
-  burnWarnings: publicProcedure
+  // What the Go confirm dialog prints in its warn box, in the `mergeDelta`
+  // pattern: computed server-side so the UI never re-derives policy, and never
+  // a refusal — the primary button stays enabled. Empty is the common answer
+  // and means the dialog shows no box at all.
+  goWarnings: publicProcedure
     .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => burnWarnings(ctx, input.featureId)),
+    .query(({ ctx, input }) => goWarnings(ctx, input.featureId)),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure

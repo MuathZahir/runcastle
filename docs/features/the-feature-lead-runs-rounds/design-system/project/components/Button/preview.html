@@ -1,0 +1,14 @@
+<!-- @dsCard group="Actions" height=120 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Button — preview</title></head>
+<body>
+<div id="root" class="rc-stack" style="padding:24px;gap:16px"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{className:'rc-preview',style:{padding:0}},h(R.Button,{variant:'primary',icon:'plus',kbd:'C'},'New chat'),h(R.Button,{icon:'play'},'Test drive'),h(R.Button,{variant:'ghost',icon:'branch'},'Checkout'),h(R.Button,{variant:'danger',icon:'trash'},'Delete')),
+h('div',{className:'rc-preview',style:{padding:0}},h(R.Button,{variant:'primary',size:'lg'},'Merge to main'),h(R.Button,{size:'sm',icon:'undo'},'Retry'),h(R.Button,{variant:'ghost',size:'sm',icon:'more',label:'More'}),h(R.Button,{variant:'primary',disabled:true},'Start burn'))));
+</script>
+</body>
+</html>

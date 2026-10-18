@@ -1,0 +1,13 @@
+<!-- @dsCard group="Data" height=170 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Disclosure — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{style:{width:560}},h(R.Disclosure,{title:'How to drive this app',icon:'terminal',aside:'Edit in settings'}, 'Use the runcastle-demo project for all testing.'),h(R.Disclosure,{title:'Full digest',icon:'doc',aside:'3 observations',open:true},'Settings now shows the chat model a session actually launches on; legacy step keys leave the config for good.'))));
+</script>
+</body>
+</html>

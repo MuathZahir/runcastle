@@ -1,34 +1,33 @@
-import { lapWorkTickets } from '@runcastle/core'
-import type { ModelEntry, Ticket } from '@runcastle/core'
+import type { ModelEntry, RoundSummary, Ticket } from '@runcastle/core'
 import type { FeatureFull } from '../../../lib/api'
-import { groupByLap, lapTicketCount, ticketCountText } from '../../../lib/feature-ui'
-import { EmptyState, LapSections, List, MetaLine } from '../../../ui'
+import { groupByRound, ticketCount, ticketCountText } from '../../../lib/feature-ui'
+import { EmptyState, List, MetaLine, RoundSections } from '../../../ui'
 import { IconCube } from '../../../icons'
 import { DocsMenu } from '../../DocsMenu'
 import { ModelMenu } from './ModelMenu'
 import { TicketRow } from './TicketRow'
 import type { TicketPatch } from './TicketEditor'
 
-export function ticketLedgerMeta(tickets: readonly Ticket[], lap: number): string {
+export function ticketLedgerMeta(tickets: readonly Ticket[]): string {
   // The review ticket is the review pass, not work: its burning is the review
   // running, never "1 burning" beside a count that leaves it out.
-  const rows = lapWorkTickets(tickets, lap)
-  const parts = [ticketCountText(lapTicketCount(tickets, lap)), `Lap ${lap}`]
+  const rows = tickets.filter((ticket) => ticket.kind !== 'review')
+  const parts = [ticketCountText(ticketCount(tickets))]
   const failed = rows.filter((ticket) => ticket.status === 'failed').length
   const burning = rows.filter((ticket) => ticket.status === 'burning').length
   if (failed) parts.push(`${failed} failed`)
-  if (burning) parts.push(`${burning} burning`)
+  if (burning) parts.push(`${burning} running`)
   return parts.join(' · ')
 }
 
 /**
  * The ticket ledger: one line of counts and ledger-wide controls, then the
- * tickets as a divided list of rows (lap headers once a feature has looped).
- * No frame — the page section around it titles it.
+ * tickets as a divided list of rows, under the round that ran them once any
+ * round has (decision 16). No frame — the page section around it titles it.
  */
 export function TicketLedger({
   tickets,
-  currentLap,
+  rounds = [],
   roster,
   readonly = false,
   docs,
@@ -42,7 +41,8 @@ export function TicketLedger({
   onCopySha,
 }: {
   tickets: Ticket[]
-  currentLap: number
+  /** The feature's rounds — what the rows group under. */
+  rounds?: readonly Pick<RoundSummary, 'round' | 'ticketSeqs'>[]
   roster: readonly ModelEntry[]
   /** A frozen record: counts and rows only (decision 10). */
   readonly?: boolean
@@ -59,14 +59,13 @@ export function TicketLedger({
   onCancel?: (ticketId: string) => void
   onCopySha?: (sha: string) => void
 }) {
-  const lapTickets = tickets.filter((ticket) => ticket.lap === currentLap)
-  const pending = lapTickets.filter((ticket) => ticket.status === 'pending')
+  const pending = tickets.filter((ticket) => ticket.status === 'pending')
   return (
     <div className="flex min-h-0 flex-col">
       <div className="mb-2 flex min-h-7 flex-wrap items-center gap-x-4 gap-y-1">
         <MetaLine
           items={[
-            { text: ticketLedgerMeta(tickets, currentLap) },
+            { text: ticketLedgerMeta(tickets) },
             !readonly && !!sandbox && { text: `Sandbox ${sandbox}` },
             !readonly && !!defaultModel && { text: defaultModel, mono: true, title: 'The project’s model for tickets with none of their own' },
           ]}
@@ -78,9 +77,9 @@ export function TicketLedger({
           )}
         </span>
       </div>
-      {lapTickets.length === 0 &&
+      {tickets.length === 0 &&
         (readonly ? (
-          <EmptyState icon={<IconCube />} title="No tickets in this lap" compact />
+          <EmptyState icon={<IconCube />} title="No tickets" compact />
         ) : (
           <EmptyState
             icon={<IconCube />}
@@ -91,12 +90,11 @@ export function TicketLedger({
         ))}
       {tickets.length > 0 && (
         <div className="min-h-0 overflow-y-auto">
-          <LapSections
-            groups={groupByLap(tickets, currentLap)}
-            currentLap={currentLap}
+          <RoundSections
+            groups={groupByRound(tickets, rounds)}
             headClassName="px-3"
             meta={(group) => {
-              const { done, total } = lapTicketCount(group.rows.map((ticket) => ({ ...ticket, landedLap: ticket.lap })), group.lap)
+              const { done, total } = ticketCount(group.rows)
               return `${done} of ${total} done`
             }}
           >
@@ -116,12 +114,12 @@ export function TicketLedger({
                 ))}
               </List>
             )}
-          </LapSections>
+          </RoundSections>
         </div>
       )}
       {!readonly && (
         <p className="mt-3 mb-0 text-xs text-text-tertiary">
-          Edit and Cancel are available on pending and failed tickets until you burn.
+          Edit and Cancel are available on pending and failed tickets until a round dispatches them.
         </p>
       )}
     </div>

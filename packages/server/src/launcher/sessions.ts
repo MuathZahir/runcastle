@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type {
   AgentRuntime,
   MergeBranchPair,
@@ -9,27 +10,27 @@ import type {
   SessionRow,
 } from '@runcastle/core'
 import { DEFAULT_RUNTIME, newId } from '@runcastle/core'
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { sessions } from '../db/schema'
 import { ptyRegistry } from '../pty/registry'
+import { publishLive } from '../services/bus'
 import { stopDocsWatch } from '../services/docs-watch'
 import { emitForSession, emitProject } from '../services/events'
-import { endOrchestratorMessages } from '../services/orchestrator-messages'
+import {
+  endOrchestratorMessages,
+  leadMessageKey,
+  releaseOrchestratorWaiter,
+} from '../services/orchestrator-messages'
 import {
   landProjectBranch,
   PROJECT_BRANCH,
   resolveSessionBranch,
   type ProjectLandResult,
 } from '../services/git'
-import {
-  type CarriedWork,
-  carriedWorkSummary,
-  reviewEvidenceSentence,
-} from '../services/carried-work'
 import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
-import { PLANNING_WITHOUT_A_HUMAN, prepareConfirmKickoffFor, skillRef } from './runtimes/skills'
+import { prepareConfirmKickoffFor } from './runtimes/skills'
 
 /**
  * Session-row persistence for the launcher + hook receiver + MCP server. There
@@ -58,7 +59,7 @@ export type CreateSessionInput = {
    * why a default is not stamped in its place.
    */
   model?: ModelEntry
-  /** The session runs with no terminal (a self-plan, relay or headless start-lap run). */
+  /** The session runs with no terminal (a self-plan or relay run). */
   headless?: boolean
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
@@ -137,8 +138,19 @@ export function markAwaitingInput(ctx: AppCtx, id: string): void {
   setAwaitingInput(ctx, id, true)
 }
 
+/**
+ * Write the bit, and push when it actually moved: the feature header's status
+ * line ("Working" vs "Ready for you") reads it, and with no signal the browser
+ * would only see a turn end on the 30s safety poll.
+ */
 function setAwaitingInput(ctx: AppCtx, id: string, awaitingInput: boolean): void {
-  ctx.db.update(sessions).set({ awaitingInput }).where(eq(sessions.id, id)).run()
+  const changed = ctx.db
+    .update(sessions)
+    .set({ awaitingInput })
+    .where(and(eq(sessions.id, id), ne(sessions.awaitingInput, awaitingInput)))
+    .returning({ id: sessions.id })
+    .all()
+  if (changed.length > 0) publishLive({ kind: 'turn', sessionId: id })
 }
 
 export interface MarkLiveInput {
@@ -184,115 +196,6 @@ export function markSessionLive(
 export const SESSION_READY_TIMEOUT_MS = 25_000
 
 /**
- * The lap briefing (SPEC §15.2) — the `revisit` kickoff override for the lap
- * being planned at review, and the whole of a lap's ceremony: one terminal
- * digests what the test drive taught, amends the docs, emits the lap's tickets
- * and hands back to the human's Burn click (ADR-0010 §5), which is what starts
- * the lap — so it never calls `complete_phase`.
- *
- * `carried` is what the last lap handed this one (see {@link CarriedWork}). When
- * there is any, the line LEADS with the counts and an instruction to address
- * them, and drops the hedging about the notes file: it demonstrably exists, and
- * a session told its inputs "may not exist yet" goes looking half-heartedly for
- * the very work it was launched to do. With nothing carried the hedge is honest
- * and stays — `test-notes.md` is created lazily on the first note (a feature
- * that never captured one has no file at all), and `## Later laps` only exists
- * when the slicing conversation parked scope there. An agent that treats a
- * missing file as a broken environment stalls the lap on its first move.
- *
- * The notes pointer is the `## Carried, still open` section, never a
- * lap-numbered one, so a note lap N+1 skips is still named at lap N+2.
- *
- * It also names the previous lap's review evidence by absolute path (see
- * {@link reviewEvidenceSentence}), states the two things a lap session has been
- * observed skipping — the "not demonstrable" markers it must read out before
- * offering a test drive, and standing on each reported failure — and leaves the
- * procedure for those to `revisit/SKILL.md`.
- */
-export function lapKickoff(lap: number, carried?: CarriedWork): string {
-  return reviewLapKickoff(lap, carried)
-}
-
-/**
- * The lap briefing for a lap planned FROM REVIEW — what the review page's
- * "Start lap N+1" door opens the feature chat with (the `start-lap` purpose),
- * whether it comes empty-handed or after a triage that carried work. It is the
- * only lap briefing there is; {@link lapKickoff} is the same line.
- *
- * The feature is still at review on lap `lap - 1` when this conversation runs,
- * and it stays there. The lap's tickets land `pending` and Burn from review is
- * what moves them onto lap `lap` (`carryPendingTicketsIntoLap`) and bumps the
- * counter — so there is no phase to complete, and the briefing forbids
- * `complete_phase`. A stray call is not refused (the pipeline answers it as an
- * `iterating` report, `toolCompletePhase`), which is why the ban is in the words.
- */
-export function reviewLapKickoff(lap: number, carried?: CarriedWork): string {
-  return (
-    `Proceed with your task: invoke the /runcastle:revisit skill to PLAN LAP ${lap} FROM REVIEW. ` +
-    `This conversation plans lap ${lap}; the feature stays at review until I click Burn. ` +
-    lapAgenda(carried) +
-    'Interview me about what the test drive taught: what was wrong, what was missing, ' +
-    `what I want next. Write what we settle on into decisions.md under "## Lap ${lap}" and amend ` +
-    'spec.md for this lap (pruning anything you promote out of "## Later laps"), then call ' +
-    `emit_tickets for lap ${lap}'s work — they land pending, and Burn from review moves them onto ` +
-    `lap ${lap}. Do NOT call complete_phase: the feature stays at review. Finish by telling me to ` +
-    'review the cards and click Burn.'
-  )
-}
-
-/**
- * The lap briefing for a lap the orchestrator has planned headless
- * (`whole-cuts-plan-themselves`): the agenda {@link reviewLapKickoff} sets, with
- * the orchestrator's message on it, and no interview — nobody is there to give
- * one, so the session decides as a self-planning run does and ends at the
- * tickets.
- */
-export function headlessLapKickoff(
-  lap: number,
-  runtime: AgentRuntime,
-  carried?: CarriedWork,
-  message?: string,
-): string {
-  return (
-    'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
-    `${skillRef(runtime, 'revisit')} skill to PLAN LAP ${lap} FROM REVIEW by yourself, in this one ` +
-    `run; the feature stays at review until the orchestrator burns it. ` +
-    (message ? `The project's orchestrator asks this of the lap: ${message} ` : '') +
-    lapAgenda(carried) +
-    `Decide what the lap does by the ${skillRef(runtime, 'ideate')} skill's ` +
-    `"${PLANNING_WITHOUT_A_HUMAN}" rules: mark every decision you make **Assumed.** with its ` +
-    `alternative. Write them into decisions.md under "## Lap ${lap}" and amend spec.md for this ` +
-    `lap, then call emit_tickets for lap ${lap}'s work. Do NOT call complete_phase, and do not ` +
-    'wait for anyone.'
-  )
-}
-
-/**
- * What a lap briefing sets as the lap's agenda — the carried notes, the open
- * defects and `## Later laps` — plus the two things a lap session has been
- * observed skipping.
- */
-function lapAgenda(carried?: CarriedWork): string {
-  const summary = carriedWorkSummary(carried)
-  const evidence = reviewEvidenceSentence(carried)
-  return (
-    (summary ? `${summary} — address them. ` : '') +
-    `Call get_feature_context, then read this feature's test-notes.md (its "## Carried, still ` +
-    'open" section — every note carried and not yet done, whatever lap captured it), the open ' +
-    'defects in that payload\'s openDefects, and the "## Later laps" section of its spec.md. ' +
-    (summary
-      ? 'THE "## Later laps" SECTION MAY NOT EXIST; that is normal, not an error. '
-      : 'ANY OF THOSE MAY NOT EXIST YET; that is normal, not an error — say so and carry on from ' +
-        'what I tell you. ') +
-    (evidence ?? '') +
-    'Before you offer me a test drive, grep spec.md and the tickets for "not demonstrable", ' +
-    '"do not demo" and "later laps" and tell me what they say. For every bug I report, stand on ' +
-    'the failure: reproduce it, or trace it to a file and line, or say plainly you could not — ' +
-    "and then make reproduction the fix ticket's first acceptance criterion. "
-  )
-}
-
-/**
  * The kickoff line for a session: an explicit override wins, else the per-kind
  * default of the runtime the session runs on — the skill invocation is spelled
  * differently per runtime, so the line comes from the adapter and never from a
@@ -319,48 +222,25 @@ export interface KickoffPlan {
   /** The briefing to type; absent means the per-kind default line. */
   line?: string
   /**
-   * The briefing IS this session's opening move (a lap briefing, a merge-conflict
+   * The briefing IS this session's opening move (a merge-conflict
    * hand-off) rather than a nudge to carry on. Such a launch must be FRESH: a
    * `--resume` shows Claude Code's "start from a summary?" chooser, which eats
    * the very keystrokes carrying the briefing (F2), and even when it survives, a
    * restored transcript argues with an instruction that means to start over.
    */
   explicit: boolean
-  /** Set when this session plans a lap from review: which lap (see {@link planKickoff}). */
-  lap?: number
 }
 
 /**
  * Decide a launch's kickoff (exported seam — see {@link KickoffPlan}): an
  * override passed by the caller is an explicit briefing, and no override means
- * the per-kind default.
- *
- * There is no planning-phase lap to brief. A lap used to be the front half of
- * the pipeline run again, parked at `planning` on lap N until its session
- * reported ideation → spec → tickets; nothing moves a feature backwards any
- * more, and the lap counter moves only at Burn from review, straight into
- * `building`. A lap is planned at review instead, from the Start-lap briefing:
- * the review page's "Start lap N+1" door (`startLap`, the feature's current
- * lap) briefs lap N+1's planning ({@link reviewLapKickoff}) while the feature is
- * still at review, and sets `lap` on the plan so the artifacts render the lap
- * prompt for that lap.
+ * the per-kind default. There is no lap to plan any more: the lead runs rounds
+ * (`the-feature-lead-runs-rounds`), so nothing here briefs one.
  */
-export function planKickoff(input: {
-  kind: SessionKind
-  kickoffLine?: string
-  /**
-   * Opened by the review page's "Start lap N+1" door at review: the feature's
-   * current lap N, whose successor this session plans.
-   */
-  startLap?: number
-  /** What the last lap handed this one — stated in the briefing this plans. */
-  carried?: CarriedWork
-}): KickoffPlan {
-  const lap = input.startLap === undefined ? undefined : input.startLap + 1
-  const line =
-    input.kickoffLine ?? (lap === undefined ? undefined : reviewLapKickoff(lap, input.carried))
+export function planKickoff(input: { kind: SessionKind; kickoffLine?: string }): KickoffPlan {
+  const line = input.kickoffLine
   if (!line) return { explicit: false }
-  return { line, explicit: true, ...(lap !== undefined ? { lap } : {}) }
+  return { line, explicit: true }
 }
 
 /** Is this session's terminal still running? False once it has exited or gone. */
@@ -375,19 +255,31 @@ function ptyAlive(sessionId: string): boolean {
  * something only the human can see (a trust prompt, a login, an update notice),
  * and the briefing it was launched with is sitting behind that. We say so rather
  * than touching the terminal: whatever is on screen is a question for them.
+ *
+ * The callback runs on a bare timer, where a throw is uncaught and takes the
+ * whole server down — so a failed read or write (a locked database) is logged
+ * and dropped here: the warning is best effort, the server is not.
  */
 export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void {
   const timer = setTimeout(() => {
-    const row = getSessionRow(ctx, session.id)
-    if (!row || row.status !== 'launching') return
-    if (!ptyAlive(session.id)) return
-    emitForSession(ctx, session, {
-      type: 'session.not_ready',
-      message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
-      data: { sessionId: session.id, kind: session.kind },
-    })
+    try {
+      warnIfNotReady(ctx, session)
+    } catch (err) {
+      console.error(`session-ready watchdog failed for ${session.id}`, err)
+    }
   }, SESSION_READY_TIMEOUT_MS)
   timer.unref?.()
+}
+
+function warnIfNotReady(ctx: AppCtx, session: SessionRow): void {
+  const row = getSessionRow(ctx, session.id)
+  if (!row || row.status !== 'launching') return
+  if (!ptyAlive(session.id)) return
+  emitForSession(ctx, session, {
+    type: 'session.not_ready',
+    message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
+    data: { sessionId: session.id, kind: session.kind },
+  })
 }
 
 /**
@@ -533,6 +425,12 @@ export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   // An orchestrator's message waiter is answered `ended`, and lines it never
   // heard are dropped: the catch-up briefing carries them to its next launch.
   endOrchestratorMessages(id)
+  // A lead's waiter goes with its session, but its feature's messages stay: the
+  // lead waker resumes the conversation headless with them. Only on the first
+  // ending: by a repeat one, the feature's next chat may own the waiter.
+  if (existing.kind === 'chat' && existing.featureId && existing.status !== 'ended') {
+    releaseOrchestratorWaiter(leadMessageKey(existing.featureId), 'ended')
+  }
   // The ending is timestamped here and nowhere else, so "ended 2h ago" is a
   // recorded fact rather than the row's age wearing an end-time label. Those
   // same three end paths can each fire on a row that is already ended (a Stop
@@ -774,6 +672,33 @@ export function resumeCapExceeded(input: {
     }
   }
   return null
+}
+
+/**
+ * Why `prior`'s conversation can no longer be resumed from `worktreePath`, or
+ * undefined when it still can (`the-feature-lead-runs-rounds` decision 28).
+ * Resuming a conversation whose transcript is gone exits at once — Claude Code
+ * cleans up old transcripts, and looks a conversation up under the launch
+ * directory, so one recorded in another worktree is as good as gone. A row
+ * that recorded no transcript path cannot be judged and is resumed, the way
+ * {@link transcriptBytes} fails open.
+ */
+export function resumeGoneReason(prior: SessionRow, worktreePath: string): string | undefined {
+  if (prior.transcriptPath && !existsSync(prior.transcriptPath)) return 'its transcript is no longer on disk'
+  if (
+    (prior.runtime ?? DEFAULT_RUNTIME) === 'claude-code' &&
+    prior.worktreePath &&
+    samePathKey(prior.worktreePath) !== samePathKey(worktreePath)
+  ) {
+    return 'it was recorded in another worktree'
+  }
+  return undefined
+}
+
+/** A path as a comparable key: resolved, and case-folded where the filesystem ignores case (Windows). */
+function samePathKey(path: string): string {
+  const resolved = resolve(path)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
 /** Size of a session's transcript on disk, or undefined when there isn't one. */

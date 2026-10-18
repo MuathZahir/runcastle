@@ -20,9 +20,11 @@ import {
   rosterVisibleRows,
   rowSearchTerms,
   settingsLocationFromMessage,
+  settingsMention,
   stepModelRows,
   stepRows,
   unsetStepKeys,
+  type SettingRow,
 } from '../src/lib/settings'
 import type { FindingLike } from '../src/lib/prep-findings'
 import type { SettingField, SettingsView } from '../src/lib/api'
@@ -490,7 +492,7 @@ describe('pageRows — one page per task', () => {
     expect(pageRows(globalView(), 'models').map((r) => r.key)).toEqual(['model'])
   })
 
-  it('puts the five burn numbers on Burns, each with the unit it counts', () => {
+  it('puts the five worker numbers on Workers, each with the unit it counts', () => {
     const rows = pageRows(globalView(), 'burns')
     expect(rows.map((r) => r.key)).toEqual([
       'burnConcurrency',
@@ -1184,5 +1186,30 @@ describe('settingsLocationFromMessage', () => {
 
   it('leaves a message that points nowhere alone', () => {
     expect(settingsLocationFromMessage('The burn failed.')).toBeNull()
+  })
+
+  it('links a message that names the page as Workers', () => {
+    expect(settingsMention('Rebuild from Settings → Workers.')?.phrase).toBe('Settings → Workers')
+  })
+})
+
+describe('the words Settings reads in — rounds and workers, never burns or laps', () => {
+  const words = (row: SettingRow) =>
+    [row.label, row.tooltip, row.shortHelp, row.unit].filter(Boolean).join(' ')
+
+  it('says neither "burn" nor "lap" on General, Workers or This project', () => {
+    const rows = [
+      ...pageRows(globalView(), 'general'),
+      ...pageRows(globalView(), 'burns'),
+      ...pageRows(projectView(), 'project'),
+      describeField(field({ key: 'orchestrator', value: false, scope: 'project' })),
+    ]
+    for (const row of rows) expect(words(row)).not.toMatch(/\bburn|\blaps?\b/i)
+  })
+
+  it('says runcastle runs the Verify commands at the end of every round', () => {
+    const verify = pageRows(projectView(), 'project').find((r) => r.key === 'verifyCommands')
+    expect(verify?.tooltip).toContain('runcastle runs them itself at the end of every round')
+    expect(verify?.tooltip).not.toContain('never runs them')
   })
 })

@@ -77,7 +77,7 @@ function credentialPrerequisite(runtime: AgentRuntime): BurnPrerequisite {
   return {
     field: afkCredentialField(runtime),
     label: token ? `${label} token` : label,
-    reason: token ? `burns with ${label} need a token` : `sign in to ${label}`,
+    reason: token ? `workers on ${label} need a token` : `sign in to ${label}`,
     terms: token ? [label, 'token', 'AFK credential'] : [label, 'sign in', 'login'],
   }
 }
@@ -97,7 +97,11 @@ export const BURN_PREREQUISITES: readonly BurnPrerequisite[] = [
     terms: ['Sandcastle image', 'build', 'rebuild'],
   },
   ...AGENT_RUNTIMES.map(credentialPrerequisite),
-  { field: 'burn-cache', label: 'Burn cache', terms: ['Burn cache', 'volume', 'clear'] },
+  {
+    field: 'burn-cache',
+    label: 'Worker cache',
+    terms: ['Worker cache', 'Burn cache', 'volume', 'clear'],
+  },
 ]
 
 /** How the checklist's summary line reads, over the rows that gate a burn. */
@@ -115,7 +119,7 @@ export interface AfkReadiness {
  */
 export function afkReadiness(rows: readonly { ok: boolean; reason: string }[]): AfkReadiness {
   const blocker = rows.find((r) => !r.ok)
-  if (!blocker) return { count: null, text: 'Ready for unattended burns' }
+  if (!blocker) return { count: null, text: 'Ready for unattended workers' }
   return {
     count: `${rows.filter((r) => r.ok).length} of ${rows.length}`,
     text: `ready — ${blocker.reason}`,

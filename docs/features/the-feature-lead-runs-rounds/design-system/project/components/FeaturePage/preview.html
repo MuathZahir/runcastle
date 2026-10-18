@@ -1,0 +1,78 @@
+<!-- @dsCard group="Pages" height=760 width=1280 page subtitle="A shipped feature, redesigned" -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>FeaturePage — page</title>
+<style>html,body{background:var(--canvas)} .rc-shell{height:760px}</style></head>
+<body>
+<div id="root"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+
+  function Logo(){return h('svg',{width:18,height:18,viewBox:'0 0 32 32','aria-hidden':true},h('path',{fillRule:'evenodd',d:'M4 29 V6 H10 V11 H13 V6 H19 V11 H22 V6 H28 V29 H4 Z M12.5 15 L21.5 20 L12.5 25 Z',fill:'var(--text)'}))}
+  function Sidebar(p){
+    return h('aside',{className:'rc-shell__side'},
+      h('div',{style:{display:'flex',alignItems:'center',gap:8,height:36,padding:'0 6px 0 10px'}},
+        Logo(), h('span',{style:{fontWeight:600,fontSize:13}},'runcastle'), h(R.Icon,{name:'chevron-down',size:14}),
+        h('span',{className:'rc-spacer'}), h(R.IconButton,{icon:'pencil',size:'sm',label:'New feature'})),
+      h('div',{style:{padding:'4px 2px 8px'}}, h(R.Input,{icon:'search',placeholder:'Search',kbd:'Ctrl K'})),
+      h(R.NavItem,{icon:'folder',label:'Project',active:p.active==='project'}),
+      h(R.NavItem,{icon:'message',label:'Chats',meta:'14'}),
+      h(R.NavItem,{icon:'activity',label:'Activity',dot:'live',dotLabel:'1 session live'}),
+      h('div',{style:{height:12}}),
+      h(R.SectionLabel,{count:1},'Drafts'),
+      h(R.NavItem,{phase:'draft',label:'Auto-continue burns after provider limit reset'}),
+      h('div',{style:{height:8}}),
+      h(R.SectionLabel,{count:104},'Shipped'),
+      h(R.NavItem,{phase:'shipped',label:'Settings shows step models through the legacy migration',active:p.active==='feature'}),
+      h(R.NavItem,{phase:'shipped',label:'MCP read tools stay within a context budget'}),
+      h(R.NavItem,{phase:'shipped',label:'Session-assigned ticket models must be annotated'}),
+      h(R.NavItem,{phase:'shipped',label:'Model roster discovers new models'}),
+      h(R.NavItem,{phase:'shipped',label:'Sandbox agent CLIs track the host version'}),
+      h('a',{className:'rc-nav',href:'#',style:{color:'var(--text-tertiary)'}},h('span',{style:{width:16}}),h('span',{className:'rc-nav__label'},'Show all')),
+      h('span',{className:'rc-spacer'}),
+      h(R.NavItem,{icon:'undo',label:'Re-prepare project',meta:'1 stale'}),
+      h('div',{className:'rc-meta',style:{padding:'8px 10px 4px',gap:'6px 12px'}},
+        h('span',{className:'rc-meta__item'},h(R.StatusDot,{tone:'success'}),'Server'),
+        h('span',{className:'rc-meta__item'},h(R.Icon,{name:'cube',size:14}),'docker'),
+        h('span',{className:'rc-spacer'}),
+        h(R.IconButton,{icon:'settings',size:'sm',label:'Settings'})));
+  }
+
+  var steps=['spec','tickets','implementation','review','shipped'];
+  function Main(){
+    return h('main',{className:'rc-shell__main'},
+      h('header',{className:'rc-topbar'},
+        h('div',{className:'rc-crumbs'},h(R.PhaseIcon,{phase:'shipped',size:14}),h('b',null,'Settings shows step models through the legacy migration')),
+        h('span',{className:'rc-spacer'}),
+        h(R.Tabs,{value:'overview',items:[{id:'overview',label:'Overview'},{id:'tickets',label:'Tickets',count:2},{id:'activity',label:'Activity'}]}),
+        h('span',{style:{width:8}}),
+        h(R.Button,{icon:'message',size:'sm'},'Chat'),
+        h(R.IconButton,{icon:'more',label:'Feature actions'})),
+      h('div',{className:'rc-page'},h('div',{className:'rc-page__inner'},
+        h('h1',{className:'rc-title-lg'},'Settings shows step models through the legacy migration'),
+        h('div',{style:{height:12}}),
+        h(R.MetaLine,{items:[{icon:'branch',text:'feature/settings-shows-step-models-through-the-legacy-migration'},{tone:'success',text:'Merged 19h ago'}]}),
+        h('div',{style:{height:24}}),
+        h(R.PhaseStepper,{phase:'shipped',steps:steps}),
+        h('hr',{className:'rc-hr'}),
+        h(R.PropertyList,{items:[
+          {label:'Review',tone:'success',value:'Passed',sub:'this build'},
+          {label:'Checks',tone:'warning',value:'2 of 3 passed'},
+          {label:'Test drive',tone:'neutral',value:'Not run',sub:'the review reported without driving'},
+          {label:'Tickets',icon:'cube',value:'2 of 2 landed'},
+          {label:'Laps',icon:'undo',value:'1'}]}),
+        h('div',{style:{height:40}}),
+        h('h2',{className:'rc-title'},'Lap 1'),
+        h('p',{className:'rc-body',style:{marginTop:6}},'Settings now shows the chat model a session actually launches on, and legacy step keys leave the config for good.'),
+        h('div',{style:{height:12}}),
+        h('div',{className:'rc-list rc-list--divided'},
+          h(R.ListRow,{icon:'check',title:'#2 · Review — gates mode, verified',meta:'1d'}),
+          h(R.ListRow,{icon:'cube',title:'#1 · Settings reads the migrated step keys',meta:'1d'})),
+        h('div',{style:{height:24}}),
+        h(R.Disclosure,{title:'How to drive this app',icon:'terminal',aside:'Edit in settings'},'Use the runcastle-demo project for all testing.'),
+        h(R.Disclosure,{title:'Full digest',icon:'doc',aside:'3 observations'},'…'))));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div',{className:'rc-shell'},Sidebar({active:'feature'}),Main()));
+</script>
+</body>
+</html>

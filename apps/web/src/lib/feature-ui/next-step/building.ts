@@ -1,6 +1,6 @@
 import type { TicketTally } from '@runcastle/core'
 import { settingsLocationFromMessage } from '../../settings'
-import { burnLabel, ticketCountText } from '../laps'
+import { burnLabel, ticketCountText } from '../tickets'
 import { burnExpectation } from '../run'
 import { burnWarningLine } from './burn-warnings'
 import { CHAT_ACTION } from './chat'
@@ -123,9 +123,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: pending === 1 ? 'Review & burn the ticket' : 'Review & burn the tickets',
       desc: `Read the card — edit it if it is not quite right — then burn it into commits. ${expectation}`,
-      // Whose tickets these are, when laps mix (decision 28a) — the burn takes
-      // every pending ticket on the branch, and the count alone never said so.
-      primary: { label: burnLabel(pendingTickets, full.feature.lap), kind: 'burn' },
+      primary: { label: burnLabel(pendingTickets), kind: 'burn' },
       secondary: [CHAT_ACTION, mergeAction],
       busy: false,
       ...(shape ? { note: shape } : {}),
@@ -147,13 +145,13 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       title: 'The burn could not start',
       desc: failure,
       primary: settingsLocationFromMessage(failure)
-        ? { label: 'Open Settings → Burns', kind: 'openBurnSettings' }
+        ? { label: 'Open Settings → Workers', kind: 'openBurnSettings' }
         : undefined,
       secondary: [resume, CHAT_ACTION, mergeAction],
       busy: false,
     }
   }
-  // Halted on a ticket by a fix that lives in Settings → Burns — a sandbox CLI
+  // Halted on a ticket by a fix that lives in Settings → Workers — a sandbox CLI
   // too old for the model. Resume would meet the same wall, so the fix leads
   // here too, even though tickets had started.
   if (failure && settingsLocationFromMessage(failure)) {
@@ -162,7 +160,7 @@ export function resolveBuilding(input: ResolverInput): NextStep {
       kick: 'NEXT STEP',
       title: 'The burn stopped — rebuild the image',
       desc: failure,
-      primary: { label: 'Open Settings → Burns', kind: 'openBurnSettings' },
+      primary: { label: 'Open Settings → Workers', kind: 'openBurnSettings' },
       secondary: [resume, CHAT_ACTION, mergeAction],
       busy: false,
     }

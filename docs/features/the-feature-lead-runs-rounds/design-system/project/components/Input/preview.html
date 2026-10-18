@@ -1,0 +1,13 @@
+<!-- @dsCard group="Forms" height=90 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Input — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h(R.Input,{icon:'search',placeholder:'Search or jump to…',kbd:'Ctrl K',width:280}),h(R.Input,{placeholder:'Feature title',width:220})));
+</script>
+</body>
+</html>

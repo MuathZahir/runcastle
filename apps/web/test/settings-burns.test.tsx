@@ -5,10 +5,10 @@ import type { SettingField, SettingsView } from '../src/lib/api'
 import type { SettingsLocation } from '../src/lib/settings'
 
 /**
- * Settings → Burns (flow-redesign-settings, ticket 9). Tier 2: the page is the
+ * Settings → Workers (flow-redesign-settings, ticket 9). Tier 2: the page is the
  * prerequisites checklist over one doctor report plus five numeric fields, and
  * the questions worth asking — what a deep link highlights, whether the machine
- * default is a ghost rather than a value, what a "Settings → Burns" message
+ * default is a ghost rather than a value, what a "Settings → Workers" message
  * turns into — are all about a rendered tree.
  *
  * Two seams: `settings.get`/`settings.update` for the fields and `setup.doctor`
@@ -145,7 +145,7 @@ function open(location: SettingsLocation = { page: 'burns' }) {
   )
 }
 
-describe('Settings → Burns', () => {
+describe('Settings → Workers', () => {
   beforeEach(() => {
     server.globals = { fields: burnFields } as unknown as SettingsView
     server.probes = doctorProbes()
@@ -158,7 +158,7 @@ describe('Settings → Burns', () => {
   it('opens on the prerequisites checklist, then width & retries', () => {
     open()
 
-    expect(screen.getByText('Prerequisites for unattended burns')).toBeTruthy()
+    expect(screen.getByText('Prerequisites for unattended workers')).toBeTruthy()
     expect(screen.getByText('Width & retries')).toBeTruthy()
     expect(screen.getByText('Container runtime')).toBeTruthy()
   })
@@ -171,7 +171,7 @@ describe('Settings → Burns', () => {
       ['Iterations per attempt', 'turns'],
       ['Attempts per ticket', 'attempts'],
       ['Conflict resolver passes', 'passes before asking you'],
-      ['CPU limit per burn', 'cores · e.g. 4 on a 12-thread box at width 3'],
+      ['CPU limit per worker', 'cores · e.g. 4 on a 12-thread box at width 3'],
     ]
     for (const [label, unit] of units) {
       const input = screen.getByLabelText(label) as HTMLInputElement
@@ -244,7 +244,7 @@ describe('Settings → Burns', () => {
 
     fireEvent.change(screen.getByLabelText('Filter settings'), { target: { value: 'attempts' } })
 
-    expect(screen.queryByText('Prerequisites for unattended burns')).toBeNull()
+    expect(screen.queryByText('Prerequisites for unattended workers')).toBeNull()
     expect(screen.getByLabelText('Attempts per ticket')).toBeTruthy()
   })
 
@@ -304,7 +304,7 @@ describe('Settings → Burns', () => {
 })
 
 /**
- * The other half of decision 9: every "Settings → Burns" in the app is a link
+ * The other half of decision 9: every "Settings → Workers" in the app is a link
  * now, not an instruction to go looking.
  */
 describe('MessageWithSettingsLink', () => {
@@ -312,7 +312,7 @@ describe('MessageWithSettingsLink', () => {
 
   const burnerFailure =
     'claude is not installed in image sandcastle:runcastle — the image predates the burner ' +
-    'Dockerfile. Rebuild it from Settings → Burns (Rebuild image).'
+    'Dockerfile. Rebuild it from Settings → Workers (Rebuild image).'
 
   it('opens Burns on the image row from a burner failure', () => {
     const opened: SettingsLocation[] = []
@@ -322,7 +322,7 @@ describe('MessageWithSettingsLink', () => {
       </OpenSettingsProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings → Burns' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings → Workers' }))
 
     expect(opened).toEqual([{ page: 'burns', field: 'sandcastle-image' }])
     // The sentence around it stays prose.

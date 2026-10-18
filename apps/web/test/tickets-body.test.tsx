@@ -18,6 +18,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
     events: { invalidate: async () => undefined },
   }),
   feature: {
+    rounds: { useQuery: () => ({ data: [] }) },
     get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 2 }, tickets: server.tickets, sessions: server.sessions, docs: [] }, isLoading: false, error: null }) },
     endSession: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
   },
@@ -42,12 +43,12 @@ describe('TicketsBody wire actions', () => {
     expect(server.edits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }])
   })
 
-  it('bulk-edits only pending tickets from this lap and toasts the count', async () => {
+  it('bulk-edits every pending ticket, whatever lap it was stamped with, and toasts the count', async () => {
     render(<TicketsBody featureId="f1" />)
     fireEvent.click(screen.getByRole('combobox', { name: 'Model for all pending' }))
     fireEvent.click(within(screen.getByRole('listbox', { name: 'Model for all pending' })).getByRole('option', { name: /gpt-5.6-sol/ }))
-    await vi.waitFor(() => expect(server.directEdits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }]))
-    await vi.waitFor(() => expect(server.toasts).toContain('1 tickets set to gpt-5.6-sol'))
+    await vi.waitFor(() => expect(server.directEdits).toEqual([{ ticketId: 'current', model: 'gpt-5.6-sol' }, { ticketId: 'previous', model: 'gpt-5.6-sol' }]))
+    await vi.waitFor(() => expect(server.toasts).toContain('2 tickets set to gpt-5.6-sol'))
   })
 
   /** one-chat-layout-everywhere decision 1: every session lives on the Chat tab. */

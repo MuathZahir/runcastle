@@ -243,6 +243,15 @@ export function IconArrowRight(p: IconProps) {
   )
 }
 
+/** A paper plane: send something to the agent. */
+export function IconSend(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M14 2 7.2 8.8M14 2 9.6 14l-2.4-5.2L2 6.4z" />
+    </svg>
+  )
+}
+
 export function IconPlay(p: IconProps) {
   return (
     <svg {...base(p)}>

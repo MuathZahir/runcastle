@@ -388,7 +388,7 @@ describe('Settings — the Orchestrator toggle', () => {
     const row = toggle.closest('div.border-b')
     expect(row?.textContent).toContain('experimental')
     expect(row?.textContent).toContain(
-      'The project session runs your features for you: it creates them, has them plan themselves, burns, drives, runs laps and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
+      'The project session runs your features for you: it creates them, has them plan themselves, gives them Go, drives them and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
     )
     // A project-only key: no global twin, so no chip about where it came from.
     expect(row?.textContent).not.toContain('Global')
@@ -414,5 +414,24 @@ describe('Settings — the Orchestrator toggle', () => {
     fireEvent.click(toggle)
 
     expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'orchestrator', value: false }])
+  })
+})
+
+// `the-feature-lead-runs-rounds` decision 23: the agent judges when to ask.
+describe('Settings — no default autonomy', () => {
+  beforeEach(() => {
+    server.globals = view([])
+    server.findings = []
+    server.updates = []
+    server.invalidated = []
+  })
+  afterEach(cleanup)
+
+  it('offers no autonomy setting on the project page', () => {
+    server.scoped = view(projectFields)
+    open()
+
+    expect(screen.queryByLabelText('Default autonomy')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/Run until ready|Ask before each round/)
   })
 })

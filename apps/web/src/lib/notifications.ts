@@ -104,10 +104,10 @@ export function eventToNotification(
 
   const feature = featureTitle ?? 'your feature'
   if (data.status === 'succeeded') {
-    return { title: 'Burn complete — review is ready', body: feature }
+    return { title: 'Round finished — the agent is checking it', body: feature }
   }
   if (data.status === 'failed') {
-    return { title: 'Burn failed', body: `${feature}: ${shortReason(data.summary)}` }
+    return { title: 'Round failed', body: `${feature}: ${shortReason(data.summary)}` }
   }
   // cancelled — the human stopped it, not an away-period ending; no ping.
   return null

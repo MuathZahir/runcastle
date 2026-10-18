@@ -42,7 +42,7 @@ Close the batch with **one review ticket** (`kind: "review"`), blocked by every 
 
 **Every batch closes with one, unconditionally.** Not "when there is something to exercise" — every batch, no exceptions, exactly one (more per feature comes later). Whatever the lap turned out to be, there is always a review the agent can run: a diff is the one thing every batch produces by definition. A lap that ships without a review ticket is a lap nobody looked at, and its absence is invisible on the review page — which is precisely the silence this rule exists to end.
 
-The server says so too, and the rule is yours to keep either way: a batch with no `kind: "review"` ticket comes back from `complete_phase({ phase: "tickets" })` as a **warning**, and the human sees the same sentence in the Burn dialog — it never refuses, so nothing but you stops the lap shipping unlooked-at. `emit_tickets` does still refuse a batch outright when a ticket is *titled* like the review but carries another kind — set the kind (or retitle it) and re-emit.
+The server says so too, and the rule is yours to keep either way: a batch with no `kind: "review"` ticket comes back from `complete_phase({ phase: "tickets" })` as a **warning**, and the human sees the same sentence in the Go dialog — it never refuses, so nothing but you stops the lap shipping unlooked-at. `emit_tickets` does still refuse a batch outright when a ticket is *titled* like the review but carries another kind — set the kind (or retitle it) and re-emit.
 
 The agent reviews in **exactly one of two modes**, never both — a browser **Drive** of the app against your acceptance criteria, or **Gates**: the project's verify commands plus a two-axis read of the diff. Reviews that attempted both ran long or died having delivered neither, so the burner prompt makes the agent choose up front and spend the whole review inside the choice.
 
@@ -112,11 +112,11 @@ Each ticket:
 - **Non-empty → set it only where a note actually fits the ticket.** The note is the human's own vocabulary for what that model is good at ("UI/UX taste", "mechanical refactors"); assign it when this ticket's work is plainly that, and leave the field unset when nothing in the list speaks to it. Unset is the good default — it falls through to the model the project already burns on.
 - **Never invent an id**, never copy one from these docs or from memory, and never write a model that is not in `annotatedModels` — the store rejects it and the whole batch fails to emit.
 
-The human sees the assignment on the ticket card and can change or clear it before Burn, so a wrong-but-reasonable choice is cheap; a fabricated id is not.
+The human sees the assignment on the ticket card and can change or clear it before Go, so a wrong-but-reasonable choice is cheap; a fabricated id is not.
 
 ## 3. Self-check, then emit
 
-There is no in-session quiz — the human's review is the **Burn** click in the runcastle UI, reading these cards. So make them right before you emit. Check yourself, in this order:
+There is no in-session quiz — the human's review is the **Go** click in the runcastle UI, reading these cards. So make them right before you emit. Check yourself, in this order:
 
 1. **Can any two of these be one ticket?** Go pair by pair. Same files, shared type, sibling behaviours, or one whose blocker is the only thing it waits on and together they'd still land in one session → merge them. Do this first, because merging changes the rest.
 2. **Would any one of these overrun?** A criteria list longer than one agent can take red→green — with tests, self-review and commits still to come — costs a whole second container to finish. Split it where its files stop overlapping.
@@ -127,7 +127,7 @@ There is no in-session quiz — the human's review is the **Burn** click in the 
 7. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it, and does the review ticket name it? If not set up, have you carded none and kept the one ＋ New scenario line for your close?
 
 Then:
-- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a Burn landing mid-enrichment burns agents on the placeholders.
-- `mcp__runcastle__complete_phase({ phase: "tickets" })`. It comes back `ok: true` with `waitingOn: "human burn"` and a `warnings` array — the things the human will otherwise read in the Burn dialog (no review ticket in the batch, earlier-lap defects still un-dispositioned, no `spec.md` on disk). Nothing refuses, so anything in that array is yours to fix now, while you are still the session that can: fix it and call again.
+- `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a round dispatched mid-enrichment burns agents on the placeholders.
+- `mcp__runcastle__complete_phase({ phase: "tickets" })`. It comes back `ok: true` with `waitingOn: "human burn"` and a `warnings` array — the things the human will otherwise read in the Go dialog (no review ticket in the batch, earlier-lap defects still un-dispositioned, no `spec.md` on disk). Nothing refuses, so anything in that array is yours to fix now, while you are still the session that can: fix it and call again.
 
 Return control to **the session skill that invoked you** — `/runcastle:ideate` — and let it close out the session. Do **not** invoke a session skill yourself to hand back: you are already inside one, and loading another session's entry skill would drop a whole procedure this session is not running into the window.

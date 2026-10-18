@@ -26,7 +26,7 @@ describe('eventToNotification', () => {
       ev({ data: { status: 'succeeded', summary: 'all tickets green' } }),
       'Dark mode',
     )
-    expect(n).toEqual({ title: 'Burn complete — review is ready', body: 'Dark mode' })
+    expect(n).toEqual({ title: 'Round finished — the agent is checking it', body: 'Dark mode' })
   })
 
   it('maps a failed run to a failure ping with a short reason', () => {
@@ -34,7 +34,7 @@ describe('eventToNotification', () => {
       ev({ data: { status: 'failed', summary: 'ticket 3 never went green' } }),
       'Dark mode',
     )
-    expect(n).toEqual({ title: 'Burn failed', body: 'Dark mode: ticket 3 never went green' })
+    expect(n).toEqual({ title: 'Round failed', body: 'Dark mode: ticket 3 never went green' })
   })
 
   it('trims a multi-line / overlong summary to its first line', () => {
@@ -46,7 +46,7 @@ describe('eventToNotification', () => {
 
   it('falls back to a generic feature name when no title is supplied', () => {
     const n = eventToNotification(ev({ data: { status: 'succeeded', summary: 'ok' } }))
-    expect(n).toEqual({ title: 'Burn complete — review is ready', body: 'your feature' })
+    expect(n).toEqual({ title: 'Round finished — the agent is checking it', body: 'your feature' })
   })
 
   it('ignores a cancelled run — the human stopped it, not an away-period end', () => {

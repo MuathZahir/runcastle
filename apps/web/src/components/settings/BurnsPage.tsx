@@ -10,7 +10,7 @@ import { showsSetting, type SettingsPageProps } from './types'
  * hard it tries once it does (decision 9).
  *
  * The prerequisites come first because they are the difference between a burn
- * that runs and one that cannot — and because every "Settings → Burns (Rebuild
+ * that runs and one that cannot — and because every "Settings → Workers (Rebuild
  * image)" pointer in the app lands on a row of that checklist.
  */
 /** Label widths for the placeholder rows: Prerequisites · Width & retries. */
@@ -27,7 +27,7 @@ export function BurnsPage({ globals, projectId, filter, highlightField }: Settin
   return (
     <>
       {anyPrerequisite && (
-        <SettingSection title="Prerequisites for unattended burns">
+        <SettingSection title="Prerequisites for unattended workers">
           <EnableAfkCard projectId={projectId} filter={filter} highlightField={highlightField} />
         </SettingSection>
       )}

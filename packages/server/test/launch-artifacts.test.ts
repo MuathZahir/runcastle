@@ -111,6 +111,16 @@ describe('renderSettings', () => {
         'mcp__runcastle__update_project_note',
       ]),
     )
+    // the feature lead's round tools — "Run until ready" dispatches with no
+    // human present, and a headless wake has no one to answer a prompt
+    expect(s.permissions.allow).toEqual(
+      expect.arrayContaining([
+        'mcp__runcastle__dispatch_round',
+        'mcp__runcastle__stop_round',
+        'mcp__runcastle__declare_ready',
+        'mcp__runcastle__wait_for_you',
+      ]),
+    )
     // the exported rule list is the single source and is fully included
     expect(s.permissions.allow).toEqual(expect.arrayContaining([...RUNCASTLE_MCP_ALLOW_RULES]))
     // every rule is either anchored to our own MCP server or a scoped git Bash
@@ -215,7 +225,7 @@ describe('renderSettings', () => {
   it('denies the other kinds\' entry skills, and only those', () => {
     // each kind's own entry skill(s) never appear in its deny list
     const own: Record<string, string[]> = {
-      chat: ['ideate', 'revisit'],
+      chat: ['ideate', 'revisit', 'lead'],
       prepare: ['prepare'],
       project: ['project'],
       'drive-fix': [],
@@ -244,6 +254,8 @@ describe('renderSettings', () => {
     )
     // …an unknown kind gets no entry skill at all (the edit guard's stance)…
     expect(entrySkillDenyRules(undefined)).toContain('Skill(runcastle:ideate)')
+    // …the lead skill is the feature chat's alone…
+    expect(entrySkillDenyRules('project')).toContain('Skill(runcastle:lead)')
     // …and the rendered settings carry the list
     const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
     expect(s.permissions.deny).toEqual(entrySkillDenyRules('project'))
@@ -265,7 +277,8 @@ describe('renderSettings', () => {
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
-    // SessionStart: one entry per source, command hook, timeout 10. REGRESSION:
+    // SessionStart: one entry per source, command hook, timeout 20 (the hook
+    // client retries it). REGRESSION:
     // registering `startup` alone meant every `--resume` launch (revisit, merge-
     // conflict resolve, any reopened terminal) fired source=resume, matched
     // nothing, and never reached the hook receiver — so the session never went
@@ -275,7 +288,7 @@ describe('renderSettings', () => {
     for (const entry of s.hooks.SessionStart) {
       const start = entry.hooks[0]
       expect(start.type).toBe('command')
-      expect(start.timeout).toBe(10)
+      expect(start.timeout).toBe(20)
       expect(start.command).toBe('bun run "C:\\hooks\\hook-client.ts" session-start')
     }
 
@@ -364,9 +377,28 @@ describe('renderSettings', () => {
     expect(s.hooks.SessionEnd[0].hooks).toHaveLength(1)
   })
 
+  /**
+   * `the-feature-lead-runs-rounds` decision 12: a feature's chat is its lead,
+   * woken by the same waiter at its turn end — but not a headless run, whose
+   * process exits at its turn end with whatever a waiter took.
+   */
+  it('gives a feature chat with a terminal the same waiter, and a headless chat none', () => {
+    const chat = renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack')
+    const orchestrate = renderSettings('C:\\hooks\\hook-client.ts', 'project', undefined, 'orchestrate')
+    const waiterOf = (s: typeof chat) => s.hooks.Stop[0].hooks.slice(1)
+    expect(waiterOf(chat)).toEqual(waiterOf(orchestrate))
+    expect(chat.hooks.SessionStart.every((e) => e.hooks[1]?.command.endsWith('wait-messages'))).toBe(true)
+
+    for (const purpose of [undefined, ...SessionPurpose.options.filter((p) => p !== 'orchestrate')]) {
+      const headless = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack', purpose, true))
+      expect(headless).not.toContain('wait-messages')
+      expect(headless).not.toContain('asyncRewake')
+    }
+  })
+
   it('leaves every other session’s settings exactly as they were', () => {
     const others = SessionPurpose.options.filter((p) => p !== 'orchestrate')
-    for (const kind of SessionKind.options) {
+    for (const kind of SessionKind.options.filter((k) => k !== 'chat')) {
       const plain = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack'))
       expect(plain).not.toContain('wait-messages')
       expect(plain).not.toContain('asyncRewake')
@@ -410,25 +442,21 @@ describe('renderMcpConfig', () => {
 })
 
 describe('renderSystemPrompt', () => {
+  const empty = { hasDecisions: false, hasSpec: false, hasTickets: false }
+  const grilled = { hasDecisions: true, hasSpec: false, hasTickets: false }
+
   it('directs a new planning chat to /runcastle:ideate with the docs paths', () => {
-    const p = renderSystemPrompt(
-      feature(),
-      'chat',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { hasDecisions: false, hasSpec: false, hasTickets: false },
-    )
+    const p = renderSystemPrompt(feature(), 'chat', undefined, undefined, empty)
     expect(p).toContain('/runcastle:ideate')
     expect(p).toContain('docs/features/dark-mode/')
     expect(p).toContain('complete_phase')
+    // Go, not Burn, is the click that moves the feature out of planning
+    expect(p).toContain('Go (planning → building)')
   })
 
   it('tells a self-planning run no human is present, adding to the ideation brief alone', () => {
-    const empty = { hasDecisions: false, hasSpec: false, hasTickets: false }
-    const ideation = renderSystemPrompt(feature(), 'chat', undefined, undefined, 'codex', undefined, empty)
-    const selfPlan = renderSystemPrompt(feature(), 'chat', undefined, 'self-plan', 'codex', undefined, empty)
+    const ideation = renderSystemPrompt(feature(), 'chat', undefined, 'codex', empty)
+    const selfPlan = renderSystemPrompt(feature(), 'chat', 'self-plan', 'codex', empty)
     expect(selfPlan).toContain('## No human is present')
     expect(selfPlan).toContain('Never end your turn to ask a question')
     expect(selfPlan).toContain('A refused tool is not a wait')
@@ -455,109 +483,54 @@ describe('renderSystemPrompt', () => {
   })
 
   // Mapped ideation was retired (ADR-0012): no feature prompt, whatever the
-  // phase or lap, still sends a session to a waypoint, a converge or a map.
+  // phase, still sends a session to a waypoint, a converge or a map.
   it('mentions no waypoint, converge or map.md in any feature prompt', () => {
     const prompts = [
       renderSystemPrompt(feature(), 'chat'),
       renderSystemPrompt(feature({ phase: 'building' }), 'chat'),
       renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-      renderSystemPrompt(feature({ phase: 'planning', lap: 2 }), 'chat', 2),
     ]
     for (const p of prompts) {
       expect(p).not.toMatch(/waypoint|converge|map\.md/i)
     }
   })
 
-  it('directs a revisit session to /runcastle:revisit with ticket-surgery tools, no phase writes', () => {
-    const p = renderSystemPrompt(feature({ phase: 'building' }), 'chat')
+  it('directs a planning chat with a record to /runcastle:revisit, no phase writes', () => {
+    const p = renderSystemPrompt(feature(), 'chat', undefined, undefined, grilled)
     expect(p).toContain('/runcastle:revisit')
     expect(p).toContain('decisions.md')
     // a revisit never moves the pipeline
     expect(p).toMatch(/do not call `complete_phase`/i)
-  })
-
-  it('flags the review-iteration purpose for a revisit at the review phase (ticket 6)', () => {
-    const review = renderSystemPrompt(feature({ phase: 'review' }), 'chat')
-    expect(review).toContain('Review iteration')
-    expect(review).toMatch(/fix ticket/i)
-    // it points at the PER-TICKET facts that are actually in the payload —
-    // there is no run outcome in `get_feature_context`, `get_work_record` is
-    // gated shut for feature sessions, and a ticket's `commits` and `digest`
-    // come from `get_ticket`, not the context payload's ticket rows
-    expect(review).toContain('get_feature_context')
-    expect(review).toMatch(/`error`/)
-    expect(review).toMatch(/`get_ticket\(\{ seq \}\)` adds the `commits` it landed and its `digest`/)
-    expect(review).not.toMatch(/run outcome/i)
-    // burning from review loops back through implementation; the phase never
-    // advances from within the session
-    expect(review).toMatch(/click Burn/i)
-    // the section is review-only — an implementation revisit never carries it
-    expect(renderSystemPrompt(feature({ phase: 'building' }), 'chat')).not.toContain(
-      'Review iteration',
-    )
+    expect(p).not.toContain('This is lap')
   })
 
   /**
-   * A lap is planned at review, from the Start-lap door: the feature stays at
-   * review and the Burn click starts the lap. The session used to be told a lap
-   * reports ideation → spec → tickets through `complete_phase` — a planning-phase
-   * model no road reaches — and, rendered at review, got the fix-ticket
-   * interview beside it, which is how one told the human to "start the next lap
-   * from the UI" when that was the door it came through.
+   * Past Go the chat is the feature's lead (`the-feature-lead-runs-rounds`): it
+   * runs rounds rather than amending a record, may change code itself, and
+   * hands the drive to the human — the lap and review-iteration briefings it
+   * used to get at review are gone with laps.
    */
-  it('renders a lap planned at review as a lap: agenda, no complete_phase, hand to Burn', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review', lap: 1 }), 'chat', 2)
-    expect(p).toContain('This is lap 2')
-    expect(p).toContain('Start lap 2')
-    // the agenda: carried notes, later laps, and where the decisions go
-    expect(p).toContain('test-notes.md')
-    expect(p).toContain('## Carried, still open')
-    expect(p).toContain('## Later laps')
-    expect(p).toContain('## Lap 2')
-    expect(p).toMatch(/OPTIONAL/i)
-    expect(p).toContain('emit_tickets')
-    // the feature stays at review: no planning steps, and Burn starts the lap
-    expect(p).toMatch(/Do NOT call `complete_phase`/)
-    expect(p).not.toMatch(/DO call `complete_phase`/)
-    expect(p).not.toContain('ideation → spec → tickets')
-    expect(p).toMatch(/review the cards\s+and click Burn/)
-    // and never the fix-ticket interview alongside it
-    expect(p).not.toContain('Review iteration')
-    expect(p).not.toMatch(/fix-ticket interview/)
-  })
-
-  it('names the open defects a lap planned at review must disposition', () => {
-    const carried = {
-      carriedNotes: 1,
-      openDefects: [{ id: 'fnd_1', title: 't', location: 'l', detail: 'd', reproStep: 'r' }],
-      carriedDefects: [],
-      reviewEvidence: [],
+  it('briefs a building or review chat as the lead, naming the lead skill per runtime', () => {
+    for (const phase of ['building', 'review'] as const) {
+      const p = renderSystemPrompt(feature({ phase }), 'chat')
+      expect(p).toContain('(feature lead)')
+      expect(p).toContain('Invoke the `/runcastle:lead` skill')
+      expect(p).not.toContain('/runcastle:revisit')
+      expect(p).not.toMatch(/Talk sessions do not write code/)
+      expect(p).toMatch(/You may change code yourself/)
+      expect(p).toMatch(/landing queue/)
+      expect(p).toMatch(/never merge/)
+      expect(p).not.toMatch(/This is lap|Review iteration|click Burn/)
     }
-    const p = renderSystemPrompt(
-      feature({ phase: 'review', lap: 1 }),
-      'chat',
-      2,
-      undefined,
-      undefined,
-      carried,
+    expect(renderSystemPrompt(feature({ phase: 'building' }), 'chat', undefined, 'codex')).toContain(
+      'Invoke the `$lead` skill',
     )
-    expect(p).toContain('1 note carried and 1 defect open from earlier laps')
-    expect(p).toContain('`openDefects`')
-    expect(p).toContain('`resolve_finding`')
-    expect(p).not.toContain('complete_phase("tickets")')
-  })
-
-  it('leaves a plain revisit exactly as it was — no lap framing, ban intact', () => {
-    const p = renderSystemPrompt(feature({ phase: 'building', lap: 3 }), 'chat')
-    expect(p).not.toContain('This is lap')
-    expect(p).toMatch(/Do NOT call `complete_phase`/i)
   })
 
   it('states the no-code rule in the revisit and ideation prompts', () => {
     for (const p of [
-      renderSystemPrompt(feature(), 'chat'),
-      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-      renderSystemPrompt(feature({ phase: 'review', lap: 1 }), 'chat', 2),
+      renderSystemPrompt(feature(), 'chat', undefined, undefined, empty),
+      renderSystemPrompt(feature(), 'chat', undefined, undefined, grilled),
     ]) {
       expect(p).toMatch(/Talk sessions do not write code/)
       // and it says where the line is, and where the change goes instead
@@ -571,10 +544,12 @@ describe('renderSystemPrompt', () => {
   /**
    * E2E F18 — the conflict-resolution revisit was briefed to resolve the merge
    * AND told edits are denied. The agent believed the ban, aborted the merge and
-   * emitted a ticket to carry it instead, so the feature never worked.
+   * emitted a ticket to carry it instead, so the feature never worked. It stays
+   * a revisit at review, where every other chat is the lead.
    */
   it('tells the conflict-resolution revisit that it does write code here', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', undefined, 'resolve-conflict')
+    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', 'resolve-conflict')
+    expect(p).toContain('(revisit session)')
     expect(p).not.toMatch(/Talk sessions do not write code/)
     expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
     // the exception is bounded: other work still rides a ticket
@@ -584,64 +559,7 @@ describe('renderSystemPrompt', () => {
     expect(p).toContain('git diff --check')
     expect(p).toMatch(/test-drive the branch/)
     expect(p).not.toMatch(/run the tests/i)
-  })
-
-  /**
-   * The lap owns the entry skill, then the kind. A lap-N grill is created as
-   * `kind: 'chat'` and used to render the generic feature brief ("invoke
-   * `/runcastle:ideate`") while the lap kickoff typed into the same terminal
-   * said "invoke `/runcastle:revisit` for LAP N" — two entry skills, no defined
-   * precedence, and the `lap` parameter never read on that path.
-   */
-  it('routes a lap-N ideation session to the revisit prompt, one entry skill', () => {
-    const p = renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', 3)
-    expect(p).toContain('This is lap 3')
-    expect(p).toContain('/runcastle:revisit')
-    expect(p).not.toContain('/runcastle:ideate')
-    expect(p).toMatch(/Do NOT call `complete_phase`/)
-    // and it is byte-identical to the revisit rendering of the same lap
-    expect(p).toBe(
-      renderSystemPrompt(feature({ phase: 'planning', lap: 3 }), 'chat', 3),
-    )
-  })
-
-  /**
-   * A conflict-resolution revisit is ALWAYS at `review` (its only launch site is
-   * the review body's conflict card), and its whole job is a `git merge`. It was
-   * also getting 591 chars of fix-ticket interview — the same failure shape as
-   * F18, fixed in the Rules block and missed in this guard.
-   */
-  it('does not brief the conflict-resolution revisit as a review iteration', () => {
-    const p = renderSystemPrompt(
-      feature({ phase: 'review' }),
-      'chat',
-      undefined,
-      'resolve-conflict',
-    )
-    expect(p).not.toContain('Review iteration')
     expect(p).not.toMatch(/fix ticket/i)
-    expect(p).toMatch(/resolves a merge conflict/i)
-    // strictly shorter than the review-iteration revisit it used to also be
-    expect(p.length).toBeLessThan(
-      renderSystemPrompt(feature({ phase: 'review' }), 'chat').length,
-    )
-  })
-
-  /**
-   * A lap plans tickets and writes no code; a conflict resolution writes code
-   * and plans nothing. One session cannot be both, and the tRPC route takes
-   * `purpose` as a free parameter — so the exclusion is asserted where the two
-   * meet rather than left to call-site luck.
-   */
-  it('refuses to render one revisit as both a lap and a conflict resolution', () => {
-    expect(() =>
-      renderSystemPrompt(
-        feature({ phase: 'review', lap: 1 }),
-        'chat',
-        2,
-        'resolve-conflict',
-      ),
-    ).toThrow(/both lap 2 and a conflict resolution/i)
   })
 })
 
@@ -951,7 +869,7 @@ describe('renderSessionPrompt', () => {
       'revisit chat',
       { feature: feature(), planning: { hasDecisions: true, hasSpec: true, hasTickets: false } },
     ],
-    ['lap', { feature: feature({ phase: 'review', lap: 2 }), lap: 2 }],
+    ['lead', { feature: feature({ phase: 'review' }) }],
     ['qa', { session: session({ kind: 'qa' }), feature: feature({ phase: 'review' }) }],
     ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
     [
@@ -1010,15 +928,10 @@ describe('renderSessionPrompt', () => {
     [
       'relay',
       {
-        feature: feature({ phase: 'review', lap: 2 }),
-        lap: 2,
+        feature: feature({ phase: 'review' }),
         purpose: 'relay',
         session: session({ headless: true }),
       },
-    ],
-    [
-      'self-started lap',
-      { feature: feature({ phase: 'review', lap: 2 }), lap: 2, session: session({ headless: true }) },
     ],
   ]
 

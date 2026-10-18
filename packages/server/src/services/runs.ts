@@ -1,4 +1,4 @@
-import type { Run, RunStatus, Ticket } from '@runcastle/core'
+import type { ReviewGateRun, RoundGates, RoundSummary, Run, RunStatus, Ticket } from '@runcastle/core'
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events } from '../db/schema'
@@ -134,6 +134,48 @@ export function listRunSummaries(ctx: AppCtx, featureId: string): RunSummary[] {
     lap: runLap(ctx, run.id),
     ticketIds: runTicketIds(ctx, run.id),
   }))
+}
+
+/**
+ * A round's verify-gate record as the trail reads it: every command passed, or
+ * which did not. `null` when no verify command is configured, or the gates have
+ * not run yet — there is no result to show, which is not the same as a pass.
+ */
+export function roundGatesOf(gates: ReviewGateRun | undefined): RoundGates | null {
+  if (!gates || gates.status === 'none_configured') return null
+  if (gates.status === 'couldnt_run') return { ok: false, failed: [`gates could not run: ${gates.reason}`] }
+  const failed = gates.commands.filter((c) => c.outcome !== 'passed').map((c) => c.command)
+  return { ok: failed.length === 0, failed }
+}
+
+/**
+ * The feature's rounds (`the-feature-lead-runs-rounds` decision 16): every
+ * branch-claiming run, numbered from 1 in start order — derived, never stored,
+ * the way the lap counter was. Each carries the tickets it held and how they
+ * ended, and its gates. No tokens: they are recorded, never shown (decision 25).
+ */
+export function listRounds(ctx: AppCtx, featureId: string): RoundSummary[] {
+  const byId = new Map(listByFeature(ctx, featureId).map((t) => [t.id, t]))
+  return listRunsByFeature(ctx, featureId)
+    .filter((run) => workflowClaimsFeatureBranch(run.workflow))
+    .reverse()
+    .map((run, i) => {
+      const held = runClaimedTicketIds(ctx, run.id)
+        .map((id) => byId.get(id))
+        .filter((t): t is Ticket => t !== undefined)
+        .sort((a, b) => a.seq - b.seq)
+      return {
+        round: i + 1,
+        runId: run.id,
+        status: run.status,
+        ticketSeqs: held.map((t) => t.seq),
+        landed: held.filter((t) => t.status === 'done').map((t) => t.seq),
+        failed: held.filter((t) => t.status === 'failed').map((t) => t.seq),
+        gates: roundGatesOf(run.gates),
+        startedAt: run.startedAt,
+        finishedAt: run.endedAt ?? null,
+      }
+    })
 }
 
 /**

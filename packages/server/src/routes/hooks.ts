@@ -1,9 +1,10 @@
-import type { Feature, SessionKind, SessionRow } from '@runcastle/core'
-import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
+import { DEFAULT_RUNTIME, type Feature, type SessionKind, type SessionRow } from '@runcastle/core'
+import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
-import { editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
+import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead } from '../launcher/edit-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
+import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
 import {
   getSessionRow,
@@ -14,7 +15,15 @@ import {
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
-import { waitForOrchestratorLines } from '../services/orchestrator-messages'
+import { isLiveLeadSession, leadDeliveryFor } from '../services/lead-delivery'
+import { isRuncastlePrompt } from '../services/lead-prompt'
+import { markHumanMessage } from '../services/lead-status'
+import {
+  hasOrchestratorLines,
+  leadMessageKey,
+  releaseOrchestratorWaiter,
+  waitForOrchestratorLines,
+} from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
 import { getProjectById, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
@@ -51,9 +60,12 @@ export const ORCHESTRATOR_WAIT_HOLD_MS = 25_000
  * The orchestrator's message waiter (`whole-cuts-plan-themselves` decision 20):
  * the long-poll its `asyncRewake` hook makes in the hook client's
  * `wait-messages` mode. Registering supersedes the session's older waiter, and
- * only the newest is ever handed lines (see `orchestrator-messages.ts`). A
- * session that is gone, ended, or not orchestrating is answered `ended`, so its
- * waiter exits instead of polling forever.
+ * only the newest is ever handed lines (see `orchestrator-messages.ts`).
+ *
+ * A feature's lead with a terminal waits here too, for its feature's messages
+ * (`the-feature-lead-runs-rounds` decision 12, see `lead-delivery.ts`). A
+ * session that is gone, ended, or neither orchestrating nor a lead with a
+ * terminal is answered `ended`, so its waiter exits instead of polling forever.
  */
 hooks.get('/orchestrator-messages', async (c) => {
   try {
@@ -62,15 +74,29 @@ hooks.get('/orchestrator-messages', async (c) => {
     if (!sessionId || !waiter) return c.json({ status: 'ended' })
     const ctx = await getRuntimeCtx()
     const session = getSessionRow(ctx, sessionId)
-    if (!session || session.status === 'ended' || session.purpose !== 'orchestrate') {
-      return c.json({ status: 'ended' })
+    const key = session && session.status !== 'ended' ? waiterKeyOf(session) : null
+    if (!session || !key) return c.json({ status: 'ended' })
+    const answer = await waitForOrchestratorLines(key, waiter, ORCHESTRATOR_WAIT_HOLD_MS)
+    if (answer.status === 'lines' && session.featureId) {
+      emit(ctx, session.featureId, {
+        type: 'lead.woke',
+        message: 'the agent took its messages at its turn end',
+        data: { sessionId, route: 'waiter', lines: answer.lines.length },
+      })
     }
-    return c.json(await waitForOrchestratorLines(sessionId, waiter, ORCHESTRATOR_WAIT_HOLD_MS))
+    return c.json(answer)
   } catch (err) {
     console.error('orchestrator message waiter failed', err)
     return c.json({ status: 'empty' })
   }
 })
+
+/** The message-store key a session's waiter waits on, or null for a session that has none. */
+function waiterKeyOf(session: SessionRow): string | null {
+  if (session.purpose === 'orchestrate') return session.id
+  if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
+  return null
+}
 
 interface HookBody {
   event?: string
@@ -79,10 +105,11 @@ interface HookBody {
 }
 
 hooks.post('/:event', async (c) => {
+  const event = c.req.param('event')
+  let sessionId: string | undefined
   try {
-    const event = c.req.param('event')
     const body = (await c.req.json().catch(() => ({}))) as HookBody
-    const sessionId = body.sessionId
+    sessionId = body.sessionId
     if (!sessionId) return c.json({})
 
     const ctx = await getRuntimeCtx()
@@ -93,6 +120,7 @@ hooks.post('/:event', async (c) => {
     // not: a project conversation waits on its human exactly as a grill does.
     // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
     // the per-scope handler for its injected context.
+    if (event === 'user-prompt' || event === 'stop') checkInFromTurn(ctx, session, body.payload)
     if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
@@ -119,7 +147,7 @@ hooks.post('/:event', async (c) => {
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session, body.payload))
         case 'pre-tool':
-          return c.json(await handlePreToolUse(session, undefined, body.payload))
+          return c.json(await handlePreToolUse(ctx, session, undefined, body.payload))
         default:
           return c.json({})
       }
@@ -129,22 +157,51 @@ hooks.post('/:event', async (c) => {
     if (!feature) return c.json({})
 
     switch (event) {
-      case 'session-start':
-        return c.json(handleSessionStart(ctx, sessionId, feature, body.payload))
+      case 'session-start': {
+        const answer = handleSessionStart(ctx, sessionId, feature, body.payload)
+        kickLeadAtStart(ctx, sessionId)
+        return c.json(answer)
+      }
       case 'user-prompt':
+        if (isLiveLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
         return c.json(handleUserPrompt(ctx, feature))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
       case 'pre-tool':
-        return c.json(await handlePreToolUse(session, feature, body.payload))
+        return c.json(await handlePreToolUse(ctx, session, feature, body.payload))
       default:
         return c.json({})
     }
-  } catch {
-    // Never break the session on our account.
+  } catch (err) {
+    // Never break the session on our account — but never fail silently either.
+    console.error(`hook ${event} failed for session ${sessionId ?? '(none)'}`, err)
+    if (event === 'session-start' && sessionId) await noteFailedCheckIn(sessionId, err)
     return c.json({})
   }
 })
+
+/**
+ * A `SessionStart` that threw left its session unchecked-in: the row stays
+ * `launching`, and a headless wake's messages stay held against it. Say so on
+ * the timeline, best effort — the failure may be the database itself — and
+ * name the backstop: the agent's first turn hook checks it in
+ * ({@link checkInFromTurn}).
+ */
+async function noteFailedCheckIn(sessionId: string, err: unknown): Promise<void> {
+  try {
+    const ctx = await getRuntimeCtx()
+    const session = getSessionRow(ctx, sessionId)
+    if (!session) return
+    const reason = err instanceof Error ? err.message : String(err)
+    emitForSession(ctx, session, {
+      type: 'session.checkin_failed',
+      message: `the agent started but runcastle could not record it (${reason}) — its first turn will check it in`,
+      data: { sessionId, reason },
+    })
+  } catch (again) {
+    console.error(`could not record the failed check-in of session ${sessionId}`, again)
+  }
+}
 
 /**
  * `SessionStart` — fired for EVERY source (`startup`, `resume`, `clear`,
@@ -181,6 +238,31 @@ function handleSessionStart(
       additionalContext: sessionStartContext(ctx, feature),
     },
   }
+}
+
+/**
+ * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
+ * `session_id` and `transcript_path` too, so it backs up `SessionStart`: a
+ * session whose start hook never arrived (it timed out client-side on a slow
+ * server moment) is checked in here, and an id a missed `/clear` start left
+ * stale is brought current. Without it the row keeps no id, and the next resume
+ * of the conversation (the lead's headless wake) has nothing to `--resume`. An
+ * ended row stays ended; a row that already holds this id is left alone.
+ */
+function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<string, unknown> | undefined): void {
+  const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
+  if (!ccSessionId || session.status === 'ended') return
+  if (session.status === 'live' && session.ccSessionId === ccSessionId) return
+  const transcriptPath =
+    typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
+  markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
+  if (session.status === 'live') return
+  emitForSession(ctx, session, {
+    type: 'session.started',
+    message: 'session live (checked in by its first turn — its start hook never arrived)',
+    data: { sessionId: session.id, ccSessionId, transcriptPath, source: null },
+  })
+  kickLeadAtStart(ctx, session.id)
 }
 
 // --- project-scoped (`prepare` / `project`) session hooks --------------------
@@ -320,6 +402,32 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
   }
 }
 
+/**
+ * A lead's turn starts (`the-feature-lead-runs-rounds` decision 12, spec
+ * "Stopping"). Its waiter is let go, lines kept, so a message arriving now waits
+ * for the turn's end, where the Stop hook starts the next waiter. And a prompt
+ * without runcastle's tag is one the human typed: it stamps the feature's
+ * last-human-message mark. A payload with no prompt text says nothing about who
+ * wrote it, so it stamps nothing.
+ */
+function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
+  releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
+  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id)
+}
+
+/**
+ * A lead's session started: messages that queued while it was launching go now.
+ * On Claude Code its own waiter starts with this hook and takes them; Codex has
+ * a conversation id to `codex queue` to only from this point.
+ */
+function kickLeadAtStart(ctx: AppCtx, sessionId: string): void {
+  const session = getSessionRow(ctx, sessionId)
+  if (!session?.featureId || !isLiveLeadSession(session)) return
+  const key = leadMessageKey(session.featureId)
+  if (hasOrchestratorLines(key)) leadDeliveryFor(session).kick(session, key)
+}
+
 async function handleSessionEnd(
   ctx: AppCtx,
   session: SessionRow,
@@ -355,10 +463,17 @@ function emitConversationEnded(
 
 /**
  * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
- * (F2) and the talk-worktree install guard ({@link evaluateInstallGuard}). A
- * deny is returned as the verified hook shape; anything allowed answers `{}`,
- * which Claude Code reads as "no opinion". Registered only for the kinds that
- * may not write code (see `renderSettings` / {@link evaluateEditGuard}).
+ * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}) and, for
+ * a feature's chat in every phase, the lead's line guard
+ * ({@link evaluateLeadGuard}). A deny is returned as the verified hook shape.
+ * Registered only for the kinds that may not write code (see `renderSettings` /
+ * {@link evaluateEditGuard}).
+ *
+ * Anything allowed answers `{}`, "no opinion" — except for the feature's lead
+ * past Go on Claude Code, which is answered `allow` (`the-feature-lead-runs-rounds`
+ * decision 27): a chat opened in planning keeps the permission mode it launched
+ * with, and a prompt is a stall when the lead works while the human is away.
+ * Codex never asks inside its sandbox, so its hook keeps answering `{}`.
  *
  * This is where the guard's one live input comes from: a `resolve-conflict`
  * session's worktree is asked whether its merge is still in progress, which is
@@ -366,6 +481,7 @@ function emitConversationEnded(
  * worktree has gone missing is simply guarded as usual.
  */
 async function handlePreToolUse(
+  ctx: AppCtx,
   session: SessionRow,
   feature: Feature | undefined,
   payload: Record<string, unknown> | undefined,
@@ -387,6 +503,7 @@ async function handlePreToolUse(
   const denial =
     evaluateEditGuard({
       kind: session.kind,
+      featurePhase: feature?.phase,
       purpose: session.purpose,
       mergeInProgress,
       worktreePath: session.worktreePath,
@@ -396,6 +513,7 @@ async function handlePreToolUse(
     }) ??
     evaluateInstallGuard({
       kind: session.kind,
+      featurePhase: feature?.phase,
       worktreePath: session.worktreePath,
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
@@ -403,8 +521,38 @@ async function handlePreToolUse(
         feature && feature.slug !== PROJECT_WORKTREE_SLUG
           ? worktreeDir(feature.projectId, feature.slug)
           : undefined,
-    })
-  return denial ? editDenyResponse(denial) : {}
+    }) ??
+    (feature && session.kind === 'chat' ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
+  if (denial) return editDenyResponse(denial)
+  return feature && isUnguardedLead(session.kind, feature.phase) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
+    ? LEAD_ALLOW_RESPONSE
+    : {}
+}
+
+/** The verified `PreToolUse` allow shape: skips the permission prompt. */
+const LEAD_ALLOW_RESPONSE = {
+  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+}
+
+/** The lead's line guard for a feature chat's shell call, fed from the project and feature rows. */
+function leadGuardDenial(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown>,
+): EditDenial | null {
+  const project = getProjectById(ctx, feature.projectId)
+  if (!project) return null
+  return evaluateLeadGuard({
+    toolName,
+    command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+    worktreePath: session.worktreePath,
+    mainCheckout: project.repoPath,
+    worktreesDir: projectWorktreesDir(feature.projectId),
+    featureBranch: feature.branch,
+    baseBranch: feature.baseBranch,
+  })
 }
 
 /** The SessionStart context digest: brief + phase + tickets + pointer to MCP. */
@@ -423,10 +571,9 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
-    // The lap is part of where the feature IS (ADR-0010): a session that only
-    // hears "phase: ideation" on a lap-2 feature reads it as the first grill and
-    // re-litigates decisions the previous lap already shipped.
-    `phase: ${feature.phase}; lap: ${feature.lap}; branch: ${feature.branch}`,
+    // No lap: the column no longer moves, and a session told "lap 1" repeats the
+    // retired word to the human (decision 16).
+    `phase: ${feature.phase}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',

@@ -4,11 +4,12 @@ import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import {
   deferredScope,
-  lapAccount,
-  lapChip,
   lastTestDriveLap,
+  latestRoundTickets,
   latestRun,
   outcomeDocPath,
+  roundAccount,
+  roundOfSeq,
   shippedChatSessions,
   specDocPath,
   stampedOutcome,
@@ -16,14 +17,15 @@ import {
 } from '../../lib/feature-ui'
 import { relTimeAgo } from '../../lib/format'
 import { useReviewArtifacts } from '../../lib/reviews'
+import { useRoundTrail } from '../../lib/round-trail'
 import { IconDoc, IconMessage } from '../../icons'
 import { Button, Disclosure, List, ListRow } from '../../ui'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
 import { FullAccounts } from '../review/FullAccounts'
 import { ReferenceTier } from '../review/ReferenceTier'
-import { ReviewTrail } from '../review/ReviewTrail'
-import { LapStory, StatusStrip } from '../review/StatusStrip'
+import { RoundTrail } from '../review/RoundTrail'
+import { DeferredScope, StatusStrip } from '../review/StatusStrip'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { DocPeek } from '../DocPeek'
 
@@ -33,13 +35,13 @@ import { DocPeek } from '../DocPeek'
  * shipped and when (DESIGN.md principle 5). So there is no second header band
  * and no centred hero here: the facts as a property list, "What shipped" with
  * the outcome doc and the final walkthrough if one was recorded, then the
- * reference — the laps, every question anyone asked about it, and the long
+ * reference — the rounds, every question anyone asked about it, and the long
  * text, all closed.
  *
  * Nothing here acts. `readonly` is passed to the bands the review page shares
  * with this one, which is what keeps a history view from offering to launch an
  * agent (decision 33a); the stage plays with Annotate gone, and the facts state
- * what WAS done (Test drive "Lap 2") rather than instructing anyone to do it.
+ * what WAS done (Test drive "Taken") rather than instructing anyone to do it.
  */
 export function ShippedBody({ full }: { full: FeatureFull }) {
   const { feature, tickets, runs } = full
@@ -56,7 +58,6 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
   // Shipped is terminal, so none of these reads polls: the SSE feed invalidates
   // their keys, and nothing on this page changes without one.
   const findings = trpc.findings.listByFeature.useQuery({ featureId: feature.id })
-  const notes = trpc.notes.list.useQuery({ featureId: feature.id })
   const specRelPath = specDocPath(full)
   const specQ = trpc.docs.read.useQuery(
     { featureId: feature.id, relPath: specRelPath ?? 'spec.md' },
@@ -67,7 +68,9 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
 
   const chats = shippedChatSessions(full.sessions)
   const run = latestRun(runs)
-  const account = lapAccount(tickets, feature.lap)
+  // A shipped feature's runs read as rounds too (decision 16).
+  const { rounds, trail } = useRoundTrail(full, events, false)
+  const account = roundAccount(latestRoundTickets(tickets, rounds))
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
   const [staged, setStaged] = useState<string | null>(null)
   // "What shipped" heads the record and the Outcome doc; with neither there is
@@ -129,26 +132,24 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
 
       <ReferenceTier
         history={
-          <ReviewTrail
-            passes={rows}
-            tickets={tickets}
-            findings={findings.data?.findings ?? []}
-            notes={notes.data ?? []}
-            currentLap={feature.lap}
-            staged={recordings.length > 0 ? staged : null}
-            onStage={setStaged}
+          <RoundTrail
+            trail={trail}
+            {...(recordings.length > 0
+              ? {
+                  recordings: {
+                    byTicket: new Map(recordings.map((r) => [r.ticketId, r.videoUrl!])),
+                    staged,
+                    onStage: setStaged,
+                  },
+                }
+              : {})}
           />
         }
       >
         <QaHistory sessions={chats} />
         <DriveInstructions text={project?.driveInstructions} />
-        <FullAccounts account={account} tickets={tickets} observations={observations} />
-        <LapStory
-          lap={lapChip(tickets, { lap: feature.lap, lapSessionRan: true })}
-          laterLaps={deferredScope(specQ.data?.content)}
-          currentLap={feature.lap}
-          readonly
-        />
+        <FullAccounts account={account} tickets={tickets} roundOf={roundOfSeq(rounds)} observations={observations} />
+        <DeferredScope deferred={deferredScope(specQ.data?.content)} readonly />
       </ReferenceTier>
 
       {peekingOutcome && outcomeRelPath && (

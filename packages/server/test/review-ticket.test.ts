@@ -29,6 +29,7 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { emit, listAfter } from '../src/services/events'
+import { burn } from '../src/services/features'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
   AUTO_FIX_CAP,
@@ -62,6 +63,7 @@ import {
 import type { BurnDeps, TicketOutcome } from '../src/workflows/ticket-burner'
 import { buildBurnAgent, buildLapDigestsBlock, burnRun } from '../src/workflows/ticket-burner'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
@@ -338,10 +340,10 @@ describe('a failed review is retryable after it minted fix tickets', () => {
     expect(started).toEqual([3])
     await release(3)
     expect(tickets[2]).toMatchObject({ status: 'done' })
-    // And the children it left failed burn behind it, in this same run.
-    expect(started).toEqual([3, 4, 5])
-    await release(4)
-    await release(5)
+    // The children it left failed stay where they are: what becomes of a
+    // finding is the lead's call now (the-feature-lead-runs-rounds decision 10).
+    expect(started).toEqual([3])
+    expect(tickets[3]).toMatchObject({ status: 'failed' })
     expect((await run).summary).not.toContain('review deferred')
   })
 
@@ -363,23 +365,20 @@ describe('a failed review is retryable after it minted fix tickets', () => {
 
     expect(started).toEqual([3])
     await release(3)
-    // 4 was already pending; 5 rejoins the run when the review lands.
-    expect(started).toEqual([3, 4, 5])
+    // 4 was already pending, so it runs; 5 is not revived by the review landing.
+    expect(started).toEqual([3, 4])
     await release(4)
-    await release(5)
 
     await run
     expect(tickets[2]).toMatchObject({ status: 'done' })
     expect(tickets[3]).toMatchObject({ status: 'done' })
+    expect(tickets[4]).toMatchObject({ status: 'failed' })
   })
 })
 
-describe("a landed review takes its dead attempt's fix tickets with it", () => {
-  it('puts the fix tickets it left failed back into the run it landed in', async () => {
-    // What the retry is for: the children failed because the attempt that
-    // minted them died, not because the fix was tried and lost. The review has
-    // now landed, so the run that produced it burns them — the same run the
-    // children of a first-time review are minted into.
+describe("a landed review leaves its dead attempt's fix tickets to the lead", () => {
+  it('does not put the fix tickets it left failed back into the run it landed in', async () => {
+    // Reviews used to revive these; a finding's fate is the lead's call now.
     const tickets = [
       ticket(1, { status: 'done' }),
       review(2),
@@ -392,11 +391,10 @@ describe("a landed review takes its dead attempt's fix tickets with it", () => {
 
     expect(started).toEqual([2])
     await release(2)
-    expect(started).toEqual([2, 3])
-    await release(3)
+    expect(started).toEqual([2])
 
     await run
-    expect(tickets[2]).toMatchObject({ status: 'done', error: null })
+    expect(tickets[2]).toMatchObject({ status: 'failed', error: 'blocked by failed ticket 2' })
   })
 
   it('leaves a waived fix ticket cancelled', async () => {
@@ -442,11 +440,8 @@ describe("a landed review takes its dead attempt's fix tickets with it", () => {
 /**
  * The retry end to end, over the real store: the review ticket the operator
  * retried re-reports the defect its dead attempt already reported, and the run
- * finishes with ONE fix ticket for it — the one that was already there, burned.
- *
- * The scheduler and `reportFinding` each answer half of that alone; this is the
- * half neither can show, where the report revives a row the run is holding a
- * stale copy of.
+ * finishes with ONE finding for it, refreshed — and burns no fix for it, since
+ * findings go to the lead (the-feature-lead-runs-rounds decision 10).
  */
 describe('a retried review over the real store', () => {
   const defect = {
@@ -459,7 +454,7 @@ describe('a retried review over the real store', () => {
     reproStep: 'Edit the title, save, reload.',
   }
 
-  it('burns the fix ticket its dead attempt minted instead of minting a second one', async () => {
+  it('refreshes the one finding and burns no fix ticket in the run', async () => {
     const ctx = await makeTestCtx()
     const proj = seedProject(ctx)
     const feat = seedFeature(ctx, proj.id, { phase: 'building' })
@@ -472,15 +467,16 @@ describe('a retried review over the real store', () => {
     ])
     updateTicket(ctx, built.id, { status: 'done', commits: ['sha'] })
 
-    // The attempt that died: it reported the defect, minting the fix ticket
-    // blocked on it, and then the agent crashed — taking the child with it.
+    // The attempt that died, before reviews stopped minting: it reported the
+    // defect with a fix ticket blocked on it, and then the agent crashed —
+    // taking the child with it.
     updateTicket(ctx, reviewTicket.id, { status: 'burning' })
-    const first = reportFinding(ctx, { featureId: feat.id, reviewTicket, input: defect })
+    const first = reportWithFixTicket(ctx, { featureId: feat.id, reviewTicket, input: defect })
     updateTicket(ctx, reviewTicket.id, {
       status: 'failed',
       error: 'review agent died: claude-code exited with code 1',
     })
-    updateTicket(ctx, first.fixTicket!.id, { status: 'failed', error: 'blocked by failed ticket 2' })
+    updateTicket(ctx, first.fixTicket.id, { status: 'failed', error: 'blocked by failed ticket 2' })
     markFixProgress(ctx, first.finding.id, 'failed', 'blocked by failed ticket 2')
 
     // The operator's Retry on the review alone (`retryTicket` leaves the rest).
@@ -519,18 +515,17 @@ describe('a retried review over the real store', () => {
       return { status: 'done', commits: [] }
     }
 
-    const res = await burnRun(wctx, deps(execute))
+    await burnRun(wctx, deps(execute))
 
-    // One defect, one finding, one fix ticket — the one the dead attempt minted.
+    // One defect, one finding, refreshed from the retried report and open for
+    // the lead; the old fix ticket is neither duplicated nor burned.
     const fixes = listByFeature(ctx, feat.id).filter((t) => t.originFindingId)
-    expect(fixes.map((t) => t.id)).toEqual([first.fixTicket?.id])
-    expect(listFindings(ctx, feat.id)).toHaveLength(1)
-    expect(fixes[0]).toMatchObject({ status: 'done', error: undefined })
-    // It burned in this run, on the wording the retried review just reported —
-    // and the landed fix is owed the verification pass any other one would be.
-    expect(launched.map((l) => l.seq)).toEqual([2, 3, 4])
-    expect(launched[1].context).toContain('STILL gone')
-    expect(res).toMatchObject({ status: 'succeeded' })
+    expect(fixes.map((t) => t.id)).toEqual([first.fixTicket.id])
+    expect(fixes[0]).toMatchObject({ status: 'failed' })
+    expect(listFindings(ctx, feat.id)).toEqual([
+      expect.objectContaining({ id: first.finding.id, status: 'open', detail: 'The edited value is STILL gone after a reload.' }),
+    ])
+    expect(launched.map((l) => l.seq)).toEqual([2])
   })
 })
 
@@ -728,9 +723,10 @@ describe('what the review agent is handed', () => {
     // The severity scale, and that it never gates.
     expect(template).toMatch(/severity is `high` when an acceptance criterion is unmet/i)
     expect(template).toContain('"high" | "medium" | "low"')
-    // Order decides what the cap reaches.
+    // Order is the order the lead reads them in; no cap, nothing minted.
     expect(template).toMatch(/report defects highest severity first/i)
-    expect(template).toContain('{{AUTO_FIX_CAP}}')
+    expect(template).not.toContain('{{AUTO_FIX_CAP}}')
+    expect(template).not.toMatch(/mints its own fix ticket/i)
   })
 
   it('renders the verification variant with its landed fixes, prior pass, and cap', () => {
@@ -1925,7 +1921,7 @@ describe('a run containing a review ticket still lands the feature in review', (
     else workflowRegistry.delete('ticket-burner')
   })
 
-  it('auto-advances on G4 and keeps the review digest in the run digest', async () => {
+  it('stays in building after the run and keeps the review digest in the run digest', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
@@ -1940,12 +1936,12 @@ describe('a run containing a review ticket still lands the feature in review', (
       },
     ])
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    expect(getFeatureRow(ctx, featureId).phase).toBe('review')
+    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
     // A review ticket lands `done` with no commits — its deliverable is notes.
     const reviewTicket = listByFeature(ctx, featureId).find((t) => t.kind === 'review')
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
@@ -1953,31 +1949,24 @@ describe('a run containing a review ticket still lands the feature in review', (
     expect(run?.digest).toContain('reviewed the app: 1 finding')
   })
 
-  it('appends, admits, and completes one verification when landed work had no review', async () => {
+  it('appends no verification pass to a round with one trivial ticket and no review', async () => {
     const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
     storeTickets(ctx, featureId, [{
-      title: 'quick fix', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
+      title: 'trivial change', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
-    // A review-less lap only reaches the burner through the G3 override — which
-    // is exactly the state the verification mint exists to catch, so the human
-    // who waived the gate still gets the landed work looked at.
+    // Whether a round is reviewed is the feature lead's call (decision 10): the
+    // round runs exactly the one worker it was dispatched with.
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
 
     const stored = listByFeature(ctx, featureId)
-    expect(stored).toHaveLength(2)
-    expect(stored[1]).toMatchObject({
-      // The feature's own lap: a burn from planning runs the lap it is on.
-      kind: 'review', passKind: 'verification', status: 'done', lap: 2,
-      title: 'Verify the fixes that landed',
-    })
-    expect(stored[1].context).toContain('#1 quick fix')
+    expect(stored.map((t) => t.title)).toEqual(['trivial change'])
+    expect(stored[0]).toMatchObject({ status: 'done' })
     const eventTypes = listAfter(ctx, featureId).map((event) => event.type)
-    expect(eventTypes).toContain('ticket.verification_minted')
-    expect(eventTypes.filter((type) => type === 'ticket.verification_minted')).toHaveLength(1)
+    expect(eventTypes).not.toContain('ticket.verification_minted')
   })
 })
 
@@ -1998,30 +1987,17 @@ describe('the burner mints its verification pass into a lap that already has a r
   let original: WorkflowDef | undefined
 
   /**
-   * The real scheduler over a fake boundary, where the lap's own review reports
-   * one defect: it mints the fix ticket mid-run the way `report_finding` does,
-   * so an implementation ticket lands AFTER the review and the run owes a
-   * verification pass.
+   * The real scheduler over a fake boundary. The round names a fix ticket
+   * blocked on its review, so an implementation ticket lands AFTER the review
+   * and the run owes a verification pass.
    */
   const burner: WorkflowDef = {
     id: 'ticket-burner',
     run: (wctx) =>
       burnRun(
         wctx,
-        deps(async (workflowCtx, t) => {
+        deps(async (_workflowCtx, t) => {
           if (t.kind !== 'review') return { status: 'done', commits: ['sha'] }
-          if (t.passKind !== 'verification') {
-            // Unblocked: the ctx hook reads `blockedBy` as batch-relative, and
-            // the review this ticket answers is already terminal anyway.
-            workflowCtx.storeTickets?.([{
-              title: 'fix the defect',
-              goal: 'g',
-              context: 'c',
-              acceptanceCriteria: ['a'],
-              seams: ['s'],
-              blockedBy: [],
-            }])
-          }
           return { status: 'done', commits: [] }
         }, 1),
       ),
@@ -2052,10 +2028,11 @@ describe('the burner mints its verification pass into a lap that already has a r
         blockedBy: [1],
         kind: 'review',
       },
+      { title: 'fix the defect', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [2] },
     ])
 
-    await caller.feature.burn({ featureId })
-    for (let i = 0; i < 200 && getFeatureRow(ctx, featureId).phase !== 'review'; i++) {
+    await burn(ctx, featureId)
+    for (let i = 0; i < 200 && !listAfter(ctx, featureId).some((e) => e.type === 'run.finished'); i++) {
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
 

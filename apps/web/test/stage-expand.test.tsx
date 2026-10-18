@@ -41,11 +41,13 @@ vi.mock('../src/trpc', () => {
       ticket: { retry: { useMutation: mutation } },
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
         reopen: { useMutation: mutation },
         list: { useQuery: () => ({ data: [NOTE] }) },
+        delivery: { useQuery: () => ({ data: undefined }) },
       },
       findings: {
         dismiss: { useMutation: mutation },
@@ -72,6 +74,8 @@ vi.mock('../src/trpc', () => {
         },
       },
       feature: {
+        rounds: { useQuery: () => ({ data: [] }) },
+        readyDeclarations: { useQuery: () => ({ data: [{ id: 'ready_1', featureId: 'feat_1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 1 }] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         driveScenarios: { useQuery: () => ({ data: { runnerConfigured: false, scenarios: [] } }) },
@@ -201,7 +205,7 @@ const expandControl = (): HTMLElement => screen.getByRole('button', { name: /^Ex
 const key = (k: string): void => void fireEvent.keyDown(document.body, { key: k })
 
 /** The bands the expand puts away, one phrase each. */
-const BANDS = ['^Burn$', 'How to drive this app', 'Carried, still open', 'Full account']
+const BANDS = ['How to drive this app', 'Full account']
 
 describe('the review page expanded', () => {
   it('leaves the stage and the rail, and puts every other band away', () => {
@@ -219,7 +223,7 @@ describe('the review page expanded', () => {
     const inOverlay = within(overlay)
     expect(overlay.querySelector('#evidence-stage')).toBeTruthy()
     // The notes are the one aside beside the stage.
-    expect(inOverlay.getByRole('complementary').textContent).toContain('Needs attention')
+    expect(inOverlay.getByRole('complementary').textContent).toContain('Notes for the agent')
     expect(inOverlay.getByLabelText(/what did you just see/i)).toBeTruthy()
     expect(inOverlay.getByText(NOTE.text)).toBeTruthy()
     for (const band of BANDS) expect.soft(inOverlay.queryByText(new RegExp(band))).toBeNull()

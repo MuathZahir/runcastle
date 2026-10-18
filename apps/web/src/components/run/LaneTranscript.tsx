@@ -119,7 +119,7 @@ export function LaneTranscript({
       )}
       {live && (
         <div className="mt-2">
-          <StatusLabel tone="live">Burning…</StatusLabel>
+          <StatusLabel tone="live">Running…</StatusLabel>
         </div>
       )}
       {!following && (
