@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type {
   AgentRuntime,
   MergeBranchPair,
@@ -659,6 +660,27 @@ export function resumeCapExceeded(input: {
     }
   }
   return null
+}
+
+/**
+ * Why `prior`'s conversation can no longer be resumed from `worktreePath`, or
+ * undefined when it still can (`the-feature-lead-runs-rounds` decision 28).
+ * Resuming a conversation whose transcript is gone exits at once — Claude Code
+ * cleans up old transcripts, and looks a conversation up under the launch
+ * directory, so one recorded in another worktree is as good as gone. A row
+ * that recorded no transcript path cannot be judged and is resumed, the way
+ * {@link transcriptBytes} fails open.
+ */
+export function resumeGoneReason(prior: SessionRow, worktreePath: string): string | undefined {
+  if (prior.transcriptPath && !existsSync(prior.transcriptPath)) return 'its transcript is no longer on disk'
+  if (
+    (prior.runtime ?? DEFAULT_RUNTIME) === 'claude-code' &&
+    prior.worktreePath &&
+    resolve(prior.worktreePath) !== resolve(worktreePath)
+  ) {
+    return 'it was recorded in another worktree'
+  }
+  return undefined
 }
 
 /** Size of a session's transcript on disk, or undefined when there isn't one. */

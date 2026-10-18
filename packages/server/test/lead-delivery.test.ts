@@ -11,6 +11,7 @@ import { go } from '../src/services/features'
 import {
   deliverToLead,
   leadDeliveryFor,
+  leadDeliveryState,
   startLeadWaker,
   wakeLeadHeadless,
   type LeadLauncher,
@@ -359,6 +360,132 @@ describe('the lead waker — a headless resume when nothing is open', () => {
     expect(await wakeLeadHeadless(ctx, f.id, launch)).toBeNull()
     expect(inputs).toHaveLength(0)
     takeOrchestratorLines(leadMessageKey(f.id))
+  })
+
+  describe('holding the messages until the agent checks in (decision 28)', () => {
+    /** A launcher that opens a real (process-less) headless chat row per wake. */
+    function rowLauncher(): { launch: LeadLauncher; inputs: Array<Parameters<LeadLauncher>[1]>; ids: string[] } {
+      const inputs: Array<Parameters<LeadLauncher>[1]> = []
+      const ids: string[] = []
+      return {
+        inputs,
+        ids,
+        launch: async (c, input) => {
+          inputs.push(input)
+          const row = createSessionRow(c, {
+            featureId: input.featureId,
+            kind: 'chat',
+            purpose: 'lead-wake',
+            worktreePath: '/wt',
+            headless: true,
+          })
+          ids.push(row.id)
+          return { sessionId: row.id, resumed: !input.fresh }
+        },
+      }
+    }
+
+    const exited = (featureId: string, sessionId: string, exitCode: number): void => {
+      markSessionEnded(ctx, sessionId)
+      emit(ctx, featureId, { type: 'session.pty_exited', message: 'exited', data: { sessionId, exitCode } })
+    }
+
+    it('releases them once the agent checks in, so its later exit puts nothing back', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        expect(leadDeliveryState(f.id).waitingSince).not.toBeNull()
+
+        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
+        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
+        expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
+
+        exited(f.id, ids[0] as string, 1)
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
+      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
+      expect(types(f.id)).not.toContain('lead.wake_failed')
+    })
+
+    it('puts them back on an early death, retries once fresh, then waits for a real trigger', async () => {
+      const f = feature()
+      const { launch, inputs, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+
+        exited(f.id, ids[0] as string, 1)
+        await vi.waitFor(() => expect(ids).toHaveLength(2))
+        expect(inputs[1]).toMatchObject({ fresh: true, message: '[runcastle] notes' })
+        expect(leadDeliveryState(f.id).lastFailure?.message).toContain('exited (code 1)')
+
+        exited(f.id, ids[1] as string, 1)
+        await new Promise((r) => setTimeout(r, 20))
+        expect(ids).toHaveLength(2)
+        expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['[runcastle] notes'])
+        queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] notes')
+
+        await deliverToLead(ctx, f, { text: 'more', source: 'human' })
+        await vi.waitFor(() => expect(ids).toHaveLength(3))
+        expect(inputs[2]?.message).toBe('[runcastle] notes\n\n[runcastle] more')
+      } finally {
+        stop()
+      }
+      const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
+      expect(failed.map((e) => e.data?.failures)).toEqual([1, 2])
+      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, messages: 1 })
+    })
+
+    it('counts a clean exit as delivered even when no hook said so', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        exited(f.id, ids[0] as string, 0)
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
+      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
+      expect(leadDeliveryState(f.id).waitingSince).toBeNull()
+    })
+
+    it('puts them back when the spawn failed inside the launch', async () => {
+      const f = feature()
+      queueOrchestratorLine(leadMessageKey(f.id), 'x')
+      const ids: string[] = []
+      const dies: LeadLauncher = async (c, input) => {
+        const row = createSessionRow(c, { featureId: input.featureId, kind: 'chat', worktreePath: '/wt', headless: true })
+        markSessionEnded(c, row.id)
+        ids.push(row.id)
+        return { sessionId: row.id }
+      }
+      await wakeLeadHeadless(ctx, f.id, dies)
+      // One immediate retry, fresh; it dies too and the feature waits.
+      await vi.waitFor(() => expect(ids).toHaveLength(2))
+      await new Promise((r) => setTimeout(r, 10))
+      expect(ids).toHaveLength(2)
+      expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
+      expect(types(f.id).filter((t) => t === 'lead.wake_failed')).toHaveLength(2)
+    })
+
+    it('says a message to a live lead is with the agent', async () => {
+      const f = feature()
+      chat(f.id)
+      await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
+      expect(leadDeliveryState(f.id).waitingSince).toBeNull()
+      takeOrchestratorLines(leadMessageKey(f.id))
+    })
   })
 
   it('puts the messages back and says why when the resume is refused', async () => {

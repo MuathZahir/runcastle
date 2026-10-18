@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentRuntime, Feature } from '@runcastle/core'
@@ -301,6 +301,36 @@ describe('a headless run on a feature', () => {
       } finally {
         stop()
       }
+    })
+
+    it('resumes its own conversation while the transcript is on disk, on either runtime', async () => {
+      const f = await feature('lead-transcript', { phase: 'building' })
+      const transcript = join(repoPath, 'cc-kept.jsonl')
+      writeFileSync(transcript, '{}\n')
+      await earlierChat(f.id, 'cc-kept', transcript)
+      expect(launchedCommand(f.id, await wake(f.id, 'Round 1 returned'))).toContain('--resume cc-kept')
+
+      useRuntime('codex')
+      const g = await feature('lead-rollout', { phase: 'building' })
+      await earlierChat(g.id, 'thread-kept', transcript)
+      expect(launchedCommand(g.id, await wake(g.id, 'Go given'))).toContain('exec resume --dangerously-bypass-hook-trust thread-kept')
+    })
+
+    it('starts fresh on Claude Code when the conversation was recorded in another worktree', async () => {
+      const f = await feature('lead-moved', { phase: 'building' })
+      const transcript = join(repoPath, 'cc-moved.jsonl')
+      writeFileSync(transcript, '{}\n')
+      const earlier = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: join(repoPath, 'old-wt') })
+      markSessionLive(ctx, earlier.id, { ccSessionId: 'cc-moved', transcriptPath: transcript })
+      markSessionEnded(ctx, earlier.id)
+
+      const sessionId = await wake(f.id, 'Round 1 returned')
+
+      expect(launchedCommand(f.id, sessionId)).not.toContain('--resume')
+      expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resume_gone')?.data).toMatchObject({
+        resumeSessionId: 'cc-moved',
+        reason: 'it was recorded in another worktree',
+      })
     })
 
     it('launches the lead past Go with bypassPermissions on Claude Code, headless and interactive', async () => {

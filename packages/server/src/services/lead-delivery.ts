@@ -1,7 +1,7 @@
 import { DEFAULT_RUNTIME, type Feature, type ReviewGateRun, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { launchSession, type LaunchSessionInput, type LaunchSessionResult } from '../launcher/launcher'
-import { activeSessionsForFeature } from '../launcher/sessions'
+import { activeSessionsForFeature, getSessionRow } from '../launcher/sessions'
 import { subscribeLive } from './bus'
 import { emit, getEventRow } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
@@ -57,6 +57,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
   const lead = activeLead(ctx, feature.id)
   if (lead && !lead.headless) {
     leadDeliveryFor(lead).kick(lead, key)
+    markReceived(feature.id)
     emit(ctx, feature.id, {
       type: 'lead.message_queued',
       message: `message queued for the agent at its turn end (${msg.source})`,
@@ -64,6 +65,7 @@ export async function deliverToLead(ctx: AppCtx, feature: Feature, msg: LeadMess
     })
     return
   }
+  if (!waitingSince.has(feature.id)) waitingSince.set(feature.id, Date.now())
   emit(ctx, feature.id, {
     type: 'lead.message_pending',
     message: lead
@@ -125,33 +127,92 @@ const WAKE_TRIGGERS = new Set([
   'testdrive.stopped',
 ])
 
+/** The triggers a feature's own session ending fires, as opposed to a new message or a drive stopping. */
+const EXIT_TRIGGERS = new Set(['session.pty_exited', 'session.spawn_failed'])
+
 /** Features whose headless resume is being opened right now. */
 const waking = new Set<string>()
+
+/** A headless wake's messages, held against its session until the agent checks in (decision 28). */
+interface HeldWake {
+  featureId: string
+  lines: string[]
+}
+
+/** Held wakes by the session launched with them. */
+const heldWakes = new Map<string, HeldWake>()
+
+/**
+ * Wakes per feature that died before their agent checked in, since the last
+ * one that did. The first is retried at once, fresh from the docs; past that a
+ * feature's own exits retry nothing, so a wake that keeps dying waits for the
+ * next real trigger instead of relaunching in a loop.
+ */
+const failedWakes = new Map<string, number>()
+
+/**
+ * When the oldest message no agent has yet received was sent, and the last wake
+ * failure, per feature — what the drive panel reads instead of claiming
+ * delivery (decision 28). A message queued for a live lead's turn end counts as
+ * received: the agent holds it.
+ */
+const waitingSince = new Map<string, number>()
+const lastWakeFailure = new Map<string, { message: string; at: number }>()
+
+/** What the drive panel shows about a feature's messages to the agent. */
+export interface LeadDeliveryState {
+  /** When the oldest message still waiting for an agent was sent; null when nothing waits. */
+  waitingSince: number | null
+  /** The last headless wake that died before the agent took it, while its messages still wait. */
+  lastFailure: { message: string; at: number } | null
+}
+
+export function leadDeliveryState(featureId: string): LeadDeliveryState {
+  const since = waitingSince.get(featureId) ?? null
+  return { waitingSince: since, lastFailure: since === null ? null : (lastWakeFailure.get(featureId) ?? null) }
+}
+
+/** An agent took the feature's messages: nothing is waiting any more. */
+function markReceived(featureId: string): void {
+  waitingSince.delete(featureId)
+  lastWakeFailure.delete(featureId)
+}
 
 /**
  * Resume the feature's chat headless with every pending lead message as its
  * prompt, when there are any and no session of the feature is up. A live lead
  * takes its messages itself; a headless run already going, or a terminal of
  * another kind (the feature's one slot), gets them retried when it exits. A
- * launch that is refused puts the messages back and says why. Resolves with the
- * new session id, or null when nothing was launched.
+ * launch that is refused puts the messages back and says why.
+ *
+ * The messages are held against the launched session, not handed over: only
+ * its checking in releases them ({@link startLeadWaker}), and a process that
+ * ends first puts them back. After one such death the retry starts fresh from
+ * the docs; after a second, `fromExit` wakes (the feature's own session ending)
+ * stand down until a real trigger — a new message, a drive stopping. Resolves
+ * with the new session id, or null when nothing was launched.
  */
 export async function wakeLeadHeadless(
   ctx: AppCtx,
   featureId: string,
   launch: LeadLauncher = launchSession,
+  fromExit = false,
 ): Promise<string | null> {
   const key = leadMessageKey(featureId)
   if (waking.has(featureId) || !hasOrchestratorLines(key)) return null
   if (activeSessionsForFeature(ctx, featureId).length > 0) return null
+  const failures = failedWakes.get(featureId) ?? 0
+  if (fromExit && failures >= 2) return null
   waking.add(featureId)
   const lines = takeOrchestratorLines(key)
+  let diedAtLaunch = false
   try {
     const { sessionId, resumed = false } = await launch(ctx, {
       featureId,
       kind: 'chat',
       purpose: 'lead-wake',
       message: lines.join('\n\n'),
+      ...(failures > 0 ? { fresh: true } : {}),
     })
     emit(ctx, featureId, {
       type: 'lead.woken_headless',
@@ -160,6 +221,12 @@ export async function wakeLeadHeadless(
         : 'the agent was not open and had no conversation to resume — started it headless from the docs with the message',
       data: { sessionId, messages: lines.length, resumed },
     })
+    heldWakes.set(sessionId, { featureId, lines })
+    // The launch can settle before it resolves: a spawn that failed has ended
+    // the row, and a hook that beat this line here has already checked it in.
+    const status = getSessionRow(ctx, sessionId)?.status
+    if (status === 'live') releaseHeldWake(sessionId)
+    else if (status === 'ended') diedAtLaunch = failHeldWake(ctx, sessionId, null)
     return sessionId
   } catch (err) {
     requeueOrchestratorLines(key, lines)
@@ -171,7 +238,51 @@ export async function wakeLeadHeadless(
     return null
   } finally {
     waking.delete(featureId)
+    // Its exit event came while this wake was still opening, so it retried nothing.
+    if (diedAtLaunch) {
+      void wakeLeadHeadless(ctx, featureId, launch, true).catch((err) => console.error('lead waker failed', err))
+    }
   }
+}
+
+/** The wake's agent checked in: its messages are delivered, and the feature's wakes are healthy again. */
+function releaseHeldWake(sessionId: string): void {
+  const held = heldWakes.get(sessionId)
+  if (!held) return
+  heldWakes.delete(sessionId)
+  failedWakes.delete(held.featureId)
+  markReceived(held.featureId)
+}
+
+/**
+ * A wake's session ended. Before its agent checked in, a non-zero (or unknown)
+ * exit means the agent never took the messages: they go back on the queue,
+ * first, and `lead.wake_failed` says why. A clean exit ran to completion, so its
+ * messages count as delivered even if no hook ever said so. Returns whether the
+ * messages were put back.
+ */
+function failHeldWake(ctx: AppCtx, sessionId: string, exitCode: number | null): boolean {
+  const held = heldWakes.get(sessionId)
+  if (!held) return false
+  if (exitCode === 0) {
+    releaseHeldWake(sessionId)
+    return false
+  }
+  heldWakes.delete(sessionId)
+  requeueOrchestratorLines(leadMessageKey(held.featureId), held.lines)
+  const failures = (failedWakes.get(held.featureId) ?? 0) + 1
+  failedWakes.set(held.featureId, failures)
+  const how = exitCode === null ? 'ended' : `exited (code ${exitCode})`
+  const message =
+    `the agent's headless wake ${how} before the agent started — ${held.lines.length} message(s) back in the queue; ` +
+    (failures === 1 ? 'retrying fresh from the docs' : 'they go with the next message or when a drive stops')
+  lastWakeFailure.set(held.featureId, { message, at: Date.now() })
+  emit(ctx, held.featureId, {
+    type: 'lead.wake_failed',
+    message,
+    data: { sessionId, messages: held.lines.length, exitCode, failures },
+  })
+  return true
 }
 
 /**
@@ -187,12 +298,34 @@ export function startLeadWaker(ctx: AppCtx, launch: LeadLauncher = launchSession
     const featureId = signal.featureId
     try {
       const event = getEventRow(ctx, signal.eventId)
-      if (!event || !WAKE_TRIGGERS.has(event.type)) return
-      void wakeLeadHeadless(ctx, featureId, launch).catch((err) => console.error('lead waker failed', err))
+      if (!event) return
+      const data = (event.data ?? {}) as { sessionId?: unknown; exitCode?: unknown }
+      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : undefined
+      if (event.type === 'session.started' && sessionId) noteCheckIn(ctx, featureId, sessionId)
+      if (!WAKE_TRIGGERS.has(event.type)) return
+      const fromExit = EXIT_TRIGGERS.has(event.type)
+      if (fromExit && sessionId) {
+        failHeldWake(ctx, sessionId, typeof data.exitCode === 'number' ? data.exitCode : null)
+      }
+      void wakeLeadHeadless(ctx, featureId, launch, fromExit).catch((err) => console.error('lead waker failed', err))
     } catch (err) {
       console.error('lead waker failed', err)
     }
   })
+}
+
+/**
+ * A feature session checked in. A held wake's agent has its messages now; a
+ * terminal lead coming up is handed whatever was waiting at its start
+ * (`kickLeadAtStart`), so nothing waits for an agent any more either way.
+ */
+function noteCheckIn(ctx: AppCtx, featureId: string, sessionId: string): void {
+  if (heldWakes.has(sessionId)) {
+    releaseHeldWake(sessionId)
+    return
+  }
+  const session = getSessionRow(ctx, sessionId)
+  if (session && isLiveLeadSession(session)) markReceived(featureId)
 }
 
 /** One line on a round's verify gates, for the wake message. */

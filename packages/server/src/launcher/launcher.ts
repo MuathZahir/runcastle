@@ -75,6 +75,7 @@ import {
   reentryCount,
   reportProjectLanding,
   resumeCapExceeded,
+  resumeGoneReason,
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
@@ -136,6 +137,12 @@ export interface LaunchSessionInput {
    * run applies — required there.
    */
   message?: string
+  /**
+   * Start the chat fresh from the docs even when a conversation is on record —
+   * a lead wake retried after the one before it died before checking in
+   * (`the-feature-lead-runs-rounds` decision 28).
+   */
+  fresh?: boolean
 }
 
 /**
@@ -608,9 +615,18 @@ export async function launchSession(
       throw e
     }
   }
-  if (input.kind === 'chat' && !selfPlan) {
+  if (input.kind === 'chat' && !selfPlan && !input.fresh) {
     const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
-    if (prior?.ccSessionId) {
+    // A conversation whose transcript is gone cannot come back: resuming it
+    // exits before the agent ever starts (decision 28), so start from the docs.
+    const gone = prior?.ccSessionId ? resumeGoneReason(prior, worktreePath) : undefined
+    if (prior?.ccSessionId && gone) {
+      emit(ctx, feature.id, {
+        type: 'session.resume_gone',
+        message: `the previous chat conversation can't be resumed — ${gone}; starting fresh from the docs`,
+        data: { sessionId: session.id, resumeSessionId: prior.ccSessionId, reason: gone },
+      })
+    } else if (prior?.ccSessionId) {
       resumedFrom = prior
       resumeSessionId = prior.ccSessionId
     } else if (listSessionsByFeature(ctx, feature.id).some(
