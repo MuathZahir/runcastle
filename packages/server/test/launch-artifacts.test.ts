@@ -17,9 +17,11 @@ import {
   SESSION_START_SOURCES,
   hookClientPath,
   renderMcpConfig,
+  renderSessionPrompt,
   renderSettings,
   renderSystemPrompt,
   skillPackReadRule,
+  talkingToTheHumanSection,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
 import { ptyExitMessage } from '../src/launcher/launcher'
@@ -947,6 +949,71 @@ describe('writeSessionArtifacts', () => {
  * argv builder, unchanged, so comparing against it is comparing against what
  * shipped before.
  */
+describe('renderSessionPrompt', () => {
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
+  const noArtifacts = { hasDecisions: false, hasSpec: false, hasTickets: false }
+
+  const briefs: Array<[string, Partial<WriteArtifactsInput>]> = [
+    ['ideation', { feature: feature(), planning: noArtifacts }],
+    [
+      'revisit chat',
+      { feature: feature(), planning: { hasDecisions: true, hasSpec: true, hasTickets: false } },
+    ],
+    ['lap', { feature: feature({ phase: 'review', lap: 2 }), lap: 2 }],
+    ['qa', { session: session({ kind: 'qa' }), feature: feature({ phase: 'review' }) }],
+    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    [
+      'prepare',
+      {
+        session: session({ kind: 'prepare' }),
+        prepare: { project, remainingKeys: ['devCommand'], established: [] },
+      },
+    ],
+    [
+      'project',
+      {
+        session: session({ kind: 'project' }),
+        projectBrief: {
+          project,
+          branch: 'runcastle/project',
+          worktreePath: 'C:\\wt\\p',
+          base: 'main',
+          openNotes: 0,
+        },
+      },
+    ],
+    [
+      'drive-fix',
+      {
+        session: session({ kind: 'drive-fix' }),
+        driveFix: {
+          project,
+          feature: feature(),
+          failure: {
+            phase: 'setup',
+            command: 'bash .runcastle/drive-setup.sh',
+            exitCode: 3,
+            timedOut: false,
+            output: 'boom',
+          },
+          envKeys: [],
+          delta: { base: 'main', branch: 'feature/dark-mode', stat: '' },
+        },
+      },
+    ],
+  ]
+
+  it.each(briefs)('ends a %s brief with how to talk to the human, exactly once', (_, brief) => {
+    const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
+
+    expect(prompt.split('## How to talk to the human')).toHaveLength(2)
+    expect(prompt.endsWith(talkingToTheHumanSection())).toBe(true)
+    expect(prompt).toContain('senior advisor')
+    expect(prompt).toContain("Define the project's terms")
+    expect(prompt).toContain('Bring the context with the decision')
+  })
+})
+
 describe('claudeRuntime.writeArtifacts', () => {
   const created: string[] = []
   afterEach(() => {
