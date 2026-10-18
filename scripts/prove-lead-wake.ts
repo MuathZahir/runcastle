@@ -15,9 +15,13 @@
  * and data are untouched) over a scratch git repo, and asserts:
  *
  * - headless: `lead.woken_headless`, the resumed CLI reporting in through its
- *   SessionStart hook, the proof word in its transcript, a clean exit; and a
- *   message sent DURING that run delivered by the next resume, not dropped.
- * - live: an interactive chat opened in a PTY, its kickoff turn left to end;
+ *   SessionStart hook, the proof word in its transcript, a clean exit; the turn
+ *   acting unattended (decision 27) — a `git tag` run with no prompt to stall
+ *   on, the line guard refusing to delete the feature branch, `declare_ready`
+ *   moving the feature to review; and a message sent DURING that run delivered
+ *   by the next resume, not dropped.
+ * - live: an interactive chat opened in a PTY — resuming the headless run's
+ *   conversation when that proof ran first — its kickoff turn left to end;
  *   then a message delivered — `lead.woke` on Claude Code (the waiter took it at
  *   the turn end) or `lead.message_queued` via codex queue on Codex — and the
  *   proof word appearing in the transcript, i.e. the turn ran.
@@ -68,6 +72,19 @@ const { getFeatureRow, setPhase } = await import('../packages/server/src/service
 const WORD = 'LEADWOKE'
 const proofText = (n: number): string =>
   `[runcastle] Wake proof ${n}: reply with exactly the word ${WORD}${n} and nothing else. Call no tools.`
+const PROOF_TAG = 'lead-wake-proof'
+const SCENARIO = 'Wake proof scenario'
+/**
+ * The headless wake that acts (decision 27): a git command no allow rule
+ * covers — under `acceptEdits` it is a prompt nobody answers, denied in `-p` —
+ * the guard's refusal to delete the feature branch, and declare_ready.
+ */
+const actText = (branch: string): string =>
+  `[runcastle] Wake proof 1, run unattended. Do exactly these three things, then reply with ` +
+  `exactly the word ${WORD}1: (1) run the shell command \`git tag ${PROOF_TAG}\`; (2) run ` +
+  `\`git branch -D ${branch}\` — it is expected to be refused, do not retry or work around it; ` +
+  `(3) call the runcastle MCP tool declare_ready with scenario "${SCENARIO}" and whatToTest ` +
+  `"Nothing; this is a wake proof."`
 
 function log(msg: string): void {
   process.stdout.write(`${msg}\n`)
@@ -79,6 +96,11 @@ function fail(msg: string): never {
 function git(...args: string[]): void {
   execFileSync('git', args, { cwd: TARGET, stdio: 'ignore' })
 }
+function gitOut(...args: string[]): string {
+  return execFileSync('git', args, { cwd: TARGET, encoding: 'utf8' })
+}
+/** The conversation the headless proof ran in; the live open must resume it. */
+let headlessCcSessionId: string | undefined
 
 mkdirSync(paths.dataDir(), { recursive: true })
 const db = createDb(paths.dbPath())
@@ -133,8 +155,13 @@ function transcriptHas(sessionId: string, text: string): boolean {
 async function proveHeadless(): Promise<void> {
   log('\n▶ headless — no terminal open')
   const before = eventsOf('lead.woken_headless').length
-  await deliverToLead(ctx, getFeatureRow(ctx, featureId), { text: proofText(1), source: 'runcastle' })
-  const woken = await until('lead.woken_headless', () => eventsOf('lead.woken_headless')[before])
+  const feature = getFeatureRow(ctx, featureId)
+  await deliverToLead(ctx, feature, { text: actText(feature.branch), source: 'runcastle' })
+  const woken = await until('lead.woken_headless', () => {
+    const refused = eventsOf('lead.wake_failed').at(0)
+    if (refused) fail(`the headless resume was refused: ${refused.message}`)
+    return eventsOf('lead.woken_headless')[before]
+  })
   const sessionId = String(woken.data.sessionId)
   log(`  ✓ resumed headless as ${sessionId}`)
   // Sent while that run is going: must ride the next resume.
@@ -146,6 +173,13 @@ async function proveHeadless(): Promise<void> {
   if (exited.data.exitCode !== 0) fail(`headless run exited ${String(exited.data.exitCode)}`)
   if (!transcriptHas(sessionId, `${WORD}1`)) fail(`no ${WORD}1 in the transcript — the turn did not run`)
   log(`  ✓ turn ran: ${WORD}1 in the transcript, exit 0`)
+  if (!gitOut('tag', '--list', PROOF_TAG).includes(PROOF_TAG)) fail('the headless turn did not run `git tag` — a stall?')
+  log('  ✓ ran git unprompted: the tag exists')
+  if (!gitOut('branch', '--list', feature.branch).includes(feature.branch)) fail('the guard let the feature branch be deleted')
+  log('  ✓ the guard refused deleting the feature branch')
+  if (getFeatureRow(ctx, featureId).phase !== 'review') fail('declare_ready did not move the feature to review')
+  log('  ✓ declare_ready moved the feature to review')
+  headlessCcSessionId = getSessionRow(ctx, sessionId)?.ccSessionId ?? undefined
   const next = await until('the held message’s resume', () => eventsOf('lead.woken_headless')[before + 1])
   const nextId = String(next.data.sessionId)
   await until('the second run to exit', () =>
@@ -158,6 +192,13 @@ async function proveHeadless(): Promise<void> {
 async function proveLive(): Promise<void> {
   log('\n▶ live — terminal open')
   const { sessionId } = await launchSession(ctx, { featureId, kind: 'chat' })
+  if (headlessCcSessionId) {
+    const resumed = eventsOf('session.resumed').find((e) => e.data.sessionId === sessionId)
+    if (resumed?.data.resumeSessionId !== headlessCcSessionId) {
+      fail(`the open did not resume the headless conversation ${headlessCcSessionId}`)
+    }
+    log(`  ✓ opening the chat resumes the headless run's conversation (${headlessCcSessionId})`)
+  }
   await until('the chat to go live', () => getSessionRow(ctx, sessionId)?.status === 'live')
   await until('its kickoff turn to end', () => getSessionRow(ctx, sessionId)?.awaitingInput === true, 600_000)
   log(`  ✓ chat ${sessionId} live and idle`)
