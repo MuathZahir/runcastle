@@ -232,8 +232,30 @@ describe('a headless run on a feature', () => {
       expect(command).toContain('[runcastle] No terminal of yours was open')
       expect(command).toContain('[runcastle] Round 1 returned: succeeded')
       expect(injectedPrompt(f.id, sessionId)).toContain('## No terminal is open')
-      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'lead.woken_headless')).toBe(true)
+      expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')?.data).toMatchObject({
+        resumed: true,
+      })
       expect(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')).not.toContain('wait-messages')
+    })
+
+    /**
+     * REGRESSION (lap-2 drive): a chat whose SessionStart never recorded its id
+     * had nothing to resume, yet the wake's prompt and event both said "resumed".
+     */
+    it('says it started fresh, in the prompt and the event, when the chat has no conversation on record', async () => {
+      const f = await feature('lead-unrecorded', { phase: 'building' })
+      markSessionEnded(ctx, await launch(f.id))
+
+      const sessionId = await wake(f.id, 'Round 1 returned: succeeded')
+
+      const command = launchedCommand(f.id, sessionId)
+      expect(command).not.toContain('--resume')
+      expect(command).toContain('no earlier conversation of this feature could be resumed')
+      expect(command).not.toContain('resumed this conversation')
+      const woken = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')
+      expect(woken?.data).toMatchObject({ resumed: false })
+      expect(woken?.message).not.toContain('resumed its conversation')
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_unavailable')).toBe(true)
     })
 
     /**

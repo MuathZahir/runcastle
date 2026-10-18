@@ -1,6 +1,6 @@
 import { DEFAULT_RUNTIME, type Feature, type ReviewGateRun, type SessionRow } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { launchSession, type LaunchSessionInput } from '../launcher/launcher'
+import { launchSession, type LaunchSessionInput, type LaunchSessionResult } from '../launcher/launcher'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { subscribeLive } from './bus'
 import { emit, getEventRow } from './events'
@@ -111,7 +111,7 @@ export function leadDeliveryFor(session: Pick<SessionRow, 'runtime'>): Orchestra
 }
 
 /** Opens the headless resume of a feature's chat — `launchSession`, or a test's stand-in. */
-export type LeadLauncher = (ctx: AppCtx, input: LaunchSessionInput) => Promise<{ sessionId: string }>
+export type LeadLauncher = (ctx: AppCtx, input: LaunchSessionInput) => Promise<LaunchSessionResult>
 
 /** The event types after which a feature's pending lead messages may need a headless resume. */
 const WAKE_TRIGGERS = new Set(['lead.message_pending', 'session.pty_exited', 'session.spawn_failed'])
@@ -138,7 +138,7 @@ export async function wakeLeadHeadless(
   waking.add(featureId)
   const lines = takeOrchestratorLines(key)
   try {
-    const { sessionId } = await launch(ctx, {
+    const { sessionId, resumed = false } = await launch(ctx, {
       featureId,
       kind: 'chat',
       purpose: 'lead-wake',
@@ -146,8 +146,10 @@ export async function wakeLeadHeadless(
     })
     emit(ctx, featureId, {
       type: 'lead.woken_headless',
-      message: 'the agent was not open — resumed its conversation headless with the message',
-      data: { sessionId, messages: lines.length },
+      message: resumed
+        ? 'the agent was not open — resumed its conversation headless with the message'
+        : 'the agent was not open and had no conversation to resume — started it headless from the docs with the message',
+      data: { sessionId, messages: lines.length, resumed },
     })
     return sessionId
   } catch (err) {

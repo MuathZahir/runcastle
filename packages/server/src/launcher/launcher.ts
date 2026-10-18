@@ -191,6 +191,8 @@ export interface LaunchSessionOptions {
 
 export interface LaunchSessionResult {
   sessionId: string
+  /** Whether a new terminal continues an earlier conversation; absent when none was launched. */
+  resumed?: boolean
 }
 
 /**
@@ -580,26 +582,6 @@ export async function launchSession(
   const selfPlan = isSelfPlan(input)
   const relay = input.kind === 'chat' && input.purpose === 'relay'
   const leadWake = input.kind === 'chat' && input.purpose === 'lead-wake'
-  if (input.kind === 'chat') {
-    // Every opening re-orients the persistent conversation. Purpose-specific
-    // text comes first so it remains the immediate task, followed by current
-    // feature state rather than the state captured on the previous turn. A
-    // self-planning or relay run opens on its own sentence: nobody is there to
-    // grill.
-    const header = chatKickoffHeader(
-      ctx,
-      feature,
-      runtime.id,
-      selfPlan
-        ? selfPlanKickoffFor(runtime.id)
-        : relay
-          ? relayKickoffFor(runtime.id, input.message as string)
-          : leadWake
-            ? leadWakeKickoff(input.message as string)
-            : chatKickoffFor(runtime.id, chatOpening(feature, planningFacts(ctx, feature), input.purpose)),
-    )
-    plan.line = plan.line ? `${plan.line} ${header}` : header
-  }
 
   let resumeSessionId: string | undefined
   let resumeUnavailableFrom: string | undefined
@@ -681,6 +663,28 @@ export async function launchSession(
     })
   }
 
+  if (input.kind === 'chat') {
+    // Every opening re-orients the persistent conversation. Purpose-specific
+    // text comes first so it remains the immediate task, followed by current
+    // feature state rather than the state captured on the previous turn. A
+    // self-planning or relay run opens on its own sentence: nobody is there to
+    // grill. A lead wake says whether it resumed, so it is told after the
+    // resume is settled.
+    const header = chatKickoffHeader(
+      ctx,
+      feature,
+      runtime.id,
+      selfPlan
+        ? selfPlanKickoffFor(runtime.id)
+        : relay
+          ? relayKickoffFor(runtime.id, input.message as string)
+          : leadWake
+            ? leadWakeKickoff(input.message as string, !!resumeSessionId)
+            : chatKickoffFor(runtime.id, chatOpening(feature, planningFacts(ctx, feature), input.purpose)),
+    )
+    plan.line = plan.line ? `${plan.line} ${header}` : header
+  }
+
   // A chat's kickoff is runcastle's prompt, not the human's: tagged, so the
   // UserPromptSubmit hook does not count it as a human message.
   const kickoffLine = resumeSessionId && input.kind !== 'chat'
@@ -760,7 +764,7 @@ export async function launchSession(
       message: 'session prepared (terminal spawn skipped)',
       data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
-    return { sessionId: session.id }
+    return { sessionId: session.id, resumed: !!resumeSessionId }
   }
 
   const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
@@ -773,7 +777,7 @@ export async function launchSession(
       data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
     })
   }
-  return { sessionId: session.id }
+  return { sessionId: session.id, resumed: !!resumeSessionId }
 }
 
 /**

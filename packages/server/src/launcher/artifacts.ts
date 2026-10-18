@@ -394,13 +394,15 @@ function headlessRelayRule(): string {
 }
 
 /**
- * The section a lead resumed headless — a `lead-wake`, because no terminal of it
+ * The section a lead woken headless — a `lead-wake`, because no terminal of it
  * was open (`the-feature-lead-runs-rounds` decision 12) — adds to its brief.
+ * Whether the run resumed its conversation is the kickoff's to say
+ * (`leadWakeKickoff`); this holds either way.
  */
 function headlessLeadWakeRule(): string {
   return [
     '## No terminal is open',
-    'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
+    'Runcastle runs this conversation headless to deliver messages, because no terminal of',
     'it was open. Nobody is watching this run.',
     '- Act on your opening prompt as the lead, in this one run.',
     '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
