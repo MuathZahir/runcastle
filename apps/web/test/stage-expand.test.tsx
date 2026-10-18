@@ -73,6 +73,7 @@ vi.mock('../src/trpc', () => {
       },
       feature: {
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
+        uiStates: { useQuery: () => ({ data: null }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         driveScenarios: { useQuery: () => ({ data: { runnerConfigured: false, scenarios: [] } }) },
         runScenario: { useMutation: mutation },

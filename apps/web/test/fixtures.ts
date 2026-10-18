@@ -1,4 +1,4 @@
-import type { FeatureFull, FeatureListItem } from '../src/lib/api'
+import type { FeatureFull, FeatureListItem, UiStatesModel, UiStatesStory } from '../src/lib/api'
 
 /**
  * The wire payloads the derivation and rendering tests build their cases on.
@@ -50,3 +50,33 @@ export function full(over: Partial<FeatureFull['feature']> = {}): FeatureFull {
     blocks: [],
   } as unknown as FeatureFull
 }
+
+/** A "UI states" section model, and its stories, as `feature.uiStates` returns them. */
+export const FEATURE_FRAME = 'http://localhost:4514/features/feat_x/iframe.html?id='
+export const BASE_FRAME = `http://localhost:4514/base/${'b'.repeat(40)}/iframe.html?id=`
+
+export const uiStory = (id: string, name: string, base: boolean): UiStatesStory => ({
+  id,
+  title: 'Checkout/Coupon field',
+  name,
+  frameUrl: `${FEATURE_FRAME}${id}&viewMode=story`,
+  baseFrameUrl: base ? `${BASE_FRAME}${id}&viewMode=story` : null,
+})
+
+export const uiStatesModel = (over: Partial<UiStatesModel> = {}): UiStatesModel => ({
+  status: 'built',
+  reason: null,
+  log: null,
+  commit: '4e1c9a0' + 'f'.repeat(33),
+  baseCommit: 'b'.repeat(40),
+  base: 'built',
+  lap: 1,
+  builtAt: 1,
+  changed: [uiStory('checkout-coupon--expired', 'Expired', true)],
+  new: [uiStory('checkout-coupon--expiring', 'Expiring soon', false)],
+  affected: [
+    uiStory('checkout-summary--with-coupon', 'With coupon', false),
+    uiStory('cart-drawer--discount', 'With discount', false),
+  ],
+  ...over,
+})

@@ -34,6 +34,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
   feature: {
     get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 1, branch: 'feature/demo' }, tickets: server.tickets, sessions: [] } }) },
     launchSession: { useMutation: () => ({ isPending: false, mutate: record('launch') }) },
+    uiStates: { useQuery: () => ({ data: null }) },
   },
   run: {
     get: { useQuery: () => ({ data: { id: 'r1', status: server.runStatus, startedAt: 0 } }) },

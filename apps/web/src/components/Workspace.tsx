@@ -89,6 +89,7 @@ import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
+import { LaterLapUiStates } from './review/UiStatesSection'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
@@ -1256,6 +1257,8 @@ export function PhaseBody({
       return (
         <PreviewLead full={full}>
           {ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />}
+          {/* A later lap keeps the last review's UI states in view (decision 12). */}
+          <LaterLapUiStates featureId={full.feature.id} lap={full.feature.lap} className="mt-10" />
         </PreviewLead>
       )
     case 'building':

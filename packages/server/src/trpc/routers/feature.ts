@@ -14,6 +14,7 @@ import * as git from '../../services/git'
 import { mergeFeatureFlow } from '../../services/merge'
 import { getFeatureRow, projectForFeature, tryGetFeature } from '../../services/repo'
 import { reconcileStandingConflict } from '../../services/resolved-merge'
+import { uiStates } from '../../services/ui-states'
 import { publicProcedure, router } from '../context'
 
 export const featureRouter = router({
@@ -225,6 +226,12 @@ export const featureRouter = router({
       const feature = getFeatureRow(ctx, input.featureId)
       return git.reviewCommitCount(projectForFeature(ctx, feature), feature)
     }),
+
+  // The "UI states" section (decision 12): the feature's latest stories build
+  // with frame URLs on the stories port, or null when it has none.
+  uiStates: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => uiStates(ctx, input.featureId)),
 
   mergeDelta: publicProcedure
     .input(z.object({ featureId: z.string() }))
