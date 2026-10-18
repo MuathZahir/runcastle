@@ -263,7 +263,7 @@ describe('hooks route', () => {
     expect(notes[0]?.data).toEqual({ sessionId: session.id, reason: 'other' })
   })
 
-  it('session-start tells the session which LAP the feature is on', async () => {
+  it('session-start never tells the session a lap (the agent would repeat it)', async () => {
     const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
     const s = createSessionRow(ctx, {
       featureId: lapFeature.id,
@@ -276,7 +276,8 @@ describe('hooks route', () => {
       payload: { session_id: 'cc-lap', hook_event_name: 'SessionStart', source: 'startup' },
     })
 
-    expect(json.hookSpecificOutput.additionalContext).toContain('lap: 3')
+    expect(json.hookSpecificOutput.additionalContext).toContain('phase: planning; branch:')
+    expect(json.hookSpecificOutput.additionalContext).not.toMatch(/\blap\b/i)
   })
 
   /**

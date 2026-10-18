@@ -157,8 +157,8 @@ export function addNote(
     type: 'note.added',
     message:
       note.author === 'agent'
-        ? `review agent captured a note on lap ${note.lap}`
-        : `note captured on lap ${note.lap}`,
+        ? 'review agent captured a note'
+        : 'note captured',
     data: { noteId: note.id, lap: note.lap, author: note.author },
   })
   renderTestNotes(ctx, feature)

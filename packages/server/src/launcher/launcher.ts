@@ -162,7 +162,8 @@ export function chatKickoffHeader(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([status, count]) => `${status} ${count}`)
     .join(', ') || 'none'
-  const latestRun = listRunsByFeature(ctx, feature.id)[0]
+  const runs = listRunsByFeature(ctx, feature.id)
+  const latestRun = runs[0]
   let review = ''
   if (feature.phase === 'review') {
     const latestReview = currentLapReviewEvidence(ctx, feature.id).at(-1)
@@ -175,7 +176,7 @@ export function chatKickoffHeader(
           : 'unverified'
     review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
   }
-  return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
+  return `${opening} Feature state: ${feature.phase}; rounds run: ${runs.length}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {

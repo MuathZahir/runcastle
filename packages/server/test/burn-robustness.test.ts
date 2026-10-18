@@ -746,6 +746,8 @@ describe('retryTicket', () => {
       const minted = listByFeature(ctx, featureId).find((ticket) => ticket.id !== review.id)
       expect(minted).toMatchObject({ kind: 'review', passKind: 'review', lap: 1, status: 'pending' })
       expect(minted?.goal).toMatch(/full, independent review/)
+      // The title shows in the ticket list and on the round trail: no lap in it.
+      expect(minted?.title).toBe('Agentic review')
       expect(listAfter(ctx, featureId, 0).some((event) => event.type === 'review.agentic-minted')).toBe(true)
     })
 
