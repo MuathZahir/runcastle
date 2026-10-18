@@ -103,6 +103,16 @@ describe('the prompt tag', () => {
     expect(isRuncastlePrompt('  [runcastle] Round 1')).toBe(true)
     expect(isRuncastlePrompt('looks good, go on')).toBe(false)
   })
+
+  it('knows its own line when the live waiter hands it over as Stop-hook feedback', () => {
+    const rewake =
+      '<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>\n' +
+      'Stop hook blocking error from command "Stop": [runcastle] The human pressed Stop. Dispatch nothing until the human replies.\n' +
+      '[runcastle] Round 2 returned\n</system-reminder>'
+    expect(isRuncastlePrompt(rewake)).toBe(true)
+    expect(isRuncastlePrompt('what does [runcastle] mean in the log?')).toBe(false)
+    expect(isRuncastlePrompt('<task-notification>\n<summary>Background task done</summary>\n</task-notification>')).toBe(false)
+  })
 })
 
 describe('the message store, for a lead', () => {
@@ -257,6 +267,11 @@ describe('a lead’s turn (UserPromptSubmit)', () => {
 
     await hook(app, 'user-prompt', id, { prompt: '[runcastle] Round 1 returned' })
     await hook(app, 'user-prompt', id, {})
+    await hook(app, 'user-prompt', id, {
+      prompt:
+        '<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>\n' +
+        'Stop hook blocking error from command "Stop": [runcastle] The human pressed Stop.\n</system-reminder>',
+    })
     expect(marks()).toBe(0)
 
     await hook(app, 'user-prompt', id, { prompt: 'drop ticket 4 and go' })
