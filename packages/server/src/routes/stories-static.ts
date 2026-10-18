@@ -60,7 +60,9 @@ export function createStoriesHandler(
     }
     if (kind !== 'file') return notFound()
     const relative = filePath.slice(buildDir.length + 1).toLowerCase()
-    if (PRIVATE_FILES.has(relative)) return notFound()
+    // A colon is NTFS's stream separator: `manifest.json::$DATA` is the
+    // manifest itself. No build writes one, so refuse it outright.
+    if (relative.includes(':') || PRIVATE_FILES.has(relative)) return notFound()
 
     return new Response(req.method === 'HEAD' ? null : await readFile(filePath), {
       status: 200,
