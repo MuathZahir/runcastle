@@ -23,6 +23,25 @@ describe('the tickets skill', () => {
   })
 
   /**
+   * The failure this rule exists for: a review ticket said "Mode: Gates"
+   * because the installed runcastle lacked the branch's code, the agent
+   * obeyed, and a UI feature reached review undriven — though the drive boots
+   * the branch, not the install.
+   */
+  it('has the review ticket say what to walk, never prescribe Gates', () => {
+    const text = skill()
+    const section = text.slice(text.indexOf('<review-ticket>'), text.indexOf('</review-ticket>'))
+    expect(section).toContain('**Say what to walk, never which mode.**')
+    expect(section).toContain('never directs the agent to Gates')
+    expect(section).toContain("isn't deployed or installed yet")
+    expect(section).toContain('the drive boots **the branch**')
+    expect(section).toContain('say how to produce it inside the drive')
+    expect(section).toContain('genuinely no surface a human could operate')
+    // The never-both rule stays beside it.
+    expect(section).toContain('Do not ask for both')
+  })
+
+  /**
    * The measured failure this rule exists for: on a real project at
    * `burnConcurrency: 3`, three laps in a row chained every ticket and burned
    * at 1.09x, 1.16x and 1.00x — a pool of three running one ticket at a time.
