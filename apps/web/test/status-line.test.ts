@@ -113,6 +113,19 @@ describe('featureStatus', () => {
     })
   })
 
+  it('waits for the human once a succeeded round’s agent has ended its turn without declaring ready', () => {
+    expect(featureStatus(input({ rounds: [round(1, 'succeeded', 10), round(2, 'succeeded', 20)] }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'round 2 done',
+    })
+    expect(featureStatus(input({ feature: { phase: 'review' }, rounds: [round(1, 'succeeded', 10)] }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'round 1 done',
+    })
+  })
+
   it('reads Working while the agent is mid-turn after a stopped or failed round', () => {
     for (const status of ['cancelled', 'failed'] as const) {
       expect(featureStatus(input({ rounds: [round(2, status, 20)], agentWorking: true }))).toEqual({
@@ -148,16 +161,18 @@ describe('featureStatus', () => {
     })
   })
 
-  it('a round dispatched after the declaration takes the line back to Working', () => {
-    expect(
+  it('a round dispatched after the declaration takes the line off Ready', () => {
+    const after = (agentWorking: boolean) =>
       featureStatus(
         input({
           feature: { phase: 'review' },
           rounds: [round(2, 'succeeded', 20), round(3, 'succeeded', 30)],
           declarations: [declaration('Apply a coupon', 25)],
+          agentWorking,
         }),
-      ).kind,
-    ).toBe('working')
+      )
+    expect(after(true).kind).toBe('working')
+    expect(after(false)).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'round 3 done' })
   })
 
   it('the agent at work on the human’s drive notes is Working, not Ready', () => {
