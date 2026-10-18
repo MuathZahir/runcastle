@@ -273,6 +273,23 @@ describe('runStoriesBuild', () => {
     expect(events.map((e) => e.type)).toEqual(['stories.failed'])
   })
 
+  it("keeps a failed build's log free of terminal colour codes", async () => {
+    const tip = seedRepo()
+    const fake = fakeSandbox(repo, {
+      answer: {
+        exitCode: 1,
+        stdout: '\u001b[90m│\u001b[39m  \u001b[38;2;241;97;97mError: ENOENT\u001b[39m',
+        stderr: '\u001b[1m\u001b[31mbuild failed\u001b[39m\u001b[22m',
+      },
+    })
+
+    await run(tip, fake).record
+
+    expect(readFileSync(join(featureStoriesDir(FEATURE), 'build.log'), 'utf8')).toBe(
+      '│  Error: ENOENT\nbuild failed',
+    )
+  })
+
   it('fails a build that wrote no preview-stats.json, saying --stats-json is needed', async () => {
     const tip = seedRepo()
     const fake = fakeSandbox(repo, { files: { 'index.json': FEATURE_INDEX } })
