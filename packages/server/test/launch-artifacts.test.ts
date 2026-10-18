@@ -275,7 +275,8 @@ describe('renderSettings', () => {
   it('emits the verified hooks JSON shape with correct events + timeouts', () => {
     const s = renderSettings('C:\\hooks\\hook-client.ts')
 
-    // SessionStart: one entry per source, command hook, timeout 10. REGRESSION:
+    // SessionStart: one entry per source, command hook, timeout 20 (the hook
+    // client retries it). REGRESSION:
     // registering `startup` alone meant every `--resume` launch (revisit, merge-
     // conflict resolve, any reopened terminal) fired source=resume, matched
     // nothing, and never reached the hook receiver — so the session never went
@@ -285,7 +286,7 @@ describe('renderSettings', () => {
     for (const entry of s.hooks.SessionStart) {
       const start = entry.hooks[0]
       expect(start.type).toBe('command')
-      expect(start.timeout).toBe(10)
+      expect(start.timeout).toBe(20)
       expect(start.command).toBe('bun run "C:\\hooks\\hook-client.ts" session-start')
     }
 
