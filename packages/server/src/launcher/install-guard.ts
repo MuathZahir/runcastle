@@ -133,7 +133,7 @@ const HEREDOC_OPENER = /(?<!<)<<(?!<)(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\?([\
  * `git commit -F - <<'EOF'` message line that starts with `bun install` is prose,
  * yet after a newline it would sit in command position.
  */
-function blankHeredocBodies(command: string): string {
+export function blankHeredocBodies(command: string): string {
   const kept: string[] = []
   const pending: { word: string; stripTabs: boolean }[] = []
   for (const line of command.split('\n')) {

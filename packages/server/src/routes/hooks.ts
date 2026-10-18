@@ -1,9 +1,10 @@
-import type { Feature, SessionKind, SessionRow } from '@runcastle/core'
-import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
+import { DEFAULT_RUNTIME, type Feature, type SessionKind, type SessionRow } from '@runcastle/core'
+import { PROJECT_WORKTREE_SLUG, projectWorktreesDir, worktreeDir } from '@runcastle/core/paths'
 import { Hono } from 'hono'
 import type { AppCtx } from '../db/types'
-import { editDenyResponse, evaluateEditGuard } from '../launcher/edit-guard'
+import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead } from '../launcher/edit-guard'
 import { evaluateInstallGuard } from '../launcher/install-guard'
+import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
 import {
   getSessionRow,
@@ -143,7 +144,7 @@ hooks.post('/:event', async (c) => {
         case 'session-end':
           return c.json(handleProjectScopedSessionEnd(ctx, session, body.payload))
         case 'pre-tool':
-          return c.json(await handlePreToolUse(session, undefined, body.payload))
+          return c.json(await handlePreToolUse(ctx, session, undefined, body.payload))
         default:
           return c.json({})
       }
@@ -164,7 +165,7 @@ hooks.post('/:event', async (c) => {
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
       case 'pre-tool':
-        return c.json(await handlePreToolUse(session, feature, body.payload))
+        return c.json(await handlePreToolUse(ctx, session, feature, body.payload))
       default:
         return c.json({})
     }
@@ -405,10 +406,17 @@ function emitConversationEnded(
 
 /**
  * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
- * (F2) and the talk-worktree install guard ({@link evaluateInstallGuard}). A
- * deny is returned as the verified hook shape; anything allowed answers `{}`,
- * which Claude Code reads as "no opinion". Registered only for the kinds that
- * may not write code (see `renderSettings` / {@link evaluateEditGuard}).
+ * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}) and, for
+ * a feature's chat in every phase, the lead's line guard
+ * ({@link evaluateLeadGuard}). A deny is returned as the verified hook shape.
+ * Registered only for the kinds that may not write code (see `renderSettings` /
+ * {@link evaluateEditGuard}).
+ *
+ * Anything allowed answers `{}`, "no opinion" — except for the feature's lead
+ * past Go on Claude Code, which is answered `allow` (`the-feature-lead-runs-rounds`
+ * decision 27): a chat opened in planning keeps the permission mode it launched
+ * with, and a prompt is a stall when the lead works while the human is away.
+ * Codex never asks inside its sandbox, so its hook keeps answering `{}`.
  *
  * This is where the guard's one live input comes from: a `resolve-conflict`
  * session's worktree is asked whether its merge is still in progress, which is
@@ -416,6 +424,7 @@ function emitConversationEnded(
  * worktree has gone missing is simply guarded as usual.
  */
 async function handlePreToolUse(
+  ctx: AppCtx,
   session: SessionRow,
   feature: Feature | undefined,
   payload: Record<string, unknown> | undefined,
@@ -455,8 +464,38 @@ async function handlePreToolUse(
         feature && feature.slug !== PROJECT_WORKTREE_SLUG
           ? worktreeDir(feature.projectId, feature.slug)
           : undefined,
-    })
-  return denial ? editDenyResponse(denial) : {}
+    }) ??
+    (feature && session.kind === 'chat' ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
+  if (denial) return editDenyResponse(denial)
+  return feature && isUnguardedLead(session.kind, feature.phase) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
+    ? LEAD_ALLOW_RESPONSE
+    : {}
+}
+
+/** The verified `PreToolUse` allow shape: skips the permission prompt. */
+const LEAD_ALLOW_RESPONSE = {
+  hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' },
+}
+
+/** The lead's line guard for a feature chat's shell call, fed from the project and feature rows. */
+function leadGuardDenial(
+  ctx: AppCtx,
+  session: SessionRow,
+  feature: Feature,
+  toolName: string | undefined,
+  toolInput: Record<string, unknown>,
+): EditDenial | null {
+  const project = getProjectById(ctx, feature.projectId)
+  if (!project) return null
+  return evaluateLeadGuard({
+    toolName,
+    command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
+    worktreePath: session.worktreePath,
+    mainCheckout: project.repoPath,
+    worktreesDir: projectWorktreesDir(feature.projectId),
+    featureBranch: feature.branch,
+    baseBranch: feature.baseBranch,
+  })
 }
 
 /** The SessionStart context digest: brief + phase + tickets + pointer to MCP. */

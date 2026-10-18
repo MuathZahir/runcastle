@@ -323,9 +323,13 @@ describe('hooks route', () => {
         'deny',
       )
       setPhase(ctx, featureId, 'building')
-      expect(await preTool(talkSession, 'Edit', 'src/theme.ts')).toEqual({})
+      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
+        'allow',
+      )
       setPhase(ctx, featureId, 'review')
-      expect(await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).toEqual({})
+      expect(
+        (await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision,
+      ).toBe('allow')
     })
 
     it('keeps binding every other feature-scoped kind after Go', async () => {
@@ -333,6 +337,67 @@ describe('hooks route', () => {
       const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: '/repo' }).id
       const json = await preTool(fix, 'Edit', '/repo/src/theme.ts')
       expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+  })
+
+  /**
+   * After Go the lead never stalls on a prompt (`the-feature-lead-runs-rounds`
+   * decision 27): a chat launched in planning keeps its permission mode, so the
+   * hook answers `allow`. The line guard denies in every phase and mode.
+   */
+  describe('pre-tool — the lead runs unprompted, inside the human\'s lines', () => {
+    let repoPath: string
+    let leadFeatureId: string
+    let leadPath: string
+
+    beforeEach(() => {
+      const project = seedProject(ctx)
+      repoPath = project.repoPath
+      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead', phase: 'planning' }).id
+      leadPath = worktreeDir(project.id, 'lead')
+    })
+
+    async function shell(id: string, command: string, tool = 'Bash'): Promise<any> {
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: id,
+        payload: { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command } },
+      })
+      return json
+    }
+
+    it('answers allow for shell calls only once the feature has left planning', async () => {
+      const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
+      expect(await shell(lead, 'git merge main')).toEqual({})
+      setPhase(ctx, leadFeatureId, 'building')
+      expect((await shell(lead, 'git merge main')).hookSpecificOutput).toEqual({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+      })
+      expect((await shell(lead, 'bun run test', 'PowerShell')).hookSpecificOutput.permissionDecision).toBe('allow')
+    })
+
+    it('denies the three named acts with a reason, before Go and after', async () => {
+      const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
+      for (const phase of ['planning', 'building'] as const) {
+        setPhase(ctx, leadFeatureId, phase)
+        for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
+          const json = await shell(lead, cmd)
+          expect(json.hookSpecificOutput.permissionDecision, `${phase}: ${cmd}`).toBe('deny')
+          expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
+        }
+      }
+    })
+
+    it('leaves a Codex lead with no opinion on what it allows — Codex never asks', async () => {
+      setPhase(ctx, leadFeatureId, 'building')
+      const lead = createSessionRow(ctx, {
+        featureId: leadFeatureId,
+        kind: 'chat',
+        worktreePath: leadPath,
+        model: { id: 'gpt-5.5', runtime: 'codex' },
+      }).id
+      expect(await shell(lead, 'git merge main')).toEqual({})
+      expect((await shell(lead, 'git push origin main')).hookSpecificOutput.permissionDecision).toBe('deny')
     })
   })
 
@@ -441,7 +506,7 @@ describe('hooks route', () => {
       }).id
       expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('deny')
       setPhase(ctx, talkFeatureId, 'building')
-      expect(await install(lead)).toEqual({})
+      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
     })
   })
 
