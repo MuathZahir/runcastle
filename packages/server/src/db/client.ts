@@ -11,9 +11,16 @@ import type { Db } from './types'
  * sql.js-backed `Db` (see `test/helpers/db.ts`).
  *
  * WAL is enabled per the acceptance bar; foreign_keys on for integrity.
+ * busy_timeout makes a write that meets another connection's lock wait for it
+ * instead of failing at once with SQLITE_BUSY ("database is locked") — a
+ * momentary lock (a checkpoint, a reader holding the WAL) used to drop a hook's
+ * check-in on the floor.
  */
+export const BUSY_TIMEOUT_MS = 5_000
+
 export function createDb(path: string): Db {
   const sqlite = new Database(path, { create: true })
+  sqlite.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`)
   sqlite.exec('PRAGMA journal_mode = WAL;')
   sqlite.exec('PRAGMA foreign_keys = ON;')
   return drizzle({ client: sqlite, schema }) as unknown as Db

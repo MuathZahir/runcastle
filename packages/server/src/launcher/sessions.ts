@@ -255,19 +255,31 @@ function ptyAlive(sessionId: string): boolean {
  * something only the human can see (a trust prompt, a login, an update notice),
  * and the briefing it was launched with is sitting behind that. We say so rather
  * than touching the terminal: whatever is on screen is a question for them.
+ *
+ * The callback runs on a bare timer, where a throw is uncaught and takes the
+ * whole server down — so a failed read or write (a locked database) is logged
+ * and dropped here: the warning is best effort, the server is not.
  */
 export function armSessionReadyWatchdog(ctx: AppCtx, session: SessionRow): void {
   const timer = setTimeout(() => {
-    const row = getSessionRow(ctx, session.id)
-    if (!row || row.status !== 'launching') return
-    if (!ptyAlive(session.id)) return
-    emitForSession(ctx, session, {
-      type: 'session.not_ready',
-      message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
-      data: { sessionId: session.id, kind: session.kind },
-    })
+    try {
+      warnIfNotReady(ctx, session)
+    } catch (err) {
+      console.error(`session-ready watchdog failed for ${session.id}`, err)
+    }
   }, SESSION_READY_TIMEOUT_MS)
   timer.unref?.()
+}
+
+function warnIfNotReady(ctx: AppCtx, session: SessionRow): void {
+  const row = getSessionRow(ctx, session.id)
+  if (!row || row.status !== 'launching') return
+  if (!ptyAlive(session.id)) return
+  emitForSession(ctx, session, {
+    type: 'session.not_ready',
+    message: `the ${session.kind} terminal is open but the agent has not reported ready — check it for a prompt or dialog waiting on you`,
+    data: { sessionId: session.id, kind: session.kind },
+  })
 }
 
 /**

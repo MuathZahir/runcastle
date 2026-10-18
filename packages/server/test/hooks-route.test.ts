@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
@@ -179,6 +179,36 @@ describe('hooks route', () => {
       })
 
       expect(getSessionRow(ctx, project.id)).toMatchObject({ status: 'live', ccSessionId: 'cc-proj' })
+    })
+
+    /**
+     * REGRESSION (lap 3 review): a SessionStart whose write hit a locked database
+     * answered `{}` and said nothing, so the row sat `launching` with no trace of
+     * why. The failure is now on the timeline, and the first turn still checks in.
+     */
+    it('says so on the timeline when its SessionStart write fails, and its first turn checks it in', async () => {
+      const app = mount()
+      const silence = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.spyOn(ctx.db, 'update').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+      const start = await post(app, 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+
+      expect(start).toEqual({ status: 200, json: {} })
+      expect(getSessionRow(ctx, sessionId)?.status).toBe('launching')
+      expect(listAfter(ctx, featureId, 0).find((e) => e.type === 'session.checkin_failed')).toMatchObject({
+        message: expect.stringContaining('database is locked'),
+        data: { sessionId, reason: 'database is locked' },
+      })
+      expect(silence).toHaveBeenCalled()
+
+      await post(app, 'stop', { sessionId, payload: { session_id: 'cc-1', hook_event_name: 'Stop' } })
+      expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'live', ccSessionId: 'cc-1' })
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+      vi.restoreAllMocks()
     })
   })
 

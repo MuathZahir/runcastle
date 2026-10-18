@@ -105,10 +105,11 @@ interface HookBody {
 }
 
 hooks.post('/:event', async (c) => {
+  const event = c.req.param('event')
+  let sessionId: string | undefined
   try {
-    const event = c.req.param('event')
     const body = (await c.req.json().catch(() => ({}))) as HookBody
-    const sessionId = body.sessionId
+    sessionId = body.sessionId
     if (!sessionId) return c.json({})
 
     const ctx = await getRuntimeCtx()
@@ -170,11 +171,36 @@ hooks.post('/:event', async (c) => {
       default:
         return c.json({})
     }
-  } catch {
-    // Never break the session on our account.
+  } catch (err) {
+    // Never break the session on our account — but never fail silently either.
+    console.error(`hook ${event} failed for session ${sessionId ?? '(none)'}`, err)
+    if (event === 'session-start' && sessionId) await noteFailedCheckIn(sessionId, err)
     return c.json({})
   }
 })
+
+/**
+ * A `SessionStart` that threw left its session unchecked-in: the row stays
+ * `launching`, and a headless wake's messages stay held against it. Say so on
+ * the timeline, best effort — the failure may be the database itself — and
+ * name the backstop: the agent's first turn hook checks it in
+ * ({@link checkInFromTurn}).
+ */
+async function noteFailedCheckIn(sessionId: string, err: unknown): Promise<void> {
+  try {
+    const ctx = await getRuntimeCtx()
+    const session = getSessionRow(ctx, sessionId)
+    if (!session) return
+    const reason = err instanceof Error ? err.message : String(err)
+    emitForSession(ctx, session, {
+      type: 'session.checkin_failed',
+      message: `the agent started but runcastle could not record it (${reason}) — its first turn will check it in`,
+      data: { sessionId, reason },
+    })
+  } catch (again) {
+    console.error(`could not record the failed check-in of session ${sessionId}`, again)
+  }
+}
 
 /**
  * `SessionStart` — fired for EVERY source (`startup`, `resume`, `clear`,
