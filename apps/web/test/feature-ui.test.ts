@@ -1939,6 +1939,13 @@ describe('sessionNotReady', () => {
     const events = [ev(1, 'session.not_ready', 's1'), ev(2, 'session.ended', 's1')]
     expect(sessionNotReady(events, 's1')).toBe(false)
   })
+
+  // REGRESSION (lap-2 drive): a start hook that timed out left the banner over a
+  // chat that was plainly working; its first turn checks it in late.
+  it('clears once the agent checks in late', () => {
+    const events = [ev(1, 'session.not_ready', 's1'), ev(2, 'session.started', 's1')]
+    expect(sessionNotReady(events, 's1')).toBe(false)
+  })
 })
 
 describe('mergeConflictKickoff', () => {
