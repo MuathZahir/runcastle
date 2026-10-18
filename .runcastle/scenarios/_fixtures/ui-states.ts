@@ -98,7 +98,7 @@ const REVIEW: TicketInput = {
 
 /**
  * A feature at review on the drive's branch (`RUNCASTLE_BRANCH`), based on
- * main, its tickets and one review ticket done. Created as a draft so no
+ * main (or `origin/main`, see {@link mainBranch}), its tickets and one review ticket done. Created as a draft so no
  * `feature/<slug>` branch is cut, then pointed at branches that already exist.
  */
 export async function seedFeatureAtReview(
