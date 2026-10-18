@@ -26,6 +26,8 @@ const ticket = (over: Partial<FeatureFull['tickets'][number]>) =>
     ...over,
   }) as unknown as FeatureFull['tickets'][number]
 
+const RUN_ID = 'run_1'
+
 const feature: FeatureFull = {
   ...base,
   feature: { ...base.feature, title: 'Coupon codes', lap: 1 },
@@ -34,7 +36,46 @@ const feature: FeatureFull = {
     ticket({ id: 'tkt_2', seq: 2, title: 'show an expired coupon' }),
     ticket({ id: 'tkt_review', seq: 3, title: 'review the lap', kind: 'review' }),
   ],
+  runs: [
+    {
+      id: RUN_ID,
+      featureId: FEATURE_ID,
+      workflow: 'ticket-burner',
+      status: 'succeeded',
+      startedAt: 1,
+      endedAt: 900,
+      summary: 'Coupons apply at checkout; the review found two defects.',
+    },
+  ],
 }
+
+// The open work shows once drive notes are open — a drive is up, or the lead
+// has declared the feature ready (`the-feature-lead-runs-rounds` decision 24).
+// So the page is faked one round in, declared ready after it.
+const rounds: RouterOutputs['feature']['rounds'] = [
+  {
+    round: 1,
+    runId: RUN_ID,
+    status: 'succeeded',
+    ticketSeqs: [1, 2, 3],
+    landed: [1, 2, 3],
+    failed: [],
+    gates: { ok: true, failed: [] },
+    startedAt: 1,
+    finishedAt: 900,
+  },
+]
+
+const declarations: RouterOutputs['feature']['readyDeclarations'] = [
+  {
+    id: 'ready_1',
+    featureId: FEATURE_ID,
+    runId: RUN_ID,
+    scenario: 'checkout-with-coupon',
+    whatToTest: 'Apply SPRING24 at checkout, then try it again after it expires.',
+    createdAt: 950,
+  },
+]
 
 type ReviewFinding = RouterOutputs['findings']['listByFeature']['findings'][number]
 
@@ -103,8 +144,8 @@ const meta = {
         feature: {
           driveInfo: () => null,
           driveScenarios: () => ({ runnerConfigured: false, scenarios: [] }),
-          rounds: () => [],
-          readyDeclarations: () => [],
+          rounds: () => rounds,
+          readyDeclarations: () => declarations,
         },
         project: {
           list: () => [],
