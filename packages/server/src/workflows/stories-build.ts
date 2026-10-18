@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 import simpleGit from 'simple-git'
 import {
   type ClassifiedStory,
@@ -211,7 +212,7 @@ async function finishBuild(
   }
 
   const { result } = outcome
-  let log = [result.stdout, result.stderr].filter(Boolean).join('\n')
+  let log = buildLog(result)
   let output: { index: StoryIndex; stats: PreviewStats } | undefined
   if (result.exitCode === 0) {
     const read = readBuildOutput(incoming)
@@ -304,7 +305,7 @@ async function resolveBase(input: StoriesBuildInput): Promise<ResolvedBase> {
     if (result === 'timeout') {
       log = `the base build ${timeoutReason(timeoutMs)}\n`
     } else {
-      log = [result.stdout, result.stderr].filter(Boolean).join('\n')
+      log = buildLog(result)
       const index = result.exitCode === 0 ? readIndex(join(out, 'index.json')) : null
       if (index) {
         writeFileSync(join(out, STORIES_BUILD_LOG), log)
@@ -358,6 +359,14 @@ function readJson(path: string): unknown {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The build's output as plain text. Storybook colours its output even into a
+ * pipe, and the log is read as text on the feature page and in the review prompt.
+ */
+function buildLog(result: GateExecResult): string {
+  return stripVTControlCharacters([result.stdout, result.stderr].filter(Boolean).join('\n'))
 }
 
 /**
