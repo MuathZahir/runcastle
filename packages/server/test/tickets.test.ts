@@ -147,6 +147,25 @@ describe('tickets service', () => {
     expect(updateTicket(ctx, review.id, { reviewGateRun: null }).reviewGateRun).toBeNull()
   })
 
+  it('persists the UI-states build record on a review ticket beside its gate run', () => {
+    const [review] = storeTickets(ctx, featureId, [{ ...ticket('review'), kind: 'review' }])
+    expect(review.storiesBuild).toBeNull()
+
+    const storiesBuild = {
+      status: 'built' as const,
+      commit: 'abc1234',
+      baseCommit: 'def5678',
+      base: 'built' as const,
+      counts: { changed: 2, new: 1, affected: 37 },
+    }
+    updateTicket(ctx, review.id, { reviewGateRun: { status: 'none_configured' }, storiesBuild })
+
+    const [stored] = listByFeature(ctx, featureId)
+    expect(stored.storiesBuild).toEqual(storiesBuild)
+    expect(stored.reviewGateRun).toEqual({ status: 'none_configured' })
+    expect(updateTicket(ctx, review.id, { storiesBuild: null }).storiesBuild).toBeNull()
+  })
+
   it('updateTicket clears a stored error with error: null (burn-retry path)', () => {
     const [t] = storeTickets(ctx, featureId, [ticket('a')])
     updateTicket(ctx, t.id, { status: 'failed', error: 'agent made no commits' })

@@ -1645,7 +1645,7 @@ describe('the server gate run before each review pass', () => {
       expect(outcome.status).toBe('done')
       // The first reap is the pre-wipe one: the directory is prepared first.
       expect(order.slice(0, 3)).toEqual(['reap', `gates@${tip}`, 'agent'])
-      expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
+      expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun, storiesBuild: { status: 'none' } }])
       expect(prompt).toContain('`bun run typecheck` — passed')
       expect(prompt).toContain(`at \`${tip.slice(0, 7)}\``)
       // No `.runcastle/stories.json` on the branch: no UI-states line at all.
@@ -1663,7 +1663,7 @@ describe('the server gate run before each review pass', () => {
       await g.checkout('main')
 
       const { pass, extra } = make()
-      const { ctx } = ctxFor(pass, extra)
+      const { ctx, patches } = ctxFor(pass, extra)
       const events: string[] = []
       ctx.emitEvent = (e) => events.push(e.type)
       const ran: string[] = []
@@ -1685,6 +1685,14 @@ describe('the server gate run before each review pass', () => {
       expect(ran).toHaveLength(1)
       expect(ran[0]).toMatch(/^build-stories "/)
       expect(events).toContain('stories.failed')
+      // The record is stored on the pass beside its gate run (decision 18).
+      expect(patches).toContainEqual([
+        pass.id,
+        {
+          reviewGateRun: { ...ranGates('bun run typecheck'), commit: storiesTip },
+          storiesBuild: { status: 'failed', commit: storiesTip, exitCode: 1, log: expect.any(String) },
+        },
+      ])
       expect(prompt).toContain(`The UI-states build FAILED on the feature branch at \`${storiesTip.slice(0, 7)}\``)
       expect(prompt).toContain(join(featureStoriesDir(ctx.feature.id), 'build.log'))
     })
@@ -1706,7 +1714,7 @@ describe('the server gate run before each review pass', () => {
     }))
 
     expect(outcome.status).toBe('done')
-    expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun, storiesBuild: { status: 'none' } }])
     expect(prompt).toContain('The server could not run the gates on the feature branch')
     expect(prompt).toContain('no docker')
   })
@@ -1723,7 +1731,10 @@ describe('the server gate run before each review pass', () => {
     expect(outcome.status).toBe('done')
     expect(patches).toContainEqual([
       pass.id,
-      { reviewGateRun: { status: 'couldnt_run', commit: tip, reason: 'the gate run failed: EBUSY', log: null } },
+      {
+        reviewGateRun: { status: 'couldnt_run', commit: tip, reason: 'the gate run failed: EBUSY', log: null },
+        storiesBuild: { status: 'none' },
+      },
     ])
     expect(prompt).toContain('The server could not run the gates on the feature branch')
   })
@@ -1776,10 +1787,8 @@ describe('the server gate run before each review pass', () => {
 
     expect(gatesCalled).toBe(false)
     expect(launched).toBe(true)
-    expect(patches).toContainEqual([
-      pass.id,
-      { reviewGateRun: { status: 'couldnt_run', commit: '', reason: '`feature/missing` did not resolve to a commit', log: null } },
-    ])
+    const unresolved = { status: 'couldnt_run', commit: '', reason: '`feature/missing` did not resolve to a commit', log: null }
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: unresolved, storiesBuild: unresolved }])
   })
 })
 

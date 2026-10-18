@@ -950,7 +950,7 @@ async function reviewTicketOutcome(
   // prompt, so every pass — review or verification, Drive or Gates — is handed
   // the branch's gate record at its tip as it stands now.
   const { gateRun, storiesBuild } = await runBranchChecks(ctx, ticket, deps)
-  ctx.updateTicket(ticket.id, { reviewGateRun: gateRun })
+  ctx.updateTicket(ticket.id, { reviewGateRun: gateRun, storiesBuild })
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
     .filter((candidate) => candidate.kind === 'review' && candidate.id !== ticket.id && candidate.status === 'done')
