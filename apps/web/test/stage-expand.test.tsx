@@ -47,6 +47,7 @@ vi.mock('../src/trpc', () => {
         toggle: { useMutation: mutation },
         reopen: { useMutation: mutation },
         list: { useQuery: () => ({ data: [NOTE] }) },
+        delivery: { useQuery: () => ({ data: undefined }) },
       },
       findings: {
         dismiss: { useMutation: mutation },

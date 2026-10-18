@@ -676,11 +676,17 @@ export function resumeGoneReason(prior: SessionRow, worktreePath: string): strin
   if (
     (prior.runtime ?? DEFAULT_RUNTIME) === 'claude-code' &&
     prior.worktreePath &&
-    resolve(prior.worktreePath) !== resolve(worktreePath)
+    samePathKey(prior.worktreePath) !== samePathKey(worktreePath)
   ) {
     return 'it was recorded in another worktree'
   }
   return undefined
+}
+
+/** A path as a comparable key: resolved, and case-folded where the filesystem ignores case (Windows). */
+function samePathKey(path: string): string {
+  const resolved = resolve(path)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
 /** Size of a session's transcript on disk, or undefined when there isn't one. */

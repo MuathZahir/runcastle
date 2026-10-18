@@ -77,7 +77,7 @@ describe('launchSession — briefings', () => {
     const prior = createSessionRow(ctx, {
       featureId: feature.id,
       kind: 'chat',
-      worktreePath: 'w',
+      worktreePath: worktreeDir(project.id, slug),
     })
     markSessionLive(ctx, prior.id, { ccSessionId: 'cc-prior' })
     markSessionEnded(ctx, prior.id)
