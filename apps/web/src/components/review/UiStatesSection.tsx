@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { UiStatesModel, UiStatesStory } from '../../lib/api'
 import { trpc } from '../../trpc'
 import { IconExpand } from '../../icons'
-import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag } from '../../ui'
+import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag, cx } from '../../ui'
 
 /**
  * "UI states" (features-show-their-ui-states-as-stories, decision 12): the
@@ -19,10 +19,13 @@ import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag } from '../../
 export function UiStatesSection({
   model,
   currentLap,
+  className,
 }: {
   model: UiStatesModel | null
   /** The feature's lap — a build from an earlier lap's review says which. */
   currentLap: number
+  /** Placement only (STYLE.md's className rule). */
+  className?: string
 }) {
   const [larger, setLarger] = useState<{ story: UiStatesStory; url: string } | null>(null)
   if (!model) return null
@@ -35,7 +38,7 @@ export function UiStatesSection({
     model.lap === currentLap ? 'Built at review' : `Built at lap ${model.lap}’s review`
 
   return (
-    <section id="ui-states" className="@container flex flex-col gap-4">
+    <section id="ui-states" className={cx('@container flex flex-col gap-4', className)}>
       <div className="flex min-h-7 items-baseline gap-3">
         <h2 className="m-0 text-lg font-semibold text-text">UI states</h2>
         <span className="text-xs text-text-tertiary">
@@ -125,10 +128,18 @@ export function UiStatesSection({
  * last review pass's build stays the feature's evidence until the next review
  * replaces it, labelled with the lap it came from. Lap 1 has none to show.
  */
-export function LaterLapUiStates({ featureId, lap }: { featureId: string; lap: number }) {
+export function LaterLapUiStates({
+  featureId,
+  lap,
+  className,
+}: {
+  featureId: string
+  lap: number
+  className?: string
+}) {
   const uiStates = trpc.feature.uiStates.useQuery({ featureId }, { enabled: lap > 1 })
   if (lap <= 1) return null
-  return <UiStatesSection model={uiStates.data ?? null} currentLap={lap} />
+  return <UiStatesSection model={uiStates.data ?? null} currentLap={lap} className={className} />
 }
 
 /** A story's title as the reader says it: `Checkout/Coupon field` → `Checkout / Coupon field`. */

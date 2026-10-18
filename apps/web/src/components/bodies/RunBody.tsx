@@ -408,9 +408,7 @@ export function RunBody({
       )}
 
       {/* The last review pass's UI states, from the lap it reviewed (decision 12). */}
-      <div className="mt-10 empty:hidden">
-        <LaterLapUiStates featureId={featureId} lap={lap} />
-      </div>
+      <LaterLapUiStates featureId={featureId} lap={lap} className="mt-10" />
 
       <div className="mt-8 flex flex-col">
         <RunTimeline events={runEvents} />

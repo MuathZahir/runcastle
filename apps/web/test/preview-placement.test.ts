@@ -16,6 +16,7 @@ vi.mock('../src/trpc', () => {
       feature: {
         get: { useQuery: () => query(store.full) },
         endSession: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+        uiStates: { useQuery: () => query(null) },
       },
       settings: { get: { useQuery: () => query({ fields: [] }) } },
       ticket: {
@@ -44,22 +45,30 @@ function fullWith({ tickets = [] as Ticket[], preview = null as FeatureFull['pre
 }
 
 function body(full: FeatureFull, effective: Phase, { readonly = false, ticketsIsBody = false } = {}): string {
-  return renderToStaticMarkup(
-    createElement(PhaseBody, {
-      effective,
-      full,
-      events: [],
-      driving: null,
-      conflict: null,
-      runId: null,
-      ticketsIsBody,
-      readonly,
-      onViewPhase: () => undefined,
-    }),
+  return withoutIds(
+    renderToStaticMarkup(
+      createElement(PhaseBody, {
+        effective,
+        full,
+        events: [],
+        driving: null,
+        conflict: null,
+        runId: null,
+        ticketsIsBody,
+        readonly,
+        onViewPhase: () => undefined,
+      }),
+    ),
   )
 }
 
-const markup = (element: ReactElement) => renderToStaticMarkup(element)
+/**
+ * React's generated ids follow a node's place among its siblings, so the later
+ * lap's UI-states slot beside a planning body (rendering nothing on lap 1)
+ * renumbers them without changing a byte of what is shown.
+ */
+const withoutIds = (html: string) => html.replace(/_R_\w+_/g, '_R_')
+const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(element))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
 const panelAt = (html: string) => html.indexOf('<iframe')
 

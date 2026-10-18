@@ -1258,9 +1258,7 @@ export function PhaseBody({
         <PreviewLead full={full}>
           {ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />}
           {/* A later lap keeps the last review's UI states in view (decision 12). */}
-          <div className="mt-10 empty:hidden">
-            <LaterLapUiStates featureId={full.feature.id} lap={full.feature.lap} />
-          </div>
+          <LaterLapUiStates featureId={full.feature.id} lap={full.feature.lap} className="mt-10" />
         </PreviewLead>
       )
     case 'building':
