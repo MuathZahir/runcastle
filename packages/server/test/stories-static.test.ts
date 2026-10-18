@@ -25,6 +25,7 @@ beforeAll(() => {
   writeFileSync(join(feature, 'assets', 'preview.js'), 'export {}')
   writeFileSync(join(feature, 'manifest.json'), '{}')
   writeFileSync(join(feature, 'build.log'), 'log')
+  writeFileSync(join(feature, 'base-build.log'), 'base log')
   const base = join(root, 'base', COMMIT)
   mkdirSync(base, { recursive: true })
   writeFileSync(join(base, 'iframe.html'), '<html>before</html>')
@@ -69,6 +70,7 @@ describe('stories static handler', () => {
     ['a non-hex commit', `/base/${'z'.repeat(40)}/iframe.html`],
     ['the manifest', `/features/${FEATURE}/manifest.json`],
     ['the build log', `/features/${FEATURE}/build.log`],
+    ['the base build log', `/features/${FEATURE}/base-build.log`],
     ['an API path', '/api/trpc/feature.list'],
     ['the root', '/'],
     ['a missing file', `/features/${FEATURE}/nope.js`],
