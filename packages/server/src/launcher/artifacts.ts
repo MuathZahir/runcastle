@@ -394,13 +394,15 @@ function headlessRelayRule(): string {
 }
 
 /**
- * The section a lead resumed headless — a `lead-wake`, because no terminal of it
+ * The section a lead woken headless — a `lead-wake`, because no terminal of it
  * was open (`the-feature-lead-runs-rounds` decision 12) — adds to its brief.
+ * Whether the run resumed its conversation is the kickoff's to say
+ * (`leadWakeKickoff`); this holds either way.
  */
 function headlessLeadWakeRule(): string {
   return [
     '## No terminal is open',
-    'Runcastle resumed this conversation headless to deliver messages, because no terminal of',
+    'Runcastle runs this conversation headless to deliver messages, because no terminal of',
     'it was open. Nobody is watching this run.',
     '- Act on your opening prompt as the lead, in this one run.',
     '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
@@ -1185,7 +1187,8 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  *   `project`, the one allowed to write code. A kind is needed to make that
  *   distinction, so an omitted `kind` gets the guard: a session whose kind we do
  *   not know is not one to hand whole-repo write access to.
- * - Timeouts (seconds): SessionStart 10, UserPromptSubmit 5 (well inside its 30s
+ * - Timeouts (seconds): SessionStart 20 (room for the hook client's retries — it
+ *   records the conversation id a resume needs), UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
  * - An `orchestrate` session (`purpose`) also gets the message waiter on
  *   SessionStart and Stop: an `asyncRewake` hook running the hook client's
@@ -1210,7 +1213,7 @@ export function renderSettings(
   const cmd = (event: string): CommandHook => ({
     type: 'command',
     command: `bun run "${hookClient}" ${event}`,
-    timeout: event === 'session-start' || event === 'session-end' ? 10 : 5,
+    timeout: event === 'session-start' ? 20 : event === 'session-end' ? 10 : 5,
   })
   const waiter: CommandHook[] =
     purpose === 'orchestrate' || (kind === 'chat' && !headless)

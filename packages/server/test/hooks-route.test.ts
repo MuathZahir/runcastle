@@ -4,7 +4,7 @@ import type { SessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
@@ -119,6 +119,67 @@ describe('hooks route', () => {
 
     expect(getSessionRow(ctx, sessionId)?.ccSessionId).toBe('cc-2')
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+  })
+
+  /**
+   * REGRESSION (lap-2 drive): one SessionStart that timed out client-side left
+   * the chat with no conversation id, so the headless wake could not resume it
+   * and started a fresh conversation. Every turn hook carries the id too, so the
+   * first one to arrive checks the session in.
+   */
+  describe('a session whose SessionStart never arrived', () => {
+    const turnPayloads = {
+      'user-prompt': { hook_event_name: 'UserPromptSubmit', prompt: 'go' },
+      stop: { hook_event_name: 'Stop' },
+    }
+    for (const [event, payload] of Object.entries(turnPayloads)) {
+      it(`is checked in by its first ${event}, once`, async () => {
+        const app = mount()
+        const turn = { sessionId, payload: { ...payload, session_id: 'cc-late', transcript_path: '/tmp/late.jsonl' } }
+        await post(app, event, turn)
+        await post(app, event, turn)
+
+        expect(getSessionRow(ctx, sessionId)).toMatchObject({
+          status: 'live',
+          ccSessionId: 'cc-late',
+          transcriptPath: '/tmp/late.jsonl',
+        })
+        expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+      })
+    }
+
+    it('keeps the id current from a turn hook after a missed /clear SessionStart', async () => {
+      const app = mount()
+      await post(app, 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      await post(app, 'stop', { sessionId, payload: { session_id: 'cc-2', hook_event_name: 'Stop' } })
+
+      expect(getSessionRow(ctx, sessionId)?.ccSessionId).toBe('cc-2')
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+    })
+
+    it('never brings an ended session back', async () => {
+      markSessionEnded(ctx, sessionId)
+      await post(mount(), 'stop', { sessionId, payload: { session_id: 'cc-late', hook_event_name: 'Stop' } })
+
+      expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'ended', ccSessionId: undefined })
+    })
+
+    it('checks in a project-scoped session the same way', async () => {
+      const project = createSessionRow(ctx, {
+        projectId: seedProject(ctx).id,
+        kind: 'project',
+        worktreePath: 'C:\\wt\\proj',
+      })
+      await post(mount(), 'user-prompt', {
+        sessionId: project.id,
+        payload: { session_id: 'cc-proj', hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
+      })
+
+      expect(getSessionRow(ctx, project.id)).toMatchObject({ status: 'live', ccSessionId: 'cc-proj' })
+    })
   })
 
   it('user-prompt injects one compact runcastle line in the verified shape', async () => {

@@ -291,16 +291,17 @@ export function awaitingCheckIn(
  * prompt or a login has not started on it, and used to be invisible: the
  * terminal looked healthy and simply did nothing.
  *
- * Only the session ending clears it; a later `session.kickoff` cannot, because
- * that event is emitted at spawn, before this watchdog can fire. `events` must
- * be in id order.
+ * The agent checking in late (`session.started`, which a turn hook emits when
+ * the start hook never arrived) or the session ending clears it; a later
+ * `session.kickoff` cannot, because that event is emitted at spawn, before this
+ * watchdog can fire. `events` must be in id order.
  */
 export function sessionNotReady(events: EventRow[], sessionId: string): boolean {
   let notReady = false
   for (const e of events) {
     if ((e.data as { sessionId?: unknown } | null)?.sessionId !== sessionId) continue
     if (e.type === 'session.not_ready') notReady = true
-    else if (e.type === 'session.ended') notReady = false
+    else if (e.type === 'session.started' || e.type === 'session.ended') notReady = false
   }
   return notReady
 }
