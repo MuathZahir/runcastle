@@ -1004,6 +1004,51 @@ describe('renderSessionPrompt', () => {
     expect(prompt).toContain("Define the project's terms")
     expect(prompt).toContain('Bring the context with the decision')
   })
+
+  const headlessBriefs: Array<[string, Partial<WriteArtifactsInput>]> = [
+    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    [
+      'relay',
+      {
+        feature: feature({ phase: 'review', lap: 2 }),
+        lap: 2,
+        purpose: 'relay',
+        session: session({ headless: true }),
+      },
+    ],
+    [
+      'self-started lap',
+      { feature: feature({ phase: 'review', lap: 2 }), lap: 2, session: session({ headless: true }) },
+    ],
+  ]
+
+  it.each(headlessBriefs)(
+    'tells a headless %s run its no-human rule outranks the closing section',
+    (_, brief) => {
+      const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
+      const rule = prompt.slice(
+        prompt.indexOf('## No human is present'),
+        prompt.indexOf('## How to talk to the human'),
+      )
+
+      expect(rule).toContain(
+        'This section outranks "How to talk to the human" at the end of this brief',
+      )
+      expect(rule).toContain('turn on a decision for them.')
+    },
+  )
+
+  it('leaves the closing section unqualified when a human is present', () => {
+    const prompt = renderSessionPrompt({
+      session: session(),
+      project,
+      config,
+      feature: feature(),
+      planning: noArtifacts,
+    })
+
+    expect(prompt).not.toContain('outranks "How to talk to the human"')
+  })
 })
 
 /**
