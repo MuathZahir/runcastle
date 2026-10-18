@@ -173,7 +173,7 @@ const RUNTIME_BINARY: Record<AgentRuntime, string> = {
 
 export function missingImageRuntimeMessage(runtime: AgentRuntime, image: string): string {
   const binary = RUNTIME_BINARY[runtime]
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ export function agentCliDriftMessage(
 ): string {
   const { label } = RUNTIME_SPECS[runtime]
   const burningOn = imageVersion ? `${label} ${imageVersion}` : `its ${label}`
-  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Burns to catch up.`
+  return `${agentCliDrift(image, runtime, imageVersion, hostVersion)} — this burn runs on ${burningOn}. Rebuild from Settings → Workers to catch up.`
 }
 
 /**
@@ -2657,7 +2657,7 @@ export function missingAgentBinaryMessage(
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err)
   const binary = AGENT_BINARY[runtime]
   if (!missingCommandRegex(binary).test(msg)) return undefined
-  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`
+  return `${binary} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`
 }
 
 /**
@@ -2681,8 +2681,8 @@ export function cliTooOldMessage(
   const tooOld = `${cli} is too old for ${target} (needs ${required} or newer).`
   const hostVsRequired = hostVersion ? compareDottedVersions(hostVersion, required) : undefined
   return hostVsRequired !== undefined && hostVsRequired >= 0
-    ? `${tooOld} Your machine already has ${hostVersion} — Rebuild from Settings → Burns.`
-    : `${tooOld} Run \`claude update\` on the host, then Rebuild from Settings → Burns.`
+    ? `${tooOld} Your machine already has ${hostVersion} — Rebuild from Settings → Workers.`
+    : `${tooOld} Run \`claude update\` on the host, then Rebuild from Settings → Workers.`
 }
 
 /**

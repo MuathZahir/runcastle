@@ -228,7 +228,7 @@ describe('runDoctor — canned environments', () => {
       `sandcastle:runcastle no longer matches the burner Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
     // Names the settings page the web deep-links from (decision 9).
-    expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
+    expect(image.fix).toBe('Open Settings → Workers (Rebuild image).')
     expect(report.ok).toBe(false)
   })
 
@@ -260,7 +260,7 @@ describe('runDoctor — canned environments', () => {
     expect(image.detail).toBe(
       `sandcastle:runcastle: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
-    expect(image.fix).toBe('Open Settings → Burns (Rebuild image).')
+    expect(image.fix).toBe('Open Settings → Workers (Rebuild image).')
   })
 
   it('reads an image built before the CLI labels existed as stale', async () => {
@@ -747,7 +747,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.detail).toBe(
       `${TAG} no longer matches .runcastle/sandbox/Dockerfile — rebuild${CODEX_UNCHECKED}`,
     )
-    expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
+    expect(row.fix).toBe('Open Settings → Workers (Rebuild image).')
   })
 
   // The silent hole a per-image label alone leaves: upgrade runcastle, and every
@@ -777,7 +777,7 @@ describe('runDoctor — a project that ships its own sandbox Dockerfile', () => 
     expect(row.detail).toBe(
       `${TAG}: Claude Code 0.9.0 in image, 1.0.0 on host — rebuild${CODEX_UNCHECKED}`,
     )
-    expect(row.fix).toBe('Open Settings → Burns (Rebuild image).')
+    expect(row.fix).toBe('Open Settings → Workers (Rebuild image).')
   })
 
   // Rebuild would rebuild the base here, so the row says so rather than "ok".

@@ -14,7 +14,7 @@ export const ACTION_KINDS = [
   'burn', // feature.burn — crosses planning → building, and resumes a parked run
   'cancelRun', // run.cancel
   'stopAgent', // feature.stop — the status line's Stop: the round stops, nothing dispatches until the human replies
-  'openBurnSettings', // opens Settings → Burns where a failed run's summary points (image rebuild)
+  'openBurnSettings', // opens Settings → Workers where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in

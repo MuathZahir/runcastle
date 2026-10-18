@@ -386,7 +386,7 @@ describe('Settings — the Orchestrator toggle', () => {
     const row = toggle.closest('div.border-b')
     expect(row?.textContent).toContain('experimental')
     expect(row?.textContent).toContain(
-      'The project session runs your features for you: it creates them, has them plan themselves, burns, drives, runs laps and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
+      'The project session runs your features for you: it creates them, has them plan themselves, gives them Go, drives them and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
     )
     // A project-only key: no global twin, so no chip about where it came from.
     expect(row?.textContent).not.toContain('Global')

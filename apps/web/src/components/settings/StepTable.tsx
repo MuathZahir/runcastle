@@ -19,7 +19,7 @@ import { showsSetting, type FilterState } from './types'
  */
 const GROUPS: readonly { group: StepGroup; title: string; caption: string }[] = [
   { group: 'sessions', title: 'Sessions', caption: 'Interactive — you are in the terminal' },
-  { group: 'unattended', title: 'Unattended', caption: 'Burns and scripted runs' },
+  { group: 'unattended', title: 'Unattended', caption: 'Workers and scripted runs' },
 ]
 
 const COLUMNS = 'grid grid-cols-[minmax(0,1fr)_260px_24px] items-center gap-3'

@@ -111,7 +111,7 @@ export function RunHeader({
       </div>
       {extra && <MetaLine items={[{ text: extra }]} />}
       {/* A sentence, not a fact: its own wrapping line, so the fix it ends on
-          ("…from Settings → Burns") is never the part a truncating fact clips.
+          ("…from Settings → Workers") is never the part a truncating fact clips.
           Only for a past run: the latest run's reason is the next-step bar's,
           said once there (simplify-the-pages decision 6d). */}
       {status === 'failed' && summary && onBackToLatest && (

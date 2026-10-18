@@ -45,7 +45,7 @@ describe('classifyTicketRunError', () => {
     // the same image, so there is nothing left for this run to try.
     expect(classifyTicketRunError(new Error(error), runtime)).toBe('run-fatal')
     expect(missingAgentBinaryMessage(new Error(error), runtime, image)).toBe(
-      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).`,
+      `${runtime === 'claude-code' ? 'claude' : 'codex'} is not installed in image ${image} — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).`,
     )
   })
 
@@ -66,7 +66,7 @@ describe('classifyTicketRunError', () => {
   })
 
   const UPDATE_THEN_REBUILD =
-    'Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Run `claude update` on the host, then Rebuild from Settings → Burns.'
+    'Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Run `claude update` on the host, then Rebuild from Settings → Workers.'
 
   it.each([
     ['unknown', undefined],
@@ -83,7 +83,7 @@ describe('classifyTicketRunError', () => {
     'says only Rebuild when the host (%s) already meets the required version',
     (host) => {
       expect(cliTooOldMessage(new Error(CLI_TOO_OLD_400), 'claude-opus-5-5', host)).toBe(
-        `Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has ${host} — Rebuild from Settings → Burns.`,
+        `Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has ${host} — Rebuild from Settings → Workers.`,
       )
     },
   )

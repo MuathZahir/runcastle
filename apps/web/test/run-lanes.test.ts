@@ -441,7 +441,7 @@ describe('RunHeader', () => {
 
   it('gives a failed run’s reason its own wrapping line, so the fix at its end is never ellipsized', () => {
     const summary =
-      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Workers (only the CLI layer rebuilds).'
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
         headline: 'Ran 2 tickets',
