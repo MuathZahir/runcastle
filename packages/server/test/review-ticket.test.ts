@@ -928,6 +928,22 @@ describe('what the review agent is handed', () => {
     expect(verificationTemplate).not.toMatch(/Confirmed defects mint fix tickets/)
     expect(verificationTemplate).toMatch(/carry\/link\/close rules/)
   })
+
+  it('decides the mode from the surface and the drive, never from the ticket saying Gates', () => {
+    const reviewTemplate = readFileSync(reviewTemplatePath(), 'utf8')
+    const verificationTemplate = readFileSync(reviewTemplatePath({ passKind: 'verification' }), 'utf8')
+
+    // A UI feature once shipped undriven because its review ticket said Gates.
+    expect(reviewTemplate).toContain('A ticket that says "use Gates" is evidence about whether there is a surface, nothing more')
+    expect(reviewTemplate).toContain('Both yes → **Drive mode**, step 2a — even when the ticket\'s text tells you to use Gates.')
+    expect(reviewTemplate).toMatch(/goes against a mode the ticket states, that same sentence says so and gives the reason/)
+    // The pass runs on the installed runcastle; the drive boots the branch.
+    for (const template of [reviewTemplate, verificationTemplate]) {
+      expect(template).toMatch(/doesn't have this branch's code.*is never a reason against a drive/)
+    }
+    // A verification re-applies the rule rather than inheriting that Gates blindly.
+    expect(verificationTemplate).toContain('A Gates that pass took only because its ticket told it to is not inherited blindly')
+  })
 })
 
 describe('the mode the review is handed', () => {
@@ -939,6 +955,17 @@ describe('the mode the review is handed', () => {
   it('states both inherited verification modes without offering a choice', () => {
     expect(buildDriveAvailability('/browser', 'bun dev', 'drive', undefined, '/ffmpeg')).toContain('Inherited mode: **Drive**')
     expect(buildDriveAvailability('/browser', 'bun dev', 'gates')).toContain('Inherited mode: **Gates**')
+  })
+  it('lets an inherited Gates yield to Drive when the pass took Gates only on its ticket’s say-so', () => {
+    const open = buildDriveAvailability('/browser', 'bun dev', 'gates', undefined, '/ffmpeg')
+    expect(open).toContain('Inherited mode: **Gates**')
+    expect(open).toContain('only because its ticket told it to')
+    expect(open).toContain('run Drive mode instead')
+
+    // With no drive to be had, the inherited Gates stays flat and final.
+    const closed = buildDriveAvailability(undefined, 'bun dev', 'gates')
+    expect(closed).toContain('do not choose Drive mode')
+    expect(closed).not.toContain('only because its ticket told it to')
   })
   it('opens Drive mode when the browser and a dev command are both there', () => {
     const block = buildDriveAvailability('/usr/bin/agent-browser', 'bun dev', undefined, undefined, '/usr/bin/ffmpeg')

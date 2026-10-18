@@ -325,10 +325,21 @@ export function buildDriveAvailability(
   browserFailure?: string,
   ffmpegPath: string | null | undefined = browserPath,
 ): string {
-  if (inheritedMode === 'gates') {
+  const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
+  if (inheritedMode === 'gates' && missing.length > 0) {
     return 'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode; do not choose Drive mode or call `review_drive`.'
   }
-  const missing = missingDrivePieces(browserPath, devCommand, browserFailure, ffmpegPath)
+  if (inheritedMode === 'gates') {
+    // A recorded Gates is only as good as the reason the pass chose it: one
+    // that took Gates on its ticket's say-so never looked at the surface.
+    return (
+      'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode — ' +
+      'unless that pass took Gates only because its ticket told it to (its digest above says why it ' +
+      'ran Gates). A ticket\'s "use Gates" is evidence about whether there is a surface, nothing more: ' +
+      'if the acceptance criteria name a screen, flow or state a human could operate, a drive **is** ' +
+      'available here, so run Drive mode instead, and say so and why in the first line of your digest.'
+    )
+  }
   if (inheritedMode === 'drive' && missing.length === 0) {
     return 'Inherited mode: **Drive**. The pass being verified recorded Drive mode, so run Drive mode and record the full tour; do not choose Gates mode.'
   }
@@ -881,7 +892,9 @@ async function reviewTicketOutcome(
   // agent is told why Drive is closed, and the ticket row keeps the same reason
   // so the trail can say why the lap ran Gates (decision 8).
   const withheldReason = driveWithheldReason(browserPath, project.devCommand, browserFailure, ffmpegPath)
-  const offeredMode: 'drive' | 'gates' = inheritedMode === 'gates' || withheldReason ? 'gates' : 'drive'
+  // An inherited Gates does not close Drive on a host that can drive: a
+  // verification may overrule a Gates its review pass took on a ticket's say-so.
+  const offeredMode: 'drive' | 'gates' = withheldReason ? 'gates' : 'drive'
   const prompt = renderReviewPrompt(ticket, {
     TICKET_JSON: buildTicketJson(ticket),
     FEATURE_BRIEF: buildFeatureBrief(feature),

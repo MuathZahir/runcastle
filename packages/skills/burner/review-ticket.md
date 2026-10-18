@@ -33,7 +33,7 @@ You run **non-interactively** — your agent CLI in print/exec mode, no terminal
 
 Its `goal` says what to verify and its `acceptanceCriteria` say how you will know. Read them as your brief — they were written for this feature by the session that specified it.
 
-**The ticket prescribes the drive, not the mode.** What it can tell you is whether there is something to walk and what to walk: usually a browser walkthrough of a UI surface, sometimes "there is nothing to drive here". Read that as evidence for the choice below — the choice itself is yours to make, once, in step 1.
+**The ticket prescribes the drive, not the mode.** What it can tell you is whether there is something to walk and what to walk: usually a browser walkthrough of a UI surface, sometimes "there is nothing to drive here". Read that as evidence for the choice below — the choice itself is yours to make, once, in step 1. A ticket that says "use Gates" is evidence about whether there is a surface, nothing more: when its `acceptanceCriteria` name a screen, flow or state a human could operate and a drive is available, the mode is Drive, whatever the ticket's text tells you. And "the installed or host runcastle doesn't have this branch's code yet" is never a reason against a drive — the review pass runs on the installed runcastle, but `review_drive` boots `{{FEATURE_BRANCH}}` itself, its own code, migrations and assets. One real review obeyed a ticket that prescribed Gates on exactly that reason, and a UI feature reached the human without ever being driven.
 
 ## Whether a drive is available
 
@@ -70,7 +70,7 @@ Two questions, in this order:
 1. **Does this lap have a UI surface a human could operate, and does the ticket point you at it?** The `acceptanceCriteria` naming screens, flows or empty states is a yes. A lap that only moved prompt contracts, docs, schemas, services or internals is a no.
 2. **Is a drive available?** The section above answers this from the host — it is a fact, not a judgement.
 
-Both yes → **Drive mode**, step 2a. Anything else → **Gates mode**, step 2b. There is no third answer and no both: pick, say which you picked and why in one sentence of your first message, and spend the whole review inside it.
+Both yes → **Drive mode**, step 2a — even when the ticket's text tells you to use Gates. Anything else → **Gates mode**, step 2b. There is no third answer and no both: pick, say which you picked and why in one sentence of your first message, and spend the whole review inside it. When your pick goes against a mode the ticket states, that same sentence says so and gives the reason — for example, "Drive mode, against the ticket's Gates: the criteria name the settings screen and a drive is available."
 
 ### 2a. Drive mode — walk the app
 
