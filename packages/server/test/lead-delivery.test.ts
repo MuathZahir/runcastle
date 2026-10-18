@@ -424,7 +424,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         exited(f.id, ids[0] as string, 1)
         await vi.waitFor(() => expect(ids).toHaveLength(2))
         expect(inputs[1]).toMatchObject({ fresh: true, message: '[runcastle] notes' })
-        expect(leadDeliveryState(f.id).lastFailure?.message).toContain('exited (code 1)')
+        expect(leadDeliveryState(f.id).lastFailure?.reason).toBe('exited (code 1)')
 
         exited(f.id, ids[1] as string, 1)
         await new Promise((r) => setTimeout(r, 20))

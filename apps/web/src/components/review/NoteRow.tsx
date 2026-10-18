@@ -91,6 +91,7 @@ export function NoteRow({
   onSeek,
   onOpenImage,
   onViewLane,
+  waitingForAgent = false,
 }: {
   item: NoteItem
   /** The recording the stage is playing, or null when none is (decision 22). */
@@ -107,6 +108,8 @@ export function NoteRow({
   onOpenImage: (url: string) => void
   /** Go to the lane fixing this defect in the running burn (decision 18c). */
   onViewLane?: (ticketId: string) => void
+  /** A sent note no agent has taken yet — queued, or its wake failed (decision 28). */
+  waitingForAgent?: boolean
 }) {
   const note = item.kind === 'note' ? item.note : undefined
   const finding = item.kind === 'defect' ? item.finding : undefined
@@ -180,7 +183,7 @@ export function NoteRow({
             ))}
           {why && <span className="text-warning">{why}</span>}
           {standing && <span>{standing}</span>}
-          {note?.sentAt !== undefined && <span>Sent to the agent</span>}
+          {note?.sentAt !== undefined && <span>{waitingForAgent ? 'Waiting for the agent' : 'Sent to the agent'}</span>}
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
           {fixing &&
             (readonly || !onViewLane ? (

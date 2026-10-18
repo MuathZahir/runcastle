@@ -20,7 +20,7 @@ import { testNotes, tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
 import { featureDocPath } from './feature-docs'
-import { deliverToLead } from './lead-delivery'
+import { deliverToLead, leadDeliveryState } from './lead-delivery'
 import { getFeatureRow, projectForFeature } from './repo'
 import { getTicket, storeTickets } from './tickets'
 import { promoteOpenDefects, viewByFeature } from './review-findings'
@@ -242,8 +242,9 @@ export function attachScreenshot(ctx: AppCtx, noteId: string, png: Uint8Array): 
  * feature's lead as ONE human message, so it acts on a considered batch rather
  * than a note at a time. Sending with no notes is a message too: the drive went
  * fine. Usable any time, and again later: only the unsent ones travel.
+ * `waiting` says the message is queued for an agent that has not taken it yet.
  */
-export async function sendNotes(ctx: AppCtx, featureId: string): Promise<{ sent: number }> {
+export async function sendNotes(ctx: AppCtx, featureId: string): Promise<{ sent: number; waiting: boolean }> {
   const feature = getFeatureRow(ctx, featureId)
   const unsent = listByFeature(ctx, featureId).filter(
     (note) => note.author === 'human' && note.sentAt === undefined && note.status !== 'promoted',
@@ -273,7 +274,8 @@ export async function sendNotes(ctx: AppCtx, featureId: string): Promise<{ sent:
     message: unsent.length === 0 ? 'drive done, all good — sent to the agent' : `${unsent.length} note(s) sent to the agent`,
     data: { noteIds: unsent.map((note) => note.id), at: now },
   })
-  return { sent: unsent.length }
+  // No agent took it yet when none is open: it is queued for the next wake (decision 28).
+  return { sent: unsent.length, waiting: leadDeliveryState(featureId).waitingSince !== null }
 }
 
 /**

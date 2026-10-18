@@ -212,4 +212,10 @@ describe('NoteRow', () => {
     expect(render(note({ sentAt: 1_700_000_000_000 }))).toContain('Sent to the agent')
     expect(render(note())).not.toContain('Sent to the agent')
   })
+
+  it('says a sent note is waiting for the agent while no agent has taken it', () => {
+    const html = render(note({ sentAt: 1_700_000_000_000 }), { waitingForAgent: true })
+    expect(html).toContain('Waiting for the agent')
+    expect(html).not.toContain('Sent to the agent')
+  })
 })

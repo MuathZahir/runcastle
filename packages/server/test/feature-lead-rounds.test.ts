@@ -432,7 +432,7 @@ describe('the rounds over tRPC', () => {
     attachScreenshot(ctx, shot.id, new Uint8Array([137, 80, 78, 71]))
     addNote(ctx, featureId, 'Totals look right')
 
-    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 2 })
+    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 2, waiting: true })
 
     const [message] = leadMessages(ctx, featureId)
     expect(message).toMatch(/1\. The coupon field is cut off \(screenshot: .*\.png\)/)
@@ -440,9 +440,11 @@ describe('the rounds over tRPC', () => {
     expect(message).toMatch(/2\. Totals look right/)
     expect(getFeatureRow(ctx, featureId).lastHumanMessageAt).toBeGreaterThan(0)
     expect((await caller.notes.list({ featureId })).every((n) => n.sentAt !== undefined)).toBe(true)
+    // No agent is open, so nothing has reached one yet: the panel must not say "Sent".
+    await expect(caller.notes.delivery({ featureId })).resolves.toMatchObject({ waitingSince: expect.any(Number) })
 
     // Sent notes do not travel again; an empty send says the drive went fine.
-    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 0 })
+    await expect(caller.notes.send({ featureId })).resolves.toEqual({ sent: 0, waiting: true })
     expect(leadMessages(ctx, featureId)[1]).toMatch(/Drive done, all good/)
   })
 })

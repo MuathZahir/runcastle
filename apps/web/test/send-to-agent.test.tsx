@@ -12,13 +12,17 @@ const server = vi.hoisted(() => ({
   notes: [] as unknown[],
   sends: [] as unknown[],
   invalidated: 0,
+  delivery: undefined as unknown,
 }))
 
 vi.mock('../src/trpc', () => ({
   trpc: {
-    useUtils: () => ({ notes: { list: { invalidate: () => (server.invalidated += 1) } } }),
+    useUtils: () => ({
+      notes: { list: { invalidate: () => (server.invalidated += 1) }, delivery: { invalidate: () => undefined } },
+    }),
     notes: {
       list: { useQuery: () => ({ data: server.notes }) },
+      delivery: { useQuery: () => ({ data: server.delivery }) },
       send: {
         useMutation: (opts?: { onSuccess?: (r: { sent: number }) => void }) => ({
           isPending: false,
@@ -33,7 +37,7 @@ vi.mock('../src/trpc', () => ({
 }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 
-const { SendToAgent, sendLine, unsentNotes } = await import('../src/components/review/SendToAgent')
+const { SendToAgent, sendLine, unsentNotes, waitingForAgent } = await import('../src/components/review/SendToAgent')
 
 const NOW = 1_800_000_000_000
 const note = (over: Partial<TestNote>): TestNote => ({
@@ -64,6 +68,16 @@ describe('what Send to agent would carry', () => {
     expect(sendLine([note({ sentAt: NOW - 5 * 60_000 })], NOW)).toBe('Sent 5m ago')
     expect(sendLine([], NOW)).toBe('No notes — sending tells the agent all is good')
   })
+
+  it('never says sent for what no agent has taken yet (decision 28)', () => {
+    const queued = { waitingSince: NOW - 60_000, lastFailure: null }
+    expect(sendLine([note({ sentAt: NOW - 30_000 })], NOW, queued)).toBe('Sent — waiting for the agent to pick it up')
+    // Sent before the oldest waiting message: that one reached the agent.
+    expect(sendLine([note({ sentAt: NOW - 5 * 60_000 })], NOW, queued)).toBe('Sent 5m ago')
+    expect(waitingForAgent(NOW - 30_000, queued)).toBe(true)
+    expect(waitingForAgent(NOW - 30_000, { waitingSince: null, lastFailure: null })).toBe(false)
+    expect(waitingForAgent(undefined, queued)).toBe(false)
+  })
 })
 
 describe('SendToAgent', () => {
@@ -71,6 +85,7 @@ describe('SendToAgent', () => {
     server.notes = []
     server.sends = []
     server.invalidated = 0
+    server.delivery = undefined
   })
   afterEach(cleanup)
 
@@ -88,6 +103,16 @@ describe('SendToAgent', () => {
   it('says rounds and the agent’s landings wait while this feature is driven', () => {
     render(<SendToAgent featureId="feat_1" driveActive />)
     expect(screen.getByText('While this drive runs, the agent can’t start a round or land its own edits.')).toBeTruthy()
+  })
+
+  it('shows a wake that failed, and that what was sent is still queued', () => {
+    server.delivery = { waitingSince: NOW - 60_000, lastFailure: { reason: 'exited (code 1)', at: NOW } }
+    render(<SendToAgent featureId="feat_1" />)
+    expect(
+      screen.getByText(
+        'The agent didn’t start (its run exited (code 1)). What you sent is still queued and goes with its next start.',
+      ),
+    ).toBeTruthy()
   })
 
   it('says nothing about the drive when none is up', () => {

@@ -9,6 +9,7 @@ import { useToast } from '../../lib/toast'
 import { DeleteNoteDialog, NoteEditor } from './NoteComposer'
 import { Lightbox } from './Lightbox'
 import { NoteRow, itemId, rowElementId, type NoteItem } from './NoteRow'
+import { waitingForAgent } from './SendToAgent'
 
 /**
  * The rows of the review page's work — and the one place that renders them.
@@ -160,6 +161,7 @@ export function WorkList({
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
+  const delivery = trpc.notes.delivery.useQuery({ featureId })
   const [editing, setEditing] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<TestNote | null>(null)
   const [picture, setPicture] = useState<string | null>(null)
@@ -224,6 +226,7 @@ export function WorkList({
       onSeek={onSeek}
       onOpenImage={setPicture}
       onViewLane={onViewLane}
+      waitingForAgent={row.item.kind === 'note' && waitingForAgent(row.item.note.sentAt, delivery.data)}
     />
   )
 

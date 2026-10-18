@@ -157,14 +157,14 @@ const failedWakes = new Map<string, number>()
  * received: the agent holds it.
  */
 const waitingSince = new Map<string, number>()
-const lastWakeFailure = new Map<string, { message: string; at: number }>()
+const lastWakeFailure = new Map<string, { reason: string; at: number }>()
 
 /** What the drive panel shows about a feature's messages to the agent. */
 export interface LeadDeliveryState {
   /** When the oldest message still waiting for an agent was sent; null when nothing waits. */
   waitingSince: number | null
   /** The last headless wake that died before the agent took it, while its messages still wait. */
-  lastFailure: { message: string; at: number } | null
+  lastFailure: { reason: string; at: number } | null
 }
 
 export function leadDeliveryState(featureId: string): LeadDeliveryState {
@@ -276,7 +276,7 @@ function failHeldWake(ctx: AppCtx, sessionId: string, exitCode: number | null): 
   const message =
     `the agent's headless wake ${how} before the agent started — ${held.lines.length} message(s) back in the queue; ` +
     (failures === 1 ? 'retrying fresh from the docs' : 'they go with the next message or when a drive stops')
-  lastWakeFailure.set(held.featureId, { message, at: Date.now() })
+  lastWakeFailure.set(held.featureId, { reason: how, at: Date.now() })
   emit(ctx, held.featureId, {
     type: 'lead.wake_failed',
     message,

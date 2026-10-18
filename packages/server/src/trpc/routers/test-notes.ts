@@ -12,6 +12,7 @@ import {
   triagePreview,
   toggleNote,
 } from '../../services/test-notes'
+import { leadDeliveryState } from '../../services/lead-delivery'
 import { publicProcedure, router } from '../context'
 import { InvalidInputError } from '../../errors'
 
@@ -93,4 +94,10 @@ export const testNotesRouter = router({
   send: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => sendNotes(ctx, input.featureId)),
+
+  // Whether what was sent has reached an agent yet (decision 28): a sent note
+  // is only "Sent to the agent" once nothing older still waits for one.
+  delivery: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ input }) => leadDeliveryState(input.featureId)),
 })
