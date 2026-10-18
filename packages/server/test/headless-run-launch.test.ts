@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { AgentRuntime, Feature } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { handlePtyExit, launchSession, type LaunchSessionInput } from '../src/launcher/launcher'
@@ -16,8 +16,8 @@ import {
   markSessionLive,
 } from '../src/launcher/sessions'
 import { getFeatureFull } from '../src/services/features'
-import { listAfter } from '../src/services/events'
-import { wakeLeadHeadless } from '../src/services/lead-delivery'
+import { emit, listAfter } from '../src/services/events'
+import { startLeadWaker, wakeLeadHeadless } from '../src/services/lead-delivery'
 import { leadMessageKey, queueOrchestratorLine } from '../src/services/orchestrator-messages'
 import { createFeatureBranch } from '../src/services/git'
 import { makeTestCtx } from './helpers/db'
@@ -98,9 +98,9 @@ describe('a headless run on a feature', () => {
   }
 
   /** An earlier chat whose conversation the CLI recorded, now ended. */
-  async function earlierChat(featureId: string, ccSessionId: string): Promise<void> {
+  async function earlierChat(featureId: string, ccSessionId: string, transcriptPath?: string): Promise<void> {
     const earlier = await launch(featureId)
-    markSessionLive(ctx, earlier, { ccSessionId })
+    markSessionLive(ctx, earlier, { ccSessionId, ...(transcriptPath ? { transcriptPath } : {}) })
     markSessionEnded(ctx, earlier)
   }
 
@@ -263,6 +263,46 @@ describe('a headless run on a feature', () => {
      * past Go runs with prompts off on Claude Code — interactive too — while a
      * chat still planning keeps asking.
      */
+    /**
+     * REGRESSION (lap-2 review, decision 28): the old conversation had expired
+     * from ~/.claude/projects, `claude -p --resume` exited 1 before checking in,
+     * and the wake had already taken the human's note and logged success.
+     */
+    it('starts fresh when the conversation’s transcript is gone, and an early death hands the message on', async () => {
+      const f = await feature('lead-expired', { phase: 'building' })
+      await earlierChat(f.id, 'cc-expired', join(repoPath, 'expired', 'cc-expired.jsonl'))
+      const launched: string[] = []
+      const stop = startLeadWaker(ctx, async (c, input) => {
+        const result = await launchSession(c, input, { spawn: false })
+        cleanup.push(sessionDir(result.sessionId))
+        launched.push(result.sessionId)
+        return result
+      })
+      try {
+        queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] my drive notes')
+        emit(ctx, f.id, { type: 'lead.message_pending', message: 'waiting' })
+        await vi.waitFor(() => expect(launched).toHaveLength(1))
+        const first = launched[0] as string
+
+        expect(launchedCommand(f.id, first)).not.toContain('--resume')
+        expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')?.data).toMatchObject({
+          resumed: false,
+        })
+        expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_gone')).toBe(true)
+
+        // The process dies before the agent checks in: the message is not lost.
+        handlePtyExit(ctx, f, getSessionRow(ctx, first)!, {}, 1)
+        await vi.waitFor(() => expect(launched).toHaveLength(2))
+        expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')?.data).toMatchObject({
+          sessionId: first,
+          exitCode: 1,
+        })
+        expect(launchedCommand(f.id, launched[1] as string)).toContain('[runcastle] my drive notes')
+      } finally {
+        stop()
+      }
+    })
+
     it('launches the lead past Go with bypassPermissions on Claude Code, headless and interactive', async () => {
       const f = await feature('lead-bypass', { phase: 'building' })
       await earlierChat(f.id, 'cc-lead')
