@@ -1,0 +1,3 @@
+{
+  "build": "bunx storybook build -c .runcastle/storybook --stats-json --disable-telemetry --quiet -o {out}"
+}
