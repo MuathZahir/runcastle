@@ -58,3 +58,27 @@
 ## 14. The setup lives in the prepare session, not in a feature's tickets
 **Decision:** Setting up UI states is a step of the prepare session, for projects with a UI. With the human present, in their own checkout, prepare installs Storybook and MSW (asking first), writes the config, providers, data faking and the one page story under `.runcastle/storybook/` and `.runcastle/stories/`, writes `.runcastle/stories.json`, records the stories' typecheck as a verify command, runs the build once on the host as evidence, and commits after showing the human the files. Prepare's write guard widens by exactly the project's package manifest and lockfile. The steps are one recipe file in the prepare skill's references, which the `apps/web` ticket follows too (decision 2). Planning never cards a setup ticket: when a feature's states are worth seeing and the project has no `.runcastle/stories.json` on its base, it says once that Prepare can set up UI states, as scenarios mention ＋ New scenario.
 **Why:** The human: "the setup shouldn't just be a ticket on a random feature. It should be in the prepare phase." It is project machinery like the drive scripts and the sandbox Dockerfile, which prepare already owns. A one-time build is evidence in prepare's own spirit (run it, don't guess), and it is not a story dev server. This removes the project-wide install from an unrelated feature's diff and the case of two features installing it at once. Rejected: planning adding a "Set up stories" ticket to the first feature that needs it.
+
+## Lap 2
+
+Lap 1 burned clean (13 tickets), but both review passes ran in Gates mode. Nobody ever saw a story render, and the UI-states section cannot appear on any review page until this branch is published and reinstalled, because review passes are run by the installed runcastle. The human did not test-drive lap 1: "I want you to complete everything first."
+
+## 15. Lap 2 completes the feature before anyone drives it
+**Decision:** Lap 2 finishes every open item instead of waiting on a test drive. It merges main into the branch, fixes both open defects, stores the stories-build record on the review ticket, fixes the review-prompt token bug, and makes UI states drivable. Nothing is deferred to a later lap.
+**Why:** The human: "I want you to complete everything first." A test drive of lap 1 could not have shown the section anyway.
+
+## 16. Main is merged into the branch first
+**Decision:** Lap 2's first ticket merges main into the feature branch. It resolves the five conflicts (`RunBody.tsx`, `lib/live.ts`, `edit-guard.ts`, `routers/feature.ts`, revisit `SKILL.md`) in main's rounds vocabulary, drops the `NothingVerifiedAlert` story's `lap` arg (open defect "Merging main still breaks the stories typecheck"), and re-runs typecheck, the tests and the real stories build on the merged tree. Every other ticket waits on it.
+**Why:** The branch forked before *The feature lead runs rounds* merged, so every green gate so far ran against an old base, and the lap arg can only be dropped once main's component is on the branch. Work done before the merge would be redone in it.
+
+## 17. The review is a Drive, and a scenario makes the section drivable
+**Decision:** Lap 2's review ticket reviews in Drive mode, never Gates. To give the drive something to see, a "Feature with UI states" scenario under `.runcastle/scenarios/` seeds the driven runcastle with a feature at review whose catalogue comes from the real build code (`runStoriesBuild` and the matcher) run on the host against this checkout. A comparison variant seeds before/after pairs, the collapsed "also affected" line and a failed build. The scenario touches only the drive's own data dir, and never cuts branches or worktrees in the developer's repo.
+**Why:** The human: "make sure that you tell the review ticket to actually do a drive (not gates mode)." The installed runcastle can't build a catalogue inside a drive, so without a scenario a Drive review would find an empty page. Lap 1 already gave drives their own stories port.
+
+## 18. The stories-build record is stored on the review ticket
+**Decision:** The stories-build record is persisted on the review ticket beside its gate record, with a migration numbered after main's latest, as the spec asked. Lap 1 rendered it into the prompt and the manifest only, to avoid a migration.
+**Why:** "Complete everything": it is spec'd scope lap 1 skipped, and once main is merged the migration costs no more than any other.
+
+## 19. Prompt tokens inside digests are no longer expanded
+**Decision:** The review-prompt renderer fills template tokens in one pass over the template, so a `{{TOKEN}}` that appears inside an inlined implementer digest stays literal text.
+**Why:** The human chose to include it. It garbled this feature's own lap-1 review (ticket 2's digest names `{{STORIES_NOTES}}`) and would garble the next one the same way. It is runcastle-wide code, a few lines, and rides on this branch.

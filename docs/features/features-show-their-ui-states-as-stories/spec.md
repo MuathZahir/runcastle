@@ -50,9 +50,9 @@ The only files outside `.runcastle/` that it touches are the dev dependencies (S
 
 Every review pass already runs the branch gates in a burn-style sandbox at the branch tip, before the review agent starts. The catalogue build joins that step:
 
-- **The feature's build:** in the gate sandbox at the same commit, after the verify commands, run `stories.json`'s `build` with `{out}` set to a directory inside the sandbox workspace. The directory is excluded from git the way burn worktrees are excluded, never via the project's `.gitignore`. It runs even when the project has no verify commands, and is skipped when the branch has no `stories.json`. Nothing copies files out of a sandbox today. The output directory is copied from the host side of the sandbox workspace before the gate worktree is cleaned up, the same way the agent's `DIGEST.md` is harvested from a preserved worktree today, in each sandbox mode.
+- **The feature's build:** in the gate sandbox at the same commit, after the verify commands, run `stories.json`'s `build` with `{out}` set to a directory inside the sandbox workspace. The directory is excluded from git the way burn worktrees are excluded, never via the project's `.gitignore`. It runs even when the project has no verify commands, and is skipped when the branch has no `stories.json`. Nothing copies files out of a sandbox today. The output directory is bind-mounted from the data dir into the sandbox (a host path directly for `noSandbox`), so the build writes straight to the host. That is how lap 1 built it.
 - **The base build:** at the feature's branch point (the merge base of the feature tip and its recorded base branch). It only runs if `stories.json` exists at that commit and no cached build exists for it. It uses a second sandbox pinned at that commit, set up the same way. It is cached by commit (decision 6) and shared by every feature with that branch point.
-- **The record:** a stories-build record is stored on the review ticket next to its gate record. In outline: `none` (no `stories.json` on the branch), `built` (with commit, base commit and whether the base build exists), `failed` (with exit code and log), or `couldnt_run` (with reason and log). It has the same honest-failure shape as the gate run. The record is rendered into the review and verification prompts with the gate record. The prompts tell the reviewer that a failed UI-states build is a failed gate. A base-build failure is not a gate failure: the section shows changed stories without their "before", with one line saying the base didn't build.
+- **The record:** a stories-build record is stored on the review ticket next to its gate record (decision 18: lap 2 adds the column and migration, numbered after main's latest). In outline: `none` (no `stories.json` on the branch), `built` (with commit, base commit and whether the base build exists), `failed` (with exit code and log), or `couldnt_run` (with reason and log). It has the same honest-failure shape as the gate run. The record is rendered into the review and verification prompts with the gate record. The prompts tell the reviewer that a failed UI-states build is a failed gate. A base-build failure is not a gate failure: the section shows changed stories without their "before", with one line saying the base didn't build.
 - **Time limits** follow the gate commands' own.
 
 ### Matching the feature's stories (decision 7)
@@ -85,7 +85,7 @@ A new section component renders the section model:
 - the failure state with the log;
 - an "open larger" overlay per story.
 
-It sits in `ReviewBody`'s work tier after the evidence stage. In a later lap's planning and building bodies it appears labelled with the lap the build came from. It's absent when the model is empty and after merge. Frames lazy-load and have a fixed default height, since the content is cross-origin and can't be auto-sized, and "open larger" is the escape hatch. Copy says "UI states" and "stories". It never says "Storybook" or "catalogue". It follows `apps/web/STYLE.md` and `DESIGN.md`.
+It sits in `ReviewBody`'s work tier after the evidence stage. Between reviews (planning and building after a review pass) it shows the last build, labelled "Built at the last review" with its commit. It never speaks of laps, which main retired for rounds. It's absent when the model is empty and after merge. Frames lazy-load and have a fixed default height, since the content is cross-origin and can't be auto-sized, and "open larger" is the escape hatch. Copy says "UI states" and "stories". It never says "Storybook" or "catalogue". It follows `apps/web/STYLE.md` and `DESIGN.md`.
 
 ### Planning (decision 11 and 14)
 
@@ -95,6 +95,19 @@ It sits in `ReviewBody`'s work tier after the evidence stage. In a later lap's p
 ### Runcastle's own dashboard (decision 2)
 
 One ticket sets up `apps/web` by following the recipe above. It is a burn, so it cannot record settings. Instead it wires the stories typecheck into the repo's existing typecheck command, and the recipe says so: on other projects, prepare records it as a verify command. It ships stories for a handful of hard-to-reach dashboard states, for example a feature blocked on a gate, a burn with a failed ticket, and review with open findings. Those are mostly sections that already take their data as props, reusing the `apps/web` tests' sample data where it exists (decision 10). It also ships one page-level story that loads data through the edge faking, with the live event stream kept from connecting. `apps/web/STYLE.md` gains a short "Stories" section. The existing two test tiers are untouched, and no Storybook test addon is added.
+
+### Lap 2: complete it, then drive it (decisions 15–19)
+
+Lap 1 burned clean but was only ever checked in Gates mode. No story has been seen rendering, and the section can't appear on a real review page until the branch is published and reinstalled. Lap 2 completes everything that is left, and its review is a Drive:
+
+- **Merge main first** (decision 16). Merge main into the feature branch and resolve the five conflicts (`RunBody.tsx`, `lib/live.ts`, `edit-guard.ts`, `routers/feature.ts`, revisit `SKILL.md`) in main's rounds vocabulary. Drop the `NothingVerifiedAlert` story's `lap` arg, and bring any other story whose component main changed in line. Re-run typecheck, the tests and the real stories build on the merged tree.
+- **The stories port refuses Windows short names.** A private file requested by its 8.3 alias (`MANIFE~1.JSO`, `BASE-B~1.LOG`) is refused. The check compares the real long name that `realpathSync.native` resolves, and that resolver is injectable, so a Linux test can reproduce the bypass.
+- **The record is stored** on the review ticket (decision 18).
+- **Prompt tokens fill in one pass** (decision 19). A `{{TOKEN}}` inside an inlined digest stays literal.
+- **A "Feature with UI states" scenario** (decision 17), under `.runcastle/scenarios/`.
+  - The default variant seeds the driven runcastle (only its own `RUNCASTLE_DATA_DIR`) with this checkout registered as a project and a feature at review on the drive's branch. It then runs the real `runStoriesBuild` and the matcher on the host against this checkout, so the section shows the dashboard stories as New, framed from the drive's own stories port.
+  - A comparison variant writes before/after pairs, the collapsed "also affected" line, and a failed build with its log, so the drive can see every state of the section.
+  - It never cuts branches or worktrees in the developer's repo, and prints `ENTRY_URL`.
 
 ## Seams
 
@@ -107,7 +120,8 @@ One ticket sets up `apps/web` by following the recipe above. It is a burn, so it
 - **`get_feature_context`'s `stories` block** (existing MCP seam): `setUp` follows the base branch's `stories.json`.
 - **The prepare session** (existing seams): the edit guard allows the manifest and lockfile for `prepare` only, and the prepare brief lists UI states as open when `stories.json` is absent, even with every key established.
 - **Skill content** (`packages/skills`): the prepare UI-states step and its recipe, the tickets ship-a-story block, the review prompts' failed-build wording. Checked by reading, and by the `apps/web` ticket actually following the recipe.
-- **End to end:** this feature's own review pass builds `apps/web`'s catalogue, and its feature page shows the dashboard stories it added as new.
+- **The "Feature with UI states" scenario** (new, lap 2): run inside a drive, it leaves a manifest and build under the drive's data dir and prints `ENTRY_URL`. It refuses any data dir that isn't a drive's.
+- **End to end, by Drive** (lap 2): the review drives the scenario's feature page and sees the stories render from the drive's stories port. After publish and reinstall, a real review pass of this feature builds `apps/web`'s catalogue, and its page shows the dashboard stories as new.
 
 ## Out of scope
 
@@ -119,10 +133,9 @@ One ticket sets up `apps/web` by following the recipe above. It is a burn, so it
 - **Running stories as tests** (a Storybook test addon, a real browser in the test run).
 - **A full-catalogue link,** or Storybook's own browsing UI anywhere in runcastle.
 - **The review agent touring stories** as part of its evidence. It sees only the build's pass or fail.
-- **Drives and scenarios,** which are unchanged.
+- **Changes to drives and the scenario contract.** Lap 2 only adds scenarios under the existing contract.
 
 ## Open questions
 
-- **Storybook and Vite 8 / React 19 compatibility** for `apps/web`. The ticket checks the current Storybook release's supported range and pins what works. If no release supports Vite 8 yet, it reports that rather than downgrading the app.
-- **How the sandbox workspace reaches the host in each sandbox mode** (mounted vs isolated) for the copy-out. Follow how `DIGEST.md` is harvested today. If a mode has no host-side path, the build record says `couldnt_run` with that reason, rather than silently showing nothing.
+- Settled in lap 1: Storybook 10.6.2 supports Vite 8 and React 19, and the copy-out is a bind mount.
 - **The default frame height** and the "also affected" list cap are left to the UI ticket's judgement against `DESIGN.md`.
