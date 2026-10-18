@@ -152,6 +152,8 @@ function bands(readonly: boolean): ReactNode[] {
       rows: attention,
       readonly,
       onStage: { ticketId: RECORDING.ticketId },
+      // The live page opens drive notes once the agent asks for a drive.
+      notesOpen: true,
     }),
     createElement(FullAccounts, {
       key: 'accounts',

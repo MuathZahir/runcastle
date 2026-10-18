@@ -175,12 +175,3 @@ describe('picking a recording off the round trail', () => {
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
   })
 })
-
-/** Decision 6: the button beside Test drive mints a pass and burns it. */
-describe('the Agentic review button', () => {
-  it('asks the server to mint a fresh pass for this feature', () => {
-    page()
-    fireEvent.click(screen.getByRole('button', { name: 'Agentic review' }))
-    expect(state.agenticReview).toHaveBeenCalledWith({ featureId: 'feat_1' })
-  })
-})

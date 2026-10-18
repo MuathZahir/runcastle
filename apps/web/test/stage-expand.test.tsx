@@ -74,7 +74,7 @@ vi.mock('../src/trpc', () => {
       },
       feature: {
         rounds: { useQuery: () => ({ data: [] }) },
-        readyDeclarations: { useQuery: () => ({ data: [] }) },
+        readyDeclarations: { useQuery: () => ({ data: [{ id: 'ready_1', featureId: 'feat_1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 1 }] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },
@@ -201,7 +201,7 @@ const expandControl = (): HTMLElement => screen.getByRole('button', { name: /^Ex
 const key = (k: string): void => void fireEvent.keyDown(document.body, { key: k })
 
 /** The bands the expand puts away, one phrase each. */
-const BANDS = ['^Round$', 'How to drive this app', 'Full account']
+const BANDS = ['How to drive this app', 'Full account']
 
 describe('the review page expanded', () => {
   it('leaves the stage and the rail, and puts every other band away', () => {

@@ -29,6 +29,7 @@ const state = vi.hoisted(() => ({
   events: [] as EventRow[],
   driveMissing: [] as { piece: string; reason: string; notice: string }[],
   rounds: [] as RoundSummary[],
+  declarations: [] as { id: string; featureId: string; runId: string | null; scenario: string; whatToTest: string; createdAt: number }[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
@@ -84,7 +85,7 @@ vi.mock('../src/trpc', () => {
       },
       feature: {
         rounds: { useQuery: () => ({ data: state.rounds }) },
-        readyDeclarations: { useQuery: () => ({ data: [] }) },
+        readyDeclarations: { useQuery: () => ({ data: state.declarations }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         testDrive: { useMutation: mutation },
@@ -224,6 +225,8 @@ function render(
     runs?: FeatureFull['runs']
     phase?: FeatureFull['feature']['phase']
     driveMissing?: { piece: string; reason: string; notice: string }[]
+    /** The agent has declared the feature ready — what opens the drive notes. Default: it has. */
+    declared?: boolean
   } = {},
 ): string {
   const tickets = over.tickets ?? [REVIEW_TICKET]
@@ -241,6 +244,10 @@ function render(
         startedAt: 1,
         finishedAt: 2,
       }]
+  state.declarations =
+    over.declared === false
+      ? []
+      : [{ id: 'ready_1', featureId: 'feat_1', runId: 'run_1', scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 3 }]
   state.driveMissing = over.driveMissing ?? []
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
@@ -276,8 +283,10 @@ const openWork = () =>
 describe('the review page’s arrival bands', () => {
   it('opens on state and open work — no stage, no placeholder, no terminal', () => {
     const html = openWork()
-    // The bands that are there.
-    expect(html).toContain('>Review</dt>')
+    // No Review/Tickets/Test drive/Round fact list: the header's status line
+    // and the round trail say it (the-feature-lead-runs-rounds decision 24).
+    expect(html).not.toContain('>Review</dt>')
+    expect(html).not.toContain('data-tier="status"')
     // Test drive is the next-step bar's (it is not repeated beside the facts).
     expect(html).not.toContain('Test drive</button>')
     expect(html).toContain('DLQ spill retention landed')
@@ -307,10 +316,11 @@ describe('the review page’s arrival bands', () => {
   })
 
   /**
-   * simplify-the-pages decision 7: Now (the alerts) → Status → Work → Reference,
-   * the work under a real heading and the history under a quiet label.
+   * simplify-the-pages decision 7, less the Status tier (the-feature-lead-runs-
+   * rounds decision 24): Now (the alerts) → Work → Reference, the work under a
+   * real heading and the history under a quiet label.
    */
-  it('lays the page out in the four tiers, in order', () => {
+  it('lays the page out in its tiers, in order', () => {
     const html = render({
       sessions: [LIVE_CHAT],
       notes: [NOTE],
@@ -324,8 +334,6 @@ describe('the review page’s arrival bands', () => {
       return i
     }
     const order = [
-      at('data-tier="status"'),
-      at('>Review</dt>'),
       at('data-tier="work"'),
       at('id="evidence-stage"'),
       at('Notes for the agent</h2>'),
@@ -526,20 +534,20 @@ describe('the review page’s arrival bands', () => {
     it('leads the page with "nothing verified this lap", above the stage', () => {
       const html = arrival()
       expect(html).toContain('Nothing verified')
-      expect(html.indexOf('Nothing verified')).toBeLessThan(html.indexOf('>Review</dt>'))
+      expect(html.indexOf('Nothing verified')).toBeLessThan(html.indexOf('data-tier="work"'))
     })
 
     /** Runcastle's own words — the agent's prose stays in the Full account. */
     it('states the templated line and the declared reason, never the agent’s prose', () => {
       const html = arrival()
-      const banner = html.slice(0, html.indexOf('>Review</dt>'))
+      const banner = html.slice(0, html.indexOf('data-tier="work"'))
       expect(banner).toContain('Lap 1 · drive mode · DRIVE FAILED · nothing verified')
       expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
     })
 
     /** Decision 5: the banner's action slot favours another review pass. */
     it('offers the Agentic review mint as the banner’s action', () => {
-      const banner = arrival().slice(0, arrival().indexOf('>Review</dt>'))
+      const banner = arrival().slice(0, arrival().indexOf('data-tier="work"'))
       expect(banner).toContain('Agentic review')
     })
 
@@ -556,7 +564,7 @@ describe('the review page’s arrival bands', () => {
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('Nothing verified')
       expect(primaryButtons(html)).toEqual([])
-      const notices = html.slice(0, html.indexOf('>Review</dt>'))
+      const notices = html.slice(0, html.indexOf('data-tier="work"'))
       expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
       // And it is this notice's: the denial above it steps down.
       expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified')))).toEqual([])
@@ -566,7 +574,7 @@ describe('the review page’s arrival bands', () => {
     it('leaves the denied-drive notice its hairline mint when nothing is unverified', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
-      const notices = html.slice(0, html.indexOf('>Review</dt>'))
+      const notices = html.slice(0, html.indexOf('data-tier="work"'))
       expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
       expect(primaryButtons(html)).toEqual([])
     })
@@ -602,44 +610,21 @@ describe('the review page’s arrival bands', () => {
       expect(html).not.toContain('id="lap-trail"')
     })
 
-    it('is not there at all before anything was burned', () => {
-      expect(render({ tickets: [] as FeatureFull['tickets'] })).not.toContain('id="round-trail"')
+    it('is not there at all before anything was dispatched or declared', () => {
+      expect(render({ tickets: [] as FeatureFull['tickets'], declared: false })).not.toContain('id="round-trail"')
     })
   })
 
   /**
-   * The Agentic review control (decision 6): present in every state of the
-   * page, disabled with its reason while a burn holds the feature.
+   * The Agentic review control left with the Status tier it stood beside
+   * (decision 24): a review is the agent's tool now (decision 10), so only the
+   * notices that call for another pass still offer one.
    */
   describe('the Agentic review control', () => {
-    const RUNNING = [
-      {
-        id: 'run_1',
-        featureId: 'feat_1',
-        workflow: 'ticket-burner',
-        status: 'running',
-        startedAt: 10,
-      },
-    ] as unknown as FeatureFull['runs']
-
-    it('is on the page in every state, drive up or not', () => {
-      for (const html of [
-        render({}),
-        openWork(),
-        render({ recordings: [RECORDING] }),
-        render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } }),
-      ]) {
-        expect.soft(html).toContain('Agentic review</button>')
+    it('is not offered on a page whose review needs nothing', () => {
+      for (const html of [render({}), openWork(), render({ recordings: [RECORDING] })]) {
+        expect.soft(html).not.toContain('Agentic review')
       }
-    })
-
-    it('is disabled with its reason while a burn is running', () => {
-      const html = render({ runs: RUNNING })
-      expect(html).toContain('title="a burn is running"')
-    })
-
-    it('is absent from a history view, which acts on nothing', () => {
-      expect(render({ readonly: true })).not.toContain('Agentic review')
     })
   })
 })
@@ -688,7 +673,7 @@ describe('the review page as one document', () => {
     expect(html).not.toContain('what did you just see?')
   })
 
-  /** The page, top to bottom: notices, state, stage, open work, rounds, the closed text. */
+  /** The page, top to bottom: notices, stage, open work, rounds, the closed text. */
   it('keeps its band order', () => {
     const html = render({
       sessions: [LIVE_CHAT],
@@ -699,7 +684,6 @@ describe('the review page as one document', () => {
       driveInstructions: 'Drive the sample project at ./examples/demo.',
     })
     const bands = [
-      '>Review</dt>',
       'id="evidence-stage"',
       'id="open-work"',
       'id="round-trail"',
@@ -756,8 +740,9 @@ describe('the review page’s drive instructions', () => {
 })
 
 /**
- * What this host is missing to drive, standing in the status tier before the
- * next burn — and silent when nothing is missing or the page is history.
+ * What this host is missing to record a drive stands where a drive starts —
+ * the header, beside Start test drive — never in the review body
+ * (`the-feature-lead-runs-rounds` decision 24).
  */
 describe('the review page’s drive-prerequisite notice', () => {
   const FFMPEG = {
@@ -765,16 +750,30 @@ describe('the review page’s drive-prerequisite notice', () => {
     reason: "`ffmpeg` is not on this machine's PATH, so a drive cannot be recorded",
     notice: 'ffmpeg not installed — install it and restart runcastle',
   }
-  const statusTier = (html: string) => html.slice(html.indexOf('data-tier="status"'), html.indexOf('data-tier="work"'))
 
-  it('names the missing piece under the status rows', () => {
-    expect(statusTier(render({ driveMissing: [FFMPEG] }))).toContain(
-      'Walkthrough videos off on this machine: ffmpeg not installed — install it and restart runcastle',
-    )
+  it('is not in the body, even when a piece is missing', () => {
+    expect(render({ driveMissing: [FFMPEG] })).not.toContain('Walkthrough videos off')
+  })
+})
+
+/** Drive notes open only while driving or once the agent asked for a drive (decision 24). */
+describe('the review page’s drive notes', () => {
+  it('are not there on a feature nobody is driving and the agent has not declared ready', () => {
+    const html = render({ declared: false })
+    expect(html).not.toContain('Notes for the agent')
+    expect(html).not.toContain('what did you just see?')
   })
 
-  it('says nothing when every piece is present, or on a history view', () => {
-    expect(render({})).not.toContain('Walkthrough videos off')
-    expect(render({ driveMissing: [FFMPEG], readonly: true })).not.toContain('Walkthrough videos off')
+  it('open while a drive of the feature is up, before any declaration', () => {
+    const html = render({
+      declared: false,
+      drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' },
+    })
+    expect(html).toContain('Notes for the agent')
+    expect(html).toContain('what did you just see?')
+  })
+
+  it('open once the agent has declared the feature ready', () => {
+    expect(render({})).toContain('Notes for the agent')
   })
 })

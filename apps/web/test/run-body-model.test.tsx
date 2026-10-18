@@ -78,17 +78,15 @@ function pick(laneId: string, menu: string, option: RegExp) {
 
 /** simplify-the-pages decision 9a: building gets the review page's Status tier. */
 describe('the building page’s tiers', () => {
-  it('states Round, Tickets and Review above the run’s own heading', () => {
+  // `the-feature-lead-runs-rounds` decision 24: the header's status line and
+  // the round trail say it, so no Round/Tickets/Review list sits above the run.
+  it('states no Round, Tickets and Review fact list above the run’s own heading', () => {
     mount()
-    const status = document.querySelector('[data-tier="status"]')!
-    expect([...status.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['Round', 'Tickets', 'Review'])
-    expect(within(status as HTMLElement).getByText('Running')).toBeTruthy()
-    expect(within(status as HTMLElement).getByText('0 of 3 landed')).toBeTruthy()
-    const heading = screen.getByRole('heading', { name: 'Run' })
-    expect(status.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelector('[data-tier="status"]')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Run' })).toBeTruthy()
   })
 
-  it('leaves status and elapsed time to the Status tier, not the run header', () => {
+  it('leaves status and elapsed time out of the run header', () => {
     mount()
     const header = screen.getByRole('heading', { name: 'Run' }).closest('header')!
     expect(header.textContent).not.toMatch(/Running|landed|\d+s/)

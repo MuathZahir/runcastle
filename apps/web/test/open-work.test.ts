@@ -109,6 +109,8 @@ function render(
       rows: split(work).attention,
       readonly: false,
       onStage: null,
+      // The live page, once the agent asked for a drive (decision 24).
+      notesOpen: true,
       ...over,
     }),
   )
@@ -258,5 +260,11 @@ describe('OpenWork', () => {
     expect(html).not.toContain('>Edit<')
     expect(html).not.toContain('>Delete<')
     expect(html).not.toContain('what did you just see?')
+  })
+
+  // `the-feature-lead-runs-rounds` decision 24: only while driving or after a ready declaration.
+  it('renders nothing on the live page until drive notes are open', () => {
+    expect(render({}, { notesOpen: false })).toBe('')
+    expect(render({}, { notesOpen: true })).toContain('Notes for the agent')
   })
 })
