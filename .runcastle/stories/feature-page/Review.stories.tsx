@@ -98,9 +98,14 @@ const meta = {
             summary: { found: 2, fixed: 0, open: 2, observations: 0 },
           }),
         },
-        notes: { list: () => [] },
+        notes: { list: () => [], delivery: () => ({ waitingSince: null, lastFailure: null }) },
         events: { list: () => [] },
-        feature: { driveInfo: () => null, driveScenarios: () => ({ runnerConfigured: false, scenarios: [] }) },
+        feature: {
+          driveInfo: () => null,
+          driveScenarios: () => ({ runnerConfigured: false, scenarios: [] }),
+          rounds: () => [],
+          readyDeclarations: () => [],
+        },
         project: {
           list: () => [],
           prep: () => ({ pendingKeys: [], findings: [], prepared: true, empty: false, preparedAt: 1, dryRun: null }),
