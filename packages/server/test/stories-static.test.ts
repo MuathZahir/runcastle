@@ -26,6 +26,11 @@ beforeAll(() => {
   writeFileSync(join(feature, 'manifest.json'), '{}')
   writeFileSync(join(feature, 'build.log'), 'log')
   writeFileSync(join(feature, 'base-build.log'), 'base log')
+  // On NTFS these name the default data stream of the files above; elsewhere
+  // they are ordinary files, so the refusal is exercised on every platform.
+  writeFileSync(join(feature, 'manifest.json::$DATA'), '{}')
+  writeFileSync(join(feature, 'build.log::$DATA'), 'log')
+  writeFileSync(join(feature, 'base-build.log::$DATA'), 'base log')
   const base = join(root, 'base', COMMIT)
   mkdirSync(base, { recursive: true })
   writeFileSync(join(base, 'iframe.html'), '<html>before</html>')
@@ -71,6 +76,10 @@ describe('stories static handler', () => {
     ['the manifest', `/features/${FEATURE}/manifest.json`],
     ['the build log', `/features/${FEATURE}/build.log`],
     ['the base build log', `/features/${FEATURE}/base-build.log`],
+    ['the manifest through a stream suffix', `/features/${FEATURE}/manifest.json::$DATA`],
+    ['the build log through a stream suffix', `/features/${FEATURE}/build.log::$DATA`],
+    ['the base build log through a stream suffix', `/features/${FEATURE}/base-build.log::$DATA`],
+    ['an encoded stream suffix', `/features/${FEATURE}/manifest.json%3A%3A$DATA`],
     ['an API path', '/api/trpc/feature.list'],
     ['the root', '/'],
     ['a missing file', `/features/${FEATURE}/nope.js`],
