@@ -37,6 +37,7 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
+import { removeFeatureStories, sweepBaseStories } from './stories-store'
 import {
   getFeatureRow,
   hasActiveRun,
@@ -1173,7 +1174,7 @@ export async function deleteFeature(
     })
   }
 
-  // (7) Remove per-session artifact dirs, then delete all DB rows LAST.
+  // (7) Remove per-session artifact dirs and built stories, then delete all DB rows LAST.
   for (const s of listSessionsByFeature(ctx, featureId)) {
     try {
       rmSync(sessionDir(s.id), { recursive: true, force: true })
@@ -1181,6 +1182,8 @@ export async function deleteFeature(
       // best-effort — a stray artifact dir is harmless; the DB rows still go
     }
   }
+  removeFeatureStories(featureId)
+  sweepBaseStories()
   deleteFeatureRows(ctx, featureId)
 
   return { ok: true, slug: feature.slug }

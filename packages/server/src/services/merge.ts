@@ -6,6 +6,7 @@ import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from './repo'
+import { removeFeatureStories, sweepBaseStories } from './stories-store'
 
 /** What a merge click answers: landed, or the conflict and the files it stands on. */
 export interface MergeFlowResult {
@@ -54,6 +55,10 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
     // Last, and best-effort: the merge has landed, so a worktree that will
     // not go is reported by an event, never by failing the ship.
     await retireShippedWorktree(ctx, project, feature)
+    // Built stories are generated output; after ship they live on in main's
+    // source (decision 5).
+    removeFeatureStories(feature.id)
+    sweepBaseStories()
   } else {
     // Carry the base branch + conflicting files on the event so the review
     // UI can surface the conflict card after a reload and brief the
