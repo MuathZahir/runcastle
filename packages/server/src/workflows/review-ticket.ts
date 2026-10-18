@@ -334,8 +334,8 @@ export function buildDriveAvailability(
     // that took Gates on its ticket's say-so never looked at the surface.
     return (
       'Inherited mode: **Gates**. The pass being verified recorded Gates mode, so run Gates mode — ' +
-      'unless that pass took Gates only because its ticket told it to (its digest above says why it ' +
-      'ran Gates). A ticket\'s "use Gates" is evidence about whether there is a surface, nothing more: ' +
+      'unless that pass took Gates only because its ticket told it to (its digest, under "Run digests" below, ' +
+      'says why it ran Gates). A ticket\'s "use Gates" is evidence about whether there is a surface, nothing more: ' +
       'if the acceptance criteria name a screen, flow or state a human could operate, a drive **is** ' +
       'available here, so run Drive mode instead, and say so and why in the first line of your digest.'
     )

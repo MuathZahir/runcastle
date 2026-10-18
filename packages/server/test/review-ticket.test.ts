@@ -961,6 +961,9 @@ describe('the mode the review is handed', () => {
     expect(open).toContain('Inherited mode: **Gates**')
     expect(open).toContain('only because its ticket told it to')
     expect(open).toContain('run Drive mode instead')
+    // The block renders near the top of verify-fixes.md; the digests come later.
+    expect(open).toContain('"Run digests" below')
+    expect(open).not.toContain('above')
 
     // With no drive to be had, the inherited Gates stays flat and final.
     const closed = buildDriveAvailability(undefined, 'bun dev', 'gates')
