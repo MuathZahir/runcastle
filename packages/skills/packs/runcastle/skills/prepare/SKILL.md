@@ -1,6 +1,6 @@
 ---
 name: prepare
-description: Establish a project's host settings with evidence — the dev command, the drive setup/stop scripts, the dev-database reset — by running them on the developer's own machine rather than guessing them from config. Covers the drive contract, the scenario contract it feeds, discovering a project's shape, and the closing dry-run drive. Entry skill for kind=prepare sessions.
+description: Establish a project's host settings with evidence — the dev command, the drive setup/stop scripts, the dev-database reset — by running them on the developer's own machine rather than guessing them from config. Covers the drive contract, the scenario contract it feeds, discovering a project's shape, the once-per-project UI-states setup, and the closing dry-run drive. Entry skill for kind=prepare sessions.
 disable-model-invocation: false
 ---
 
@@ -16,7 +16,8 @@ Your system prompt carries the per-session facts — the repo path, which keys a
 2. Work the keys **one at a time**: propose, ask, run it if they agree, record it.
 3. If the open keys touch the drive loop, author the machinery (below) before you record the two hook commands — the settings are invocation lines for scripts that must exist.
 4. If the repo builds with a toolchain the sandbox image does not carry, author its Dockerfile (below) — the sandbox keys are worth nothing in an image that cannot run them.
-5. Close by proposing a dry-run drive (below). Values that have never been driven look exactly as trustworthy as values that run perfectly.
+5. If your system prompt lists UI states as open and the project has a supported UI, offer them (below) — after the keys, before the dry run.
+6. Close by proposing a dry-run drive (below). Values that have never been driven look exactly as trustworthy as values that run perfectly.
 
 **Ask before you act.** Anything that starts or stops a service, creates or migrates a database, installs software, or writes outside the repo needs the human to agree first: say what you are about to run and why, then wait. Their own stack is running next to yours.
 
@@ -55,7 +56,7 @@ A drive is a script **you** write, committed to the project, plus the two things
 
 Stop undoes what setup made, **for this identity only**: drop the database it created, take its compose project down with its volumes, free its ports. The human's own stack is never yours.
 
-Writing those files is the one exception to a preparation session not editing the repo: you may write `.runcastle/` and `.gitignore` in this checkout and nothing else — a hook enforces it. Show the human the script before you commit it; it is their repo and their PR.
+Writing those files is the one exception to a preparation session not editing the repo: you may write `.runcastle/` and `.gitignore` in this checkout and nothing else — a hook enforces it. (UI states, below, widen it by exactly the package manifest and lockfile, for their dev dependencies only.) Show the human the script before you commit it; it is their repo and their PR.
 
 ## Scenarios
 
@@ -117,6 +118,30 @@ If `.runcastle/sandbox/Dockerfile` is already there, read it and **edit conserva
 
 **You never build the image.** That is a watched terminal action the human takes: the Enable AFK burns card offers **Build image**, and on a successful build runcastle points this project at the image itself — there is no image setting for you to work out or record. So end on it. Tell them the Dockerfile is written (or already right), that the card now offers Build image, and that burns use the project image after that click; until then they keep running in whatever image they run in today.
 
+## UI states (once per project)
+
+Runcastle can show the components a feature changed on that feature's review page — each story rendered, the changed ones beside how they looked at the feature's branch point — with no app start and no drive. Under the hood that is a Storybook catalogue built in the review sandbox, but to the human it is only ever "show your components in runcastle": the word Storybook never appears in runcastle's UI, and nothing you say should make them learn it.
+
+**When to offer it.** Your system prompt says whether `.runcastle/stories.json` is present. Offer this only when it is absent AND the project has a UI on a framework Storybook supports — React, Vue, Svelte, Angular, React Native — which you judge by reading the repo. Never on a backend-only project, and never on a Flutter one (not supported yet). Where it does not apply, say nothing about it.
+
+**Ask before installing.** The setup adds dev dependencies to the project's own manifest and lockfile — Storybook and, for pages that load data, MSW. Name exactly those packages, say they appear in the manifest and lockfile, and wait for a yes. Those two files are the only ones outside `.runcastle/` you may write, and only for these dependencies.
+
+**Follow `./references/stories.md` step by step.** In outline:
+
+1. Reuse before installing: a project that already uses Storybook gets `stories.json` pointed at that setup, and nothing else.
+2. Storybook's official setup, aimed at `.runcastle/storybook/` rather than a root `.storybook/`; story files in `.runcastle/stories/<group>/`.
+3. Every story wrapped in the app's providers (theme, router, translations, signed-in user).
+4. Data faked at the edge — intercepted network calls or a seeded data cache — never by mocking the app's own modules.
+5. One page-level story that loads data through that faking, and no more; feature work writes the rest.
+6. A typecheck config under `.runcastle/storybook/` covering the stories, leaving the project's own `tsconfig` untouched.
+7. `.runcastle/stories.json` with a build command that passes `--stats-json`.
+
+**Record the stories typecheck.** `verifyCommands` is human-supplied, so propose the existing value with the stories typecheck line appended, and only on their agreement `record_finding` it with `userSupplied: true`. Without it a story whose props drifted breaks nothing.
+
+**Build once on the host, as evidence.** Run the build into a scratch directory outside the repo — a build, never `storybook dev` — and confirm `index.json` and `preview-stats.json` were written and the page story is listed. A recipe that has never built is not set up.
+
+**Show the files, then commit** `.runcastle/` together with the manifest and lockfile. It is their repo and their PR.
+
 ## Recording what you establish
 
 One `record_finding` call per key, and `evidence` is not optional in spirit: record what you ran and what it printed, or what the human told you. A value with no account of itself is a guess with a source field.
@@ -145,4 +170,4 @@ Close with one line telling the human that ＋ New scenario in their next test d
 
 ## When nothing is open
 
-If your system prompt says every key is already set, this session is a **confirmation**, not a preparation. Say which values are recorded and how stale they are, ask the human whether they still hold, and stop. Do not re-derive a settled value, and do not propose a dry run unasked — replacing a measured value with a fresh guess makes preparation worse, not better.
+If your system prompt says every key is already set, this session is a **confirmation**, not a preparation. Say which values are recorded and how stale they are, ask the human whether they still hold, and stop — unless it also lists UI states as open, in which case offer them (above) before you stop. Do not re-derive a settled value, and do not propose a dry run unasked — replacing a measured value with a fresh guess makes preparation worse, not better.

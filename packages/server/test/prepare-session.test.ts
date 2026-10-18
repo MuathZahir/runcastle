@@ -623,6 +623,23 @@ describe('the prepare skill', () => {
     expect(skill).toMatch(/human-supplied/i)
   })
 
+  it('offers UI states once, for a supported UI, by following the stories recipe', () => {
+    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    const section = skill.slice(skill.indexOf('## UI states (once per project)'), skill.indexOf('## Recording'))
+    expect(section).toContain('show your components in runcastle')
+    expect(section).toContain('Never on a backend-only project')
+    expect(section).toContain('Flutter')
+    expect(section).toContain('Ask before installing.')
+    expect(section).toContain('./references/stories.md')
+    expect(section).toContain('`verifyCommands`')
+    expect(section).toContain('record_finding')
+    expect(section).toContain('never `storybook dev`')
+    expect(section).toContain('Show the files, then commit')
+    // and it has a place in the conversation's order
+    const order = skill.slice(skill.indexOf('## The order of the conversation'), skill.indexOf('## The eight keys'))
+    expect(order).toContain('UI states')
+  })
+
   it('keeps the recipes in a reference that loads only when reached for', () => {
     const recipes = readFileSync(join(skillDir, 'references', 'recipes.md'), 'utf8')
     expect(recipes).toContain('COMPOSE_PROJECT_NAME')
