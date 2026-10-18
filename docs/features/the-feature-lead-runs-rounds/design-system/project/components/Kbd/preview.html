@@ -1,0 +1,13 @@
+<!-- @dsCard group="Actions" height=64 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Kbd — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h(R.Kbd,null,'Ctrl'),h(R.Kbd,null,'K'),h('span',{style:{width:16}}),h(R.Kbd,null,'C'),h(R.Kbd,null,'Esc')));
+</script>
+</body>
+</html>

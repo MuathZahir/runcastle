@@ -51,7 +51,7 @@ export function sessionAgentName(session: { runtime?: AgentRuntime | null }): st
  * then burn" never says (finding F12) — where the work runs and where it lands.
  */
 export const BURN_EXPLAINER =
-  'Burning runs each ticket as its own sandboxed agent, in parallel, committing to the feature branch.'
+  'A round runs each ticket as its own sandboxed worker, in parallel, committing to the feature branch.'
 
 /**
  * Status bar, on the notify toggle. "Notify me when a burn finishes" met a
@@ -73,17 +73,3 @@ export const STOP_TIMEOUT = 'stop timed out — the process may still be running
 /** First-run wizard, on the step that configures them. */
 export const AFK_BURN_EXPLAINER =
   'An AFK burn is a burn you walk away from: runcastle runs the tickets in containers, unattended, and you read the result when you are back.'
-
-/**
- * Laps, wherever the number shows. The pipeline chip only appears past lap 1 (a
- * lap-1 feature looks like the plain linear flow, ADR-0010 §4) so it can name
- * what put it there; the forms that print "lap 1" get the plainer half.
- */
-export function lapExplainer(lap: number): string {
-  if (lap <= 1)
-    return 'Lap 1 — this feature’s first pass through the pipeline. Iterate, from review, opens the next one.'
-  return (
-    `Lap ${lap} — Iterate sent this feature back through the pipeline for another pass. ` +
-    `Earlier laps’ docs, tickets and commits are all kept.`
-  )
-}

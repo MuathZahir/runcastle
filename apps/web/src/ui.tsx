@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode, RefObject } from 'react'
-import type { LapGroup } from './lib/feature-ui'
+import type { RoundGroup } from './lib/feature-ui'
 import { IconChevronDown, IconChevronRight, IconX } from './icons'
 import { Button, IconButton, Spinner } from './ui/button'
 import {
@@ -682,61 +682,61 @@ export function BranchMenu({
   )
 }
 
-const LAP_HEAD = 'flex items-center gap-2 py-2 text-xs font-medium'
+const ROUND_HEAD = 'flex items-center gap-2 py-2 text-xs font-medium'
 
 /**
- * Rows under `Lap N` headers — the ticket ledger and the notes inbox. The
- * current lap is an always-open section; earlier laps are a `<details>` (with
- * a rotating chevron and an animated height) that opens on a click. A feature
- * still on lap 1 gets no headers at all (ADR-0010 §4). That suppression keys on
- * the feature's lap, never on how many laps have rows.
+ * Rows under `Round N` headers — the ticket ledger and the run lanes, grouped
+ * by the round that ran them (decision 16), with the tickets no round has held
+ * yet under "Not yet dispatched". The latest round and the undispatched rows
+ * are always-open sections; earlier rounds are a `<details>` (with a rotating
+ * chevron and an animated height) that opens on a click. Before any round has
+ * run there are no headers at all.
  *
  * A surface that frames its rows passes `headClassName` for its headers.
  */
-export function LapSections<T extends { lap: number }>({
+export function RoundSections<T>({
   groups,
-  currentLap,
   meta,
   headClassName,
   children,
 }: {
-  groups: LapGroup<T>[]
-  /** The feature's own lap — what decides whether headers show at all. */
-  currentLap: number
-  /** One line about what a lap holds, shown beside its number. */
-  meta: (group: LapGroup<T>) => string
-  /** Extra utilities on each lap header, for a surface that frames its rows. */
+  groups: RoundGroup<T>[]
+  /** One line about what a round holds, shown beside its number. */
+  meta: (group: RoundGroup<T>) => string
+  /** Extra utilities on each header, for a surface that frames its rows. */
   headClassName?: string
   children: (rows: T[]) => ReactNode
 }) {
-  if (currentLap <= 1) return <>{children(groups.flatMap((g) => g.rows))}</>
+  const latest = groups.findLast((g) => g.round !== null)
+  if (!latest) return <>{children(groups.flatMap((g) => g.rows))}</>
 
   return (
     <>
       {groups.map((g) => {
+        const key = g.round ?? 'pending'
         const head = (
           <>
-            <span>Lap {g.lap}</span>
+            <span>{g.round === null ? 'Not yet dispatched' : `Round ${g.round}`}</span>
             <span className="font-normal text-text-tertiary">{meta(g)}</span>
           </>
         )
-        return g.current ? (
-          <section key={g.lap}>
-            <div className={cx(LAP_HEAD, headClassName, 'text-text-secondary')}>{head}</div>
+        return g === latest || g.round === null ? (
+          <section key={key}>
+            <div className={cx(ROUND_HEAD, headClassName, 'text-text-secondary')}>{head}</div>
             {children(g.rows)}
           </section>
         ) : (
-          <details className="group/lap" data-disclosure="" key={g.lap}>
+          <details className="group/round" data-disclosure="" key={key}>
             <summary
               className={cx(
-                LAP_HEAD,
+                ROUND_HEAD,
                 headClassName,
                 'cursor-pointer list-none text-text-tertiary hover:text-text [&::-webkit-details-marker]:hidden',
               )}
             >
               <IconChevronRight
                 size={12}
-                className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/lap:rotate-90"
+                className="shrink-0 text-icon transition-transform duration-(--dur-2) ease-app group-open/round:rotate-90"
               />
               {head}
             </summary>

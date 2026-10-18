@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
+import { burn } from '../src/services/features'
 import { getRunRow } from '../src/services/repo'
 import { cancelTicket, getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
@@ -93,7 +94,7 @@ describe('orphaned burning tickets', () => {
   it('feature.burn heals the stuck lane instead of failing instantly', async () => {
     const { featureId, stuckId } = seedWedged()
 
-    await caller.feature.burn({ featureId })
+    await burn(ctx, featureId)
 
     // Swept to failed, reset to pending, then burned by the run — not skipped.
     expect(getTicket(ctx, stuckId).status).toBe('done')

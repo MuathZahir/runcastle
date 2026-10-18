@@ -22,6 +22,7 @@ import { triagePreview } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
 import { features, reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
+import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 describe('review findings service', () => {
@@ -82,14 +83,11 @@ describe('review findings service', () => {
     expect(listTickets(ctx, featureId).map((t) => t.id)).toContain(fix.id)
   })
 
-  it('reports a defect and links a pending fix ticket both ways', () => {
+  it('reports a defect as an open finding for the lead, minting no fix ticket', () => {
     const result = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
-    expect(result.finding).toMatchObject({ lap: 3, status: 'open', fixTicketId: result.fixTicket?.id })
-    expect(result.fixTicket).toMatchObject({
-      status: 'pending', lap: 3, kind: 'implementation', blockedBy: [reviewTicket.seq],
-      originFindingId: result.finding.id,
-    })
-    expect(listTickets(ctx, featureId)).toHaveLength(2)
+    expect(result).toMatchObject({ fixTicket: null, overCap: false })
+    expect(result.finding).toMatchObject({ lap: 3, status: 'open', openReason: null, fixTicketId: null })
+    expect(listTickets(ctx, featureId)).toHaveLength(1)
     expect(listAfter(ctx, featureId).map((event) => event.type)).toContain('finding.reported')
   })
 
@@ -104,40 +102,31 @@ describe('review findings service', () => {
     expect(listTickets(ctx, featureId)).toHaveLength(2)
   })
 
-  it('caps auto-fixes at eight and never mints a ticket for an observation', () => {
-    for (let index = 1; index <= 8; index += 1) {
-      expect(reportFinding(ctx, { featureId, reviewTicket, input: defect(`Defect ${index}`) }).overCap).toBe(false)
+  it('mints no ticket however many defects arrive, and none for an observation', () => {
+    for (let index = 1; index <= 9; index += 1) {
+      const reported = reportFinding(ctx, { featureId, reviewTicket, input: defect(`Defect ${index}`) })
+      expect(reported).toMatchObject({ fixTicket: null, overCap: false })
+      expect(reported.finding).toMatchObject({ status: 'open', openReason: null })
     }
-    const ninth = reportFinding(ctx, { featureId, reviewTicket, input: defect('Defect 9') })
-    expect(ninth).toMatchObject({ fixTicket: null, overCap: true })
-    expect(ninth.finding).toMatchObject({ status: 'open', openReason: 'over-cap', fixTicketId: null })
 
     const observation = reportFinding(ctx, {
       featureId, reviewTicket,
       input: { ...defect('Could not verify mobile'), kind: 'observation', reproStep: undefined },
     })
     expect(observation.fixTicket).toBeNull()
-    expect(listTickets(ctx, featureId)).toHaveLength(9)
+    expect(listTickets(ctx, featureId)).toHaveLength(1)
     expect(listByFeature(ctx, featureId)).toHaveLength(10)
   })
 
   /**
-   * A review ticket that is retried reports its defects again, and the fix
-   * tickets its dead attempt minted are still there, blocked on it. A second
-   * ticket for the same defect would leave the first one stale for a human to
-   * clean up — so the report revives what it already minted.
+   * A review ticket that is retried reports its defects again. A second row
+   * for the same defect would hand the lead two findings for one problem — so
+   * the report refreshes the one its dead attempt recorded.
    */
   describe('a defect this review already reported', () => {
-    /** Report a defect and let its fix ticket fail, as a dead attempt leaves it. */
-    function abandoned(title?: string) {
-      const reported = reportFinding(ctx, { featureId, reviewTicket, input: defect(title) })
-      updateTicket(ctx, reported.fixTicket!.id, { status: 'failed', error: 'the fix agent died' })
-      markFailed(ctx, reported.finding.id, 'the fix agent died')
-      return reported
-    }
-
-    it('revives the failed fix ticket instead of minting a second one', () => {
-      const first = abandoned()
+    it('refreshes the earlier finding instead of storing a second one', () => {
+      const first = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+      markFailed(ctx, first.finding.id, 'the attempt died')
 
       const again = reportFinding(ctx, {
         featureId,
@@ -145,55 +134,37 @@ describe('review findings service', () => {
         input: { ...defect(), detail: 'The save action drops the edited value on reload too.' },
       })
 
-      expect(again.fixTicket?.id).toBe(first.fixTicket?.id)
-      expect(again.fixTicket).toMatchObject({ status: 'pending', error: undefined })
-      // Rebuilt from this report, so the fix agent reads what the review just
-      // saw rather than the wording of the attempt that died.
-      expect(again.fixTicket?.context).toContain('on reload too')
+      expect(again.fixTicket).toBeNull()
       expect(again.finding).toMatchObject({
         id: first.finding.id, status: 'open', failureReason: null, openReason: null,
+        detail: 'The save action drops the edited value on reload too.',
       })
-      expect(listTickets(ctx, featureId)).toHaveLength(2)
+      expect(listTickets(ctx, featureId)).toHaveLength(1)
       expect(listByFeature(ctx, featureId)).toHaveLength(1)
       expect(listAfter(ctx, featureId).map((event) => event.type)).toContain('finding.reported')
     })
 
-    it('does not mint a second ticket when the first one has not burned yet', () => {
-      const first = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+    it('stores a fresh finding for a defect reported somewhere else', () => {
+      reportFinding(ctx, { featureId, reviewTicket, input: defect() })
 
-      const again = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
-
-      expect(again.fixTicket?.id).toBe(first.fixTicket?.id)
-      expect(listTickets(ctx, featureId)).toHaveLength(2)
-    })
-
-    it('mints a fresh ticket for a defect reported somewhere else', () => {
-      const first = abandoned()
-
-      const other = reportFinding(ctx, {
+      reportFinding(ctx, {
         featureId,
         reviewTicket,
         input: { ...defect(), location: 'packages/server/src/load.ts:9' },
       })
 
-      expect(other.fixTicket?.id).not.toBe(first.fixTicket?.id)
-      expect(listTickets(ctx, featureId)).toHaveLength(3)
+      expect(listByFeature(ctx, featureId)).toHaveLength(2)
     })
 
-    it.each(['done', 'cancelled'] as const)(
-      'mints a fresh ticket when the earlier one is %s',
-      (status) => {
-        // A landed fix answered the defect and a cancelled one was a human's
-        // decision: neither is open work this report may reopen.
-        const first = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
-        updateTicket(ctx, first.fixTicket!.id, { status })
+    it('stores a fresh finding when the earlier one was dismissed', () => {
+      // A human's decision this report has no business overturning.
+      const first = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+      dismiss(ctx, first.finding.id)
 
-        const again = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+      reportFinding(ctx, { featureId, reviewTicket, input: defect() })
 
-        expect(again.fixTicket?.id).not.toBe(first.fixTicket?.id)
-        expect(listByFeature(ctx, featureId)).toHaveLength(2)
-      },
-    )
+      expect(listByFeature(ctx, featureId).map((f) => f.status).sort()).toEqual(['dismissed', 'open'])
+    })
   })
 
   it('emits finding.updated for each status mutation', () => {
@@ -208,16 +179,16 @@ describe('review findings service', () => {
   })
 
   it.each(['failed', 'cancelled'] as const)('returns a fixing defect to open when its fix ticket is %s', (status) => {
-    const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+    const { finding, fixTicket } = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect() })
     markFixing(ctx, finding.id)
-    updateTicket(ctx, fixTicket!.id, { status })
+    updateTicket(ctx, fixTicket.id, { status })
     expect(viewByFeature(ctx, featureId).openDefects.map((row) => row.id)).toContain(finding.id)
   })
 
   it('marks the finding failed when an orphaned burning fix ticket is swept', () => {
-    const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
+    const { finding, fixTicket } = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect() })
     markFixing(ctx, finding.id)
-    updateTicket(ctx, fixTicket!.id, { status: 'burning' })
+    updateTicket(ctx, fixTicket.id, { status: 'burning' })
     sweepOrphanedBurning(ctx, featureId, 'agent vanished')
     expect(listByFeature(ctx, featureId)[0]).toMatchObject({
       status: 'failed', openReason: 'fix-failed', failureReason: 'agent vanished',
@@ -247,8 +218,8 @@ describe('review findings service', () => {
 
     /** Report a defect on lap 3 and let its fix ticket fail, leaving it open. */
     function abandonedDefect(title = 'Broken save'): string {
-      const { finding, fixTicket } = reportFinding(ctx, { featureId, reviewTicket, input: defect(title) })
-      updateTicket(ctx, fixTicket!.id, { status: 'failed' })
+      const { finding, fixTicket } = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect(title) })
+      updateTicket(ctx, fixTicket.id, { status: 'failed' })
       return finding.id
     }
 
@@ -279,7 +250,7 @@ describe('review findings service', () => {
     })
 
     it('refuses to carry anything that is not this feature\'s open or carried defect', () => {
-      const settled = reportFinding(ctx, { featureId, reviewTicket, input: defect('Being fixed') }).finding
+      const settled = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect('Being fixed') }).finding
       const observation = reportFinding(ctx, {
         featureId, reviewTicket,
         input: { ...defect('Could not verify mobile'), kind: 'observation', reproStep: undefined },

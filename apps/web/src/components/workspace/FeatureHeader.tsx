@@ -1,44 +1,35 @@
 import type { ReactNode } from 'react'
-import type { Phase } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
-import type { PipelineStep } from '../../lib/feature-ui'
 import { useToast } from '../../lib/toast'
 import { MetaLine, OrchestratedTag, PageHeader, cx, type MetaItem } from '../../ui'
 import { IconBranch } from '../../icons'
 import { copyText } from './copy-text'
-import { PipelineStepper } from './PipelineStepper'
 
 /**
- * The top of the feature page (DESIGN.md §Page anatomy): the title once
- * (22/28) with the Orchestrated tag beside it when the orchestrator owns the
- * feature, one meta line — the branch (a click copies it), then 2–3 facts —
- * the pipeline stepper, and the next-step row passed as `children`.
+ * The top of the feature page (`the-feature-lead-runs-rounds` decision 24):
+ * the title once (22/28) with the Orchestrated tag beside it when the
+ * orchestrator owns the feature, one meta line — the branch (a click copies
+ * it), then the age — and the status line's action row passed as `children`.
+ * Nothing else: the status line says where the feature is, so there is no
+ * phase stepper.
  *
  * Everything here fits the column it is handed: the title wraps (it is the
  * page's one heading, and the topbar crumb already carries the truncated
- * copy), the branch ellipsizes rather than widening the page, and the stepper
- * wraps onto a second line in a narrow column.
+ * copy), and the branch ellipsizes rather than widening the page.
  */
 export function FeatureHeader({
   feature,
   isDraft,
-  steps,
-  onViewPhase,
-  readonly = false,
   facts = [],
   className,
   children,
 }: {
   feature: FeatureFull['feature']
   isDraft: boolean
-  steps: PipelineStep[]
-  onViewPhase: (phase: Phase | null) => void
-  /** An earlier phase is pinned (the stepper marks the one being viewed). */
-  readonly?: boolean
-  /** The facts after the branch: age, ticket count, lap. */
+  /** The facts after the branch: when it started (or was parked, or merged). */
   facts?: Array<MetaItem | false | null | undefined>
   className?: string
-  /** The next-step row (or, pinned, the way back). */
+  /** The status line's action row (or, pinned, the way back). */
   children?: ReactNode
 }) {
   const toast = useToast()
@@ -75,22 +66,7 @@ export function FeatureHeader({
       meta={meta}
       className={className}
     >
-      {(!isDraft || children) && (
-      <div className="flex flex-col gap-5">
-        {/* A draft has no meaningful pipeline position (decision 9): it is
-            created at `ideation` like everything else, and a stepper lit at
-            that first step would claim work has begun on a feature with no
-            branch. The meta line says "Draft" instead. */}
-        {!isDraft && (
-          <PipelineStepper
-            steps={steps}
-            readonly={readonly}
-            onView={(p) => onViewPhase(p === feature.phase ? null : p)}
-          />
-        )}
-        {children}
-      </div>
-      )}
+      {children && <div className="flex flex-col gap-5">{children}</div>}
     </PageHeader>
   )
 }

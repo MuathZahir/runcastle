@@ -21,6 +21,7 @@ import type {
   TicketStatus,
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
+import type { TokenBreakdown } from './usage'
 
 /**
  * Drizzle SQLite tables mirroring the zod schemas. JSON columns use
@@ -177,6 +178,35 @@ export const features = sqliteTable('features', {
    * created before the column was the human's, which is what the default says.
    */
   orchestrated: integer('orchestrated', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
+   * null when not stopped. Dispatch is refused while it is set and no human
+   * message has arrived since; that message clears it.
+   */
+  stoppedAt: integer('stopped_at'),
+  /**
+   * Why nothing moves until the human acts — the status line's "Waiting for
+   * you · <why>". Cleared by the next human message or round dispatch.
+   */
+  waitingReason: text('waiting_reason'),
+  /** When a human message last reached the lead (ms) — the after-Stop dispatch check. */
+  lastHumanMessageAt: integer('last_human_message_at'),
+  /** When the lead last dispatched a round (ms). */
+  lastDispatchAt: integer('last_dispatch_at'),
+})
+
+/**
+ * The lead's "Ready for you" declarations (decision 9): each one put a drive in
+ * front of the human, with the scenario to drive and what to test. `runId` is
+ * the round it follows, null when no round had run yet.
+ */
+export const readyDeclarations = sqliteTable('ready_declarations', {
+  id: text('id').primaryKey(),
+  featureId: text('feature_id').notNull(),
+  runId: text('run_id'),
+  scenario: text('scenario').notNull(),
+  whatToTest: text('what_to_test').notNull(),
+  createdAt: integer('created_at').notNull(),
 })
 
 /**
@@ -321,6 +351,10 @@ export const sessions = sqliteTable('sessions', {
    * already-ended row, and the FIRST ending is the true one.
    */
   endedAt: integer('ended_at'),
+  /** Tokens summed over this session's transcript (decision 3); null until counted. */
+  tokens: integer('tokens'),
+  /** The per-kind split behind `tokens` (input, output, cache…), as JSON; null until counted. */
+  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<TokenBreakdown>(),
 })
 
 export const tickets = sqliteTable('tickets', {
@@ -375,6 +409,10 @@ export const tickets = sqliteTable('tickets', {
    */
   digest: text('digest'),
   originFindingId: text('origin_finding_id'),
+  /** Tokens the worker spent on this ticket, summed over its transcript; null until counted. */
+  tokens: integer('tokens'),
+  /** The per-kind split behind `tokens`, as JSON; null until counted. */
+  tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<TokenBreakdown>(),
 })
 
 export const reviewFindings = sqliteTable('review_findings', {
@@ -431,6 +469,8 @@ export const testNotes = sqliteTable('test_notes', {
    * against a re-recorded video costs nothing.
    */
   videoTimestamp: real('video_timestamp'),
+  /** When "Send to agent" delivered this note to the lead; null while unsent. */
+  sentAt: integer('sent_at'),
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 })
@@ -460,6 +500,11 @@ export const runs = sqliteTable('runs', {
   summary: text('summary'),
   /** The run's harvested ticket digests, concatenated under per-ticket headers. */
   digest: text('digest'),
+  /**
+   * The project's verify commands, run against the branch tip when this round
+   * ended (decision 10); null until they ran, and on non-round workflows.
+   */
+  gates: text('gates', { mode: 'json' }).$type<ReviewGateRun>(),
 })
 
 export const events = sqliteTable(

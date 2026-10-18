@@ -2,35 +2,31 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import type { FeatureFull, PrepView } from '../../lib/api'
+import type { FeatureFull } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
-import { unverifiedDriveKeys } from '../../lib/prep-findings'
 import {
   conflictResolveEnded,
   deferredScope,
   driveFailure,
-  lapAccount,
-  lapChip,
-  lastTestDriveLap,
+  roundOfSeq,
+  latestRoundTickets,
   latestRun,
   liveSessionLine,
   mergeConflictResolved,
   reviewDriveDenial,
+  roundAccount,
   slotHeldReason,
   specDocPath,
-  stampedOutcome,
-  stampedReview,
   unverifiedLap,
-  verificationState,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useEventLog } from '../../lib/events'
 import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
+import { useRoundTrail } from '../../lib/round-trail'
 import type { StageExpand } from '../../lib/stage-expand'
 import { AsideLayout } from '../../ui'
 import { useToast } from '../../lib/toast'
-import { CarriedFindings } from '../review/CarriedFindings'
 import { ConflictAlert, ConflictResolvedLine } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
 import { EvidenceStage } from '../review/EvidenceStage'
@@ -40,9 +36,8 @@ import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
-import { ReviewTrail } from '../review/ReviewTrail'
-import { DrivePrerequisitesNotice } from '../review/DrivePrerequisitesNotice'
-import { LapStory, StatusStrip } from '../review/StatusStrip'
+import { RoundTrail } from '../review/RoundTrail'
+import { DeferredScope } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { UiStatesSection } from '../review/UiStatesSection'
 import { WorkList, partitionWork } from '../review/WorkList'
@@ -53,7 +48,7 @@ import type { WalkthroughHandle } from '../WalkthroughPlayer'
  * (DESIGN.md §Page anatomy): notices only when something is really wrong, the
  * state as a property list with the two things you can start from it, the
  * evidence stage only when there is evidence, the open work as a section only
- * when there is some, what an earlier lap carried, the laps, and the long
+ * when there is some, the rounds, and the long
  * read-once text in closed disclosures at the foot.
  *
  * There is no permanent right rail any more: an empty "What still needs
@@ -137,9 +132,9 @@ export function ReviewBody({
     { featureId: feature.id },
     { refetchInterval: reviewPoll },
   )
-  // Scope the spec left for a later lap. Same read the next-step bar makes (one
-  // query key, one fetch), so the lap chip and the bar cannot disagree about
-  // whether this lap is the last one.
+  // Scope the spec deliberately left out. Same read the next-step bar makes (one
+  // query key, one fetch), so the disclosure and the bar cannot disagree about
+  // what is still deferred.
   const specRelPath = specDocPath(full)
   const specQ = trpc.docs.read.useQuery(
     { featureId: feature.id, relPath: specRelPath ?? 'spec.md' },
@@ -149,29 +144,11 @@ export function ReviewBody({
   const artifacts = useReviewArtifacts(feature.id)
   const rows = artifacts.data ?? []
   const recordings = rows.filter((a) => a.hasVideo && a.videoUrl)
-  // The stamp is the LATEST COMPLETED pass (decision 41a) — a pass still burning
-  // vouches for nothing, and ordering on completion is what makes "latest" mean
-  // latest rather than highest-numbered.
-  const stamped = stampedReview(rows, tickets)
-  // What a test drive is about to depend on that no dry run has ever proven
-  // (decision 8) — the state line's amber chip. Same query key the next-step bar
-  // reads, so the chip and the bar come out of one fetch of the project's
-  // findings. (`useQuery().data` infers to `{}` here — the same tRPC-in-component
-  // typing gap the settings overlay documents.)
-  const prep = trpc.project.prep.useQuery({ projectId: feature.projectId })
-  const unverifiedKeys = unverifiedDriveKeys((prep.data as PrepView | undefined)?.findings ?? [])
   // How this project says to drive it (decision 6), for the block beside the
   // Test drive control. The project row is the shell's own list read — one query
   // key, so the page pays nothing for it.
   const projects = trpc.project.list.useQuery()
   const project = projects.data?.find((p) => p.id === feature.projectId)
-  // What this host is missing to offer the next review a drive, said before the
-  // burn rather than on the trail after it. The server caches the probe, and a
-  // history view has no next review to warn about.
-  const drivePrereqs = trpc.project.drivePrerequisites.useQuery(
-    { projectId: feature.projectId },
-    { enabled: !readonly },
-  )
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -180,7 +157,7 @@ export function ReviewBody({
     onError: (e) => toast.push(e.message),
   })
   // Another review pass, on demand (decisions 6–7): a fresh review ticket is
-  // minted on this lap and burned. The server refuses it while a run is live or
+  // minted and burned. The server refuses it while a run is live or
   // while the tree would deny the drive again, and those refusals are the
   // server's own words — a toast here, and inside the banner where the banner
   // is what asked.
@@ -299,7 +276,7 @@ export function ReviewBody({
   // at review on a feature that has moved on, and a denial answered by a later
   // phase is a record, not something to act on.
   const denial = feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
-  // This lap's review ran and verified nothing (decision 5) — the page's top
+  // The latest review ran and verified nothing (decision 5) — the page's top
   // line, in runcastle's own words. A history view states nothing and offers
   // nothing (decision 33a), so the banner is the live page's alone.
   const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
@@ -313,7 +290,7 @@ export function ReviewBody({
         ...(agenticReview.isPending
           ? { blocked: 'starting…' }
           : run?.status === 'running'
-            ? { blocked: 'a burn is running' }
+            ? { blocked: 'a round is running' }
             : {}),
       }
   // One partition, two halves (decision 8): what needs attention is the middle
@@ -325,14 +302,11 @@ export function ReviewBody({
     openDefects: findings.data?.openDefects ?? [],
   })
   const observations = (findings.data?.findings ?? []).filter((f) => f.kind === 'observation')
-  const account = lapAccount(tickets, feature.lap)
-  const lapFigure = lapChip(tickets, {
-    lap: feature.lap,
-    // The lap's own session has run once it has emitted this lap's tickets —
-    // exactly what the past tense in its story claims.
-    lapSessionRan: tickets.some((t) => t.lap === feature.lap),
-  })
-  const laterLaps = deferredScope(specQ.data?.content)
+  // Every run is a round (decision 16) — the trail, and what the latest one landed.
+  const { rounds, trail } = useRoundTrail(full, events, readonly ? false : poll)
+  const account = roundAccount(latestRoundTickets(tickets, rounds))
+  const roundOf = roundOfSeq(rounds)
+  const deferred = deferredScope(specQ.data?.content)
 
   // The stage is one element in both states — expanding changes what is AROUND
   // it, never what it is, which is what lets a drive ↔ walkthrough switch happen
@@ -390,10 +364,10 @@ export function ReviewBody({
           onDismiss={() => setDismissedDenial(denial.eventId)}
         />
       )}
-      {/* The lap that verified nothing says so before anything else on the
+      {/* A review that verified nothing says so before anything else on the
           page (decision 5) — loud, and blocking nothing. */}
       {unverified && (
-        <NothingVerifiedAlert lap={feature.lap} outcome={unverified} agenticReview={agenticReviewControl} />
+        <NothingVerifiedAlert outcome={unverified} agenticReview={agenticReviewControl} />
       )}
       {!readonly && !driveUp && slotHolder && blockingProjectDrive && (
         <ProjectDriveBlocking projectId={blockingProjectDrive} holderLabel={slotHolder.holderLabel} />
@@ -403,7 +377,6 @@ export function ReviewBody({
 
   const workProps = {
     featureId: feature.id,
-    lap: feature.lap,
     rows: attention,
     readonly,
     // Nothing is on the stage when there is no stage, so a timestamp on a row
@@ -413,6 +386,10 @@ export function ReviewBody({
     highlight: spotlight.ids,
     scrollTo: spotlight.scrollTo,
     onViewLane,
+    driveActive: driveUp,
+    // The composer is for drive notes (decision 24): up while driving, or once
+    // the agent has asked for a drive — never on a feature nobody drives yet.
+    notesOpen: driveUp || trail.entries.some((e) => e.type === 'ready'),
   }
 
   const expanded = expand.expanded
@@ -454,28 +431,9 @@ export function ReviewBody({
           </div>
         )}
 
-        <div data-tier="status" className="flex flex-col gap-4">
-          <StatusStrip
-            artifact={stamped}
-            outcome={stampedOutcome({ passes: rows, tickets })}
-            currentLap={feature.lap}
-            landedSince={stamped?.landedSince ?? 0}
-            tickets={tickets}
-            runState={run?.status ?? 'no run recorded'}
-            verification={verificationState(tickets)}
-            driveLap={lastTestDriveLap(events)}
-            // History states what was; a caveat about the next drive is the live page's.
-            {...(readonly ? {} : { unverifiedKeys })}
-            {...(readonly ? {} : { driving: driveUp })}
-            // Always offered while the page can act (decision 6): asking for
-            // another review pass is never about what the last one did.
-            {...(agenticReviewControl ? { agenticReview: agenticReviewControl } : {})}
-            // Test drive is not offered here: the next-step bar above carries
-            // Start / Stop test drive on every review state, and the same act
-            // twice on one screen is one too many (DESIGN.md: say it once).
-          />
-          {!readonly && <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />}
-        </div>
+        {/* No Status tier (`the-feature-lead-runs-rounds` decision 24): the
+            header's status line and the round trail below say it, and the
+            walkthrough warning stands where the drive starts, in the header. */}
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
           {!expanded && stage}
@@ -483,31 +441,21 @@ export function ReviewBody({
           <UiStatesSection model={uiStates.data ?? null} />
 
           <OpenWork {...workProps} />
-
-          {/* What earlier laps parked instead of answering (decisions #5) —
-              outside the open count, since the server keeps carried defects out
-              of the summary the page leads with. */}
-          <CarriedFindings
-            featureId={feature.id}
-            findings={findings.data?.carriedFindings ?? []}
-            readonly={readonly}
-          />
         </div>
 
-        {/* The feature's laps, oldest first (decision 5) — history, below the
-            state and the open work it is the record behind. Clicking a pass's
-            recording stages it above. The long text is read once, so closed
-            (DESIGN.md principle 6). */}
+        {/* The feature's rounds, oldest first (decision 16) — history, below
+            the state and the open work it is the record behind. Clicking a
+            review worker's recording stages it above. The long text is read
+            once, so closed (DESIGN.md principle 6). */}
         <ReferenceTier
           history={
-            <ReviewTrail
-              passes={rows}
-              tickets={tickets}
-              findings={findings.data?.findings ?? []}
-              notes={notes.data ?? []}
-              currentLap={feature.lap}
-              staged={staged?.ticketId ?? null}
-              onStage={stageRecording}
+            <RoundTrail
+              trail={trail}
+              recordings={{
+                byTicket: new Map(recordings.map((r) => [r.ticketId, r.videoUrl!])),
+                staged: staged?.ticketId ?? null,
+                onStage: stageRecording,
+              }}
               {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
             />
           }
@@ -516,6 +464,7 @@ export function ReviewBody({
           <FullAccounts
             account={account}
             tickets={tickets}
+            roundOf={roundOf}
             observations={observations}
             carried={
               settled.length > 0 ? (
@@ -530,7 +479,7 @@ export function ReviewBody({
               ) : null
             }
           />
-          <LapStory lap={lapFigure} laterLaps={laterLaps} currentLap={feature.lap} readonly={readonly} />
+          <DeferredScope deferred={deferred} readonly={readonly} />
         </ReferenceTier>
       </div>
       {overlay && (typeof document === 'undefined' ? overlay : createPortal(overlay, document.body))}

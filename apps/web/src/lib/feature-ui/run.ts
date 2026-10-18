@@ -127,7 +127,7 @@ export function runHeadline(
   // The review pass is not work (simplify-the-pages decision 2): its lane says
   // its own state, so the counts below never restate it.
   const counts = summaryCounts(tickets.filter((t) => t.kind !== 'review'))
-  const verb = run.status && run.status !== 'running' ? 'Burned' : 'Burning'
+  const verb = run.status && run.status !== 'running' ? 'Ran' : 'Running'
   const parts = [`${verb} ${implementation} ticket${implementation === 1 ? '' : 's'}`]
   if (fixes) parts.push(`+${fixes} fixes from review`)
   if (counts.done) parts.push(`${counts.done} done`)

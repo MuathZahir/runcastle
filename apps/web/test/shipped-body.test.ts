@@ -82,7 +82,16 @@ vi.mock('../src/trpc', () => {
       findings: { listByFeature: { useQuery: () => ({ data: { findings: [] } }) } },
       docs: { read: { useQuery: () => ({ data: undefined }) } },
       project: { list: { useQuery: () => ({ data: [] }) } },
-      feature: { testDrive: { useMutation: mutation }, fixDrive: { useMutation: mutation } },
+      feature: {
+        testDrive: { useMutation: mutation },
+        fixDrive: { useMutation: mutation },
+        rounds: {
+          useQuery: () => ({
+            data: [{ round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [], landed: [], failed: [], gates: { ok: true, failed: [] }, startedAt: 1, finishedAt: 60_001 }],
+          }),
+        },
+        readyDeclarations: { useQuery: () => ({ data: [] }) },
+      },
     },
   }
 })
@@ -146,7 +155,7 @@ describe('ShippedBody', () => {
   /**
    * simplify-the-pages decisions 7 and 9c: Status → "What shipped" (the Outcome
    * doc beside its heading, then the walkthrough) → Reference, under a quiet
-   * "History" label, then Questions asked and the closed long text.
+   * "Rounds" label, then Questions asked and the closed long text.
    */
   it('lays the record out in tiers: status, what shipped, then reference', () => {
     const html = render()
@@ -163,12 +172,21 @@ describe('ShippedBody', () => {
       at('Outcome doc'),
       at('aspect-video'),
       at('data-tier="reference"'),
-      at('>History</span>'),
+      at('id="round-trail"'),
       at('Questions asked'),
     ]
     expect(order).toEqual([...order].sort((a, b) => a - b))
     expect(html).toMatch(/<h2 class="[^"]*text-lg[^"]*">What shipped<\/h2>/)
-    expect(html).not.toMatch(/<h[1-3][^>]*>History/)
+    expect(html).not.toMatch(/<h[12][^>]*>Rounds/)
+  })
+
+  /** Decision 16: a shipped feature's old runs read as rounds, with no lap vocabulary. */
+  it('reads its runs as a round trail', () => {
+    const html = render()
+    expect(html).toContain('Round 1')
+    expect(html).not.toContain('tokens')
+    expect(html).toContain('gates passed')
+    expect(html).not.toMatch(/\bLaps?\b/)
   })
 
   describe('the page top', () => {
@@ -209,9 +227,9 @@ describe('ShippedBody', () => {
      * band — so what a shipped record shows is the latest pass, named by the
      * lap it belongs to rather than by a list it is picked from.
      */
-    it('names the lap the record on the stage belongs to', () => {
+    it('names the record on the stage by what it is, never by a lap', () => {
       const html = render()
-      expect(html).toContain('Lap 2 · Verification walkthrough')
+      expect(html).toContain('>Verification walkthrough')
       expect(html).not.toContain('Earlier recordings')
     })
 
@@ -248,7 +266,7 @@ describe('ShippedBody', () => {
       for (const key of ['>Review<', '>Tickets<', '>Test drive<']) {
         expect(html).toContain(key)
       }
-      for (const key of ['>Checks<', '>Laps<', '>Burn<']) {
+      for (const key of ['>Checks<', '>Laps<', '>Round<']) {
         expect(html).not.toContain(key)
       }
     })
@@ -259,8 +277,8 @@ describe('ShippedBody', () => {
     })
 
     /** Decision 33a: the read-only drive line is a statement, never an instruction. */
-    it('states the lap the test drive was taken in', () => {
-      expect(render()).toContain('Lap 2')
+    it('states that the test drive was taken', () => {
+      expect(render()).toContain('Taken')
     })
 
     it('says plainly when the branch was never driven', () => {

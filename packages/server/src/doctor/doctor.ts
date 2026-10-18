@@ -698,7 +698,7 @@ export async function sandcastleImageProbe(input: ImageProbeInput): Promise<Prob
         detail: image.present
           ? `${tag} is built but is not this project's image yet`
           : `.runcastle/sandbox/Dockerfile is not built — ${tag} does not exist`,
-        fix: 'Open Settings → Burns (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
+        fix: 'Open Settings → Workers (Build image) — runcastle builds .runcastle/sandbox/Dockerfile for you.',
       }
     }
     // The project image's own labels, inherited through `FROM`, record the CLIs
@@ -882,7 +882,7 @@ function staleImage(detail: string, unchecked = ''): ProbeResult {
     status: 'stale',
     severity: 'error',
     detail: `${detail} — rebuild${unchecked}`,
-    fix: 'Open Settings → Burns (Rebuild image).',
+    fix: 'Open Settings → Workers (Rebuild image).',
   }
 }
 

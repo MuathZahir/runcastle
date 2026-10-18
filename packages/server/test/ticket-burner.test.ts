@@ -231,7 +231,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -349,7 +349,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -490,7 +490,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Burns to catch up.',
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Workers to catch up.',
           data: {
             warning: true,
             managed: true,
@@ -504,7 +504,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
     })
 
-    it('leads a "CLI too old" halt’s summary with the Settings → Burns fix', async () => {
+    it('leads a "CLI too old" halt’s summary with the Settings → Workers fix', async () => {
       const { ctx } = makeCtx([ticket(1)])
       const error = cliTooOldMessage(
         new Error(
@@ -525,7 +525,7 @@ describe('burnRun — scheduling and summary', () => {
 
       expect(res.status).toBe('failed')
       expect(res.summary).toContain(
-        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Burns.',
+        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Workers.',
       )
     })
 
@@ -631,7 +631,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Burns to catch up.',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Workers to catch up.',
           data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
       ])
@@ -1138,7 +1138,12 @@ describe('burnRun — cancelled tickets (revisit surgery)', () => {
  * one minting a fix ticket into the store, and the run those tickets were born
  * into burns them itself rather than leaving them for a human to start.
  */
-describe('burnRun — fix tickets minted while the run is live', () => {
+/**
+ * A review's findings go to the feature's lead at the round's end
+ * (the-feature-lead-runs-rounds decision 10): nothing stored while the review
+ * burns joins the running run.
+ */
+describe('burnRun — a review settling admits nothing', () => {
   const reviewTicket = (seq: number, blockedBy: number[] = []): Ticket => ({
     ...ticket(seq, blockedBy),
     kind: 'review',
@@ -1161,28 +1166,24 @@ describe('burnRun — fix tickets minted while the run is live', () => {
     return { ...base, findings }
   }
 
-  it('admits them once the review is terminal and burns them in the same run', async () => {
+  it('leaves tickets stored while the review burned out of the run', async () => {
     const tickets = [ticket(1), reviewTicket(2, [1])]
     const { ctx, events } = makeFixCtx(tickets)
     const calls: number[] = []
     const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
       calls.push(t.seq)
       if (t.kind !== 'review') return { status: 'done', commits: ['sha'] }
-      // What `report_finding` does while the review is still burning.
+      // Fix tickets appearing while the review is still burning.
       tickets.push(fixTicket(3, 'find_a', 2), fixTicket(4, 'find_b', 2))
       return { status: 'done', commits: [] }
     }
 
     const res = await burnRun(ctx, deps(execute))
 
-    expect(calls).toEqual([1, 2, 3, 4])
-    // The denominator counts what the run ended up burning, not what it opened
-    // with — and it finalizes once, after the fix wave is terminal too.
-    expect(res).toEqual({ status: 'succeeded', summary: '4/4 tickets done' })
-    expect(events.filter((e) => e.type === 'burn.summary')).toHaveLength(1)
-    expect(events.filter((e) => e.type === 'burn.admitted')).toMatchObject([
-      { data: { seqs: [3, 4] } },
-    ])
+    expect(calls).toEqual([1, 2])
+    expect(res).toEqual({ status: 'succeeded', summary: '2/2 tickets done' })
+    expect(events.map((e) => e.type)).not.toContain('burn.admitted')
+    expect(tickets.slice(2).map((t) => t.status)).toEqual(['pending', 'pending'])
   })
 
   it('leaves the run alone when the review minted nothing', async () => {
@@ -1200,16 +1201,13 @@ describe('burnRun — fix tickets minted while the run is live', () => {
     expect(findings).toEqual([]) // no ticket here came from a finding
   })
 
-  it('fails one fix ticket without touching its siblings, and marks each finding', async () => {
-    const tickets = [reviewTicket(1)]
+  it('fails one fix ticket the round named without touching its siblings, and marks each finding', async () => {
+    const tickets = [reviewTicket(1), fixTicket(2, 'find_a', 1), fixTicket(3, 'find_b', 1)]
     const { ctx, findings } = makeFixCtx(tickets)
     const calls: number[] = []
     const execute: BurnDeps['executeTicketRun'] = async (_c, t) => {
       calls.push(t.seq)
-      if (t.kind === 'review') {
-        tickets.push(fixTicket(2, 'find_a', 1), fixTicket(3, 'find_b', 1))
-        return { status: 'done', commits: [] }
-      }
+      if (t.kind === 'review') return { status: 'done', commits: [] }
       return t.seq === 2
         ? { status: 'failed', error: 'the repro still reproduces' }
         : { status: 'done', commits: ['sha'] }

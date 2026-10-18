@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PULSE_TIMEOUT_MS,
+  RESYNC_HOLD_MS,
   getLiveStatus,
   livePollMs,
   startLiveSync,
@@ -242,6 +243,50 @@ describe('startLiveSync', () => {
 
     expect(handlers.resyncTranscript).toHaveBeenCalledTimes(1)
     expect(handlers.resyncAll).not.toHaveBeenCalled()
+  })
+
+  it('routes a turn signal to the full resync', () => {
+    start()
+    current().emit('ready')
+    handlers.resyncAll.mockClear()
+
+    current().emit('live', JSON.stringify({ kind: 'turn', sessionId: 's1' }))
+
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
+  })
+
+  // A busy feed (a round landing, the agent calling its tools) signals every
+  // flush. Each resync used to cancel the refetch before it, so none ever
+  // landed and the header showed the state from before Go or Stop until a
+  // reload. Signals during a resync now fold into one trailing resync.
+  it('folds signals that arrive during a resync into one trailing resync', async () => {
+    const settle: Array<() => void> = []
+    handlers.resyncAll.mockImplementation(() => new Promise<void>((resolve) => settle.push(resolve)))
+    start()
+    current().emit('ready')
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
+
+    for (let i = 0; i < 5; i++) current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: i }))
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
+
+    settle[0]?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(2)
+
+    settle[1]?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not let a resync that never settles hold the next one forever', async () => {
+    handlers.resyncAll.mockImplementation(() => new Promise<void>(() => {}))
+    start()
+    current().emit('ready')
+    current().emit('live', JSON.stringify({ kind: 'event', projectId: 'p', eventId: 1 }))
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(RESYNC_HOLD_MS)
+    expect(handlers.resyncAll).toHaveBeenCalledTimes(2)
   })
 
   it('releases the stream, its timers and its window listeners on dispose', () => {

@@ -11,6 +11,8 @@ export interface RunOption {
   startedAt: number
   endedAt?: number
   lap: number
+  /** The round this run is (decision 16), when it is one. */
+  round?: number
   ticketIds: string[]
 }
 
@@ -66,7 +68,8 @@ export function RunPicker({
                 <RunStatusChip status={run.status} />
               </span>
               <span className="min-w-0 truncate">
-                Lap {run.lap} · {run.ticketIds.length} lane{run.ticketIds.length === 1 ? '' : 's'}
+                {run.round !== undefined && `Round ${run.round} · `}
+                {run.ticketIds.length} lane{run.ticketIds.length === 1 ? '' : 's'}
               </span>
               {run.id === latestId && <span className="shrink-0 text-xs text-text-tertiary">latest</span>}
             </span>

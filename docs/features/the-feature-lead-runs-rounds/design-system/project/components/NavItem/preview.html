@@ -1,0 +1,18 @@
+<!-- @dsCard group="Navigation" height=230 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>NavItem — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{style:{width:248,background:'var(--canvas)',padding:8,borderRadius:'var(--radius-lg)',display:'flex',flexDirection:'column',gap:2}},
+h(R.NavItem,{icon:'message',label:'Chat'}),h(R.NavItem,{icon:'activity',label:'Activity',dot:'live',dotLabel:'Session live'}),
+h(R.SectionLabel,{count:104},'Shipped'),
+h(R.NavItem,{phase:'shipped',label:'Settings shows step models through the legacy migration',active:true}),
+h(R.NavItem,{phase:'shipped',label:'MCP read tools stay within a context budget'}),
+h(R.NavItem,{phase:'implementation',label:'Auto-continue burns after provider limit reset',meta:'3/7'}))));
+</script>
+</body>
+</html>

@@ -156,7 +156,7 @@ describe('SettingsDialog', () => {
     const panel = screen.getByRole('dialog')
     expect(panel.getAttribute('aria-label')).toBe('Settings')
     expect(panel.className).toContain('max-w-[940px]')
-    for (const name of ['General', 'Models', 'Burns', 'This project']) {
+    for (const name of ['General', 'Models', 'Workers', 'This project']) {
       expect(screen.getByRole('button', { name })).toBeTruthy()
     }
     expect(screen.getByLabelText('Filter settings')).toBeTruthy()
@@ -176,7 +176,7 @@ describe('SettingsDialog', () => {
   it('reaches every page from every other, in place', () => {
     open()
 
-    const pages = ['General', 'Models', 'Burns', 'This project']
+    const pages = ['General', 'Models', 'Workers', 'This project']
     for (const from of pages) {
       for (const to of pages) {
         fireEvent.click(screen.getByRole('button', { name: from }))
@@ -210,7 +210,7 @@ describe('SettingsDialog', () => {
     const panel = screen.getByRole('dialog')
     const bodies = new Set<Element>()
 
-    for (const page of ['General', 'Models', 'Burns', 'This project']) {
+    for (const page of ['General', 'Models', 'Workers', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: page }))
 
       // One page scroller, not one per page and not a second one nested inside
@@ -247,7 +247,7 @@ describe('SettingsDialog', () => {
 
     // The explanation is the row's description: one quiet line under the
     // label, and the control's accessible description — no hover to find it.
-    const about = screen.getByText(/The Docker image sessions and burns are sandboxed in/)
+    const about = screen.getByText(/The Docker image sessions and workers are sandboxed in/)
     expect(about.className).toContain('text-text-tertiary')
     expect(screen.getByLabelText('Sandbox image').getAttribute('aria-describedby')).toContain(
       about.id,
@@ -363,7 +363,7 @@ describe('SettingsDialog', () => {
       target: { value: 'concurrency' },
     })
 
-    expect(screen.getByRole('button', { name: /Burns/ }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: /Workers/ }).getAttribute('aria-current')).toBe(
       'page',
     )
   })
@@ -387,10 +387,10 @@ describe('SettingsDialog', () => {
   it('opens on the page a deep link named', () => {
     open({ page: 'burns' })
 
-    expect(screen.getByRole('button', { name: 'Burns' }).getAttribute('aria-current')).toBe(
+    expect(screen.getByRole('button', { name: 'Workers' }).getAttribute('aria-current')).toBe(
       'page',
     )
-    expect(screen.getByRole('heading', { name: 'Burns' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Workers' })).toBeTruthy()
   })
 
   it('scrolls to and flashes the field a deep link named', () => {
@@ -433,7 +433,7 @@ describe('SettingsDialog', () => {
     expect(theme).toMatch(/@layer base\s*{[\s\S]*?\bbutton\s*{[\s\S]*?background:\s*none/)
 
     const retired: string[] = []
-    for (const page of ['General', 'Models', 'Burns', 'This project']) {
+    for (const page of ['General', 'Models', 'Workers', 'This project']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(page) }))
       for (const button of screen.getAllByRole('button')) {
         if (/(?:^| )(?:btn|chip|settings-)/.test(button.className))

@@ -89,14 +89,11 @@ function stageFrame(expanded: boolean, content: 'screen' | 'prose'): string {
  * own brief, which is why the header carries it with a title saying so.
  */
 function stageIdentity(
-  recording: Pick<ReviewArtifacts, 'lap' | 'passKind' | 'reviewedCommit' | 'landedSince'>,
+  recording: Pick<ReviewArtifacts, 'passKind' | 'reviewedCommit' | 'landedSince'>,
   duration: number | null,
   fixes: number | null,
 ): string {
-  const parts = [
-    `Lap ${recording.lap}`,
-    recording.passKind === 'verification' ? 'Verification walkthrough' : 'Walkthrough',
-  ]
+  const parts = [recording.passKind === 'verification' ? 'Verification walkthrough' : 'Walkthrough']
   if (duration !== null && duration > 0) parts.push(fmtClock(duration))
   if (recording.passKind === 'verification' && fixes !== null && fixes > 0) {
     parts.push(`confirms ${fixes} fix${fixes === 1 ? '' : 'es'}`)
@@ -141,7 +138,7 @@ export function EvidenceStage({
    * so a verification pass landing while the page is open puts the fresh
    * recording up rather than pinning whatever was latest at mount.
    *
-   * Held by the page rather than here (decision 4): the lap trail is what picks
+   * Held by the page rather than here (decision 4): the round trail is what picks
    * a recording now, and the two cannot be the stage's private state.
    */
   picked?: string | null

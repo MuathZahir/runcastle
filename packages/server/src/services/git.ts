@@ -675,6 +675,35 @@ export async function ensureTalkWorktree(
 }
 
 /**
+ * The talk worktree while a drive of the feature has `feature/<slug>` checked
+ * out on the main checkout — where {@link ensureTalkWorktree} can only fail,
+ * because git will not check the branch out a second time. The drive's start
+ * detached the worktree at the branch tip, and that detached worktree is used as
+ * it stands: whatever the chat commits there lands when the drive stops
+ * (`the-feature-lead-runs-rounds` decisions 18 and 19). With no worktree at
+ * all, one is added detached at the branch tip. Returns whether it was added,
+ * since the drive's stop only knows about the worktree it detached itself.
+ */
+export async function ensureDetachedTalkWorktree(
+  project: Project,
+  feature: Feature,
+): Promise<{ worktreePath: string; added: boolean }> {
+  const worktreePath = worktreeDir(project.id, feature.slug)
+  const g = git(project.repoPath)
+  if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
+    return { worktreePath, added: false }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — the add below surfaces whatever is still in the way
+  }
+  mkdirSync(dirname(worktreePath), { recursive: true })
+  await g.raw(['worktree', 'add', '--detach', worktreePath, featureBranch(feature.slug)])
+  return { worktreePath, added: true }
+}
+
+/**
  * The talk worktree is registered but could not take `feature/<slug>` back, so
  * something else holds the branch — git checks a branch out in one worktree at a
  * time. Free it from the stray worktree still holding it and retry the checkout
@@ -1403,6 +1432,44 @@ export async function branchCommitsAhead(
       .filter(Boolean)
   } catch {
     return []
+  }
+}
+
+/** One commit as a landing reports it. */
+export interface CommitSummary {
+  sha: string
+  subject: string
+}
+
+/**
+ * The commits `branch` carries over `base` (oldest first, with their subjects)
+ * and the files they touch — what a chat landing is about to bring onto the
+ * feature branch. Empty lists on anything git cannot answer, as
+ * {@link branchCommitsAhead} does.
+ */
+export async function branchChangesAhead(
+  repoPath: string,
+  base: string,
+  branch: string,
+): Promise<{ commits: CommitSummary[]; files: string[] }> {
+  try {
+    const g = git(repoPath)
+    const log = await g.raw(['log', '--reverse', '--format=%H%x09%s', `${base}..${branch}`])
+    const names = await g.raw(['diff', '--name-only', `${base}...${branch}`])
+    const commits = log
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => {
+        const tab = l.indexOf('\t')
+        return { sha: l.slice(0, tab), subject: l.slice(tab + 1) }
+      })
+    const files = names
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    return { commits, files }
+  } catch {
+    return { commits: [], files: [] }
   }
 }
 
@@ -2518,13 +2585,16 @@ export async function testDrive(
     const carriedChanges = await dirtyPaths(g)
 
     await g.checkout(previousBranch)
-    // The main checkout has released the feature branch — restore the talk
-    // worktree to it (best-effort) so a resumed session picks up where it left.
-    if (detachedWorktree) await reattachWorktree(detachedWorktree, branch)
     drives.delete(project.id)
     // Whoever stopped it — the agent, the burner's finally, or the human's Stop
     // reclaiming the slot from a dead agent — there is nothing left to release.
     reviewDriveReleases.delete(project.id)
+    // The main checkout has released the feature branch — land what the chat
+    // committed while the drive held it, and restore the talk worktree to it
+    // (best-effort) so a resumed session picks up where it left. Imported at
+    // call time: chat-branch is built on this module.
+    const { landChatCommitsAfterDrive } = await import('./chat-branch')
+    await landChatCommitsAfterDrive(ctx, project, feature, detachedWorktree)
     emit(ctx, feature.id, {
       type: 'testdrive.stopped',
       message:

@@ -8,10 +8,10 @@ import type { NextStep } from './types'
  * bar whose one control is Stop — there is nothing to chat with, and a chat
  * launch is refused beside it — in whichever state the feature is in.
  *
- * After a `relay` or a lap planning itself that the server said stopped before it
+ * After a `relay` or an older `start-lap` run that the server said stopped before it
  * was finished, a stopped-short bar whose way on is the chat, until a newer chat
- * of this lap exists. A self-planning run's stopped-short bar is planning's own:
- * it is read off the lap's tickets step, not off the exit.
+ * of this feature exists. A self-planning run's stopped-short bar is planning's own:
+ * it is read off the tickets step, not off the exit.
  */
 export function resolveHeadlessRun(input: ResolverInput): NextStep | null {
   const { live, full, ctx } = input
@@ -59,12 +59,12 @@ const WORKING: Record<'self-plan' | 'relay' | 'start-lap', Pick<NextStep, 'kick'
   },
   'start-lap': {
     kick: 'PLANNING ITSELF',
-    title: 'Planning the next lap itself',
-    desc: 'No terminal to watch; the lap’s tickets appear below as they are written.',
+    title: 'Planning more work itself',
+    desc: 'No terminal to watch; the new tickets appear below as they are written.',
   },
 }
 
 const STOPPED: Record<'relay' | 'start-lap', string> = {
   relay: 'The orchestrator’s change stopped before it was finished',
-  'start-lap': 'Planning the next lap stopped before its tickets were ready',
+  'start-lap': 'Planning stopped before its tickets were ready',
 }

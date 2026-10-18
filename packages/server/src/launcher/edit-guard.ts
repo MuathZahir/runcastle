@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path'
-import type { SessionKind, SessionPurpose } from '@runcastle/core'
+import type { Phase, SessionKind, SessionPurpose } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 import { LOCKFILES } from './lockfiles'
 
@@ -22,6 +22,8 @@ import { LOCKFILES } from './lockfiles'
  *
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
+ * A feature's `chat` is exempt once its feature has left planning — it is the
+ * lead then, and may edit code (see {@link isUnguardedLead}).
  *
  * A `prepare` session gets a narrow path exception instead of a kind exemption —
  * see {@link DRIVE_MACHINERY_WRITABLE}. A `scenario` session gets `.runcastle/`,
@@ -50,8 +52,22 @@ export function guardsEdits(kind: SessionKind): boolean {
   return kind !== 'project'
 }
 
+/**
+ * Is this session the feature's lead with its code permissions — a `chat`
+ * whose feature has left planning? From Go on (`the-feature-lead-runs-rounds`
+ * decision 7) the lead may edit code and install dependencies in its worktree,
+ * so both guards lift for it. Decided per call from the feature's CURRENT
+ * phase, so a chat opened in planning gains the permission the moment Go is
+ * given; until then it stays docs-only, as every talk session is.
+ */
+export function isUnguardedLead(kind: SessionKind, featurePhase: Phase | undefined): boolean {
+  return kind === 'chat' && featurePhase !== undefined && featurePhase !== 'planning'
+}
+
 export interface EditGuardInput {
   kind: SessionKind
+  /** The feature's phase at the time of the call; past planning, a chat is the unguarded lead. */
+  featurePhase?: Phase
   /** The session's errand, when it has one — `resolve-conflict` is the exempt purpose. */
   purpose?: SessionPurpose
   /**
@@ -125,6 +141,7 @@ export interface EditDenial {
  */
 export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   if (!guardsEdits(input.kind)) return null
+  if (isUnguardedLead(input.kind, input.featurePhase)) return null
   // The merge being resolved is what the session was opened for: while it is in
   // progress, ANY path is fair game (the content comes from the two sides of the
   // merge, not from the agent deciding to write code).

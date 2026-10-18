@@ -14,13 +14,10 @@ import {
   ticketConflictKickoff,
   ticketDurations,
   ticketModelChip,
+  roundNumberOf,
   runHeadline,
-  stampedOutcome,
-  stampedReview,
   unrunnableGates,
-  verificationState,
 } from '../../lib/feature-ui'
-import { useReviewArtifacts } from '../../lib/reviews'
 import { fmtDuration, shortSha } from '../../lib/format'
 import { BURN_EXPLAINER, STOP_TIMEOUT } from '../../lib/vocabulary'
 import { Disclosure, EmptyState } from '../../ui'
@@ -33,7 +30,6 @@ import { LaneTranscript } from '../run/LaneTranscript'
 import { RunHeader } from '../run/RunHeader'
 import { RunLanes } from '../run/RunLanes'
 import { RunTimeline } from '../run/RunTimeline'
-import { StatusStrip } from '../review/StatusStrip'
 import { LastReviewUiStates } from '../review/UiStatesSection'
 import { UnrunnableGates } from '../run/UnrunnableGates'
 
@@ -82,6 +78,8 @@ export function RunBody({
     { refetchInterval: record ? false : poll, enabled: !!shownRunId },
   )
   const runs = trpc.run.listByFeature.useQuery({ featureId }, { refetchInterval: poll })
+  // Which round each run is (decision 16), for the history select.
+  const rounds = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: poll })
   const events = useEventLog(featureId)
   const projectId = feature.data?.feature.projectId
   // Where a model's runtime is declared (decisions.md #3) — a lane says which
@@ -128,12 +126,7 @@ export function RunBody({
   // which is exactly the lanes it had and nothing minted since.
   const ledger = feature.data?.tickets ?? []
   const tickets = record ? (run.data?.tickets ?? []) : ledger
-  // The lap's review, for the Status tier's Review row — the same feed and
-  // the same stamp the review page reads, so the two pages cannot disagree.
-  const passes = useReviewArtifacts(featureId).data ?? []
-  const stamped = stampedReview(passes, ledger)
   const featureBranch = feature.data?.feature.branch ?? ''
-  const lap = feature.data?.feature.lap ?? 1
   const runEvents = useMemo(
     () => events.filter((e) => e.runId === shownRunId),
     [events, shownRunId],
@@ -344,26 +337,8 @@ export function RunBody({
 
   return (
     <div className="flex flex-col">
-      {/* The Status tier (simplify-the-pages decision 9a): the burn on screen,
-          its tickets and the lap's review, as the review page states them. */}
-      {run.data && (
-        <div data-tier="status" className="mb-10">
-          <StatusStrip
-            artifact={stamped}
-            outcome={stampedOutcome({ passes, tickets: ledger })}
-            currentLap={lap}
-            landedSince={stamped?.landedSince ?? 0}
-            tickets={tickets}
-            runState={run.data.status}
-            verification={verificationState(ledger)}
-            building={{
-              elapsed: fmtDuration(run.data.startedAt, run.data.endedAt ?? Date.now()),
-              lap: runs.data?.find((r) => r.id === shownRunId)?.lap ?? lap,
-            }}
-          />
-        </div>
-      )}
-
+      {/* No Status tier above the run (`the-feature-lead-runs-rounds` decision
+          24): the header's status line and the round trail say it. */}
       <RunHeader
         headline={runHeadline(
           tickets.map((t) => ({ ...t, hadOutput: facts.get(t.id)?.hadOutput, reviewFix: !!t.originFindingId })),
@@ -388,7 +363,10 @@ export function RunBody({
                   },
                 )
         }
-        runs={runs.data ?? []}
+        runs={(runs.data ?? []).map((r) => {
+          const round = roundNumberOf(rounds.data ?? [], r.id)
+          return round === null ? r : { ...r, round }
+        })}
         selectedRunId={shownRunId}
         latestRunId={runId}
         onPickRun={setPickedRunId}
@@ -401,10 +379,10 @@ export function RunBody({
         <EmptyState
           icon={<IconFlame />}
           title="No ticket lanes"
-          hint="This run has nothing to burn — a session breaks the work into tickets, and they appear here as lanes."
+          hint="This round has no tickets — the agent breaks the work into tickets, and they appear here as lanes."
         />
       ) : (
-        <RunLanes tickets={tickets} currentLap={lap} lane={lane} />
+        <RunLanes tickets={tickets} lane={lane} />
       )}
 
       {/* The last review pass's UI states stay in view while the next burn runs (decision 12). */}

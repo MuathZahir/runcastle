@@ -125,8 +125,9 @@ describe('verificationDue', () => {
     expect(result).toMatchObject({ due: true, landed: [{ seq: 2 }], verifies: { seq: 1 } })
   })
 
-  it('is due for landed work in a run with no review', () => {
-    expect(verificationDue([done(1, 10)], runIds(1))).toMatchObject({ due: true, verifies: null })
+  it('is not due for landed work in a round with no review — reviewing is the lead\'s call', () => {
+    expect(verificationDue([done(1, 10)], runIds(1))).toEqual({ due: false, landed: [], verifies: null })
+    expect(verificationDue([done(1, 10), done(2, 20)], runIds(1, 2)).due).toBe(false)
   })
 
   it('is not due after a failed review', () => {

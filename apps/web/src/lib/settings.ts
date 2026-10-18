@@ -202,7 +202,7 @@ const STEP_META: readonly {
   { step: 'chat', label: 'Chat', group: 'sessions', description: 'The feature conversation' },
   { step: 'project', label: 'Project chat', group: 'sessions', description: 'The project-level conversation' },
   // Unattended — burns and scripted runs.
-  { step: 'implement', label: 'Implement', group: 'unattended', description: 'Burns a ticket in the sandbox' },
+  { step: 'implement', label: 'Implement', group: 'unattended', description: 'Works a ticket in the sandbox' },
   { step: 'review', label: 'Review', group: 'unattended', description: 'Reads the finished branch' },
   { step: 'prepare', label: 'Prepare', group: 'unattended', description: 'Measures setup, verify and baseline' },
   { step: 'smoke', label: 'Smoke', group: 'unattended', description: 'Cheap scripted end-to-end check' },
@@ -290,7 +290,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandbox: {
     label: 'Sandbox',
     tooltip:
-      'Where launched sessions and burns run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
+      'Where launched sessions and workers run. A Docker container isolates them from this machine; “no sandbox” runs them directly on it.',
     control: 'select',
     page: 'general',
     group: 'sessions',
@@ -303,7 +303,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   sandboxImage: {
     label: 'Sandbox image',
     tooltip:
-      'The Docker image sessions and burns are sandboxed in. Leave blank to use sandcastle:runcastle, the image “Build image” on the Burns page produces.',
+      'The Docker image sessions and workers are sandboxed in. Leave blank to use sandcastle:runcastle, the image “Build image” on the Workers page produces.',
     control: 'text',
     page: 'general',
     group: 'sessions',
@@ -325,7 +325,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   burnConcurrency: {
     label: 'Concurrency',
     tooltip:
-      'Tickets burned in parallel per run (1–8). Each is a full agent with its own container, sizing its install and test workers from the whole core count — lower it if suites die under load.',
+      'Tickets a round works in parallel (1–8). Each is a full worker with its own container, sizing its install and test workers from the whole core count — lower it if suites die under load.',
     control: 'number',
     page: 'burns',
     group: 'width',
@@ -334,7 +334,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   burnMaxIterations: {
     label: 'Iterations per attempt',
     tooltip:
-      'Turns one healthy burn agent may take before it is stopped (1–10). A ticket that finishes early stops the loop itself.',
+      'Turns one healthy worker may take before it is stopped (1–10). A ticket that finishes early stops the loop itself.',
     control: 'number',
     page: 'burns',
     group: 'width',
@@ -360,9 +360,9 @@ const FIELD_META: Record<string, FieldMeta> = {
     unit: 'passes before asking you',
   },
   burnCpus: {
-    label: 'CPU limit per burn',
+    label: 'CPU limit per worker',
     tooltip:
-      'CPU ceiling per burn container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
+      'CPU ceiling per worker container (--cpus). Blank leaves it unconstrained. Roughly cores ÷ concurrency keeps parallel tickets from oversubscribing the machine.',
     control: 'number',
     page: 'burns',
     group: 'width',
@@ -375,7 +375,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   setupCommand: {
     label: 'Setup',
     tooltip:
-      'Takes a clean checkout to a buildable state inside the burn sandbox — dependency install plus any codegen. Blank auto-detects from the lockfile.',
+      'Takes a clean checkout to a buildable state inside the worker sandbox — dependency install plus any codegen. Blank auto-detects from the lockfile.',
     control: 'text',
     page: 'project',
     group: 'commands',
@@ -384,7 +384,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   verifyCommands: {
     label: 'Verify',
     tooltip:
-      'The exact typecheck / test / lint commands a burn agent runs, one per line. Rendered verbatim into the agent’s prompt; runcastle never runs them itself.',
+      'The exact typecheck / test / lint commands, one per line. Every worker is told to run them, and runcastle runs them itself at the end of every round and hands the results to the agent.',
     control: 'textarea',
     page: 'project',
     group: 'commands',
@@ -393,7 +393,7 @@ const FIELD_META: Record<string, FieldMeta> = {
   knownFailures: {
     label: 'Known failing tests',
     tooltip:
-      'Tests already red on main — a count plus suite names is enough. Saves every burn agent a full pre-work run to establish its own baseline.',
+      'Tests already red on main — a count plus suite names is enough. Saves every worker a full pre-work run to establish its own baseline.',
     control: 'textarea',
     page: 'project',
     group: 'commands',
@@ -478,7 +478,7 @@ const FIELD_META: Record<string, FieldMeta> = {
     label: 'Orchestrator',
     tag: 'experimental',
     tooltip:
-      'The project session runs your features for you: it creates them, has them plan themselves, burns, drives, runs laps and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
+      'The project session runs your features for you: it creates them, has them plan themselves, gives them Go, drives them and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
     control: 'switch',
     page: 'project',
     group: 'chat',
@@ -503,7 +503,7 @@ const PROJECT_META: Record<string, Partial<FieldMeta>> = {
   sandbox: { page: 'project', group: 'model' },
   sandboxImage: {
     tooltip:
-      'The Docker image THIS project’s sessions and burns are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
+      'The Docker image THIS project’s sessions and workers are sandboxed in — where a repo needs a toolchain the stock image has none of. Blank inherits the machine-wide image.',
     page: 'project',
     group: 'model',
   },
@@ -1238,7 +1238,7 @@ export function filterSettings(
 }
 
 /**
- * The settings location an error message points at, so "Settings → AFK burns
+ * The settings location an error message points at, so "Settings → Workers
  * (Rebuild image)" can be a link that lands on the image row instead of an
  * instruction to go looking. Both the doctor's stale-image detail and the
  * burner's missing-binary message carry that wording.
@@ -1247,8 +1247,11 @@ export function settingsLocationFromMessage(text: string): SettingsLocation | nu
   return SETTINGS_POINTER.test(text) ? { page: 'burns', field: 'sandcastle-image' } : null
 }
 
-/** "Settings → AFK burns", in either the old wording or the new. */
-const SETTINGS_POINTER = /Settings\s*→\s*(?:AFK burns|Burns)/i
+/**
+ * "Settings → Workers", or either of the page's older names — a message stored
+ * before a rename still points at the same row.
+ */
+const SETTINGS_POINTER = /Settings\s*→\s*(?:Workers|AFK burns|Burns)/i
 
 /** A message split around the settings pointer inside it, ready to render. */
 export interface SettingsMention {

@@ -1,7 +1,7 @@
 import type { DriveState } from '@runcastle/core'
 import { driveView, slotHeldReason } from '../drive'
 import { ONE_TERMINAL_WARNING } from '../gates'
-import { burnLabel, noun } from '../laps'
+import { burnLabel, noun } from '../tickets'
 import { CHAT_ACTION } from './chat'
 import type { CountLine, NextAction, NextStep } from './types'
 import type { ResolverInput } from './resolver-input'
@@ -25,20 +25,14 @@ const DRIVE_OWNS_BAR: readonly DriveState[] = [
 
 /**
  * Chat rides every bar this resolver returns, first in `secondary` and never
- * reordering the trail's own verbs (decision 8). Review is the page that had no
- * session door at all — asking the agent a question from here meant clicking
- * Rethink, which bumped the lap and threw the feature back to planning — so the
- * door is added BESIDE Merge & ship, Burn, Test drive and Iterate rather than
- * anywhere among them.
+ * reordering the trail's own verbs (decision 8) — BESIDE Merge & ship, Burn and
+ * Test drive rather than anywhere among them. With open work it is the primary:
+ * the agent is who acts on it.
  */
 export function resolveReview(input: ResolverInput): NextStep {
-  const { full, ctx, live, failed, pending, pendingTickets, run } = input
-  const { feature } = full
-  // Whose tickets a burn from here would burn (decision 28a): burning every
-  // pending ticket across laps is correct — the branch accumulates them — but
-  // the count said nothing about the lap-1 leftovers riding along.
+  const { ctx, live, failed, pending, pendingTickets, run } = input
   const burnAction: NextAction[] =
-    pending > 0 ? [{ label: burnLabel(pendingTickets, feature.lap), kind: 'burn' }] : []
+    pending > 0 ? [{ label: burnLabel(pendingTickets), kind: 'burn' }] : []
   // One drive truth for the bar and the stage (decision 20). The server's value
   // wins whenever it says something is happening; with nothing from it yet, this
   // browser's own record of a drive it started stands in, so a start that has
@@ -48,9 +42,6 @@ export function resolveReview(input: ResolverInput): NextStep {
     ctx.driveState && ctx.driveState !== 'idle' ? ctx.driveState : ctx.driving ? 'serving' : 'idle'
   const driving = driveState !== 'idle'
   const view = driveView(driveState)
-  // Review offers two forward verbs (decision 21): Iterate — keep working, which
-  // is the triage door below — and Merge & ship. Test drive stays available
-  // throughout.
   // Any other drive — a dry run, another feature's, a project drive — holds the
   // same singleton slot, so the server refuses a feature drive outright while
   // one is up (decision 9) — said here rather than on click, naming the holder.
@@ -67,15 +58,10 @@ export function resolveReview(input: ResolverInput): NextStep {
   // The unverified-drive caveat is not the bar's any more: it is a chip in the
   // state line, beside the Test drive control it is about. The bar carries one
   // line and it is the count (decision 3).
-  // The review bar has exactly two forward decisions now — Merge & ship, or
-  // Iterate (decision 21). "Address notes" and "Fix N open defects" were the
-  // same decision as Iterate ("this isn't ready") entered through two more
-  // doors, with the fork duplicated inside one of them; the triage step behind
-  // Iterate is where that choice is made, once, over the whole list.
   const openNotes = ctx.openNotes ?? 0
   const openDefects = ctx.openDefects ?? 0
   const openWork = openNotes + openDefects
-  // The bar states its own reason (decision 3). Iterate leads BECAUSE work is
+  // The bar states its own reason (decision 3). The chat leads BECAUSE work is
   // open, and until now the count that decided it was said in a paragraph the
   // guidance flag could hide — so the human stared at a primary whose input was
   // nowhere on the page. One permanent line, on every review bar, carrying the
@@ -92,33 +78,6 @@ export function resolveReview(input: ResolverInput): NextStep {
           trailing: 'open',
         }
       : { pills: [{ label: 'Nothing open', tone: 'clear' }] }
-  // Nothing on review is disabled because a terminal is live (decision 4). The
-  // one-terminal rule is real — the server refuses the second session outright —
-  // but ending a stale talk session costs nothing (the row ends synchronously
-  // and its committed docs survive), so the click performs that end on its way
-  // instead of dead-ending on "end the live session first". The label is the
-  // consent, which is why it says so before the click.
-  const iterateAction: NextAction = {
-    label: live ? 'End session & iterate' : 'Iterate',
-    // With nothing open the step is skipped entirely and the lap opens
-    // empty-handed (decision 21); with something open the click opens the door.
-    // Live, one kind covers both roads: the end lands first and the dispatcher
-    // picks the door off the same two counts.
-    kind: live ? 'endSessionAndIterate' : 'iterate',
-    // The drive's refusal stands (findings F3 — the server will not open a lap
-    // worktree on a branch the drive holds, and it refuses the triage commit for
-    // the same reason), but it is no longer a dead end: one click stops the
-    // drive and takes the road anyway (decision 20). It is the only refusal left
-    // on this button.
-    ...(driving
-      ? {
-          disabled: 'Stop the test drive first — the branch is checked out',
-          escape: { label: 'Stop drive and iterate', kind: 'stopDriveAndIterate' },
-        }
-      : {}),
-  }
-  const iterate: NextAction[] = [iterateAction]
-
   // A recorded conflict outranks every other review verb (findings F8). The
   // bar used to highlight Merge & ship directly above the red conflict panel,
   // so the one action the user trusts re-ran a merge that could not land.
@@ -146,7 +105,7 @@ export function resolveReview(input: ResolverInput): NextStep {
         label: live ? 'End session & resolve' : 'Resolve the merge conflict',
         kind: 'resolveConflict',
       },
-      secondary: [CHAT_ACTION, retryMerge, ...burnAction, testDriveAction, ...iterate],
+      secondary: [CHAT_ACTION, retryMerge, ...burnAction, testDriveAction],
       busy: false,
       counts,
       // What the compound costs, said above the button that performs it.
@@ -174,29 +133,24 @@ export function resolveReview(input: ResolverInput): NextStep {
         { label: 'Merge & ship', kind: 'merge' },
         ...burnAction,
         ...(primary.kind === 'testDriveStop' ? [] : [testDriveAction]),
-        ...iterate,
       ],
       busy: false,
       counts,
     }
   }
 
-  // Something is still open — defects the review found and the run could not
-  // close (over the auto-fix cap, or a fix ticket that failed), notes the human
-  // wrote while driving, or both. One door answers all of it (decision 21):
-  // Iterate opens the triage step, where ticking a row mints its ticket and
-  // everything left rides into lap N+1's conversation. Merge & ship stays one
-  // click away and is never nagged about — open work is information, not a block.
+  // Something is still open — defects the review found, notes the human wrote
+  // while driving, or both. They are the agent's to act on now (`the-feature-
+  // lead-runs-rounds` decisions 10 and 18), so the chat is the door. Merge &
+  // ship stays one click away and is never nagged about — open work is
+  // information, not a block.
   if (openWork > 0) {
     // No title and no prose: the count line above IS what this state has to say,
-    // and it says it whether or not guidance is on (decision 3). The paragraph
-    // that used to explain the triage roads is the door's own copy to state,
-    // once the human is standing in it.
+    // and it says it whether or not guidance is on (decision 3).
     return {
       kick: 'NEXT STEP',
-      primary: iterateAction,
+      primary: CHAT_ACTION,
       secondary: [
-        CHAT_ACTION,
         { label: 'Merge & ship', kind: 'merge' },
         ...burnAction,
         testDriveAction,
@@ -216,45 +170,18 @@ export function resolveReview(input: ResolverInput): NextStep {
       desc: driving
         ? 'Test-driving the branch — burn the fix tickets when you’re ready.'
         : `${pending} fix ticket${pending === 1 ? '' : 's'} ready — burn to run them, then review again.`,
-      primary: { label: burnLabel(pendingTickets, feature.lap), kind: 'burn' },
+      primary: { label: burnLabel(pendingTickets), kind: 'burn' },
       secondary: [
         CHAT_ACTION,
         { label: 'Merge & ship', kind: 'merge' },
         testDriveAction,
-        ...iterate,
       ],
       busy: false,
       counts,
     }
   }
 
-  // The spec still lists scope for a later lap (decisions #7), so shipping is
-  // not the step this lap ends on: the primary starts lap N+1 and Merge &
-  // ship drops to a secondary, one click away — "lap 1 is enough" is the
-  // human's call to make, and this only stops the main button making it for
-  // them. Reuses the Iterate action rather than minting a second one, so the
-  // next lap has ONE dispatch and inherits the reason it cannot fire while
-  // the drive holds the branch. A live session no longer suppresses the flip
-  // (decision 4): the launch it would refuse is the launch the compound label
-  // promises to make room for.
-  if (ctx.laterLaps) {
-    return {
-      kick: 'NEXT STEP',
-      title: `Lap ${feature.lap} is done — the spec plans lap ${feature.lap + 1}`,
-      desc: `This lap is reviewable, and the spec still lists scope it deliberately deferred. Start lap ${feature.lap + 1} to take it on — or ship what landed, if lap ${feature.lap} is enough.`,
-      primary: {
-        ...iterateAction,
-        label: live
-          ? `End session & start lap ${feature.lap + 1}`
-          : `Start lap ${feature.lap + 1}`,
-      },
-      secondary: [CHAT_ACTION, { label: 'Merge & ship', kind: 'merge' }, testDriveAction],
-      busy: false,
-      counts,
-    }
-  }
-
-  // A lap whose review verified nothing is the one state where the all-clear
+  // A review that verified nothing is the one state where the all-clear
   // below would be a lie (review-as-a-lap-trail decision 5): the run succeeded,
   // no defect is open, and nothing was checked. Nothing is blocked and Merge is
   // still one click away — what changes is that it is no longer THE click, and
@@ -266,7 +193,7 @@ export function resolveReview(input: ResolverInput): NextStep {
     return {
       kick: 'NEXT STEP',
       title: 'Run another review, or drive the branch yourself, before you ship',
-      secondary: [{ label: 'Merge & ship', kind: 'merge' }, ...burnAction, testDriveAction, ...iterate],
+      secondary: [{ label: 'Merge & ship', kind: 'merge' }, ...burnAction, testDriveAction],
       busy: false,
       counts,
     }
@@ -289,7 +216,7 @@ export function resolveReview(input: ResolverInput): NextStep {
     title: driving ? 'Merge when it looks right' : 'Test drive, then ship',
     desc,
     primary: { label: 'Merge & ship', kind: 'merge' },
-    secondary: [CHAT_ACTION, testDriveAction, ...iterate],
+    secondary: [CHAT_ACTION, testDriveAction],
     busy: false,
     counts,
   }

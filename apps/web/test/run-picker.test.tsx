@@ -39,10 +39,10 @@ describe('RunPicker rows', () => {
     const list = screen.getByRole('listbox', { name: 'Run history' })
     const options = within(list).getAllByRole('option')
     expect(options).toHaveLength(3)
-    expect(options[0].textContent).toContain('Lap 2 · 1 lane')
+    expect(options[0].textContent).toContain('1 lane')
     expect(options[0].textContent).toContain('latest')
     expect(options[1].textContent).toContain('Failed')
-    expect(options[1].textContent).toContain('Lap 1 · 2 lanes')
+    expect(options[1].textContent).toContain('2 lanes')
     expect(options[2].textContent).toContain('Cancelled')
 
     fireEvent.click(options[1])

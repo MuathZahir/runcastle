@@ -21,7 +21,19 @@
  *
  * In memory on purpose: a server restart ends every terminal, and the catch-up
  * briefing covers what a relaunched orchestrator missed.
+ *
+ * A feature's lead (`the-feature-lead-runs-rounds` decision 12) uses the same
+ * store under {@link leadMessageKey} rather than its session id: the feature has
+ * one conversation across many session rows, and a message that arrives while
+ * one row is ending must survive into the headless resume that follows it. A
+ * lead's waiter is let go without its lines ({@link releaseOrchestratorWaiter}),
+ * never ended with them dropped.
  */
+
+/** The store key a feature lead's messages and waiter live under. */
+export function leadMessageKey(featureId: string): string {
+  return `lead:${featureId}`
+}
 
 /** What a waiter is answered with. `empty` is a hold that ran out: poll again. */
 export type WaiterAnswer =
@@ -59,6 +71,14 @@ export function takeOrchestratorLines(sessionId: string): string[] {
   const lines = pending.get(sessionId)?.lines ?? []
   pending.delete(sessionId)
   return lines
+}
+
+/** Put lines a delivery took and could not hand over back at the front, oldest first. */
+export function requeueOrchestratorLines(sessionId: string, lines: string[]): void {
+  if (lines.length === 0) return
+  const batch = pending.get(sessionId)
+  if (batch) batch.lines.unshift(...lines)
+  else pending.set(sessionId, { lines: [...lines], firstQueuedAt: Date.now() })
 }
 
 /** Whether a session has any line pending. */
@@ -112,6 +132,19 @@ export function waitForOrchestratorLines(
     waiters.set(sessionId, { id: waiterId, answer: settle })
     answerOrchestratorWaiter(sessionId)
   })
+}
+
+/**
+ * Let a waiter go without handing it anything — `superseded` while its session
+ * starts a turn (a lead's message waits for the turn's end), `ended` when the
+ * session goes — and keep every pending line for whoever takes them next.
+ */
+export function releaseOrchestratorWaiter(sessionId: string, status: 'superseded' | 'ended'): void {
+  clearTimeout(gathering.get(sessionId))
+  gathering.delete(sessionId)
+  const waiter = waiters.get(sessionId)
+  waiters.delete(sessionId)
+  waiter?.answer({ status })
 }
 
 /** A session ended: answer its waiter `ended` and drop whatever it never heard. */

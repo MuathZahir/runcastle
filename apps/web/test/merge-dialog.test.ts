@@ -55,7 +55,7 @@ describe('MergeFeatureDialog', () => {
       expect(html).toContain('What lands')
       expect(html).toContain('12 commits · 9 files')
       expect(html).toContain('1/1 tickets done')
-      expect(html).toContain('Lap 1')
+      expect(html).toContain('Taken')
       expect(html).toContain('Reviewed ✓ · this build')
     })
 
@@ -81,7 +81,7 @@ describe('MergeFeatureDialog', () => {
      */
     it('warns about a live burn and still lets the merge through', () => {
       const html = render({ summary: summary({ burning: true }) })
-      expect(html).toContain('A burn is live')
+      expect(html).toContain('A round is running')
       expect(html).toContain('stays unshipped on the branch')
       expect(html).toContain('Merge &amp; ship')
       expect(html).not.toContain('disabled=""')

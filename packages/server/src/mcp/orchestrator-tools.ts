@@ -19,7 +19,7 @@ import { activeSessionsForFeature } from '../launcher/sessions'
 import { landChatCommits } from '../services/chat-branch'
 import { emit, runAsActor } from '../services/events'
 import { featureDocPath } from '../services/feature-docs'
-import { burn, requireNotDraft, startDraft } from '../services/features'
+import { go, requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
@@ -172,11 +172,15 @@ export const toolStopFeatureRun = orchestratorTool(
   },
 )
 
-/** Burn the feature's pending tickets, as Burn does. */
-export const toolBurnFeature = orchestratorTool(
-  async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<{ runId: string }> => {
+/**
+ * Give the feature Go, as the human's Go does (`the-feature-lead-runs-rounds`
+ * decision 11): approve its plan and hand it to its lead, which dispatches every
+ * round. The orchestrator never dispatches one itself.
+ */
+export const toolGoFeature = orchestratorTool(
+  async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<{ warnings: string[] }> => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    return burn(ctx, feature.id)
+    return go(ctx, feature.id)
   },
 )
 
@@ -376,7 +380,7 @@ export function registerOrchestratorTools(
     {
       title: 'Stop a feature’s headless run',
       description:
-        'End the headless run going on a feature (self-planning, a relay, a headless lap), as ' +
+        'End the headless run going on a feature (self-planning or a relay), as ' +
         'its Stop button does. Orchestrator only.',
       inputSchema: { slug: SlugInput },
     },
@@ -384,15 +388,16 @@ export function registerOrchestratorTools(
   )
 
   acting(
-    'burn_feature',
+    'go_feature',
     {
-      title: 'Burn a feature',
+      title: 'Give a feature Go',
       description:
-        'Burn the feature’s pending tickets, as Burn does. Refused on a draft or while a run is ' +
-        'already burning it. Returns the run id. Orchestrator only.',
+        'Approve the feature’s plan, as the human’s Go does: it moves to building and its agent ' +
+        'dispatches the rounds from there — you never dispatch one. Refused on a draft or past ' +
+        'planning. Returns the warnings Go carries. Orchestrator only.',
       inputSchema: { slug: SlugInput },
     },
-    toolBurnFeature,
+    toolGoFeature,
   )
 
   acting(
@@ -419,7 +424,7 @@ export function registerOrchestratorTools(
       title: 'Record a test note',
       description:
         'File a test note on a feature, as the human does from a drive. Say who observed it. ' +
-        'Notes seed the next lap’s agenda. Orchestrator only.',
+        'Notes are for the feature’s agent: tell it what you found with send_to_feature. Orchestrator only.',
       inputSchema: {
         slug: SlugInput,
         text: z.string().min(1).describe('What was observed, in a sentence or two.'),

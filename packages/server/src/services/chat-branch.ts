@@ -1,21 +1,26 @@
 import type { Feature, Project } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { worktreeDir } from '@runcastle/core/paths'
+import { featureDocsRel, worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 import { emit } from './events'
-import type { TempBranchMergeResult } from './git'
+import type { CommitSummary, TempBranchMergeResult } from './git'
 import {
+  activeTestDriveFeatureId,
+  branchChangesAhead,
   branchCommitsAhead,
   chatBranchInWorktree,
   chatBranchName,
   deleteTempBranch,
   detachWorktree,
+  ensureDetachedTalkWorktree,
   ensureTalkWorktree,
+  headSha,
   mergeTempBranch,
   reattachWorktree,
   startBranchInWorktree,
 } from './git'
 import { featureLandingQueue } from './landing-queue'
+import { hasActiveRun, listRunsByFeature } from './repo'
 
 /**
  * How the feature chat keeps working while a burn holds the feature branch
@@ -120,6 +125,23 @@ export async function ensureTalkWorktreeDuringRun(
   return worktreePath
 }
 
+/**
+ * The talk worktree for a session spawning while a drive of the feature holds
+ * the feature branch — a closed lead woken by Send to agent, or the human
+ * resuming it mid-drive. The drive's detached worktree is used as it stands; one
+ * added now is parked on a chat branch, so its commits land at the drive's stop
+ * ({@link landChatCommitsAfterDrive}) rather than sit orphaned on a detached HEAD.
+ */
+export async function ensureTalkWorktreeDuringDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+): Promise<string> {
+  const { worktreePath, added } = await ensureDetachedTalkWorktree(project, feature)
+  if (added) await parkWorktree(ctx, feature, worktreePath)
+  return worktreePath
+}
+
 /** What one chat landing did. `null` from a call that had nothing to land. */
 export interface ChatLanding {
   /** The branch that was landed (or tried). */
@@ -127,6 +149,33 @@ export interface ChatLanding {
   /** How many commits it carried. */
   commits: number
   result: TempBranchMergeResult
+  /** Not attempted: a drive of the feature holds the slot, so the commits wait on `branch`. */
+  deferred?: true
+}
+
+/**
+ * Is a drive of this feature holding the project's drive slot? It runs the
+ * feature branch on the main checkout, so a landing would change the app under
+ * whoever is driving it (`the-feature-lead-runs-rounds` decision 19): chat
+ * landings wait until it stops ({@link landChatCommitsAfterDrive}).
+ */
+function drivenNow(project: Project, feature: Feature): boolean {
+  return activeTestDriveFeatureId(project.id) === feature.id
+}
+
+/** Leave `branch`'s commits where they are and say why on the timeline. */
+function deferLanding(ctx: AppCtx, feature: Feature, branch: string, commits: number): ChatLanding {
+  emit(ctx, feature.id, {
+    type: 'chat.landing_deferred',
+    message: `a drive of this feature is running — ${commits} chat commit(s) wait on ${branch} until it stops`,
+    data: { branch, commits },
+  })
+  return {
+    branch,
+    commits,
+    deferred: true,
+    result: { ok: false, error: 'deferred while the feature is being driven' },
+  }
 }
 
 /**
@@ -135,6 +184,10 @@ export interface ChatLanding {
  * A landing that throws is reported as a failed one: the chat's docs are a
  * best-effort checkpoint and must never break the tool call or the run finalizer
  * that asked for it.
+ *
+ * A landing that carries code — any file outside the feature's docs — is the
+ * lead's own fix, and is announced as `lead.code_landed` too, for the round
+ * trail's "agent fix" entries.
  */
 async function land(
   ctx: AppCtx,
@@ -143,6 +196,8 @@ async function land(
   branch: string,
   commits: number,
 ): Promise<ChatLanding> {
+  // Read before the merge, which deletes the branch it lands.
+  const changes = await branchChangesAhead(project.repoPath, feature.branch, branch)
   let result: TempBranchMergeResult
   try {
     result = await featureLandingQueue(feature.id)(() =>
@@ -158,7 +213,28 @@ async function land(
       : `could not land ${commits} chat commit(s) — kept on ${branch}: ${result.error ?? 'merge failed'}`,
     data: { branch, commits },
   })
+  if (result.ok) emitLeadCodeLanded(ctx, feature, changes)
   return { branch, commits, result }
+}
+
+/** `lead.code_landed` for a landing that touched files outside the feature's docs. */
+function emitLeadCodeLanded(
+  ctx: AppCtx,
+  feature: Feature,
+  changes: { commits: CommitSummary[]; files: string[] },
+): void {
+  const docs = `${featureDocsRel(feature.slug)}/`
+  const codeFiles = changes.files.filter((f) => !f.startsWith(docs)).length
+  if (codeFiles === 0) return
+  emit(ctx, feature.id, {
+    type: 'lead.code_landed',
+    message: `the agent's own fix landed: ${changes.commits.length} commit(s), ${codeFiles} file(s)`,
+    data: {
+      commits: changes.commits,
+      files: codeFiles,
+      afterRunId: listRunsByFeature(ctx, feature.id)[0]?.id ?? null,
+    },
+  })
 }
 
 /**
@@ -181,9 +257,45 @@ export async function landChatCommits(
   if (!branch) return null
   const commits = await branchCommitsAhead(project.repoPath, feature.branch, branch)
   if (commits.length === 0) return null
+  // Deferred commits stay on THIS branch — no rollover — so the drive's stop
+  // finds them where the chat left them.
+  if (drivenNow(project, feature)) return deferLanding(ctx, feature, branch, commits.length)
 
   await startFreshChatBranch(ctx, feature, worktreePath)
   return await land(ctx, project, feature, branch, commits.length)
+}
+
+/**
+ * A drive of this feature has just stopped and the main checkout has let go of
+ * the feature branch: land what the chat committed while it drove (decision
+ * 19), then give the talk worktree back as it would be without the drive.
+ *
+ * `detachedWorktree` is the talk worktree the drive's start detached, if it
+ * did. Checking the branch back out there would orphan anything the lead
+ * committed on that detached HEAD, so such commits are put on a chat branch
+ * first and land like any other. Mid-round the chat keeps a chat branch (the
+ * run still claims the feature branch); outside one it is handed back exactly
+ * as at a run's end.
+ */
+export async function landChatCommitsAfterDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+  detachedWorktree: string | undefined,
+): Promise<ChatLanding | null> {
+  const worktreePath = talkWorktree(project, feature)
+  if (detachedWorktree) {
+    const head = await headSha(detachedWorktree, 'HEAD')
+    const ahead = head ? await branchCommitsAhead(project.repoPath, feature.branch, head) : []
+    if (ahead.length === 0 || !(await startFreshChatBranch(ctx, feature, detachedWorktree))) {
+      await reattachWorktree(detachedWorktree, feature.branch)
+      return null
+    }
+  }
+  if (!(await chatBranchInWorktree(worktreePath))) return null
+  return hasActiveRun(ctx, feature.id)
+    ? await landChatCommits(ctx, project, feature)
+    : await releaseTalkWorktreeAfterRun(ctx, project, feature)
 }
 
 /**
@@ -215,6 +327,11 @@ export async function releaseTalkWorktreeAfterRun(
   }
 
   const commits = await branchCommitsAhead(project.repoPath, feature.branch, branch)
+  // A drive still holding the branch keeps the worktree on its chat branch; the
+  // drive's stop lands it and hands the worktree back.
+  if (commits.length > 0 && drivenNow(project, feature)) {
+    return deferLanding(ctx, feature, branch, commits.length)
+  }
   const landed =
     commits.length > 0 ? await land(ctx, project, feature, branch, commits.length) : null
 

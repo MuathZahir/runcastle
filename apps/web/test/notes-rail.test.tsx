@@ -30,6 +30,9 @@ vi.mock('../src/trpc', () => {
       }),
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
+        list: { useQuery: () => ({ data: [] }) },
+        delivery: { useQuery: () => ({ data: undefined }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
@@ -145,15 +148,16 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         onClose={() => undefined}
       />,
     )
     expect(screen.getByRole('complementary')).toBeTruthy()
-    expect(screen.getByText('Needs attention')).toBeTruthy()
+    expect(screen.getByText('Notes for the agent')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
     expect(screen.getByLabelText(/what did you just see/i)).toBeTruthy()
   })
@@ -162,9 +166,10 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         highlight={[NOTE.id]}
         scrollTo={NOTE.id}
@@ -187,9 +192,10 @@ describe('the marker-to-note spotlight', () => {
     render(
       <NotesRail
         featureId="ftr_1"
-        lap={1}
-        rows={[{ lap: 1, item: { kind: 'note', note: NOTE }, open: true }]}
+
+        rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         scrollTo={null}
         onClose={() => undefined}

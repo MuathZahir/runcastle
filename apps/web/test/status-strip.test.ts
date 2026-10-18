@@ -1,8 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { LapStory, StatusStrip } from '../src/components/review/StatusStrip'
-import { lapChip } from '../src/lib/feature-ui'
+import { DeferredScope, StatusStrip } from '../src/components/review/StatusStrip'
 
 /**
  * The status facts (decisions 18b, 19, 27a) — the returning human's TL;DR, as a
@@ -44,7 +43,7 @@ describe('StatusStrip', () => {
   /** simplify-the-pages decisions 3, 4, 6a: each row owns its facts, once. */
   it('leads with the review verdict and freshness, then tickets, test drive and the burn', () => {
     const html = render({ driveLap: null })
-    const order = ['>Review<', '>Verified<', 'gates mode · this build', '>Tickets<', '>Test drive<', '>Burn<', 'Succeeded']
+    const order = ['>Review<', '>Verified<', 'gates mode · this build', '>Tickets<', '>Test drive<', '>Round<', 'Succeeded']
     let cursor = -1
     for (const fragment of order) {
       const at = html.indexOf(fragment)
@@ -57,7 +56,7 @@ describe('StatusStrip', () => {
 
   it('stamps evidence that predates the current build as stale, with what landed since', () => {
     const html = render({ artifact: { lap: 1 }, landedSince: 5 })
-    expect(html).toContain('Verified 1 lap ago')
+    expect(html).toContain('Verified earlier')
     expect(html).toContain('5 landed since')
   })
 
@@ -162,14 +161,14 @@ describe('StatusStrip', () => {
    * rather than an instruction, and the burn is history the page leaves out.
    */
   describe('on a shipped feature', () => {
-    it('leaves the burn and the laps out', () => {
+    it('leaves the round and the laps out', () => {
       const html = render({ shipped: true })
       expect(html).not.toContain('>Laps<')
-      expect(html).not.toContain('>Burn<')
+      expect(html).not.toContain('>Round<')
     })
 
     it('states the lap the drive was taken in', () => {
-      expect(render({ shipped: true, driveLap: 2 })).toContain('Lap 2')
+      expect(render({ shipped: true, driveLap: 2 })).toContain('Taken')
     })
 
     it('says so when the branch was never driven, and why when nothing was recorded', () => {
@@ -187,41 +186,28 @@ describe('StatusStrip', () => {
   })
 })
 
-describe('LapStory', () => {
-  const story = (props: Partial<Parameters<typeof LapStory>[0]> = {}): string =>
+describe('DeferredScope', () => {
+  const scope = (props: Partial<Parameters<typeof DeferredScope>[0]> = {}): string =>
     renderToStaticMarkup(
-      createElement(LapStory, {
-        lap: lapChip([], { lap: 2, lapSessionRan: true }),
-        laterLaps: 'A settings pane for the roster.',
-        currentLap: 2,
-        readonly: false,
-        ...props,
-      }),
+      createElement(DeferredScope, { deferred: 'A settings pane for the roster.', readonly: false, ...props }),
     )
 
-  /** Decision 27a: the past tense only once the lap's session has actually run. */
-  it('tells the lap’s story in the tense the lap is actually in', () => {
-    expect(story({ lap: lapChip([], { lap: 2, lapSessionRan: false }) })).toContain(
-      'Lap 2 is open — its session will digest your notes',
-    )
-    // React escapes the apostrophe on the way into static markup.
-    expect(story()).toContain('Lap 2&#x27;s session digested your notes')
-  })
-
-  it('states the planned next lap, and the way to start it', () => {
-    const html = story()
-    expect(html).toContain('The spec kept this out of lap 2 on purpose')
-    expect(html).toContain('Start lap 3 from the next step')
+  it('states the scope the spec deferred, and that the agent can take it on', () => {
+    const html = scope()
+    expect(html).toContain('Deferred scope')
+    expect(html).toContain('The spec kept this out on purpose')
+    expect(html).toContain('Tell the agent to take it on')
     expect(html).toContain('A settings pane for the roster.')
+    expect(html).not.toMatch(/\blap\b/i)
   })
 
   it('states the deferred scope as history on a shipped feature', () => {
-    const html = story({ readonly: true })
+    const html = scope({ readonly: true })
     expect(html).toContain('still deferred when this feature shipped')
-    expect(html).not.toContain('Start lap 3 from the next step')
+    expect(html).not.toContain('Tell the agent')
   })
 
   it('renders nothing when the spec deferred nothing', () => {
-    expect(story({ laterLaps: null })).toBe('')
+    expect(scope({ deferred: null })).toBe('')
   })
 })

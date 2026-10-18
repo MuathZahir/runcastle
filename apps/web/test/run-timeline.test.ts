@@ -70,7 +70,7 @@ describe('RunTimeline', () => {
       type: 'burn.image_cli_drift',
       message:
         'Sandbox has Claude Code 2.1.280, your machine has 2.1.290 — burning on 2.1.280. ' +
-        'Rebuild from Settings → Burns to catch up.',
+        'Rebuild from Settings → Workers to catch up.',
       data: { warning: true, runtime: 'claude-code', managed: true },
     })
 
@@ -86,9 +86,9 @@ describe('RunTimeline', () => {
       expect(html([event({ id: 1 }), drift])).toContain('open=""')
     })
 
-    it('links its Settings → Burns to the Rebuild row inside the settings provider', () => {
+    it('links its Settings → Workers to the Rebuild row inside the settings provider', () => {
       const markup = inProvider([event({ id: 1 }), drift])
-      expect(markup).toMatch(/<button[^>]*>Settings → Burns<\/button>/)
+      expect(markup).toMatch(/<button[^>]*>Settings → Workers<\/button>/)
       expect(markup).toContain('Rebuild from ')
       // The ordinary row stays plain and clipped.
       expect(messageClass(markup, 'docs digest: 2400 bytes')).toContain('truncate')

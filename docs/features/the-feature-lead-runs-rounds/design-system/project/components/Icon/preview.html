@@ -1,0 +1,13 @@
+<!-- @dsCard group="Foundations" height=150 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Icon — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+...R.iconNames.map(function(n){return h('span',{key:n,title:n,style:{display:'inline-flex',flexDirection:'column',alignItems:'center',gap:6,width:64,fontSize:10,color:'var(--text-tertiary)'}},h(R.Icon,{name:n}),n)})));
+</script>
+</body>
+</html>

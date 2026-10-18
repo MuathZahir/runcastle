@@ -53,7 +53,7 @@ const REASSIGNABLE: readonly TicketStatus[] = ['pending', 'failed']
  */
 const LANE_STATUS: Record<LaneState, { tone: StatusTone; word: string; icon?: ReactNode; muted?: boolean }> = {
   pending: { tone: 'neutral', word: 'Pending' },
-  burning: { tone: 'live', word: 'Burning' },
+  burning: { tone: 'live', word: 'Running' },
   done: { tone: 'success', word: 'Done', icon: <IconCheck /> },
   failed: { tone: 'danger', word: 'Failed' },
   'launch-failed': { tone: 'danger', word: 'Launch failed' },

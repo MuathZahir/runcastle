@@ -381,7 +381,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   )
 
   // Anything under the shell — a ticket's error, a burn lane — can turn a
-  // "Settings → Burns" pointer into a link that lands on the row it names.
+  // "Settings → Workers" pointer into a link that lands on the row it names.
   // And any session launch under it lands on that feature's Chat tab.
   return (
     <OpenSettingsProvider open={ws.openSettings}>

@@ -315,14 +315,18 @@ async function main(): Promise<void> {
   assert(afterComplete.feature.phase === 'planning', 'feature remains in planning')
   record('MCP complete_phase', 'ideation step recorded; the feature stays in planning')
 
-  // (7) feature.burn — REAL noSandbox claude runs on the host ------------------
-  banner('STEP 7 — tRPC feature.burn (RUNCASTLE_SANDBOX=noSandbox, model via runOverride)')
+  // (7) feature.go + MCP dispatch_round — REAL noSandbox claude runs on the host
+  banner('STEP 7 — tRPC feature.go, then the lead\'s dispatch_round (RUNCASTLE_SANDBOX=noSandbox)')
   process.env.RUNCASTLE_SANDBOX = 'noSandbox'
-  log(`  burning with sandbox=noSandbox model=${smokeModel} (real host claude — trivial tickets)`)
-  // Pass the smoke model through the burn run override (issue #48) — the
-  // RUNCASTLE_MODEL env hack is retired.
-  const { runId } = await trpc.feature.burn({ featureId, model: smokeModel })
-  assert(!!runId, 'burn returned a runId')
+  log(`  dispatching with sandbox=noSandbox model=${smokeModel} (real host claude — trivial tickets)`)
+  // A round takes no per-run model, so the smoke model is the project's own
+  // override, which wins the model chain for the round's agents.
+  await trpc.settings.update({ projectId: project.id, key: 'model', value: smokeModel })
+  await trpc.feature.go({ featureId })
+  const dispatched = await mcpToolCall(sessionId, 'dispatch_round', { seqs: [1, 2] })
+  assert(!dispatched.isError, `dispatch_round not an error (got ${JSON.stringify(dispatched.data)})`)
+  const runId: string = dispatched.data.runId
+  assert(!!runId, 'dispatch_round returned a runId')
   log(`  runId=${runId}; polling run/events (budget 10 min)…`)
 
   // poll run.get + events.list (afterId cursor) until terminal
@@ -370,7 +374,16 @@ async function main(): Promise<void> {
   const healthOnBranch = git(TARGET, 'show', 'feature/health-check-file:HEALTH.md')
   assert(/\bok\b/.test(healthOnBranch), 'HEALTH.md on feature branch contains ok')
   assert(/\bchecked\b/.test(healthOnBranch), 'HEALTH.md on feature branch contains checked')
-  record('feature.burn', `run succeeded — 2/2 tickets done, ${featCommits.length - 1} commit(s) on branch, HEALTH.md = ok+checked`)
+  record('round 1', `run succeeded — 2/2 tickets done, ${featCommits.length - 1} commit(s) on branch, HEALTH.md = ok+checked`)
+
+  const ready = await mcpToolCall(sessionId, 'declare_ready', {
+    scenario: 'HEALTH.md',
+    whatToTest: 'Open HEALTH.md on the feature branch; it should say ok and checked.',
+  })
+  assert(!ready.isError, `declare_ready not an error (got ${JSON.stringify(ready.data)})`)
+  const afterReady = await trpc.feature.get({ id: featureId })
+  assert(afterReady.feature.phase === 'review', `declare_ready moved the feature to review (got ${afterReady.feature.phase})`)
+  record('MCP declare_ready', 'the lead declared it ready; the feature is in review')
 
   // (8) testDrive start/stop ---------------------------------------------------
   banner('STEP 8 — tRPC feature.testDrive start → stop (with a live talk worktree)')

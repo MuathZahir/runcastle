@@ -6,7 +6,6 @@ const meta = {
   title: 'Review/NothingVerifiedAlert',
   component: NothingVerifiedAlert,
   args: {
-    lap: 2,
     outcome: {
       kind: 'unverified',
       line: 'Review pass #7 verified nothing: no drive was available.',

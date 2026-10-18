@@ -1,0 +1,13 @@
+<!-- @dsCard group="Status" height=96 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>PhaseIcon — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+...['draft','ideation','spec','tickets','implementation','review','shipped'].map(function(p){return h('span',{key:p,style:{display:'inline-flex',alignItems:'center',gap:8,marginRight:12,color:'var(--text-secondary)'}},h(R.PhaseIcon,{phase:p}),p)})));
+</script>
+</body>
+</html>

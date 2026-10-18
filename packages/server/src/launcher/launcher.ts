@@ -29,10 +29,9 @@ import {
   selfPlanKickoffFor,
 } from './runtimes/skills'
 import { runs } from '../db/schema'
-import { GateError, NotImplementedError, isNotImplemented } from '../errors'
-import { endSession } from '../pty/end-session'
+import { GateError, isNotImplemented } from '../errors'
 import { ptyRegistry } from '../pty/registry'
-import { type CarriedWork, carriedWork, currentLapReviewEvidence } from '../services/carried-work'
+import { currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { type EmitScope, emit, emitForSession, emitProject, emitScoped } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -48,7 +47,7 @@ import {
 import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import { workflowClaimsFeatureBranch } from '../workflows/runner'
-import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
+import { ensureTalkWorktreeDuringDrive, ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
@@ -57,6 +56,7 @@ import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
+import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
 import {
   chatOpening,
   renderScenarioFollowUp,
@@ -64,6 +64,7 @@ import {
   type PrepareBrief,
   type PrepareHost,
 } from './artifacts'
+import { isUnguardedLead } from './edit-guard'
 import { projectTriageKickoffFor } from './runtimes/skills'
 import { LOCKFILES } from './lockfiles'
 import {
@@ -73,7 +74,6 @@ import {
   createSessionRow,
   getSessionRow,
   hasCompletedProjectSession,
-  headlessLapKickoff,
   kickoffLineFor,
   landProjectSession,
   markSessionEnded,
@@ -83,8 +83,8 @@ import {
   reentryCount,
   reportProjectLanding,
   resumeCapExceeded,
+  resumeGoneReason,
   transcriptBytes,
-  type KickoffPlan,
   type ResumeCapVerdict,
 } from './sessions'
 
@@ -142,12 +142,15 @@ export interface LaunchSessionInput {
   purposeData?: MergeBranchPair
   /**
    * The orchestrator's message (`whole-cuts-plan-themselves`): what a `relay`
-   * run applies — required there — and what a headless start-lap adds to the
-   * lap's agenda.
+   * run applies — required there.
    */
   message?: string
-  /** Run a `start-lap` launch with no terminal, planned by itself (the orchestrator's door). */
-  headless?: boolean
+  /**
+   * Start the chat fresh from the docs even when a conversation is on record —
+   * a lead wake retried after the one before it died before checking in
+   * (`the-feature-lead-runs-rounds` decision 28).
+   */
+  fresh?: boolean
 }
 
 /**
@@ -174,7 +177,8 @@ export function chatKickoffHeader(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([status, count]) => `${status} ${count}`)
     .join(', ') || 'none'
-  const latestRun = listRunsByFeature(ctx, feature.id)[0]
+  const runs = listRunsByFeature(ctx, feature.id)
+  const latestRun = runs[0]
   let review = ''
   if (feature.phase === 'review') {
     const latestReview = currentLapReviewEvidence(ctx, feature.id).at(-1)
@@ -187,7 +191,7 @@ export function chatKickoffHeader(
           : 'unverified'
     review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
   }
-  return `${opening} Feature state: ${feature.phase}; lap ${feature.lap}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
+  return `${opening} Feature state: ${feature.phase}; rounds run: ${runs.length}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {
@@ -203,6 +207,8 @@ export interface LaunchSessionOptions {
 
 export interface LaunchSessionResult {
   sessionId: string
+  /** Whether a new terminal continues an earlier conversation; absent when none was launched. */
+  resumed?: boolean
 }
 
 /**
@@ -328,33 +334,25 @@ function headlessRunningError(feature: Feature, run: SessionRow): GateError {
 }
 
 /**
- * Whether this launch runs with no terminal: a self-planning run, a `relay` of
- * the orchestrator's message, or a start-lap the orchestrator asked to be
- * planned headless (`whole-cuts-plan-themselves`).
+ * Whether this launch runs with no terminal: a self-planning run, or a `relay`
+ * of the orchestrator's message (`whole-cuts-plan-themselves`).
  */
 function isHeadless(input: LaunchSessionInput): boolean {
   if (input.kind !== 'chat') return false
-  return (
-    isSelfPlan(input) ||
-    input.purpose === 'relay' ||
-    (input.purpose === 'start-lap' && !!input.headless)
-  )
+  return isSelfPlan(input) || input.purpose === 'relay' || input.purpose === 'lead-wake'
 }
 
 /**
- * Refuse a headless run the orchestrator asked for that the feature cannot take,
- * before the row exists: a relay carries a message, a headless lap is refused
- * where the human's Start-lap door is (only at review), and neither shares the
- * feature with another session.
+ * Refuse a relay the orchestrator asked for that the feature cannot take, before
+ * the row exists: it carries a message, and it does not share the feature with
+ * another session.
  */
 function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSessionInput): void {
   if (input.purpose === 'relay' && !input.message?.trim()) {
     throw new GateError('a message for the planning conversation is required to relay one')
   }
-  if (input.purpose === 'start-lap' && !isStartLap(feature, input)) {
-    throw new GateError(
-      `${feature.slug} is at ${feature.phase}, not review, so there is no next lap to start`,
-    )
+  if (input.purpose === 'lead-wake' && !input.message?.trim()) {
+    throw new GateError('a message for the agent is required to wake it')
   }
   assertSpawnable(ctx, feature)
 }
@@ -364,7 +362,9 @@ function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSess
  *
  * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
  * temp branch instead, so a session that spawns mid-run has somewhere of its own
- * to commit and never lands docs on a detached HEAD.
+ * to commit and never lands docs on a detached HEAD. While a drive of the
+ * feature holds it on the main checkout, the session opens in the worktree the
+ * drive detached, and what it commits lands when the drive stops.
  */
 async function ensureWorktree(
   ctx: AppCtx,
@@ -374,8 +374,9 @@ async function ensureWorktree(
   const running = activeRunFor(ctx, feature.id)
   const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
   try {
-    return besideRun
-      ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
+    if (besideRun) return await ensureTalkWorktreeDuringRun(ctx, project, feature)
+    return git.activeTestDriveFeatureId(project.id) === feature.id
+      ? await ensureTalkWorktreeDuringDrive(ctx, project, feature)
       : await git.ensureTalkWorktree(project, feature, () =>
           emit(ctx, feature.id, {
             type: 'repo.head_healed',
@@ -417,42 +418,6 @@ function applyResumeCap(
 }
 
 /**
- * A feature launch's kickoff plan, read off FEATURE STATE and the door it came
- * through — shared by a fresh launch and the live-chat answer, so both brief
- * alike. A `start-lap` launch at review is the "Start lap N+1" door, whose lap
- * briefing is built here from `carried` rather than by the web.
- */
-function planLaunchKickoff(
-  feature: Feature,
-  input: LaunchSessionInput,
-  carried: CarriedWork,
-): KickoffPlan {
-  return planKickoff({
-    kind: input.kind,
-    kickoffLine: input.kickoffLine,
-    ...(isStartLap(feature, input) ? { startLap: feature.lap, carried } : {}),
-  })
-}
-
-/** Whether this launch came through the review page's "Start lap N+1" door. */
-function isStartLap(feature: Feature, input: LaunchSessionInput): boolean {
-  return input.purpose === 'start-lap' && feature.phase === 'review'
-}
-
-/**
- * What a lap planned from review is handed: the carry channel, with the review
- * evidence of the lap the feature is still ON. At review the feature sits on lap
- * N and this session plans N+1, so the review to read is lap N's — the build the
- * human just drove — not the carry channel's lap N-1, which on lap 1 is nothing.
- */
-function startLapCarriedWork(ctx: AppCtx, featureId: string): CarriedWork {
-  return {
-    ...carriedWork(ctx, featureId),
-    reviewEvidence: currentLapReviewEvidence(ctx, featureId),
-  }
-}
-
-/**
  * How long after the briefing text the submitting `\r` follows. A TUI reads one
  * burst of bytes as a paste, in which a carriage return is a newline and not a
  * submit, so the two go out as separate keystrokes.
@@ -467,10 +432,8 @@ const LIVE_BRIEFING_SUBMIT_MS = 350
  * A plain Chat click brings nothing of its own: it is a door back into the
  * conversation, and re-briefing one mid-thought would be noise. The purpose-
  * specific roads DO — resolveConflict and stopDriveAndIterate pass their
- * `kickoffLine` (the Start-lap door never lands here: its lap needs a fresh
- * injected prompt, so {@link launchSession} relaunches the chat instead) — and
- * losing it is the whole defect this closes: the door foregrounded the terminal
- * and silently dropped the reason the human opened it.
+ * `kickoffLine` — and losing it is the whole defect this closes: the door
+ * foregrounded the terminal and silently dropped the reason the human opened it.
  *
  * ADR-0009 put a launch's briefing in the CLI's argv precisely so nothing had to
  * be typed at a terminal, and that is still how every LAUNCH briefs. A session
@@ -486,10 +449,10 @@ function briefLiveChat(
   liveChat: SessionRow,
   input: LaunchSessionInput,
 ): LaunchSessionResult {
-  const plan = planLaunchKickoff(feature, input, startLapCarriedWork(ctx, feature.id))
+  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
   if (!plan.line) return { sessionId: liveChat.id }
 
-  if (!writeToLiveTerminal(liveChat.id, plan.line)) {
+  if (!writeToLiveTerminal(liveChat.id, tagRuncastlePrompt(plan.line))) {
     throw new GateError(
       'the live chat terminal is not available, so its briefing was not delivered',
     )
@@ -606,14 +569,10 @@ export async function launchSession(
   // session of any OTHER kind is still `assertSpawnable`'s
   // one-terminal-per-feature refusal below.
   //
-  // The Start-lap door is the exception: its lap changes the session's injected
-  // prompt, not just its opening line, and a live chat's prompt was rendered for
-  // whatever opened it — at review, the plain Chat toggle's fix-ticket "Review
-  // iteration". Typing the lap briefing in would leave both framings in one
-  // session, so the live chat is ended and the conversation relaunched below
-  // with the lap prompt, as the carry road does from the web.
+  // A `start-lap` launch (the retired Start-lap door, still a historical
+  // purpose) is a plain chat open: there is no lap to plan, the lead runs rounds.
   //
-  // A headless run (self-plan, relay, headless start-lap) is never the
+  // A headless run (self-plan, relay) is never the
   // conversation to answer with: there is nothing to attach to or brief, and
   // ending it silently would throw away work in progress. Every chat launch is
   // refused until it is stopped.
@@ -623,7 +582,6 @@ export async function launchSession(
     if (liveChat?.headless) throw headlessRunningError(feature, liveChat)
     if (isSelfPlan(input)) assertSelfPlannable(ctx, feature)
     else if (headless) assertHeadlessRunnable(ctx, feature, input)
-    else if (liveChat && isStartLap(feature, input)) endSession(ctx, liveChat.id)
     else if (liveChat) return briefLiveChat(ctx, feature, liveChat, input)
   }
 
@@ -650,38 +608,11 @@ export async function launchSession(
 
   // What this terminal opens with, decided before anything else. An explicit
   // briefing makes non-chat sessions fresh; chat briefings ride the persistent
-  // conversation's resume. A lap planned from review (the Start-lap door)
-  // additionally tells the artifacts which lap they are rendering for.
-  //
-  // What the last lap handed this one rides along with it: the same counts brief
-  // the kickoff line and the injected prompt, so a lap opens knowing its agenda.
-  const carried = startLapCarriedWork(ctx, feature.id)
-  const plan = planLaunchKickoff(feature, input, carried)
+  // conversation's resume.
+  const plan = planKickoff({ kind: input.kind, kickoffLine: input.kickoffLine })
   const selfPlan = isSelfPlan(input)
   const relay = input.kind === 'chat' && input.purpose === 'relay'
-  // A lap planned headless has nobody to interview: its briefing is the
-  // no-human lap line, carrying the orchestrator's message on the agenda.
-  if (headless && plan.lap !== undefined) {
-    plan.line = headlessLapKickoff(plan.lap, runtime.id, carried, input.message)
-  }
-  if (input.kind === 'chat') {
-    // Every opening re-orients the persistent conversation. Purpose-specific
-    // text comes first so it remains the immediate task, followed by current
-    // feature state rather than the state captured on the previous turn. A
-    // self-planning or relay run opens on its own sentence: nobody is there to
-    // grill.
-    const header = chatKickoffHeader(
-      ctx,
-      feature,
-      runtime.id,
-      selfPlan
-        ? selfPlanKickoffFor(runtime.id)
-        : relay
-          ? relayKickoffFor(runtime.id, input.message as string)
-          : undefined,
-    )
-    plan.line = plan.line ? `${plan.line} ${header}` : header
-  }
+  const leadWake = input.kind === 'chat' && input.purpose === 'lead-wake'
 
   let resumeSessionId: string | undefined
   let resumeUnavailableFrom: string | undefined
@@ -704,9 +635,18 @@ export async function launchSession(
       throw e
     }
   }
-  if (input.kind === 'chat' && !selfPlan) {
+  if (input.kind === 'chat' && !selfPlan && !input.fresh) {
     const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
-    if (prior?.ccSessionId) {
+    // A conversation whose transcript is gone cannot come back: resuming it
+    // exits before the agent ever starts (decision 28), so start from the docs.
+    const gone = prior?.ccSessionId ? resumeGoneReason(prior, worktreePath) : undefined
+    if (prior?.ccSessionId && gone) {
+      emit(ctx, feature.id, {
+        type: 'session.resume_gone',
+        message: `the previous chat conversation can't be resumed — ${gone}; starting fresh from the docs`,
+        data: { sessionId: session.id, resumeSessionId: prior.ccSessionId, reason: gone },
+      })
+    } else if (prior?.ccSessionId) {
       resumedFrom = prior
       resumeSessionId = prior.ccSessionId
     } else if (listSessionsByFeature(ctx, feature.id).some(
@@ -763,17 +703,43 @@ export async function launchSession(
     })
   }
 
+  if (input.kind === 'chat') {
+    // Every opening re-orients the persistent conversation. Purpose-specific
+    // text comes first so it remains the immediate task, followed by current
+    // feature state rather than the state captured on the previous turn. A
+    // self-planning or relay run opens on its own sentence: nobody is there to
+    // grill. A lead wake says whether it resumed, so it is told after the
+    // resume is settled.
+    const header = chatKickoffHeader(
+      ctx,
+      feature,
+      runtime.id,
+      selfPlan
+        ? selfPlanKickoffFor(runtime.id)
+        : relay
+          ? relayKickoffFor(runtime.id, input.message as string)
+          : leadWake
+            ? leadWakeKickoff(input.message as string, !!resumeSessionId)
+            : chatKickoffFor(runtime.id, chatOpening(feature, planningFacts(ctx, feature), input.purpose)),
+    )
+    plan.line = plan.line ? `${plan.line} ${header}` : header
+  }
+
+  // A chat's kickoff is runcastle's prompt, not the human's: tagged, so the
+  // UserPromptSubmit hook does not count it as a human message.
   const kickoffLine = resumeSessionId && input.kind !== 'chat'
     ? undefined
-    : kickoffLineFor(input.kind, plan.line, runtime.id)
+    : input.kind === 'chat'
+      ? tagRuncastlePrompt(kickoffLineFor(input.kind, plan.line, runtime.id))
+      : kickoffLineFor(input.kind, plan.line, runtime.id)
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: selfPlan
       ? 'launching a self-planning run'
       : relay
         ? "relaying the orchestrator's message to the planning conversation"
-        : headless
-          ? 'launching a lap that plans itself'
+        : leadWake
+          ? 'waking the agent headless — no terminal of it was open'
           : `launching ${input.kind} session`,
     data: {
       sessionId: session.id,
@@ -811,9 +777,7 @@ export async function launchSession(
     feature,
     project,
     config: ctx.config,
-    lap: plan.lap,
-    carried: plan.lap === undefined ? undefined : carried,
-    // Which of the chat's two openings its brief renders (see `chatOpening`).
+    // Which of the chat's openings its brief renders (see `chatOpening`).
     planning: planningFacts(ctx, feature),
     purpose: input.purpose,
     worktreePath,
@@ -824,6 +788,13 @@ export async function launchSession(
     kickoffLine,
     // No terminal: the run takes its kickoff as its prompt and exits when done.
     ...(headless ? { headless: true } : {}),
+    // The lead past Go works while the human is away, live or headless, and a
+    // prompt nobody answers stalls the loop (`the-feature-lead-runs-rounds`
+    // decision 27) — the orchestrator's posture. The line guard on the
+    // pre-tool hook holds under bypass. Codex already never asks in its sandbox.
+    ...(runtime.id === 'claude-code' && isUnguardedLead(input.kind, feature.phase)
+      ? { permissionMode: 'bypassPermissions' }
+      : {}),
   })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
@@ -833,7 +804,7 @@ export async function launchSession(
       message: 'session prepared (terminal spawn skipped)',
       data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
-    return { sessionId: session.id }
+    return { sessionId: session.id, resumed: !!resumeSessionId }
   }
 
   const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
@@ -846,7 +817,7 @@ export async function launchSession(
       data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
     })
   }
-  return { sessionId: session.id }
+  return { sessionId: session.id, resumed: !!resumeSessionId }
 }
 
 /**
@@ -1581,8 +1552,10 @@ export function handlePtyExit(
       message: complete ? 'planning finished' : 'planning stopped before the plan was complete',
       data: { sessionId: session.id, complete, exitCode: exitCode ?? null },
     })
-  } else if (session.headless && feature) {
-    emitRunEnded(ctx, feature, session, exitCode)
+  } else if (session.headless && feature && session.purpose !== 'lead-wake') {
+    // A lead woken headless reports through its own MCP calls; the
+    // orchestrator's `session.run_ended` is for the runs it started.
+    emitRunEnded(ctx, session, exitCode)
   }
   emitForSession(ctx, session, {
     type: 'session.pty_exited',
@@ -1593,23 +1566,16 @@ export function handlePtyExit(
 }
 
 /**
- * `session.run_ended` for a headless run the orchestrator started — a `relay`
- * or a lap that plans itself — saying whether it finished. A relay finished when
- * its process exited cleanly. A lap finished when its tickets are on the board:
- * a lap planned at review never stamps `ticketsReadyLap` (it calls no
- * `complete_phase`), so the pending tickets Burn would carry are the record.
+ * `session.run_ended` for a headless run the orchestrator started — a `relay` —
+ * saying whether it finished: it did when its process exited cleanly.
  */
 function emitRunEnded(
   ctx: AppCtx,
-  feature: Feature,
   session: SessionRow,
   exitCode: number | undefined | null,
 ): void {
-  const complete =
-    session.purpose === 'relay'
-      ? exitCode === 0
-      : listTicketsByFeature(ctx, feature.id).some((ticket) => ticket.status === 'pending')
-  const what = session.purpose === 'relay' ? "the orchestrator's change" : 'planning the next lap'
+  const complete = exitCode === 0
+  const what = "the orchestrator's change"
   emitForSession(ctx, session, {
     type: 'session.run_ended',
     message: complete ? `${what} finished` : `${what} stopped before it was finished`,

@@ -23,6 +23,8 @@ describe('chat contract', () => {
       'cancel_ticket',
       'complete_phase',
       'create_feature',
+      'declare_ready',
+      'dispatch_round',
       'emit_tickets',
       'get_feature_context',
       'get_ticket',
@@ -30,7 +32,9 @@ describe('chat contract', () => {
       'read_feature_doc',
       'record_event',
       'resolve_finding',
+      'stop_round',
       'update_ticket',
+      'wait_for_you',
     ])
   })
 
@@ -64,7 +68,9 @@ describe('chat contract', () => {
     }
     const line = chatKickoffHeader(ctx, feature)
     expect(line).toContain('Feature state: review')
-    expect(line).toContain('lap 3')
+    // The lap column (3 here) no longer moves; the round count is what's told.
+    expect(line).toContain('rounds run: 1;')
+    expect(line).not.toMatch(/\blap\b/i)
     expect(line).toContain(`Drive outcome: ${outcome}; see the review evidence`)
     expect(line.endsWith('Call get_feature_context for the full picture.')).toBe(true)
   })

@@ -142,7 +142,8 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
     case 'testdrive.dev_failed':
       return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
     case 'session.launched':
-      if (!session) return null
+      // A lead woken headless is runcastle delivering to it, not the human acting.
+      if (!session || session.purpose === 'lead-wake') return null
       if (session.purpose === 'start-lap') {
         return { kind: 'act', text: `the human started the next lap in a chat; it is busy until that session ends.` }
       }

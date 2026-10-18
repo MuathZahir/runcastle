@@ -201,10 +201,9 @@ describe('the orchestrator’s ownership and gate', () => {
       'plan_feature',
       'send_to_feature',
       'stop_feature_run',
-      'burn_feature',
+      'go_feature',
       'drive',
       'record_test_note',
-      'start_feature_lap',
       'merge_feature',
       'add_to_brief',
     ]

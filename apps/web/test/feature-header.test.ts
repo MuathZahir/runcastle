@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
-import { PHASE_LABELS, PHASE_ORDER, type NextStep, type PipelineStep } from '../src/lib/feature-ui'
+import type { NextStep } from '../src/lib/feature-ui'
 import { ToastProvider } from '../src/lib/toast'
 import { FeatureHeader } from '../src/components/workspace/FeatureHeader'
 import { NextStepBar } from '../src/components/workspace/NextStepBar'
@@ -27,15 +27,6 @@ function feature(over: Partial<FeatureFull['feature']> = {}): FeatureFull['featu
   return { ...full().feature, lap: 1, ...over } as FeatureFull['feature']
 }
 
-const STEPS: PipelineStep[] = PHASE_ORDER.map((phase) => ({
-  phase,
-  label: PHASE_LABELS[phase],
-  state: phase === 'planning' ? 'current' : 'upcoming',
-  isViewed: phase === 'planning',
-  clickable: false,
-  tip: phase,
-}))
-
 function header(over: Partial<FeatureFull['feature']> = {}, isDraft = false): string {
   return renderToStaticMarkup(
     createElement(
@@ -44,8 +35,6 @@ function header(over: Partial<FeatureFull['feature']> = {}, isDraft = false): st
       createElement(FeatureHeader, {
         feature: feature({ title: LONG_TITLE, branch: LONG_BRANCH, ...over }),
         isDraft,
-        steps: STEPS,
-        onViewPhase: () => undefined,
         facts: isDraft ? [{ phase: 'draft', text: 'Parked 2d ago' }] : [{ text: 'Started 2d ago' }],
       }),
     ),
@@ -83,18 +72,9 @@ describe('the feature header', () => {
     expect(html).not.toContain('Copy branch name')
   })
 
-  it('pulls the stepper back by one step’s padding so it starts on the title’s edge', () => {
-    const stepper = /<nav aria-label="Pipeline" class="([^"]*)"/.exec(header())?.[1]?.split(' ') ?? []
-    expect(stepper).toContain('-ml-2')
-  })
-
-  it('states the pipeline for a started feature and not for a draft', () => {
-    // The step's own tip, which only the stepper renders — the label alone
-    // could as easily have come from the title beside it.
-    expect(header()).toContain('title="building"')
-    // A draft is created at `ideation`, so a stepper here would claim work has
-    // begun on a feature that has no branch yet.
-    expect(header({}, true)).not.toContain('title="building"')
+  it('has no phase stepper — the status line says where the feature is (decision 24)', () => {
+    expect(header()).not.toContain('aria-label="Pipeline"')
+    expect(header({}, true)).not.toContain('aria-label="Pipeline"')
   })
 
   it('marks a feature the orchestrator owns beside its title, and no other', () => {

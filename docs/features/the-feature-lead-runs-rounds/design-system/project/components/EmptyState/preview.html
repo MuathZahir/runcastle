@@ -1,0 +1,13 @@
+<!-- @dsCard group="Feedback" height=220 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>EmptyState — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{style:{width:420}},h(R.EmptyState,{icon:'check',title:'Nothing needs attention',hint:'Nothing was left open when this feature shipped.',action:h(R.Button,{icon:'message'},'Open chat')}))));
+</script>
+</body>
+</html>

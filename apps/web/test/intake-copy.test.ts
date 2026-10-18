@@ -29,7 +29,7 @@ describe('the two intake doors', () => {
 
   it('sends features and quick changes through the conversation', () => {
     const [newChat] = createRows()
-    expect(newChat).toMatch(/^New chat.*quick changes.+burn-ready tickets/)
+    expect(newChat).toMatch(/^New chat.*quick changes.+runs it in rounds/)
   })
 
   it('offers the second door as a place to park an idea, not a shortcut past the chat', () => {

@@ -423,9 +423,8 @@ describe('mcp tools', () => {
     addNote(ctx, featureId, 'the empty state flashes')
 
     const out = toolGetFeatureContext(ctx, session)
-    // Counted over the lanes that burn HELD — the fix ticket the finding just
-    // minted is the next burn's work and counts for neither side. The review
-    // pass is a lane like any other, so landing it lands a ticket.
+    // Counted over the lanes that burn HELD. The review pass is a lane like any
+    // other, so landing it lands a ticket.
     expect(out.latestRun).toEqual({
       status: 'failed',
       ticketsLanded: 2,
@@ -436,7 +435,10 @@ describe('mcp tools', () => {
       expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done', lap: 1 }),
     ])
     expect(out.currentLapReview[0].digestPath).toContain('DIGEST.md')
-    expect(out.findings.map((finding) => finding.title)).toEqual(['Save loses edits'])
+    // The defect starts open for the lead, so it is stated once, in openDefects,
+    // and not repeated in the record of the pass.
+    expect(out.openDefects.map((defect) => defect.title)).toEqual(['Save loses edits'])
+    expect(out.findings).toEqual([])
     expect(out.testNotes.map((note) => note.text)).toEqual(['the empty state flashes'])
   })
 

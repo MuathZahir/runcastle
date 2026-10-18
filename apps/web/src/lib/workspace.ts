@@ -166,7 +166,7 @@ export interface WorkspaceApi {
   /**
    * Where settings is open, or null for closed. A location rather than a flag:
    * every caller — the titlebar, the palette, an error message pointing at
-   * "Settings → Burns" — says which page (and optionally which field) it wants,
+   * "Settings → Workers" — says which page (and optionally which field) it wants,
    * so the human lands on the row instead of on the dialog.
    */
   settings: SettingsLocation | null

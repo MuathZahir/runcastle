@@ -37,7 +37,6 @@ import { ChatView } from '../src/components/chat/ChatView'
 import { ProjectChat } from '../src/components/project/ProjectChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
 import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
-import { LiveSessionBar } from '../src/components/workspace/LiveSessionBar'
 import { full as fixture } from './fixtures'
 
 type Session = FeatureFull['sessions'][number]
@@ -125,7 +124,7 @@ describe('ChatView', () => {
 /** The strip names whichever session kind the Chat tab is hosting (decision 9). */
 describe('chatContextLine', () => {
   it('names each kind of feature session', () => {
-    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat · lap 2')
+    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat')
     expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
     expect(chatContextLine(session({ kind: 'scenario' }))).toBe('Scenario')
   })
@@ -160,7 +159,7 @@ describe('FeatureChat', () => {
   }
 
   for (const [kind, line] of [
-    ['chat', 'Chat · lap 1'],
+    ['chat', 'Chat'],
     ['drive-fix', 'Drive fix'],
   ] as const) {
     it(`hosts a live ${kind} session full-area`, () => {
@@ -179,7 +178,7 @@ describe('FeatureChat', () => {
 
   it('with nothing live, reads back the chat transcript over Resume', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
-    expect(out).toContain('Chat · lap 2')
+    expect(out).toContain('Chat')
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
   })
@@ -228,17 +227,17 @@ describe('FeatureViewTabs', () => {
       }),
     )
 
-  it('shows the two views, Chat last, and no Tickets tab', () => {
+  it('shows the two views, Agent last, and no Tickets tab', () => {
     const out = tabs()
     const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
       m[1]!.replace(/<[^>]+>/g, ''),
     )
-    expect(labels).toEqual(['Overview', 'Chat'])
+    expect(labels).toEqual(['Overview', 'Agent'])
     expect(out).not.toContain('Session live')
   })
 
-  it('puts a live dot on Chat while a session is live', () => {
-    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Chat[\s\S]*aria-label="Session live"/)
+  it('puts a live dot on Agent while a session is live', () => {
+    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Agent[\s\S]*aria-label="Session live"/)
   })
 
   it('gives a draft no views at all', () => {
@@ -251,10 +250,10 @@ describe('the live-session line', () => {
   it('names the live session and its lap', () => {
     expect(liveSessionLine([session({ kind: 'drive-fix', lap: 3 })])).toEqual({
       sessionId: 'sess_1',
-      text: 'Drive fix live · lap 3',
+      text: 'Drive fix live',
     })
     // A launching terminal is as live as a live one — it is holding the seat.
-    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Chat live · lap 1')
+    expect(liveSessionLine([session({ status: 'launching' })])?.text).toBe('Agent live')
   })
 
   it('says nothing about an ended session, or about no session', () => {
@@ -265,18 +264,5 @@ describe('the live-session line', () => {
   it('says nothing during a self-planning run, whose bar already offers Stop', () => {
     expect(liveSessionLine([session({ purpose: 'self-plan' })])).toBeNull()
     expect(liveSessionLine([session({ purpose: 'self-plan', status: 'launching' })])).toBeNull()
-  })
-
-  it('offers Open chat and End session', () => {
-    const out = html(
-      createElement(LiveSessionBar, {
-        featureId: 'feat_1',
-        line: { sessionId: 'sess_1', text: 'Chat live · lap 2' },
-        onOpen: () => undefined,
-      }),
-    )
-    expect(out).toContain('Chat live · lap 2')
-    expect(out).toContain('Open chat')
-    expect(out).toContain('End session')
   })
 })

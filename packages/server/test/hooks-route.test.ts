@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
+import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
+import { setPhase } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -119,6 +121,97 @@ describe('hooks route', () => {
     expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
   })
 
+  /**
+   * REGRESSION (lap-2 drive): one SessionStart that timed out client-side left
+   * the chat with no conversation id, so the headless wake could not resume it
+   * and started a fresh conversation. Every turn hook carries the id too, so the
+   * first one to arrive checks the session in.
+   */
+  describe('a session whose SessionStart never arrived', () => {
+    const turnPayloads = {
+      'user-prompt': { hook_event_name: 'UserPromptSubmit', prompt: 'go' },
+      stop: { hook_event_name: 'Stop' },
+    }
+    for (const [event, payload] of Object.entries(turnPayloads)) {
+      it(`is checked in by its first ${event}, once`, async () => {
+        const app = mount()
+        const turn = { sessionId, payload: { ...payload, session_id: 'cc-late', transcript_path: '/tmp/late.jsonl' } }
+        await post(app, event, turn)
+        await post(app, event, turn)
+
+        expect(getSessionRow(ctx, sessionId)).toMatchObject({
+          status: 'live',
+          ccSessionId: 'cc-late',
+          transcriptPath: '/tmp/late.jsonl',
+        })
+        expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+      })
+    }
+
+    it('keeps the id current from a turn hook after a missed /clear SessionStart', async () => {
+      const app = mount()
+      await post(app, 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      await post(app, 'stop', { sessionId, payload: { session_id: 'cc-2', hook_event_name: 'Stop' } })
+
+      expect(getSessionRow(ctx, sessionId)?.ccSessionId).toBe('cc-2')
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+    })
+
+    it('never brings an ended session back', async () => {
+      markSessionEnded(ctx, sessionId)
+      await post(mount(), 'stop', { sessionId, payload: { session_id: 'cc-late', hook_event_name: 'Stop' } })
+
+      expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'ended', ccSessionId: undefined })
+    })
+
+    it('checks in a project-scoped session the same way', async () => {
+      const project = createSessionRow(ctx, {
+        projectId: seedProject(ctx).id,
+        kind: 'project',
+        worktreePath: 'C:\\wt\\proj',
+      })
+      await post(mount(), 'user-prompt', {
+        sessionId: project.id,
+        payload: { session_id: 'cc-proj', hook_event_name: 'UserPromptSubmit', prompt: 'hi' },
+      })
+
+      expect(getSessionRow(ctx, project.id)).toMatchObject({ status: 'live', ccSessionId: 'cc-proj' })
+    })
+
+    /**
+     * REGRESSION (lap 3 review): a SessionStart whose write hit a locked database
+     * answered `{}` and said nothing, so the row sat `launching` with no trace of
+     * why. The failure is now on the timeline, and the first turn still checks in.
+     */
+    it('says so on the timeline when its SessionStart write fails, and its first turn checks it in', async () => {
+      const app = mount()
+      const silence = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.spyOn(ctx.db, 'update').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+      const start = await post(app, 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-1', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+
+      expect(start).toEqual({ status: 200, json: {} })
+      expect(getSessionRow(ctx, sessionId)?.status).toBe('launching')
+      expect(listAfter(ctx, featureId, 0).find((e) => e.type === 'session.checkin_failed')).toMatchObject({
+        message: expect.stringContaining('database is locked'),
+        data: { sessionId, reason: 'database is locked' },
+      })
+      expect(silence).toHaveBeenCalled()
+
+      await post(app, 'stop', { sessionId, payload: { session_id: 'cc-1', hook_event_name: 'Stop' } })
+      expect(getSessionRow(ctx, sessionId)).toMatchObject({ status: 'live', ccSessionId: 'cc-1' })
+      expect(listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.started')).toHaveLength(1)
+      vi.restoreAllMocks()
+    })
+  })
+
   it('user-prompt injects one compact runcastle line in the verified shape', async () => {
     storeTickets(ctx, featureId, [
       { title: 'a', goal: 'g', context: 'c', acceptanceCriteria: ['x'], seams: ['s'], blockedBy: [] },
@@ -200,7 +293,7 @@ describe('hooks route', () => {
     expect(notes[0]?.data).toEqual({ sessionId: session.id, reason: 'other' })
   })
 
-  it('session-start tells the session which LAP the feature is on', async () => {
+  it('session-start never tells the session a lap (the agent would repeat it)', async () => {
     const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
     const s = createSessionRow(ctx, {
       featureId: lapFeature.id,
@@ -213,7 +306,8 @@ describe('hooks route', () => {
       payload: { session_id: 'cc-lap', hook_event_name: 'SessionStart', source: 'startup' },
     })
 
-    expect(json.hookSpecificOutput.additionalContext).toContain('lap: 3')
+    expect(json.hookSpecificOutput.additionalContext).toContain('phase: planning; branch:')
+    expect(json.hookSpecificOutput.additionalContext).not.toMatch(/\blap\b/i)
   })
 
   /**
@@ -309,6 +403,93 @@ describe('hooks route', () => {
         payload: { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {} },
       })
       expect(noPath.json).toEqual({})
+    })
+
+    /**
+     * From Go on the feature's chat is its lead and may edit code (decision 7).
+     * The phase is read per call, so the same session — opened in planning —
+     * gains the permission the moment its feature leaves planning.
+     */
+    it('lifts for the feature chat once its feature has left planning, decided per call', async () => {
+      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
+        'deny',
+      )
+      setPhase(ctx, featureId, 'building')
+      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
+        'allow',
+      )
+      setPhase(ctx, featureId, 'review')
+      expect(
+        (await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision,
+      ).toBe('allow')
+    })
+
+    it('keeps binding every other feature-scoped kind after Go', async () => {
+      setPhase(ctx, featureId, 'building')
+      const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: '/repo' }).id
+      const json = await preTool(fix, 'Edit', '/repo/src/theme.ts')
+      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    })
+  })
+
+  /**
+   * After Go the lead never stalls on a prompt (`the-feature-lead-runs-rounds`
+   * decision 27): a chat launched in planning keeps its permission mode, so the
+   * hook answers `allow`. The line guard denies in every phase and mode.
+   */
+  describe('pre-tool — the lead runs unprompted, inside the human\'s lines', () => {
+    let repoPath: string
+    let leadFeatureId: string
+    let leadPath: string
+
+    beforeEach(() => {
+      const project = seedProject(ctx)
+      repoPath = project.repoPath
+      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead', phase: 'planning' }).id
+      leadPath = worktreeDir(project.id, 'lead')
+    })
+
+    async function shell(id: string, command: string, tool = 'Bash'): Promise<any> {
+      const { json } = await post(mount(), 'pre-tool', {
+        sessionId: id,
+        payload: { hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command } },
+      })
+      return json
+    }
+
+    it('answers allow for shell calls only once the feature has left planning', async () => {
+      const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
+      expect(await shell(lead, 'git merge main')).toEqual({})
+      setPhase(ctx, leadFeatureId, 'building')
+      expect((await shell(lead, 'git merge main')).hookSpecificOutput).toEqual({
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+      })
+      expect((await shell(lead, 'bun run test', 'PowerShell')).hookSpecificOutput.permissionDecision).toBe('allow')
+    })
+
+    it('denies the three named acts with a reason, before Go and after', async () => {
+      const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
+      for (const phase of ['planning', 'building'] as const) {
+        setPhase(ctx, leadFeatureId, phase)
+        for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
+          const json = await shell(lead, cmd)
+          expect(json.hookSpecificOutput.permissionDecision, `${phase}: ${cmd}`).toBe('deny')
+          expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
+        }
+      }
+    })
+
+    it('leaves a Codex lead with no opinion on what it allows — Codex never asks', async () => {
+      setPhase(ctx, leadFeatureId, 'building')
+      const lead = createSessionRow(ctx, {
+        featureId: leadFeatureId,
+        kind: 'chat',
+        worktreePath: leadPath,
+        model: { id: 'gpt-5.5', runtime: 'codex' },
+      }).id
+      expect(await shell(lead, 'git merge main')).toEqual({})
+      expect((await shell(lead, 'git push origin main')).hookSpecificOutput.permissionDecision).toBe('deny')
     })
   })
 
@@ -407,6 +588,17 @@ describe('hooks route', () => {
         worktreePath: worktreeDir(projectId, PROJECT_WORKTREE_SLUG),
       }).id
       expect(await install(chat)).toEqual({})
+    })
+
+    it('allows the feature chat to install once its feature has left planning', async () => {
+      const lead = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: talkPath,
+      }).id
+      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('deny')
+      setPhase(ctx, talkFeatureId, 'building')
+      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
     })
   })
 
@@ -534,6 +726,27 @@ describe('hooks route', () => {
       expect(awaiting()).toBe(false)
       await stop()
       expect(awaiting()).toBe(true)
+    })
+
+    // The feature header's status line reads this bit (agent working vs. ready
+    // for you), so a flip has to reach the browser on the push, not the 30s
+    // safety poll — and an unchanged bit pushes nothing.
+    it('pushes a live signal when the turn state flips, and only then', async () => {
+      const signals: LiveSignal[] = []
+      const unsubscribe = subscribeLive((s) => signals.push(s))
+      try {
+        await post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+        expect(signals).toEqual([{ kind: 'turn', sessionId }])
+        await post(mount(), 'stop', { sessionId, payload: { hook_event_name: 'Stop' } })
+        expect(signals).toHaveLength(1)
+        await post(mount(), 'user-prompt', {
+          sessionId,
+          payload: { hook_event_name: 'UserPromptSubmit', prompt: 'more' },
+        })
+        expect(signals.filter((s) => s.kind === 'turn')).toHaveLength(2)
+      } finally {
+        unsubscribe()
+      }
     })
 
     it('returns {} for a stop on an unknown session', async () => {

@@ -118,19 +118,19 @@ describe('EvidenceStage', () => {
       picked: 'tkt_1',
     })
     expect(html).toContain('src="/first.webm"')
-    expect(html).toContain('Lap 1 · Walkthrough')
+    expect(html).toContain('>Walkthrough')
     expect(html).not.toContain('Earlier recordings')
   })
 
   /**
-   * Decision 4: the stage is never lap-scoped, so a lap that has recorded
-   * nothing keeps the previous lap's recording up — identified by ITS lap — and
-   * the stage never blanks on a lap flip.
+   * Decision 4: the stage is never round-scoped, so a recording stays up and
+   * the stage never blanks; it is named by what it is, never by a lap.
    */
-  it('keeps an earlier lap’s recording on the stage, named by the lap it is from', () => {
+  it('keeps a recording on the stage, named without a lap', () => {
     const html = render({ recordings: [recording({ lap: 2, landedSince: 0 })] })
     expect(html).toContain('<video')
-    expect(html).toContain('Lap 2 · Walkthrough')
+    expect(html).toContain('>Walkthrough')
+    expect(html).not.toMatch(/\bLap \d/)
   })
 
   /**

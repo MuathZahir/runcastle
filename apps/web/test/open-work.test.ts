@@ -23,6 +23,9 @@ vi.mock('../src/trpc', () => {
       }),
       notes: {
         add: { useMutation: mutation },
+        send: { useMutation: mutation },
+        list: { useQuery: () => ({ data: [] }) },
+        delivery: { useQuery: () => ({ data: undefined }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
         toggle: { useMutation: mutation },
@@ -104,10 +107,11 @@ function render(
   return renderToStaticMarkup(
     createElement(OpenWork, {
       featureId: 'ftr_1',
-      lap: work.lap ?? 1,
       rows: split(work).attention,
       readonly: false,
       onStage: null,
+      // The live page, once the agent asked for a drive (decision 24).
+      notesOpen: true,
       ...over,
     }),
   )
@@ -182,7 +186,7 @@ describe('OpenWork', () => {
       tickets: [ticket({ id: 'tkt_9', seq: 9, status: 'pending', title: 'fix the chip' })],
     }
     const settled = renderSettled(work)
-    expect(settled).toContain('carried into lap 3')
+    expect(settled).not.toContain('carried into lap')
     expect(settled).toContain('>Reopen<')
     expect(settled).toContain('#9 fix the chip')
     // A handled note is struck through and keeps its toggle back to open.
@@ -192,17 +196,18 @@ describe('OpenWork', () => {
   })
 
   /**
-   * A parked defect belongs to the carried band and to nothing else
-   * (decisions #5) — filed here as well it would render twice, and the tally it
-   * is deliberately outside of would count it.
+   * A parked defect is settled work now that the carried band is gone
+   * (decision 16): behind the disclosure with its Reopen, out of the open half
+   * and the tally it is deliberately outside of.
    */
-  it('leaves a carried defect to its own band, out of both halves of this list', () => {
+  it('files a carried defect with the settled half, never the open one', () => {
     const work = {
       findings: [finding({ id: 'd1', status: 'carried', carriedLap: 3 })],
       openDefects: [],
     }
     expect(render(work)).toContain('Nothing needs attention')
-    expect(renderSettled(work)).not.toContain('the save drops the edited value')
+    expect(renderSettled(work)).toContain('the save drops the edited value')
+    expect(renderSettled(work)).toContain('carried for later')
   })
 
   /**
@@ -219,17 +224,16 @@ describe('OpenWork', () => {
     })
     expect(html).toContain('the save drops the edited value')
     expect(html).toContain('>Dismiss<')
-    expect(html).toContain('1 open')
     expect(html).not.toContain('being fixed')
   })
 
-  it('groups the open list by lap once the feature is past lap 1', () => {
+  it('lists the open rows flat, with no lap headers, whatever lap they were taken in', () => {
     const html = render({
       lap: 2,
       notes: [note({ id: 'n1', lap: 1, text: 'from lap one' }), note({ id: 'n2', lap: 2 })],
     })
-    expect(html).toContain('Lap 1')
-    expect(html).toContain('Lap 2')
+    expect(html).toContain('from lap one')
+    expect(html).not.toMatch(/\bLap \d/)
   })
 
   /**
@@ -257,5 +261,11 @@ describe('OpenWork', () => {
     expect(html).not.toContain('>Edit<')
     expect(html).not.toContain('>Delete<')
     expect(html).not.toContain('what did you just see?')
+  })
+
+  // `the-feature-lead-runs-rounds` decision 24: only while driving or after a ready declaration.
+  it('renders nothing on the live page until drive notes are open', () => {
+    expect(render({}, { notesOpen: false })).toBe('')
+    expect(render({}, { notesOpen: true })).toContain('Notes for the agent')
   })
 })

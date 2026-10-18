@@ -43,6 +43,10 @@ export function rowToFeature(row: FeatureSelect): Feature {
     status: row.status,
     createdAt: row.createdAt,
     orchestrated: row.orchestrated,
+    stoppedAt: row.stoppedAt,
+    waitingReason: row.waitingReason,
+    lastHumanMessageAt: row.lastHumanMessageAt,
+    lastDispatchAt: row.lastDispatchAt,
   })
 }
 
@@ -79,6 +83,7 @@ export function rowToRun(row: RunSelect): Run {
     endedAt: row.endedAt ?? undefined,
     summary: row.summary ?? undefined,
     digest: row.digest ?? undefined,
+    gates: row.gates ?? undefined,
   })
 }
 

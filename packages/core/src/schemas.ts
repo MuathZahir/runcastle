@@ -104,10 +104,10 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * lets it write files while that merge is actually in progress in its worktree
  * (see `evaluateEditGuard`) — the one exemption a talk session ever gets.
  *
- * `start-lap` — the feature chat opened by the review page's "Start lap N+1"
- * door (empty-handed, or after a triage that carried work). At review it tells
- * the launcher to brief the conversation to plan lap N+1 (`reviewLapKickoff`);
- * the lap counter itself only moves at Burn from review.
+ * `start-lap` — historical: the feature chat opened by the retired "Start lap
+ * N+1" door. Laps gave way to the lead's rounds (`the-feature-lead-runs-rounds`),
+ * so the launcher treats such a launch as a plain chat open; the value stays so
+ * old rows and the web keep reading.
  *
  * `self-plan` — the feature's planning session launched by "Plan it yourself"
  * (`features-plan-themselves` decision 9): headless, with no human present, it
@@ -121,6 +121,10 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * `relay` — a headless run that resumes a feature's planning conversation with
  * a message from the orchestrator as its prompt.
  *
+ * `lead-wake` — a headless run that resumes a feature's chat (its lead) with
+ * runcastle's pending messages as its prompt, because no terminal of it was open
+ * to take them (`the-feature-lead-runs-rounds` decision 12).
+ *
  * `scenario-setup` — a `scenario` session launched while the driven branch had
  * no `.runcastle/scenarios/` yet (drive-scenarios decision 5). Decided once at
  * launch: it briefs the agent to set scenarios up (login route, typecheck,
@@ -132,6 +136,7 @@ export const SessionPurpose = z.enum([
   'self-plan',
   'orchestrate',
   'relay',
+  'lead-wake',
   'scenario-setup',
 ])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
@@ -366,6 +371,8 @@ export const TestNote = z.object({
   carriedLap: z.number().optional(),
   videoTimestamp: z.number().optional(),
   screenshotUrl: z.string().optional(),
+  /** When "Send to agent" delivered the note to the lead; unset while unsent. */
+  sentAt: z.number().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
@@ -604,8 +611,58 @@ export const Feature = z.object({
   createdAt: z.number(),
   /** The orchestrator owns this feature — see the db schema. */
   orchestrated: z.boolean().default(false),
+  /**
+   * When the human pressed Stop (ms); null when the feature is not stopped. No
+   * round dispatches while it is set, and the next human message clears it.
+   */
+  stoppedAt: z.number().nullable().default(null),
+  /** Why the feature waits on the human ("Waiting for you · <why>"); null when it does not. */
+  waitingReason: z.string().nullable().default(null),
+  /** When a human message last reached the lead (ms); null before the first. */
+  lastHumanMessageAt: z.number().nullable().default(null),
+  /** When the lead last dispatched a round (ms); null before the first. */
+  lastDispatchAt: z.number().nullable().default(null),
 })
 export type Feature = z.infer<typeof Feature>
+
+/**
+ * One "Ready for you" declaration (decision 9): the scenario the human is asked
+ * to drive, what to test in it, and the round it follows (null before any).
+ */
+export const ReadyDeclaration = z.object({
+  id: z.string(),
+  featureId: z.string(),
+  runId: z.string().nullable(),
+  scenario: z.string(),
+  whatToTest: z.string(),
+  createdAt: z.number(),
+})
+export type ReadyDeclaration = z.infer<typeof ReadyDeclaration>
+
+/**
+ * A round's verify-gate result, as the trail and the lead read it: whether every
+ * command passed, and the ones that did not. Null on a round with no verify
+ * commands configured, or whose gates have not run yet.
+ */
+export const RoundGates = z.object({ ok: z.boolean(), failed: z.array(z.string()) })
+export type RoundGates = z.infer<typeof RoundGates>
+
+/**
+ * One round (decision 16): a ticket-burner run, numbered per feature from 1 by
+ * start order, with the tickets it held and how they ended.
+ */
+export const RoundSummary = z.object({
+  round: z.number(),
+  runId: z.string(),
+  status: RunStatus,
+  ticketSeqs: z.array(z.number()),
+  landed: z.array(z.number()),
+  failed: z.array(z.number()),
+  gates: RoundGates.nullable(),
+  startedAt: z.number(),
+  finishedAt: z.number().nullable(),
+})
+export type RoundSummary = z.infer<typeof RoundSummary>
 
 export const SessionRow = z.object({
   id: z.string(),
@@ -661,6 +718,8 @@ export const Run = z.object({
   summary: z.string().optional(),
   /** This run's harvested ticket digests, concatenated under per-ticket headers. */
   digest: z.string().optional(),
+  /** The verify commands run at this round's end (decision 10); unset until they ran. */
+  gates: ReviewGateRun.optional(),
 })
 export type Run = z.infer<typeof Run>
 

@@ -221,7 +221,7 @@ describe('the orchestrator’s headless runs on the bar', () => {
   it('says a lap is planning itself at review, with Stop only', () => {
     const ns = nextStep(review([lapRun({ status: 'launching' })]), { driving: false })
 
-    expect(ns.title).toBe('Planning the next lap itself')
+    expect(ns.title).toBe('Planning more work itself')
     expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
     expect(ns.secondary).toEqual([])
   })
@@ -250,7 +250,7 @@ describe('the orchestrator’s headless runs on the bar', () => {
 
   it('says a lap stopped short at review, until a newer chat of the lap exists', () => {
     const stopped = nextStep(review([lapRun()]), { driving: false, unfinishedRuns: ['sess_lap'] })
-    expect(stopped.title).toBe('Planning the next lap stopped before its tickets were ready')
+    expect(stopped.title).toBe('Planning stopped before its tickets were ready')
 
     const later = nextStep(review([lapRun(), session({ id: 'sess_2', ccSessionId: 'cc-2' })]), {
       driving: false,

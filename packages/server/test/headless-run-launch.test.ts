@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentRuntime, Feature } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { handlePtyExit, launchSession, type LaunchSessionInput } from '../src/launcher/launcher'
@@ -16,17 +16,18 @@ import {
   markSessionLive,
 } from '../src/launcher/sessions'
 import { getFeatureFull } from '../src/services/features'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
+import { startLeadWaker, wakeLeadHeadless } from '../src/services/lead-delivery'
+import { leadMessageKey, queueOrchestratorLine } from '../src/services/orchestrator-messages'
 import { createFeatureBranch } from '../src/services/git'
-import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * The orchestrator's headless runs on a feature (`whole-cuts-plan-themselves`,
  * "Headless runs on a feature"): a `relay` of its message into the planning
- * conversation and a start-lap planned headless — what they render, what they
- * resume, what they refuse, and what their exit says.
+ * conversation — what it renders, what it resumes, what it refuses, and what
+ * its exit says.
  */
 
 describe('a headless run on a feature', () => {
@@ -97,33 +98,22 @@ describe('a headless run on a feature', () => {
   }
 
   /** An earlier chat whose conversation the CLI recorded, now ended. */
-  async function earlierChat(featureId: string, ccSessionId: string): Promise<void> {
+  async function earlierChat(featureId: string, ccSessionId: string, transcriptPath?: string): Promise<void> {
     const earlier = await launch(featureId)
-    markSessionLive(ctx, earlier, { ccSessionId })
+    markSessionLive(ctx, earlier, { ccSessionId, ...(transcriptPath ? { transcriptPath } : {}) })
     markSessionEnded(ctx, earlier)
-  }
-
-  function pendingTicket(featureId: string): void {
-    storeTickets(ctx, featureId, [
-      {
-        title: 'Next lap', goal: 'Do it', context: '',
-        acceptanceCriteria: [], seams: [], blockedBy: [],
-      },
-    ])
   }
 
   it('records headless on the session row of every headless launch, visible in FeatureFull', async () => {
     const plan = await feature('self-plan')
     const relayed = await feature('relayed')
-    const lap = await feature('lap', { phase: 'review' })
     const ordinary = await feature('ordinary')
 
     const ids = [
       await launch(plan.id, { purpose: 'self-plan' }),
       await launch(relayed.id, relay()),
-      await launch(lap.id, { purpose: 'start-lap', headless: true }),
     ]
-    for (const [i, f] of [plan, relayed, lap].entries()) {
+    for (const [i, f] of [plan, relayed].entries()) {
       const session = getFeatureFull(ctx, f.id).sessions.find((s) => s.id === ids[i])
       expect(session?.headless).toBe(true)
     }
@@ -154,7 +144,7 @@ describe('a headless run on a feature', () => {
       const sessionId = await launch(f.id, relay())
       const command = launchedCommand(f.id, sessionId)
       expect(command).toContain(
-        'codex exec resume --dangerously-bypass-hook-trust thread-plan Proceed with your task: no human is present',
+        'codex exec resume --dangerously-bypass-hook-trust thread-plan [runcastle] Proceed with your task: no human is present',
       )
       expect(command).toContain('$revisit')
     })
@@ -214,67 +204,180 @@ describe('a headless run on a feature', () => {
     })
   })
 
-  describe('a headless start-lap', () => {
-    it('renders a print-mode command with the message and the no-human rule', async () => {
-      useRuntime('claude-code')
-      const f = await feature('lap-claude', { phase: 'review' })
-      const sessionId = await launch(f.id, {
-        purpose: 'start-lap',
-        headless: true,
-        message: 'Make the empty state say why it is empty.',
+  /**
+   * `the-feature-lead-runs-rounds` decision 12: a lead with no terminal open is
+   * resumed headless with its messages, through the lead waker.
+   */
+  describe('a lead wake', () => {
+    const wake = async (featureId: string, text: string): Promise<string> => {
+      queueOrchestratorLine(leadMessageKey(featureId), `[runcastle] ${text}`)
+      const sessionId = await wakeLeadHeadless(ctx, featureId, (c, input) =>
+        launchSession(c, input, { spawn: false }),
+      )
+      if (!sessionId) throw new Error('nothing was launched')
+      cleanup.push(sessionDir(sessionId))
+      return sessionId
+    }
+
+    it('resumes the feature’s chat on Claude Code as `-p --resume <id>` with the tagged message', async () => {
+      const f = await feature('lead-claude', { phase: 'building' })
+      await earlierChat(f.id, 'cc-lead')
+
+      const sessionId = await wake(f.id, 'Round 1 returned: succeeded')
+
+      const row = getSessionRow(ctx, sessionId)
+      expect(row).toMatchObject({ kind: 'chat', purpose: 'lead-wake', headless: true })
+      const command = launchedCommand(f.id, sessionId)
+      expect(command).toMatch(/ claude -p --resume cc-lead --settings /)
+      expect(command).toContain('[runcastle] No terminal of yours was open')
+      expect(command).toContain('[runcastle] Round 1 returned: succeeded')
+      expect(injectedPrompt(f.id, sessionId)).toContain('## No terminal is open')
+      expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')?.data).toMatchObject({
+        resumed: true,
       })
-
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).toMatch(/ claude -p /)
-      expect(command).toContain('no human is present and nobody will reply to you')
-      expect(command).toContain('PLAN LAP 2 FROM REVIEW by yourself')
-      expect(command).toContain(
-        "The project's orchestrator asks this of the lap: Make the empty state say why it is empty.",
-      )
-      expect(command).toContain('Planning without a human')
-      expect(command).not.toContain('Interview me')
-
-      const prompt = injectedPrompt(f.id, sessionId)
-      expect(prompt).toContain('## This is lap 2')
-      expect(prompt).toContain('This lap plans itself')
+      expect(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')).not.toContain('wait-messages')
     })
 
-    it('renders Codex `exec` with the skills spelled its way', async () => {
+    /**
+     * REGRESSION (lap-2 drive): a chat whose SessionStart never recorded its id
+     * had nothing to resume, yet the wake's prompt and event both said "resumed".
+     */
+    it('says it started fresh, in the prompt and the event, when the chat has no conversation on record', async () => {
+      const f = await feature('lead-unrecorded', { phase: 'building' })
+      markSessionEnded(ctx, await launch(f.id))
+
+      const sessionId = await wake(f.id, 'Round 1 returned: succeeded')
+
+      const command = launchedCommand(f.id, sessionId)
+      expect(command).not.toContain('--resume')
+      expect(command).toContain('no earlier conversation of this feature could be resumed')
+      expect(command).not.toContain('resumed this conversation')
+      const woken = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')
+      expect(woken?.data).toMatchObject({ resumed: false })
+      expect(woken?.message).not.toContain('resumed its conversation')
+      expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_unavailable')).toBe(true)
+    })
+
+    /**
+     * Decision 27: nobody can answer a prompt in a headless wake, so the lead
+     * past Go runs with prompts off on Claude Code — interactive too — while a
+     * chat still planning keeps asking.
+     */
+    /**
+     * REGRESSION (lap-2 review, decision 28): the old conversation had expired
+     * from ~/.claude/projects, `claude -p --resume` exited 1 before checking in,
+     * and the wake had already taken the human's note and logged success.
+     */
+    it('starts fresh when the conversation’s transcript is gone, and an early death hands the message on', async () => {
+      const f = await feature('lead-expired', { phase: 'building' })
+      await earlierChat(f.id, 'cc-expired', join(repoPath, 'expired', 'cc-expired.jsonl'))
+      const launched: string[] = []
+      const stop = startLeadWaker(ctx, async (c, input) => {
+        const result = await launchSession(c, input, { spawn: false })
+        cleanup.push(sessionDir(result.sessionId))
+        launched.push(result.sessionId)
+        return result
+      })
+      try {
+        queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] my drive notes')
+        emit(ctx, f.id, { type: 'lead.message_pending', message: 'waiting' })
+        await vi.waitFor(() => expect(launched).toHaveLength(1))
+        const first = launched[0] as string
+
+        expect(launchedCommand(f.id, first)).not.toContain('--resume')
+        expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')?.data).toMatchObject({
+          resumed: false,
+        })
+        expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'session.resume_gone')).toBe(true)
+
+        // The process dies before the agent checks in: the message is not lost.
+        handlePtyExit(ctx, f, getSessionRow(ctx, first)!, {}, 1)
+        await vi.waitFor(() => expect(launched).toHaveLength(2))
+        expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')?.data).toMatchObject({
+          sessionId: first,
+          exitCode: 1,
+        })
+        expect(launchedCommand(f.id, launched[1] as string)).toContain('[runcastle] my drive notes')
+      } finally {
+        stop()
+      }
+    })
+
+    it('resumes its own conversation while the transcript is on disk, on either runtime', async () => {
+      const f = await feature('lead-transcript', { phase: 'building' })
+      const transcript = join(repoPath, 'cc-kept.jsonl')
+      writeFileSync(transcript, '{}\n')
+      await earlierChat(f.id, 'cc-kept', transcript)
+      expect(launchedCommand(f.id, await wake(f.id, 'Round 1 returned'))).toContain('--resume cc-kept')
+
       useRuntime('codex')
-      const f = await feature('lap-codex', { phase: 'review' })
-      const sessionId = await launch(f.id, { purpose: 'start-lap', headless: true })
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).toContain('codex exec --dangerously-bypass-hook-trust Proceed with your task:')
-      expect(command).toContain('$revisit')
-      expect(command).toContain('$ideate')
+      const g = await feature('lead-rollout', { phase: 'building' })
+      await earlierChat(g.id, 'thread-kept', transcript)
+      expect(launchedCommand(g.id, await wake(g.id, 'Go given'))).toContain('exec resume --dangerously-bypass-hook-trust thread-kept')
     })
 
-    it('leaves the interactive start-lap as it was', async () => {
-      useRuntime('claude-code')
-      const f = await feature('lap-human', { phase: 'review' })
-      const sessionId = await launch(f.id, { purpose: 'start-lap' })
-      const command = launchedCommand(f.id, sessionId)
-      expect(command).not.toContain(' -p ')
-      expect(command).toContain('Interview me about what the test drive taught')
-      expect(getSessionRow(ctx, sessionId)?.headless).toBe(false)
-      expect(injectedPrompt(f.id, sessionId)).not.toContain('## No human is present')
+    it('starts fresh on Claude Code when the conversation was recorded in another worktree', async () => {
+      const f = await feature('lead-moved', { phase: 'building' })
+      const transcript = join(repoPath, 'cc-moved.jsonl')
+      writeFileSync(transcript, '{}\n')
+      const earlier = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: join(repoPath, 'old-wt') })
+      markSessionLive(ctx, earlier.id, { ccSessionId: 'cc-moved', transcriptPath: transcript })
+      markSessionEnded(ctx, earlier.id)
+
+      const sessionId = await wake(f.id, 'Round 1 returned')
+
+      expect(launchedCommand(f.id, sessionId)).not.toContain('--resume')
+      expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'session.resume_gone')?.data).toMatchObject({
+        resumeSessionId: 'cc-moved',
+        reason: 'it was recorded in another worktree',
+      })
     })
 
-    it('is refused where the Start-lap door is: away from review', async () => {
-      const f = await feature('lap-planning', { phase: 'building' })
-      await expect(launch(f.id, { purpose: 'start-lap', headless: true })).rejects.toThrow(
-        /not review, so there is no next lap to start/,
+    it('launches the lead past Go with bypassPermissions on Claude Code, headless and interactive', async () => {
+      const f = await feature('lead-bypass', { phase: 'building' })
+      await earlierChat(f.id, 'cc-lead')
+      const headless = await wake(f.id, 'Round 1 returned')
+      expect(launchedCommand(f.id, headless)).toContain('--permission-mode bypassPermissions')
+      markSessionEnded(ctx, headless)
+
+      const interactive = await launch(f.id)
+      expect(launchedCommand(f.id, interactive)).toContain('--permission-mode bypassPermissions')
+    })
+
+    it('keeps a planning chat on acceptEdits, and leaves Codex its own posture', async () => {
+      const planning = await feature('lead-planning')
+      expect(launchedCommand(planning.id, await launch(planning.id))).toContain('--permission-mode acceptEdits')
+
+      useRuntime('codex')
+      const f = await feature('lead-codex-posture', { phase: 'building' })
+      const sessionId = await launch(f.id)
+      const toml = readFileSync(join(sessionDir(sessionId), 'codex-home', 'config.toml'), 'utf8')
+      expect(toml).toContain('approval_policy = "never"')
+    })
+
+    it('resumes on Codex as `exec resume <id>` with the message', async () => {
+      useRuntime('codex')
+      const f = await feature('lead-codex', { phase: 'building' })
+      await earlierChat(f.id, 'thread-lead')
+
+      const sessionId = await wake(f.id, 'Go given')
+
+      expect(launchedCommand(f.id, sessionId)).toContain(
+        'codex exec resume --dangerously-bypass-hook-trust thread-lead [runcastle] No terminal of yours was open',
       )
+      expect(launchedCommand(f.id, sessionId)).toContain('[runcastle] Go given')
     })
 
-    it('is refused while another session is live, rather than ending it', async () => {
-      const f = await feature('lap-busy', { phase: 'review' })
-      const chat = await launch(f.id)
-      markSessionLive(ctx, chat, { ccSessionId: 'cc-live' })
-      await expect(launch(f.id, { purpose: 'start-lap', headless: true })).rejects.toThrow(
-        /only one terminal per feature/,
-      )
-      expect(getSessionRow(ctx, chat)?.status).toBe('live')
+    it('tells the orchestrator nothing: no human act, and no run of its own ended', async () => {
+      const f = await feature('lead-quiet', { phase: 'building', orchestrated: true })
+      const sessionId = await wake(f.id, 'Round 1 returned')
+      handlePtyExit(ctx, f, getSessionRow(ctx, sessionId)!, {}, 0)
+      expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.run_ended')).toEqual([])
+    })
+
+    it('is refused without a message', async () => {
+      const f = await feature('lead-empty', { phase: 'building' })
+      await expect(launch(f.id, { purpose: 'lead-wake' })).rejects.toThrow(/message for the agent/)
     })
   })
 
@@ -313,25 +416,6 @@ describe('a headless run on a feature', () => {
       expect(runEnded(f.id)[0]?.data).toEqual({
         sessionId: run, purpose: 'relay', complete: false, exitCode: 1,
       })
-    })
-
-    it('says a lap finished when its tickets are on the board', async () => {
-      const f = await feature('lap-done', { phase: 'review' })
-      const run = await launch(f.id, { purpose: 'start-lap', headless: true })
-      pendingTicket(f.id)
-      handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
-      expect(runEnded(f.id)[0]?.data).toEqual({
-        sessionId: run, purpose: 'start-lap', complete: true, exitCode: 0,
-      })
-    })
-
-    it('says a lap stopped short with no tickets, even on a clean exit', async () => {
-      const f = await feature('lap-short', { phase: 'review' })
-      const run = await launch(f.id, { purpose: 'start-lap', headless: true })
-      handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
-      const [ended] = runEnded(f.id)
-      expect(ended?.message).toBe('planning the next lap stopped before it was finished')
-      expect(ended?.data?.complete).toBe(false)
     })
 
     it('leaves self-plan on its own event, and an interactive chat on none', async () => {

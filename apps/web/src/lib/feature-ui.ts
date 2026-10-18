@@ -8,7 +8,6 @@ export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
-  lapTrail,
   unverifiedLap,
   stampedOutcome,
   latestReview,
@@ -26,15 +25,13 @@ export type {
   ReviewOutcome,
   ReviewArtifactFigure,
   ReviewPassFigure,
-  TrailEntry,
   TrailOutcome,
-  TrailPass,
   UnverifiedLap,
   Freshness,
   StatusChip,
 } from './feature-ui/review'
-export * from './feature-ui/laps'
-export * from './feature-ui/timeline'
+export * from './feature-ui/rounds'
+export * from './feature-ui/tickets'
 export * from './feature-ui/checks'
 export * from './feature-ui/summary'
 export * from './feature-ui/session'

@@ -1,0 +1,13 @@
+<!-- @dsCard group="Navigation" height=100 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>PhaseStepper — preview</title></head>
+<body>
+<div id="root" class="rc-stack" style="padding:24px;gap:16px"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h(R.PhaseStepper,{phase:'review',steps:['spec','tickets','implementation','review','shipped']}),h(R.PhaseStepper,{phase:'shipped',viewing:'review',steps:['spec','tickets','implementation','review','shipped']})));
+</script>
+</body>
+</html>

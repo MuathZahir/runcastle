@@ -7,10 +7,12 @@ import {
   promoteMany,
   promoteNote,
   reopenNote,
+  sendNotes,
   triageNotes,
   triagePreview,
   toggleNote,
 } from '../../services/test-notes'
+import { leadDeliveryState } from '../../services/lead-delivery'
 import { publicProcedure, router } from '../context'
 import { InvalidInputError } from '../../errors'
 
@@ -86,4 +88,16 @@ export const testNotesRouter = router({
   triagePreview: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => triagePreview(ctx, input.featureId)),
+
+  // Send to agent (decision 18): every unsent note, as one human message to the
+  // feature's lead; an empty send says the drive went fine.
+  send: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .mutation(({ ctx, input }) => sendNotes(ctx, input.featureId)),
+
+  // Whether what was sent has reached an agent yet (decision 28): a sent note
+  // is only "Sent to the agent" once nothing older still waits for one.
+  delivery: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ input }) => leadDeliveryState(input.featureId)),
 })

@@ -16,6 +16,7 @@ vi.mock('../src/trpc', () => {
       docs: { read: { useQuery: (input: { relPath: string }) => query({ content: input.relPath === 'preview.html' ? '<!doctype html><p>the show</p>' : '# Decisions\n' }) } },
       feature: {
         get: { useQuery: () => query(store.full) },
+        rounds: { useQuery: () => query([]) },
         endSession: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
         uiStates: { useQuery: () => query(store.uiStates) },
       },

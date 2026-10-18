@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The feature lead runs rounds preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}
+.ba .col{border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;background:var(--color-surface-raised)}
+.ba h3{color:var(--color-text-tertiary);font-weight:400;font-size:12px;margin-bottom:10px}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:var(--radius-md);background:var(--color-surface-inset);color:var(--color-text-secondary);font-size:12px;white-space:nowrap}
+.chip.you{background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.chip.ag{background:var(--color-surface-selected);color:var(--color-text)}
+.arr{color:var(--color-text-disabled);font-size:12px}
+.loop{border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);padding:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.loop .lbl{font-size:11px;color:var(--color-text-tertiary);width:100%}
+/* the mocked feature page (runcastle's own styling) */
+.fp-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--color-border)}
+.fp-title{font-weight:600;font-size:14px}
+.fp-status{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;border-radius:999px;background:var(--color-surface-inset);font-size:12px}
+.fp-status b{font-weight:500}
+.fp-status .why{color:var(--color-text-tertiary)}
+.fp-ctrls{margin-left:auto;display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);font-size:12px;color:var(--color-text-secondary);background:var(--color-surface)}
+.btn.primary{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent;font-weight:500}
+.btn.danger{color:var(--color-danger)}
+.fp-tok{font-size:12px;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+.fp-body{display:grid;grid-template-columns:1.2fr 1fr;min-height:320px}
+.fp-trail{padding:14px 16px;border-right:1px solid var(--color-border)}
+.fp-chat{padding:14px 16px;background:var(--color-surface-inset);display:flex;flex-direction:column;gap:8px}
+.rd{position:relative;padding:0 0 14px 18px;border-left:1px solid var(--color-border)}
+.rd:last-child{border-left-color:transparent}
+.rd::before{content:"";position:absolute;left:-4px;top:6px;width:7px;height:7px;border-radius:999px;background:var(--color-text-disabled)}
+.rd.ok::before{background:var(--color-success)}.rd.live::before{background:var(--color-accent)}.rd.ready::before{background:var(--color-phase-review);box-shadow:0 0 0 3px var(--color-accent-subtle)}
+.rd.self::before{background:var(--color-phase-ideation)}
+.rd .h{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.rd .h b{font-weight:500}
+.rd .h span{font-size:12px;color:var(--color-text-tertiary)}
+.rd .v{color:var(--color-text-secondary);font-size:12px;margin-top:2px}
+.rd .tk{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.rd .tk span{font-size:11px;height:20px;display:inline-flex;align-items:center;gap:5px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-secondary)}
+.ready-card{margin-top:6px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);padding:8px 10px;background:var(--color-surface-raised);font-size:12px;color:var(--color-text-secondary)}
+.ready-card b{color:var(--color-text);font-weight:500}
+.msg{max-width:92%;padding:7px 10px;border-radius:var(--radius-md);font-size:12px;line-height:18px}
+.msg.a{background:var(--color-surface-raised);border:1px solid var(--color-border);color:var(--color-text-secondary)}
+.msg.h{align-self:flex-end;background:var(--color-accent-subtle);color:var(--color-text)}
+.msg .who{display:block;font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px}
+.switch{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.switch span{height:22px;padding:0 8px;display:inline-flex;align-items:center;border-radius:var(--radius-sm);font-size:12px;color:var(--color-text-tertiary)}
+.switch span.on{background:var(--color-surface-selected);color:var(--color-text)}
+.drive{padding:14px 16px;display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+.app{border:1px solid var(--color-border);border-radius:var(--radius-md);min-height:150px;background:var(--color-surface-inset);display:grid;place-items:center;color:var(--color-text-disabled);font-size:12px}
+.notes{display:flex;flex-direction:column;gap:6px}
+.note{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:6px 8px;font-size:12px;color:var(--color-text-secondary);background:var(--color-surface-raised)}
+.note .shot{display:inline-block;width:34px;height:22px;border-radius:3px;background:var(--color-surface-selected);vertical-align:middle;margin-right:6px}
+.composer{border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);padding:8px;font-size:12px;color:var(--color-text-disabled)}
+.refuse{font-size:11px;color:var(--color-warning)}
+.statuses{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.statuses .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.statuses .row .hint{flex:1;min-width:200px}
+.hoodgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.hoodgrid .box{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px;background:var(--color-surface-raised)}
+.hoodgrid h3{margin-bottom:6px}
+.hoodgrid ul{margin:0;padding-left:16px;color:var(--color-text-secondary)}
+.hoodgrid li{margin:2px 0}
+@media (max-width:760px){.ba,.fp-body,.drive,.hoodgrid{grid-template-columns:1fr}.fp-trail{border-right:0;border-bottom:1px solid var(--color-border)}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The feature lead runs rounds</h1>
+  <p class="lede">The feature's chat becomes its agent. You approve the plan with Go; it runs rounds of workers, checks what came back, fixes or plans the next round, and comes back with "Ready for you" and exactly what to test. You drive, say what you found, and Merge.</p>
+  <div class="meta"><span>One lap</span><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-feature-lead-runs-rounds/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>You stop being the relay</h3>
+    <p class="hint">Today every loop crosses you twice. After, you show up at three points: Go, the drive, Merge. <a class="pin" data-d="17">17</a></p>
+    <div class="ba">
+      <div class="col">
+        <h3>Today</h3>
+        <div class="chain">
+          <span class="chip">chat plans tickets</span><span class="arr">→</span>
+          <span class="chip you">you click Burn</span><span class="arr">→</span>
+          <span class="chip">fixed list runs</span><span class="arr">→</span>
+          <span class="chip">review</span><span class="arr">→</span>
+          <span class="chip you">you triage</span><span class="arr">→</span>
+          <span class="chip you">you click Iterate</span><span class="arr">→</span>
+          <span class="chip">lap session plans</span><span class="arr">→</span>
+          <span class="chip you">you click Burn</span><span class="arr">→ …</span>
+        </div>
+      </div>
+      <div class="col">
+        <h3>After</h3>
+        <div class="chain">
+          <span class="chip ag">agent plans with you</span><span class="arr">→</span>
+          <span class="chip you">Go <a class="pin" data-d="8">8</a></span><span class="arr">→</span>
+          <div class="loop"><span class="lbl">rounds, as many as it takes <a class="pin" data-d="2">2</a></span>
+            <span class="chip ag">dispatch round <a class="pin" data-d="13">13</a></span><span class="arr">→</span>
+            <span class="chip">workers</span><span class="arr">→</span>
+            <span class="chip">gates</span><span class="arr">→</span>
+            <span class="chip ag">wakes, checks <a class="pin" data-d="12">12</a></span><span class="arr">→</span>
+            <span class="chip ag">fixes itself or next round <a class="pin" data-d="5">5</a></span>
+          </div>
+          <span class="arr">→</span>
+          <span class="chip ag">Ready for you <a class="pin" data-d="9">9</a></span><span class="arr">→</span>
+          <span class="chip you">drive · Send to agent <a class="pin" data-d="18">18</a></span><span class="arr">→ more rounds, or</span>
+          <span class="chip you">Merge</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The feature page</h3>
+    <p class="hint">One status line, the switch, Stop. The round trail on the left, the agent on the right. Click a status to see the line change. <a class="pin" data-d="21">21</a> This mock shows behaviour; the real screen follows the design system. <a class="pin" data-d="22">22</a></p>
+    <div class="seg" id="stseg" role="group" aria-label="Status">
+      <button data-st="0">Planning</button><button data-st="1" aria-pressed="true">Working</button><button data-st="2">Waiting</button><button data-st="3">Ready</button><button data-st="4">Merged</button>
+    </div>
+    <div style="height:10px"></div>
+<!-- screen:feature-page -->
+    <div class="screen">
+      <div class="fp-head">
+        <span class="fp-title">Coupons</span>
+        <span class="fp-status" id="fpstatus"><i class="dot live"></i><b>Working · Round 3</b><span class="why">4 workers</span></span>
+        <span class="fp-tok">2.9M tokens <a class="pin" data-d="3">3</a></span>
+        <div class="fp-ctrls">
+          <span class="switch" title="Autonomy — defaults from Project settings"><span class="on">Run until ready</span><span>Ask before each round</span></span><a class="pin" data-d="1">1</a>
+          <span class="btn danger" id="fpstop">Stop</span><a class="pin" data-d="15">15</a>
+        </div>
+      </div>
+      <div class="fp-body">
+        <div class="fp-trail">
+          <div class="rd ok">
+            <div class="h"><b>Round 1</b><span>3 workers · 1.1M tokens · 18 min</span><a class="pin" data-d="16">16</a></div>
+            <div class="v">Contract first: coupon types and API stubs landed; UI and pricing built against them. Gates green.</div>
+            <div class="tk"><span><i class="dot ok"></i>Coupons: types &amp; API contract</span><span><i class="dot ok"></i>Coupons: checkout field</span><span><i class="dot ok"></i>Coupons: pricing rules</span></div>
+          </div>
+          <div class="rd self">
+            <div class="h"><b>Agent fix</b><span>no round · landed through the queue</span><a class="pin" data-d="7">7</a></div>
+            <div class="v">Renamed a mismatched field the pricing worker reported in its digest.</div>
+          </div>
+          <div class="rd ok">
+            <div class="h"><b>Round 2</b><span>2 workers · 0.9M tokens · 22 min</span></div>
+            <div class="v">Expiry handling + a review worker. Review found one edge case; agent kept it for round 3. <a class="pin" data-d="10">10</a></div>
+            <div class="tk"><span><i class="dot ok"></i>Coupons: expiry</span><span><i class="dot ok"></i>Review: drive checkout</span></div>
+          </div>
+          <div class="rd ready">
+            <div class="h"><b>Ready for you</b><span>after round 2</span></div>
+            <div class="ready-card"><b>Test drive ▸ Apply a coupon at checkout</b><br>Add any item, enter SAVE10 at checkout. The total should drop 10% before tax. Try an expired code (OLD5): it should say "expired", not "invalid". Broken if the discount survives removing the code.</div>
+          </div>
+          <div class="rd live">
+            <div class="h"><b>Round 3</b><span>4 workers · running</span></div>
+            <div class="v">From your drive notes: stacking rule, error copy, the review's edge case.</div>
+            <div class="tk"><span><i class="dot live"></i>Coupons: no stacking</span><span><i class="dot live"></i>Coupons: error copy</span><span><i class="dot"></i>Coupons: zero-total edge</span><span><i class="dot"></i>Review: re-drive</span></div>
+          </div>
+        </div>
+        <div class="fp-chat">
+          <div class="msg a"><span class="who">Agent</span>Round 2 is back. Gates green, the review found a zero-total edge case. Keeping it for the next round. Coupons are drivable now — ready for you.</div>
+          <div class="msg h"><span class="who">You · from the drive</span>3 notes, 2 screenshots: two codes stack; error text is vague.</div>
+          <div class="msg a"><span class="who">Agent</span>Got it. Round 3: block stacking, clearer error copy, plus the zero-total case. Dispatching 4 workers.</div>
+          <div class="msg a" style="opacity:.7"><span class="who">Agent · in "Ask before each round"</span>Next I'd run round 4: one worker on the migration. Go?</div>
+        </div>
+      </div>
+    </div>
+<!-- /screen:feature-page -->
+  </div>
+
+  <div class="sub">
+    <h3>Every status the line can show</h3>
+    <p class="hint">Phases stay underneath; this is what you read. <a class="pin" data-d="21">21</a></p>
+    <div class="statuses">
+      <div class="row"><span class="fp-status"><i class="dot"></i><b>Planning with you</b></span><span class="hint">before Go</span></div>
+      <div class="row"><span class="fp-status"><i class="dot live"></i><b>Working · Round 3</b></span><span class="hint">a round is running, or the agent is working between rounds</span></div>
+      <div class="row"><span class="fp-status"><i class="dot" style="background:var(--color-warning)"></i><b>Waiting for you</b><span class="why">plan ready for Go · round 4 proposed · stuck: migration fails · provider limit</span></span><a class="pin" data-d="15">15</a></div>
+      <div class="row"><span class="fp-status"><i class="dot" style="background:var(--color-phase-review)"></i><b>Ready for you</b><span class="why">Test drive ▸ Apply a coupon</span></span><a class="pin" data-d="9">9</a></div>
+      <div class="row"><span class="fp-status"><i class="dot ok"></i><b>Merged</b></span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The drive</h3>
+    <p class="hint">Notes go to the agent with one click, as often as you like. No round lands while you drive.</p>
+<!-- screen:drive-panel -->
+    <div class="screen">
+      <div class="fp-head">
+        <span class="fp-title">Test drive ▸ Apply a coupon at checkout</span>
+        <div class="fp-ctrls"><span class="btn">Stop drive</span></div>
+      </div>
+      <div class="drive">
+        <div class="app">the app, running the feature branch</div>
+        <div class="notes">
+          <span class="hint">Notes for the agent</span>
+          <div class="note"><span class="shot"></span>SAVE10 and FREESHIP stack — should they?</div>
+          <div class="note"><span class="shot"></span>"Invalid code" for an expired one</div>
+          <div class="composer">What did you just see? Paste a screenshot straight in.</div>
+          <div style="display:flex;align-items:center;gap:8px"><span class="btn primary">Send to agent</span><a class="pin" data-d="18">18</a></div>
+          <span class="refuse">While this drive runs, the agent can't start a round or land its own edits. <a class="pin" data-d="19">19</a></span>
+        </div>
+      </div>
+    </div>
+<!-- /screen:drive-panel -->
+  </div>
+
+  <div class="sub">
+    <h3>Who owns what</h3>
+    <p class="hint">One owner per level. Workers never talk to each other or to the agent; their digests do. <a class="pin" data-d="11">11</a> <a class="pin" data-d="14">14</a> <a class="pin" data-d="20">20</a></p>
+    <div class="ba">
+      <div class="col"><h3>You — or the orchestrator, standing in</h3>
+        <div class="chain"><span class="chip you">Go</span><span class="chip you">drive</span><span class="chip you">Send to agent</span><span class="chip you">Stop</span><span class="chip you">Merge</span></div></div>
+      <div class="col"><h3>The agent (internally: the lead)</h3>
+        <div class="chain"><span class="chip ag">plans</span><span class="chip ag">dispatches rounds</span><span class="chip ag">edits code itself <a class="pin" data-d="6">6</a></span><span class="chip ag">reads digests &amp; gates</span><span class="chip ag">declares ready</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>Nothing — the whole feature is one lap <a class="pin" data-d="4">4</a></li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Opening a worker while it works — parked draft <a class="pin" data-d="14">14</a></li>
+      <li><i class="dot"></i>Any budget: rounds, time, tokens or cost <a class="pin" data-d="2">2</a></li>
+      <li><i class="dot"></i>Before/after captures in the round check — "Round effects"</li>
+      <li><i class="dot"></i>The map and the sidebar — "The map"</li>
+      <li><i class="dot"></i>Auto-continue after a provider limit resets</li>
+      <li><i class="dot"></i>Burn engine internals; merging or starting drafts without you</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="hoodgrid">
+        <div class="box"><h3>The lead's new MCP tools</h3><ul>
+          <li><span class="mono">dispatch_round({ seqs })</span> — today's <span class="mono">startRun</span> with explicit ticket ids. Refused while a run is active or a drive of this feature holds the slot.</li>
+          <li><span class="mono">stop_round()</span> — landed work stays.</li>
+          <li><span class="mono">declare_ready({ scenario, whatToTest })</span> — building → review; warns, never refuses.</li>
+          <li><span class="mono">get_feature_context</span> gains round history, autonomy mode, tokens.</li>
+        </ul></div>
+        <div class="box"><h3>The wake</h3><ul>
+          <li><span class="mono">run.finished</span> + gate results → the feature's own lead.</li>
+          <li>Live: the orchestrator's waiter, opened to leads (<span class="mono">asyncRewake</span> on Claude Code, <span class="mono">codex queue</span> on Codex).</li>
+          <li>Not live: headless resume (<span class="mono">claude -p --resume</span> / <span class="mono">codex exec resume</span>).</li>
+          <li>No wake on a provider-limit halt. A live proof on both runtimes is required.</li>
+        </ul></div>
+        <div class="box"><h3>The engine, consumed not redesigned</h3><ul>
+          <li>Runs stop auto-advancing building → review.</li>
+          <li><span class="mono">verifyCommands</span> run at every round end.</li>
+          <li>The review agent stops auto-minting fix tickets mid-run; findings go to the lead.</li>
+          <li>The lead's code commits ride the chat temp branch and land through <span class="mono">featureLandingQueue</span>, as chat docs already do.</li>
+          <li>Edit and install guards lift for the lead once the feature has left planning.</li>
+        </ul></div>
+        <div class="box"><h3>Data and settings</h3><ul>
+          <li>Round = run, numbered per feature. <span class="mono">features.lap</span> stays as a historical field.</li>
+          <li>Token usage per ticket and per session, summed over the session file (not the last message).</li>
+          <li>Autonomy: project column (default "Run until ready") + a new per-feature override.</li>
+          <li>Orchestrator: <span class="mono">burn_feature</span> becomes Go; <span class="mono">start_feature_lap</span> retires.</li>
+          <li>In-flight features get no migration.</li>
+        </ul></div>
+      </div>
+      <p class="hint" style="margin-top:12px">Overturns, for the project session to record: <span class="mono">one-chat-per-feature</span> d3 (chat cannot burn); ADR-0010 (laps); charter decisions 9 and 15; "talk sessions do not write code" for the lead after Go; the brief's own budget (settled item 5) and the run time limit it absorbed.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Default autonomy is "Run until ready for me"', 'You report few overturns of self-made plans, so the default keeps going; any feature can switch to "Ask before each round".'],
+    ['There is no budget', 'No round, time, token or cost limit — Claude Code has none and people run /goal without one. The switch, Stop and the agent\'s judgement bound it.'],
+    ['Token telemetry is recorded anyway', 'Tokens only (no cost), workers and agent both, shown per round, per feature and per worker. It never limits anything.'],
+    ['The whole feature ships in one lap', 'You are sure of the shape; nothing is parked under later laps.'],
+    ['The lead may edit code itself, at its own judgement', 'From a one-line fix to a change too small to split into tickets — sandboxing a one-liner is ceremony.'],
+    ['Flexibility over restriction', 'The agent\'s rules are guidance in its skill, not refusals in the machine. Only your checkpoints (Go, drive, Merge) are hard.'],
+    ['The lead edits from Go onwards, verified, through the landing queue', 'Docs-only until Go; then real dependencies so it can test, and the same serial landing path as workers.'],
+    ['Go replaces Burn', 'One click approves the plan and hands the feature to the agent, which dispatches every round. In Ask mode your chat reply approves a round.'],
+    ['The lead declares "Ready for you", and that is what moves to review', 'Runs stop auto-advancing. The ready call carries a scenario and a short paragraph on exactly what to test. It warns, never refuses.'],
+    ['Gates run every round; the review agent is the lead\'s tool', 'Verify commands wake the agent every round; it adds a review worker before declaring ready. Findings go to the agent; your triage step is gone.'],
+    ['The orchestrator plays the human\'s role, one level up', 'It gives Go, drives and sends notes; it never dispatches rounds. start_feature_lap retires.'],
+    ['The lead is woken live when it can be, headless when it cannot', 'Live: the rewake hook or codex queue. Closed terminal: a headless resume, so it keeps going while you are away. Proven live on both runtimes.'],
+    ['A round is one run over the tickets the lead names, one at a time', 'dispatch_round names the tickets; the engine is unchanged; one round at a time so each is a clean sync point.'],
+    ['Workers stay as they are; opening a worker is parked', 'An attachable worker terminal rewrites the engine; parked as the draft "Open a worker while it works".'],
+    ['How the loop stops', 'Stop is one move and flips to Ask. The agent stops and asks when a round makes no progress on the same failure. No wake on a provider limit.'],
+    ['Rounds replace laps everywhere the human looks', 'Each run is a round on one trail; Iterate, the lap session, triage and lap chips go. The lap column stays as history.'],
+    ['The human\'s mental model is as simple as possible', 'Talk → plan → Go → rounds → Ready for you → drive → Merge. Anything outside that story is removed or hidden.'],
+    ['Drive notes reach the lead with one "Send to agent" click', 'The composer stays for screenshots; one click sends all unsent notes as one message, any time, more than once.'],
+    ['No round starts while the feature is being driven', 'The drive runs the branch on your main checkout, so dispatch is refused and the agent\'s own landings wait until it stops.'],
+    ['The UI says "agent" and "workers"; "lead" is internal', '"Agent" is your own word and needs no explanation; "lead" only means something next to "workers".'],
+    ['One status line per feature, from a fixed set', 'Planning with you · Working · Waiting for you · Ready for you · Merged — every kind of pause is one status, with the why.'],
+    ['UI work follows the design system, built with the frontend-design skill', 'Workers build the real screens with the frontend-design approach against DESIGN.md and the Runcastle Design System, copied into this feature\'s docs so sandboxes can read them. These mocks show behaviour, not styling.']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the feature page's status line, switched by the segmented control above it
+  var ST = [
+    ['', 'Planning with you', '', false],
+    ['live', 'Working · Round 3', '4 workers', true],
+    ['warn', 'Waiting for you', 'round 4 proposed', false],
+    ['ready', 'Ready for you', 'Test drive ▸ Apply a coupon', false],
+    ['ok', 'Merged', '', false]
+  ]
+  var seg = $('#stseg')
+  if (seg) seg.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-st]')
+    if (!b) return
+    $$('button', seg).forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+    var s = ST[+b.dataset.st]
+    var st = $('#fpstatus')
+    st.innerHTML = '<i class="dot"></i><b></b><span class="why"></span>'
+    var dot = $('.dot', st)
+    if (s[0] === 'live' || s[0] === 'ok') dot.classList.add(s[0])
+    if (s[0] === 'warn') dot.style.background = 'var(--color-warning)'
+    if (s[0] === 'ready') dot.style.background = 'var(--color-phase-review)'
+    $('b', st).textContent = s[1]
+    $('.why', st).textContent = s[2]
+    $('#fpstop').style.visibility = s[3] ? 'visible' : 'hidden'
+  })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

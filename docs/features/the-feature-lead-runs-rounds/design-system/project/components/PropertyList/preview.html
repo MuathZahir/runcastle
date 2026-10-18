@@ -1,0 +1,13 @@
+<!-- @dsCard group="Data" height=200 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>PropertyList — preview</title></head>
+<body>
+<div id="root" class="rc-preview"></div>
+<script>
+  var R = window.Runcastle, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+h('div',{style:{width:460}},h(R.PropertyList,{items:[{label:'Status',phase:'shipped',value:'Shipped',sub:'19h ago'},{label:'Branch',icon:'branch',value:'feature/settings-shows-step-models',mono:true},{label:'Review',tone:'success',value:'Passed',sub:'this build'},{label:'Checks',tone:'warning',value:'2 of 3 passed'},{label:'Test drive',tone:'neutral',value:'Not run'},{label:'Laps',icon:'undo',value:'1'}]}))));
+</script>
+</body>
+</html>

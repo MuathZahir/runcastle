@@ -19,7 +19,7 @@ export const SETTINGS_PAGES: readonly {
 }[] = [
   { page: 'general', label: 'General', Icon: IconSettings },
   { page: 'models', label: 'Models', Icon: IconCube },
-  { page: 'burns', label: 'Burns', Icon: IconFlame },
+  { page: 'burns', label: 'Workers', Icon: IconFlame },
   { page: 'project', label: 'This project', Icon: IconFolder },
 ]
 
