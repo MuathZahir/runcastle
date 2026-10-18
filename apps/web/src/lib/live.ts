@@ -338,6 +338,11 @@ export function useLiveSync(): LiveStatus {
       // ready declaration, all move it while it is on screen.
       refetches.push(u.feature.rounds.invalidate())
       refetches.push(u.feature.readyDeclarations.invalidate())
+      // The scenarios a drive can land on. A scenario chat commits a new file
+      // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
+      // the Scenario menu and the Test drive picker have no poll of their own —
+      // without this the scenario just made stayed off the menu until a reload.
+      refetches.push(u.feature.driveScenarios.invalidate())
       // Test-drive notes: the review checklist is a live surface — a note added,
       // ticked, edited or promoted has to show up at push speed, not on the 30s
       // safety poll.

@@ -1,13 +1,16 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
 import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput } from '@runcastle/core'
 import { SessionKind, TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { runs, testNotes } from '../src/db/schema'
+import { projects, runs, testNotes } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -15,6 +18,7 @@ import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
   buildMcpServer,
   featureContext,
+  featureScenarios,
   resolveFeatureReader,
   resolveSession,
   toolCancelTicket,
@@ -29,7 +33,9 @@ import mcpApp, {
   toolsForAudience,
 } from '../src/mcp/server'
 import { emit, listAfter } from '../src/services/events'
-import { getFeatureRow } from '../src/services/repo'
+import { listDriveScenarios } from '../src/services/git'
+import { getFeatureRow, getProjectById } from '../src/services/repo'
+import { listFeatureScenarios } from '../src/services/scenarios'
 import { reportFinding } from '../src/services/review-findings'
 import { writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { addNote } from '../src/services/test-notes'
@@ -810,6 +816,14 @@ describe('mcp tool registration by audience', () => {
     expect(toolsForAudience('drive-fix')).toContain('retry_drive')
     expect(toolsForAudience('chat')).not.toContain('retry_drive')
 
+    // A scenario session's scope follows its drive, so it gets only the
+    // either-scope note plus its own two tools.
+    expect(toolsForAudience('scenario')).toEqual(['record_event', 'run_scenario', 'set_scenario_runner'])
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+      expect(toolsForAudience(audience)).not.toContain('run_scenario')
+      expect(toolsForAudience(audience)).not.toContain('set_scenario_runner')
+    }
+
     // A run agent gets its review wires plus the reads bound to its feature.
     expect(toolsForAudience('run').sort()).toEqual([
       'get_feature_context',
@@ -846,7 +860,7 @@ describe('mcp tool registration by audience', () => {
   })
 
   it('builds a server for every audience without throwing', () => {
-    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'run'] as const) {
+    for (const audience of ['chat', 'project', 'prepare', 'drive-fix', 'scenario', 'run'] as const) {
       expect(buildMcpServer(audience)).toBeDefined()
     }
   })
@@ -884,5 +898,118 @@ describe('mcp http endpoint', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.result.serverInfo.name).toBe('runcastle')
+  })
+})
+
+/**
+ * Whether a feature can ship a scenario (drive-scenarios decision 13): the
+ * planner reads it off `get_feature_context`, read from git at the feature
+ * branch and its base.
+ */
+describe('get_feature_context scenarios', () => {
+  let ctx: AppCtx
+  let repoPath: string
+  let projectId: string
+
+  function put(rel: string, body = "console.log('ENTRY_URL=/')"): void {
+    const abs = join(repoPath, ...rel.split('/'))
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, body)
+  }
+
+  beforeEach(async () => {
+    ctx = await makeTestCtx()
+    repoPath = tmpRepo()
+    const g = simpleGit(repoPath)
+    await g.init(['-b', 'main'])
+    await g.addConfig('user.email', 'test@runcastle.dev')
+    await g.addConfig('user.name', 'Runcastle Test')
+    put('README.md', 'base\n')
+    await g.add('.')
+    await g.commit('initial commit')
+    // A branch cut before the project had scenarios, to base a feature on.
+    await g.branch(['bare-base'])
+    put('.runcastle/scenarios/checkout/land.ts')
+    put('.runcastle/scenarios/_fixtures/buyer.ts', 'export const buyer = 1')
+    await g.add('.')
+    await g.commit('scenarios')
+    await g.checkoutLocalBranch('feature/shipped')
+    put('.runcastle/scenarios/feed/blocked-only.ts')
+    put('.runcastle/scenarios/feed/blocked-only.http', 'GET /feed')
+    await g.add('.')
+    await g.commit('own scenario')
+    await g.checkout('main')
+    projectId = seedProject(ctx, repoPath).id
+  })
+
+  afterEach(() => rmTemp(repoPath))
+
+  const setRunner = (scenarioRunner: string | null) =>
+    ctx.db.update(projects).set({ scenarioRunner }).where(eq(projects.id, projectId)).run()
+
+  it('reports a set-up project with the branch scenarios, own first, and its fixtures', async () => {
+    setRunner('bun {file}')
+    const feature = seedFeature(ctx, projectId, { slug: 'shipped' })
+    const scenarios = await featureScenarios(ctx, feature.id)
+    expect(scenarios).toEqual({
+      setUp: true,
+      runnerConfigured: true,
+      scenarios: [
+        { file: '.runcastle/scenarios/feed/blocked-only.ts', group: 'Feed', name: 'Blocked only', own: true, hasCall: true },
+        { file: '.runcastle/scenarios/checkout/land.ts', group: 'Checkout', name: 'Land', own: false, hasCall: false },
+      ],
+      fixtures: ['.runcastle/scenarios/_fixtures/buyer.ts'],
+    })
+    // It rides the header, ahead of the tickets and docs.
+    const context = featureContext(ctx, { featureId: feature.id }, scenarios)
+    expect(context.scenarios).toEqual(scenarios)
+    expect(Object.keys(context).indexOf('scenarios')).toBeLessThan(Object.keys(context).indexOf('tickets'))
+  })
+
+  it('is not set up without a runner, or when the base branch has no scenarios', async () => {
+    const shipped = seedFeature(ctx, projectId, { slug: 'shipped' })
+    expect(await featureScenarios(ctx, shipped.id)).toMatchObject({ setUp: false, runnerConfigured: false })
+
+    setRunner('bun {file}')
+    const early = seedFeature(ctx, projectId, { slug: 'early', branch: 'bare-base', baseBranch: 'bare-base' })
+    expect(await featureScenarios(ctx, early.id)).toEqual({
+      setUp: false,
+      runnerConfigured: true,
+      scenarios: [],
+      fixtures: [],
+    })
+  })
+
+  it('agrees with the drive and the review prompt that a whitespace-only runner is no runner', async () => {
+    setRunner('  ')
+    const feature = seedFeature(ctx, projectId, { slug: 'shipped' })
+    expect(await featureScenarios(ctx, feature.id)).toMatchObject({ setUp: false, runnerConfigured: false })
+    expect(await listDriveScenarios(ctx, projectId, feature.id)).toMatchObject({ runnerConfigured: false })
+    expect(await listFeatureScenarios(getProjectById(ctx, projectId)!, feature)).toMatchObject({
+      runnerConfigured: false,
+    })
+  })
+
+  it('reads a feature with no recorded base as not set up, never measuring it against main', async () => {
+    setRunner('bun {file}')
+    const draft = seedFeature(ctx, projectId, { slug: 'shipped', baseBranch: null })
+    expect(await featureScenarios(ctx, draft.id)).toMatchObject({
+      setUp: false,
+      runnerConfigured: true,
+      scenarios: [
+        { file: '.runcastle/scenarios/checkout/land.ts', own: false },
+        { file: '.runcastle/scenarios/feed/blocked-only.ts', own: false },
+      ],
+    })
+  })
+
+  it('names the field in the tool description, as what decides whether a ticket ships a scenario', async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'scenarios-test', version: '1' })
+    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
+    const tool = (await client.listTools()).tools.find((t) => t.name === 'get_feature_context')
+    await client.close()
+    expect(tool?.description).toMatch(/`scenarios` \(`setUp`: the base branch has \.runcastle\/scenarios\/ and a runner is recorded/)
+    expect(tool?.description).toMatch(/does a ticket ship a scenario/)
   })
 })

@@ -7,6 +7,7 @@ import type {
   PlanningArtifactFacts,
   Project,
   RuncastleConfig,
+  ScenarioFailure,
   SessionKind,
   SessionPurpose,
   SessionRow,
@@ -58,6 +59,11 @@ export interface WriteArtifactsInput {
    * failure it exists to repair is not something the feature row can say.
    */
   driveFix?: DriveFixBrief
+  /**
+   * The brief for a `scenario` session. Its scope follows the drive, so it
+   * carries the drive rather than being briefed from `feature`.
+   */
+  scenario?: ScenarioBrief
   /**
    * Why the session was launched, when that changes its briefing — today only
    * the conflict-resolution revisit, which is told to resolve the merge rather
@@ -265,8 +271,22 @@ function selfPlanRule(): string {
     '  know and treat that decision as a candidate to check first.',
     `- Follow the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" section through the preview, the`,
     '  spec and the tickets, in this one run.',
+    OUTRANKS_TALKING_TO_THE_HUMAN,
   ].join('\n')
 }
+
+/**
+ * The line both headless rules end on. {@link renderSessionPrompt} appends
+ * {@link talkingToTheHumanSection} after every brief, so it lands BELOW a
+ * headless rule — and an agent that follows the last instruction it read would
+ * end its run on a framed decision for nobody. Its writing rules still serve the
+ * human who reads the `**Assumed.**` decisions later, so it is kept but outranked.
+ */
+const OUTRANKS_TALKING_TO_THE_HUMAN = [
+  '- This section outranks "How to talk to the human" at the end of this brief: follow its',
+  '  writing rules in what you leave behind for the human to read later, but never end your',
+  '  turn on a decision for them.',
+].join('\n')
 
 /**
  * The kind=qa system prompt. A Q&A session is READ-ONLY — it answers questions
@@ -376,7 +396,8 @@ export function renderRevisitPrompt(
  * The section a headless revisit — a `relay` of the orchestrator's message —
  * adds to its brief (`whole-cuts-plan-themselves` decision 16). Like
  * {@link selfPlanRule}, it states that a question or a wait ends the run, and it
- * overrides whatever the brief above says about the human.
+ * overrides whatever the brief says about the human — including the closing
+ * section appended below it.
  */
 function headlessRelayRule(): string {
   return [
@@ -390,6 +411,7 @@ function headlessRelayRule(): string {
     '- Where this brief says to interview or tell the human, decide for yourself instead.',
     '- Never end your turn to ask a question — ending the turn ends the run.',
     '- A refused tool is not a wait: do not retry it or wait for approval.',
+    OUTRANKS_TALKING_TO_THE_HUMAN,
   ].join('\n')
 }
 
@@ -641,6 +663,9 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
           'values go back out through `.runcastle/drive.env`; every step is idempotent; exit 0',
           'means the services are actually up), and the **closing dry-run drive** that proves',
           'them. A recorded drive command that has never been driven is not evidence.',
+          'Every value the app needs to reach its data (above all the database URL) must go out',
+          'through `drive.env`: scenarios reach the drive database only through that overlay, so a',
+          'setup that hands it to the dev server some other way leaves them seeding the wrong one.',
           '',
         ]
       : []),
@@ -792,6 +817,211 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     '- `get_feature_context` gives you the row, the phase, the ticket rows and the docs in one',
     '  call — a doc it lists in `notInlined` must be read before you act; `get_ticket({ seq })`',
     "  holds a ticket's context, acceptance criteria and digest.",
+    '',
+  ].join('\n')
+}
+
+/** Everything a `scenario` session is handed about the drive it lands scenarios on. */
+export interface ScenarioBrief {
+  project: Project
+  /** The feature being driven; absent on a project drive. */
+  feature?: Feature
+  /** The branch under the wheel — the one the scenario is committed onto. */
+  branch: string
+  /** The `RUNCASTLE_*` identity every drive hook and scenario runs with. */
+  identity: Readonly<Record<string, string>>
+  /** The `drive.env` overlay, names AND values: a scenario runs with these. */
+  envOverlay: Readonly<Record<string, string>>
+  /** The drive's app URL — what a relative `ENTRY_URL` resolves against. */
+  driveUrl?: string
+  /** The project's scenario runner command, when one is set. */
+  runner?: string
+  /** Every path under `.runcastle/scenarios/` at HEAD, `_` shared code included. */
+  files: readonly string[]
+  /** What the human asked for, from ＋ New scenario. */
+  description?: string
+  /** The scenario Fix it was clicked on, and how it failed. */
+  fix?: { file: string; failure?: ScenarioFailure }
+  /** True when `.runcastle/scenarios/` did not exist at launch (decision 5). */
+  setup: boolean
+}
+
+/** A scenario failure in the words the drive panel shows the human. */
+function scenarioFailureLine(failure: ScenarioFailure): string {
+  switch (failure.reason) {
+    case 'exit':
+      return `exited ${failure.exitCode ?? 'without a code'}`
+    case 'no-entry-url':
+      return 'exited 0 but printed no ENTRY_URL'
+    case 'timeout':
+      return 'ran past the two-minute timeout and was killed'
+    case 'no-runner':
+      return 'could not run: no scenario runner is set'
+  }
+}
+
+/** The Fix it ask: the failed file, how it failed, its output tail, and what to do. */
+function scenarioFixLines(fix: NonNullable<ScenarioBrief['fix']>): string[] {
+  return [
+    `The human clicked **Fix it** on \`${fix.file}\`.`,
+    ...(fix.failure
+      ? [
+          `It ${scenarioFailureLine(fix.failure)}. Its output (tail):`,
+          '',
+          '```',
+          fix.failure.outputTail.length > 0 ? fix.failure.outputTail : '(the scenario produced no output)',
+          '```',
+        ]
+      : ['Its failure is no longer on the drive; run it with `run_scenario` to see it again.']),
+    '',
+    'Repair it — usually a fixture or model the app changed — commit, and land the human with',
+    '`run_scenario`.',
+  ]
+}
+
+/**
+ * What ＋ New scenario or Fix it hands a scenario chat that is already live and
+ * docked: the same ask its launch briefing would carry, typed into its terminal
+ * since a running session has no argv left. Undefined when the door carried
+ * nothing new (a plain ＋ New scenario reopening the chat).
+ */
+export function renderScenarioFollowUp(
+  ask: Pick<ScenarioBrief, 'description' | 'fix'>,
+): string | undefined {
+  if (ask.fix) return scenarioFixLines(ask.fix).join('\n')
+  if (ask.description) {
+    return [
+      `The human asked for a new scenario: ${ask.description}`,
+      '',
+      'Write it, commit, and land the human with `run_scenario`.',
+    ].join('\n')
+  }
+  return undefined
+}
+
+/**
+ * The injected brief for a `scenario` session (drive-scenarios decision 8): the
+ * ＋ New scenario chat, or Fix it on a failed scenario, docked beside a running
+ * drive.
+ *
+ * It carries the drive's identity and its `drive.env` VALUES — unlike the
+ * drive-fix brief, which names keys only — because the agent writes code that
+ * runs with them and must reach the drive's isolated database exactly as the
+ * runner will. "Proven on first use" is the whole point, so the landing rule is
+ * absolute: the human is landed through `run_scenario`, the same runner the
+ * picker uses, never by the agent running the script itself.
+ */
+export function renderScenarioPrompt(brief: ScenarioBrief): string {
+  const { project, feature, branch, identity, envOverlay, driveUrl, runner, files, setup } = brief
+  const kv = (vars: Readonly<Record<string, string>>): string[] =>
+    Object.entries(vars).map(([k, v]) => `- \`${k}\` = \`${v}\``)
+  const overlay = kv(envOverlay)
+  const drive = feature ? `the test drive of ${feature.title}` : 'the project drive'
+
+  const ask: string[] = brief.fix
+    ? ['## Fix this scenario', ...scenarioFixLines(brief.fix)]
+    : brief.description
+      ? ['## What the human asked for', brief.description, '']
+      : [
+          '## What the human asked for',
+          'Nothing yet. **First ask the human what state they want to land in**, then write it.',
+          '',
+        ]
+
+  const setupBlock: string[] = setup
+    ? [
+        '## Setup mode — this branch has no scenarios yet',
+        '`.runcastle/scenarios/` does not exist on this branch, so you set scenarios up first. You',
+        'may edit anywhere in this checkout for that. In order:',
+        '',
+        '1. **Login route — only if the app has sign-in.** Add the drive-only route described below,',
+        '   through the app\'s own sign-in code.',
+        "2. **Typecheck.** Make the project's typecheck (or equivalent) cover `.runcastle/scenarios/`;",
+        '   dot-folders are often excluded by default, and a scenario must break loudly when the',
+        '   model changes.',
+        '3. **Base fixtures** under `.runcastle/scenarios/_fixtures/` ("a buyer", "3 products"), so',
+        '   each scenario is a few lines. When the app authenticates its API with tokens, add a',
+        '   fixture that mints one for the seeded user, so API scenarios can print `TOKEN=`.',
+        '4. **The runner.** Record the command that runs one scenario file with',
+        '   `set_scenario_runner({ command })`; it must contain `{file}` (e.g. `bun {file}`,',
+        '   `bin/rails runner {file}`).',
+        '5. **The scenario** the human asked for.',
+        '',
+      ]
+    : [
+        '## What you may edit',
+        'Only `.runcastle/` — the scenarios and their `_` shared code. The guard denies the rest; a',
+        'change the app itself needs belongs in a ticket, so tell the human.',
+        '',
+      ]
+
+  return [
+    `# runcastle — a scenario for ${drive}`,
+    '',
+    'This is a **scenario session**, docked beside a running test drive. A scenario is a project',
+    'command that seeds a state and prints the URL to land on, so the human starts a drive where',
+    'the thing they want to test already exists — signed in, data in place.',
+    '',
+    ...ask,
+    ...setupBlock,
+    '## The drive',
+    `- project: ${project.name} (\`${project.repoPath}\`)`,
+    `- branch under the wheel: \`${branch}\``,
+    `- app URL: ${driveUrl ? `\`${driveUrl}\`` : 'not answering yet'}`,
+    '',
+    'The identity every scenario runs with:',
+    ...kv(identity),
+    '',
+    overlay.length > 0
+      ? 'The `drive.env` overlay (the drive\'s isolated database and friends), which every scenario run also gets:'
+      : 'The drive\'s setup wrote no `drive.env` overlay, so a scenario sees only the identity above.',
+    ...overlay,
+    '',
+    '## The scenario contract',
+    '- A scenario is a file at `.runcastle/scenarios/<group>/<name>.<ext>`. The folder is the group',
+    '  (`checkout/` → Checkout), the file name the display name (`expired-coupon.ts` → Expired coupon).',
+    "- It is real app code: it imports the app's own models and factories.",
+    '- Files and folders starting with `_` (e.g. `_fixtures/`) are shared code, never listed.',
+    '- Every run gets a fresh `RUNCASTLE_SCENARIO_RUN` (short hex). Use it to make every entity',
+    '  unique (`buyer_<run>`), so several scenarios coexist in one drive\'s database.',
+    '- It prints `ENTRY_URL=<url>` on stdout; the last such line wins. A relative URL resolves',
+    '  against the app URL. Exit 0 with an `ENTRY_URL` is success; anything else fails, and so does',
+    '  a run past two minutes.',
+    '- It may also print `TOKEN=<value>` (the last such line wins): a credential for API calls, e.g.',
+    '  a bearer token for the seeded user.',
+    '- **An API call** is a sibling `.http` file at the same path (`feed/blocked-only.ts` +',
+    '  `feed/blocked-only.http`), in the standard `.http` format: a request line `METHOD path`,',
+    '  header lines, a blank line, then an optional body. One request per scenario. `{{token}}` is',
+    '  replaced with `TOKEN` and `{{run}}` with `RUNCASTLE_SCENARIO_RUN`, and a relative path',
+    '  resolves against the app URL. Write one when the human asks about an API or endpoint.',
+    "  The human sends it from the drive's API view with **Try it**; you cannot send it yourself,",
+    '  so landing its scenario with `run_scenario` is your proof.',
+    '',
+    `The scenario runner: ${runner && runner.trim() !== '' ? `\`${runner}\` (\`{file}\` is the repo-relative path)` : '**not set** — record one with `set_scenario_runner` before landing'}.`,
+    '',
+    files.length > 0
+      ? 'What `.runcastle/scenarios/` holds on this branch:'
+      : 'There are no scenario files on this branch yet.',
+    ...files.map((f) => `- \`${f}\``),
+    '',
+    '## The login route',
+    'Only if the app has sign-in. Being signed in lives partly in the browser, which neither a',
+    'scenario nor runcastle can write: the app runs in a cross-origin panel. So the app carries one',
+    'drive-only route, e.g. `/__drive/login?token=…&to=…`:',
+    '- it exists only when the drive environment is set (a `RUNCASTLE_*` variable is present), and',
+    '  never in production;',
+    '- the scenario seeds the user like any other entity and mints a one-time token for it;',
+    "- the route checks the token, signs in through the app's own sign-in code, and redirects to `to`.",
+    'An app without sign-in, or a scenario meant to land signed out, prints a plain `ENTRY_URL`.',
+    '',
+    '## Rules',
+    `- **Commit before landing.** \`git commit\` your work onto \`${branch}\`, the branch checked out`,
+    '  here, before the final `run_scenario`. Never push, never switch branches, never stop the drive.',
+    '- **Land only through `run_scenario({ file })`.** It runs the scenario through the same runner',
+    "  the picker uses and points the human's drive panel at its `ENTRY_URL` — that is what proves",
+    '  it. Never run the scenario yourself as the landing. If it fails, read the failure it returns,',
+    '  fix, commit and retry.',
+    '- Make entities unique with `RUNCASTLE_SCENARIO_RUN`; never reset the database.',
     '',
   ].join('\n')
 }
@@ -1093,7 +1323,7 @@ export function skillPackReadRule(packDir: string): string {
 }
 
 /** Kinds that run in the developer's OWN checkout rather than a talk worktree. */
-const HOST_SIDE_KINDS: readonly SessionKind[] = ['prepare', 'drive-fix']
+const HOST_SIDE_KINDS: readonly SessionKind[] = ['prepare', 'drive-fix', 'scenario']
 
 /**
  * The `Skill(...)` DENY rules a session of `kind` is launched with: every
@@ -1132,9 +1362,17 @@ function otherEntrySkillsRule(): string {
   )
 }
 
-/** The git rules a session of `kind` is launched with (see the split above). */
-export function sessionBashAllowRules(kind?: SessionKind): readonly string[] {
+/**
+ * The git rules a session of `kind` is launched with (see the split above). A
+ * scenario session in setup mode (`purpose`) may write the whole checkout — the
+ * login route, the typecheck config — so its `git add` is not narrowed to
+ * `.runcastle/`; its commit still prompts, like every host-side commit.
+ */
+export function sessionBashAllowRules(kind?: SessionKind, purpose?: SessionPurpose): readonly string[] {
   if (kind === 'project') return SESSION_BASH_READ_RULES
+  if (kind === 'scenario' && purpose === 'scenario-setup') {
+    return [...SESSION_BASH_READ_RULES, 'Bash(git add:*)']
+  }
   if (kind && HOST_SIDE_KINDS.includes(kind)) {
     return [...SESSION_BASH_READ_RULES, ...HOST_SESSION_BASH_WRITE_RULES]
   }
@@ -1231,7 +1469,7 @@ export function renderSettings(
     permissions: {
       allow: [
         ...RUNCASTLE_MCP_ALLOW_RULES,
-        ...sessionBashAllowRules(kind),
+        ...sessionBashAllowRules(kind, purpose),
         ...(skillPackDir ? [skillPackReadRule(skillPackDir)] : []),
       ],
       deny: entrySkillDenyRules(kind),
@@ -1307,11 +1545,31 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
 // --- writer -----------------------------------------------------------------
 
 /**
- * The whole briefing for one session, whichever of the four briefs it carries.
+ * The section every interactive session's prompt ends with: brief the human
+ * like a senior advisor joining partway through. Appended once, by
+ * {@link renderSessionPrompt}, so every renderer — today's and any added later
+ * — carries it without a per-renderer edit. Burn agents never talk to the
+ * human, so the burner prompts do not get it.
+ */
+export function talkingToTheHumanSection(): string {
+  return [
+    '## How to talk to the human',
+    "The human makes the decisions, but they don't have your context. Treat them as a senior advisor joining partway through. They haven't read the code or the docs you just read, and they may have forgotten what was settled weeks ago.",
+    "- **Define the project's terms the first time you use them.** Any name from this project's code, docs or decisions (a module, a function, a table, a domain concept, a decision number) gets a short plain-words gloss in the same sentence. Define it again if it hasn't come up for a while. If the name adds nothing, describe the thing instead. Runcastle's own workflow words (burn, lap, drive, Go, gate, ticket, feature) are the human's own tool: don't explain them.",
+    '- **Bring the context with the decision.** Before asking them to decide, say in a few sentences what the situation is, why it needs deciding now, the options that matter, what you recommend and why, and what it costs if that turns out wrong. They should be able to decide without opening a file.',
+    '- **Give the conclusion, not the search.** Tell them what you found and the one fact it rests on, not the trail of reads that got you there.',
+    '- **Condense.** Three sentences of context beat a page. They will ask if they want more.',
+    '- **Play each decision back in one line**, so you both know what was settled.',
+    '',
+  ].join('\n')
+}
+
+/**
+ * The whole briefing for one session, whichever of the five briefs it carries.
  *
  * A session that is not briefed from its feature row — a project-scoped one, or
- * the host-side drive fix — supplies its kind's brief instead. Exactly one of
- * the four is always present: a session with none would spawn a terminal with no
+ * the host-side drive fix and scenario chat — supplies its kind's brief instead.
+ * Exactly one of the five is always present: a session with none would spawn a terminal with no
  * instructions at all.
  *
  * Exported because a runtime injects it differently: Claude Code appends the
@@ -1319,17 +1577,24 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
  * its home dir. Same prose, two destinations.
  */
 export function renderSessionPrompt(input: WriteArtifactsInput): string {
+  return `${renderBrief(input).trimEnd()}\n\n${talkingToTheHumanSection()}`
+}
+
+/** The kind-specific brief {@link renderSessionPrompt} carries, before its shared closing section. */
+function renderBrief(input: WriteArtifactsInput): string {
   const {
     session,
     feature,
     prepare,
     projectBrief,
     driveFix,
+    scenario,
     purpose,
     runtime,
     planning,
   } = input
   if (driveFix) return renderDriveFixPrompt(driveFix)
+  if (scenario) return renderScenarioPrompt(scenario)
   if (feature) {
     return renderSystemPrompt(feature, session.kind, purpose, runtime, planning, session.headless)
   }

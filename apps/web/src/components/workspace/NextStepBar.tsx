@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { BranchMenu, Button, IconButton, Spinner, StatusDot, StatusLabel, cx } from '../../ui'
+import { BranchMenu, Button, IconButton, SplitButton, Spinner, StatusDot, StatusLabel, cx } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
-import type { StatusTone } from '../../ui'
+import type { ButtonVariant, StatusTone } from '../../ui'
 import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feature-ui'
 import {
   IconAlert,
@@ -67,6 +67,7 @@ export function NextStepBar({
   draftBranch,
   demote,
   status,
+  split,
 }: {
   ns: NextStep
   guidance: boolean
@@ -91,6 +92,14 @@ export function NextStepBar({
    * line and note are not said beside it, so the header states its status once.
    */
   status?: ReactNode
+  /**
+   * The one action that carries choices behind a caret (Test drive and its
+   * scenarios, drive-scenarios decision 7): wherever that kind sits on the row
+   * it renders as a {@link SplitButton} under `label`, its main click still
+   * `onAction(kind)` and `menu` the rows behind the caret. In the "More" menu,
+   * where a menu cannot nest, it stays a plain item under the same label.
+   */
+  split?: { kind: ActionKind; label: string; menu: ReactNode; menuLabel: string }
 }) {
   const secondary = ns.secondary
   // Disabled actions, in button order, each with the reason it cannot fire.
@@ -108,6 +117,35 @@ export function NextStepBar({
   // the row — the row does not show that button.
   const refusedShown = refused.filter((a) => !demote?.includes(a.kind) || a === ns.primary)
   if (!status && !hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
+
+  const labelOf = (a: NextAction): string => (split?.kind === a.kind ? split.label : a.label)
+  /** One action's button — the split one where `split` names its kind. */
+  const actionButton = (a: NextAction, variant: ButtonVariant, label: ReactNode, key?: number) =>
+    split?.kind === a.kind ? (
+      <SplitButton
+        key={key}
+        variant={variant}
+        icon={ACTION_ICON[a.kind]}
+        disabled={busy || !!a.disabled}
+        title={a.disabled ?? a.hint}
+        onClick={() => onAction(a.kind)}
+        menu={split.menu}
+        menuLabel={split.menuLabel}
+      >
+        {label}
+      </SplitButton>
+    ) : (
+      <Button
+        key={key}
+        variant={variant}
+        icon={ACTION_ICON[a.kind]}
+        disabled={busy || !!a.disabled}
+        title={a.disabled ?? a.hint}
+        onClick={() => onAction(a.kind)}
+      >
+        {label}
+      </Button>
+    )
 
   const lead = ns.title ?? (guidance ? undefined : ns.desc)
   const guide = guidance && ns.desc && ns.desc !== lead ? ns.desc : undefined
@@ -164,18 +202,7 @@ export function NextStepBar({
         // the right, the primary last — the same place on every phase.
         <div className="ml-auto flex min-w-0 flex-col items-end gap-1.5">
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            {shown.map((a, i) => (
-              <Button
-                key={i}
-                variant="ghost"
-                icon={ACTION_ICON[a.kind]}
-                disabled={busy || !!a.disabled}
-                title={a.disabled ?? a.hint}
-                onClick={() => onAction(a.kind)}
-              >
-                {a.label}
-              </Button>
-            ))}
+            {shown.map((a, i) => actionButton(a, 'ghost', labelOf(a), i))}
             {overflow.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -190,7 +217,7 @@ export function NextStepBar({
                       title={a.disabled ?? a.hint}
                       onSelect={() => onAction(a.kind)}
                     >
-                      {a.label}
+                      {labelOf(a)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -208,15 +235,11 @@ export function NextStepBar({
                     onPick={draftBranch.onPick}
                   />
                 )}
-                <Button
-                  variant={ns.primary.danger ? 'danger' : 'primary'}
-                  icon={ACTION_ICON[ns.primary.kind]}
-                  disabled={busy || !!ns.primary.disabled}
-                  title={ns.primary.disabled ?? ns.primary.hint}
-                  onClick={() => onAction(ns.primary!.kind)}
-                >
-                  {busy ? 'Working…' : ns.primary.label}
-                </Button>
+                {actionButton(
+                  ns.primary,
+                  ns.primary.danger ? 'danger' : 'primary',
+                  busy ? 'Working…' : labelOf(ns.primary),
+                )}
               </>
             )}
           </div>

@@ -13,6 +13,8 @@ Write the real thing in **whatever language this host actually runs**, which the
 
 The one thing that must NOT change when you translate: the contract (identity in via `RUNCASTLE_*`, computed values out via `.runcastle/drive.env`, unconditional idempotence, exit 0 means up).
 
+Every recipe below writes the database URL (or its connection string) to `drive.env`. Keep that when you adapt one: scenarios reach the drive's data only through that overlay.
+
 `RUNCASTLE_ID` is unique within a project only — every project's dry run is `prep_dry_run` and every project drive is `project_drive`, and two projects can drive at once — so anything shared across projects (a local Redis, a schema in a shared database) is named with the app prefix, `myapp_$RUNCASTLE_ID`, never the bare id.
 
 ## Postgres, one database per drive

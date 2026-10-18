@@ -1,8 +1,14 @@
-import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { FilledHttpRequest, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
-import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
+import {
+  endSession,
+  launchDriveFixSession,
+  launchScenarioSession,
+  launchSession,
+} from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
 import { setDependencies } from '../../services/dependencies'
+import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
 import { mergeFeatureFlow } from '../../services/merge'
@@ -167,12 +173,21 @@ export const featureRouter = router({
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure
-    .input(z.object({ featureId: z.string(), action: z.enum(['start', 'stop']) }))
+    .input(
+      z.object({
+        featureId: z.string(),
+        action: z.enum(['start', 'stop']),
+        // A scenario file to land on once the app answers (drive-scenarios).
+        scenario: z.string().optional(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const feature = getFeatureRow(ctx, input.featureId)
       features.requireNotDraft(feature)
       const project = projectForFeature(ctx, feature)
-      return git.testDrive(ctx, project, feature, input.action)
+      return git.testDrive(ctx, project, feature, input.action, 'human', {
+        ...(input.scenario ? { scenario: input.scenario } : {}),
+      })
     }),
 
   // Active test-drive info for the review-phase dev pane + Open app link. Polled
@@ -180,6 +195,42 @@ export const featureRouter = router({
   driveInfo: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ input }) => git.activeDriveInfo(input.projectId)),
+
+  // The scenarios a drive can land on: a feature's (its own first) or, with no
+  // feature, the project's checked-out HEAD. Read from git, so the picker lists
+  // them before the drive has checked the branch out.
+  driveScenarios: publicProcedure
+    .input(z.object({ projectId: z.string(), featureId: z.string().optional() }))
+    .query(({ ctx, input }) => git.listDriveScenarios(ctx, input.projectId, input.featureId)),
+
+  // Run a scenario against the live drive without a restart. Fire and forget:
+  // the run reports through `driveInfo.scenario` and its events, so the answer
+  // here is only whether it started.
+  runScenario: publicProcedure
+    .input(z.object({ projectId: z.string(), file: z.string().min(1) }))
+    .mutation(({ ctx, input }): { ok: true } | { ok: false; denied: string } => {
+      const started = git.startScenarioOnDrive(ctx, input.projectId, input.file)
+      if (!started.ok) return started
+      void started.result
+      return { ok: true }
+    }),
+
+  // Try it: send an API scenario's filled request from the server to the live
+  // human or project drive. A request that cannot be sent answers `ok: false`.
+  sendCall: publicProcedure
+    .input(z.object({ projectId: z.string(), request: FilledHttpRequest }))
+    .mutation(({ ctx, input }) => sendDriveCall(ctx, input.projectId, input.request)),
+
+  // ＋ New scenario / Fix it: the `scenario` session docked beside the drive.
+  openScenarioChat: publicProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        description: z.string().optional(),
+        fixFile: z.string().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) => launchScenarioSession(ctx, input)),
 
   // How many commits the branch actually carries over its merge target, for the
   // review summary and the merge confirmation (findings F23). Its own query

@@ -17,9 +17,11 @@ import {
   SESSION_START_SOURCES,
   hookClientPath,
   renderMcpConfig,
+  renderSessionPrompt,
   renderSettings,
   renderSystemPrompt,
   skillPackReadRule,
+  talkingToTheHumanSection,
   writeSessionArtifacts,
 } from '../src/launcher/artifacts'
 import { ptyExitMessage } from '../src/launcher/launcher'
@@ -401,6 +403,8 @@ describe('renderSettings', () => {
       expect(plain).not.toContain('wait-messages')
       expect(plain).not.toContain('asyncRewake')
       for (const purpose of others) {
+        // Setup mode widens a scenario session's `git add` on purpose (scenario-session.test.ts).
+        if (kind === 'scenario' && purpose === 'scenario-setup') continue
         expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
       }
     }
@@ -852,6 +856,111 @@ describe('writeSessionArtifacts', () => {
     expect(mcp.mcpServers.runcastle.headers['X-Runcastle-Session']).toBe(sess.id)
 
     expect(readFileSync(out.systemPromptPath, 'utf8')).toContain('/runcastle:ideate')
+  })
+})
+
+describe('renderSessionPrompt', () => {
+  const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
+  const noArtifacts = { hasDecisions: false, hasSpec: false, hasTickets: false }
+
+  const briefs: Array<[string, Partial<WriteArtifactsInput>]> = [
+    ['ideation', { feature: feature(), planning: noArtifacts }],
+    [
+      'revisit chat',
+      { feature: feature(), planning: { hasDecisions: true, hasSpec: true, hasTickets: false } },
+    ],
+    ['lead', { feature: feature({ phase: 'review' }) }],
+    ['qa', { session: session({ kind: 'qa' }), feature: feature({ phase: 'review' }) }],
+    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    [
+      'prepare',
+      {
+        session: session({ kind: 'prepare' }),
+        prepare: { project, remainingKeys: ['devCommand'], established: [] },
+      },
+    ],
+    [
+      'project',
+      {
+        session: session({ kind: 'project' }),
+        projectBrief: {
+          project,
+          branch: 'runcastle/project',
+          worktreePath: 'C:\\wt\\p',
+          base: 'main',
+          openNotes: 0,
+        },
+      },
+    ],
+    [
+      'drive-fix',
+      {
+        session: session({ kind: 'drive-fix' }),
+        driveFix: {
+          project,
+          feature: feature(),
+          failure: {
+            phase: 'setup',
+            command: 'bash .runcastle/drive-setup.sh',
+            exitCode: 3,
+            timedOut: false,
+            output: 'boom',
+          },
+          envKeys: [],
+          delta: { base: 'main', branch: 'feature/dark-mode', stat: '' },
+        },
+      },
+    ],
+  ]
+
+  it.each(briefs)('ends a %s brief with how to talk to the human, exactly once', (_, brief) => {
+    const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
+
+    expect(prompt.split('## How to talk to the human')).toHaveLength(2)
+    expect(prompt.endsWith(talkingToTheHumanSection())).toBe(true)
+    expect(prompt).toContain('senior advisor')
+    expect(prompt).toContain("Define the project's terms")
+    expect(prompt).toContain('Bring the context with the decision')
+  })
+
+  const headlessBriefs: Array<[string, Partial<WriteArtifactsInput>]> = [
+    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    [
+      'relay',
+      {
+        feature: feature({ phase: 'review' }),
+        purpose: 'relay',
+        session: session({ headless: true }),
+      },
+    ],
+  ]
+
+  it.each(headlessBriefs)(
+    'tells a headless %s run its no-human rule outranks the closing section',
+    (_, brief) => {
+      const prompt = renderSessionPrompt({ session: session(), project, config, ...brief })
+      const rule = prompt.slice(
+        prompt.indexOf('## No human is present'),
+        prompt.indexOf('## How to talk to the human'),
+      )
+
+      expect(rule).toContain(
+        'This section outranks "How to talk to the human" at the end of this brief',
+      )
+      expect(rule).toContain('turn on a decision for them.')
+    },
+  )
+
+  it('leaves the closing section unqualified when a human is present', () => {
+    const prompt = renderSessionPrompt({
+      session: session(),
+      project,
+      config,
+      feature: feature(),
+      planning: noArtifacts,
+    })
+
+    expect(prompt).not.toContain('outranks "How to talk to the human"')
   })
 })
 

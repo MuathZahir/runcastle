@@ -51,12 +51,19 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * decision 9). It belongs to a FEATURE — the one whose drive died — but runs on
  * the HOST in the real checkout like `prepare`, because the environment it is
  * there to repair is the developer's own machine.
+ * `scenario` = the ＋ New scenario / Fix it chat docked beside a running human
+ * drive (drive-scenarios decision 8). It runs on the HOST in the drive's
+ * checkout, and it is the one kind whose scope follows something else: the
+ * drive's. On a feature drive it has a `featureId`; on a project drive it is
+ * project-scoped (`featureId` null), so code that asks "does this session have
+ * a feature?" must ask the row, never {@link isProjectSessionKind}.
  */
 export const SessionKind = z.enum([
   'chat',
   'prepare',
   'project',
   'drive-fix',
+  'scenario',
 ])
 export type SessionKind = z.infer<typeof SessionKind>
 
@@ -117,6 +124,11 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * `lead-wake` — a headless run that resumes a feature's chat (its lead) with
  * runcastle's pending messages as its prompt, because no terminal of it was open
  * to take them (`the-feature-lead-runs-rounds` decision 12).
+ *
+ * `scenario-setup` — a `scenario` session launched while the driven branch had
+ * no `.runcastle/scenarios/` yet (drive-scenarios decision 5). Decided once at
+ * launch: it briefs the agent to set scenarios up (login route, typecheck,
+ * fixtures, runner) and opens the edit guard to the whole checkout.
  */
 export const SessionPurpose = z.enum([
   'resolve-conflict',
@@ -125,6 +137,7 @@ export const SessionPurpose = z.enum([
   'orchestrate',
   'relay',
   'lead-wake',
+  'scenario-setup',
 ])
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
@@ -512,6 +525,11 @@ export const Project = z.object({
    * injected verbatim into every drive-mode review and verification prompt.
    */
   driveInstructions: z.string().optional(),
+  /**
+   * Runs one drive scenario: a command with a `{file}` placeholder, substituted
+   * with the scenario's repo-relative path (drive-scenarios decision 2).
+   */
+  scenarioRunner: z.string().optional(),
   /** Subject prefix for runcastle-owned docs checkpoint commits. */
   docsCommitPrefix: z.string().optional(),
   /** The project session launches as the orchestrator; unset reads as off. */
@@ -873,6 +891,94 @@ export function driveDenialOf(result: DriveDenial): DriveDenial {
     ...(result.dirtyFiles ? { dirtyFiles: result.dirtyFiles } : {}),
   }
 }
+
+/**
+ * One scenario a drive can land on (drive-scenarios spec, "Discovery"). Read
+ * from paths alone: `group` is the first subfolder under `.runcastle/scenarios/`
+ * made readable, `name` the file stem made readable, and `own` marks a file the
+ * feature's branch added or changed against its base.
+ */
+export const ScenarioEntry = z.object({
+  /** Repo-relative posix path, e.g. `.runcastle/scenarios/checkout/expired-coupon.ts`. */
+  file: z.string(),
+  group: z.string().optional(),
+  name: z.string(),
+  own: z.boolean(),
+  /** A same-path `.http` sibling exists, so the scenario is an API call too. */
+  hasCall: z.boolean(),
+})
+export type ScenarioEntry = z.infer<typeof ScenarioEntry>
+
+/**
+ * An API scenario's `.http` request with its placeholders filled and its
+ * target resolved against the drive URL — what Try it shows and sends.
+ * Headers keep their order and repeats. The URL may be empty: Try it's field is
+ * editable, and an unsendable request answers as an error result, not a
+ * validation failure.
+ */
+export const FilledHttpRequest = z.object({
+  method: z.string().min(1),
+  url: z.string(),
+  headers: z.array(z.tuple([z.string(), z.string()])),
+  body: z.string().optional(),
+})
+export type FilledHttpRequest = z.infer<typeof FilledHttpRequest>
+
+/**
+ * What sending a call over the live drive came back with: the response (body
+ * capped, `truncated` when cut), or an error for a request that could not be
+ * sent at all.
+ */
+export type DriveCallResult =
+  | {
+      ok: true
+      status: number
+      statusText: string
+      durationMs: number
+      headers: Array<[string, string]>
+      body: string
+      truncated: boolean
+    }
+  | { ok: false; error: string }
+
+/**
+ * Why a scenario run failed: a non-zero `exit`, exit 0 with no `ENTRY_URL`
+ * line, the fixed timeout, or no scenario runner configured at all.
+ */
+export const ScenarioFailureReason = z.enum(['exit', 'no-entry-url', 'timeout', 'no-runner'])
+export type ScenarioFailureReason = z.infer<typeof ScenarioFailureReason>
+
+export const ScenarioFailure = z.object({
+  reason: ScenarioFailureReason,
+  exitCode: z.number().nullable().optional(),
+  /** The last ~40 lines of the scenario's combined output. */
+  outputTail: z.string(),
+})
+export type ScenarioFailure = z.infer<typeof ScenarioFailure>
+
+/**
+ * The scenario a live drive is in, as `driveInfo` reports it. `landingId` is
+ * fresh per landing so the panel reloads even when the entry URL repeats.
+ */
+export const DriveScenario = z.object({
+  file: z.string(),
+  name: z.string(),
+  status: z.enum(['running', 'landed', 'failed']),
+  /** Live output tail while running. */
+  output: z.string().optional(),
+  entryUrl: z.string().optional(),
+  landingId: z.string().optional(),
+  failure: ScenarioFailure.optional(),
+  /** The landed run's `TOKEN=` value, if it printed one. */
+  token: z.string().optional(),
+  /** The landed run's `RUNCASTLE_SCENARIO_RUN`. */
+  run: z.string().optional(),
+  /** The scenario's `.http` request, filled for this run. */
+  call: FilledHttpRequest.optional(),
+  /** Why the `.http` sibling could not be parsed; the landing still counts. */
+  callError: z.string().optional(),
+})
+export type DriveScenario = z.infer<typeof DriveScenario>
 
 export interface MergeConflictState {
   base: string

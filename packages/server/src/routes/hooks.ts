@@ -132,7 +132,8 @@ hooks.post('/:event', async (c) => {
     }
 
     // Project-scoped sessions (`prepare` and `project` — see
-    // PROJECT_SESSION_KINDS) have no feature. They still need the full
+    // PROJECT_SESSION_KINDS — and a `scenario` chat on a project drive) have no
+    // feature. They still need the full
     // lifecycle — `markSessionLive` is what flips the row live and records the
     // id a later resume needs, so returning early here would strand the
     // conversation — but none of the feature briefing applies, and what they are
@@ -341,6 +342,10 @@ function projectScopedNoun(kind: SessionKind): string {
       return 'preparation session'
     case 'project':
       return 'project session'
+    // Project-scoped only on a project drive; on a feature drive it takes the
+    // feature path above.
+    case 'scenario':
+      return 'scenario chat'
     default:
       return 'session'
   }

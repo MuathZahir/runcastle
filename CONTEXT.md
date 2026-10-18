@@ -58,6 +58,10 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 - **Flexible guidance over brittle machinery.** When in doubt, less mechanism. Gates guide; they never imprison. (Standing user directive.)
 - **Git abstracted behind product verbs** ("test this feature", "merge") — vibe-coder friendly as a principle, not a v1 persona.
 - **Parallelization is a first-class goal** — the architecture must never assume one live feature, even where M1's UI does.
+- **Individual developers first.** Design for one developer whose work all goes through runcastle. Teams come later, and only teams that all use runcastle; teammates working outside it are out of scope.
+- **Language-agnostic by construction.** Runcastle's own code only handles paths, git, text and commands it runs. Anything that needs to understand code is an agent's job; there are no per-language parsers.
+- **Minimal docs; agents read code on demand.** Never ask a human or an agent to keep a description of the code current. What lasts is records (decisions, ADRs, dated previews and captures) and executable things that break loudly (tests, scenarios).
+- **An app's structure is its observable behaviour.** The structure a developer sees is their app's screens and calls, reached by scenarios and captured, never described. Features run through it; nothing is tagged by hand.
 
 ## Deferred / open threads
 

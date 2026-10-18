@@ -126,6 +126,7 @@ describe('chatContextLine', () => {
   it('names each kind of feature session', () => {
     expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat')
     expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
+    expect(chatContextLine(session({ kind: 'scenario' }))).toBe('Scenario')
   })
 })
 

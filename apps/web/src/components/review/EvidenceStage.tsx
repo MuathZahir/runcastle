@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react'
-import { fmtClock, type DriveState, type TestNote } from '@runcastle/core'
+import { fmtClock, type DriveScenario, type DriveState, type TestNote } from '@runcastle/core'
 import { IconButton, StatusLabel } from '../../ui'
 import { IconCollapse, IconExpand } from '../../icons'
 import { driveView, latestReview, type DriveFailure } from '../../lib/feature-ui'
@@ -9,6 +9,7 @@ import { clusterMarkers } from '../../lib/walkthrough'
 import { WalkthroughPlayer, type WalkthroughHandle } from '../WalkthroughPlayer'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { DrivePanel } from './DrivePanel'
+import { ScenarioDrive } from './ScenarioDrive'
 import { DriveFooter, DriveSetupFailed, StopDrive } from './drive-parts'
 
 /**
@@ -48,6 +49,9 @@ export interface StageDrive {
   devUrl?: string
   devReady?: boolean
   devReadyTimedOut?: boolean
+  /** The scenario the drive is in, and its docked chat (drive-scenarios). */
+  scenario?: DriveScenario
+  scenarioSessionId?: string
 }
 
 /** Which side of the swap is showing, from the server's one drive-state value. */
@@ -104,6 +108,7 @@ function stageIdentity(
 
 export function EvidenceStage({
   featureId,
+  projectId,
   branch,
   recordings,
   picked = null,
@@ -120,6 +125,11 @@ export function EvidenceStage({
   onAnnotationSaved,
 }: {
   featureId: string
+  /**
+   * The feature's project — what a scenario runs against. Without it the drive
+   * shows the app alone, with no Scenario menu (the shipped record).
+   */
+  projectId?: string
   branch: string
   /** Every review pass that left a recording, newest last. */
   recordings: readonly ReviewArtifacts[]
@@ -252,6 +262,7 @@ export function EvidenceStage({
         <div className={stageFrame(expanded, fills ? 'screen' : 'prose')}>
           <DriveStage
             featureId={featureId}
+            projectId={projectId}
             branch={branch}
             driveState={driveState}
             drive={drive}
@@ -279,6 +290,7 @@ export function EvidenceStage({
  */
 function DriveStage({
   featureId,
+  projectId,
   branch,
   driveState,
   drive,
@@ -288,6 +300,7 @@ function DriveStage({
   readonly,
 }: {
   featureId: string
+  projectId?: string
   branch: string
   driveState: DriveState
   drive?: StageDrive
@@ -410,9 +423,15 @@ function DriveStage({
         </>
       )
 
+    // The human's own drive: the app with its scenarios (drive-scenarios
+    // decision 7). A record looked back at only shows the app.
     default:
       return drive?.devUrl ? (
-        <DrivePanel featureId={featureId} url={drive.devUrl} readonly={readonly} />
+        projectId && !readonly ? (
+          <ScenarioDrive projectId={projectId} featureId={featureId} drive={{ ...drive, devUrl: drive.devUrl }} />
+        ) : (
+          <DrivePanel featureId={featureId} url={drive.devUrl} readonly={readonly} />
+        )
       ) : (
         <div className="p-6 text-sm text-text-secondary">
           The dev server is up but has not printed an address yet — its output is under the stage.

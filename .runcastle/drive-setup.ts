@@ -25,6 +25,7 @@ import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { DRIVE_PREFIX } from './drive-dir.ts'
 
 const repoRoot = resolve(import.meta.dirname, '..')
 const driveEnvPath = join(repoRoot, '.runcastle', 'drive.env')
@@ -120,7 +121,7 @@ run('build the SPA', ['run', '--filter', '@runcastle/web', 'build'])
  * anything — the developer's `~/.runcastle` and `~/.runcastle-dev` sit in the
  * same parent directory and must be unreachable from here.
  */
-const dataDir = join(homedir(), `.runcastle-drive-${id}`)
+const dataDir = join(homedir(), `${DRIVE_PREFIX}${id}`)
 mkdirSync(dataDir, { recursive: true })
 
 /**

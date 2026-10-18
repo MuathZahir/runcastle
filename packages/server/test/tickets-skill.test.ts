@@ -66,4 +66,20 @@ describe('the tickets skill', () => {
     expect(selfCheck).toContain('burnConcurrency')
     expect(selfCheck).toContain('total / concurrency')
   })
+
+  it('ships a scenario for hard-to-reach state only in a set-up project', () => {
+    const text = skill()
+    expect(text).toContain('**Ship a scenario when the state is hard to reach.**')
+    expect(text).toContain('`{ setUp, runnerConfigured, scenarios, fixtures }`')
+    expect(text).toContain('Ship `.runcastle/scenarios/<group>/<name>.<ext>`')
+    expect(text).toContain('sibling `.http` file')
+    expect(text).toContain("Name that scenario in the review ticket's `context`")
+    expect(text).toContain('Copy changes and settings toggles get none.')
+    expect(text).toContain('**When `setUp` is false**, card nothing about scenarios.')
+    const selfCheck = text.slice(text.indexOf('## 3. Self-check, then emit'))
+    expect(selfCheck).toContain('scenarios.setUp')
+
+    const revisit = readFileSync(join(resolvePluginDir(), 'skills', 'revisit', 'SKILL.md'), 'utf8')
+    expect(revisit).toContain('"Ship a scenario when the state is hard to reach"')
+  })
 })

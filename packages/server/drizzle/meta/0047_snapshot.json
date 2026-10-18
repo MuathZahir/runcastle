@@ -2,7 +2,7 @@
   "version": "6",
   "dialect": "sqlite",
   "id": "dd9fc98f-8513-47c4-8756-b62a44ce853a",
-  "prevId": "bdd07995-faf4-48df-86eb-b4d36e093290",
+  "prevId": "3fbc2084-091c-4fe2-8848-783adc5406fc",
   "tables": {
     "events": {
       "name": "events",
@@ -570,6 +570,13 @@
         },
         "drive_stop_command": {
           "name": "drive_stop_command",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scenario_runner": {
+          "name": "scenario_runner",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

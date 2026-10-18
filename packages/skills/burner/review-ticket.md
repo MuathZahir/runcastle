@@ -89,6 +89,8 @@ Either way: report an observation saying the drive could not start and which of 
 
 **Never build your own environment to drive in.** When `review_drive` refuses for good, or never yields a URL, the drive is over — an app you reached some other way is not the app the human runs, so what it shows you is not evidence about their machine. Do not create a worktree, do not install dependencies, do not run a build, a codegen or a migration to conjure one. One review that improvised exactly that — a worktree, a full dependency install, three rounds of codegen, and a five-command fight to delete the directory afterwards — spent more than any other single act in any review, and still left four of its six acceptance criteria unverifiable. Gates mode is what is left to you, and it is enough: read the server's gate results, read the diff along both axes, and report every criterion the drive would have covered as an observation saying it is unverified.
 
+{{SCENARIOS}}
+
 **Walk the app with `agent-browser`.** Its core loop, which you repeat:
 
 ```

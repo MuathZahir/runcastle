@@ -62,7 +62,8 @@ export type EntrySkill = (typeof ENTRY_SKILLS)[number]
  * - `qa` is allowed nowhere: no live kind opens on it (the qa session kind was
  *   retired with one-chat-per-feature), which matches its pre-flip reachability
  *   of exactly zero.
- * - `drive-fix` has no entry skill at all — its whole briefing is the prompt.
+ * - `drive-fix` and `scenario` have no entry skill at all — their whole briefing
+ *   is the prompt.
  * - An UNKNOWN kind gets none, for the edit-guard's reason: a session whose kind
  *   we do not know is not one to hand another kind's procedure to.
  */
@@ -75,6 +76,7 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
     case 'project':
       return ['project']
     case 'drive-fix':
+    case 'scenario':
     case undefined:
       return []
   }
@@ -198,6 +200,13 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
       'Proceed with your task: the drive whose setup just failed is in your system prompt. Read ' +
       'the failure, work out what the environment is missing, and tell me what you propose to ' +
       'change before you change it; then fix it and retry the drive with retry_drive.',
+    // No skill: the drive, the runner, the existing scenarios and the human's
+    // ask (or the failed scenario) all ride the appended system prompt
+    // (renderScenarioPrompt), so the line only points at the first move.
+    scenario:
+      'Proceed with your task: the drive you are writing a scenario for is in your system prompt. ' +
+      'If it carries no description or failure, first ask me what state I want to land in; ' +
+      'otherwise write (or fix) the scenario, commit it, and land me with run_scenario.',
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "bdd07995-faf4-48df-86eb-b4d36e093290",
+  "id": "3fbc2084-091c-4fe2-8848-783adc5406fc",
   "prevId": "b50887bb-abef-4744-97cc-5eda75adf5f7",
   "tables": {
     "events": {
@@ -270,34 +270,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
-        },
-        "autonomy": {
-          "name": "autonomy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "waiting_reason": {
-          "name": "waiting_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_human_message_at": {
-          "name": "last_human_message_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_dispatch_at": {
-          "name": "last_dispatch_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
@@ -575,6 +547,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "scenario_runner": {
+          "name": "scenario_runner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "docs_commit_prefix": {
           "name": "docs_commit_prefix",
           "type": "text",
@@ -587,65 +566,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "autonomy": {
-          "name": "autonomy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "ready_declarations": {
-      "name": "ready_declarations",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "feature_id": {
-          "name": "feature_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "scenario": {
-          "name": "scenario",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "what_to_test": {
-          "name": "what_to_test",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         }
       },
@@ -856,13 +776,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "gates": {
-          "name": "gates",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
@@ -1002,20 +915,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "tokens": {
-          "name": "tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "token_breakdown": {
-          "name": "token_breakdown",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {},
@@ -1094,13 +993,6 @@
         "video_timestamp": {
           "name": "video_timestamp",
           "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sent_at": {
-          "name": "sent_at",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1309,20 +1201,6 @@
         },
         "origin_finding_id": {
           "name": "origin_finding_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tokens": {
-          "name": "tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "token_breakdown": {
-          "name": "token_breakdown",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
