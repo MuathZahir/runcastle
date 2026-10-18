@@ -138,7 +138,13 @@ export async function planStoriesBuild(input: StoriesBuildInput): Promise<Storie
   }
 
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
-  const incoming = incomingDir(`${input.ticket.id}`)
+  let incoming: string
+  try {
+    incoming = incomingDir(input.ticket.id)
+  } catch (err) {
+    const reason = `no place to put the build: ${headline(errorText(err))}`
+    return { finish: async () => ({ status: 'couldnt_run', commit: sha, reason, log: null }) }
+  }
   let outcome: BuildOutcome | undefined
   const step: GateSandboxStep = {
     outDir: incoming,
