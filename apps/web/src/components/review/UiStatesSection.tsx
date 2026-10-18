@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { UiStatesModel, UiStatesStory } from '../../lib/api'
+import { trpc } from '../../trpc'
 import { IconExpand } from '../../icons'
 import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag } from '../../ui'
 
@@ -117,6 +118,17 @@ export function UiStatesSection({
       </Dialog>
     </section>
   )
+}
+
+/**
+ * The section on a later lap's planning and building bodies (decision 12): the
+ * last review pass's build stays the feature's evidence until the next review
+ * replaces it, labelled with the lap it came from. Lap 1 has none to show.
+ */
+export function LaterLapUiStates({ featureId, lap }: { featureId: string; lap: number }) {
+  const uiStates = trpc.feature.uiStates.useQuery({ featureId }, { enabled: lap > 1 })
+  if (lap <= 1) return null
+  return <UiStatesSection model={uiStates.data ?? null} currentLap={lap} />
 }
 
 /** A story's title as the reader says it: `Checkout/Coupon field` → `Checkout / Coupon field`. */
