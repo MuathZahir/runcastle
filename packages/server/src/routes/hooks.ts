@@ -119,6 +119,7 @@ hooks.post('/:event', async (c) => {
     // not: a project conversation waits on its human exactly as a grill does.
     // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
     // the per-scope handler for its injected context.
+    if (event === 'user-prompt' || event === 'stop') checkInFromTurn(ctx, session, body.payload)
     if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
@@ -210,6 +211,31 @@ function handleSessionStart(
       additionalContext: sessionStartContext(ctx, feature),
     },
   }
+}
+
+/**
+ * A turn hook (`UserPromptSubmit`, `Stop`) carries the conversation's
+ * `session_id` and `transcript_path` too, so it backs up `SessionStart`: a
+ * session whose start hook never arrived (it timed out client-side on a slow
+ * server moment) is checked in here, and an id a missed `/clear` start left
+ * stale is brought current. Without it the row keeps no id, and the next resume
+ * of the conversation (the lead's headless wake) has nothing to `--resume`. An
+ * ended row stays ended; a row that already holds this id is left alone.
+ */
+function checkInFromTurn(ctx: AppCtx, session: SessionRow, payload: Record<string, unknown> | undefined): void {
+  const ccSessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined
+  if (!ccSessionId || session.status === 'ended') return
+  if (session.status === 'live' && session.ccSessionId === ccSessionId) return
+  const transcriptPath =
+    typeof payload?.transcript_path === 'string' ? payload.transcript_path : undefined
+  markSessionLive(ctx, session.id, { ccSessionId, transcriptPath })
+  if (session.status === 'live') return
+  emitForSession(ctx, session, {
+    type: 'session.started',
+    message: 'session live (checked in by its first turn — its start hook never arrived)',
+    data: { sessionId: session.id, ccSessionId, transcriptPath, source: null },
+  })
+  kickLeadAtStart(ctx, session.id)
 }
 
 // --- project-scoped (`prepare` / `project`) session hooks --------------------
