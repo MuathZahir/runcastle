@@ -287,8 +287,22 @@ function selfPlanRule(): string {
     '  know and treat that decision as a candidate to check first.',
     `- Follow the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" section through the preview, the`,
     '  spec and the tickets, in this one run.',
+    OUTRANKS_TALKING_TO_THE_HUMAN,
   ].join('\n')
 }
+
+/**
+ * The line both headless rules end on. {@link renderSessionPrompt} appends
+ * {@link talkingToTheHumanSection} after every brief, so it lands BELOW a
+ * headless rule — and an agent that follows the last instruction it read would
+ * end its run on a framed decision for nobody. Its writing rules still serve the
+ * human who reads the `**Assumed.**` decisions later, so it is kept but outranked.
+ */
+const OUTRANKS_TALKING_TO_THE_HUMAN = [
+  '- This section outranks "How to talk to the human" at the end of this brief: follow its',
+  '  writing rules in what you leave behind for the human to read later, but never end your',
+  '  turn on a decision for them.',
+].join('\n')
 
 /**
  * The kind=qa system prompt. A Q&A session is READ-ONLY — it answers questions
@@ -562,7 +576,8 @@ export function renderRevisitPrompt(
  * The section a headless revisit — a `relay` of the orchestrator's message, or a
  * lap that plans itself — adds to its brief (`whole-cuts-plan-themselves`
  * decision 16). Like {@link selfPlanRule}, it states that a question or a wait
- * ends the run, and it overrides whatever the brief above says about the human.
+ * ends the run, and it overrides whatever the brief says about the human —
+ * including the closing section appended below it.
  */
 function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string {
   const work =
@@ -588,6 +603,7 @@ function headlessRunRule(purpose: SessionPurpose | undefined, runtime: AgentRunt
     '- Where this brief says to interview or tell the human, decide for yourself instead.',
     '- Never end your turn to ask a question — ending the turn ends the run.',
     '- A refused tool is not a wait: do not retry it or wait for approval.',
+    OUTRANKS_TALKING_TO_THE_HUMAN,
   ].join('\n')
 }
 
@@ -1625,6 +1641,26 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
 // --- writer -----------------------------------------------------------------
 
 /**
+ * The section every interactive session's prompt ends with: brief the human
+ * like a senior advisor joining partway through. Appended once, by
+ * {@link renderSessionPrompt}, so every renderer — today's and any added later
+ * — carries it without a per-renderer edit. Burn agents never talk to the
+ * human, so the burner prompts do not get it.
+ */
+export function talkingToTheHumanSection(): string {
+  return [
+    '## How to talk to the human',
+    "The human makes the decisions, but they don't have your context. Treat them as a senior advisor joining partway through. They haven't read the code or the docs you just read, and they may have forgotten what was settled weeks ago.",
+    "- **Define the project's terms the first time you use them.** Any name from this project's code, docs or decisions (a module, a function, a table, a domain concept, a decision number) gets a short plain-words gloss in the same sentence. Define it again if it hasn't come up for a while. If the name adds nothing, describe the thing instead. Runcastle's own workflow words (burn, lap, drive, Go, gate, ticket, feature) are the human's own tool: don't explain them.",
+    '- **Bring the context with the decision.** Before asking them to decide, say in a few sentences what the situation is, why it needs deciding now, the options that matter, what you recommend and why, and what it costs if that turns out wrong. They should be able to decide without opening a file.',
+    '- **Give the conclusion, not the search.** Tell them what you found and the one fact it rests on, not the trail of reads that got you there.',
+    '- **Condense.** Three sentences of context beat a page. They will ask if they want more.',
+    '- **Play each decision back in one line**, so you both know what was settled.',
+    '',
+  ].join('\n')
+}
+
+/**
  * The whole briefing for one session, whichever of the five briefs it carries.
  *
  * A session that is not briefed from its feature row — a project-scoped one, or
@@ -1637,6 +1673,11 @@ export function renderRunMcpConfig(runId: string, config: RuncastleConfig): McpC
  * its home dir. Same prose, two destinations.
  */
 export function renderSessionPrompt(input: WriteArtifactsInput): string {
+  return `${renderBrief(input).trimEnd()}\n\n${talkingToTheHumanSection()}`
+}
+
+/** The kind-specific brief {@link renderSessionPrompt} carries, before its shared closing section. */
+function renderBrief(input: WriteArtifactsInput): string {
   const {
     session,
     feature,
