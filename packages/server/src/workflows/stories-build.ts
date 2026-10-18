@@ -180,6 +180,7 @@ export async function planStoriesBuild(input: StoriesBuildInput): Promise<Storie
         } catch {
           // the record still comes back, and says why
         }
+        emitBuilt(input, 'stories.couldnt_run', `UI states couldn't be built: ${reason}`)
         return { status: 'couldnt_run', commit: sha, reason, log: null }
       } finally {
         removeQuietly(incoming)

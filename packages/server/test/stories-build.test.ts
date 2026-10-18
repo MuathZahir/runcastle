@@ -305,6 +305,38 @@ describe('runStoriesBuild', () => {
     expect(readManifest()).toMatchObject({ status: 'couldnt_run', reason: expect.stringContaining('docker') })
   })
 
+  it("is couldnt_run, with an event, when a built catalogue's output can't be kept", async () => {
+    const tip = seedRepo()
+    mkdirSync(featureStoriesDir(FEATURE), { recursive: true })
+    writeFileSync(join(featureStoriesDir(FEATURE), 'iframe.html'), 'stale')
+    const built = fakeSandbox(repo, FEATURE_BUILD, BASE_BUILD)
+    // A directory where the build log goes: the build succeeds, keeping it throws.
+    const fake: Fake = {
+      builds: built.builds,
+      withSandbox: (branch, use, options) =>
+        built.withSandbox(branch, (sandbox) => {
+          if (!branch.startsWith('runcastle/stories-base/')) mkdirSync(join(options!.outDir!, 'build.log'))
+          return use(sandbox)
+        }, options),
+    }
+
+    const { record, events } = run(tip, fake)
+
+    expect(await record).toMatchObject({
+      status: 'couldnt_run',
+      commit: tip,
+      reason: expect.stringContaining("the build's output could not be kept"),
+    })
+    expect(readManifest()).toMatchObject({ status: 'couldnt_run' })
+    expect(existsSync(join(featureStoriesDir(FEATURE), 'iframe.html'))).toBe(false)
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'stories.couldnt_run',
+        message: expect.stringContaining("the build's output could not be kept"),
+      }),
+    ])
+  })
+
   it('is couldnt_run when the build outlives its time limit', async () => {
     const tip = seedRepo()
     const fake: Fake = {
