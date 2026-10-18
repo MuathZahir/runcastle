@@ -22,13 +22,13 @@ import type { RunOption } from './RunPicker'
  * run is named as history, with the way back to the latest beside it.
  */
 /**
- * The headline's parts the Status tier's rows already say: the landed and
- * burning counts and failures (Tickets), and a pass that verified nothing
- * (Review).
+ * The headline's parts the page already says: the landed and running counts
+ * and failures (each lane states its own), and a pass that verified nothing
+ * (the header's status line and the review's own notice).
  */
 const STATUS_TIER_PARTS = [
   /^All \d+ tickets? landed$/,
-  /^(Burned|Burning) \d+ tickets?$/,
+  /^(Ran|Running) \d+ tickets?$/,
   /^\d+ (done|failed|waived)$/,
   /^Succeeded-unverified$/,
   /^nothing verified$/,
@@ -57,7 +57,7 @@ export function RunHeader({
    * else.
    */
   summary?: string
-  /** Lanes with a live agent — the blast radius Cancel run states. */
+  /** Lanes with a live agent — the blast radius Stop round states. */
   burning: number
   busy?: boolean
   /**
@@ -105,7 +105,7 @@ export function RunHeader({
             disabled={busy}
             onClick={() => setConfirming(true)}
           >
-            {cancelling ? 'Stopping…' : 'Cancel run'}
+            {cancelling ? 'Stopping…' : 'Stop round'}
           </Button>
         )}
       </div>
@@ -123,13 +123,13 @@ export function RunHeader({
       {onCancelRun && (
         <ConfirmDialog
           open={confirming}
-          title="Cancel this run?"
+          title="Stop this round?"
           body={
             burning > 0
-              ? `Stops ${burning} burning agent${burning === 1 ? '' : 's'}. Finished work is kept; the burn can resume later.`
-              : 'Stops the run before its remaining tickets start. Finished work is kept; the burn can resume later.'
+              ? `Stops ${burning} running worker${burning === 1 ? '' : 's'}. Work that already landed stays.`
+              : 'Stops the round before its remaining tickets start. Work that already landed stays.'
           }
-          confirmLabel="Cancel run"
+          confirmLabel="Stop round"
           confirmIcon={<IconStop />}
           busy={busy}
           onConfirm={onCancelRun}

@@ -51,7 +51,7 @@ export function sessionAgentName(session: { runtime?: AgentRuntime | null }): st
  * then burn" never says (finding F12) — where the work runs and where it lands.
  */
 export const BURN_EXPLAINER =
-  'Burning runs each ticket as its own sandboxed agent, in parallel, committing to the feature branch.'
+  'A round runs each ticket as its own sandboxed worker, in parallel, committing to the feature branch.'
 
 /**
  * Status bar, on the notify toggle. "Notify me when a burn finishes" met a

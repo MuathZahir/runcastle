@@ -378,7 +378,7 @@ export function RunBody({
         <EmptyState
           icon={<IconFlame />}
           title="No ticket lanes"
-          hint="This run has nothing to burn — a session breaks the work into tickets, and they appear here as lanes."
+          hint="This round has no tickets — the agent breaks the work into tickets, and they appear here as lanes."
         />
       ) : (
         <RunLanes tickets={tickets} lane={lane} />

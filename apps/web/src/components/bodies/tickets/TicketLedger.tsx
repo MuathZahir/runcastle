@@ -16,7 +16,7 @@ export function ticketLedgerMeta(tickets: readonly Ticket[]): string {
   const failed = rows.filter((ticket) => ticket.status === 'failed').length
   const burning = rows.filter((ticket) => ticket.status === 'burning').length
   if (failed) parts.push(`${failed} failed`)
-  if (burning) parts.push(`${burning} burning`)
+  if (burning) parts.push(`${burning} running`)
   return parts.join(' · ')
 }
 

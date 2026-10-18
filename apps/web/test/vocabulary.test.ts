@@ -13,8 +13,8 @@ import {
  */
 
 describe('the explainers', () => {
-  it('says where a burn runs and where its commits land', () => {
-    expect(BURN_EXPLAINER).toContain('sandboxed agent')
+  it('says where a round runs and where its commits land', () => {
+    expect(BURN_EXPLAINER).toContain('sandboxed worker')
     expect(BURN_EXPLAINER).toContain('feature branch')
   })
 

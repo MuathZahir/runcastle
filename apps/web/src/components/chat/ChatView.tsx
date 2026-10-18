@@ -146,7 +146,7 @@ function ChatAtRest({
             <EmptyState
               icon={<IconMessage />}
               title="No conversation yet"
-              hint="One chat per feature — it knows the state, answers questions, and edits the next burn's tickets."
+              hint="One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it."
             />
           )}
         </div>

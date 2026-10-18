@@ -11,8 +11,8 @@ import { goSummary } from '../src/lib/feature-ui'
  * plan — is disabled. Tier 1: the Dialog primitive's own mechanics are covered
  * once in `dialog.test.tsx`.
  */
-const NO_SPEC = 'no spec.md on disk — this lap will burn tickets that no written spec backs.'
-const UNDISPOSITIONED = '1 defect from an earlier lap is still un-dispositioned: "the pane flickers"'
+const NO_SPEC = 'no spec.md on disk — the agent will build from a plan no written spec backs.'
+const UNDISPOSITIONED = '1 defect from an earlier review is still un-dispositioned: "the pane flickers"'
 
 const summary = (over: Partial<Parameters<typeof goSummary>[0]> = {}) =>
   goSummary({

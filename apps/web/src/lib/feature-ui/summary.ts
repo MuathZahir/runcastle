@@ -264,7 +264,7 @@ export function mergeSummary(input: {
   // What they cannot see from here is that the agents are still committing.
   if (input.burning) {
     warnings.push(
-      'A burn is live — work landing after this merge stays unshipped on the branch.',
+      'A round is running — work landing after this merge stays unshipped on the branch.',
     )
   }
   // Said before the click, not discovered after it: the notes are saved, but

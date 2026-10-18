@@ -371,7 +371,7 @@ function ticketsProperty(tickets: readonly TallyTicket[], lap: number): StatusPr
   const burning = work.filter((t) => t.status === 'burning').length
   const notes = [
     ...(failed > 0 ? [`${failed} failed`] : []),
-    ...(burning > 0 ? [`${burning} burning`] : []),
+    ...(burning > 0 ? [`${burning} running`] : []),
     ...(tally.waived > 0 ? [`${tally.waived} waived`] : []),
   ]
   return {

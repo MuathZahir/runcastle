@@ -30,8 +30,8 @@ export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   // silently, which is what makes it worth saying out loud.
   if (!pendingTickets(ctx, featureId).some((ticket) => ticket.kind === 'review')) {
     warnings.push(
-      'no review ticket in this batch — every lap closes with one (kind: "review"). Without it ' +
-        'the lap reaches review with nobody having looked at the work.',
+      'no review ticket in this batch (kind: "review") — without one, the work reaches the ' +
+        'human with nobody having reviewed it.',
     )
   }
 
@@ -48,7 +48,7 @@ export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   if (undispositioned.length > 0) warnings.push(undispositionedWarning(undispositioned))
 
   if (!hasPlanningDoc(ctx, feature, 'spec.md')) {
-    warnings.push('no spec.md on disk — this lap will burn tickets that no written spec backs.')
+    warnings.push('no spec.md on disk — these tickets will run with no written spec behind them.')
   }
 
   return warnings
@@ -70,9 +70,9 @@ export function goWarnings(ctx: AppCtx, featureId: string): string[] {
 function undispositionedWarning(defects: readonly ReviewFinding[]): string {
   const titles = defects.map((defect) => `"${defect.title}"`).join(', ')
   return (
-    `${defects.length} defect${defects.length === 1 ? '' : 's'} from an earlier lap ${
+    `${defects.length} defect${defects.length === 1 ? '' : 's'} from an earlier review ${
       defects.length === 1 ? 'is' : 'are'
-    } still un-dispositioned: ${titles} — for each, either emit this lap's ticket for it with ` +
+    } still un-dispositioned: ${titles} — for each, either emit a ticket for it with ` +
     '`originFindingId` set (link), or call `resolve_finding` to carry it or close it as ' +
     'addressed. The human can also dismiss it from the review page.'
   )

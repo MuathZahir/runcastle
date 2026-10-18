@@ -155,7 +155,7 @@ describe('statusProperties', () => {
     })
 
     it('counts this lap’s work tickets, never the review pass', () => {
-      expect(rowOf(building, 'tickets')).toMatchObject({ value: '2 of 4 landed', sub: '1 burning' })
+      expect(rowOf(building, 'tickets')).toMatchObject({ value: '2 of 4 landed', sub: '1 running' })
     })
 
     it('counts the lap a past run’s record belongs to', () => {

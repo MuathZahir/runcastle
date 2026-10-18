@@ -202,7 +202,7 @@ describe('mergeSummary', () => {
     it('warns first of all that a live burn will land work after the merge', () => {
       const s = mergeSummary({ ...clean, burning: true, openNotes: 1 })
       expect(s.warnings[0]).toBe(
-        'A burn is live — work landing after this merge stays unshipped on the branch.',
+        'A round is running — work landing after this merge stays unshipped on the branch.',
       )
       expect(s.warnings).toHaveLength(2)
       expect(mergeSummary({ ...clean, burning: false }).warnings).toEqual([])

@@ -134,7 +134,7 @@ describe('NoteRow', () => {
       { kind: 'defect', finding: DEFECT, fixTicket: { id: 'tkt_9', seq: 9 } },
       { readonly: true, onViewLane: () => undefined },
     )
-    expect(html).toContain('fixed in the burn by #9')
+    expect(html).toContain('being fixed by #9')
     expect(html).not.toContain('being fixed in the running burn')
   })
 
