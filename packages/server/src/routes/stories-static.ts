@@ -2,6 +2,7 @@ import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { STORIES_MANIFEST, storiesRoot } from '@runcastle/core/paths'
+import { FEATURE_ID_PATTERN } from '../services/ui-states'
 import { contentType, safeJoin } from './web'
 
 /**
@@ -18,7 +19,6 @@ import { contentType, safeJoin } from './web'
  * tRPC, never from here. `no-store` because a build is replaced in place.
  */
 
-const FEATURE_ID = /^feat_[A-Za-z0-9_-]+$/
 const COMMIT = /^[0-9a-f]{40}$/
 const PRIVATE_FILES = new Set([STORIES_MANIFEST, 'build.log'])
 
@@ -35,15 +35,19 @@ function fileKind(path: string): 'file' | 'dir' | null {
 }
 
 /** The pure `(req) => Response` the stories listener runs, over `root` (default {@link storiesRoot}). */
-export function createStoriesHandler(root: string = storiesRoot()): (req: Request) => Promise<Response> {
+export function createStoriesHandler(
+  root: string = storiesRoot(),
+): (req: Request) => Promise<Response> {
   const base = resolve(root)
   return async (req) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return notFound()
     const [, area, key, ...rest] = new URL(req.url).pathname.split('/')
-    let buildDir: string
-    if (area === 'features' && key && FEATURE_ID.test(key)) buildDir = join(base, 'features', key)
-    else if (area === 'base' && key && COMMIT.test(key)) buildDir = join(base, 'base', key)
-    else return notFound()
+    const keyOk =
+      key !== undefined &&
+      ((area === 'features' && FEATURE_ID_PATTERN.test(key)) ||
+        (area === 'base' && COMMIT.test(key)))
+    if (!keyOk) return notFound()
+    const buildDir = join(base, area, key)
 
     let filePath = safeJoin(buildDir, rest.join('/'))
     if (!filePath) return notFound()
