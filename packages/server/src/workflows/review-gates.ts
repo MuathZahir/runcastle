@@ -24,6 +24,7 @@ import {
 } from './burn-cache'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import {
+  type CacheMount,
   ISOLATED_REPO_PATH,
   SETUP_HOOK_TIMEOUT_MS,
   buildBurnCacheMounts,
@@ -65,7 +66,21 @@ export interface GateExecResult {
 /** An opened, installed sandbox holding the throwaway branch, ready for commands. */
 export interface GateSandbox {
   exec(command: string): Promise<GateExecResult>
+  /**
+   * Where the host's {@link GateSandboxOptions.outDir} is visible to `exec`'d
+   * commands — a bind mount in a container, the host path itself on the host.
+   * Absent when no `outDir` was asked for.
+   */
+  outPath?: string
 }
+
+export interface GateSandboxOptions {
+  /** A host dir commands in the sandbox may write into, read back once it closes. */
+  outDir?: string
+}
+
+/** Where a container sees {@link GateSandboxOptions.outDir}. */
+export const GATE_SANDBOX_OUT_PATH = '/home/agent/runcastle-stories-out'
 
 /**
  * Open a sandbox on `branch`, install its dependencies, hand it to `use`, and
@@ -76,7 +91,20 @@ export interface GateSandbox {
 export type WithGateSandbox = <T>(
   branch: string,
   use: (sandbox: GateSandbox) => Promise<T>,
+  options?: GateSandboxOptions,
 ) => Promise<T>
+
+/**
+ * Work that rides the gate run's sandbox after its verify commands, so it costs
+ * no second install (the UI-states build). `run` is handed the last sandbox the
+ * commands ran in, or one opened just for it when there are none; `abandon` is
+ * called instead when no sandbox could be had for it.
+ */
+export interface GateSandboxStep {
+  outDir: string
+  run(sandbox: GateSandbox): Promise<void>
+  abandon(reason: string, err: unknown): void
+}
 
 export interface ReviewGatesDeps {
   /** The sandbox boundary; defaults to the burn execution path. */
@@ -92,6 +120,8 @@ export interface ReviewGatesInput {
   ticketId: string
   /** The feature-branch tip the gates run against. */
   sha: string
+  /** Run in the same sandbox once the verify commands are done; never changes the record. */
+  afterCommands?: GateSandboxStep
   deps?: ReviewGatesDeps
 }
 
@@ -108,13 +138,66 @@ export function parseVerifyCommands(verifyCommands: string | undefined): string[
     .filter((line) => line.length > 0)
 }
 
-function errorText(err: unknown): string {
+export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
 /** The first non-blank line of an error — what fits in a one-line reason. */
-function headline(text: string): string {
+export function headline(text: string): string {
   return text.split(/\r?\n/).find((line) => line.trim())?.trim() ?? 'unknown error'
+}
+
+/**
+ * Pin the throwaway `branch` at `sha` for `use`, and discard it (and any
+ * worktree a sandbox left on it) on every exit path, including a crashed
+ * earlier run's leftovers before it starts.
+ */
+export async function withThrowawayBranch<T>(
+  repoPath: string,
+  branch: string,
+  sha: string,
+  use: () => Promise<T>,
+): Promise<T> {
+  const discardBranch = async (): Promise<void> => {
+    await cleanupBurnWorktree(repoPath, branch)
+    await deleteTempBranch(repoPath, branch)
+  }
+  try {
+    // A crashed earlier run may have left the branch pinned by its worktree,
+    // which would refuse the move below.
+    await discardBranch()
+    await pinBranchAt(repoPath, branch, sha)
+    // The sandbox is a burn worktree too, and may be the project's first.
+    await excludeBurnWorktrees(repoPath)
+    return await use()
+  } finally {
+    await discardBranch()
+  }
+}
+
+/**
+ * One command against its time limit. sandcastle's `exec` cannot be aborted, so
+ * `'timeout'` leaves it running: the caller must end the sandbox to kill it.
+ */
+export async function execWithTimeout(
+  sandbox: GateSandbox,
+  command: string,
+  timeoutMs: number,
+): Promise<GateExecResult | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<'timeout'>((done) => {
+    timer = setTimeout(() => done('timeout'), timeoutMs)
+  })
+  try {
+    return await Promise.race([sandbox.exec(command), timedOut])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** The one-line reason a command abandoned at its time limit is given. */
+export function timeoutReason(timeoutMs: number): string {
+  return `timed out after ${Math.round(timeoutMs / 60_000)} minutes`
 }
 
 /**
@@ -125,47 +208,55 @@ function headline(text: string): string {
 export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGateRun> {
   const { config, project, ticketId, sha } = input
   const commands = parseVerifyCommands(resolvePreparedSettings(config, project).verifyCommands)
-  if (commands.length === 0) return { status: 'none_configured' }
+  const step = input.afterCommands
+  if (commands.length === 0 && !step) return { status: 'none_configured' }
 
   const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(config, project)
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
   const branch = reviewGateBranch(ticketId)
 
-  const discardBranch = async (): Promise<void> => {
-    await cleanupBurnWorktree(project.repoPath, branch)
-    await deleteTempBranch(project.repoPath, branch)
-  }
-
   const results: GateCommandResult[] = []
+  let stepRan = false
+  const runStep = async (sandbox: GateSandbox): Promise<void> => {
+    if (!step) return
+    stepRan = true
+    try {
+      await step.run(sandbox)
+    } catch (err) {
+      step.abandon(`it failed in the gate sandbox: ${headline(errorText(err))}`, err)
+    }
+  }
   try {
     // Fresh logs only: a re-run of this pass must not leave an older run's
     // `run.log` or surplus `<i>.log` beside the record it replaces. Inside the
     // try because a log held open (EBUSY/EPERM on Windows) must not escape.
     rmSync(reviewGateLogDir(ticketId), { recursive: true, force: true })
     mkdirSync(reviewGateLogDir(ticketId), { recursive: true })
-    // A crashed earlier run may have left the branch pinned by its worktree,
-    // which would refuse the move below.
-    await discardBranch()
-    await pinBranchAt(project.repoPath, branch, sha)
-    // The gate sandbox is a burn worktree too, and may be the project's first.
-    await excludeBurnWorktrees(project.repoPath)
-    // sandcastle's `exec` cannot be aborted, so a command over its time limit
-    // ends the sandbox it ran in — the teardown is what kills it — and the rest
-    // run in a fresh one. No two commands ever run side by side.
-    while (results.length < commands.length) {
-      await withSandbox(branch, async (sandbox) => {
-        for (const [i, command] of commands.entries()) {
-          if (i < results.length) continue
-          const { result, stillRunning } = await runGateCommand(
-            sandbox, command, ticketId, `${i}.log`, timeoutMs,
-          )
-          results.push(result)
-          if (stillRunning) return
-        }
-      })
-    }
+    await withThrowawayBranch(project.repoPath, branch, sha, async () => {
+      // sandcastle's `exec` cannot be aborted, so a command over its time limit
+      // ends the sandbox it ran in — the teardown is what kills it — and the rest
+      // run in a fresh one. No two commands ever run side by side.
+      while (results.length < commands.length || (step && !stepRan)) {
+        await withSandbox(branch, async (sandbox) => {
+          for (const [i, command] of commands.entries()) {
+            if (i < results.length) continue
+            const { result, stillRunning } = await runGateCommand(
+              sandbox, command, ticketId, `${i}.log`, timeoutMs,
+            )
+            results.push(result)
+            if (stillRunning) return
+          }
+          await runStep(sandbox)
+        }, step ? { outDir: step.outDir } : undefined)
+      }
+    })
+    if (commands.length === 0) return { status: 'none_configured' }
     return { status: 'ran', commit: sha, commands: results }
   } catch (err) {
+    if (step && !stepRan) {
+      step.abandon(`the gate sandbox could not be set up: ${headline(errorText(err))}`, err)
+    }
+    if (commands.length === 0) return { status: 'none_configured' }
     if (results.length > 0) {
       const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
       // Only a reopen after a timeout gets here: keep what already ran.
@@ -183,8 +274,6 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
       reason: `the gate sandbox could not be set up: ${headline(errorText(err))}`,
       log: writeRunLog(ticketId, err),
     }
-  } finally {
-    await discardBranch()
   }
 }
 
@@ -216,14 +305,10 @@ async function runGateCommand(
   timeoutMs: number,
 ): Promise<GateCommandRun> {
   const logPath = reviewGateLogPath(ticketId, log)
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timedOut = new Promise<'timeout'>((done) => {
-    timer = setTimeout(() => done('timeout'), timeoutMs)
-  })
   try {
-    const result = await Promise.race([sandbox.exec(command), timedOut])
+    const result = await execWithTimeout(sandbox, command, timeoutMs)
     if (result === 'timeout') {
-      const reason = `timed out after ${Math.round(timeoutMs / 60_000)} minutes`
+      const reason = timeoutReason(timeoutMs)
       writeFileSync(logPath, `${reason}\n`)
       return {
         result: { command, outcome: 'couldnt_run', exitCode: null, reason, log },
@@ -244,8 +329,6 @@ async function runGateCommand(
       result: { command, outcome: 'couldnt_run', exitCode: null, reason, log },
       stillRunning: false,
     }
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -256,8 +339,8 @@ async function runGateCommand(
  * is free. No agent runs, so the prompt-only pieces (burn guard, agent auth)
  * are left out.
  */
-function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSandbox {
-  return (branch, use) => {
+export function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSandbox {
+  return (branch, use, options = {}) => {
     const allocator =
       resolveBurnCacheMode(config) === 'volume'
         ? getBurnSlotAllocator(config.burnConcurrency)
@@ -281,7 +364,14 @@ function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSan
         resolvePreparedSettings(config, project).setupCommand,
       )
       const cache = buildBurnCacheMounts(slot, project.id, config.sandbox, pm)
-      for (const mount of cache.mounts) {
+      // The out dir is written from inside the container and read on the host
+      // once it closes; on the host there is nothing to mount.
+      const onHost = config.sandbox === 'noSandbox'
+      const mounts: CacheMount[] = options.outDir && !onHost
+        ? [...cache.mounts, { hostPath: options.outDir, sandboxPath: GATE_SANDBOX_OUT_PATH }]
+        : cache.mounts
+      const outPath = options.outDir ? (onHost ? options.outDir : GATE_SANDBOX_OUT_PATH) : undefined
+      for (const mount of mounts) {
         if ('hostPath' in mount) mkdirSync(mount.hostPath, { recursive: true })
       }
       const setup =
@@ -309,7 +399,7 @@ function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSan
       const lane = branch
       const sandbox = await createSandbox({
         branch,
-        sandbox: selectSandbox(config, project, cache.mounts, cache.env, {
+        sandbox: selectSandbox(config, project, mounts, cache.env, {
           onChildSpawn: registerHostChildren(lane, {}),
         }),
         cwd: project.repoPath,
@@ -320,6 +410,7 @@ function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSan
       let running = 0
       try {
         return await use({
+          ...(outPath ? { outPath } : {}),
           exec: async (command) => {
             running++
             try {
