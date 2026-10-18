@@ -24,6 +24,7 @@ import {
   testDrive,
 } from '../src/services/git'
 import { featureLandingQueue } from '../src/services/landing-queue'
+import { deliverToLead, type LeadLauncher, wakeLeadHeadless } from '../src/services/lead-delivery'
 import { startRun } from '../src/workflows/runner'
 import { workflowRegistry } from '../src/workflows/registry'
 import { useDataDir } from './helpers/data-dir'
@@ -311,6 +312,48 @@ describe('the chat beside a burn', () => {
         files: 2,
         afterRunId: null,
       })
+    })
+
+    /** Commit a code file in the talk worktree, as the lead's own fix would be. */
+    async function leadCommits(name: string): Promise<string> {
+      mkdirSync(join(talkWt, 'src'), { recursive: true })
+      writeFileSync(join(talkWt, 'src', name), 'export const fixed = true\n')
+      const wt = simpleGit(talkWt)
+      await wt.add(['src'])
+      await wt.commit(`feat(app): ${name}`)
+      return (await wt.revparse(['HEAD'])).trim()
+    }
+
+    const launchNoSpawn: LeadLauncher = (c, input) => launchSession(c, input, { spawn: false })
+
+    it('wakes a closed lead headless mid-drive with the notes, and lands its commits when the drive stops', async () => {
+      expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+      await deliverToLead(ctx, feature, { text: 'Notes from the drive: the button is off', source: 'human' })
+
+      expect(await wakeLeadHeadless(ctx, feature.id, launchNoSpawn)).not.toBeNull()
+      expect(typesOf('lead.')).toContain('lead.woken_headless')
+      expect(typesOf('lead.')).not.toContain('lead.wake_failed')
+      // It works in the worktree the drive detached; nothing lands under the drive.
+      expect((await simpleGit(talkWt).revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe('HEAD')
+      const fix = await leadCommits('button.ts')
+      expect(await landedOnFeature(fix)).toBe(false)
+
+      expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+      expect(await landedOnFeature(fix)).toBe(true)
+    })
+
+    it('opens a lead mid-drive when the feature has no talk worktree, parked on a chat branch', async () => {
+      await simpleGit(project.repoPath).raw(['worktree', 'remove', '--force', talkWt])
+      expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
+
+      await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, { spawn: false })
+      expect(await chatBranchInWorktree(talkWt)).toBeDefined()
+      const fix = await leadCommits('fresh.ts')
+      expect(await landedOnFeature(fix)).toBe(false)
+
+      expect((await testDrive(ctx, project, feature, 'stop')).ok).toBe(true)
+      expect(await landedOnFeature(fix)).toBe(true)
+      expect((await simpleGit(talkWt).revparse(['--abbrev-ref', 'HEAD'])).trim()).toBe(feature.branch)
     })
 
     it('hands the worktree straight back when nothing was committed during the drive', async () => {

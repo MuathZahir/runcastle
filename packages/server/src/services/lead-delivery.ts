@@ -113,8 +113,17 @@ export function leadDeliveryFor(session: Pick<SessionRow, 'runtime'>): Orchestra
 /** Opens the headless resume of a feature's chat — `launchSession`, or a test's stand-in. */
 export type LeadLauncher = (ctx: AppCtx, input: LaunchSessionInput) => Promise<{ sessionId: string }>
 
-/** The event types after which a feature's pending lead messages may need a headless resume. */
-const WAKE_TRIGGERS = new Set(['lead.message_pending', 'session.pty_exited', 'session.spawn_failed'])
+/**
+ * The event types after which a feature's pending lead messages may need a
+ * headless resume. A drive's stop retries one that failed while it held the
+ * feature branch.
+ */
+const WAKE_TRIGGERS = new Set([
+  'lead.message_pending',
+  'session.pty_exited',
+  'session.spawn_failed',
+  'testdrive.stopped',
+])
 
 /** Features whose headless resume is being opened right now. */
 const waking = new Set<string>()

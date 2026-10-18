@@ -647,6 +647,35 @@ export async function ensureTalkWorktree(
 }
 
 /**
+ * The talk worktree while a drive of the feature has `feature/<slug>` checked
+ * out on the main checkout — where {@link ensureTalkWorktree} can only fail,
+ * because git will not check the branch out a second time. The drive's start
+ * detached the worktree at the branch tip, and that detached worktree is used as
+ * it stands: whatever the chat commits there lands when the drive stops
+ * (`the-feature-lead-runs-rounds` decisions 18 and 19). With no worktree at
+ * all, one is added detached at the branch tip. Returns whether it was added,
+ * since the drive's stop only knows about the worktree it detached itself.
+ */
+export async function ensureDetachedTalkWorktree(
+  project: Project,
+  feature: Feature,
+): Promise<{ worktreePath: string; added: boolean }> {
+  const worktreePath = worktreeDir(project.id, feature.slug)
+  const g = git(project.repoPath)
+  if (existsSync(worktreePath) && (await registeredWorktrees(g)).has(canon(worktreePath))) {
+    return { worktreePath, added: false }
+  }
+  try {
+    await g.raw(['worktree', 'prune'])
+  } catch {
+    // best-effort — the add below surfaces whatever is still in the way
+  }
+  mkdirSync(dirname(worktreePath), { recursive: true })
+  await g.raw(['worktree', 'add', '--detach', worktreePath, featureBranch(feature.slug)])
+  return { worktreePath, added: true }
+}
+
+/**
  * The talk worktree is registered but could not take `feature/<slug>` back, so
  * something else holds the branch — git checks a branch out in one worktree at a
  * time. Free it from the stray worktree still holding it and retry the checkout
