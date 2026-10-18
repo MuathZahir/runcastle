@@ -52,6 +52,12 @@ export const STORIES_BASE_LOG = 'base-build.log'
 export interface StoriesBuildDeps {
   /** The sandbox boundary for any build not riding the gate run's sandbox. */
   withSandbox?: WithGateSandbox
+  /**
+   * Pins the throwaway branch a build's sandbox checks out, for the length of
+   * `use`; defaults to {@link withThrowawayBranch}. A host sandbox already
+   * standing in the checkout (a drive's scenario) pins nothing.
+   */
+  withBranch?: typeof withThrowawayBranch
   /** The build's time limit; defaults to the gate commands' own. */
   commandTimeoutMs?: number
   now?: () => number
@@ -102,7 +108,8 @@ export async function runStoriesBuild(input: StoriesBuildInput): Promise<Stories
     const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(input.config, input.project)
     const branch = storiesBuildBranch(input.ticket.id)
     try {
-      await withThrowawayBranch(input.project.repoPath, branch, input.sha, () =>
+      const withBranch = input.deps?.withBranch ?? withThrowawayBranch
+      await withBranch(input.project.repoPath, branch, input.sha, () =>
         withSandbox(branch, (sandbox) => step.run(sandbox), { outDir: step.outDir }),
       )
     } catch (err) {
@@ -282,11 +289,12 @@ async function resolveBase(input: StoriesBuildInput): Promise<ResolvedBase> {
 
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
   const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(input.config, project)
+  const withBranch = input.deps?.withBranch ?? withThrowawayBranch
   const branch = storiesBaseBranch(input.ticket.id)
   const out = incomingDir(`base-${commit.slice(0, 12)}`)
   let log: string
   try {
-    const result = await withThrowawayBranch(project.repoPath, branch, commit, () =>
+    const result = await withBranch(project.repoPath, branch, commit, () =>
       withSandbox(
         branch,
         (sandbox) => execWithTimeout(sandbox, renderStoriesBuildCommand(cfg, sandbox.outPath ?? out), timeoutMs),
