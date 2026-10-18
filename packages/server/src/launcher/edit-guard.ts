@@ -76,9 +76,10 @@ export interface EditGuardInput {
  * that keeps `.runcastle/drive.env` — a scratch file that can hold connection
  * strings — out of the repo.
  *
- * Both kinds that hold the real checkout get exactly this and nothing more. A
- * `prepare` session is otherwise the strictest of all: it establishes settings
- * and never touches code. A `drive-fix` session is opened on one failing drive,
+ * Both kinds that hold the real checkout get exactly this. A `prepare` session
+ * is otherwise the strictest of all: it establishes settings and never touches
+ * code — its one addition is the package manifests and root lockfile the
+ * UI-states setup installs into ({@link isPackageManifest}). A `drive-fix` session is opened on one failing drive,
  * and the machinery it repairs is these same files — on the feature branch,
  * where the branch that broke the drive can carry its own fix.
  */
