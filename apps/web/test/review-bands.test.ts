@@ -238,7 +238,6 @@ function render(
         landed: tickets.filter((t) => t.status === 'done').map((t) => t.seq),
         failed: [],
         gates: null,
-        tokens: null,
         startedAt: 1,
         finishedAt: 2,
       }]

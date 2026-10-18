@@ -110,14 +110,17 @@ describe('the lead’s MCP tools', () => {
     await waitFor(() => getRunRow(ctx, runId).status !== 'running' && listAfter(ctx, featureId, 0).some((e) => e.type === 'round.gates'))
 
     const context = featureContext(ctx, { featureId })
-    expect(context.autonomy).toBe('run-until-ready')
+    expect(context).not.toHaveProperty('autonomy')
     expect(context.driveActive).toBe(false)
+    expect(context.stopped).toBe(false)
     expect(context.waitingReason).toBeNull()
     expect(context.latestReady).toBeNull()
     expect(context.rounds).toEqual([
       expect.objectContaining({ round: 1, runId, status: 'succeeded', ticketSeqs: [a.seq], landed: [a.seq], gates: null }),
     ])
     expect(context.tickets.find((row) => row.seq === b.seq)?.status).toBe('pending')
+    // Tokens are recorded, never shown (decision 25) — not even to the lead.
+    expect(JSON.stringify(context)).not.toMatch(/"tokens"/)
   })
 
   it('declare_ready moves building → review and returns the warnings', async () => {

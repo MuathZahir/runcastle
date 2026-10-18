@@ -81,17 +81,6 @@ export function relTimeAgo(ts: number, now: number = Date.now()): string {
 // @runcastle/core — the promoted ticket's context paragraph renders the same
 // walkthrough moment server-side, and the two copies had drifted.
 
-/** A token count as `1.8M tokens` / `420k tokens` / `900 tokens` — tokens, never cost. */
-export function fmtTokens(tokens: number): string {
-  const figure =
-    tokens >= 1_000_000
-      ? `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
-      : tokens >= 1000
-        ? `${Math.round(tokens / 1000)}k`
-        : String(tokens)
-  return `${figure} tokens`
-}
-
 /** Elapsed duration between two epochs as `1m 04s` / `12s` / `1h 03m`. */
 export function fmtDuration(from: number, to: number): string {
   const total = Math.max(0, Math.floor((to - from) / 1000))

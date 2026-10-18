@@ -1,5 +1,4 @@
 import type {
-  Autonomy,
   BlockRef,
   DependencyRef,
   Feature,
@@ -15,7 +14,6 @@ import type {
 import {
   DEFAULT_RUNTIME,
   newId,
-  resolveAutonomy,
   shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
@@ -52,7 +50,7 @@ import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
 import { goWakeText } from './lead-prompt'
 import { latestBurn, runClaimedTicketIds } from './runs'
-import { featureTokensTotal } from './usage'
+import { refreshLeadTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
 import {
   getFeatureRow,
@@ -141,8 +139,6 @@ export interface FeatureFull {
   preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
-  /** Every token the feature has spent — its workers and its sessions (decision 3); null until counted. */
-  tokensTotal: number | null
 }
 
 export interface CreateFeatureInput {
@@ -675,6 +671,8 @@ async function scaffoldDocsOnFeatureBranch(
 
 export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
+  // Telemetry only (decision 25): the lead's tokens are recorded as it works, never returned.
+  refreshLeadTokens(ctx, id, { lazy: true })
   return {
     feature,
     tickets: listByFeature(ctx, id),
@@ -688,7 +686,6 @@ export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
     preview: previewSummary(ctx, feature),
     dependsOn: dependsOnOf(ctx, id),
     blocks: blocksOf(ctx, id),
-    tokensTotal: featureTokensTotal(ctx, id),
   }
 }
 
@@ -863,8 +860,7 @@ export { markHumanMessage, setWaiting } from './lead-status'
  * lead, which dispatches round 1 itself; NO run starts here. Zero tickets is
  * fine: the lead may do a small feature itself (decision 5).
  *
- * Go is the human's approval of round 1, so it stamps the last-human-message
- * mark too — otherwise an Ask-mode feature could never dispatch its first round.
+ * Go is the human acting, so it stamps the last-human-message mark too.
  */
 export async function go(ctx: AppCtx, featureId: string): Promise<{ warnings: string[] }> {
   const feature = getFeatureRow(ctx, featureId)
@@ -894,8 +890,8 @@ export async function go(ctx: AppCtx, featureId: string): Promise<{ warnings: st
  *
  * The only hard refusals, each saying why: the feature is still in planning (no
  * Go yet), a round is already running, a drive of this feature holds the drive
- * slot (decision 19), Ask mode with no human message since the last dispatch
- * (decision 15), or a seq that is unknown or has nothing left to burn. A named
+ * slot (decision 19), the human pressed Stop and has not replied since
+ * (decision 23), or a seq that is unknown or has nothing left to burn. A named
  * `failed` ticket is reset to `pending` first, as the burn's restart does.
  */
 export async function dispatchRound(
@@ -916,14 +912,8 @@ export async function dispatchRound(
   if (git.activeTestDriveFeatureId(project.id) === featureId) {
     throw new GateError('the human is test-driving this feature — no round starts until the drive stops')
   }
-  if (
-    resolveAutonomy(project, feature) === 'ask' &&
-    !((feature.lastHumanMessageAt ?? 0) > (feature.lastDispatchAt ?? 0))
-  ) {
-    throw new GateError(
-      'this feature is in "Ask before each round" — propose the round to the human and wait for ' +
-        'their reply before dispatching it',
-    )
+  if (feature.stoppedAt !== null && !((feature.lastHumanMessageAt ?? 0) > feature.stoppedAt)) {
+    throw new GateError('Stopped by the human — wait for their reply')
   }
   if (seqs.length === 0) throw new InvalidInputError('name at least one ticket seq to dispatch')
 
@@ -982,46 +972,36 @@ export async function stopRound(ctx: AppCtx, featureId: string): Promise<{ runId
 }
 
 /**
- * The human's Stop (decision 15): stop the running round if there is one, flip
- * the feature to "Ask before each round" so nothing new is dispatched until the
- * human replies, and tell the lead.
+ * The human's Stop (decision 23): stop the running round if there is one, set
+ * the stopped mark so nothing new is dispatched until the human replies, and
+ * tell the lead. The status reads "Waiting for you · stopped".
  *
- * The flip lands and emits first: killing a round's sandboxes can take seconds,
- * and the switch the human just pressed beside must not wait them out.
+ * The mark lands and emits first: killing a round's sandboxes can take seconds,
+ * and the status the human just pressed beside must not wait them out.
  */
 export async function stopFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   const running = listRunsByFeature(ctx, featureId).find((r) => r.status === 'running')
-  ctx.db.update(features).set({ autonomy: 'ask' }).where(eq(features.id, featureId)).run()
+  ctx.db
+    .update(features)
+    .set({ stoppedAt: Date.now(), waitingReason: 'stopped' })
+    .where(eq(features.id, featureId))
+    .run()
   emit(ctx, featureId, {
     type: 'feature.stopped',
-    message: running
-      ? 'stopped by the human — cancelling the round, autonomy set to ask'
-      : 'stopped by the human — autonomy set to ask',
-    data: { runId: running?.id ?? null, autonomy: 'ask' },
+    message: running ? 'stopped by the human — cancelling the round' : 'stopped by the human',
+    data: { runId: running?.id ?? null },
   })
   const stopped = running ? await stopRound(ctx, featureId) : null
   const updated = getFeatureRow(ctx, featureId)
   await deliverToLead(ctx, updated, {
     text:
       `[runcastle] The human pressed Stop${stopped ? ' — the running round was cancelled; landed work stays' : ''}. ` +
-      'The feature is now "Ask before each round": dispatch nothing until the human replies.',
+      'Dispatch nothing until the human replies.',
     source: 'runcastle',
   })
   return updated
-}
-
-/** Set (`null`: clear) the feature's autonomy override; it then resolves feature ?? project ?? default. */
-export function setAutonomy(ctx: AppCtx, featureId: string, autonomy: Autonomy | null): Feature {
-  getFeatureRow(ctx, featureId)
-  ctx.db.update(features).set({ autonomy }).where(eq(features.id, featureId)).run()
-  emit(ctx, featureId, {
-    type: 'feature.autonomy_set',
-    message: autonomy ? `autonomy set to ${autonomy}` : 'autonomy override cleared — the project default applies',
-    data: { autonomy },
-  })
-  return getFeatureRow(ctx, featureId)
 }
 
 /** The feature's ready declarations, oldest first. */

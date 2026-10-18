@@ -19,12 +19,12 @@ import type {
   TrailTicket,
 } from '../../lib/feature-ui/rounds'
 import { noun } from '../../lib/feature-ui/tickets'
-import { fmtDuration, fmtTokens, shortSha } from '../../lib/format'
+import { fmtDuration, shortSha } from '../../lib/format'
 
 /**
  * The round trail (`the-feature-lead-runs-rounds` decision 16), oldest first:
- * each round the agent dispatched — its workers, what landed, the gates, the
- * tokens, how long it took and the agent's one-line verdict — with the agent's
+ * each round the agent dispatched — its workers, what landed, the gates, how
+ * long it took and the agent's one-line verdict — with the agent's
  * own fixes and its "Ready for you" declarations between them. Facts are text
  * (MetaLine); the long content (the workers, what to test) folds into a
  * Disclosure. Shipped features read the same way: their old runs are rounds.
@@ -40,12 +40,11 @@ const RUN_WORD: Record<RunStatus, { word: string; tone: StatusTone }> = {
   cancelled: { word: 'stopped', tone: 'neutral' },
 }
 
-/** "3 workers · 1.1M tokens · 18 min" and the outcome after it — only the parts the round has. */
+/** "3 workers · 18 min" and the outcome after it — only the parts the round has. */
 export function roundMeta(entry: RoundEntry): MetaItem[] {
   const status = RUN_WORD[entry.status]
   const items: (MetaItem | null)[] = [
     { text: noun(entry.workers.length, 'worker') },
-    entry.tokens !== null ? { text: fmtTokens(entry.tokens) } : null,
     entry.durationMs !== null ? { text: fmtDuration(0, entry.durationMs) } : null,
     entry.status === 'running' || entry.status === 'cancelled'
       ? { tone: status.tone, text: status.word }
@@ -98,14 +97,7 @@ function WorkerRows({
             key={ticket.id}
             className="-ml-3"
             title={`#${ticket.seq} · ${ticket.title}`}
-            meta={
-              <span className="flex items-center gap-3">
-                {ticket.tokens !== undefined && (
-                  <span className="text-xs text-text-tertiary">{fmtTokens(ticket.tokens)}</span>
-                )}
-                <TicketStatusChip status={ticket.status as TicketStatus} />
-              </span>
-            }
+            meta={<TicketStatusChip status={ticket.status as TicketStatus} />}
             {...(video && recordings
               ? {
                   control: (

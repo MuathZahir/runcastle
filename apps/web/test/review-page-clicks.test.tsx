@@ -71,8 +71,8 @@ vi.mock('../src/trpc', () => {
         rounds: {
           useQuery: () => ({
             data: [
-              { round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [4], landed: [4], failed: [], gates: null, tokens: null, startedAt: 1, finishedAt: 2 },
-              { round: 2, runId: 'run_2', status: 'succeeded', ticketSeqs: [9], landed: [9], failed: [], gates: null, tokens: null, startedAt: 3, finishedAt: 4 },
+              { round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [4], landed: [4], failed: [], gates: null, startedAt: 1, finishedAt: 2 },
+              { round: 2, runId: 'run_2', status: 'succeeded', ticketSeqs: [9], landed: [9], failed: [], gates: null, startedAt: 3, finishedAt: 4 },
             ],
           }),
         },

@@ -87,7 +87,7 @@ vi.mock('../src/trpc', () => {
         fixDrive: { useMutation: mutation },
         rounds: {
           useQuery: () => ({
-            data: [{ round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [], landed: [], failed: [], gates: { ok: true, failed: [] }, tokens: 2_400_000, startedAt: 1, finishedAt: 60_001 }],
+            data: [{ round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [], landed: [], failed: [], gates: { ok: true, failed: [] }, startedAt: 1, finishedAt: 60_001 }],
           }),
         },
         readyDeclarations: { useQuery: () => ({ data: [] }) },
@@ -184,7 +184,7 @@ describe('ShippedBody', () => {
   it('reads its runs as a round trail', () => {
     const html = render()
     expect(html).toContain('Round 1')
-    expect(html).toContain('2.4M tokens')
+    expect(html).not.toContain('tokens')
     expect(html).toContain('gates passed')
     expect(html).not.toMatch(/\bLaps?\b/)
   })

@@ -1,5 +1,4 @@
-import type { Autonomy, TicketKind } from '@runcastle/core'
-import { AUTONOMY_LABEL } from '../vocabulary'
+import type { TicketKind } from '@runcastle/core'
 import type { FeatureFull } from '../api'
 import { holderSentence } from './drive'
 import { testDriveFigure, type MergeConflictState } from './gates'
@@ -310,7 +309,7 @@ export function mergeSummary(input: {
 
 /** What the Go confirmation shows: the figures, and the server's warnings. */
 export interface GoSummary {
-  /** The figures, in reading order — the plan, how far the agent goes, on what. */
+  /** The figures, in reading order — the plan, then the model it runs on. */
   rows: CheckRow[]
   /**
    * One sentence per thing the human is approving over, verbatim from
@@ -367,15 +366,12 @@ export function goSummary(input: {
   branch: string
   /** The tickets not yet dispatched — what the agent's rounds will start from. */
   pendingTickets: readonly PlanTicketFigure[]
-  /** The feature's resolved autonomy (feature ?? project ?? default). */
-  autonomy: Autonomy
   /** The project's own model, for tickets that carry no assignment of their own. */
   defaultModel?: string
   /** `feature.goWarnings`, verbatim; empty while the query is still in flight. */
   warnings?: readonly string[]
 }): GoSummary {
   const tickets = input.pendingTickets
-  const askEachRound = input.autonomy === 'ask'
   return {
     rows: [
       {
@@ -383,13 +379,10 @@ export function goSummary(input: {
         value: tickets.length > 0 ? noun(tickets.length, 'ticket') : 'No tickets — the agent may do it itself',
         tone: 'ok',
       },
-      { key: 'autonomy', value: AUTONOMY_LABEL[input.autonomy], tone: 'ok' },
       ...(tickets.length > 0 ? [modelRow(tickets, input.defaultModel)] : []),
     ],
     warnings: input.warnings ?? [],
-    next: askEachRound
-      ? `Moves the feature to Building. The agent proposes each round of workers in its chat and waits for your reply; its work lands on ${input.branch}.`
-      : `Moves the feature to Building. The agent runs rounds of workers on ${input.branch} until it is ready for you to test drive.`,
+    next: `Moves the feature to Building. The agent runs rounds of workers on ${input.branch} until it is ready for you to test drive, and asks you before anything the plan did not settle.`,
   }
 }
 

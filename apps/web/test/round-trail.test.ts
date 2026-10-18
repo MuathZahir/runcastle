@@ -19,7 +19,6 @@ const round = (over: Partial<RoundSummary> & Pick<RoundSummary, 'round' | 'runId
   landed: [],
   failed: [],
   gates: null,
-  tokens: null,
   startedAt: 1000 * over.round,
   finishedAt: 1000 * over.round + 600,
   ...over,
@@ -45,12 +44,12 @@ const event = (over: Partial<EventRow>): EventRow => ({
 
 describe('roundTrail', () => {
   const rounds = [
-    round({ round: 1, runId: 'r1', ticketSeqs: [1, 2], landed: [1, 2], tokens: 1_100_000, gates: { ok: true, failed: [] } }),
+    round({ round: 1, runId: 'r1', ticketSeqs: [1, 2], landed: [1, 2], gates: { ok: true, failed: [] } }),
     round({ round: 2, runId: 'r2', ticketSeqs: [3], landed: [], failed: [3], gates: { ok: false, failed: ['bun test'] } }),
   ]
   const tickets = [ticket(1), ticket(2), ticket(3, 'failed'), ticket(4, 'pending'), ticket(5, 'cancelled')]
 
-  it('numbers rounds from runs and lists each one’s workers, counts, gates, tokens and duration', () => {
+  it('numbers rounds from runs and lists each one’s workers, counts, gates and duration', () => {
     const { entries } = roundTrail(rounds, tickets, [], [], [{ id: 'r1', summary: 'Pricing landed.' }])
     expect(entries).toEqual([
       {
@@ -62,7 +61,6 @@ describe('roundTrail', () => {
         landed: 2,
         failed: 0,
         gates: { ok: true, failed: [] },
-        tokens: 1_100_000,
         durationMs: 600,
         verdict: 'Pricing landed.',
       },
@@ -75,7 +73,6 @@ describe('roundTrail', () => {
         landed: 0,
         failed: 1,
         gates: { ok: false, failed: ['bun test'] },
-        tokens: null,
         durationMs: 600,
         verdict: null,
       },

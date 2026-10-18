@@ -12,7 +12,7 @@
  */
 
 import { DEFAULT_RUNTIME } from '@runcastle/core'
-import type { AgentRuntime, Autonomy } from '@runcastle/core'
+import type { AgentRuntime } from '@runcastle/core'
 
 /**
  * What to call the thing on the other side of a session (decision 11).
@@ -69,16 +69,6 @@ export const NOTIFY_OFFER = 'Notify me when agents finish a run'
  * offered.
  */
 export const STOP_TIMEOUT = 'stop timed out — the process may still be running'
-
-/**
- * The autonomy switch's two options (`the-feature-lead-runs-rounds` decision
- * 1), in the feature header and on Project settings alike. The UI calls the
- * feature's lead "the agent" and what a round runs "workers" (decision 20).
- */
-export const AUTONOMY_LABEL: Record<Autonomy, string> = {
-  'run-until-ready': 'Run until ready',
-  ask: 'Ask before each round',
-}
 
 /** First-run wizard, on the step that configures them. */
 export const AFK_BURN_EXPLAINER =

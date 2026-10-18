@@ -19,8 +19,8 @@ import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * Token telemetry at the server seams (`the-feature-lead-runs-rounds`
- * decision 3): a session's tokens summed from its transcript, a round's tokens
- * as its workers plus the lead inside the round's window, and the feature total.
+ * decisions 3 and 25): a session's tokens summed from its transcript and a
+ * ticket's from its workers' — recorded in the database, never read back out.
  */
 
 /** One Claude Code assistant line with `total` tokens, all of them output. */
@@ -159,7 +159,6 @@ describe('token telemetry', () => {
       harvestTicketTokens(harvestCtx(), t, [{ sessionId: 'cc-3', sessionFilePath: second }], 'claude-code')
       expect(ticketRow(t.id)?.tokens).toBe(245)
       expect(ticketRow(t.id)?.tokenBreakdown?.sessionIds).toEqual(['cc-1', 'cc-2', 'cc-3'])
-      expect(getFeatureFull(ctx, featureId).tickets[0].tokens).toBe(245)
     })
 
     it('leaves tokens null and reports it when no transcript can be read', () => {
@@ -179,7 +178,8 @@ describe('token telemetry', () => {
     })
   })
 
-  it('a round counts its workers plus the lead inside the round window; the feature counts everything', async () => {
+  // Decision 25: recorded as durable telemetry, never read back out.
+  it('no read exposes a token figure, while reading still records the lead’s', async () => {
     const [t] = storeTickets(ctx, featureId, [
       { title: 'Add the form', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
     ])
@@ -189,23 +189,12 @@ describe('token telemetry', () => {
     })
     await done
     ctx.db.update(tickets).set({ tokens: 1000 }).where(eq(tickets.id, t.id)).run()
-    const [before] = listRounds(ctx, featureId)
-    expect(before.tokens).toBe(1000)
+    const lead = seedLead([ccLine('m1', 1, 300)])
 
-    const start = before.startedAt
-    const end = before.finishedAt ?? start
-    seedLead([
-      ccLine('before', start - 3_600_000, 1),
-      ccLine('inside', start, 20),
-      ccLine('inside-too', end, 300),
-      ccLine('after', end + 3_600_000, 4000),
-    ])
-
-    const [round] = listRounds(ctx, featureId)
-    expect(round.tokens).toBe(1320)
     const full = getFeatureFull(ctx, featureId)
-    expect(full.tokensTotal).toBe(1000 + 4321)
-    expect(full.tickets.find((x) => x.id === t.id)?.tokens).toBe(1000)
+    expect(JSON.stringify(full)).not.toMatch(/"tokens(Total)?"/)
+    expect(JSON.stringify(listRounds(ctx, featureId))).not.toMatch(/"tokens"/)
+    expect(sessionRow(lead.id)?.tokens).toBe(300)
   })
 
   it('a returning round refreshes the lead session’s tokens', async () => {
@@ -219,9 +208,5 @@ describe('token telemetry', () => {
     })
     await done
     expect(sessionRow(lead.id)?.tokens).toBe(42)
-  })
-
-  it('a feature nothing has been counted for has no total', () => {
-    expect(getFeatureFull(ctx, featureId).tokensTotal).toBeNull()
   })
 })

@@ -29,14 +29,15 @@ export function setWaiting(ctx: AppCtx, featureId: string, why: string | null): 
 
 /**
  * A human message reached the lead: their chat turn, Send to agent, or the
- * orchestrator's `send_to_feature`. Stamps the mark the Ask-mode dispatch check
- * reads, and clears the waiting reason — the human has acted.
+ * orchestrator's `send_to_feature`. Stamps the mark the after-Stop dispatch
+ * check reads, and clears the stopped mark and the waiting reason — the human
+ * has acted.
  */
 export function markHumanMessage(ctx: AppCtx, featureId: string): void {
   const at = Date.now()
   ctx.db
     .update(features)
-    .set({ lastHumanMessageAt: at, waitingReason: null })
+    .set({ lastHumanMessageAt: at, stoppedAt: null, waitingReason: null })
     .where(eq(features.id, featureId))
     .run()
   emit(ctx, featureId, {

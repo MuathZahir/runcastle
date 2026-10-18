@@ -6,9 +6,8 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
-import { resolveAutonomy } from '@runcastle/core'
-import { listAfter, listByProject } from '../src/services/events'
-import { getSettings, updateSettings } from '../src/services/settings'
+import { listAfter } from '../src/services/events'
+import { getSettings } from '../src/services/settings'
 import { addNote, attachScreenshot } from '../src/services/test-notes'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -19,13 +18,12 @@ import {
   go,
   listReadyDeclarations,
   markHumanMessage,
-  setAutonomy,
   setWaiting,
   stopFeature,
   stopRound,
 } from '../src/services/features'
 import { __resetTestDriveState, createFeatureBranch, testDrive } from '../src/services/git'
-import { getFeatureRow, getRunRow, requireProjectById } from '../src/services/repo'
+import { getFeatureRow, getRunRow } from '../src/services/repo'
 import { listRounds } from '../src/services/runs'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -178,19 +176,34 @@ describe('the feature lead runs rounds', () => {
       await expect(dispatchRound(ctx, featureId, [done.seq])).rejects.toThrow(/is done/)
     })
 
-    it('in Ask mode refuses until a human message has arrived since the last dispatch', async () => {
+    it('dispatches round after round with no human message in between', async () => {
       const featureId = seedFeature(ctx, projectId).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-      setAutonomy(ctx, featureId, 'ask')
       await go(ctx, featureId)
 
-      // Go is the human's approval of round 1.
       const { runId } = await dispatchRound(ctx, featureId, [a.seq])
       await waitFor(() => getRunRow(ctx, runId).status !== 'running')
-      await expect(dispatchRound(ctx, featureId, [b.seq])).rejects.toThrow(/Ask before each round/)
+      await expect(dispatchRound(ctx, featureId, [b.seq])).resolves.toMatchObject({ runId: expect.any(String) })
+    })
+
+    it('after Stop refuses until a human message arrives, which clears the stopped mark', async () => {
+      const featureId = seedFeature(ctx, projectId).id
+      const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
+      await go(ctx, featureId)
+      await stopFeature(ctx, featureId)
+
+      await expect(dispatchRound(ctx, featureId, [a.seq])).rejects.toThrow(
+        'Stopped by the human — wait for their reply',
+      )
+      // runcastle's own wakes are not the human's reply.
+      setWaiting(ctx, featureId, 'stopped')
+      await expect(dispatchRound(ctx, featureId, [a.seq])).rejects.toThrow(/Stopped by the human/)
 
       await new Promise((r) => setTimeout(r, 2))
       markHumanMessage(ctx, featureId)
+      expect(getFeatureRow(ctx, featureId).stoppedAt).toBeNull()
+      const { runId } = await dispatchRound(ctx, featureId, [a.seq])
+      await waitFor(() => getRunRow(ctx, runId).status !== 'running')
       await expect(dispatchRound(ctx, featureId, [b.seq])).resolves.toMatchObject({ runId: expect.any(String) })
     })
   })
@@ -313,7 +326,7 @@ describe('the feature lead runs rounds', () => {
       await expect(stopRound(ctx, featureId)).rejects.toThrow(/no round is running/)
     })
 
-    it('Stop cancels the round, flips the feature to Ask and tells the lead', async () => {
+    it('Stop cancels the round, marks the feature stopped and waiting, and tells the lead', async () => {
       workflowRegistry.set('ticket-burner', hangingBurner)
       const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
@@ -321,7 +334,8 @@ describe('the feature lead runs rounds', () => {
 
       const stopped = await stopFeature(ctx, featureId)
 
-      expect(stopped.autonomy).toBe('ask')
+      expect(stopped.stoppedAt).toBeGreaterThan(0)
+      expect(stopped.waitingReason).toBe('stopped')
       await waitFor(() => getRunRow(ctx, runId).status === 'cancelled')
       expect(eventsOf(ctx, featureId, 'feature.stopped')).toHaveLength(1)
       // Only Stop's own message: a cancelled round does not wake the lead again.
@@ -329,9 +343,9 @@ describe('the feature lead runs rounds', () => {
       expect(leadMessages(ctx, featureId)).toEqual([expect.stringMatching(/pressed Stop/)])
     })
 
-    // Killing a round's sandboxes can take seconds; the switch beside the status
-    // line must read Ask (and push) the moment Stop lands, not after the kill.
-    it('Stop flips the feature to Ask before it waits on the round to die', async () => {
+    // Killing a round's sandboxes can take seconds; the status line must read
+    // stopped (and push) the moment Stop lands, not after the kill.
+    it('Stop marks the feature stopped before it waits on the round to die', async () => {
       workflowRegistry.set('ticket-burner', hangingBurner)
       const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
@@ -358,42 +372,13 @@ describe('the feature lead runs rounds', () => {
       expect(getFeatureRow(ctx, featureId).waitingReason).toBeNull()
       expect(eventsOf(ctx, featureId, 'feature.waiting')).toHaveLength(2)
     })
-
-    it('setAutonomy sets and clears the override', () => {
-      const featureId = seedFeature(ctx, projectId).id
-      expect(setAutonomy(ctx, featureId, 'ask').autonomy).toBe('ask')
-      expect(setAutonomy(ctx, featureId, null).autonomy).toBeNull()
-      expect(eventsOf(ctx, featureId, 'feature.autonomy_set')).toHaveLength(2)
-    })
   })
 
-  describe('autonomy resolution', () => {
+  describe('settings', () => {
     const io = { env: {}, configFile: join(tmpdir(), 'rc-no-config', 'config.json') }
 
-    it('resolves feature ?? project ?? run-until-ready, the project default being a setting', () => {
-      const featureId = seedFeature(ctx, projectId).id
-      const resolved = () => resolveAutonomy(requireProjectById(ctx, projectId), getFeatureRow(ctx, featureId))
-
-      expect(getSettings(ctx, projectId, io).fields.find((f) => f.key === 'autonomy')).toMatchObject({
-        value: 'run-until-ready',
-        source: 'default',
-      })
-      expect(resolved()).toBe('run-until-ready')
-
-      expect(updateSettings(ctx, { projectId, key: 'autonomy', value: 'ask' }, io)).toMatchObject({
-        value: 'ask',
-        source: 'project',
-      })
-      expect(resolved()).toBe('ask')
-      setAutonomy(ctx, featureId, 'run-until-ready')
-      expect(resolved()).toBe('run-until-ready')
-
-      const updates = listByProject(ctx, projectId).filter((e) => e.type === 'settings.updated')
-      expect(updates.map((e) => (e.data as { key: string }).key)).toEqual(['autonomy'])
-    })
-
-    it('refuses a value that is not an autonomy', () => {
-      expect(() => updateSettings(ctx, { projectId, key: 'autonomy', value: 'yolo' }, io)).toThrow(/invalid value/)
+    it('have no autonomy setting — the lead judges when to ask (decision 23)', () => {
+      expect(getSettings(ctx, projectId, io).fields.map((f) => f.key)).not.toContain('autonomy')
     })
   })
 })
@@ -423,7 +408,7 @@ describe('the rounds over tRPC', () => {
     rmTemp(home)
   })
 
-  it('go, setAutonomy, rounds, readyDeclarations and stop', async () => {
+  it('go, rounds, readyDeclarations and stop', async () => {
     const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
     await expect(caller.feature.go({ featureId })).resolves.toEqual({ warnings: [expect.stringMatching(/no spec/)] })
     const { runId, done } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: [t.id] })
@@ -436,9 +421,10 @@ describe('the rounds over tRPC', () => {
     await expect(caller.feature.readyDeclarations({ featureId })).resolves.toEqual([
       expect.objectContaining({ scenario: 'S', whatToTest: 'W', runId }),
     ])
-    await expect(caller.feature.setAutonomy({ featureId, autonomy: 'ask' })).resolves.toMatchObject({ autonomy: 'ask' })
-    await expect(caller.feature.setAutonomy({ featureId, autonomy: null })).resolves.toMatchObject({ autonomy: null })
-    await expect(caller.feature.stop({ featureId })).resolves.toMatchObject({ autonomy: 'ask' })
+    await expect(caller.feature.stop({ featureId })).resolves.toMatchObject({
+      stoppedAt: expect.any(Number),
+      waitingReason: 'stopped',
+    })
   })
 
   it('notes.send delivers every unsent note, screenshot paths included, as one human message', async () => {

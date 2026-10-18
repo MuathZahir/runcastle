@@ -25,6 +25,7 @@ const ACTION_ICON: Record<ActionKind, ReactNode> = {
   stopHeadlessRun: <IconStop />,
   burn: <IconArrowRight />,
   cancelRun: <IconStop />,
+  stopAgent: <IconStop />,
   openBurnSettings: <IconSettings />,
   testDriveStart: <IconPlay />,
   testDriveStop: <IconStop />,

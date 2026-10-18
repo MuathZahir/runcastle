@@ -1,5 +1,5 @@
 import type { Feature, ReadyDeclaration, RoundSummary } from '@runcastle/core'
-import type { NextAction, NextStep } from './next-step/types'
+import { ACTION_KINDS, type ActionKind, type NextAction, type NextStep } from './next-step/types'
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21):
@@ -7,6 +7,13 @@ import type { NextAction, NextStep } from './next-step/types'
  * underneath as machine states; this is the story told over them.
  */
 export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | 'merged'
+
+/**
+ * The one primary button the status line's row carries (decision 24): Go in
+ * planning, Start test drive when ready, Stop drive while driving, Stop while a
+ * round runs — and none in any other state.
+ */
+export type StatusPrimary = 'go' | 'testDriveStart' | 'testDriveStop' | 'stop'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -19,6 +26,8 @@ export interface FeatureStatus {
   /** The drive the agent asked for, and what to test in it. */
   scenario?: string
   whatToTest?: string
+  /** The row's one primary; absent when this state has none. */
+  primary?: StatusPrimary
 }
 
 export interface FeatureStatusInput {
@@ -29,6 +38,8 @@ export interface FeatureStatusInput {
   declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'whatToTest' | 'createdAt'>[]
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
+  /** A drive of this feature holds the drive slot right now. */
+  driving: boolean
 }
 
 /** The reason Go waits on, when the plan is finished and the preview stands. */
@@ -38,12 +49,12 @@ export const PLAN_READY = 'plan ready for Go'
 export const STOPPED = 'stopped'
 
 /**
- * Derive the line. Precedence, highest first:
+ * Derive the line, and the one primary its row carries. Precedence, highest first:
  *
  * - Merged — shipped is final.
  * - Working · Round N — a round is running; nothing else is true until it returns.
- * - Waiting for you · <why> — the agent said it needs the human (a proposed
- *   round, stuck, provider limit). The next human message or dispatch clears it.
+ * - Waiting for you · <why> — the agent said it needs the human (a question,
+ *   stuck, stopped, provider limit). The next human message or dispatch clears it.
  * - Planning with you — before Go; Waiting for you · plan ready for Go once the
  *   tickets step is complete for this lap (the same arming Go's bar reads).
  * - Ready for you · Test drive ▸ <scenario> — the latest declaration is newer
@@ -53,8 +64,26 @@ export const STOPPED = 'stopped'
  *   failed and the agent's turn is over: nothing is running and nothing will
  *   be dispatched until the human replies.
  * - Working · Round N — otherwise: the agent is between rounds.
+ *
+ * The primary follows the state: Stop drive while this feature is driven, Stop
+ * while a round runs, Go in planning, Start test drive when ready.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
+  const status = statusOf(input)
+  const primary = primaryOf(input, status)
+  return primary ? { ...status, primary } : status
+}
+
+function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrimary | undefined {
+  if (status.kind === 'merged') return undefined
+  if (input.driving) return 'testDriveStop'
+  if (input.rounds.at(-1)?.status === 'running') return 'stop'
+  if (input.feature.phase === 'planning') return 'go'
+  if (status.kind === 'ready') return 'testDriveStart'
+  return undefined
+}
+
+function statusOf(input: FeatureStatusInput): FeatureStatus {
   const { feature, rounds, declarations, agentWorking } = input
   if (feature.status === 'shipped' || feature.phase === 'shipped') return { kind: 'merged', label: 'Merged' }
 
@@ -83,8 +112,8 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
       whatToTest: declared.whatToTest,
     }
   }
-  // A stopped or failed round wakes nobody to finish it: Stop flips the
-  // feature to Ask, and a provider-limit halt is not woken (decision 15). Once
+  // A stopped or failed round wakes nobody to finish it: Stop marks the
+  // feature stopped, and a provider-limit halt is not woken (decision 15). Once
   // the agent's turn is over, nothing moves until the human replies.
   if (!agentWorking && latest && latest.status !== 'succeeded') {
     const why = latest.status === 'cancelled' ? STOPPED : `round ${latest.round} failed`
@@ -93,52 +122,45 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   return working()
 }
 
+/** What each primary reads as, and the dispatcher kind it fires. */
+const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
+  go: { label: 'Go', kind: 'burn' },
+  testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
+  testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
+  stop: { label: 'Stop', kind: 'stopAgent', danger: true },
+}
+
+const MERGE: NextAction = { label: 'Merge & ship', kind: 'merge' }
+
 /**
- * The feature's token total (decision 3): its rounds' workers plus its own
- * sessions — the agent among them. Null while nothing has been counted, so the
- * header says nothing rather than "0 tokens".
+ * Kinds the row never offers beside the status line: the human never burns
+ * (Go is the one road out of planning, and the agent dispatches every round
+ * after — decision 8), Stop is the one move that halts the agent, so the bar's
+ * own run cancel goes, and the agent is the top bar's Agent tab, not a button
+ * in the header (decision 24).
  */
-export function featureTokens(
-  rounds: readonly Pick<RoundSummary, 'tokens'>[],
-  sessions: readonly { tokens?: number | null }[],
-): number | null {
-  const counted = [...rounds.map((r) => r.tokens), ...sessions.map((s) => s.tokens)].filter(
-    (n): n is number => typeof n === 'number',
+const NEVER_OFFERED: readonly ActionKind[] = ['burn', 'cancelRun', 'chat']
+
+/**
+ * The action row beside the status line (decision 24): exactly the status's one
+ * primary, Merge & ship always as the secondary, and every other action the
+ * resolver chose after it — the bar puts those in its "⋯" menu (see
+ * {@link OVERFLOW_KINDS}). The resolver's own action of the primary's kind is
+ * kept when it has one, so a refusal it carries (another feature holds the drive
+ * slot) still disables the button and says why.
+ */
+export function leadActions(ns: NextStep, status: FeatureStatus): NextStep {
+  const offered = [...(ns.primary ? [ns.primary] : []), ...ns.secondary]
+  const own = (kind: ActionKind) => offered.find((a) => a.kind === kind)
+  const choice = status.primary ? PRIMARY_ACTION[status.primary] : undefined
+  const primary = choice ? { ...own(choice.kind), ...choice } : undefined
+  const merge = status.kind === 'merged' ? [] : [own('merge') ?? MERGE]
+  const rest = offered.filter(
+    (a) => a.kind !== 'merge' && a.kind !== primary?.kind && !NEVER_OFFERED.includes(a.kind),
   )
-  return counted.length > 0 ? counted.reduce((sum, n) => sum + n, 0) : null
+  const { primary: _was, ...base } = ns
+  return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...rest] }
 }
 
-/** "1.8M tokens", "940k tokens", "512 tokens" — tokens only, never cost. */
-export function tokensText(n: number): string {
-  if (n >= 1_000_000) return `${trimZero((n / 1_000_000).toFixed(1))}M tokens`
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k tokens`
-  return `${n} tokens`
-}
-
-function trimZero(fixed: string): string {
-  return fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed
-}
-
-/**
- * The next-step row's actions once the status line tells the state (decision
- * 8): the human never burns — the plan's Burn is Go, and past planning the
- * agent dispatches every round, so no burn action is offered at all. Stop sits
- * beside the status line and is the one move that halts the agent (decision
- * 15), so the bar's own run cancel goes too. The chat door reads "Agent".
- */
-export function leadActions(ns: NextStep, phase: Feature['phase']): NextStep {
-  const keep = (action: NextAction): NextAction | null => {
-    if (action.kind === 'cancelRun') return null
-    // The feature's chat is "the agent" to the human (decision 20).
-    if (action.kind === 'chat' && action.label === 'Chat') return { ...action, label: 'Agent' }
-    if (action.kind !== 'burn') return action
-    return phase === 'planning' ? { ...action, label: 'Go' } : null
-  }
-  const { primary: was, ...rest } = ns
-  const primary = was ? keep(was) : null
-  return {
-    ...rest,
-    ...(primary ? { primary } : {}),
-    secondary: ns.secondary.flatMap((a) => keep(a) ?? []),
-  }
-}
+/** Everything but Merge & ship goes to the row's "⋯" menu beside the status line. */
+export const OVERFLOW_KINDS: readonly ActionKind[] = ACTION_KINDS.filter((k) => k !== 'merge')

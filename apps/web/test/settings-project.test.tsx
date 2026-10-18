@@ -415,10 +415,8 @@ describe('Settings — the Orchestrator toggle', () => {
   })
 })
 
-describe('Settings — the default autonomy', () => {
-  const withAutonomy = (value: string, source: SettingField['source']) =>
-    view([...projectFields, field({ key: 'autonomy', value, source })])
-
+// `the-feature-lead-runs-rounds` decision 23: the agent judges when to ask.
+describe('Settings — no default autonomy', () => {
   beforeEach(() => {
     server.globals = view([])
     server.findings = []
@@ -427,19 +425,11 @@ describe('Settings — the default autonomy', () => {
   })
   afterEach(cleanup)
 
-  it('reads out the project default in words, Run until ready when unset', () => {
-    server.scoped = withAutonomy('run-until-ready', 'default')
+  it('offers no autonomy setting on the project page', () => {
+    server.scoped = view(projectFields)
     open()
 
-    expect(screen.getByLabelText('Default autonomy').textContent).toContain('Run until ready')
-  })
-
-  it('writes Ask before each round as this project’s default', () => {
-    server.scoped = withAutonomy('run-until-ready', 'default')
-    open()
-
-    pickOption(screen.getByLabelText('Default autonomy'), 'Ask before each round')
-
-    expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'autonomy', value: 'ask' }])
+    expect(screen.queryByLabelText('Default autonomy')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/Run until ready|Ask before each round/)
   })
 })

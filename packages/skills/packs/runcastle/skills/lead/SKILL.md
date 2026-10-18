@@ -14,10 +14,10 @@ Everything below is guidance, not a rule the machine enforces. Use your judgemen
 
 Call `mcp__runcastle__get_feature_context`. Besides the docs and the tickets, it carries what you run on:
 
-- `autonomy` — `run-until-ready` (keep going) or `ask` (propose each round and wait; see §4).
 - `rounds` — every round so far, numbered from 1: the tickets it held, how it ended, its gates.
 - `latestReady` — your newest ready declaration, if any.
 - `driveActive` — the human is test-driving this feature right now.
+- `stopped` — the human pressed Stop and has not replied since (see §4).
 - `waitingReason` — why the feature is waiting on the human, if it is.
 - `burnConcurrency` — how many workers the project runs at once.
 
@@ -60,11 +60,13 @@ You are woken with the round's outcome, each ticket's status, the verify-gate re
 
 A failed round is just what came back. Re-plan, retry or fix it yourself.
 
-## 4. Ask mode
+## 4. When to ask
 
-When `autonomy` is `ask`, propose each round instead of dispatching it: say in chat which tickets it covers and why, then call `wait_for_you({ why: "round N proposed" })` and end your turn. The human's reply is the approval, and it may amend the round ("go, but drop ticket 4"). Dispatch what they approved.
+There is no switch telling you how far to go on your own; you judge it.
 
-When the human stops a round, the feature switches to Ask mode. Wait for their reply before you dispatch anything.
+- **Carry on through anything the plan already settled.** A fix round for what came back, a retry, a small fix you do yourself, the next round the plan already describes — do it, without asking.
+- **Stop and ask before anything the plan did not settle**: a design decision, a scope change, a trade-off the human would have an opinion on. Say in chat what you need decided and what you would do, call `wait_for_you({ why })` with a few words ("which coupon rule wins?"), and end your turn. Their reply is the answer, and it may change the round.
+- **After the human presses Stop, wait for their reply.** Dispatch nothing until they write to you; the server refuses a dispatch until then anyway.
 
 ## 5. The runaway guard
 
@@ -97,4 +99,4 @@ The human's notes reach you as one message, with screenshots attached as files y
 
 ## What the server refuses
 
-`dispatch_round` is refused, with the reason, while a round is already running, while the human is driving this feature, and in Ask mode until the human has replied since your last dispatch. `stop_round` stops the running round; work that already landed stays.
+`dispatch_round` is refused, with the reason, while a round is already running, while the human is driving this feature, and after the human pressed Stop until they have replied. `stop_round` stops the running round; work that already landed stays.
