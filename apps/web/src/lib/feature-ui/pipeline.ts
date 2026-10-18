@@ -18,16 +18,8 @@ export const PHASE_TIP: Record<Phase, string> = {
   review: 'Test-drive the branch, plan more work, or merge',
   shipped: 'Merged to main',
 }
-export const PHASE_UNLOCK = {
-  building: 'Opens when you click Go', review: 'Opens when the agent is ready for you', shipped: 'Opens when you merge',
-} satisfies Record<Exclude<Phase, 'planning'>, string>
-
-/** A step's name in sentence case, for the stepper's tooltips. */
-const PHASE_STEP_NAME: Record<Phase, string> = { planning: 'Planning', building: 'Build', review: 'Review', shipped: 'Shipped' }
-
 export function phaseIndex(phase: Phase): number { return PHASE_ORDER.indexOf(phase) }
 export type StepState = 'done' | 'current' | 'upcoming'
-export interface PipelineStep { phase: Phase; label: string; state: StepState; isViewed: boolean; clickable: boolean; tip: string }
 function stepState(feature: { phase: Phase }, phase: Phase): StepState {
   const delta = phaseIndex(phase) - phaseIndex(feature.phase)
   return delta < 0 ? 'done' : delta === 0 ? 'current' : 'upcoming'
@@ -37,13 +29,6 @@ export function miniSegments(feature: { phase: Phase }): { phase: Phase; state: 
 }
 export function effectivePhase(feature: { phase: Phase }, viewedPhase: Phase | null): Phase { return viewedPhase ?? feature.phase }
 export function isReadonlyView(feature: { phase: Phase }, effective: Phase): boolean { return phaseIndex(effective) < phaseIndex(feature.phase) }
-export function pipelineSteps(feature: { phase: Phase }, effective: Phase, summaries: Partial<Record<Phase, string | null>> = {}): PipelineStep[] {
-  return PHASE_ORDER.map((phase) => {
-    const state = stepState(feature, phase)
-    const tip = state === 'done' ? `${summaries[phase] || PHASE_STEP_NAME[phase]} — click to view it read-only` : state === 'current' || phase === 'planning' ? PHASE_TIP[phase] : PHASE_UNLOCK[phase]
-    return { phase, label: PHASE_LABELS[phase], state, isViewed: phase === effective, clickable: state !== 'upcoming', tip }
-  })
-}
 
 /**
  * Whether the page's body is the ticket ledger — the card you correct before

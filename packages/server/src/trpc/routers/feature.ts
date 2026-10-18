@@ -1,4 +1,4 @@
-import { Autonomy, MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
+import { MergeBranchPair, SessionKind, SessionPurpose } from '@runcastle/core'
 import * as z from 'zod'
 import { endSession, launchDriveFixSession, launchSession } from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
@@ -138,16 +138,11 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.go(ctx, input.featureId)),
 
-  // Stop (decision 15): cancel the running round, flip the feature to "Ask
-  // before each round", tell the lead.
+  // Stop (decision 23): cancel the running round, mark the feature stopped so
+  // nothing dispatches until the human replies, tell the lead.
   stop: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.stopFeature(ctx, input.featureId)),
-
-  // The feature's autonomy override; `null` clears it so the project default applies.
-  setAutonomy: publicProcedure
-    .input(z.object({ featureId: z.string(), autonomy: Autonomy.nullable() }))
-    .mutation(({ ctx, input }) => features.setAutonomy(ctx, input.featureId, input.autonomy)),
 
   // The round trail's record (decision 16): every round, numbered from 1.
   rounds: publicProcedure

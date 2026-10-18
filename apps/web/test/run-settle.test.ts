@@ -79,7 +79,7 @@ describe('the all-green beat headline', () => {
     ]
     expect(runHeadline(mixed, { status: 'succeeded' })).toContain('1 waived')
     expect(runHeadline([{ seq: 1, status: 'done' }], { status: 'running' })).toBe(
-      'Burning 1 ticket · 1 done',
+      'Running 1 ticket · 1 done',
     )
   })
 })

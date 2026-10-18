@@ -56,10 +56,13 @@ describe('the lead skill', () => {
     expect(text).toContain('A contract reported wrong is a reason to re-plan')
   })
 
-  it('proposes and waits in Ask mode, and stops itself when a round makes no progress', () => {
+  it('judges when to ask, waits after Stop, and stops itself when a round makes no progress', () => {
     const text = skill()
-    expect(text).toContain('`wait_for_you({ why: "round N proposed" })`')
-    expect(text).toContain("The human's reply is the approval, and it may amend the round")
+    expect(text).not.toMatch(/Ask mode|autonomy/)
+    expect(text).toContain('**Carry on through anything the plan already settled.**')
+    expect(text).toContain('**Stop and ask before anything the plan did not settle**')
+    expect(text).toContain('a design decision, a scope change, a trade-off the human would have an opinion on')
+    expect(text).toContain('**After the human presses Stop, wait for their reply.**')
     expect(text).toContain('no progress on the same failure as the round before it, **stop**')
     expect(text).toContain('- **Stuck**')
     expect(text).toContain('- **Tried**')

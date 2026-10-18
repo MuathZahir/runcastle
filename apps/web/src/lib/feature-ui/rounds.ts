@@ -16,8 +16,6 @@ export interface TrailTicket {
   title: string
   status: string
   kind?: TicketKind
-  /** Tokens the worker spent (decision 3); absent until counted. */
-  tokens?: number
   digest?: string
 }
 
@@ -40,8 +38,6 @@ export type RoundEntry<T extends TrailTicket = TrailTicket> = {
   landed: number
   failed: number
   gates: RoundGates | null
-  /** Null until any of the round's work was counted. */
-  tokens: number | null
   /** Wall time, or null while the round is still running. */
   durationMs: number | null
   /** The lead's one-line verdict — the run's own summary for now. */
@@ -118,7 +114,6 @@ export function roundTrail<T extends TrailTicket>(
         landed: r.landed.length,
         failed: r.failed.length,
         gates: r.gates,
-        tokens: r.tokens,
         durationMs: r.finishedAt !== null ? r.finishedAt - r.startedAt : null,
         verdict: summaryOf.get(r.runId) ?? null,
       },

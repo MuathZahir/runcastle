@@ -32,7 +32,7 @@ export type SendToFeatureResult = LaunchSessionResult | { deliveredToLead: true 
  * Send a message to an owned feature. Before Go it is a `relay` run, headless,
  * resuming the planning conversation (decision 16). From Go on the feature's
  * chat is its lead, and the message reaches it as the human's would — drive
- * notes, an answer — so it counts as a human message for Ask mode.
+ * notes, an answer — so it counts as a human message, and clears a Stop.
  */
 export async function toolSendToFeature(
   ctx: AppCtx,
@@ -67,7 +67,7 @@ export function registerOrchestratorRunTools(
           "— a plan sent back with the change you want and why, or the human's answer relayed as " +
           'theirs — as a headless run you are told the end of, refused while another session is ' +
           "live on the feature. From Go on it reaches the feature's agent as the human's message " +
-          '(drive notes, an answer), which approves its next round in Ask mode. Orchestrator only.',
+          '(drive notes, an answer), which lets it dispatch again after a Stop. Orchestrator only.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z

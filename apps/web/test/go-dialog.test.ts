@@ -11,14 +11,13 @@ import { goSummary } from '../src/lib/feature-ui'
  * plan — is disabled. Tier 1: the Dialog primitive's own mechanics are covered
  * once in `dialog.test.tsx`.
  */
-const NO_SPEC = 'no spec.md on disk — this lap will burn tickets that no written spec backs.'
-const UNDISPOSITIONED = '1 defect from an earlier lap is still un-dispositioned: "the pane flickers"'
+const NO_SPEC = 'no spec.md on disk — the agent will build from a plan no written spec backs.'
+const UNDISPOSITIONED = '1 defect from an earlier review is still un-dispositioned: "the pane flickers"'
 
 const summary = (over: Partial<Parameters<typeof goSummary>[0]> = {}) =>
   goSummary({
     branch: 'feature/greetings-pages',
     pendingTickets: [{}, {}],
-    autonomy: 'run-until-ready',
     defaultModel: 'claude-opus-4',
     ...over,
   })
@@ -45,23 +44,17 @@ describe('GoFeatureDialog', () => {
     expect(html).not.toContain('disabled=""')
   })
 
-  it('states the plan, how far the agent goes and the model', () => {
+  it('states the plan and the model — no autonomy to choose', () => {
     const html = render()
     expect(html).toContain('2 tickets')
-    expect(html).toContain('Run until ready')
     expect(html).toContain('claude-opus-4')
+    expect(html).not.toMatch(/Run until ready|Ask before each round/)
   })
 
-  it('says the agent runs rounds until it is ready for you', () => {
+  it('says the agent runs rounds until it is ready for you, and asks before what the plan did not settle', () => {
     expect(render()).toContain(
-      'The agent runs rounds of workers on feature/greetings-pages until it is ready for you to test drive.',
+      'The agent runs rounds of workers on feature/greetings-pages until it is ready for you to test drive, and asks you before anything the plan did not settle.',
     )
-  })
-
-  it('says the agent asks before each round when the feature is in Ask mode', () => {
-    const html = render({ summary: summary({ autonomy: 'ask' }) })
-    expect(html).toContain('Ask before each round')
-    expect(html).toContain('proposes each round of workers in its chat and waits for your reply')
   })
 
   it('goes with zero tickets — the agent may do it itself', () => {

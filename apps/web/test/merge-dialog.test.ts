@@ -81,7 +81,7 @@ describe('MergeFeatureDialog', () => {
      */
     it('warns about a live burn and still lets the merge through', () => {
       const html = render({ summary: summary({ burning: true }) })
-      expect(html).toContain('A burn is live')
+      expect(html).toContain('A round is running')
       expect(html).toContain('stays unshipped on the branch')
       expect(html).toContain('Merge &amp; ship')
       expect(html).not.toContain('disabled=""')

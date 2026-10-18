@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { parsePhase, resolveAutonomy, type Autonomy, type EventRow, type Phase } from '@runcastle/core'
+import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -39,13 +39,10 @@ import {
   isSelfPlanRun,
   lastTestDriveLap,
   latestRun,
-  liveSessionLine,
   mergeSummary,
   nextStep,
   pendingTickets,
   phaseFacts,
-  phaseSummary,
-  pipelineSteps,
   shippedAt,
   specDocPath,
   stampedReview,
@@ -80,14 +77,14 @@ import { Inspector } from './inspector/Inspector'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { FeatureViewTabs } from './workspace/FeatureViewTabs'
-import { LiveSessionBar } from './workspace/LiveSessionBar'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
 import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
-import { FeatureStatusLine } from './workspace/FeatureStatusLine'
-import { featureStatus, featureTokens, leadActions } from '../lib/feature-ui/status-line'
+import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
+import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
+import { featureStatus, leadActions, OVERFLOW_KINDS } from '../lib/feature-ui/status-line'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
 
@@ -286,16 +283,18 @@ export function Workspace({
   )
   const defaultBurnModel = effectiveStepModel(settingsQ.data, 'implement')
   // The status line's inputs (`the-feature-lead-runs-rounds` decision 21): the
-  // rounds and the agent's ready declarations, and the project's default
-  // autonomy the feature's switch falls back to.
+  // rounds and the agent's ready declarations.
   const roundsQ = trpc.feature.rounds.useQuery({ featureId }, { refetchInterval: useLivePoll() })
   const declarationsQ = trpc.feature.readyDeclarations.useQuery(
     { featureId },
     { refetchInterval: useLivePoll() },
   )
-  const projectAutonomy = settingsQ.data?.fields.find((f) => f.key === 'autonomy')?.value as
-    | Autonomy
-    | undefined
+  // What this host is missing to record a drive's walkthrough — said where a
+  // drive starts, and only then (decision 24). The server caches the probe.
+  const drivePrereqs = trpc.project.drivePrerequisites.useQuery(
+    { projectId: projectId ?? '' },
+    { enabled: !!projectId },
+  )
   // What the next burn's docs digest will cost EVERY ticket in it, for the
   // pre-burn bar's warning — the burner's own read of the same files, so the bar
   // and the run timeline's event cannot report different sizes. Only on the two
@@ -363,16 +362,13 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
-  // The autonomy switch and Stop beside the status line (decisions 1, 15).
-  const setAutonomy = trpc.feature.setAutonomy.useMutation({
-    onSuccess: invalidate,
-    onError: (e) => toast.push(e.message),
-  })
+  // Stop, the status row's primary while a round runs (decision 23).
+  const [confirmStop, setConfirmStop] = useState(false)
   const stopAgent = trpc.feature.stop.useMutation({
     onSuccess: () => {
       invalidate()
       void utils.feature.rounds.invalidate({ featureId })
-      toast.push('stopped — the agent asks before the next round', 'info')
+      toast.push('stopped — nothing new starts until you reply to the agent', 'info')
     },
     onError: (e) => toast.push(e.message),
   })
@@ -568,14 +564,9 @@ export function Workspace({
   }
   const effective = effectivePhase(feature, viewedPhase)
   const readonly = isReadonlyView(feature, effective)
-  // What each finished phase produced (decision 10) — one derivation, read by
-  // the stepper's done-step tooltips and by the read-only banner, so the two can
-  // never tell a different story about the same phase.
-  const summaryOf = (phase: Phase) => phaseSummary({ phase, full, events, decisions })
-  const steps = pipelineSteps(feature, effective, { planning: summaryOf('planning') })
   const run = latestRun(full.runs)
   const interruptedBurn = burnInterruption(events, run?.id)
-  // The beat is over the body only — the stepper and the bar tell the truth
+  // The beat is over the body only — the status line and the bar tell the truth
   // about the phase throughout, and a human who is not on the run view (viewing
   // an earlier phase, or already past review) is never held.
   const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
@@ -707,6 +698,10 @@ export function Workspace({
       case 'cancelRun':
         if (run) cancel.mutate({ runId: run.id })
         break
+      // The click opens the confirmation; the dialog's Stop is what stops.
+      case 'stopAgent':
+        setConfirmStop(true)
+        break
       // A burn that could not start named its fix in the summary — open the
       // settings row that summary points at (the image rebuild).
       case 'openBurnSettings': {
@@ -826,9 +821,6 @@ export function Workspace({
   // Rises in once per navigation — feature, pinned phase, view — never on a refetch.
   const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}:${view}`
 
-  // The whole live-session line on Overview (decision 7), in every state.
-  const liveLine = liveSessionLine(full.sessions)
-
   const shipped = feature.status === 'shipped' ? shippedAt([...events]) : null
   const factList: Array<MetaItem | false> = [
     isDraft
@@ -876,26 +868,19 @@ export function Workspace({
       : []),
   ]
 
-  // The one status line (decision 21) takes the row's left column on every
-  // started feature; a parked draft keeps the bar's own sentence, since nothing
-  // has been planned with anyone yet.
-  const rounds = roundsQ.data ?? []
-  const autonomy = resolveAutonomy(projectAutonomy ? { autonomy: projectAutonomy } : {}, feature)
-  const statusLine = isDraft ? undefined : (
-    <FeatureStatusLine
-      status={featureStatus({
+  // The one status line (decisions 21, 24) takes the row's left column on every
+  // started feature, and picks the row's one primary; a parked draft keeps the
+  // bar's own sentence, since nothing has been planned with anyone yet.
+  const status = isDraft
+    ? undefined
+    : featureStatus({
         feature,
-        rounds,
+        rounds: roundsQ.data ?? [],
         declarations: declarationsQ.data ?? [],
         agentWorking: !!liveSession && !liveSession.awaitingInput,
-      })}
-      autonomy={autonomy}
-      tokens={featureTokens(rounds, full.sessions)}
-      busy={stopAgent.isPending || setAutonomy.isPending}
-      onAutonomy={(autonomy) => setAutonomy.mutate({ featureId, autonomy })}
-      onStop={() => stopAgent.mutate({ featureId })}
-    />
-  )
+        driving: isDriving,
+      })
+  const statusLine = status && <FeatureStatusLine status={status} />
 
   const nextRow = readonly ? (
     <ReadonlyBanner
@@ -906,14 +891,14 @@ export function Workspace({
     />
   ) : (
     <NextStepBar
-      ns={statusLine ? leadActions(ns, feature.phase) : ns}
+      ns={status ? leadActions(ns, status) : ns}
       status={statusLine}
       guidance={guidance}
-      busy={busy}
+      busy={busy || stopAgent.isPending}
       onAction={runAction}
-      // Merge is reachable from every state (decision 3) but it is review's
-      // step: before that it waits in the row's "More" menu.
-      {...(bodyPhase === 'planning' || bodyPhase === 'building' ? { demote: ['merge'] as const } : {})}
+      // Beside the status line only Merge & ship stands next to the primary;
+      // everything else waits in the row's "⋯" menu (decision 24).
+      {...(status ? { demote: OVERFLOW_KINDS } : {})}
       draftBranch={
         isDraft
           ? {
@@ -929,14 +914,7 @@ export function Workspace({
   )
 
   const header = (
-    <FeatureHeader
-      feature={feature}
-      isDraft={isDraft}
-      steps={steps}
-      readonly={readonly}
-      facts={facts}
-      onViewPhase={viewPhase}
-    >
+    <FeatureHeader feature={feature} isDraft={isDraft} facts={facts}>
       {resumeFailed.message && (
         <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
           <span className="min-w-0 flex-1">
@@ -953,8 +931,9 @@ export function Workspace({
       />
       <BlocksLine projectId={feature.projectId} blocks={full.blocks} />
       {nextRow}
-      {view === 'overview' && !readonly && liveLine && (
-        <LiveSessionBar featureId={featureId} line={liveLine} onOpen={() => onViewChange('chat')} />
+      {/* Said where a drive starts, and only when it applies (decision 24). */}
+      {!readonly && status?.primary === 'testDriveStart' && (
+        <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />
       )}
     </FeatureHeader>
   )
@@ -1061,7 +1040,6 @@ export function Workspace({
           summary={goSummary({
             branch: feature.branch,
             pendingTickets: pendingTickets(full.tickets),
-            autonomy,
             ...(defaultBurnModel ? { defaultModel: defaultBurnModel } : {}),
             warnings: burnWarningsQ.data,
           })}
@@ -1071,6 +1049,13 @@ export function Workspace({
           onCancel={() => setConfirmBurn(false)}
         />
       )}
+
+      <StopAgentDialog
+        open={confirmStop}
+        busy={stopAgent.isPending}
+        onStop={() => stopAgent.mutate({ featureId })}
+        onClose={() => setConfirmStop(false)}
+      />
 
       {confirmMerge && (
         <MergeFeatureDialog

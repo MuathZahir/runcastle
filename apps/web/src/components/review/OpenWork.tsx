@@ -43,6 +43,12 @@ export interface OpenWorkProps {
   scrollTo?: string | null
   /** A drive of this feature is up — the agent's rounds and landings wait on it. */
   driveActive?: boolean
+  /**
+   * Drive notes are open: a drive of this feature is up, or the agent has
+   * declared it ready (`the-feature-lead-runs-rounds` decision 24). Closed, the
+   * live page has no notes section and no composer at all.
+   */
+  notesOpen?: boolean
 }
 
 /** The notes' heading (`the-feature-lead-runs-rounds` decision 18): they are for the agent. */
@@ -62,14 +68,13 @@ export function openTally(rows: readonly WorkRow[]): string {
 }
 
 /**
- * The page's section form (DESIGN.md: no permanent right rail). It appears only
- * when there is something: rows under a "Needs attention" heading, and — on the
- * live page — the composer under them. With nothing open, a live page keeps
- * only the composer under a quiet "Notes" heading, and a history view renders
- * nothing at all.
+ * The page's section form (DESIGN.md: no permanent right rail). On the live
+ * page it appears only while drive notes are open, with the composer under the
+ * rows; with nothing open it keeps only the composer. A history view shows its
+ * rows, and nothing at all when it has none.
  */
-export function OpenWork({ featureId, rows, readonly, driveActive, ...rest }: OpenWorkProps) {
-  if (rows.length === 0 && readonly) return null
+export function OpenWork({ featureId, rows, readonly, driveActive, notesOpen = false, ...rest }: OpenWorkProps) {
+  if (readonly ? rows.length === 0 : !notesOpen) return null
   const empty = rows.length === 0
   // The open count is the next-step bar's, always visible above (review-arrival
   // decision 3), so the heading says only what the bar does not (decision 8b).
@@ -112,6 +117,7 @@ export function OpenWorkPane({
   readonly,
   scroller,
   driveActive,
+  notesOpen = false,
   ...rest
 }: OpenWorkProps & { scroller: RefObject<HTMLDivElement | null> }) {
   return (
@@ -138,7 +144,7 @@ export function OpenWorkPane({
           />
         )}
       </div>
-      {!readonly && (
+      {!readonly && notesOpen && (
         <div className="flex shrink-0 flex-col gap-3 border-t border-border-subtle p-3">
           <NoteComposer featureId={featureId} />
           {/* The expanded stage and its notes are the whole window, so Send

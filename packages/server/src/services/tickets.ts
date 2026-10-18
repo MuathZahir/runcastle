@@ -46,7 +46,6 @@ function rowToTicket(row: TicketSelect): Ticket {
     conflictFiles: row.conflictFiles ?? undefined,
     digest: row.digest ?? undefined,
     originFindingId: row.originFindingId ?? undefined,
-    tokens: row.tokens ?? undefined,
   })
 }
 

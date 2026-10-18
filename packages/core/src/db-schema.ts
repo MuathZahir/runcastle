@@ -1,7 +1,6 @@
 import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { AgentRuntime } from './config'
 import type {
-  Autonomy,
   FeatureStatus,
   FindingKind,
   FindingOpenReason,
@@ -90,10 +89,6 @@ export const projects = sqliteTable('projects', {
   // experiment is switched on one project at a time. Null means "not set",
   // which resolves to off.
   orchestrator: integer('orchestrator', { mode: 'boolean' }),
-  // Project-only: the feature lead's default autonomy (`the-feature-lead-runs-
-  // rounds` decision 1). Null resolves to "run until ready"; a feature's own
-  // `autonomy` column overrides it.
-  autonomy: text('autonomy').$type<Autonomy>(),
 })
 
 /**
@@ -179,16 +174,17 @@ export const features = sqliteTable('features', {
    */
   orchestrated: integer('orchestrated', { mode: 'boolean' }).notNull().default(false),
   /**
-   * The lead's autonomy override for this feature (`the-feature-lead-runs-
-   * rounds` decision 1); null inherits the project's. Stop writes `ask`.
+   * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
+   * null when not stopped. Dispatch is refused while it is set and no human
+   * message has arrived since; that message clears it.
    */
-  autonomy: text('autonomy').$type<Autonomy>(),
+  stoppedAt: integer('stopped_at'),
   /**
    * Why nothing moves until the human acts — the status line's "Waiting for
    * you · <why>". Cleared by the next human message or round dispatch.
    */
   waitingReason: text('waiting_reason'),
-  /** When a human message last reached the lead (ms) — the Ask-mode dispatch check. */
+  /** When a human message last reached the lead (ms) — the after-Stop dispatch check. */
   lastHumanMessageAt: integer('last_human_message_at'),
   /** When the lead last dispatched a round (ms). */
   lastDispatchAt: integer('last_dispatch_at'),

@@ -7,7 +7,6 @@ import {
   type TokenBreakdown,
   type TokenUsage,
   sumSessionUsage,
-  type UsageWindow,
   ZERO_USAGE,
 } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
@@ -15,7 +14,6 @@ import { sessions, tickets } from '../db/schema'
 import type { AppCtx } from '../db/types'
 import { emit, emitForSession } from './events'
 import { listSessionsByFeature, rowToSession } from './repo'
-import { listByFeature as listTickets } from './tickets'
 
 /**
  * Token telemetry (`the-feature-lead-runs-rounds` decision 3): what the
@@ -71,8 +69,8 @@ function readTranscriptTexts(path: string, runtime: AgentRuntime): TranscriptTex
   return { texts, mtime }
 }
 
-function sumTexts(texts: string[], runtime: AgentRuntime, window?: UsageWindow): TokenUsage {
-  return texts.map((text) => sumSessionUsage(text, runtime, window)).reduce(addUsage, ZERO_USAGE)
+function sumTexts(texts: string[], runtime: AgentRuntime): TokenUsage {
+  return texts.map((text) => sumSessionUsage(text, runtime)).reduce(addUsage, ZERO_USAGE)
 }
 
 /**
@@ -181,34 +179,4 @@ function leadSessions(ctx: AppCtx, featureId: string) {
 /** Refresh the tokens of the feature's lead session(s) — at a round's end, and lazily on read. */
 export function refreshLeadTokens(ctx: AppCtx, featureId: string, opts: { lazy?: boolean } = {}): void {
   for (const session of leadSessions(ctx, featureId)) refreshSessionTokens(ctx, session.id, opts)
-}
-
-/**
- * A reader of the lead's usage inside a window: the lead's transcripts are read
- * once, then summed per window — one call per round on the trail. Returns 0
- * for a window the lead spent nothing in, and for a lead with no transcript.
- */
-export function leadUsageReader(ctx: AppCtx, featureId: string): (window: UsageWindow) => number {
-  const transcripts = leadSessions(ctx, featureId).flatMap((s) => {
-    if (!s.transcriptPath) return []
-    const runtime = s.runtime ?? DEFAULT_RUNTIME
-    const read = readTranscriptTexts(s.transcriptPath, runtime)
-    return read ? [{ texts: read.texts, runtime }] : []
-  })
-  return (window) =>
-    transcripts.reduce((sum, t) => sum + sumTexts(t.texts, t.runtime, window).total, 0)
-}
-
-/**
- * The feature's whole token spend for its header (decision 3): every ticket's
- * workers plus every one of the feature's sessions, the lead's refreshed lazily
- * first. Null when nothing has been counted yet.
- */
-export function featureTokensTotal(ctx: AppCtx, featureId: string): number | null {
-  refreshLeadTokens(ctx, featureId, { lazy: true })
-  const counts = [
-    ...listTickets(ctx, featureId).map((t) => t.tokens),
-    ...listSessionsByFeature(ctx, featureId).map((s) => s.tokens),
-  ].filter((n): n is number => n !== undefined)
-  return counts.length > 0 ? counts.reduce((a, b) => a + b, 0) : null
 }

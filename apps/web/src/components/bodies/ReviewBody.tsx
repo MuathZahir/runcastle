@@ -2,15 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
-import type { FeatureFull, PrepView } from '../../lib/api'
+import type { FeatureFull } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
-import { unverifiedDriveKeys } from '../../lib/prep-findings'
 import {
   conflictResolveEnded,
   deferredScope,
   driveFailure,
   roundOfSeq,
-  lastTestDriveLap,
   latestRoundTickets,
   latestRun,
   liveSessionLine,
@@ -19,10 +17,7 @@ import {
   roundAccount,
   slotHeldReason,
   specDocPath,
-  stampedOutcome,
-  stampedReview,
   unverifiedLap,
-  verificationState,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useEventLog } from '../../lib/events'
@@ -42,8 +37,7 @@ import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
 import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { RoundTrail } from '../review/RoundTrail'
-import { DrivePrerequisitesNotice } from '../review/DrivePrerequisitesNotice'
-import { DeferredScope, StatusStrip } from '../review/StatusStrip'
+import { DeferredScope } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
@@ -143,29 +137,11 @@ export function ReviewBody({
   const artifacts = useReviewArtifacts(feature.id)
   const rows = artifacts.data ?? []
   const recordings = rows.filter((a) => a.hasVideo && a.videoUrl)
-  // The stamp is the LATEST COMPLETED pass (decision 41a) — a pass still burning
-  // vouches for nothing, and ordering on completion is what makes "latest" mean
-  // latest rather than highest-numbered.
-  const stamped = stampedReview(rows, tickets)
-  // What a test drive is about to depend on that no dry run has ever proven
-  // (decision 8) — the state line's amber chip. Same query key the next-step bar
-  // reads, so the chip and the bar come out of one fetch of the project's
-  // findings. (`useQuery().data` infers to `{}` here — the same tRPC-in-component
-  // typing gap the settings overlay documents.)
-  const prep = trpc.project.prep.useQuery({ projectId: feature.projectId })
-  const unverifiedKeys = unverifiedDriveKeys((prep.data as PrepView | undefined)?.findings ?? [])
   // How this project says to drive it (decision 6), for the block beside the
   // Test drive control. The project row is the shell's own list read — one query
   // key, so the page pays nothing for it.
   const projects = trpc.project.list.useQuery()
   const project = projects.data?.find((p) => p.id === feature.projectId)
-  // What this host is missing to offer the next review a drive, said before the
-  // burn rather than on the trail after it. The server caches the probe, and a
-  // history view has no next review to warn about.
-  const drivePrereqs = trpc.project.drivePrerequisites.useQuery(
-    { projectId: feature.projectId },
-    { enabled: !readonly },
-  )
   const startDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
@@ -307,7 +283,7 @@ export function ReviewBody({
         ...(agenticReview.isPending
           ? { blocked: 'starting…' }
           : run?.status === 'running'
-            ? { blocked: 'a burn is running' }
+            ? { blocked: 'a round is running' }
             : {}),
       }
   // One partition, two halves (decision 8): what needs attention is the middle
@@ -403,6 +379,9 @@ export function ReviewBody({
     scrollTo: spotlight.scrollTo,
     onViewLane,
     driveActive: driveUp,
+    // The composer is for drive notes (decision 24): up while driving, or once
+    // the agent has asked for a drive — never on a feature nobody drives yet.
+    notesOpen: driveUp || trail.entries.some((e) => e.type === 'ready'),
   }
 
   const expanded = expand.expanded
@@ -444,28 +423,9 @@ export function ReviewBody({
           </div>
         )}
 
-        <div data-tier="status" className="flex flex-col gap-4">
-          <StatusStrip
-            artifact={stamped}
-            outcome={stampedOutcome({ passes: rows, tickets })}
-            currentLap={feature.lap}
-            landedSince={stamped?.landedSince ?? 0}
-            tickets={tickets}
-            runState={run?.status ?? 'no run recorded'}
-            verification={verificationState(tickets)}
-            driveLap={lastTestDriveLap(events)}
-            // History states what was; a caveat about the next drive is the live page's.
-            {...(readonly ? {} : { unverifiedKeys })}
-            {...(readonly ? {} : { driving: driveUp })}
-            // Always offered while the page can act (decision 6): asking for
-            // another review pass is never about what the last one did.
-            {...(agenticReviewControl ? { agenticReview: agenticReviewControl } : {})}
-            // Test drive is not offered here: the next-step bar above carries
-            // Start / Stop test drive on every review state, and the same act
-            // twice on one screen is one too many (DESIGN.md: say it once).
-          />
-          {!readonly && <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />}
-        </div>
+        {/* No Status tier (`the-feature-lead-runs-rounds` decision 24): the
+            header's status line and the round trail below say it, and the
+            walkthrough warning stands where the drive starts, in the header. */}
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
           {!expanded && stage}

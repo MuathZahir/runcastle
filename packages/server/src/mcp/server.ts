@@ -4,7 +4,6 @@ import { StreamableHTTPTransport } from '@hono/mcp'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type {
-  Autonomy,
   DependencyRef,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
@@ -35,7 +34,6 @@ import {
   isPastPhase,
   isProjectSessionKind,
   nextPlanningStep,
-  resolveAutonomy,
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
@@ -436,16 +434,16 @@ export interface FeatureContext {
    */
   annotatedModels: AnnotatedModel[]
   /**
-   * The lead's loop (`the-feature-lead-runs-rounds`): the autonomy it runs
-   * under, resolved feature ?? project ?? default; every round so far, numbered
-   * from 1; the newest ready declaration; whether a drive of this feature holds
-   * the drive slot (no round starts while it does); and why the feature waits
-   * on the human, if it does.
+   * The lead's loop (`the-feature-lead-runs-rounds`): every round so far,
+   * numbered from 1; the newest ready declaration; whether a drive of this
+   * feature holds the drive slot (no round starts while it does); whether the
+   * human pressed Stop and has not replied since (no round starts either); and
+   * why the feature waits on the human, if it does.
    */
-  autonomy: Autonomy
   rounds: RoundSummary[]
   latestReady: ReadyDeclaration | null
   driveActive: boolean
+  stopped: boolean
   waitingReason: string | null
   /**
    * How many tickets this project burns at once (`config.burnConcurrency`). The
@@ -583,10 +581,10 @@ export function featureContext(ctx: AppCtx, reader: FeatureReader): FeatureConte
     feature,
     phase: feature.phase,
     lap: feature.lap,
-    autonomy: resolveAutonomy(project, feature),
     rounds: listRounds(ctx, feature.id),
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
+    stopped: feature.stoppedAt !== null,
     waitingReason: feature.waitingReason,
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
@@ -2906,11 +2904,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       title: 'Get feature context',
       description:
         'Everything true of the current feature, as a summary that never grows past what you ' +
-        'can see. It opens with a header: the feature row, phase, lap, `autonomy` ' +
-        '("run-until-ready" or "ask"), `rounds` (every round so far, numbered from 1, with its ' +
-        'tickets, landed/failed seqs, gate result and tokens), `latestReady` (your newest ready ' +
-        'declaration), `driveActive` (the human is test-driving this feature — no round starts), ' +
-        '`waitingReason`, `dependsOn` (the ' +
+        'can see. It opens with a header: the feature row, phase, lap, `rounds` (every round so ' +
+        'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
+        '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
+        'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
+        'not replied — no round starts), `waitingReason`, `dependsOn` (the ' +
         'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
         'drafts waiting on this feature), `annotatedModels` (the ' +
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
@@ -3274,8 +3272,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'blockedBy edges order them inside the round. When the round returns you are woken ' +
           'with its outcome, each ticket’s status and the verify-gate result. Refused, with the ' +
           'reason, while a round is already running, while the human is test-driving this ' +
-          'feature, before Go, and in "Ask before each round" mode until the human has replied ' +
-          'since your last dispatch.',
+          'feature, before Go, and after the human pressed Stop until they have replied.',
         inputSchema: {
           seqs: z
             .array(z.number().int().min(1))
@@ -3346,8 +3343,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why, in a few words — the feature ' +
-          'shows "Waiting for you · <why>". Use it when you propose a round in Ask mode, or when ' +
-          'you are stuck. The human’s next message, or your next dispatch, clears it.',
+          'shows "Waiting for you · <why>". Use it when you need a decision the plan did not ' +
+          'settle, or when you are stuck. The human’s next message, or your next dispatch, clears it.',
         inputSchema: {
           why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
         },

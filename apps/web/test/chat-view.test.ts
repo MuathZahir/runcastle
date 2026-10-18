@@ -37,7 +37,6 @@ import { ChatView } from '../src/components/chat/ChatView'
 import { ProjectChat } from '../src/components/project/ProjectChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
 import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
-import { LiveSessionBar } from '../src/components/workspace/LiveSessionBar'
 import { full as fixture } from './fixtures'
 
 type Session = FeatureFull['sessions'][number]
@@ -264,18 +263,5 @@ describe('the live-session line', () => {
   it('says nothing during a self-planning run, whose bar already offers Stop', () => {
     expect(liveSessionLine([session({ purpose: 'self-plan' })])).toBeNull()
     expect(liveSessionLine([session({ purpose: 'self-plan', status: 'launching' })])).toBeNull()
-  })
-
-  it('offers Open agent and End session', () => {
-    const out = html(
-      createElement(LiveSessionBar, {
-        featureId: 'feat_1',
-        line: { sessionId: 'sess_1', text: 'Chat live' },
-        onOpen: () => undefined,
-      }),
-    )
-    expect(out).toContain('Chat live')
-    expect(out).toContain('Open agent')
-    expect(out).toContain('End session')
   })
 })

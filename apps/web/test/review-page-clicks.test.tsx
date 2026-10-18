@@ -71,8 +71,8 @@ vi.mock('../src/trpc', () => {
         rounds: {
           useQuery: () => ({
             data: [
-              { round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [4], landed: [4], failed: [], gates: null, tokens: null, startedAt: 1, finishedAt: 2 },
-              { round: 2, runId: 'run_2', status: 'succeeded', ticketSeqs: [9], landed: [9], failed: [], gates: null, tokens: null, startedAt: 3, finishedAt: 4 },
+              { round: 1, runId: 'run_1', status: 'succeeded', ticketSeqs: [4], landed: [4], failed: [], gates: null, startedAt: 1, finishedAt: 2 },
+              { round: 2, runId: 'run_2', status: 'succeeded', ticketSeqs: [9], landed: [9], failed: [], gates: null, startedAt: 3, finishedAt: 4 },
             ],
           }),
         },
@@ -173,14 +173,5 @@ describe('picking a recording off the round trail', () => {
     state.recordings = [LAP_1]
     page(3)
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
-  })
-})
-
-/** Decision 6: the button beside Test drive mints a pass and burns it. */
-describe('the Agentic review button', () => {
-  it('asks the server to mint a fresh pass for this feature', () => {
-    page()
-    fireEvent.click(screen.getByRole('button', { name: 'Agentic review' }))
-    expect(state.agenticReview).toHaveBeenCalledWith({ featureId: 'feat_1' })
   })
 })

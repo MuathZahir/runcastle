@@ -27,7 +27,7 @@ describe('run derivations', () => {
   })
   it('writes honest headlines', () => {
     const tickets = [{ seq: 1, status: 'done' }, { seq: 2, status: 'failed', error: 'boom' }, { seq: 3, status: 'failed', error: 'stopped by user' }, { seq: 4, status: 'done', reviewFix: true }]
-    expect(runHeadline(tickets)).toBe('Burning 3 tickets · +1 fixes from review · 2 done · 1 failed · 1 stopped')
+    expect(runHeadline(tickets)).toBe('Running 3 tickets · +1 fixes from review · 2 done · 1 failed · 1 stopped')
     expect(runHeadline(tickets, {}, 4)).toBe('Retrying #4')
   })
   it('cleans transcript protocol and sandbox paths', () => {

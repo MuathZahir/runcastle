@@ -150,6 +150,7 @@ describe('the marker-to-note spotlight', () => {
 
         rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         onClose={() => undefined}
       />,
@@ -167,6 +168,7 @@ describe('the marker-to-note spotlight', () => {
 
         rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         highlight={[NOTE.id]}
         scrollTo={NOTE.id}
@@ -192,6 +194,7 @@ describe('the marker-to-note spotlight', () => {
 
         rows={[{ item: { kind: 'note', note: NOTE }, open: true }]}
         readonly={false}
+        notesOpen
         onStage={null}
         scrollTo={null}
         onClose={() => undefined}

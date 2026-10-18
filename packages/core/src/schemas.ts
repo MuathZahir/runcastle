@@ -40,17 +40,6 @@ export const TicketStatus = z.enum(['pending', 'burning', 'done', 'failed', 'can
 export type TicketStatus = z.infer<typeof TicketStatus>
 
 /**
- * How far the feature lead goes on its own (`the-feature-lead-runs-rounds`
- * decision 1): dispatch rounds until the feature is ready for the human, or
- * propose each round and wait for the human's reply.
- */
-export const Autonomy = z.enum(['run-until-ready', 'ask'])
-export type Autonomy = z.infer<typeof Autonomy>
-
-/** What an unset project and an unset feature resolve to (decision 1). */
-export const DEFAULT_AUTONOMY: Autonomy = 'run-until-ready'
-
-/**
  * `qa` = "come back and ask questions" — same injection, no phase writes.
  * `revisit` = "I remembered something" — resumes the feature's most recent
  * resumable conversation to amend docs and do ticket surgery (edit/cancel/emit);
@@ -323,8 +312,6 @@ export const Ticket = TicketInput.extend({
    * a done ticket without a digest is still done.
    */
   digest: z.string().optional(),
-  /** Tokens the worker spent on this ticket (decision 3); absent until counted. */
-  tokens: z.number().optional(),
 })
 export type Ticket = z.infer<typeof Ticket>
 
@@ -529,8 +516,6 @@ export const Project = z.object({
   docsCommitPrefix: z.string().optional(),
   /** The project session launches as the orchestrator; unset reads as off. */
   orchestrator: z.boolean().optional(),
-  /** The feature lead's default autonomy; unset resolves to {@link DEFAULT_AUTONOMY}. */
-  autonomy: Autonomy.optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row
@@ -608,8 +593,11 @@ export const Feature = z.object({
   createdAt: z.number(),
   /** The orchestrator owns this feature — see the db schema. */
   orchestrated: z.boolean().default(false),
-  /** The lead's autonomy override; null inherits the project's (see `resolveAutonomy`). */
-  autonomy: Autonomy.nullable().default(null),
+  /**
+   * When the human pressed Stop (ms); null when the feature is not stopped. No
+   * round dispatches while it is set, and the next human message clears it.
+   */
+  stoppedAt: z.number().nullable().default(null),
   /** Why the feature waits on the human ("Waiting for you · <why>"); null when it does not. */
   waitingReason: z.string().nullable().default(null),
   /** When a human message last reached the lead (ms); null before the first. */
@@ -618,17 +606,6 @@ export const Feature = z.object({
   lastDispatchAt: z.number().nullable().default(null),
 })
 export type Feature = z.infer<typeof Feature>
-
-/**
- * The autonomy a feature's lead runs under: the feature's override, else the
- * project's default, else {@link DEFAULT_AUTONOMY}.
- */
-export function resolveAutonomy(
-  project: Pick<Project, 'autonomy'>,
-  feature: Pick<Feature, 'autonomy'>,
-): Autonomy {
-  return feature.autonomy ?? project.autonomy ?? DEFAULT_AUTONOMY
-}
 
 /**
  * One "Ready for you" declaration (decision 9): the scenario the human is asked
@@ -664,8 +641,6 @@ export const RoundSummary = z.object({
   landed: z.array(z.number()),
   failed: z.array(z.number()),
   gates: RoundGates.nullable(),
-  /** The round's tickets' summed tokens plus the lead's inside the round's window; null when none were counted. */
-  tokens: z.number().nullable(),
   startedAt: z.number(),
   finishedAt: z.number().nullable(),
 })
@@ -712,8 +687,6 @@ export const SessionRow = z.object({
    * the db schema.
    */
   endedAt: z.number().optional(),
-  /** Tokens summed over this session's transcript (decision 3); unset until counted. */
-  tokens: z.number().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

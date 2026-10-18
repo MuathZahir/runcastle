@@ -172,7 +172,7 @@ describe('Lane', () => {
       onStop: () => {},
     })
     expect(html).toContain('animate-breathe')
-    expect(html).toContain('Burning')
+    expect(html).toContain('Running')
     expect(html).toContain('2m 04s')
     expect(html).toContain('Stop ticket')
   })
@@ -376,18 +376,18 @@ describe('RunHeader', () => {
   it('says only what the Status tier does not: fixes, stops, a retry', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burning 3 tickets · +2 fixes from review · 2 done · 1 failed · 1 stopped',
+        headline: 'Running 3 tickets · +2 fixes from review · 2 done · 1 failed · 1 stopped',
         status: 'running',
         burning: 1,
         onCancelRun: () => {},
       }),
     )
     expect(html).toContain('+2 fixes from review, 1 stopped')
-    expect(html).not.toContain('Burning 3 tickets')
+    expect(html).not.toContain('Running 3 tickets')
     expect(html).not.toContain('2 done')
     expect(html).not.toContain('1 failed')
     expect(html).not.toContain('Running')
-    expect(html).toContain('Cancel run')
+    expect(html).toContain('Stop round')
   })
 
   it('draws no fact line at all when the counts were all it had', () => {
@@ -401,7 +401,7 @@ describe('RunHeader', () => {
   it('says Stopping… while the cancel waits for the run’s agents to die', () => {
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burning 3 tickets',
+        headline: 'Running 3 tickets',
         burning: 3,
         busy: true,
         cancelling: true,
@@ -411,14 +411,14 @@ describe('RunHeader', () => {
     expect(html).toContain('Stopping…')
     // The confirmation dialog is closed by then, so the only "Cancel run" left
     // would be the button itself.
-    expect(html).not.toContain('Cancel run')
+    expect(html).not.toContain('Stop round')
   })
 
   /** simplify-the-pages decision 6d: the next-step bar says the latest run's reason, once. */
   it('leaves the latest failed run’s reason to the next-step bar', () => {
     const summary = 'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282'
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burned 2 tickets', burning: 0, status: 'failed', summary }),
+      createElement(RunHeader, { headline: 'Ran 2 tickets', burning: 0, status: 'failed', summary }),
     )
     expect(html).not.toContain(summary)
   })
@@ -428,7 +428,7 @@ describe('RunHeader', () => {
     const header = (status: 'failed' | 'cancelled') =>
       renderToStaticMarkup(
         createElement(RunHeader, {
-          headline: 'Burned 2 tickets',
+          headline: 'Ran 2 tickets',
           burning: 0,
           status,
           summary,
@@ -444,7 +444,7 @@ describe('RunHeader', () => {
       'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
     const html = renderToStaticMarkup(
       createElement(RunHeader, {
-        headline: 'Burned 2 tickets',
+        headline: 'Ran 2 tickets',
         burning: 0,
         status: 'failed',
         summary,
@@ -458,8 +458,8 @@ describe('RunHeader', () => {
 
   it('drops the cancel control when nothing is running', () => {
     const html = renderToStaticMarkup(
-      createElement(RunHeader, { headline: 'Burning 1 ticket · 1 done', burning: 0 }),
+      createElement(RunHeader, { headline: 'Running 1 ticket · 1 done', burning: 0 }),
     )
-    expect(html).not.toContain('Cancel run')
+    expect(html).not.toContain('Stop round')
   })
 })

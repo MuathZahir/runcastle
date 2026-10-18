@@ -184,7 +184,7 @@ export function NoteRow({
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
           {fixing &&
             (readonly || !onViewLane ? (
-              <span className="text-phase-implementation">fixed in the burn by #{fixing.seq}</span>
+              <span className="text-phase-implementation">being fixed by #{fixing.seq}</span>
             ) : (
               <button
                 type="button"

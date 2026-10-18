@@ -175,7 +175,7 @@ export function TicketRow({
           )}
           <Part title="Commits">
             {ticket.commits.length === 0 ? (
-              <span className="text-xs text-text-tertiary">No commits yet — the burn writes them</span>
+              <span className="text-xs text-text-tertiary">No commits yet — its worker writes them</span>
             ) : (
               <div className="flex flex-wrap gap-1">
                 {ticket.commits.map((sha) =>

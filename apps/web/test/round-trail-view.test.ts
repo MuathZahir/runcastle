@@ -24,11 +24,10 @@ const trail: RoundTrailFigure = {
       round: 1,
       runId: 'r1',
       status: 'succeeded',
-      workers: [worker(1, 'done', { tokens: 420_000 }), worker(2, 'done'), worker(3, 'failed')],
+      workers: [worker(1, 'done'), worker(2, 'done'), worker(3, 'failed')],
       landed: 2,
       failed: 1,
       gates: { ok: true, failed: [] },
-      tokens: 1_100_000,
       durationMs: 18 * 60_000,
       verdict: 'Pricing landed; the totals worker failed on a fixture.',
     },
@@ -43,7 +42,6 @@ const trail: RoundTrailFigure = {
       landed: 0,
       failed: 0,
       gates: null,
-      tokens: null,
       durationMs: null,
       verdict: null,
     },
@@ -55,11 +53,11 @@ const render = (figure: RoundTrailFigure = trail): string =>
   renderToStaticMarkup(createElement(RoundTrail, { trail: figure }))
 
 describe('RoundTrail', () => {
-  it('states each round’s workers, tokens, duration, landed/failed and gates as text', () => {
+  it('states each round’s workers, duration, landed/failed and gates as text — never tokens', () => {
     const html = render()
     expect(html).toContain('Round 1')
     expect(html).toContain('3 workers')
-    expect(html).toContain('1.1M tokens')
+    expect(html).not.toContain('tokens')
     expect(html).toContain('18m 00s')
     expect(html).toContain('2 landed')
     expect(html).toContain('1 failed')
@@ -67,10 +65,8 @@ describe('RoundTrail', () => {
     expect(html).toContain('Pricing landed; the totals worker failed on a fixture.')
   })
 
-  it('lists a round’s workers by their stored titles, with per-worker tokens when known', () => {
-    const html = render()
-    expect(html).toContain('#1 · pricing: task 1')
-    expect(html).toContain('420k tokens')
+  it('lists a round’s workers by their stored titles', () => {
+    expect(render()).toContain('#1 · pricing: task 1')
   })
 
   it('says a running round is running and leaves out what it does not know yet', () => {
