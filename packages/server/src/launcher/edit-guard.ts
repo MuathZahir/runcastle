@@ -1,6 +1,7 @@
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SessionKind, SessionPurpose } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
+import { LOCKFILES } from './lockfiles'
 
 /**
  * The talk-session edit guard — a Claude Code `PreToolUse` hook registered into
@@ -95,6 +96,21 @@ function isDriveMachinery(worktreePath: string, target: string): boolean {
   return DRIVE_MACHINERY_WRITABLE.some((rel) => within(resolve(worktreePath, rel), target))
 }
 
+/**
+ * What a `prepare` session may write beyond the drive machinery (decision 14 of
+ * the UI-states feature): the UI-states setup installs its dev dependencies into
+ * the project's own manifest, so any `package.json` in the checkout (a monorepo's
+ * app may hold its own) and the lockfile at the repo root. Never one under
+ * `node_modules` — that is an installed package, not the project's manifest.
+ */
+function isPackageManifest(worktreePath: string, target: string): boolean {
+  const root = resolve(worktreePath)
+  if (!within(root, target)) return false
+  const segments = relative(root, target).split(sep)
+  if (segments.length === 1 && LOCKFILES.some(([file]) => file === segments[0])) return true
+  return segments.at(-1) === 'package.json' && !segments.includes('node_modules')
+}
+
 /** A deny verdict, with what to tell the agent instead; `null` means allow. */
 export interface EditDenial {
   reason: string
@@ -146,7 +162,18 @@ export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   }
 
   if (!input.featureSlug) {
-    if (input.kind === 'prepare' && isDriveMachinery(input.worktreePath, target)) return null
+    if (input.kind === 'prepare') {
+      if (isDriveMachinery(input.worktreePath, target)) return null
+      if (isPackageManifest(input.worktreePath, target)) return null
+      return {
+        reason:
+          "This prepare session does not edit files — it runs in the developer's own checkout. " +
+          `Its exceptions are the drive machinery it authors (${writablePaths()}) and, for the ` +
+          'UI-states dev dependencies only, any `package.json` outside `node_modules` and the ' +
+          `lockfile at the repo root — ${input.filePath} is none of them. Record what you establish ` +
+          'with the `record_finding` MCP tool, and ask the human to make any other change to the repo itself.',
+      }
+    }
     return {
       reason:
         `This ${input.kind} session does not edit files — it runs in the developer's own ` +

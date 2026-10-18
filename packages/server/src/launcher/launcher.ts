@@ -65,6 +65,7 @@ import {
   type PrepareHost,
 } from './artifacts'
 import { projectTriageKickoffFor } from './runtimes/skills'
+import { LOCKFILES } from './lockfiles'
 import {
   activeProjectSession,
   activeSessionsForFeature,
@@ -945,12 +946,15 @@ export async function launchPrepareSession(
   }
 
   const prepare = await buildPrepareBrief(ctx, project)
+  // Open UI states keep the session a preparation even with every key settled,
+  // so it is not typed the confirm-and-stop line.
+  const confirmOnly = prepare.remainingKeys.length === 0 && prepare.host?.hasStories !== false
 
   const kickoffLine = resumeSessionId
     ? undefined
     : kickoffLineFor(
         'prepare',
-        prepare.remainingKeys.length === 0 ? prepareConfirmKickoffFor(runtime.id) : undefined,
+        confirmOnly ? prepareConfirmKickoffFor(runtime.id) : undefined,
         runtime.id,
       )
   const spec = await runtime.writeArtifacts({
@@ -1489,19 +1493,6 @@ async function buildPrepareBrief(ctx: AppCtx, project: Project): Promise<Prepare
   }
 }
 
-/** Lockfiles, newest-convention first — the first one present names the manager. */
-const LOCKFILES: readonly (readonly [string, string])[] = [
-  ['bun.lock', 'bun'],
-  ['bun.lockb', 'bun'],
-  ['pnpm-lock.yaml', 'pnpm'],
-  ['yarn.lock', 'yarn'],
-  ['package-lock.json', 'npm'],
-  ['uv.lock', 'uv'],
-  ['poetry.lock', 'poetry'],
-  ['Cargo.lock', 'cargo'],
-  ['go.sum', 'go'],
-]
-
 const COMPOSE_FILES = [
   'docker-compose.yml',
   'docker-compose.yaml',
@@ -1523,6 +1514,7 @@ export function probePrepareHost(repoPath: string): PrepareHost {
     platform: process.platform,
     hasCompose: COMPOSE_FILES.some(has),
     hasDriveMachinery: has('.runcastle'),
+    hasStories: has('.runcastle/stories.json'),
     ...(lock ? { packageManager: lock[1] } : {}),
   }
 }
