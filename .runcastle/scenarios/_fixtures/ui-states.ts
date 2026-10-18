@@ -20,6 +20,7 @@ import {
 import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
+import { hookSpawnTarget } from '../../../packages/server/src/services/drive-hooks.ts'
 import { createFeature } from '../../../packages/server/src/services/features.ts'
 import { openProject } from '../../../packages/server/src/services/projects.ts'
 import {
@@ -133,10 +134,19 @@ export function featureUrl(project: Project, feature: Feature): string {
   return `/p/${encodeURIComponent(project.id)}/f/${encodeURIComponent(feature.slug)}`
 }
 
-/** One shell command in `cwd` on this machine, its output collected. */
+/**
+ * One shell command in `cwd` on this machine, its output collected. The shell
+ * and its quoting are the drive hooks' own: on Windows the line must reach
+ * cmd.exe verbatim, or the build's quoted `{out}` arrives as `\"C:\…\"`.
+ */
 export async function hostExec(command: string, cwd: string): Promise<GateExecResult> {
-  const argv = process.platform === 'win32' ? ['cmd.exe', '/d', '/s', '/c', command] : ['sh', '-c', command]
-  const child = Bun.spawn(argv, { cwd, stdout: 'pipe', stderr: 'pipe' })
+  const { file, args, verbatim } = hookSpawnTarget(command)
+  const child = Bun.spawn([file, ...args], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    windowsVerbatimArguments: verbatim,
+  })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
