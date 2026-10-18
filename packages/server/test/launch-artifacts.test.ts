@@ -941,14 +941,6 @@ describe('writeSessionArtifacts', () => {
   })
 })
 
-/**
- * The AgentRuntime seam. Every launch now goes through an adapter, so the thing
- * to pin is that the Claude adapter builds EXACTLY what the four launch sites
- * used to build inline — same argv, same three artifact files, same env, same
- * scrub list — for every session kind. `buildClaudeArgs` is the pre-refactor
- * argv builder, unchanged, so comparing against it is comparing against what
- * shipped before.
- */
 describe('renderSessionPrompt', () => {
   const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
   const noArtifacts = { hasDecisions: false, hasSpec: false, hasTickets: false }
@@ -1014,6 +1006,14 @@ describe('renderSessionPrompt', () => {
   })
 })
 
+/**
+ * The AgentRuntime seam. Every launch now goes through an adapter, so the thing
+ * to pin is that the Claude adapter builds EXACTLY what the four launch sites
+ * used to build inline — same argv, same three artifact files, same env, same
+ * scrub list — for every session kind. `buildClaudeArgs` is the pre-refactor
+ * argv builder, unchanged, so comparing against it is comparing against what
+ * shipped before.
+ */
 describe('claudeRuntime.writeArtifacts', () => {
   const created: string[] = []
   afterEach(() => {
