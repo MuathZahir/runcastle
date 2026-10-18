@@ -322,6 +322,20 @@ describe('the lead waker — a headless resume when nothing is open', () => {
     expect(inputs[0]?.message).toBe('[runcastle] A\n\n[runcastle] B')
   })
 
+  it('retries the resume when a drive stops, for messages left waiting on it', async () => {
+    const f = feature()
+    queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] my drive notes')
+    const { launch, inputs } = recordingLauncher()
+    const stop = startLeadWaker(ctx, launch)
+    try {
+      emit(ctx, f.id, { type: 'testdrive.stopped', message: 'test drive stopped — back on main' })
+      await vi.waitFor(() => expect(inputs).toHaveLength(1))
+    } finally {
+      stop()
+    }
+    expect(inputs[0]?.message).toBe('[runcastle] my drive notes')
+  })
+
   it('leaves a live lead’s messages to its own channel', async () => {
     const f = feature()
     chat(f.id)

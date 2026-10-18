@@ -12,6 +12,7 @@ import {
   chatBranchName,
   deleteTempBranch,
   detachWorktree,
+  ensureDetachedTalkWorktree,
   ensureTalkWorktree,
   headSha,
   mergeTempBranch,
@@ -121,6 +122,23 @@ export async function ensureTalkWorktreeDuringRun(
   if (!(await chatBranchInWorktree(worktreePath))) {
     await parkWorktree(ctx, feature, worktreePath)
   }
+  return worktreePath
+}
+
+/**
+ * The talk worktree for a session spawning while a drive of the feature holds
+ * the feature branch — a closed lead woken by Send to agent, or the human
+ * resuming it mid-drive. The drive's detached worktree is used as it stands; one
+ * added now is parked on a chat branch, so its commits land at the drive's stop
+ * ({@link landChatCommitsAfterDrive}) rather than sit orphaned on a detached HEAD.
+ */
+export async function ensureTalkWorktreeDuringDrive(
+  ctx: AppCtx,
+  project: Project,
+  feature: Feature,
+): Promise<string> {
+  const { worktreePath, added } = await ensureDetachedTalkWorktree(project, feature)
+  if (added) await parkWorktree(ctx, feature, worktreePath)
   return worktreePath
 }
 

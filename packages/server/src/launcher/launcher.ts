@@ -47,7 +47,7 @@ import {
 import { requireNotDraft } from '../services/features'
 import { listByFeature as listTicketsByFeature } from '../services/tickets'
 import { workflowClaimsFeatureBranch } from '../workflows/runner'
-import { ensureTalkWorktreeDuringRun } from '../services/chat-branch'
+import { ensureTalkWorktreeDuringDrive, ensureTalkWorktreeDuringRun } from '../services/chat-branch'
 import { listFindings } from '../services/findings'
 import { keysToPrepare } from '../services/prep'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
@@ -340,7 +340,9 @@ function assertHeadlessRunnable(ctx: AppCtx, feature: Feature, input: LaunchSess
  *
  * While a branch-claiming run holds `feature/<slug>` the worktree rides a chat
  * temp branch instead, so a session that spawns mid-run has somewhere of its own
- * to commit and never lands docs on a detached HEAD.
+ * to commit and never lands docs on a detached HEAD. While a drive of the
+ * feature holds it on the main checkout, the session opens in the worktree the
+ * drive detached, and what it commits lands when the drive stops.
  */
 async function ensureWorktree(
   ctx: AppCtx,
@@ -350,8 +352,9 @@ async function ensureWorktree(
   const running = activeRunFor(ctx, feature.id)
   const besideRun = !!running && workflowClaimsFeatureBranch(running.workflow)
   try {
-    return besideRun
-      ? await ensureTalkWorktreeDuringRun(ctx, project, feature)
+    if (besideRun) return await ensureTalkWorktreeDuringRun(ctx, project, feature)
+    return git.activeTestDriveFeatureId(project.id) === feature.id
+      ? await ensureTalkWorktreeDuringDrive(ctx, project, feature)
       : await git.ensureTalkWorktree(project, feature, () =>
           emit(ctx, feature.id, {
             type: 'repo.head_healed',
