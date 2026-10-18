@@ -57,6 +57,7 @@ import { planningFacts } from '../services/planning'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
 import { chatOpening, serverUrlFor, type PrepareBrief, type PrepareHost } from './artifacts'
+import { isUnguardedLead } from './edit-guard'
 import { projectTriageKickoffFor } from './runtimes/skills'
 import {
   activeProjectSession,
@@ -743,6 +744,13 @@ export async function launchSession(
     kickoffLine,
     // No terminal: the run takes its kickoff as its prompt and exits when done.
     ...(headless ? { headless: true } : {}),
+    // The lead past Go works while the human is away, live or headless, and a
+    // prompt nobody answers stalls the loop (`the-feature-lead-runs-rounds`
+    // decision 27) — the orchestrator's posture. The line guard on the
+    // pre-tool hook holds under bypass. Codex already never asks in its sandbox.
+    ...(runtime.id === 'claude-code' && isUnguardedLead(input.kind, feature.phase)
+      ? { permissionMode: 'bypassPermissions' }
+      : {}),
   })
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).

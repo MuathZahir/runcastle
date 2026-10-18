@@ -236,6 +236,33 @@ describe('a headless run on a feature', () => {
       expect(readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')).not.toContain('wait-messages')
     })
 
+    /**
+     * Decision 27: nobody can answer a prompt in a headless wake, so the lead
+     * past Go runs with prompts off on Claude Code — interactive too — while a
+     * chat still planning keeps asking.
+     */
+    it('launches the lead past Go with bypassPermissions on Claude Code, headless and interactive', async () => {
+      const f = await feature('lead-bypass', { phase: 'building' })
+      await earlierChat(f.id, 'cc-lead')
+      const headless = await wake(f.id, 'Round 1 returned')
+      expect(launchedCommand(f.id, headless)).toContain('--permission-mode bypassPermissions')
+      markSessionEnded(ctx, headless)
+
+      const interactive = await launch(f.id)
+      expect(launchedCommand(f.id, interactive)).toContain('--permission-mode bypassPermissions')
+    })
+
+    it('keeps a planning chat on acceptEdits, and leaves Codex its own posture', async () => {
+      const planning = await feature('lead-planning')
+      expect(launchedCommand(planning.id, await launch(planning.id))).toContain('--permission-mode acceptEdits')
+
+      useRuntime('codex')
+      const f = await feature('lead-codex-posture', { phase: 'building' })
+      const sessionId = await launch(f.id)
+      const toml = readFileSync(join(sessionDir(sessionId), 'codex-home', 'config.toml'), 'utf8')
+      expect(toml).toContain('approval_policy = "never"')
+    })
+
     it('resumes on Codex as `exec resume <id>` with the message', async () => {
       useRuntime('codex')
       const f = await feature('lead-codex', { phase: 'building' })
