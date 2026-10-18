@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { STORIES_MANIFEST, storiesRoot } from '@runcastle/core/paths'
 import { FEATURE_ID_PATTERN } from '../services/ui-states'
+import { STORIES_BASE_LOG, STORIES_BUILD_LOG } from '../workflows/stories-build'
 import { contentType, safeJoin } from './web'
 
 /**
@@ -15,12 +16,13 @@ import { contentType, safeJoin } from './web'
  *   /base/<commit>/<path>         →  baseStoriesDir(commit)
  *
  * Everything else is 404 — no API, no tRPC, no hooks, no WS. Runcastle's own
- * files beside a build (the manifest, the build log) reach the UI through
- * tRPC, never from here. `no-store` because a build is replaced in place.
+ * files beside a build (the manifest, the build logs) are never served from
+ * here; what the UI needs of them comes through tRPC. `no-store` because a
+ * build is replaced in place.
  */
 
 const COMMIT = /^[0-9a-f]{40}$/
-const PRIVATE_FILES = new Set([STORIES_MANIFEST, 'build.log'])
+const PRIVATE_FILES = new Set([STORIES_MANIFEST, STORIES_BUILD_LOG, STORIES_BASE_LOG])
 
 const notFound = (): Response =>
   new Response('not found', { status: 404, headers: { 'cache-control': 'no-store' } })
