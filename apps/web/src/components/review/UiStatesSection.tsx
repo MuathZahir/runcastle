@@ -18,12 +18,12 @@ import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag, cx } from '..
  */
 export function UiStatesSection({
   model,
-  currentLap,
+  betweenReviews = false,
   className,
 }: {
   model: UiStatesModel | null
-  /** The feature's lap — a build from an earlier lap's review says which. */
-  currentLap: number
+  /** Shown outside review, where the build is the last review pass's, not this one's. */
+  betweenReviews?: boolean
   /** Placement only (STYLE.md's className rule). */
   className?: string
 }) {
@@ -34,8 +34,7 @@ export function UiStatesSection({
 
   const open = (story: UiStatesStory, url: string) => setLarger({ story, url })
   const commit = model.commit.slice(0, 7)
-  const builtAt =
-    model.lap === currentLap ? 'Built at review' : `Built at lap ${model.lap}’s review`
+  const builtAt = betweenReviews ? 'Built at the last review' : 'Built at review'
 
   return (
     <section id="ui-states" className={cx('@container flex flex-col gap-4', className)}>
@@ -124,22 +123,14 @@ export function UiStatesSection({
 }
 
 /**
- * The section on a later lap's planning and building bodies (decision 12): the
- * last review pass's build stays the feature's evidence until the next review
- * replaces it, labelled with the lap it came from. Lap 1 has none to show.
+ * The section on the planning and building bodies (decision 12): the last
+ * review pass's build stays the feature's evidence until the next review
+ * replaces it. Before the first review there is no build, so nothing shows —
+ * the build itself is the condition, never a lap or round counter.
  */
-export function LaterLapUiStates({
-  featureId,
-  lap,
-  className,
-}: {
-  featureId: string
-  lap: number
-  className?: string
-}) {
-  const uiStates = trpc.feature.uiStates.useQuery({ featureId }, { enabled: lap > 1 })
-  if (lap <= 1) return null
-  return <UiStatesSection model={uiStates.data ?? null} currentLap={lap} className={className} />
+export function LastReviewUiStates({ featureId, className }: { featureId: string; className?: string }) {
+  const uiStates = trpc.feature.uiStates.useQuery({ featureId })
+  return <UiStatesSection model={uiStates.data ?? null} betweenReviews className={className} />
 }
 
 /** A story's title as the reader says it: `Checkout/Coupon field` → `Checkout / Coupon field`. */

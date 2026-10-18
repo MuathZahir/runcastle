@@ -10,8 +10,8 @@ import { UiStatesSection } from '../src/components/review/UiStatesSection'
  * what it shows for a given section model is the markup it emits.
  */
 
-const render = (m: UiStatesModel | null, currentLap = 1): string =>
-  renderToStaticMarkup(createElement(UiStatesSection, { model: m, currentLap }))
+const render = (m: UiStatesModel | null, betweenReviews = false): string =>
+  renderToStaticMarkup(createElement(UiStatesSection, { model: m, betweenReviews }))
 
 const frames = (html: string): string[] =>
   [...html.matchAll(/<iframe[^>]*src="([^"]+)"/g)].map((m) => m[1]?.replace(/&amp;/g, '&') ?? '')
@@ -24,8 +24,11 @@ describe('UiStatesSection', () => {
     expect(html).toContain('4e1c9a0')
   })
 
-  it('names the lap a build came from on a later lap', () => {
-    expect(render(uiStatesModel({ lap: 1 }), 2)).toContain('Built at lap 1’s review')
+  it('says between reviews that the build is the last review’s, never naming a lap', () => {
+    const html = render(uiStatesModel({ lap: 3 }), true)
+    expect(html).toContain('Built at the last review')
+    expect(html).toContain('4e1c9a0')
+    expect(html).not.toMatch(/lap/i)
   })
 
   it('shows a changed story as a Before / This feature pair', () => {

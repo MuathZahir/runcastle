@@ -480,7 +480,7 @@ export function ReviewBody({
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
           {!expanded && stage}
 
-          <UiStatesSection model={uiStates.data ?? null} currentLap={feature.lap} />
+          <UiStatesSection model={uiStates.data ?? null} />
 
           <OpenWork {...workProps} />
 
