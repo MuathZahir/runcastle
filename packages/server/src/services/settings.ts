@@ -97,6 +97,14 @@ const DESCRIPTORS: FieldDescriptor[] = [
     parseEnv: (raw) => Number(raw),
   },
   {
+    key: 'storiesPort',
+    configKey: 'storiesPort',
+    envVar: 'RUNCASTLE_STORIES_PORT',
+    restartRequired: true,
+    valueSchema: z.number().int().positive(),
+    parseEnv: (raw) => Number(raw),
+  },
+  {
     key: 'model',
     configKey: 'model',
     envVar: 'RUNCASTLE_MODEL',

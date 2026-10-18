@@ -152,6 +152,8 @@ export const RuncastleConfig = z.preprocess(
   foldLegacyModelConfig,
   z.object({
     serverPort: z.number().default(4512),
+    /** Serves built story catalogues only — a separate origin, so story code can't call runcastle's API. */
+    storiesPort: z.number().default(4514),
     /**
      * Default model every step inherits unless overridden (issue #48). A bare
      * id, not `claude-opus-5[1m]`: 1M context is metered separately on some

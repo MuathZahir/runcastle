@@ -3,7 +3,10 @@ import { homedir, tmpdir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import {
+  baseStoriesDir,
   configPath,
+  featureStoriesDir,
+  storiesRoot,
   dataDir,
   dbPath,
   devDataDir,
@@ -123,5 +126,19 @@ describe('sameDataDir', () => {
 
   it.runIf(process.platform !== 'win32')('stays case-sensitive on POSIX', () => {
     expect(sameDataDir('/home/x/.runcastle', '/home/x/.RUNCASTLE')).toBe(false)
+  })
+})
+
+describe('story catalogue dirs', () => {
+  it('keeps feature builds by feature and base builds by commit under the data dir', () => {
+    process.env.RUNCASTLE_DATA_DIR = join(homedir(), '.runcastle-dev')
+    const root = join(homedir(), '.runcastle-dev', 'stories')
+    expect(storiesRoot()).toBe(root)
+    expect(featureStoriesDir('f1')).toBe(join(root, 'features', 'f1'))
+    expect(baseStoriesDir('abc1234')).toBe(join(root, 'base', 'abc1234'))
+  })
+
+  it('refuses a base commit that is not a sha', () => {
+    expect(() => baseStoriesDir('../etc')).toThrow()
   })
 })
