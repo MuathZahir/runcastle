@@ -540,10 +540,9 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
-    // The lap is part of where the feature IS (ADR-0010): a session that only
-    // hears "phase: ideation" on a lap-2 feature reads it as the first grill and
-    // re-litigates decisions the previous lap already shipped.
-    `phase: ${feature.phase}; lap: ${feature.lap}; branch: ${feature.branch}`,
+    // No lap: the column no longer moves, and a session told "lap 1" repeats the
+    // retired word to the human (decision 16).
+    `phase: ${feature.phase}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',

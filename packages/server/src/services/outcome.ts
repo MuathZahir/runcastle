@@ -43,7 +43,7 @@ function findingResolution(finding: ReviewFinding): string {
 
 function noteResolution(note: TestNote): string {
   if (note.status === 'promoted') return `quick-fixed → ticket ${note.ticketId ?? 'unknown'}`
-  if (note.status === 'carried') return `carried → lap ${note.carriedLap ?? '?'}`
+  if (note.status === 'carried') return 'carried forward'
   if (note.status === 'done') return 'dismissed/done'
   return 'open'
 }

@@ -112,7 +112,9 @@ describe('a self-planning run', () => {
     expect(command).toContain('/runcastle:ideate')
     expect(command).toContain('Planning without a human')
     // The feature-state part of the chat header still follows the opening.
-    expect(command).toContain('Feature state: planning; lap 1')
+    // No lap in it: the round count is the human-facing number (decision 16).
+    expect(command).toContain('Feature state: planning; rounds run: 0;')
+    expect(command).not.toMatch(/\blap\b/i)
   })
 
   it('launches Codex as `exec`, naming the skill its way', async () => {

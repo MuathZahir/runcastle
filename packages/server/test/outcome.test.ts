@@ -40,7 +40,7 @@ describe('composeOutcomeDoc', () => {
     expect(doc).toContain('### Lap 2 · verification')
     expect(doc).toContain('- Reviewed commit: abc123\n- Landed since: 0')
     expect(doc).toContain('**Broken button** — fixed')
-    expect(doc).toContain('Align the title — carried → lap 2')
+    expect(doc).toContain('Align the title — carried forward')
   })
 
   it('drops digests containing only empty None/Nothing rows', () => {

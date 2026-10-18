@@ -1132,10 +1132,10 @@ export async function agenticReview(ctx: AppCtx, featureId: string): Promise<{ r
 
   const [ticket] = storeTickets(ctx, feature.id, [
     {
-      title: `Agentic review — lap ${feature.lap}`,
-      goal: "Perform a full, independent review of this lap's landed work.",
+      title: 'Agentic review',
+      goal: "Perform a full, independent review of the feature's landed work.",
       context: 'Review the complete landed diff and report defects with evidence. Choose the review mode from current availability.',
-      acceptanceCriteria: ['The current lap is reviewed in full and every finding is reported.'],
+      acceptanceCriteria: ['The landed work is reviewed in full and every finding is reported.'],
       seams: ['The landed work and its observable acceptance criteria'],
       blockedBy: [],
       kind: 'review',
@@ -1144,7 +1144,7 @@ export async function agenticReview(ctx: AppCtx, featureId: string): Promise<{ r
   ])
   emit(ctx, feature.id, {
     type: 'review.agentic-minted',
-    message: `agentic review minted as ticket ${ticket.seq} for lap ${feature.lap}`,
+    message: `agentic review minted as ticket ${ticket.seq}`,
     ticketId: ticket.id,
     data: { ticketSeq: ticket.seq, lap: feature.lap },
   })
