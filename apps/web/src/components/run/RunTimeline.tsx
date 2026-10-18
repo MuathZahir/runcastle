@@ -55,7 +55,7 @@ export function RunTimeline({ events }: { events: readonly EventRow[] }) {
               <span
                 className={cx('min-w-0 flex-1', warns ? 'break-words text-warning' : 'truncate text-text-secondary')}
               >
-                {/* A warning's fix is often a Settings → Burns pointer (the
+                {/* A warning's fix is often a Settings → Workers pointer (the
                     drifted sandbox CLI's Rebuild); make it the link there. */}
                 {warns ? <MessageWithSettingsLink text={e.message} /> : e.message}
               </span>

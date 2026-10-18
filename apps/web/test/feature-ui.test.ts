@@ -2231,7 +2231,7 @@ describe('nextStep at building', () => {
    */
   describe('after a failed run', () => {
     const CLI_MISMATCH =
-      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Burns (only the CLI layer rebuilds).'
+      'sandcastle:runcastle has Claude Code 2.1.280, the host has 2.1.282 — Rebuild from Settings → Workers (only the CLI layer rebuilds).'
     const RESUME = { label: 'Resume burn', kind: 'burn' }
 
     it('leads a failed preflight with its fix, the summary verbatim, Resume behind it', () => {
@@ -2244,7 +2244,7 @@ describe('nextStep at building', () => {
       )
       expect(ns.title).toBe('The burn could not start')
       expect(ns.desc).toBe(CLI_MISMATCH)
-      expect(ns.primary).toEqual({ label: 'Open Settings → Burns', kind: 'openBurnSettings' })
+      expect(ns.primary).toEqual({ label: 'Open Settings → Workers', kind: 'openBurnSettings' })
       expect(ns.secondary).toEqual([RESUME, CHAT_ACTION, MERGE_ACTION])
     })
 
@@ -2276,10 +2276,10 @@ describe('nextStep at building', () => {
       expect(ns.secondary).toEqual([CHAT_ACTION, MERGE_ACTION])
     })
 
-    it('leads a run halted mid-burn by a Settings → Burns fix with that fix, Resume behind it', () => {
+    it('leads a run halted mid-burn by a Settings → Workers fix with that fix, Resume behind it', () => {
       const halted =
         'run halted at ticket 1: Claude Code 2.1.280 is too old for model claude-opus-5-5 ' +
-        '(needs 2.1.290 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Burns. — 0/3 tickets done'
+        '(needs 2.1.290 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Workers. — 0/3 tickets done'
       const ns = nextStep(
         buildFull({
           runs: [{ id: 'r1', status: 'failed', startedAt: 100, summary: halted }],
@@ -2290,8 +2290,8 @@ describe('nextStep at building', () => {
       )
       expect(ns.alert).toBe(true)
       expect(ns.title).toBe('The burn stopped — rebuild the image')
-      expect(ns.desc).toContain('Rebuild from Settings → Burns')
-      expect(ns.primary).toEqual({ label: 'Open Settings → Burns', kind: 'openBurnSettings' })
+      expect(ns.desc).toContain('Rebuild from Settings → Workers')
+      expect(ns.primary).toEqual({ label: 'Open Settings → Workers', kind: 'openBurnSettings' })
       expect(ns.secondary).toEqual([RESUME, CHAT_ACTION, MERGE_ACTION])
     })
 

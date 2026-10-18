@@ -45,7 +45,7 @@ import { TerminalView } from './TerminalView'
  * machine is and what is in the way.
  *
  * Everything is non-blocking: the user can act on any row now or leave it. The
- * component is rendered on Settings → Burns and inside the first-run wizard —
+ * component is rendered on Settings → Workers and inside the first-run wizard —
  * same component, `onDismiss` there and omitted here.
  *
  * `projectId` is the one thing the wizard cannot supply: the burn cache is one
@@ -126,7 +126,7 @@ export function EnableAfkCard({
 
   const allReady = report !== undefined && readiness.count === null
   return (
-    <section aria-label="Unattended burn prerequisites" className="flex flex-col">
+    <section aria-label="Unattended worker prerequisites" className="flex flex-col">
       {/* The explanatory head: a glyph, the one line that says how far along the
           machine is, one line about what the list below is — and, in the
           wizard, the way past it. No card, no kicker. */}
@@ -160,8 +160,8 @@ export function EnableAfkCard({
               it once (DESIGN.md), so this line is Settings' alone. */}
           {!onDismiss && (
             <p className="m-0 text-xs text-pretty text-text-tertiary">
-              A burn you walk away from runs its tickets in containers, so it needs what an
-              interactive session never does. Fix any of these now, or leave them for later.
+              Workers run a round’s tickets in containers while you are away, so they need what
+              an interactive session never does. Fix any of these now, or leave them for later.
             </p>
           )}
         </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
  * Landing on the row a deep link named (decision 9).
  *
  * Shared by the setting rows and the Burns prerequisites checklist: an error
- * message that says "Settings → Burns (Rebuild image)" points at a doctor probe,
+ * message that says "Settings → Workers (Rebuild image)" points at a doctor probe,
  * not at a setting key, and both kinds of row have to answer a link the same way
  * or the link is only half a link.
  */

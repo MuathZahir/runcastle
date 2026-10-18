@@ -4,7 +4,7 @@ import { settingsMention, type SettingsLocation } from '../../lib/settings'
 import { LINK } from '../../ui'
 
 /**
- * Turning "…Rebuild it from Settings → Burns (Rebuild image)." into a link that
+ * Turning "…Rebuild it from Settings → Workers (Rebuild image)." into a link that
  * actually goes there (decision 9).
  *
  * The doctor's stale-image fix and the burner's missing-binary failure both name

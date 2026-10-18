@@ -231,7 +231,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -349,7 +349,7 @@ describe('burnRun — scheduling and summary', () => {
       expect.objectContaining({
         type: 'burn.image_runtime_missing',
         message:
-          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Burns (Rebuild image).',
+          'claude is not installed in image sandcastle:runcastle-demo — the image predates the burner Dockerfile. Rebuild it from Settings → Workers (Rebuild image).',
       }),
     )
   })
@@ -490,7 +490,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Burns to catch up.',
+            'sandcastle:runcastle has Claude Code 2.1.270, the host has 2.1.280 — this burn runs on Claude Code 2.1.270. Rebuild from Settings → Workers to catch up.',
           data: {
             warning: true,
             managed: true,
@@ -504,7 +504,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.map((e) => e.type)).not.toContain('burn.image_runtime_missing')
     })
 
-    it('leads a "CLI too old" halt’s summary with the Settings → Burns fix', async () => {
+    it('leads a "CLI too old" halt’s summary with the Settings → Workers fix', async () => {
       const { ctx } = makeCtx([ticket(1)])
       const error = cliTooOldMessage(
         new Error(
@@ -525,7 +525,7 @@ describe('burnRun — scheduling and summary', () => {
 
       expect(res.status).toBe('failed')
       expect(res.summary).toContain(
-        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Burns.',
+        'run halted at ticket 1: Claude Code 2.1.270 is too old for model claude-opus-5-5 (needs 2.1.280 or newer). Your machine already has 2.1.290 — Rebuild from Settings → Workers.',
       )
     })
 
@@ -631,7 +631,7 @@ describe('burnRun — scheduling and summary', () => {
       expect(events.filter((e) => e.type === 'burn.image_cli_drift')).toEqual([
         expect.objectContaining({
           message:
-            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Burns to catch up.',
+            'sandcastle:runcastle has Codex 0.45.0, the host has 0.46.0 — this burn runs on Codex 0.45.0. Rebuild from Settings → Workers to catch up.',
           data: expect.objectContaining({ warning: true, managed: true, runtime: 'codex' }),
         }),
       ])

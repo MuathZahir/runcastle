@@ -341,7 +341,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
   it('opens on the summary and one named row per prerequisite', () => {
     open()
 
-    expect(screen.getByText('Ready for unattended burns')).toBeTruthy()
+    expect(screen.getByText('Ready for unattended workers')).toBeTruthy()
     for (const label of ['Container runtime', 'Sandcastle image', 'Claude Code token', 'Codex']) {
       expect(screen.getByText(label)).toBeTruthy()
     }
@@ -358,7 +358,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
     open()
 
     expect(screen.getByText(/3 of 4/).parentElement?.textContent).toContain(
-      '3 of 4 ready — burns with Claude Code need a token',
+      '3 of 4 ready — workers on Claude Code need a token',
     )
   })
 
@@ -420,7 +420,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
     )
     open()
 
-    expect(screen.getByText('Ready for unattended burns')).toBeTruthy()
+    expect(screen.getByText('Ready for unattended workers')).toBeTruthy()
   })
 
   // …but one that is not built is still in the way, even though runcastle
@@ -433,7 +433,7 @@ describe('EnableAfkCard prerequisites checklist', () => {
     )
     open()
 
-    expect(screen.queryByText('Ready for unattended burns')).toBeNull()
+    expect(screen.queryByText('Ready for unattended workers')).toBeNull()
     expect(screen.getByText(/3 of 4/)).toBeTruthy()
   })
 
