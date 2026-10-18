@@ -1,6 +1,6 @@
-import { statSync } from 'node:fs'
+import { realpathSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { STORIES_MANIFEST, storiesRoot } from '@runcastle/core/paths'
 import { FEATURE_ID_PATTERN } from '../services/ui-states'
 import { STORIES_BASE_LOG, STORIES_BUILD_LOG } from '../workflows/stories-build'
@@ -36,11 +36,18 @@ function fileKind(path: string): 'file' | 'dir' | null {
   }
 }
 
+export interface StoriesHandlerDeps {
+  /** Resolves a path to its real long name (default `realpathSync.native`); injectable so a test can stand in for Windows 8.3 aliases. */
+  realPath?: (path: string) => string
+}
+
 /** The pure `(req) => Response` the stories listener runs, over `root` (default {@link storiesRoot}). */
 export function createStoriesHandler(
   root: string = storiesRoot(),
+  deps: StoriesHandlerDeps = {},
 ): (req: Request) => Promise<Response> {
   const base = resolve(root)
+  const realPath = deps.realPath ?? realpathSync.native
   return async (req) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return notFound()
     const [, area, key, ...rest] = new URL(req.url).pathname.split('/')
@@ -59,10 +66,19 @@ export function createStoriesHandler(
       kind = fileKind(filePath)
     }
     if (kind !== 'file') return notFound()
-    const relative = filePath.slice(buildDir.length + 1).toLowerCase()
+    // Compare real long names: on Windows an 8.3 alias (`MANIFE~1.JSO`) stats
+    // as the manifest itself, so the requested spelling proves nothing.
+    let real: string
+    try {
+      real = relative(realPath(buildDir), realPath(filePath))
+    } catch {
+      return notFound()
+    }
+    if (real === '' || real === '..' || real.startsWith(`..${sep}`) || isAbsolute(real)) return notFound()
+    const name = real.split(sep).join('/').toLowerCase()
     // A colon is NTFS's stream separator: `manifest.json::$DATA` is the
     // manifest itself. No build writes one, so refuse it outright.
-    if (relative.includes(':') || PRIVATE_FILES.has(relative)) return notFound()
+    if (name.includes(':') || PRIVATE_FILES.has(name)) return notFound()
 
     return new Response(req.method === 'HEAD' ? null : await readFile(filePath), {
       status: 200,

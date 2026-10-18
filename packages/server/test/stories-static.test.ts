@@ -88,6 +88,35 @@ describe('stories static handler', () => {
     expect(res.status).toBe(404)
   })
 
+  // Windows 8.3 short names: on NTFS `MANIFE~1.JSO` stats as the manifest
+  // itself. Linux has no aliases, so the alias is a distinct file here and an
+  // injected resolver maps it to its long name, as `realpathSync.native` does.
+  describe('a private file requested by its short name', () => {
+    let aliased: (req: Request) => Promise<Response>
+    beforeAll(() => {
+      const feature = join(root, 'features', FEATURE)
+      const aliases = new Map([
+        [join(feature, 'MANIFE~1.JSO'), join(feature, 'manifest.json')],
+        [join(feature, 'BASE-B~1.LOG'), join(feature, 'base-build.log')],
+      ])
+      for (const alias of aliases.keys()) writeFileSync(alias, 'private')
+      aliased = createStoriesHandler(root, { realPath: (p) => aliases.get(p) ?? p })
+    })
+
+    it.each([
+      ['the manifest', 'MANIFE~1.JSO'],
+      ['the base build log', 'BASE-B~1.LOG'],
+    ])('answers 404 for %s', async (_label, name) => {
+      const res = await aliased(new Request(`http://localhost:4514/features/${FEATURE}/${name}`))
+      expect(res.status).toBe(404)
+    })
+
+    it('still serves a public file', async () => {
+      const res = await aliased(new Request(`http://localhost:4514/features/${FEATURE}/iframe.html`))
+      expect(res.status).toBe(200)
+    })
+  })
+
   it('refuses anything but GET and HEAD', async () => {
     const res = await handle(
       new Request(`http://localhost:4514/features/${FEATURE}/iframe.html`, { method: 'POST' }),
