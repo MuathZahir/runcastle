@@ -448,6 +448,31 @@ export interface FeatureContext {
    * Present on every MCP reply; a direct caller that read no git leaves it out.
    */
   scenarios?: FeatureScenarios
+  /**
+   * Whether this project shows UI states as stories: the planner gives a ticket
+   * a ship-a-story criterion only when `setUp`. Present on every MCP reply, like
+   * {@link scenarios}.
+   */
+  stories?: FeatureStories
+}
+
+/** The project's UI-states state as a planning session sees it. */
+export interface FeatureStories {
+  /** `.runcastle/stories.json` exists on the feature's recorded base branch. */
+  setUp: boolean
+}
+
+/** Where a project records its story build; its presence means "has stories". */
+const STORIES_FILE = '.runcastle/stories.json'
+
+/** {@link FeatureStories}, read from git at the feature's base branch. */
+export async function featureStories(ctx: AppCtx, featureId: string): Promise<FeatureStories> {
+  const feature = getFeatureRow(ctx, featureId)
+  const project = projectForFeature(ctx, feature)
+  // No recorded base (a draft) means no base to be set up on, as for scenarios.
+  return {
+    setUp: feature.baseBranch ? await git.fileExistsAt(project.repoPath, feature.baseBranch, STORIES_FILE) : false,
+  }
 }
 
 /** The project's scenario state as a planning session sees it. */
@@ -554,6 +579,7 @@ export function featureContext(
   ctx: AppCtx,
   reader: FeatureReader,
   scenarios?: FeatureScenarios,
+  stories?: FeatureStories,
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
@@ -610,6 +636,7 @@ export function featureContext(
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
+    ...(stories ? { stories } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
@@ -672,6 +699,15 @@ export function featureContext(
     if (fits(candidate)) context = candidate
   }
   return context
+}
+
+/** {@link featureContext} with its git-read blocks — what every MCP reply carries. */
+async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
+  const [scenarios, stories] = await Promise.all([
+    featureScenarios(ctx, reader.featureId),
+    featureStories(ctx, reader.featureId),
+  ])
+  return featureContext(ctx, reader, scenarios, stories)
 }
 
 function ticketRow(ticket: Ticket): FeatureContextTicketRow {
@@ -3095,7 +3131,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
-        'to reuse), ' +
+        'to reuse), `stories` (`setUp`: the base branch has .runcastle/stories.json — only then ' +
+        'does a ticket that builds a UI state worth seeing ship its story), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
@@ -3120,7 +3157,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async ({ slug }, extra) => {
           const r = await resolveProjectReader(extra, slug)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
+          return ok(await featureContextWithGit(r.ctx, r.reader))
         },
       )
     } else {
@@ -3130,7 +3167,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         async (_args, extra) => {
           const r = await resolveReader(extra)
           if (!r) return noSession()
-          return ok(featureContext(r.ctx, r.reader, await featureScenarios(r.ctx, r.reader.featureId)))
+          return ok(await featureContextWithGit(r.ctx, r.reader))
         },
       )
     }

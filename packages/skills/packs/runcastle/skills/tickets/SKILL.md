@@ -80,6 +80,17 @@ And width only counts if it lands: parallel tickets touching the same files coll
 **When `setUp` is false**, card nothing about scenarios. Say once in your closing message that ＋ New scenario in a test drive sets scenarios up for this project.
 </ship-a-scenario>
 
+<ship-a-story>
+**Ship a story when a UI state is worth seeing.** A story renders one component state with fixed sample data; review builds them and shows the ones a feature changed on its page, with no app start. Read `get_feature_context`'s `stories` field — `{ setUp }` — before you decide anything.
+
+**When `setUp` is true**, ask of each ticket: does it build a UI state the human would want to see before merging — empty, error, loading, expired, a feature sitting at review?
+
+- If yes, give the implementation ticket that builds that state an acceptance criterion: "Ship `.runcastle/stories/<group>/<Component>.stories.<ext>` showing <state>, with data faked at the edge (never by mocking the app's modules)". The story must typecheck — the stories typecheck is in the verify commands.
+- Copy changes and settings toggles get none. A backend-only project is never asked. A story is never required; it earns its place only where the state is worth seeing.
+
+**When `setUp` is false**, card nothing about stories — **never card a setup ticket**; setting UI states up is the prepare session's job, not a feature's. If the feature's states are worth seeing, say once in your closing message that Prepare can set up UI states for this project.
+</ship-a-story>
+
 <wide-refactor-exception>
 A **wide refactor** — one mechanical change (rename a column, retype a shared symbol) whose blast radius breaks thousands of call sites at once — cannot land green as a vertical slice. Sequence it **expand → migrate → contract** instead. Expand: add the new form beside the old so nothing breaks (one ticket). Migrate: move call sites over in batches sized by blast radius (per package/dir), each batch a ticket blocked by the expand, CI green throughout because the old form still exists. Contract: delete the old form once no caller remains, blocked by every migrate batch. If even the batches cannot stay green alone, let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
 </wide-refactor-exception>
@@ -125,6 +136,7 @@ There is no in-session quiz — the human's review is the **Burn** click in the 
 5. Is every `context` self-sufficient for an agent that cannot ask — covering every file and pattern the ticket touches?
 6. Does the batch close with exactly one `kind: "review"` ticket, blocked by every implementation ticket? It is not optional and there is no feature that skips it.
 7. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it, and does the review ticket name it? If not set up, have you carded none and kept the one ＋ New scenario line for your close?
+8. If `stories.setUp`, does every ticket that builds a UI state worth seeing ship its story? If not set up, have you carded no setup ticket and kept at most the one Prepare line for your close?
 
 Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a Burn landing mid-enrichment burns agents on the placeholders.
