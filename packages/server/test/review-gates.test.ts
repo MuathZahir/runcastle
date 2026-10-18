@@ -6,6 +6,7 @@ import { reviewGateLogDir, reviewGateLogPath } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   type GateExecResult,
+  type GateSandboxStep,
   type WithGateSandbox,
   reviewGateBranch,
   runReviewGates,
@@ -309,6 +310,76 @@ describe('runReviewGates', () => {
       expect(git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feature/x')
       expect(existsSync(join(repo, '.sandcastle'))).toBe(false)
     }
+  })
+
+  describe('afterCommands', () => {
+    function step(events: string[]): GateSandboxStep & { outDirs: (string | undefined)[] } {
+      const outDirs: (string | undefined)[] = []
+      return {
+        outDir: '/host/out',
+        outDirs,
+        run: async (sandbox) => {
+          outDirs.push(sandbox.outPath)
+          await sandbox.exec('build stories')
+        },
+        abandon: (reason) => {
+          events.push(`abandon ${reason}`)
+        },
+      }
+    }
+
+    function withOutPath(fake: FakeSandbox): WithGateSandbox {
+      return (branch, use, options) =>
+        fake.withSandbox(branch, (sandbox) => use({ ...sandbox, outPath: options?.outDir }))
+    }
+
+    it('runs in the same sandbox after the verify commands, without changing the record', async () => {
+      const fake = fakeSandbox(repo, {})
+      const after = step(fake.events)
+
+      const run = await runReviewGates({
+        config, project: project('bun run test'), ticketId: TICKET, sha: tip, afterCommands: after,
+        deps: { withSandbox: withOutPath(fake) },
+      })
+
+      expect(fake.events).toEqual([
+        'open', 'exec bun run test beside 0 running', 'exec build stories beside 0 running', 'close',
+      ])
+      expect(after.outDirs).toEqual(['/host/out'])
+      expect(run).toMatchObject({ status: 'ran', commands: [{ command: 'bun run test', outcome: 'passed' }] })
+    })
+
+    it('opens a sandbox just for it when there are no verify commands', async () => {
+      const fake = fakeSandbox(repo, {})
+      const after = step(fake.events)
+
+      const run = await runReviewGates({
+        config, project: project(), ticketId: TICKET, sha: tip, afterCommands: after,
+        deps: { withSandbox: withOutPath(fake) },
+      })
+
+      expect(run).toEqual({ status: 'none_configured' })
+      expect(fake.opened).toEqual([{ branch: reviewGateBranch(TICKET), sha: tip }])
+      expect(fake.ran).toEqual(['build stories'])
+      expect(git(repo, 'branch', '--list', reviewGateBranch(TICKET))).toBe('')
+    })
+
+    it('is abandoned, with the reason, when no sandbox can be opened for it', async () => {
+      const events: string[] = []
+      const failing: WithGateSandbox = async () => {
+        throw new Error('no docker')
+      }
+
+      for (const verifyCommands of ['bun run test', undefined]) {
+        events.length = 0
+        const run = await runReviewGates({
+          config, project: project(verifyCommands), ticketId: TICKET, sha: tip, afterCommands: step(events),
+          deps: { withSandbox: failing },
+        })
+        expect(events).toEqual(['abandon the gate sandbox could not be set up: no docker'])
+        expect(run.status).toBe(verifyCommands ? 'couldnt_run' : 'none_configured')
+      }
+    })
   })
 
   it('moves a throwaway branch a crashed earlier run left behind onto the new sha', async () => {

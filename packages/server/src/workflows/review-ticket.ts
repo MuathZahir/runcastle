@@ -8,10 +8,17 @@ import type {
   ReviewGateRun,
   RuncastleConfig,
   ScenarioEntry,
+  StoriesBuildRecord,
   Ticket,
   WorkflowCtx,
 } from '@runcastle/core'
-import { logsDir, reviewDir, reviewGateLogPath, reviewWalkthroughPath } from '@runcastle/core/paths'
+import {
+  featureStoriesDir,
+  logsDir,
+  reviewDir,
+  reviewGateLogPath,
+  reviewWalkthroughPath,
+} from '@runcastle/core/paths'
 import { run } from '@ai-hero/sandcastle'
 import type { AgentStreamEvent, RunOptions } from '@ai-hero/sandcastle'
 import { noSandbox } from '@ai-hero/sandcastle/sandboxes/no-sandbox'
@@ -22,7 +29,8 @@ import { AUTO_FIX_CAP } from '../services/review-findings'
 import { listFeatureScenarios } from '../services/scenarios'
 import { spawnTargetFor } from '../util/resolve-executable'
 import { killRegistry, registerHostChildren } from './kill-registry'
-import type { runReviewGates } from './review-gates'
+import type { GateSandboxStep, runReviewGates } from './review-gates'
+import type { StoriesBuildPlan, planStoriesBuild } from './stories-build'
 import { AGENT_BROWSER_BIN, findOnPath, reapRecorder } from './recorder-reap'
 export { AGENT_BROWSER_BIN, findOnPath } from './recorder-reap'
 import type { BurnAgentMcp, HarvestedDigest, TicketOutcome } from './ticket-burner'
@@ -105,6 +113,8 @@ const PLACEHOLDERS = [
   'SCENARIOS',
   /** The server's gate run on the branch and the known-failure baseline. */
   'GATE_NOTES',
+  /** The UI-states build on the branch, right after the gates (see {@link buildStoriesNotes}). */
+  'STORIES_NOTES',
   'DIGEST_PATH',
   'BLOCKED_PATH',
   'WALKTHROUGH_PATH',
@@ -601,6 +611,37 @@ export function buildGateNotes(
 }
 
 /**
+ * The `{{STORIES_NOTES}}` block, rendered straight after the gate notes: the
+ * UI-states build on the branch (stories decision 4). A failed build is a
+ * failed gate, so the reviewer files it as a finding and a fix ticket repairs
+ * it; a branch point that didn't build, or a build the server couldn't run, is
+ * not the branch's fault. Empty when the branch has no stories, so the block
+ * vanishes; otherwise it carries its own leading blank line.
+ */
+export function buildStoriesNotes(record: StoriesBuildRecord, featureId: string): string {
+  const logPath = (log: string): string => join(featureStoriesDir(featureId), log)
+  switch (record.status) {
+    case 'none':
+      return ''
+    case 'built': {
+      const { changed, new: added, affected } = record.counts
+      const base = record.base === 'failed'
+        ? " The branch point's catalogue didn't build, so changed stories show without their \"before\" — that is not a defect against this branch."
+        : ''
+      return `\n\nThe server also built this feature's UI-states catalogue at \`${shortCommit(record.commit)}\`, and it built: ${changed} changed, ${added} new and ${affected} more stories that use changed code. The feature page shows them.${base}`
+    }
+    case 'failed':
+      return `\n\nThe UI-states build FAILED on the feature branch at \`${shortCommit(record.commit)}\` (exit ${record.exitCode ?? 'unknown'}). Treat it exactly like a failed gate: file a finding with the log path \`${logPath(record.log)}\`, so a fix ticket repairs it.`
+    case 'couldnt_run':
+      return [
+        `\n\nThe server could not build the UI-states catalogue${record.commit ? ` at \`${shortCommit(record.commit)}\`` : ''}: ${record.reason}.`,
+        ...(record.log ? [` Its output is at \`${logPath(record.log)}\`.`] : []),
+        " That is not the branch's fault: report it as an observation, not a defect.",
+      ].join('')
+  }
+}
+
+/**
  * Everything the review agent reports back through, kept OUT of the repo: the
  * agent works in the human's real checkout, so a `DIGEST.md` written at its root
  * would be an untracked file in their tree — and the drive refuses to start on a
@@ -780,6 +821,7 @@ export interface ReviewDeps {
   /** System boundaries overridden only by seam-level workflow tests. */
   runAgent?: (options: RunOptions) => Promise<unknown>
   runGates?: typeof runReviewGates
+  planStories?: typeof planStoriesBuild
   recorderReap?: typeof reapRecorder
   releaseDrive?: () => Promise<void>
 }
@@ -787,26 +829,23 @@ export interface ReviewDeps {
 /**
  * The server's gate run for this pass, against the feature branch's tip as it
  * stands now (gates-mode-review decisions #1, #4). Never throws for a broken
- * environment — a branch that will not resolve comes back `couldnt_run`, like a
- * sandbox that will not open, and the review proceeds on the diff (decision 3).
+ * environment — a sandbox that will not open comes back `couldnt_run`, and the
+ * review proceeds on the diff (decision 3).
  */
-async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps): Promise<ReviewGateRun> {
-  const { project, feature } = ctx
-  const sha = await headSha(project.repoPath, feature.branch)
-  if (!sha) {
-    return {
-      status: 'couldnt_run',
-      commit: '',
-      reason: `\`${feature.branch}\` did not resolve to a commit`,
-      log: null,
-    }
-  }
+async function runBranchGates(
+  ctx: WorkflowCtx,
+  ticket: Ticket,
+  deps: ReviewDeps,
+  sha: string,
+  afterCommands: GateSandboxStep | undefined,
+): Promise<ReviewGateRun> {
+  const { project } = ctx
   // Loaded lazily: review-gates imports ticket-burner, which imports this file,
   // so a static import evaluates review-gates before ticket-burner's constants
   // exist whenever ticket-burner is the one loaded first (as at server boot).
   try {
     const runGates = deps.runGates ?? (await import('./review-gates')).runReviewGates
-    return await runGates({ config: deps.config, project, ticketId: ticket.id, sha })
+    return await runGates({ config: deps.config, project, ticketId: ticket.id, sha, afterCommands })
   } catch (err) {
     // The runner records its own failures; anything that still escapes it is
     // no less an environment fault, and must not stop the reviewer launching.
@@ -817,6 +856,49 @@ async function runBranchGates(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps
       log: null,
     }
   }
+}
+
+/** What the server checked on the branch before the reviewer starts. */
+interface BranchChecks {
+  gateRun: ReviewGateRun
+  storiesBuild: StoriesBuildRecord
+}
+
+/**
+ * The gate run and the UI-states build for this pass, at the branch's tip as
+ * it stands now. The build rides the gate sandbox, after the verify commands,
+ * so it costs no second install (stories decision 4). Neither ever throws.
+ */
+async function runBranchChecks(ctx: WorkflowCtx, ticket: Ticket, deps: ReviewDeps): Promise<BranchChecks> {
+  const { project, feature } = ctx
+  const sha = await headSha(project.repoPath, feature.branch)
+  if (!sha) {
+    const reason = `\`${feature.branch}\` did not resolve to a commit`
+    return {
+      gateRun: { status: 'couldnt_run', commit: '', reason, log: null },
+      storiesBuild: { status: 'couldnt_run', commit: '', reason, log: null },
+    }
+  }
+  let plan: StoriesBuildPlan | undefined
+  try {
+    // Lazy for the same reason as review-gates: it imports review-gates.
+    const planStories = deps.planStories ?? (await import('./stories-build')).planStoriesBuild
+    plan = await planStories({
+      config: deps.config,
+      project,
+      feature,
+      ticket,
+      sha,
+      emit: (e) => ctx.emitEvent({ ...e, ticketId: ticket.id }),
+    })
+  } catch {
+    plan = undefined
+  }
+  const gateRun = await runBranchGates(ctx, ticket, deps, sha, plan?.step)
+  const storiesBuild: StoriesBuildRecord = plan
+    ? await plan.finish()
+    : { status: 'couldnt_run', commit: sha, reason: 'the UI-states build could not be planned', log: null }
+  return { gateRun, storiesBuild }
 }
 
 /**
@@ -867,7 +949,7 @@ async function reviewTicketOutcome(
   // After the directory wipe above (its logs live inside it) and before the
   // prompt, so every pass — review or verification, Drive or Gates — is handed
   // the branch's gate record at its tip as it stands now.
-  const gateRun = await runBranchGates(ctx, ticket, deps)
+  const { gateRun, storiesBuild } = await runBranchChecks(ctx, ticket, deps)
   ctx.updateTicket(ticket.id, { reviewGateRun: gateRun })
   const allTickets = ctx.listTickets?.() ?? ctx.tickets
   const verifies = allTickets
@@ -904,6 +986,7 @@ async function reviewTicketOutcome(
       buildScenarioBlock(scenarios, runnerConfigured),
     ),
     GATE_NOTES: buildGateNotes(gateRun, ticket.id, deps.config, project),
+    STORIES_NOTES: buildStoriesNotes(storiesBuild, feature.id),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,
