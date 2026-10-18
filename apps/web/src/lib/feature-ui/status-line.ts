@@ -60,10 +60,11 @@ export const STOPPED = 'stopped'
  * - Ready for you · Test drive ▸ <scenario> — the latest declaration is newer
  *   than the latest round, and the agent is not working on something since
  *   (notes the human sent wake it, and it is Working again).
- * - Waiting for you · stopped / round N failed — the last round was stopped or
- *   failed and the agent's turn is over: nothing is running and nothing will
+ * - Waiting for you · stopped / round N failed / round N done — the last round
+ *   returned and the agent's turn is over: nothing is running and nothing will
  *   be dispatched until the human replies.
- * - Working · Round N — otherwise: the agent is between rounds.
+ * - Working · Round N — otherwise: the agent is between rounds, or Go was just
+ *   given and round 1 is not out yet.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
  * while a round runs, Go in planning, Start test drive when ready.
@@ -112,11 +113,18 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
       whatToTest: declared.whatToTest,
     }
   }
-  // A stopped or failed round wakes nobody to finish it: Stop marks the
-  // feature stopped, and a provider-limit halt is not woken (decision 15). Once
-  // the agent's turn is over, nothing moves until the human replies.
-  if (!agentWorking && latest && latest.status !== 'succeeded') {
-    const why = latest.status === 'cancelled' ? STOPPED : `round ${latest.round} failed`
+  // Once a round has returned and the agent's turn is over, nothing runs and
+  // nobody works: a stopped or failed round wakes nobody to finish it (Stop
+  // marks the feature stopped, a provider-limit halt is not woken — decision
+  // 15), and an agent that reported a succeeded round without declaring ready
+  // is waiting on the human's reply. Nothing moves until the human replies.
+  if (!agentWorking && latest) {
+    const why =
+      latest.status === 'cancelled'
+        ? STOPPED
+        : latest.status === 'failed'
+          ? `round ${latest.round} failed`
+          : `round ${latest.round} done`
     return { kind: 'waiting', label: 'Waiting for you', why }
   }
   return working()
