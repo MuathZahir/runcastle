@@ -207,7 +207,7 @@ async function finishBuild(
   let output: { index: StoryIndex; stats: PreviewStats } | undefined
   if (result.exitCode === 0) {
     const read = readBuildOutput(incoming)
-    if ('problem' in read) log = `${log}\n\nrunscastle: ${read.problem}\n`
+    if ('problem' in read) log = `${log}\n\nruncastle: ${read.problem}\n`
     else output = read
   }
   if (!output) {
@@ -301,7 +301,7 @@ async function resolveBase(input: StoriesBuildInput): Promise<ResolvedBase> {
         writeFileSync(join(out, STORIES_BUILD_LOG), log)
         return { commit, base: { status: 'built', index }, pending: out }
       }
-      if (result.exitCode === 0) log = `${log}\n\nrunscastle: the base build wrote no readable index.json\n`
+      if (result.exitCode === 0) log = `${log}\n\nruncastle: the base build wrote no readable index.json\n`
     }
   } catch (err) {
     log = `the base build could not run: ${errorDetail(err)}\n`
