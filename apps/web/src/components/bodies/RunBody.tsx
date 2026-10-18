@@ -34,7 +34,7 @@ import { RunHeader } from '../run/RunHeader'
 import { RunLanes } from '../run/RunLanes'
 import { RunTimeline } from '../run/RunTimeline'
 import { StatusStrip } from '../review/StatusStrip'
-import { LaterLapUiStates } from '../review/UiStatesSection'
+import { LastReviewUiStates } from '../review/UiStatesSection'
 import { UnrunnableGates } from '../run/UnrunnableGates'
 
 /**
@@ -407,8 +407,8 @@ export function RunBody({
         <RunLanes tickets={tickets} currentLap={lap} lane={lane} />
       )}
 
-      {/* The last review pass's UI states, from the lap it reviewed (decision 12). */}
-      <LaterLapUiStates featureId={featureId} lap={lap} className="mt-10" />
+      {/* The last review pass's UI states stay in view while the next burn runs (decision 12). */}
+      <LastReviewUiStates featureId={featureId} className="mt-10" />
 
       <div className="mt-8 flex flex-col">
         <RunTimeline events={runEvents} />

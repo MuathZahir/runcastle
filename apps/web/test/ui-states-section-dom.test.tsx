@@ -31,7 +31,7 @@ describe('UiStatesSection interactions', () => {
   afterEach(cleanup)
 
   it('opens and closes the collapsed far-match line', () => {
-    const { container } = render(<UiStatesSection model={offline(uiStatesModel())} currentLap={1} />)
+    const { container } = render(<UiStatesSection model={offline(uiStatesModel())} />)
     const details = container.querySelector('details')
     if (!details) throw new Error('no collapsed line')
     expect(details.open).toBe(false)
@@ -42,7 +42,7 @@ describe('UiStatesSection interactions', () => {
   })
 
   it("opens the frame's own story full-size, and closes it", () => {
-    render(<UiStatesSection model={offline(uiStatesModel({ affected: [] }))} currentLap={1} />)
+    render(<UiStatesSection model={offline(uiStatesModel({ affected: [] }))} />)
     expect(screen.queryByRole('dialog')).toBeNull()
     const buttons = screen.getAllByRole('button', { name: 'Open larger' })
     // Before, This feature (the changed pair), then the new story's one frame.
@@ -65,7 +65,7 @@ describe('UiStatesSection interactions', () => {
   })
 
   it('opens a far match full-size from its row', () => {
-    render(<UiStatesSection model={offline(uiStatesModel({ changed: [], new: [] }))} currentLap={1} />)
+    render(<UiStatesSection model={offline(uiStatesModel({ changed: [], new: [] }))} />)
     fireEvent.click(screen.getByText('2 more stories use changed code'))
     fireEvent.click(screen.getAllByRole('button', { name: 'Open larger' })[1] as HTMLElement)
     expect(screen.getByRole('dialog').querySelector('iframe')?.getAttribute('src')).toBe(
