@@ -26,6 +26,7 @@ function planningRow(ticketsReadyLap: number | null, onAction = vi.fn()) {
     agentWorking: false,
     driving: false,
     selfPlanning: false,
+    now: 0,
   })
   render(
     <NextStepBar
