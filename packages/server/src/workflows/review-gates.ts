@@ -1,5 +1,11 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { createSandbox } from '@ai-hero/sandcastle'
+import { stripVTControlCharacters } from 'node:util'
+import {
+  type CreateSandboxOptions,
+  type Sandbox,
+  type SandboxExecOptions,
+  createSandbox,
+} from '@ai-hero/sandcastle'
 import {
   type GateCommandResult,
   type Project,
@@ -142,6 +148,24 @@ export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/**
+ * A sandbox that opened but whose setup — the slot sync, the clone, the
+ * install — failed or hung, so its checkout is no place to run a command.
+ * `output` is the setup's own, the log a reader needs.
+ */
+export class SandboxSetupError extends Error {
+  constructor(message: string, readonly output: string) {
+    super(message)
+    this.name = 'SandboxSetupError'
+  }
+}
+
+/** An error in full, for a log: a failed setup's own output, else the stack. */
+export function errorDetail(err: unknown): string {
+  if (err instanceof SandboxSetupError) return `${err.message}\n\n${stripVTControlCharacters(err.output)}`
+  return err instanceof Error ? (err.stack ?? err.message) : String(err)
+}
+
 /** The first non-blank line of an error — what fits in a one-line reason. */
 export function headline(text: string): string {
   return text.split(/\r?\n/).find((line) => line.trim())?.trim() ?? 'unknown error'
@@ -192,6 +216,37 @@ export async function execWithTimeout(
     return await Promise.race([sandbox.exec(command), timedOut])
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Run a sandbox's setup script against its time limit, and
+ * reject with a {@link SandboxSetupError} when it does not exit 0. A hung
+ * setup is left running, like a timed-out command: the caller's teardown
+ * kills it. Its output so far is what streamed out before the limit.
+ */
+async function runSandboxSetup(
+  exec: (command: string, opts: SandboxExecOptions) => Promise<GateExecResult>,
+  setup: string,
+  timeoutMs: number,
+): Promise<void> {
+  const streamed: string[] = []
+  const result = await execWithTimeout(
+    { exec: (command) => exec(command, { onLine: (line) => streamed.push(line) }) },
+    setup,
+    timeoutMs,
+  )
+  if (result === 'timeout') {
+    throw new SandboxSetupError(
+      `the sync-and-install setup ${timeoutReason(timeoutMs)}`,
+      streamed.join('\n'),
+    )
+  }
+  if (result.exitCode !== 0) {
+    throw new SandboxSetupError(
+      `the sync-and-install setup exited ${result.exitCode}`,
+      [result.stdout, result.stderr].filter(Boolean).join('\n'),
+    )
   }
 }
 
@@ -258,7 +313,7 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
     }
     if (commands.length === 0) return { status: 'none_configured' }
     if (results.length > 0) {
-      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
+      const detail = errorDetail(err)
       // Only a reopen after a timeout gets here: keep what already ran.
       const reason = `the gate sandbox could not be reopened: ${headline(errorText(err))}`
       for (const [i, command] of commands.entries()) {
@@ -282,9 +337,8 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
  * log dir is itself what failed, so the record still comes back.
  */
 function writeRunLog(ticketId: string, err: unknown): 'run.log' | null {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
   try {
-    writeFileSync(reviewGateLogPath(ticketId, 'run.log'), `${detail}\n`)
+    writeFileSync(reviewGateLogPath(ticketId, 'run.log'), `${errorDetail(err)}\n`)
     return 'run.log'
   } catch {
     return null
@@ -332,14 +386,28 @@ async function runGateCommand(
   }
 }
 
+export interface BurnGateSandboxDeps {
+  /** sandcastle's `createSandbox`: the container (or host) boundary itself. */
+  open?: (options: CreateSandboxOptions) => Promise<Pick<Sandbox, 'exec' | 'close'>>
+  /** The setup's time limit; defaults to the burn install's. */
+  setupTimeoutMs?: number
+}
+
 /**
  * The real sandbox boundary: wherever this project's burns run (decision 2),
  * set up exactly as a burn's is — the same image and cache mounts, the same
  * slot / isolated / mounted setup hook and install, a warm cache slot when one
  * is free. No agent runs, so the prompt-only pieces (burn guard, agent auth)
- * are left out.
+ * are left out. A setup that fails or hangs rejects with a
+ * {@link SandboxSetupError}; nothing then runs in that checkout.
  */
-export function burnGateSandbox(config: RuncastleConfig, project: Project): WithGateSandbox {
+export function burnGateSandbox(
+  config: RuncastleConfig,
+  project: Project,
+  deps: BurnGateSandboxDeps = {},
+): WithGateSandbox {
+  const open = deps.open ?? createSandbox
+  const setupTimeoutMs = deps.setupTimeoutMs ?? SETUP_HOOK_TIMEOUT_MS
   return (branch, use, options = {}) => {
     const allocator =
       resolveBurnCacheMode(config) === 'volume'
@@ -397,28 +465,36 @@ export function burnGateSandbox(config: RuncastleConfig, project: Project): With
 
       // The throwaway branch names this gate run, so it is the kill lane too.
       const lane = branch
-      const sandbox = await createSandbox({
+      // No `onSandboxReady` hook: `createSandbox` runs one with a plain `exec`,
+      // so a sync or install that failed was swallowed (its time limit too) and
+      // the commands ran in a checkout nobody installed — a fetched Storybook
+      // missing lightningcss's Linux binary, in the map's lap 1 drive.
+      const sandbox = await open({
         branch,
         sandbox: selectSandbox(config, project, mounts, cache.env, {
           onChildSpawn: registerHostChildren(lane, {}),
         }),
         cwd: project.repoPath,
-        ...(setup
-          ? { hooks: { sandbox: { onSandboxReady: [{ command: setup, timeoutMs: SETUP_HOOK_TIMEOUT_MS }] } } }
-          : {}),
       })
       let running = 0
+      const exec = async (command: string, opts: SandboxExecOptions): Promise<GateExecResult> => {
+        running++
+        try {
+          return await sandbox.exec(command, opts)
+        } finally {
+          running--
+        }
+      }
       try {
+        // Where the hook ran: the sandbox's own repo dir, whitelisted for git
+        // first, as sandcastle did — in a container only, never the host's config.
+        if (setup) {
+          const script = onHost ? setup : `git config --global --add safe.directory '*' && ${setup}`
+          await runSandboxSetup(exec, script, setupTimeoutMs)
+        }
         return await use({
           ...(outPath ? { outPath } : {}),
-          exec: async (command) => {
-            running++
-            try {
-              return await sandbox.exec(command, cwd ? { cwd } : {})
-            } finally {
-              running--
-            }
-          },
+          exec: (command) => exec(command, cwd ? { cwd } : {}),
         })
       } finally {
         // A command abandoned at its time limit is still running. `close()`

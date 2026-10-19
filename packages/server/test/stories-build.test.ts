@@ -4,8 +4,13 @@ import { dirname, join } from 'node:path'
 import { type Project, RuncastleConfig, StoriesManifest } from '@runcastle/core'
 import { STORIES_MANIFEST, baseStoriesDir, featureStoriesDir, storiesRoot } from '@runcastle/core/paths'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { GateExecResult, WithGateSandbox } from '../src/workflows/review-gates'
-import { runStoriesBuild } from '../src/workflows/stories-build'
+import {
+  type BurnGateSandboxDeps,
+  type GateExecResult,
+  type WithGateSandbox,
+  burnGateSandbox,
+} from '../src/workflows/review-gates'
+import { buildCatalogueAt, runStoriesBuild } from '../src/workflows/stories-build'
 import { withTempDataDir } from './helpers/data-dir'
 import { rmTemp, tmpRepo } from './helpers/fixtures'
 
@@ -372,5 +377,130 @@ describe('runStoriesBuild', () => {
     })
 
     expect(record).toMatchObject({ status: 'couldnt_run', reason: expect.stringContaining('timed out') })
+  })
+})
+
+/**
+ * A stand-alone build (main's catalogue) in the real burn sandbox wiring, with
+ * only sandcastle's `createSandbox` faked: the setup must have installed the
+ * checkout the build command runs in, or the build never runs.
+ */
+describe('buildCatalogueAt in the burn sandbox', () => {
+  let repo: string
+  let outDir: string
+  let restoreDataDir: () => void
+  const config = RuncastleConfig.parse({ sandbox: 'docker', burnCache: 'off', burnWorkspace: 'isolated' })
+  const project = (): Project => ({ id: 'proj_1', name: 'p', repoPath: repo }) as Project
+
+  /** Every exec the sandbox saw, and a setup that answers as `setup` says. */
+  function fakeOpen(setup: GateExecResult | 'hang') {
+    const execs: { command: string; cwd?: string }[] = []
+    let closed = false
+    const open: BurnGateSandboxDeps['open'] = async () => ({
+      exec: async (command, opts) => {
+        execs.push({ command, ...(opts?.cwd ? { cwd: opts.cwd } : {}) })
+        if (command.includes(`git clone`)) {
+          if (setup === 'hang') {
+            opts?.onLine?.('Cloning into /home/agent/repo...')
+            return new Promise(() => {})
+          }
+          return setup
+        }
+        for (const [name, body] of Object.entries(FEATURE_BUILD.files)) {
+          writeFileSync(join(outDir, name), typeof body === 'string' ? body : JSON.stringify(body))
+        }
+        return { exitCode: 0, stdout: 'built ok', stderr: '' }
+      },
+      close: async () => {
+        closed = true
+        return {}
+      },
+    })
+    return { open, execs, closed: () => closed }
+  }
+
+  function build(sandbox: ReturnType<typeof fakeOpen>, setupTimeoutMs?: number) {
+    return buildCatalogueAt({
+      config,
+      project: project(),
+      sha: git(repo, 'rev-parse', 'HEAD'),
+      branch: 'runcastle/stories-main/abc123',
+      outDir,
+      deps: {
+        withSandbox: burnGateSandbox(config, project(), {
+          open: sandbox.open,
+          ...(setupTimeoutMs ? { setupTimeoutMs } : {}),
+        }),
+      },
+    })
+  }
+
+  beforeEach(() => {
+    restoreDataDir = withTempDataDir()
+    repo = tmpRepo()
+    outDir = join(storiesRoot(), 'out')
+    mkdirSync(outDir, { recursive: true })
+    git(repo, 'init', '-q', '-b', 'main')
+    git(repo, 'config', 'user.email', 'test@runcastle.invalid')
+    git(repo, 'config', 'user.name', 'test')
+    write(repo, '.runcastle/stories.json', JSON.stringify({ build: BUILD }))
+    write(repo, 'package.json', '{"name":"app"}')
+    write(repo, 'bun.lock', '{}')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-q', '-m', 'stories')
+  })
+
+  afterEach(() => {
+    restoreDataDir()
+    rmTemp(repo)
+  })
+
+  it('runs the build command in the checkout the setup installed, after the setup', async () => {
+    const sandbox = fakeOpen({ exitCode: 0, stdout: 'installed', stderr: '' })
+
+    const result = await build(sandbox)
+
+    expect(result).toMatchObject({ status: 'built', log: 'built ok' })
+    expect(sandbox.execs).toHaveLength(2)
+    expect(sandbox.execs[0]?.command).toContain('bun install --frozen-lockfile')
+    expect(sandbox.execs[1]).toEqual({
+      command: BUILD.replace('{out}', `"/home/agent/runcastle-stories-out"`),
+      cwd: '/home/agent/repo',
+    })
+  })
+
+  it("is couldnt_run naming the setup, with the setup's output as the log, when the setup fails", async () => {
+    const sandbox = fakeOpen({
+      exitCode: 1,
+      stdout: 'Cloning into /home/agent/repo...',
+      stderr: 'error: lightningcss postinstall failed',
+    })
+
+    const result = await build(sandbox)
+
+    expect(result).toMatchObject({
+      status: 'couldnt_run',
+      reason: 'the sandbox could not be set up: the sync-and-install setup exited 1',
+    })
+    const log = 'log' in result ? result.log : ''
+    expect(log).toContain('Cloning into /home/agent/repo...')
+    expect(log).toContain('error: lightningcss postinstall failed')
+    // The build command never ran in the un-installed checkout.
+    expect(sandbox.execs).toHaveLength(1)
+    expect(sandbox.closed()).toBe(true)
+  })
+
+  it('is couldnt_run, with what the setup printed so far, when the setup hangs', async () => {
+    const sandbox = fakeOpen('hang')
+
+    const result = await build(sandbox, 20)
+
+    expect(result).toMatchObject({
+      status: 'couldnt_run',
+      reason: expect.stringContaining('the sync-and-install setup timed out'),
+    })
+    expect('log' in result ? result.log : '').toContain('Cloning into /home/agent/repo...')
+    expect(sandbox.execs).toHaveLength(1)
+    expect(sandbox.closed()).toBe(true)
   })
 })
