@@ -217,7 +217,7 @@ describe('the Notes card', () => {
     card()
     expect(button(/^Triage 0$/).hasAttribute('disabled')).toBe(true)
     // an empty inbox is an EmptyState, not a row
-    expect(screen.getByText('Inbox clear')).toBeTruthy()
+    expect(screen.getByText('No open notes')).toBeTruthy()
   })
 
   /** Capture's View (decisions #16): the prototype scrolls the inbox into view. */

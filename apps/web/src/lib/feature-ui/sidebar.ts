@@ -215,6 +215,31 @@ export function triage(
     .filter((g) => g.features.length > 0)
 }
 
+/** The sidebar's features: the pinned Inbox, and the Work view's lanes. */
+export interface SidebarLanes {
+  /** Exactly the Needs you lane's features — what waits on the human. */
+  inbox: FeatureListItem[]
+  /** Every other non-empty lane, in {@link triage}'s order. */
+  lanes: TriageGroup[]
+}
+
+/**
+ * Split the triage into the Inbox pinned above the Work | Map switch and the
+ * lanes Work shows under it (the-map-of-stories-and-scenarios decision 2). The
+ * Inbox is the Needs you lane lifted out, so attention reads the same in both
+ * views; the rest is {@link triage} unchanged.
+ */
+export function sidebarLanes(
+  features: FeatureListItem[],
+  opts: { showArchived?: boolean } = {},
+): SidebarLanes {
+  const groups = triage(features, opts)
+  return {
+    inbox: groups.find((g) => g.key === 'needsYou')?.features ?? [],
+    lanes: groups.filter((g) => g.key !== 'needsYou'),
+  }
+}
+
 /**
  * The lanes a project can land you in (decision 4), in the rail's own order.
  * Drafts, Shipped and Archived are deliberately absent: entering a project used
