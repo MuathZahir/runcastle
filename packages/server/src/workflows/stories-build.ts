@@ -96,26 +96,120 @@ export function storiesBaseBranch(ticketId: string): string {
   return `runcastle/stories-base/${ticketId}`
 }
 
-/** What the feature build's command did, as the sandbox step saw it. */
+/** What a catalogue build's command did, as the sandbox step saw it. */
 type BuildOutcome =
   | { kind: 'exited'; result: GateExecResult }
   | { kind: 'couldnt_run'; reason: string; detail: string }
+
+/**
+ * One catalogue build at one commit, read back: the index and import graph it
+ * wrote, or why there are none. `log` is the build's own output (or, for
+ * `couldnt_run`, the fault's detail).
+ */
+export type CatalogueBuildResult =
+  | { status: 'built'; index: StoryIndex; stats: PreviewStats; log: string }
+  | { status: 'failed'; exitCode: number; log: string }
+  | { status: 'couldnt_run'; reason: string; log: string }
+
+/**
+ * The sandbox step that runs a project's build command into `outDir`, and the
+ * reading of what it left there. Shaped around no feature or ticket: the
+ * feature review build rides it on the gate run's sandbox, main's catalogue
+ * build ({@link buildCatalogueAt}) in a sandbox of its own.
+ */
+function catalogueStep(
+  cfg: StoriesConfig,
+  outDir: string,
+  timeoutMs: number,
+): { step: GateSandboxStep; result(): CatalogueBuildResult } {
+  let outcome: BuildOutcome | undefined
+  const step: GateSandboxStep = {
+    outDir,
+    run: async (sandbox: GateSandbox) => {
+      const command = renderStoriesBuildCommand(cfg, sandbox.outPath ?? outDir)
+      try {
+        const result = await execWithTimeout(sandbox, command, timeoutMs)
+        outcome = result === 'timeout'
+          ? { kind: 'couldnt_run', reason: `the build ${timeoutReason(timeoutMs)}`, detail: timeoutReason(timeoutMs) }
+          : { kind: 'exited', result }
+      } catch (err) {
+        outcome = {
+          kind: 'couldnt_run',
+          reason: `the build could not start: ${headline(errorText(err))}`,
+          detail: errorDetail(err),
+        }
+      }
+    },
+    abandon: (reason, err) => {
+      outcome ??= { kind: 'couldnt_run', reason, detail: errorDetail(err) }
+    },
+  }
+  const result = (): CatalogueBuildResult => {
+    const ran = outcome ?? { kind: 'couldnt_run', reason: 'the build never ran', detail: 'the build never ran' }
+    if (ran.kind === 'couldnt_run') return { status: 'couldnt_run', reason: ran.reason, log: ran.detail }
+    let log = buildLog(ran.result)
+    if (ran.result.exitCode === 0) {
+      const read = readBuildOutput(outDir)
+      if (!('problem' in read)) return { status: 'built', ...read, log }
+      log = `${log}\n\nruncastle: ${read.problem}\n`
+    }
+    return { status: 'failed', exitCode: ran.result.exitCode, log }
+  }
+  return { step, result }
+}
+
+/** Run `step` in a sandbox of its own, on a throwaway branch pinned at `sha`. */
+async function runStepAt(
+  config: RuncastleConfig,
+  project: Project,
+  deps: StoriesBuildDeps | undefined,
+  branch: string,
+  sha: string,
+  step: GateSandboxStep,
+): Promise<void> {
+  const withSandbox = deps?.withSandbox ?? burnGateSandbox(config, project)
+  try {
+    const withBranch = deps?.withBranch ?? withThrowawayBranch
+    await withBranch(project.repoPath, branch, sha, () =>
+      withSandbox(branch, (sandbox) => step.run(sandbox), { outDir: step.outDir }),
+    )
+  } catch (err) {
+    step.abandon(`the sandbox could not be set up: ${headline(errorText(err))}`, err)
+  }
+}
+
+export interface CatalogueBuildInput {
+  config: RuncastleConfig
+  project: Project
+  /** The commit to build, with its own `stories.json`. */
+  sha: string
+  /** The throwaway branch the sandbox checks out. */
+  branch: string
+  /** Where the catalogue lands; the caller owns it, kept or not. */
+  outDir: string
+  deps?: StoriesBuildDeps
+}
+
+/**
+ * Build one catalogue at a commit, for no feature and no ticket. `none` when
+ * the commit has no readable `stories.json`. Never throws.
+ */
+export async function buildCatalogueAt(
+  input: CatalogueBuildInput,
+): Promise<CatalogueBuildResult | { status: 'none' }> {
+  const cfg = await readStoriesConfigAt(input.project.repoPath, input.sha)
+  if (!cfg) return { status: 'none' }
+  const build = catalogueStep(cfg, input.outDir, input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS)
+  await runStepAt(input.config, input.project, input.deps, input.branch, input.sha, build.step)
+  return build.result()
+}
 
 /** Build the feature's catalogue (and its branch point's) in a sandbox of its own. */
 export async function runStoriesBuild(input: StoriesBuildInput): Promise<StoriesBuildRecord> {
   const plan = await planStoriesBuild(input)
   const { step } = plan
   if (step) {
-    const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(input.config, input.project)
-    const branch = storiesBuildBranch(input.ticket.id)
-    try {
-      const withBranch = input.deps?.withBranch ?? withThrowawayBranch
-      await withBranch(input.project.repoPath, branch, input.sha, () =>
-        withSandbox(branch, (sandbox) => step.run(sandbox), { outDir: step.outDir }),
-      )
-    } catch (err) {
-      step.abandon(`the sandbox could not be set up: ${headline(errorText(err))}`, err)
-    }
+    await runStepAt(input.config, input.project, input.deps, storiesBuildBranch(input.ticket.id), input.sha, step)
   }
   return plan.finish()
 }
@@ -153,34 +247,13 @@ export async function planStoriesBuild(input: StoriesBuildInput): Promise<Storie
     const reason = `no place to put the build: ${headline(errorText(err))}`
     return { finish: async () => ({ status: 'couldnt_run', commit: sha, reason, log: null }) }
   }
-  let outcome: BuildOutcome | undefined
-  const step: GateSandboxStep = {
-    outDir: incoming,
-    run: async (sandbox: GateSandbox) => {
-      const command = renderStoriesBuildCommand(cfg, sandbox.outPath ?? incoming)
-      try {
-        const result = await execWithTimeout(sandbox, command, timeoutMs)
-        outcome = result === 'timeout'
-          ? { kind: 'couldnt_run', reason: `the build ${timeoutReason(timeoutMs)}`, detail: timeoutReason(timeoutMs) }
-          : { kind: 'exited', result }
-      } catch (err) {
-        outcome = {
-          kind: 'couldnt_run',
-          reason: `the build could not start: ${headline(errorText(err))}`,
-          detail: errorDetail(err),
-        }
-      }
-    },
-    abandon: (reason, err) => {
-      outcome ??= { kind: 'couldnt_run', reason, detail: errorDetail(err) }
-    },
-  }
+  const { step, result } = catalogueStep(cfg, incoming, timeoutMs)
 
   return {
     step,
     finish: async () => {
       try {
-        return await finishBuild(input, cfg, incoming, outcome)
+        return await finishBuild(input, incoming, result())
       } catch (err) {
         const reason = `the build's output could not be kept: ${headline(errorText(err))}`
         try {
@@ -199,31 +272,21 @@ export async function planStoriesBuild(input: StoriesBuildInput): Promise<Storie
 
 async function finishBuild(
   input: StoriesBuildInput,
-  cfg: StoriesConfig,
   incoming: string,
-  outcome: BuildOutcome | undefined,
+  output: CatalogueBuildResult,
 ): Promise<StoriesBuildRecord> {
   const { sha } = input
-  if (!outcome) outcome = { kind: 'couldnt_run', reason: 'the build never ran', detail: 'the build never ran' }
-  if (outcome.kind === 'couldnt_run') {
-    publishResult(input, incoming, couldntRunManifest(input, outcome.reason), outcome.detail)
-    emitBuilt(input, 'stories.couldnt_run', `UI states couldn't be built: ${outcome.reason}`)
-    return { status: 'couldnt_run', commit: sha, reason: outcome.reason, log: STORIES_BUILD_LOG }
+  if (output.status === 'couldnt_run') {
+    publishResult(input, incoming, couldntRunManifest(input, output.reason), output.log)
+    emitBuilt(input, 'stories.couldnt_run', `UI states couldn't be built: ${output.reason}`)
+    return { status: 'couldnt_run', commit: sha, reason: output.reason, log: STORIES_BUILD_LOG }
   }
-
-  const { result } = outcome
-  let log = buildLog(result)
-  let output: { index: StoryIndex; stats: PreviewStats } | undefined
-  if (result.exitCode === 0) {
-    const read = readBuildOutput(incoming)
-    if ('problem' in read) log = `${log}\n\nruncastle: ${read.problem}\n`
-    else output = read
-  }
-  if (!output) {
-    publishResult(input, incoming, failedManifest(input), log)
+  if (output.status === 'failed') {
+    publishResult(input, incoming, failedManifest(input), output.log)
     emitBuilt(input, 'stories.failed', "The UI states didn't build")
-    return { status: 'failed', commit: sha, exitCode: result.exitCode, log: STORIES_BUILD_LOG }
+    return { status: 'failed', commit: sha, exitCode: output.exitCode, log: STORIES_BUILD_LOG }
   }
+  const { log } = output
 
   const { commit: baseCommit, base, pending, log: baseLog } = await resolveBase(input)
   const stories = classifyFeatureStories({
@@ -337,7 +400,7 @@ function incomingDir(name: string): string {
   return dir
 }
 
-function readBuildOutput(dir: string): { index: StoryIndex; stats: PreviewStats } | { problem: string } {
+export function readBuildOutput(dir: string): { index: StoryIndex; stats: PreviewStats } | { problem: string } {
   const index = readIndex(join(dir, 'index.json'))
   if (!index) return { problem: 'the build wrote no readable index.json' }
   const statsPath = join(dir, 'preview-stats.json')
@@ -382,7 +445,7 @@ function publishResult(input: StoriesBuildInput, incoming: string, manifest: Sto
 }
 
 /** Replace `target` with `source`; a rename Windows refuses (EBUSY/EXDEV) falls back to copy. */
-function swapInto(source: string, target: string): void {
+export function swapInto(source: string, target: string): void {
   rmSync(target, { recursive: true, force: true })
   mkdirSync(dirname(target), { recursive: true })
   try {
@@ -406,7 +469,7 @@ function removeQuietly(dir: string): void {
 // ---------------------------------------------------------------------------
 
 /** The branch's `stories.json` at `ref`, or null for every "no stories" case. */
-async function readStoriesConfigAt(repoPath: string, ref: string): Promise<StoriesConfig | null> {
+export async function readStoriesConfigAt(repoPath: string, ref: string): Promise<StoriesConfig | null> {
   try {
     return parseStoriesConfig(await simpleGit(repoPath).raw(['show', `${ref}:${STORIES_CONFIG_REL}`]))
   } catch {

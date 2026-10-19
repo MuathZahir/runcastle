@@ -3,6 +3,7 @@ import { ProjectName } from '@runcastle/core'
 import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
+import { startMainBuild } from '../../services/main-catalogue'
 import { mapModel } from '../../services/map'
 import { prepView } from '../../services/prep'
 import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
@@ -183,6 +184,15 @@ export const projectRouter = router({
   map: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => mapModel(ctx, input.projectId)),
+
+  /**
+   * Build the catalogue / Rebuild: start a build of main's catalogue in the
+   * background, or answer with the one already running (`started: false`).
+   * Emits `map.catalogue.started`; the build's end emits built or failed.
+   */
+  buildMapCatalogue: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(({ ctx, input }) => startMainBuild(ctx, input.projectId)),
 
   /**
    * Tear down a preparation dry-run drive by hand (decision 9). The prep session

@@ -13,6 +13,7 @@ import { rmTemp } from './helpers/fixtures'
 
 const FEATURE = 'feat_Ab3-x_9QzK1m'
 const COMMIT = 'a'.repeat(40)
+const PROJECT = 'proj_Ab3-x_9QzK1m'
 let root: string
 let handle: (req: Request) => Promise<Response>
 
@@ -34,6 +35,16 @@ beforeAll(() => {
   const base = join(root, 'base', COMMIT)
   mkdirSync(base, { recursive: true })
   writeFileSync(join(base, 'iframe.html'), '<html>before</html>')
+  const main = join(root, 'main', PROJECT)
+  mkdirSync(main, { recursive: true })
+  writeFileSync(join(main, 'iframe.html'), '<html>main</html>')
+  writeFileSync(join(main, 'index.json'), '{"v":5,"entries":{}}')
+  for (const name of ['main.json', 'attempt.json', 'manifest.json', 'build.log', 'base-build.log']) {
+    writeFileSync(join(main, name), 'private')
+  }
+  const attempt = join(root, 'main-attempts', PROJECT)
+  mkdirSync(join(attempt, 'out-1'), { recursive: true })
+  writeFileSync(join(attempt, 'out-1', 'iframe.html'), '<html>in flight</html>')
   writeFileSync(join(root, 'secret.txt'), 'secret')
   handle = createStoriesHandler(root)
 })
@@ -59,6 +70,14 @@ describe('stories static handler', () => {
     expect(await res.text()).toBe('<html>before</html>')
   })
 
+  it("serves main's catalogue by project, its index included", async () => {
+    const res = await get(`/main/${PROJECT}/iframe.html?id=review--page&viewMode=story`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.text()).toBe('<html>main</html>')
+    expect((await get(`/main/${PROJECT}/index.json`)).status).toBe(200)
+  })
+
   it("serves a directory's index.html", async () => {
     const res = await get(`/features/${FEATURE}/`)
     expect(res.status).toBe(200)
@@ -80,6 +99,15 @@ describe('stories static handler', () => {
     ['the build log through a stream suffix', `/features/${FEATURE}/build.log::$DATA`],
     ['the base build log through a stream suffix', `/features/${FEATURE}/base-build.log::$DATA`],
     ['an encoded stream suffix', `/features/${FEATURE}/manifest.json%3A%3A$DATA`],
+    ['a malformed project id', '/main/feat_abc/iframe.html'],
+    ['main.json', `/main/${PROJECT}/main.json`],
+    ['attempt.json', `/main/${PROJECT}/attempt.json`],
+    ['a manifest beside main', `/main/${PROJECT}/manifest.json`],
+    ['a build log beside main', `/main/${PROJECT}/build.log`],
+    ['a base build log beside main', `/main/${PROJECT}/base-build.log`],
+    ['main.json through a stream suffix', `/main/${PROJECT}/main.json::$DATA`],
+    ["main's attempts", `/main-attempts/${PROJECT}/out-1/iframe.html`],
+    ['an attempt through a traversal', `/main/${PROJECT}/../../main-attempts/${PROJECT}/out-1/iframe.html`],
     ['an API path', '/api/trpc/feature.list'],
     ['the root', '/'],
     ['a missing file', `/features/${FEATURE}/nope.js`],
