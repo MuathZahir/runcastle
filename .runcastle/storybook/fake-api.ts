@@ -31,14 +31,19 @@ function refuse(path: string, message: string): Answer {
   return { error: { message, code: -32004, data: { code: 'NOT_FOUND', httpStatus: 404, path } } }
 }
 
+/**
+ * A mutation is refused unless the story answers it by name: stories show
+ * states, and a write is answered only where a flow cannot move on without its
+ * success (the first-run wizard's git identity, which gates every later step).
+ */
 function answer(fakes: TrpcFakes, path: string, input: unknown, isMutation: boolean): Answer {
-  if (isMutation) return refuse(path, 'Stories show states; they do not act.')
   const dot = path.indexOf('.')
   const router = (fakes as Record<string, Record<string, ((input: unknown) => unknown) | undefined> | undefined>)[
     path.slice(0, dot)
   ]
   const handler = router?.[path.slice(dot + 1)]
-  return handler ? { result: { data: handler(input) } } : refuse(path, `Not faked in this story: ${path}`)
+  if (handler) return { result: { data: handler(input) } }
+  return refuse(path, isMutation ? 'Stories show states; they do not act.' : `Not faked in this story: ${path}`)
 }
 
 /**
