@@ -18,6 +18,7 @@ const input = (over: {
   declarations?: FeatureStatusInput['declarations']
   agentWorking?: boolean
   driving?: boolean
+  selfPlanning?: boolean
 }): FeatureStatusInput => ({
   feature: {
     phase: 'building',
@@ -31,6 +32,7 @@ const input = (over: {
   declarations: over.declarations ?? [],
   agentWorking: over.agentWorking ?? false,
   driving: over.driving ?? false,
+  selfPlanning: over.selfPlanning ?? false,
 })
 
 const round = (n: number, status: 'running' | 'succeeded' | 'failed' | 'cancelled', startedAt: number) => ({
@@ -67,6 +69,47 @@ describe('featureStatus', () => {
     expect(featureStatus(input({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })).kind).toBe(
       'planning',
     )
+  })
+
+  it('reads Planning by itself while a self-planning run is live, with its Stop', () => {
+    for (const ticketsReadyLap of [null, 1]) {
+      expect(featureStatus(input({ feature: { phase: 'planning', ticketsReadyLap }, selfPlanning: true }))).toEqual({
+        kind: 'working',
+        label: 'Planning by itself',
+        primary: 'stopSelfPlan',
+      })
+    }
+  })
+
+  it('returns to Planning with you, or plan ready for Go, once the self-planning run ends', () => {
+    expect(featureStatus(input({ feature: { phase: 'planning' }, selfPlanning: false }))).toEqual({
+      kind: 'planning',
+      label: 'Planning with you',
+      primary: 'go',
+    })
+    expect(featureStatus(input({ feature: { phase: 'planning', ticketsReadyLap: 1 }, selfPlanning: false }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'plan ready for Go',
+      primary: 'go',
+    })
+  })
+
+  it('a running round, a drive and Merged outrank planning by itself', () => {
+    const planning = { phase: 'planning' as const }
+    expect(featureStatus(input({ feature: planning, selfPlanning: true, rounds: [round(1, 'running', 10)] }))).toEqual({
+      kind: 'working',
+      label: 'Working · Round 1',
+      round: 1,
+      primary: 'stop',
+    })
+    expect(featureStatus(input({ feature: planning, selfPlanning: true, driving: true }))).toMatchObject({
+      label: 'Planning by itself',
+      primary: 'testDriveStop',
+    })
+    expect(
+      featureStatus(input({ feature: { phase: 'shipped', status: 'shipped' }, selfPlanning: true })),
+    ).toEqual({ kind: 'merged', label: 'Merged' })
   })
 
   it('reads Working · Round N while a round runs', () => {
@@ -285,6 +328,18 @@ describe('the action row beside the status line', () => {
     expect(OVERFLOW_KINDS).toContain('resolveConflict')
     expect(OVERFLOW_KINDS).not.toContain('merge')
     expect(leadActions(ns({}), status({ kind: 'merged' })).secondary).toEqual([])
+  })
+
+  it('offers the self-planning run’s Stop as the primary, and Go nowhere on the row', () => {
+    const out = leadActions(
+      ns({
+        primary: { label: 'Stop', kind: 'stopHeadlessRun' },
+        secondary: [{ label: 'Burn 3 tickets', kind: 'burn' }],
+      }),
+      featureStatus(input({ feature: { phase: 'planning' }, selfPlanning: true })),
+    )
+    expect(out.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun', danger: true })
+    expect([out.primary, ...out.secondary].some((a) => a?.kind === 'burn' || a?.label === 'Go')).toBe(false)
   })
 
   it('does not offer the primary twice', () => {

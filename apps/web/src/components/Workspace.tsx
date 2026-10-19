@@ -899,6 +899,7 @@ export function Workspace({
         declarations: declarationsQ.data ?? [],
         agentWorking: !!liveSession && !liveSession.awaitingInput,
         driving: isDriving,
+        selfPlanning: !!liveSession && isSelfPlanRun(liveSession),
       })
   const statusLine = status && <FeatureStatusLine status={status} />
 

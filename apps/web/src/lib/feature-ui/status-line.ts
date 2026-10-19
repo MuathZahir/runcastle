@@ -11,9 +11,9 @@ export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | '
 /**
  * The one primary button the status line's row carries (decision 24): Go in
  * planning, Start test drive when ready, Stop drive while driving, Stop while a
- * round runs — and none in any other state.
+ * round runs, Stop while the feature plans itself — and none in any other state.
  */
-export type StatusPrimary = 'go' | 'testDriveStart' | 'testDriveStop' | 'stop'
+export type StatusPrimary = 'go' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -40,6 +40,8 @@ export interface FeatureStatusInput {
   agentWorking: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
+  /** The feature's live session is a self-planning run (headless chat, purpose `self-plan`). */
+  selfPlanning: boolean
 }
 
 /** The reason Go waits on, when the plan is finished and the preview stands. */
@@ -53,6 +55,8 @@ export const STOPPED = 'stopped'
  *
  * - Merged — shipped is final.
  * - Working · Round N — a round is running; nothing else is true until it returns.
+ * - Planning by itself — a planning feature's self-planning run is live; the
+ *   plan is being written, so Go would cut it short.
  * - Waiting for you · <why> — the agent said it needs the human (a question,
  *   stuck, stopped, provider limit). The next human message or dispatch clears it.
  * - Planning with you — before Go; Waiting for you · plan ready for Go once the
@@ -67,7 +71,8 @@ export const STOPPED = 'stopped'
  *   given and round 1 is not out yet.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
- * while a round runs, Go in planning, Start test drive when ready.
+ * while a round runs, Stop the run while the feature plans itself, Go in
+ * planning, Start test drive when ready.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
@@ -75,10 +80,15 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   return primary ? { ...status, primary } : status
 }
 
+function planningItself(input: FeatureStatusInput): boolean {
+  return input.selfPlanning && input.feature.phase === 'planning'
+}
+
 function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrimary | undefined {
   if (status.kind === 'merged') return undefined
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
+  if (planningItself(input)) return 'stopSelfPlan'
   if (input.feature.phase === 'planning') return 'go'
   if (status.kind === 'ready') return 'testDriveStart'
   return undefined
@@ -94,6 +104,8 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
     return { kind: 'working', label: `Working · Round ${round}`, round }
   }
   if (latest?.status === 'running') return working()
+
+  if (planningItself(input)) return { kind: 'working', label: 'Planning by itself' }
 
   if (feature.waitingReason) return { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
 
@@ -136,6 +148,7 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
+  stopSelfPlan: { label: 'Stop', kind: 'stopHeadlessRun', danger: true },
 }
 
 const MERGE: NextAction = { label: 'Merge & ship', kind: 'merge' }
