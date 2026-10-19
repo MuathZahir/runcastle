@@ -43,6 +43,7 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
     agentWorking: false,
     driving: over.driving ?? false,
     selfPlanning: false,
+    now: 0,
   })
   return renderToStaticMarkup(
     createElement(

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import type { RefObject } from 'react'
 import { isStoppableHeadlessRun, parsePhase, PLAN_UNFINISHED, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
@@ -84,7 +84,13 @@ import { FeatureSkeleton } from './workspace/FeatureSkeleton'
 import { NextStepBar } from './workspace/NextStepBar'
 import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLine'
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
-import { featureStatus, leadActions, OVERFLOW_KINDS } from '../lib/feature-ui/status-line'
+import {
+  featureStatus,
+  LEAD_WAKE_GRACE_MS,
+  leadActions,
+  leadWakeOf,
+  OVERFLOW_KINDS,
+} from '../lib/feature-ui/status-line'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
 import { LastReviewUiStates } from './review/UiStatesSection'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
@@ -104,6 +110,19 @@ function readSession(key: string): string | null {
   } catch {
     return null
   }
+}
+
+/** The wall clock, re-read once `deadline` passes so what it decides catches up. */
+function useNowPast(deadline: number | undefined): number {
+  const [, tick] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    if (deadline === undefined) return
+    const wait = deadline - Date.now()
+    if (wait <= 0) return
+    const timer = setTimeout(tick, wait)
+    return () => clearTimeout(timer)
+  }, [deadline])
+  return Date.now()
 }
 
 function writeSession(key: string, value: string) {
@@ -179,6 +198,10 @@ export function Workspace({
   const events = useEventLog(featureId)
   const conflict = unresolvedMergeConflict(events)
   const driveLap = lastTestDriveLap(events)
+  // The status line reads Working on a pending wake only inside its grace, so
+  // the clock is re-read once that grace runs out.
+  const leadWake = leadWakeOf(events)
+  const now = useNowPast(leadWake.pendingSince === undefined ? undefined : leadWake.pendingSince + LEAD_WAKE_GRACE_MS)
   // Commit and file scale from git, for the confirmation's "what lands" row
   // (decision 31a) — the base it reports is also the branch the dialog names.
   // Only at review, where the dialog that reports it is: every earlier phase
@@ -904,6 +927,8 @@ export function Workspace({
         agentWorking: !!liveSession && !liveSession.awaitingInput,
         driving: isDriving,
         selfPlanning: !!liveSession && isSelfPlanRun(liveSession),
+        leadWake,
+        now,
       })
   const statusLine = status && <FeatureStatusLine status={status} />
 
