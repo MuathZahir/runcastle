@@ -114,3 +114,42 @@ Renaming the Project row to "Talk to runcastle" moves to the later lap that reth
 - **No marks:** no "changed" or "new" marks; the map shows main as it is.
 
 **Why:** Seeing every state of a component at a glance is what Storybook's sidebar makes you click through, and it is where the map can beat it. Lazy frames keep a big group from opening dozens of iframes at once. Changed and new are a feature's review question; on the map, the history line carries change.
+
+## Lap 2
+
+## 11. The map held up; lap 2 makes building work and history specific
+**Decision:** Lap 2 does two things:
+- **Build:** makes Build the catalogue and Rebuild actually work. Lap 1's drive hit a Storybook failure in the sandbox; see the carried test note.
+- **History:** makes each history line say what shaped *that* component, not the whole project.
+
+The project home rethink and in-flight markers stay in `## Later laps`.
+
+**Why:** The test drive showed that the group page holds up: live states, ways in and feature links on one page beat Storybook's sidebar. Two things stand between it and daily use:
+- **Main's catalogue can only be built through promotion at merge.** The explicit build path fails in the Docker sandbox.
+- **History is saturated.** It covers the whole import graph, so on runcastle every component credits 37–50 features (review finding "History over the full import graph saturates"). The brief names history as half of what the map must earn.
+
+## 12. History leaves shared files out
+**Decision:**
+- **What counts as shared:** a file reached by more than a quarter of all story files in the catalogue, and by at least 3 of them, with both counts taken from the build's import graph.
+- **What history covers:** a story entry's history covers its story file plus the files it reaches that are *not* shared. Changes to shared files (primitives, the theme, API types) credit nobody.
+- **Where the cut applies:** to history only. The staleness test and the promote-at-merge test (decision 5) keep the full import graph.
+
+Supersedes the scope of decision 6's "plus every file it imports" for story history.
+
+**Why:** In lap 1's drive, history over the whole graph credited 37–50 features to every runcastle component, because a change to the button or the theme reached them all. The rule is computed from the graph the build already writes, so it stays language-agnostic and needs no configuration. Direct imports only would miss a component's own sub-parts. Matching a component file by name would go silently empty when names differ, the same quiet wrong decision 6 rejected. A theme change really does change every frame, so the catalogue must still count as moved.
+
+## 13. Build is proven twice: in the burn sandbox, then by one real click in the review drive
+**Decision:**
+- **In the burn sandbox:** the fix ticket first reproduces the failure by running the stories build command the way the main build runs it.
+- **In the review drive:** lap 2's review may press **Build the catalogue** once on runcastle's own project. Afterwards it confirms the throwaway `runcastle/stories-main/<sha>` branch is gone, deleting it if not, and reports the attempt's `build.log` whatever the outcome.
+- **Then the human's drive:** the human's own test drive confirms it again.
+
+**Why:** Lap 1's reviewer would not press Build, because doing so acts on the real runcastle repo. Build was left resting on tests alone, and the human hit the failure by hand. One sanctioned click, with clean-up checked, finds out in this lap instead of the next.
+
+## 14. Runcastle's own scenarios gain one read-only call, so Calls and Try it get driven
+**Decision:**
+- **The call:** one `.http` file beside an existing runcastle scenario: a GET against a runcastle endpoint that needs no ids, so it changes nothing.
+- **What it gives the map:** the Review group a Calls entry.
+- **What lap 2's review does with it:** presses **Try it** and confirms the request line, the drive door, and a response in the API view.
+
+**Why:** No project in lap 1's drives had a `.http` file, so a third of the group page was never seen. One harmless call gives runcastle's own repo a real example of the `.http` contract.

@@ -50,7 +50,7 @@ The project home's notes card stops saying "Inbox". It becomes "Notes", with "No
 
 **History** (decision 6). Every entry shows its latest change inline ("Changed by Coupons, Oct 12") and the earlier ones behind a disclosure ("3 earlier").
 - **Credit:** a change credited to a feature names it by title and links to its feature page. A commit made straight to main reads "Changed on main" with the start of its subject.
-- **A story entry's history** covers its story file plus every file it imports, per the import graph of main's catalogue build.
+- **A story entry's history** covers its story file plus the files it imports that aren't *shared*, per the import graph of main's catalogue build (lap 2, decision 12; see History below).
 - **A scenario entry's history** covers the scenario file and its `.http` file.
 
 **The buttons are doors into the existing project drive** (decision 8). There is no new drive UI.
@@ -76,6 +76,7 @@ Grouping is a pure function of story titles and scenario paths. It reads no file
 - **Scenario group** = its folders under `.runcastle/scenarios/`, up to two levels. A file at the top of `scenarios/` goes to **Ungrouped**. The `_`/`.` helper rule from the scenario listing still applies.
   - This map grouping is computed from the path. It does not change the scenario listing's own one-level `group`, which the drive picker keeps using.
 - **Calls:** a call (`foo.http`) belongs to the group of its sibling scenario. Only scenarios with a call file produce a call entry.
+  - Runcastle's own repo carries one read-only call beside a review scenario: a GET of `/api/trpc/system.version`, which needs no ids. Calls and Try it can then be driven on runcastle itself (lap 2, decision 14).
 - **Name keys:** two names match when they are equal after lower-casing and treating every run of spaces, hyphens and underscores as one separator. Nothing fuzzier: no plurals, prefixes or stemming.
 - **Display name:** the story title's spelling wins; otherwise the scenario folder's readable form ("expired-coupon" becomes "Expired coupon").
 - **Mismatches** stay two groups. The map never guesses a merge.
@@ -112,6 +113,12 @@ Burn agents need nothing new, because they follow the path the planner wrote int
 **Staleness.** "Main has moved since" uses the same test, between the catalogue's commit and main's current tip. It is evaluated when the map model is read, cached by main's tip.
 
 **Building main.** A main build reuses the stories build: the same `stories.json` command, the same gate sandbox and throwaway-branch mechanics, the same index/import-graph outputs. It is refactored so it is no longer shaped around one feature and one ticket.
+- **It must work in the real Docker sandbox** (lap 2, decision 13). Lap 1's drive found that pressing Build the catalogue failed there:
+  - the build command ran in a burn-cache slot checkout;
+  - `bunx storybook` fell through to an npx download;
+  - `lightningcss` lacked its Linux binary.
+
+  So the command didn't see a Linux install of the repo's dependencies. The build command has to run where the slot's setup installed them, exactly as a review pass's stories build does.
 - **When it runs:** only after a merge whose test says yes, or on an explicit **Build the catalogue** / **Rebuild** click. Never on opening the map, and never on a push to main made outside runcastle; runcastle doesn't watch main.
 - **Overlap:** builds of one project never overlap. A request while one is running is answered with the running one.
 - **Ordering:** a newer main commit's build supersedes an older one; the older one's result is discarded if it lands later.
@@ -127,8 +134,14 @@ Burn agents need nothing new, because they follow the path the planner wrote int
 - Any other first-parent commit is "main" with its subject.
 - A change counts against an entry when that commit's diff against its first parent touches a file in the entry's set.
 
+**A story's set leaves shared files out** (lap 2, decision 12).
+- **What counts as shared:** a file reached by more than a quarter of the catalogue's story files, and by at least 3 of them, both counted over the build's import graph. Primitives, the theme and API types are the usual cases.
+- **What a story's set holds:** its own story file, which is never shared, plus the files it reaches that are not shared.
+- **History only:** the catalogue's "depends on" set for staleness and promotion keeps the full graph, because a theme change does change every frame.
+- **Why:** lap 1's drive found history over the whole graph credited 37–50 features to every runcastle component.
+
 **Computed once per main commit, never live on opening the map:**
-- **story history:** when main's catalogue is built or promoted, over each story file's import set, stored beside the catalogue;
+- **story history:** when main's catalogue is built or promoted, over each story file's set (shared files left out), stored beside the catalogue. A catalogue stored before lap 2 keeps its old history until its next build or promotion;
 - **scenario history:** for main's tip when the map model is first read at that tip, over each scenario file and its call file, cached by main's tip.
 
 **Display:** the latest change inline, the rest behind a disclosure, newest first.
@@ -198,4 +211,4 @@ Burn agents need nothing new, because they follow the path the planner wrote int
 
 - **The project home rethink,** now that Work, Map and the Inbox exist. That includes renaming the Project row to "Talk to runcastle" once the page it opens is settled (decision 9).
 - **In-flight markers** on map entries, e.g. "Coupons changes this, on its branch", from each live feature's branch diff against main (decision 1).
-- **Only if the combination proves itself in lap 1's test drive:** further investment in the map. If it doesn't hold up, the brief says to stop here.
+- **Further investment in the map,** beyond lap 2's build fix and history cut. The combination held up in lap 1's drive (decision 11), so this is open, not ruled out.
