@@ -29,6 +29,14 @@ import { App } from '../../apps/web/src/App'
  * A state with no address (a wizard screen, a dialog, Settings) is reached by
  * the story's `play` step, clicking as a user would, never by setting the
  * app's state.
+ *
+ * The app fills the viewport: its root and every `h-full` below it (the
+ * sidebar's column, the panes that scroll) resolve against `#root`, which
+ * styles.css sizes to `height: 100%` under a 100%-tall `html, body`. Storybook
+ * mounts into `#storybook-root` instead, which that rule never reaches and
+ * which grows with its content, so this wrapper stands in for `#root` — the
+ * viewport's definite height, for page stories alone (component stories never
+ * render it).
  */
 export function AppAt({ path }: { path: string }) {
   useState(() => {
@@ -37,5 +45,12 @@ export function AppAt({ path }: { path: string }) {
     window.history.replaceState(null, '', path)
     return null
   })
-  return <App />
+  return (
+    <div style={APP_ROOT}>
+      <App />
+    </div>
+  )
 }
+
+/** `#root`'s box in the real app: the viewport, never its content, tall. */
+const APP_ROOT = { height: '100vh' } as const
