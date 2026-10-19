@@ -934,7 +934,10 @@ export function Workspace({
         declarations: declarationsQ.data ?? [],
         agentWorking: !!liveSession && !liveSession.awaitingInput,
         driving: isDriving,
-        selfPlanning: (!!liveSession && isSelfPlanRun(liveSession)) || launchSelfPlan.isPending,
+        // A draft's start turns it into a planning feature before the run is
+        // even launched, so the start counts as planning by itself too.
+        selfPlanning:
+          (!!liveSession && isSelfPlanRun(liveSession)) || startSelfPlan.isPending || launchSelfPlan.isPending,
         leadWake,
         now,
       })

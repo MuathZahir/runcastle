@@ -70,6 +70,8 @@ export interface LeadWake {
   pendingSince?: number
   /** The newest `lead.wake_failed`: when, and the process's exit code (null when unknown). */
   failed?: { at: number; exitCode: number | null }
+  /** When the session the newest headless wake started ended — the human's End session, or its own exit. */
+  endedAt?: number
 }
 
 /**
@@ -82,12 +84,24 @@ export const LEAD_WAKE_GRACE_MS = 60_000
 /** The events that put a message on its way to the lead (`services/lead-delivery.ts`). */
 const WAKE_EVENTS: ReadonlySet<string> = new Set(['lead.message_queued', 'lead.message_pending', 'lead.woken_headless'])
 
+/** The events that say a session is over: the human ended it, or its process exited. */
+const SESSION_END_EVENTS: ReadonlySet<string> = new Set(['session.ended', 'session.pty_exited'])
+
 /** Read the lead's latest wake and wake failure off a feature's event log, oldest first. */
 export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data'>[]): LeadWake {
   const wake: LeadWake = {}
+  let woken: string | undefined
   for (const e of events) {
-    if (WAKE_EVENTS.has(e.type)) wake.pendingSince = e.ts
-    else if (e.type === LEAD_WAKE_FAILED) {
+    const sessionId = (e.data as { sessionId?: unknown } | undefined)?.sessionId
+    if (WAKE_EVENTS.has(e.type)) {
+      wake.pendingSince = e.ts
+      if (e.type === 'lead.woken_headless' && typeof sessionId === 'string') {
+        woken = sessionId
+        delete wake.endedAt
+      }
+    } else if (SESSION_END_EVENTS.has(e.type) && woken !== undefined && sessionId === woken) {
+      wake.endedAt ??= e.ts
+    } else if (e.type === LEAD_WAKE_FAILED) {
       const data = LeadWakeFailedData.safeParse(e.data)
       wake.failed = { at: e.ts, exitCode: data.success ? data.data.exitCode : null }
     }
@@ -193,12 +207,15 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   }
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
-  // read as Working forever, and one that already failed is not on its way:
-  // its failure ends the grace at once.
+  // read as Working forever, and one that already failed, or whose session
+  // already ended, is not on its way: either ends the grace at once.
   const pendingSince = input.leadWake?.pendingSince
   const failed = input.leadWake?.failed
   const failedSinceWake = !!failed && failed.at >= (pendingSince ?? -Infinity)
-  const waking = pendingSince !== undefined && !failedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
+  const endedAt = input.leadWake?.endedAt
+  const endedSinceWake = endedAt !== undefined && endedAt >= (pendingSince ?? -Infinity)
+  const waking =
+    pendingSince !== undefined && !failedSinceWake && !endedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {

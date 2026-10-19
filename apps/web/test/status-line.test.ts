@@ -186,6 +186,19 @@ describe('featureStatus', () => {
     ).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'the agent’s run failed', primary: 'chat' })
   })
 
+  it('a woken session that already ended (End session) ends its grace at once: the agent stopped, not Working', () => {
+    expect(featureStatus(input({ leadWake: { pendingSince: 1_000, endedAt: 20_000 }, now: 21_000 }))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'the agent stopped',
+      primary: 'chat',
+    })
+    // A message sent after that end opens a fresh grace.
+    expect(featureStatus(input({ leadWake: { pendingSince: 30_000, endedAt: 20_000 }, now: 31_000 })).kind).toBe(
+      'working',
+    )
+  })
+
   it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
     const failed = { at: 30, exitCode: 1 }
     expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).why).toBe(
@@ -322,6 +335,25 @@ describe('leadWakeOf', () => {
     ).toEqual({ pendingSince: 20, failed: { at: 25, exitCode: 1 } })
     expect(leadWakeOf([{ type: 'lead.message_queued', ts: 7, data: {} }])).toEqual({ pendingSince: 7 })
     expect(leadWakeOf([])).toEqual({})
+  })
+
+  it('reads when the session the newest headless wake started ended, and only that session', () => {
+    expect(
+      leadWakeOf([
+        { type: 'lead.woken_headless', ts: 20, data: { sessionId: 'lead' } },
+        { type: 'session.ended', ts: 25, data: { sessionId: 'other' } },
+        { type: 'session.ended', ts: 30, data: { sessionId: 'lead', killed: true } },
+        { type: 'session.pty_exited', ts: 31, data: { sessionId: 'lead', exitCode: 1 } },
+      ]),
+    ).toEqual({ pendingSince: 20, endedAt: 30 })
+    // A newer headless wake starts over.
+    expect(
+      leadWakeOf([
+        { type: 'lead.woken_headless', ts: 20, data: { sessionId: 'a' } },
+        { type: 'session.pty_exited', ts: 30, data: { sessionId: 'a', exitCode: 0 } },
+        { type: 'lead.woken_headless', ts: 40, data: { sessionId: 'b' } },
+      ]),
+    ).toEqual({ pendingSince: 40 })
   })
 })
 
