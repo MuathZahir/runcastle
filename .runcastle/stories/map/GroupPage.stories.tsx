@@ -1,11 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { MapGroupPage } from '../../../apps/web/src/components/map/MapGroupPage'
-import { couponsGroup, mapModel } from '../../../apps/web/test/fixtures'
+import { couponsGroup, mapModel, onboardingGroup } from '../../../apps/web/test/fixtures'
 
 /**
- * One group's page: UI states (frames load as they scroll in — here they
- * point at a blank page), Ways in and Calls, each entry with its history line.
- * A prop story — the model is the one `project.map` answers.
+ * One place's page: its states as whole-page pictures, one per row in step
+ * order with step chips (frames load as they scroll in, three at a time — here
+ * they point at a blank page), child places as sections, then Ways in and
+ * Calls, each entry with its history line. A prop story — the model is the one
+ * `project.map` answers.
  */
 const noop = (): void => undefined
 
@@ -26,6 +28,19 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const AllThreeSections: Story = {}
+
+export const AFlowOfSteps: Story = {
+  args: { model: mapModel({ groups: [onboardingGroup()] }), group: onboardingGroup() },
+}
+
+export const ChildPlaces: Story = {
+  args: {
+    model: mapModel({
+      groups: mapModel().groups.map((g) => (g.id === 'checkout' ? { ...g, pages: onboardingGroup().pages } : g)),
+    }),
+    group: { id: 'checkout', name: 'Checkout', pages: onboardingGroup().pages, scenarios: [] },
+  },
+}
 
 export const OnlyWaysIn: Story = {
   args: {

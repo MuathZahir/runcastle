@@ -13,8 +13,10 @@ import { OpenLarger, StoryFrame, StoryLargerDialog } from './StoryFrame'
  *
  * The frames are the user's own components, cross-origin by design (decision
  * 13), so they cannot be auto-sized: a fixed height, and "Open larger" for the
- * one story full-size. The copy says "UI states" and "stories", never the tool
- * that builds them (decision 11).
+ * one story full-size. A page story is framed as a picture of the whole page,
+ * as the map frames it (the map shows every page and its states, decision 9),
+ * and opens larger from a click. The copy says "UI states" and "stories",
+ * never the tool that builds them (decision 11).
  */
 export function UiStatesSection({
   model,
@@ -79,17 +81,26 @@ export function UiStatesSection({
               title={`${model.affected.length} more ${model.affected.length === 1 ? 'story uses' : 'stories use'} changed code`}
             >
               <ul className="m-0 flex list-none flex-col p-0">
-                {model.affected.map((story) => (
-                  <li key={story.id} className="flex min-h-8 items-center gap-2 text-sm text-text-secondary">
-                    <span className="min-w-0 truncate">
-                      {storyTitle(story)} · {story.name}
-                    </span>
-                    <OpenLarger
-                      className="ml-auto"
-                      onClick={() => open(story, story.frameUrl)}
-                    />
-                  </li>
-                ))}
+                {model.affected.map((story) =>
+                  story.page ? (
+                    <li key={story.id} className="py-1">
+                      <StoryFrame
+                        page
+                        label={`${storyTitle(story)} · ${story.name}`}
+                        frameTitle={`${storyTitle(story)} · ${story.name}, this feature`}
+                        url={story.frameUrl}
+                        onOpen={() => open(story, story.frameUrl)}
+                      />
+                    </li>
+                  ) : (
+                    <li key={story.id} className="flex min-h-8 items-center gap-2 text-sm text-text-secondary">
+                      <span className="min-w-0 truncate">
+                        {storyTitle(story)} · {story.name}
+                      </span>
+                      <OpenLarger className="ml-auto" onClick={() => open(story, story.frameUrl)} />
+                    </li>
+                  ),
+                )}
               </ul>
             </Disclosure>
           )}
@@ -97,7 +108,13 @@ export function UiStatesSection({
       )}
 
       <StoryLargerDialog
-        story={larger && { title: `${storyTitle(larger.story)} · ${larger.story.name}`, url: larger.url }}
+        story={
+          larger && {
+            title: `${storyTitle(larger.story)} · ${larger.story.name}`,
+            url: larger.url,
+            page: larger.story.page,
+          }
+        }
         onClose={() => setLarger(null)}
       />
     </section>
@@ -167,6 +184,7 @@ function ReviewFrame({
       label={label}
       frameTitle={`${storyTitle(story)} · ${story.name}, ${label === 'Before' ? 'before' : 'this feature'}`}
       url={url}
+      page={story.page}
       onOpen={() => onOpen(story, url)}
     />
   )

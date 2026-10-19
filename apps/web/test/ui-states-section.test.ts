@@ -60,6 +60,27 @@ describe('UiStatesSection', () => {
     expect(frames(html)).toEqual([])
   })
 
+  it('frames a page story as a whole page, before and this feature, and its components as today', () => {
+    const page = { ...uiStory('feature-review--findings-open', 'Findings open', true), page: true }
+    const html = render(uiStatesModel({ changed: [page], affected: [] }))
+    // The page's pair: two whole-page pictures, loading as they scroll in, opened by a click.
+    expect(html.match(/data-page-frame/g)).toHaveLength(2)
+    expect(html).toContain('>Before<')
+    expect(html).toContain('aria-label="Open Checkout / Coupon field · Findings open, before larger"')
+    // The new component story keeps its fixed-height frame and its Open larger.
+    expect(frames(html)).toEqual([`${FEATURE_FRAME}checkout-coupon--expiring&viewMode=story`])
+    expect(html.match(/Open larger/g)).toHaveLength(1)
+  })
+
+  it('pictures a page story among the far matches as a page, behind the collapsed line', () => {
+    const page = { ...uiStory('feature-review--findings-open', 'Findings open', false), page: true }
+    const html = render(uiStatesModel({ changed: [], new: [], affected: [page, uiStory('cart-drawer--discount', 'With discount', false)] }))
+    expect(html).toContain('2 more stories use changed code')
+    expect(html.match(/data-page-frame/g)).toHaveLength(1)
+    expect(html.match(/Open larger/g)).toHaveLength(1)
+    expect(frames(html)).toEqual([])
+  })
+
   it('says once that the before versions did not build, and frames this feature only', () => {
     const html = render(
       uiStatesModel({

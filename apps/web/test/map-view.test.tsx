@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MapModel } from '@runcastle/core'
-import { MAP_FRAME, couponsGroup, mapModel } from './fixtures'
+import { MAP_FRAME, couponsGroup, mapModel, onboardingGroup } from './fixtures'
 
 /**
  * The map in the content panel (the-map-of-stories-and-scenarios), tier 2:
@@ -81,10 +81,12 @@ afterEach(() => {
 })
 
 describe('the overview', () => {
-  it('opens a group from its row', () => {
+  it('opens a place from its row, and from its picture', () => {
     const h = mount(null)
     fireEvent.click(screen.getByText('Coupons'))
     expect(h.onOpenGroup).toHaveBeenCalledWith('checkout/coupons')
+    fireEvent.click(screen.getByRole('button', { name: 'Open Auth' }))
+    expect(h.onOpenGroup).toHaveBeenCalledWith('auth')
   })
 
   it('never starts a build on its own', () => {
@@ -153,38 +155,57 @@ describe('a group page', () => {
     expect(h.onOpenGroup).toHaveBeenCalledWith(null)
   })
 
-  it('mounts no frame until it scrolls into view, then one per state', () => {
+  it('mounts no frame until it scrolls into view, then the first three, in runcastle’s theme', () => {
     mount('checkout/coupons')
     expect(document.querySelectorAll('iframe')).toHaveLength(0)
     expect(document.querySelectorAll('[data-frame-placeholder]')).toHaveLength(5)
     scrollIntoView()
-    const frames = [...document.querySelectorAll('iframe')].map((f) => f.getAttribute('src'))
-    expect(frames).toEqual([
-      `${MAP_FRAME}coupon-badge--default`,
-      `${MAP_FRAME}coupon-badge--stacked`,
-      `${MAP_FRAME}coupon-field--empty`,
-      `${MAP_FRAME}coupon-field--applied`,
-      `${MAP_FRAME}coupon-field--expired`,
+    const frames = [...document.querySelectorAll('iframe')]
+    expect(frames.map((f) => f.getAttribute('src'))).toEqual([
+      `${MAP_FRAME}coupon-badge--default?globals=theme:dark`,
+      `${MAP_FRAME}coupon-badge--stacked?globals=theme:dark`,
+      `${MAP_FRAME}coupon-field--empty?globals=theme:dark`,
     ])
+    for (const f of frames) fireEvent.load(f)
+    expect(document.querySelectorAll('iframe')).toHaveLength(5)
   })
 
-  it('opens one state larger', () => {
+  it('opens one state larger from its picture', () => {
     mount('checkout/coupons')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open larger' })[3] as HTMLElement)
+    fireEvent.click(screen.getByRole('button', { name: 'Open Coupons · Applied larger' }))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('CouponField · Applied')).toBeTruthy()
-    expect(dialog.querySelector('iframe')?.getAttribute('src')).toBe(`${MAP_FRAME}coupon-field--applied`)
+    expect(within(dialog).getByText('Coupons · Applied')).toBeTruthy()
+    expect(dialog.querySelector('iframe')?.getAttribute('src')).toBe(
+      `${MAP_FRAME}coupon-field--applied?globals=theme:dark`,
+    )
   })
 
-  it('folds the earlier changes behind a disclosure that opens', () => {
+  it('jumps to a step from its chip', () => {
+    model = mapModel({ groups: [onboardingGroup()] })
+    mount('onboarding')
+    const scrolled = vi.fn()
+    const step = document.getElementById('map-step-onboarding--coding-agents')
+    if (!step) throw new Error('no step')
+    step.scrollIntoView = scrolled
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Steps' })).getByRole('button', { name: '3 Coding agents' }))
+    expect(scrolled).toHaveBeenCalledTimes(1)
+  })
+
+  it('folds the earlier story updates behind a disclosure that opens', () => {
     mount('checkout/coupons')
     const details = screen.getByText('3 earlier').closest('details')
     if (!details) throw new Error('no disclosure')
     expect(details.open).toBe(false)
     fireEvent.click(screen.getByText('3 earlier'))
     expect(details.open).toBe(true)
-    expect(details.textContent).toContain('Changed on main, “rename coupon prop”, Aug 20')
-    expect(details.textContent).toContain('Changed by Cart, Jul 1')
+    expect(details.textContent).toContain('Stories updated on main, “rename coupon prop”, Aug 20')
+    expect(details.textContent).toContain('Stories updated by Cart, Jul 1')
+  })
+
+  it('opens a child place from its section', () => {
+    const h = mount('checkout')
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(h.onOpenGroup).toHaveBeenCalledWith('checkout/coupons')
   })
 
   it('opens the feature a change is credited to', () => {

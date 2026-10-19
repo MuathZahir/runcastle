@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it } from 'vitest'
 import { UiStatesSection } from '../src/components/review/UiStatesSection'
 import type { UiStatesModel, UiStatesStory } from '../src/lib/api'
-import { BASE_FRAME, FEATURE_FRAME, uiStatesModel } from './fixtures'
+import { BASE_FRAME, FEATURE_FRAME, uiStatesModel, uiStory } from './fixtures'
 
 /**
  * The "UI states" section's two behaviours a string cannot show (tier 2): the
@@ -61,6 +61,16 @@ describe('UiStatesSection interactions', () => {
     fireEvent.click(buttons[2] as HTMLElement)
     expect(screen.getByRole('dialog').querySelector('iframe')?.getAttribute('src')).toBe(
       blank(`${FEATURE_FRAME}checkout-coupon--expiring&viewMode=story`),
+    )
+  })
+
+  it('opens a page story full-size from its picture, in runcastle’s theme', () => {
+    const page = { ...uiStory('checkout-coupon--expiring', 'Expiring soon', false), page: true }
+    render(<UiStatesSection model={offline(uiStatesModel({ changed: [], new: [page], affected: [] }))} />)
+    expect(screen.queryByRole('button', { name: 'Open larger' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Checkout / Coupon field · Expiring soon, this feature larger' }))
+    expect(screen.getByRole('dialog').querySelector('iframe')?.getAttribute('src')).toBe(
+      blank(`${FEATURE_FRAME}checkout-coupon--expiring&viewMode=story&globals=theme:dark`),
     )
   })
 

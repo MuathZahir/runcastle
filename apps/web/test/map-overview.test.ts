@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { MapModel } from '@runcastle/core'
 import { MapOverview } from '../src/components/map/MapOverview'
 import { MapGroupPage } from '../src/components/map/MapGroupPage'
-import { couponsGroup, mapModel } from './fixtures'
+import { couponsGroup, mapModel, onboardingGroup } from './fixtures'
 
 /**
  * The map's overview and group pages, tier 1: for a given map model the whole
@@ -39,13 +39,33 @@ const catalogue = (over: Partial<MapModel['catalogue']>): MapModel['catalogue'] 
 })
 
 describe('the map overview', () => {
-  it('lists every group with a tally of only what it has, children indented under their parent', () => {
+  it('lists every place with a tally of only what it has, children indented under their parent', () => {
     const html = overview(mapModel())
     const t = text(html)
-    expect(t).toContain('Auth3 UI states · 2 ways in · 1 call')
-    expect(t).toContain('Coupons5 UI states · 2 ways in · 1 call')
+    expect(t).toContain('Auth3 states · 2 ways in · 1 call')
+    expect(t).toContain('Coupons5 states · 2 ways in · 1 call')
+    expect(html.indexOf('>Auth<')).toBeLessThan(html.indexOf('>Checkout<'))
     expect(html.indexOf('>Checkout<')).toBeLessThan(html.indexOf('>Coupons<'))
-    expect(html).toMatch(/class="[^"]*ml-6[^"]*"[^>]*>(?:(?!data-list-row).)*Coupons/)
+    expect(html).toMatch(/class="[^"]*ml-7[^"]*">(?:(?!ml-7).)*>Coupons</)
+    expect(html).not.toMatch(/class="[^"]*ml-7[^"]*">(?:(?!ml-7).)*>Auth</)
+  })
+
+  it('pictures each place by its first state, as a page frame that loads as it scrolls in', () => {
+    const html = overview(mapModel())
+    expect(html).not.toContain('<iframe')
+    expect(html.match(/data-page-frame/g)).toHaveLength(2)
+    expect(html).toContain('aria-label="Open Auth"')
+    expect(html).toContain('aria-label="Open Coupons"')
+    // Checkout has no page of its own: an empty picture keeps the names lined up.
+    expect(html).not.toContain('aria-label="Open Checkout"')
+  })
+
+  it('says there are no pages on the map yet when main’s built catalogue has none', () => {
+    const noPages = mapModel().groups.map((g) => ({ ...g, pages: [] }))
+    expect(text(overview(mapModel({ groups: noPages })))).toContain('No pages on the map yet')
+    expect(text(overview(mapModel()))).not.toContain('No pages on the map yet')
+    const neverBuilt = mapModel({ groups: noPages, catalogue: { state: 'never_built', stale: false, building: false } })
+    expect(text(overview(neverBuilt))).not.toContain('No pages on the map yet')
   })
 
   it('counts in the singular where there is one of a thing', () => {
@@ -55,7 +75,7 @@ describe('the map overview', () => {
       pages: [{ ...badge, states: badge.states.slice(0, 1) }],
       scenarios: couponsGroup().scenarios.slice(0, 1),
     })
-    expect(text(overview(mapModel({ groups: [one] })))).toContain('1 UI state · 1 way in · 1 call')
+    expect(text(overview(mapModel({ groups: [one] })))).toContain('1 state · 1 way in · 1 call')
   })
 
   it('says the catalogue was built from main, and how long ago', () => {
@@ -135,7 +155,7 @@ describe('the map overview', () => {
     const storiesOnly = mapModel().groups.map((g) => ({ ...g, scenarios: [] }))
     const t = text(overview(mapModel({ groups: storiesOnly })))
     expect(t).toContain('No ways in yet · New scenario')
-    expect(t).toContain('Auth3 UI states')
+    expect(t).toContain('Auth3 states')
   })
 
   it('is one empty state with both doors when there are neither stories nor scenarios', () => {
@@ -186,19 +206,53 @@ describe('a group page', () => {
     expect(text(html)).not.toContain('set up')
   })
 
-  it('shows a component’s latest change inline, the earlier ones folded, and no changed or new marks', () => {
-    const html = groupPage(mapModel())
-    const t = text(html)
-    expect(t).toContain('CouponFieldChanged by Coupons, Oct 12')
-    expect(t).toContain('3 earlier')
-    expect(t).toContain('CouponBadgeChanged on main, “fix badge spacing”, Sep 30')
-    expect(t).not.toMatch(/>(Changed|New)</)
-    expect(t).not.toContain('Before')
+  it('heads each page’s states with when its stories were updated, never “Changed by”', () => {
+    const t = text(groupPage(mapModel()))
+    const uiStates = t.slice(t.indexOf('UI states'), t.indexOf('Ways in'))
+    expect(uiStates).toContain('Stories updated on main, “fix badge spacing”, Sep 30Default')
+    expect(uiStates).toContain('Stories updated by Coupons, Oct 123 earlier')
+    expect(uiStates).not.toContain('Changed')
+    expect(uiStates).not.toContain('Before')
+    // Ways in keep their own history's words.
+    expect(t).toContain('Cart with couponChanged by Coupons, Oct 12')
   })
 
-  it('holds every frame as a placeholder until it scrolls into view', () => {
+  it('holds every state as a whole-page placeholder until it scrolls into view', () => {
     const html = groupPage(mapModel())
     expect(html).not.toContain('<iframe')
+    expect(html.match(/data-page-frame/g)).toHaveLength(5)
     expect(html.match(/data-frame-placeholder/g)).toHaveLength(5)
+  })
+
+  it('shows one state per row in step order, captioned, a step’s variant right after it', () => {
+    const html = groupPage(mapModel({ groups: [onboardingGroup()] }), onboardingGroup())
+    const captions = [...html.matchAll(/<figcaption[^>]*>([^<]+)<\/figcaption>/g)].map((m) => m[1])
+    expect(captions).toEqual([
+      '1 Welcome',
+      '2 Git identity',
+      '3 Coding agents',
+      '3 Coding agents · None installed',
+      '4 First project',
+      'Offline',
+    ])
+    // Step 3 and its variant are one step, under one anchor.
+    const step3 = html.slice(html.indexOf('id="map-step-onboarding--coding-agents"'), html.indexOf('id="map-step-onboarding--first-project"'))
+    expect(step3).toContain('3 Coding agents · None installed')
+  })
+
+  it('offers a chip per step, never one per variant or for an unnumbered state', () => {
+    const html = groupPage(mapModel({ groups: [onboardingGroup()] }), onboardingGroup())
+    const steps = html.slice(html.indexOf('aria-label="Steps"'), html.indexOf('</nav>'))
+    expect(text(steps).replace(/^[^>]*>/, '')).toBe('1 Welcome2 Git identity3 Coding agents4 First project')
+  })
+
+  it('shows a parent’s own pages first, then each child place as a section in map order', () => {
+    const checkout = { id: 'checkout', name: 'Checkout', pages: onboardingGroup().pages.slice(0, 1), scenarios: [] }
+    const model = mapModel()
+    const groups = model.groups.map((g) => (g.id === 'checkout' ? checkout : g))
+    const html = groupPage({ ...model, groups }, checkout)
+    expect(headings(html)).toEqual(['UI states', 'Coupons'])
+    expect(html.indexOf('1 Welcome')).toBeLessThan(html.indexOf('>Coupons<'))
+    expect(html.indexOf('>Coupons<')).toBeLessThan(html.indexOf('Default'))
   })
 })
