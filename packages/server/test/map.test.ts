@@ -10,6 +10,8 @@ import {
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { featureContextWithGit } from '../src/mcp/server'
+import { mapGroupNames } from '../src/services/map'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { withTempDataDir } from './helpers/data-dir'
@@ -120,6 +122,26 @@ beforeEach(async () => {
 afterEach(() => {
   rmTemp(repo)
   restore?.()
+})
+
+describe('the groups a planner names new stories and scenarios after', () => {
+  it('lists main’s group names in map order, Ungrouped left out, without a build', async () => {
+    expect(await mapGroupNames(ctx, projectId)).toEqual([])
+    const base = await baseRepo()
+    put('.runcastle/scenarios/checkout/coupons/expired.ts', 'seed()')
+    await commitAll('coupon scenarios')
+    expect(await mapGroupNames(ctx, projectId)).toEqual(['Checkout', 'Checkout › Coupons'])
+
+    // A built catalogue's story titles spell the group the way the story does, and add no new name.
+    writeCatalogue({ commit: base })
+    expect(await mapGroupNames(ctx, projectId)).toEqual(['Checkout', 'Checkout › Coupons'])
+  })
+
+  it('carries the same names as get_feature_context’s mapGroups', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'coupons', baseBranch: 'main' })
+    await baseRepo()
+    expect((await featureContextWithGit(ctx, { featureId: feature.id })).mapGroups).toEqual(['Checkout'])
+  })
 })
 
 describe('project.map', () => {

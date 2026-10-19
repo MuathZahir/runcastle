@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   groupMap,
+  MAP_UNGROUPED,
   MainCatalogueAttempt,
   MainCatalogueRecord,
   PROJECT_ID_PATTERN,
@@ -298,4 +299,33 @@ export async function mapModel(ctx: AppCtx, projectId: string): Promise<MapModel
   }))
 
   return { storiesSetUp, catalogue, groups }
+}
+
+/**
+ * The display names of main's product groups in map order, for a planner or a
+ * scenario session to name a new story or scenario after (decision 4). Level two
+ * reads `Parent › Child`; Ungrouped is left out. Cheaper than {@link mapModel}:
+ * it reads main's stored story index and main's scenario paths, computes no
+ * history, and never builds.
+ */
+export async function mapGroupNames(ctx: AppCtx, projectId: string): Promise<string[]> {
+  const repo = requireProjectById(ctx, projectId).repoPath
+  const main = await detectMainBranch(repo)
+  let tip: string
+  try {
+    tip = (await simpleGit(repo).revparse([`${main}^{commit}`])).trim()
+  } catch {
+    return []
+  }
+  const storiesSetUp = await fileExistsAt(repo, tip, STORIES_CONFIG_REL)
+  const stored = readCatalogue(projectId)
+  const built = storiesSetUp && stored.record !== null && stored.index !== null
+  const skeletons = groupMap({
+    stories: built && stored.index ? Object.values(stored.index.entries) : [],
+    scenarios: await listScenarios(repo, { ref: tip }),
+  })
+  const names = new Map(skeletons.map((g) => [g.id, g.name]))
+  return skeletons
+    .filter((g) => g.id !== MAP_UNGROUPED)
+    .map((g) => (g.parentId ? `${names.get(g.parentId) ?? ''} › ${g.name}` : g.name))
 }

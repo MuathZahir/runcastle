@@ -866,6 +866,8 @@ export interface ScenarioBrief {
   runner?: string
   /** Every path under `.runcastle/scenarios/` at HEAD, `_` shared code included. */
   files: readonly string[]
+  /** The product groups on main's map, for a new scenario's folder to reuse; empty when none. */
+  mapGroups: readonly string[]
   /** What the human asked for, from ＋ New scenario. */
   description?: string
   /** The scenario Fix it was clicked on, and how it failed. */
@@ -940,7 +942,7 @@ export function renderScenarioFollowUp(
  * picker uses, never by the agent running the script itself.
  */
 export function renderScenarioPrompt(brief: ScenarioBrief): string {
-  const { project, feature, branch, identity, envOverlay, driveUrl, runner, files, setup } = brief
+  const { project, feature, branch, identity, envOverlay, driveUrl, runner, files, mapGroups, setup } = brief
   const kv = (vars: Readonly<Record<string, string>>): string[] =>
     Object.entries(vars).map(([k, v]) => `- \`${k}\` = \`${v}\``)
   const overlay = kv(envOverlay)
@@ -1032,6 +1034,12 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
       : 'There are no scenario files on this branch yet.',
     ...files.map((f) => `- \`${f}\``),
     '',
+    ...(mapGroups.length > 0
+      ? [
+          `Groups already on the map: ${mapGroups.join(', ')}. Put a new scenario in the folder for one of these when it fits (kebab case); start a new group only on purpose.`,
+          '',
+        ]
+      : []),
     '## The login route',
     'Only if the app has sign-in. Being signed in lives partly in the browser, which neither a',
     'scenario nor runcastle can write: the app runs in a cross-origin panel. So the app carries one',
