@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, within } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import type { RouterOutputs } from '../../../../apps/web/src/lib/api'
 import { AppAt } from '../../../storybook/app-at'
+import { failLoudly } from '../../../storybook/fail-loudly'
 import { withApi } from '../../../storybook/fake-api'
 import { withShell } from '../../../storybook/shell-fakes'
 
@@ -116,28 +117,56 @@ export default meta
 type Story = StoryObj<typeof meta>
 type Canvas = ReturnType<typeof within>
 
-const heading = (canvas: Canvas, name: string | RegExp) => canvas.findByRole('heading', { name })
-const click = async (canvas: Canvas, name: string) => userEvent.click(await canvas.findByRole('button', { name }))
+/**
+ * A walk through the wizard: the page, and a user who types without per-key
+ * delays, so a frame whose timers the browser throttles (a map frame scrolled
+ * off screen) cannot stall mid-word.
+ */
+type Walk = { canvas: Canvas; user: ReturnType<typeof userEvent.setup> }
+
+const walk = (canvasElement: HTMLElement): Walk => ({
+  canvas: within(canvasElement),
+  user: userEvent.setup({ delay: null }),
+})
+
+/**
+ * Generous, because each screen animates in (FirstRunWizard.tsx; DESIGN.md's
+ * Motion section) and a throttled frame advances that slowly.
+ */
+const PATIENCE = { timeout: 15_000 }
+
+/** Waits until the screen titled `name` has finished arriving. */
+async function onScreen({ canvas }: Walk, name: string | RegExp) {
+  await waitFor(() => expect(canvas.getByRole('heading', { name })).toBeVisible(), PATIENCE)
+}
+
+/** Clicks a button once it is there and enabled. */
+async function press({ canvas, user }: Walk, name: string) {
+  const button = await canvas.findByRole('button', { name }, PATIENCE)
+  await waitFor(() => expect(button).toBeEnabled(), PATIENCE)
+  await user.click(button)
+}
 
 /** The steps a user takes to each screen, each one checked before the next. */
-async function toIdentity(canvas: Canvas) {
-  await heading(canvas, /driven through a pipeline/)
-  await click(canvas, 'Set up runcastle')
-  await expect(await heading(canvas, 'Set your git identity')).toBeVisible()
+async function toIdentity(walk: Walk) {
+  await onScreen(walk, /driven through a pipeline/)
+  await press(walk, 'Set up runcastle')
+  await onScreen(walk, 'Set your git identity')
 }
 
-async function toCodingAgents(canvas: Canvas) {
-  await toIdentity(canvas)
-  await userEvent.type(await canvas.findByPlaceholderText('Ada Lovelace'), 'Ada Lovelace')
-  await userEvent.type(await canvas.findByPlaceholderText('ada@example.com'), 'ada@example.com')
-  await click(canvas, 'Continue')
-  await expect(await heading(canvas, 'Connect a coding agent')).toBeVisible()
+async function toCodingAgents(walk: Walk) {
+  await toIdentity(walk)
+  const { canvas, user } = walk
+  await user.type(await canvas.findByPlaceholderText('Ada Lovelace', {}, PATIENCE), 'Ada Lovelace')
+  await user.type(await canvas.findByPlaceholderText('ada@example.com', {}, PATIENCE), 'ada@example.com')
+  await press(walk, 'Continue')
+  await onScreen(walk, 'Connect a coding agent')
 }
 
-async function toAfkBurns(canvas: Canvas) {
-  await toCodingAgents(canvas)
-  await click(canvas, 'Continue')
-  await expect(await heading(canvas, 'Run burns unattended?')).toBeVisible()
+async function toAfkBurns(walk: Walk) {
+  await toCodingAgents(walk)
+  await press(walk, 'Continue')
+  await onScreen(walk, 'Run burns unattended?')
 }
 
 /** One agent's card: its name and the one-word status the card wears. */
@@ -151,59 +180,62 @@ export const Welcome: Story = { name: '1 Welcome' }
 
 export const GitIdentity: Story = {
   name: '2 Git identity',
-  play: async ({ canvasElement }) => toIdentity(within(canvasElement)),
+  play: failLoudly(async ({ canvasElement }) => toIdentity(walk(canvasElement))),
 }
 
 export const CodingAgents: Story = {
   name: '3 Coding agents',
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await toCodingAgents(canvas)
+  play: failLoudly(async ({ canvasElement }) => {
+    const user = walk(canvasElement)
+    const { canvas } = user
+    await toCodingAgents(user)
     await expectCard(canvas, 'Claude Code', 'Not signed in')
     await expectCard(canvas, 'Codex', 'Not installed')
     await expect(canvas.getByRole('button', { name: 'Run claude auth login' })).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Continue' })).toBeDisabled()
-  },
+  }),
 }
 
 export const CodingAgentsNoneInstalled: Story = {
   name: '3 Coding agents · None installed',
   parameters: onboarding(noneInstalled),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await toCodingAgents(canvas)
+  play: failLoudly(async ({ canvasElement }) => {
+    const user = walk(canvasElement)
+    const { canvas } = user
+    await toCodingAgents(user)
     await expectCard(canvas, 'Claude Code', 'Not installed')
     await expectCard(canvas, 'Codex', 'Not installed')
     await expect(canvas.getByText(/Connect at least one agent to continue/)).toBeVisible()
     await expect(canvas.getByRole('button', { name: 'Continue' })).toBeDisabled()
-  },
+  }),
 }
 
 export const CodingAgentsClaudeCodeSignedIn: Story = {
   name: '3 Coding agents · Claude Code signed in',
   parameters: onboarding(claudeSignedIn),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await toCodingAgents(canvas)
+  play: failLoudly(async ({ canvasElement }) => {
+    const user = walk(canvasElement)
+    const { canvas } = user
+    await toCodingAgents(user)
     await expectCard(canvas, 'Claude Code', 'Ready')
     await expectCard(canvas, 'Codex', 'Not installed')
     await expect(canvas.getByRole('button', { name: 'Continue' })).toBeEnabled()
-  },
+  }),
 }
 
 export const AfkBurns: Story = {
   name: '4 AFK burns',
   parameters: onboarding(claudeSignedIn),
-  play: async ({ canvasElement }) => toAfkBurns(within(canvasElement)),
+  play: failLoudly(async ({ canvasElement }) => toAfkBurns(walk(canvasElement))),
 }
 
 export const FirstProject: Story = {
   name: '5 First project',
   parameters: onboarding(claudeSignedIn),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await toAfkBurns(canvas)
-    await click(canvas, 'Skip for now')
-    await expect(await heading(canvas, 'Open your first project')).toBeVisible()
-  },
+  play: failLoudly(async ({ canvasElement }) => {
+    const user = walk(canvasElement)
+    await toAfkBurns(user)
+    await press(user, 'Skip for now')
+    await onScreen(user, 'Open your first project')
+  }),
 }
