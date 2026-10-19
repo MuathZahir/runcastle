@@ -39,7 +39,7 @@ import { UI_STATES_LOG_LINES } from './ui-states'
 /** `git log` format for one history line: sha, commit time (s) and subject. */
 export const MAP_HISTORY_FORMAT = '%H%x1f%ct%x1f%s'
 
-/** git's default `--no-ff` merge subject, as {@link mergeFeature} leaves it. */
+/** git's default `--no-ff` merge subject, as git.ts `mergeFeature` leaves it. */
 const FEATURE_MERGE = /^Merge branch 'feature\/([^']+)'/
 
 /**
@@ -152,16 +152,18 @@ function attemptLogTail(projectId: string, file: string | undefined): string {
 // Caches, by main's tip
 // ---------------------------------------------------------------------------
 
-/** "Main has moved since", by (project, tip, catalogue commit). */
-const staleCache = new Map<string, boolean>()
+// Each holds one project's latest answer only: a new tip replaces the last.
+
+/** "Main has moved since", per project, for (tip, catalogue commit). */
+const staleCache = new Map<string, { key: string; stale: boolean }>()
 
 interface ScenarioFacts {
   history: MapHistoryEntry[]
   requestLine?: string
 }
 
-/** Scenario history and call request lines, by (project, tip). */
-const scenarioCache = new Map<string, Map<string, ScenarioFacts>>()
+/** Scenario history and call request lines, per project, for its tip. */
+const scenarioCache = new Map<string, { tip: string; facts: Map<string, ScenarioFacts> }>()
 
 async function isStale(
   repoPath: string,
@@ -169,9 +171,9 @@ async function isStale(
   tip: string,
   record: MainCatalogueRecord,
 ): Promise<boolean> {
-  const key = `${projectId}\0${tip}\0${record.commit}`
-  const cached = staleCache.get(key)
-  if (cached !== undefined) return cached
+  const key = `${tip}\0${record.commit}`
+  const cached = staleCache.get(projectId)
+  if (cached?.key === key) return cached.stale
   let stale: boolean
   try {
     const out = await simpleGit(repoPath).raw(['diff', '--name-only', record.commit, tip])
@@ -180,7 +182,7 @@ async function isStale(
     // The catalogue's commit is gone from the repo: nothing says it still matches.
     stale = true
   }
-  staleCache.set(key, stale)
+  staleCache.set(projectId, { key, stale })
   return stale
 }
 
@@ -200,9 +202,8 @@ async function scenarioFacts(
   tip: string,
   scenarios: { file: string; hasCall: boolean }[],
 ): Promise<Map<string, ScenarioFacts>> {
-  const key = `${projectId}\0${tip}`
-  const cached = scenarioCache.get(key)
-  if (cached) return cached
+  const cached = scenarioCache.get(projectId)
+  if (cached?.tip === tip) return cached.facts
   const facts = new Map<string, ScenarioFacts>()
   for (const s of scenarios) {
     const callFile = callFileOf(s.file)
@@ -210,7 +211,7 @@ async function scenarioFacts(
     const requestLine = s.hasCall ? await requestLineAt(repoPath, tip, callFile) : undefined
     facts.set(s.file, { history, ...(requestLine !== undefined ? { requestLine } : {}) })
   }
-  scenarioCache.set(key, facts)
+  scenarioCache.set(projectId, { tip, facts })
   return facts
 }
 
