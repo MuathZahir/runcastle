@@ -4,6 +4,7 @@ import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { endSession } from '../src/pty/end-session'
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
@@ -446,6 +447,27 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         "the agent's headless wake exited (code 1) during its turn — it had 1 message(s); open the chat to see " +
           'where it stopped — last output: API Error: overloaded',
       )
+    })
+
+    it('reads a wake the human ended (End session) as asked for, not as a failure', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
+        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
+
+        // The kill makes the headless `claude -p` exit 1, as on 2026-10-19.
+        endSession(ctx, ids[0] as string)
+        exited(f.id, ids[0] as string, 1)
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
+      expect(types(f.id)).not.toContain('lead.wake_failed')
     })
 
     it('puts them back on an early death, retries once fresh, then waits for a real trigger', async () => {

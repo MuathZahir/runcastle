@@ -8,7 +8,7 @@ import {
 } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { launchSession, type LaunchSessionInput, type LaunchSessionResult } from '../launcher/launcher'
-import { activeSessionsForFeature, getSessionRow } from '../launcher/sessions'
+import { activeSessionsForFeature, getSessionRow, takeRequestedEnd } from '../launcher/sessions'
 import { subscribeLive } from './bus'
 import { emit, getEventRow } from './events'
 import { tagRuncastlePrompt } from './lead-prompt'
@@ -363,7 +363,9 @@ export function startLeadWaker(ctx: AppCtx, launch: LeadLauncher = launchSession
       if (!WAKE_TRIGGERS.has(event.type)) return
       const fromExit = EXIT_TRIGGERS.has(event.type)
       if (fromExit && sessionId) {
-        const exitCode = typeof data.exitCode === 'number' ? data.exitCode : null
+        // A wake the human ended (End session) stopped because they asked: read
+        // it as a clean exit, so it is neither a failure nor retried.
+        const exitCode = takeRequestedEnd(sessionId) ? 0 : typeof data.exitCode === 'number' ? data.exitCode : null
         // A spawn that failed printed nothing; its event's message is the why.
         const tail =
           typeof data.tail === 'string' ? data.tail : event.type === 'session.spawn_failed' ? event.message : ''

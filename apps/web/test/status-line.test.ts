@@ -180,6 +180,12 @@ describe('featureStatus', () => {
     )
   })
 
+  it('a wake that already failed ends its grace at once: the failure shows, not Working', () => {
+    expect(
+      featureStatus(input({ leadWake: { pendingSince: 1_000, failed: { at: 5_000, exitCode: null } }, now: 6_000 })),
+    ).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'the agent’s run failed', primary: 'chat' })
+  })
+
   it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
     const failed = { at: 30, exitCode: 1 }
     expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).why).toBe(

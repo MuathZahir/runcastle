@@ -53,7 +53,10 @@ export interface FeatureStatusInput {
   agentWorking: boolean
   /** A drive of this feature holds the drive slot right now. */
   driving: boolean
-  /** The feature's live session is a self-planning run (headless chat, purpose `self-plan`). */
+  /**
+   * The feature's live session is a self-planning run (headless chat, purpose
+   * `self-plan`), or Plan it yourself was just clicked and that run is launching.
+   */
   selfPlanning: boolean
   /** The lead's latest wake and wake failure, as {@link leadWakeOf} reads them off the event log. */
   leadWake?: LeadWake
@@ -190,13 +193,15 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   }
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
-  // read as Working forever.
+  // read as Working forever, and one that already failed is not on its way:
+  // its failure ends the grace at once.
   const pendingSince = input.leadWake?.pendingSince
-  const waking = pendingSince !== undefined && input.now - pendingSince < LEAD_WAKE_GRACE_MS
+  const failed = input.leadWake?.failed
+  const failedSinceWake = !!failed && failed.at >= (pendingSince ?? -Infinity)
+  const waking = pendingSince !== undefined && !failedSinceWake && input.now - pendingSince < LEAD_WAKE_GRACE_MS
   if (agentWorking || waking) return working()
 
-  const failed = input.leadWake?.failed
-  if (failed && failed.at > (latest?.startedAt ?? -Infinity) && failed.at > (pendingSince ?? -Infinity)) {
+  if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
     return { kind: 'waiting', label: 'Waiting for you', why: wakeFailedWhy(failed.exitCode), primary: 'chat' }
   }
   // Once a round has returned and the agent's turn is over, nothing runs and

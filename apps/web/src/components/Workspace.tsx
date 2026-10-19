@@ -373,14 +373,20 @@ export function Workspace({
   // is reading all share one fetch.
   const decisions = useFeatureDoc(featureId, docPath(q.data?.docs ?? [], 'decisions.md')).content
 
+  // Settles once the refetches land, for a mutation that must stay pending
+  // until the page shows what it caused.
+  const refresh = () =>
+    Promise.all([
+      utils.feature.get.invalidate({ id: featureId }),
+      utils.feature.list.invalidate(),
+      // The timeline too, and not as an afterthought: the bar's conflict banner and
+      // its drive-taken stamp are derived from the event log, so a mutation that
+      // refreshed only the feature row would leave the thing it just caused
+      // waiting on the push pipe to become visible.
+      utils.events.invalidate(),
+    ])
   const invalidate = () => {
-    void utils.feature.get.invalidate({ id: featureId })
-    void utils.feature.list.invalidate()
-    // The timeline too, and not as an afterthought: the bar's conflict banner and
-    // its drive-taken stamp are derived from the event log, so a mutation that
-    // refreshed only the feature row would leave the thing it just caused
-    // waiting on the push pipe to become visible.
-    void utils.events.invalidate()
+    void refresh()
   }
 
   // Every session this page launches lands on the Chat tab once it is up
@@ -516,8 +522,10 @@ export function Workspace({
   // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
   // and launch as above, but the session is a headless run with no terminal, so
   // neither lands on the Chat tab — the plan is watched from the Overview.
+  // It stays pending until the feature is refetched with the new run on it, so
+  // the row reads Planning by itself from the click on, never idle in between.
   const launchSelfPlan = trpc.feature.launchSession.useMutation({
-    onSuccess: invalidate,
+    onSuccess: refresh,
     onError: (e) => toast.push(e.message),
   })
   const startSelfPlan = trpc.feature.start.useMutation({
@@ -926,7 +934,7 @@ export function Workspace({
         declarations: declarationsQ.data ?? [],
         agentWorking: !!liveSession && !liveSession.awaitingInput,
         driving: isDriving,
-        selfPlanning: !!liveSession && isSelfPlanRun(liveSession),
+        selfPlanning: (!!liveSession && isSelfPlanRun(liveSession)) || launchSelfPlan.isPending,
         leadWake,
         now,
       })

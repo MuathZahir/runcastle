@@ -1,5 +1,5 @@
 import type { AppCtx } from '../db/types'
-import { getSessionRow, landProjectSession, markSessionEnded } from '../launcher/sessions'
+import { getSessionRow, landProjectSession, markSessionEnded, noteRequestedEnd } from '../launcher/sessions'
 import { emitForSession } from '../services/events'
 import { ptyRegistry } from './registry'
 
@@ -22,6 +22,8 @@ export interface EndSessionResult {
  */
 export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
   const registry = ptyRegistry()
+  // Before the kill: the exit it fires must read as asked for, not as a crash.
+  noteRequestedEnd(sessionId)
   const killed = registry.kill(sessionId)
   registry.remove(sessionId)
 
