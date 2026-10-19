@@ -430,5 +430,24 @@ describe('a headless run on a feature', () => {
       handlePtyExit(ctx, human, chat, {}, 0)
       expect(runEnded(human.id)).toEqual([])
     })
+
+    it('carries the last lines of a non-zero exit’s output, control codes stripped, and none for a clean one', async () => {
+      const f = await feature('wake-dies')
+      const wake = createSessionRow(ctx, { featureId: f.id, kind: 'chat', purpose: 'lead-wake', worktreePath: 'C:\\wt' })
+      const output = Buffer.from(
+        [...Array.from({ length: 30 }, (_, i) => `line ${i}`), '', '\x1b[31mAPI Error: overloaded\x1b[0m', ''].join('\r\n'),
+      )
+      handlePtyExit(ctx, f, wake, {}, 1, output)
+      const exited = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.pty_exited')
+      const tail = (exited?.data as { tail: string }).tail
+      expect(tail.split('\n')).toHaveLength(20)
+      expect(tail.startsWith('line 11\n')).toBe(true)
+      expect(tail.endsWith('line 29\nAPI Error: overloaded')).toBe(true)
+
+      const clean = createSessionRow(ctx, { featureId: f.id, kind: 'chat', purpose: 'lead-wake', worktreePath: 'C:\\wt' })
+      handlePtyExit(ctx, f, clean, {}, 0, output)
+      const last = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.pty_exited').at(-1)
+      expect(last?.data).toEqual({ sessionId: clean.id, exitCode: 0 })
+    })
   })
 })

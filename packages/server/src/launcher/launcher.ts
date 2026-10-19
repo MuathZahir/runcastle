@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
 import type {
   AgentRuntime,
   Feature,
@@ -1504,10 +1505,28 @@ export interface SpawnMeta {
   findBackgroundSession?: (agentSessionId: string) => Promise<BackgroundSession | undefined>
 }
 
+/** How much of a failed process's output `session.pty_exited` carries. */
+const EXIT_TAIL_LINES = 20
+const EXIT_TAIL_CHARS = 2000
+
+/**
+ * The last lines a process printed, as text: control sequences stripped, blank
+ * lines dropped, at most {@link EXIT_TAIL_LINES} lines and
+ * {@link EXIT_TAIL_CHARS} characters — the newest kept when it is cut.
+ */
+export function exitTail(output: Buffer): string {
+  const lines = stripVTControlCharacters(output.toString('utf8'))
+    .split(/\r?\n|\r/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() !== '')
+  return lines.slice(-EXIT_TAIL_LINES).join('\n').slice(-EXIT_TAIL_CHARS)
+}
+
 /**
  * PTY exit finalizer (exported for the vitest seam). Marks the session ended
- * and emits `session.pty_exited`. When a RESUME attempt dies before ever
- * reaching `live` (the session-start hook never fired — e.g. claude exited with
+ * and emits `session.pty_exited` — carrying the output's {@link exitTail} when
+ * the process exited non-zero, so whatever reads the failure can say why.
+ * When a RESUME attempt dies before ever reaching `live` (the session-start hook never fired — e.g. claude exited with
  * "No conversation found with session ID"), it additionally emits
  * `session.resume_failed` so the UI can toast — once the runtime has been asked
  * whether a background session of its own holds the conversation, which is the
@@ -1520,6 +1539,7 @@ export function handlePtyExit(
   session: SessionRow,
   meta: SpawnMeta,
   exitCode: number | undefined | null,
+  output?: Buffer,
 ): Promise<void> | undefined {
   const diedBeforeLive = getSessionRow(ctx, session.id)?.status === 'launching'
   markSessionEnded(ctx, session.id)
@@ -1559,10 +1579,11 @@ export function handlePtyExit(
     // orchestrator's `session.run_ended` is for the runs it started.
     emitRunEnded(ctx, session, exitCode)
   }
+  const tail = exitCode !== 0 && output ? exitTail(output) : ''
   emitForSession(ctx, session, {
     type: 'session.pty_exited',
     message: ptyExitMessage(exitCode),
-    data: { sessionId: session.id, exitCode: exitCode ?? null },
+    data: { sessionId: session.id, exitCode: exitCode ?? null, ...(tail ? { tail } : {}) },
   })
   return resumeFailureReported
 }
@@ -1649,7 +1670,8 @@ function spawnEmbeddedPty(
       cmd: file,
       args,
       opts: { cwd: worktreePath, env, cols: 80, rows: 24, useConpty: true },
-      onExit: ({ exitCode }) => void handlePtyExit(ctx, feature, session, exitMeta, exitCode),
+      onExit: ({ exitCode }) =>
+        void handlePtyExit(ctx, feature, session, exitMeta, exitCode, entry.buffer.snapshot()),
     })
     // The session is about to write docs; watch them so the UI sees the spec
     // appear as it is written. Feature sessions only — the prepare and project

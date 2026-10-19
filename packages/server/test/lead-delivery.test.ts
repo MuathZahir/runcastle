@@ -385,9 +385,13 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       }
     }
 
-    const exited = (featureId: string, sessionId: string, exitCode: number): void => {
+    const exited = (featureId: string, sessionId: string, exitCode: number, tail?: string): void => {
       markSessionEnded(ctx, sessionId)
-      emit(ctx, featureId, { type: 'session.pty_exited', message: 'exited', data: { sessionId, exitCode } })
+      emit(ctx, featureId, {
+        type: 'session.pty_exited',
+        message: 'exited',
+        data: { sessionId, exitCode, ...(tail ? { tail } : {}) },
+      })
     }
 
     it('releases them once the agent checks in, so its later exit puts nothing back', async () => {
@@ -403,7 +407,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
         expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
 
-        exited(f.id, ids[0] as string, 1)
+        exited(f.id, ids[0] as string, 0)
         await new Promise((r) => setTimeout(r, 10))
       } finally {
         stop()
@@ -411,6 +415,37 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       expect(ids).toHaveLength(1)
       expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
       expect(types(f.id)).not.toContain('lead.wake_failed')
+    })
+
+    it('says why when the checked-in agent exits non-zero in its turn, without retrying', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
+        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
+
+        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:lead\nAPI Error: overloaded')
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
+      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
+      const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
+      expect(failed).toHaveLength(1)
+      expect(failed[0]?.data).toEqual({
+        sessionId: ids[0],
+        exitCode: 1,
+        tail: 'Loaded skill runcastle:lead\nAPI Error: overloaded',
+        messages: 1,
+      })
+      expect(failed[0]?.message).toBe(
+        "the agent's headless wake exited (code 1) during its turn — it had 1 message(s); open the chat to see " +
+          'where it stopped — last output: API Error: overloaded',
+      )
     })
 
     it('puts them back on an early death, retries once fresh, then waits for a real trigger', async () => {
@@ -440,7 +475,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       }
       const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
       expect(failed.map((e) => e.data?.failures)).toEqual([1, 2])
-      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, messages: 1 })
+      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, tail: '', messages: 1 })
     })
 
     it('counts a clean exit as delivered even when no hook said so', async () => {
@@ -498,5 +533,6 @@ describe('the lead waker — a headless resume when nothing is open', () => {
     expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
     const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')
     expect(failed?.message).toContain('another terminal is open')
+    expect(failed?.data).toEqual({ exitCode: null, tail: 'another terminal is open', messages: 1 })
   })
 })
