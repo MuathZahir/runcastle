@@ -55,9 +55,12 @@ import { requireProjectById } from './repo'
 /** Story history kept per story file, newest first. */
 const STORY_HISTORY_CAP = 50
 
-/** The throwaway branch a main build's sandbox checks out. */
-export function mainBuildBranch(projectId: string): string {
-  return `runcastle/stories-main/${projectId}`
+/**
+ * The throwaway branch a main build's sandbox checks out: one per commit, so
+ * an older build still out is never re-pinned under its sandbox.
+ */
+export function mainBuildBranch(commit: string): string {
+  return `runcastle/stories-main/${commit.slice(0, 12)}`
 }
 
 export interface MainBuildOptions {
@@ -160,12 +163,13 @@ export async function buildMainCatalogue(
       config: ctx.config,
       project,
       sha: commit,
-      branch: mainBuildBranch(projectId),
+      branch: mainBuildBranch(commit),
       outDir,
       deps,
     })
     if (await superseded(repo, projectId, commit)) {
       removeQuietly(outDir)
+      if (readAttempt(projectId)?.commit === commit) clearAttemptRecord(projectId)
       return { status: 'superseded', commit }
     }
     if (build.status === 'built') {
@@ -179,7 +183,7 @@ export async function buildMainCatalogue(
       }
       writeJson(join(outDir, MAIN_CATALOGUE_RECORD), record)
       swapInto(outDir, mainStoriesDir(projectId))
-      removeQuietly(attemptDir)
+      clearAttemptRecord(projectId)
       emitProject(ctx, projectId, {
         type: 'map.catalogue.built',
         message: `Main's catalogue built at ${commit.slice(0, 7)}`,
@@ -455,9 +459,15 @@ async function changedBetween(repoPath: string, from: string, to: string): Promi
 }
 
 async function isAncestor(repoPath: string, ancestor: string, of: string): Promise<boolean> {
+  // Not `merge-base --is-ancestor`: its "no" is a bare exit 1, which
+  // simple-git does not raise.
   try {
-    await simpleGit(repoPath).raw(['merge-base', '--is-ancestor', ancestor, of])
-    return true
+    const g = simpleGit(repoPath)
+    const [base, self] = await Promise.all([
+      g.raw(['merge-base', ancestor, of]),
+      g.revparse([`${ancestor}^{commit}`]),
+    ])
+    return base.trim() === self.trim()
   } catch {
     return false
   }
@@ -473,6 +483,21 @@ function readAttempt(projectId: string): MainCatalogueAttempt | null {
     readJson(join(mainStoriesAttemptDir(projectId), MAIN_CATALOGUE_ATTEMPT)),
   )
   return parsed.success ? parsed.data : null
+}
+
+/**
+ * Retire the attempt record and its log once a catalogue lands. Any other
+ * attempt's out dir stays for its own build; a fresh start clears leftovers.
+ */
+function clearAttemptRecord(projectId: string): void {
+  const dir = mainStoriesAttemptDir(projectId)
+  for (const name of [MAIN_CATALOGUE_ATTEMPT, STORIES_BUILD_LOG]) {
+    try {
+      rmSync(join(dir, name), { force: true })
+    } catch {
+      // best-effort, as removeQuietly
+    }
+  }
 }
 
 function writeAttempt(projectId: string, attempt: MainCatalogueAttempt): void {

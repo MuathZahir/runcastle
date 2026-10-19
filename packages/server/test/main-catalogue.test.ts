@@ -1,0 +1,423 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import {
+  MainCatalogueAttempt,
+  MainCatalogueRecord,
+  type Project,
+  type StoriesManifest,
+} from '@runcastle/core'
+import {
+  MAIN_CATALOGUE_ATTEMPT,
+  MAIN_CATALOGUE_RECORD,
+  STORIES_MANIFEST,
+  featureStoriesDir,
+  mainStoriesAttemptDir,
+  mainStoriesDir,
+  storiesRoot,
+} from '@runcastle/core/paths'
+import { simpleGit } from 'simple-git'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { AppCtx } from '../src/db/types'
+import { listByProject } from '../src/services/events'
+import { __resetTestDriveState, createFeatureBranch } from '../src/services/git'
+import {
+  __setMainBuildDeps,
+  buildMainCatalogue,
+  mainBuildSettled,
+  startMainBuild,
+} from '../src/services/main-catalogue'
+import { getFeatureRow } from '../src/services/repo'
+import { createCallerFactory } from '../src/trpc/context'
+import { appRouter } from '../src/trpc/router'
+import type { GateExecResult, WithGateSandbox } from '../src/workflows/review-gates'
+import type { StoriesBuildDeps } from '../src/workflows/stories-build'
+import { withTempDataDir } from './helpers/data-dir'
+import { makeTestCtx } from './helpers/db'
+import { seedFeature, seedProject, rmTemp, tmpRepo } from './helpers/fixtures'
+
+/**
+ * Main's catalogue (the-map-of-stories-and-scenarios decision 5) at its seams:
+ * `project.buildMapCatalogue` with the sandbox faked, the merge flow's
+ * promote-or-build step, and `project.map` reading what they wrote — against
+ * a real repo with a `--no-ff` feature merge on main.
+ */
+
+let restore: (() => void) | undefined
+let ctx: AppCtx
+let repo: string
+let project: Project
+
+const caller = () => createCallerFactory(appRouter)(ctx)
+
+function put(rel: string, body: string): void {
+  const abs = join(repo, ...rel.split('/'))
+  mkdirSync(dirname(abs), { recursive: true })
+  writeFileSync(abs, body)
+}
+
+async function commitAll(message: string): Promise<string> {
+  const g = simpleGit(repo)
+  await g.add('.')
+  await g.commit(message)
+  return (await g.revparse(['HEAD'])).trim()
+}
+
+const rev = async (ref: string): Promise<string> => (await simpleGit(repo).revparse([ref])).trim()
+
+function entry(id: string, title: string, importPath: string) {
+  return { id, title, name: id.split('--')[1], importPath, type: 'story' }
+}
+
+const BUTTON = entry('checkout-button--primary', 'Checkout/Button', './src/Button.stories.tsx')
+const CARD = entry('checkout-card--empty', 'Checkout/Card', './src/Card.stories.tsx')
+const INDEX = { v: 5, entries: { [BUTTON.id]: BUTTON, [CARD.id]: CARD } }
+/** Button's story imports Button; Card's imports Card, which imports Button. */
+const STATS = {
+  modules: [
+    { name: './src/Button.tsx', reasons: [{ moduleName: BUTTON.importPath }, { moduleName: './src/Card.tsx' }] },
+    { name: './src/Card.tsx', reasons: [{ moduleName: CARD.importPath }] },
+    { name: BUTTON.importPath, reasons: [] },
+    { name: CARD.importPath, reasons: [] },
+  ],
+}
+const CATALOGUE = { 'index.json': INDEX, 'preview-stats.json': STATS, 'iframe.html': '<html>catalogue</html>' }
+
+/** main: stories set up, Button and Card with their stories. */
+async function baseRepo(): Promise<string> {
+  const g = simpleGit(repo)
+  await g.init(['-b', 'main'])
+  await g.addConfig('user.email', 'test@runcastle.dev')
+  await g.addConfig('user.name', 'Runcastle Test')
+  await g.addConfig('core.autocrlf', 'false')
+  put('README.md', 'readme')
+  put('.runcastle/stories.json', '{"build":"storybook build --stats-json -o {out}"}')
+  put('src/Button.tsx', 'button v1')
+  put('src/Card.tsx', 'import "./Button"')
+  put('src/Button.stories.tsx', 'import "./Button"')
+  put('src/Card.stories.tsx', 'import "./Card"')
+  return commitAll('base')
+}
+
+/** A `feature/<slug>` branch with `edits` committed, merged `--no-ff` as runcastle does. */
+async function mergeFeatureBranch(slug: string, edits: Record<string, string>): Promise<void> {
+  const g = simpleGit(repo)
+  await g.checkoutLocalBranch(`feature/${slug}`)
+  for (const [rel, body] of Object.entries(edits)) put(rel, body)
+  await commitAll(`${slug} work`)
+  await g.checkout('main')
+  await g.merge(['--no-ff', `feature/${slug}`])
+}
+
+interface Fake {
+  deps: StoriesBuildDeps
+  /** The commit each build ran at. */
+  builds: string[]
+}
+
+/**
+ * A host-style sandbox whose build writes `files` into the out dir and exits
+ * as `answer` says, after `gate` when given; the branch is pinned for real.
+ */
+function fakeSandbox(
+  opts: { files?: Record<string, unknown>; answer?: GateExecResult; gate?: Promise<void> } = {},
+): Fake {
+  const fake: Fake = { builds: [], deps: {} }
+  const withSandbox: WithGateSandbox = async (branch, use, options) =>
+    use({
+      ...(options?.outDir ? { outPath: options.outDir } : {}),
+      exec: async () => {
+        fake.builds.push(await rev(branch))
+        await opts.gate
+        for (const [name, body] of Object.entries(opts.files ?? CATALOGUE)) {
+          writeFileSync(join(options!.outDir!, name), typeof body === 'string' ? body : JSON.stringify(body))
+        }
+        return opts.answer ?? { exitCode: 0, stdout: 'built ok', stderr: '' }
+      },
+    })
+  fake.deps = { withSandbox, now: () => 1234 }
+  return fake
+}
+
+function readRecord(): MainCatalogueRecord {
+  return MainCatalogueRecord.parse(
+    JSON.parse(readFileSync(join(mainStoriesDir(project.id), MAIN_CATALOGUE_RECORD), 'utf8')),
+  )
+}
+
+function readAttempt(): MainCatalogueAttempt {
+  return MainCatalogueAttempt.parse(
+    JSON.parse(readFileSync(join(mainStoriesAttemptDir(project.id), MAIN_CATALOGUE_ATTEMPT), 'utf8')),
+  )
+}
+
+const catalogueEvents = (): string[] =>
+  listByProject(ctx, project.id)
+    .map((e) => e.type)
+    .filter((t) => t.startsWith('map.catalogue.'))
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>((r) => (resolve = r))
+  return { promise, resolve }
+}
+
+beforeEach(async () => {
+  __resetTestDriveState()
+  restore = withTempDataDir()
+  ctx = await makeTestCtx()
+  repo = tmpRepo()
+  await baseRepo()
+  project = seedProject(ctx, repo)
+})
+
+afterEach(async () => {
+  await mainBuildSettled(project.id)
+  __setMainBuildDeps(undefined)
+  __resetTestDriveState()
+  restore?.()
+  rmTemp(repo)
+})
+
+describe('project.buildMapCatalogue', () => {
+  it("builds main's tip, swaps it into main's slot and writes main.json", async () => {
+    seedFeature(ctx, project.id, { slug: 'coupons', title: 'Coupons', phase: 'shipped' })
+    await mergeFeatureBranch('coupons', { 'src/Button.tsx': 'button v2' })
+    const tip = await rev('main')
+    const fake = fakeSandbox()
+    __setMainBuildDeps(fake.deps)
+
+    const res = await caller().project.buildMapCatalogue({ projectId: project.id })
+
+    expect(res).toEqual({ started: true, commit: tip })
+    expect(catalogueEvents()).toEqual(['map.catalogue.started'])
+    await mainBuildSettled(project.id)
+    expect(fake.builds).toEqual([tip])
+    const record = readRecord()
+    expect(record).toMatchObject({ projectId: project.id, commit: tip, builtAt: 1234, source: 'built' })
+    expect(record.dependsOn).toEqual([
+      'src/Button.stories.tsx',
+      'src/Button.tsx',
+      'src/Card.stories.tsx',
+      'src/Card.tsx',
+    ])
+    expect(readFileSync(join(mainStoriesDir(project.id), 'iframe.html'), 'utf8')).toBe('<html>catalogue</html>')
+    expect(existsSync(join(mainStoriesAttemptDir(project.id), MAIN_CATALOGUE_ATTEMPT))).toBe(false)
+    expect(catalogueEvents()).toEqual(['map.catalogue.started', 'map.catalogue.built'])
+
+    const map = await caller().project.map({ projectId: project.id })
+    expect(map.catalogue).toMatchObject({ state: 'built', commit: tip, stale: false, building: false })
+    expect(map.groups.map((g) => g.name)).toEqual(['Checkout'])
+  })
+
+  it("credits each story's changes, its imports' included, to the feature merged on main", async () => {
+    seedFeature(ctx, project.id, { slug: 'coupons', title: 'Coupons', phase: 'shipped' })
+    await mergeFeatureBranch('coupons', { 'src/Button.tsx': 'button v2' })
+    put('src/Card.tsx', 'import "./Button" // tweaked')
+    await commitAll('tweak the card')
+    put('docs/notes.md', 'notes')
+    await commitAll('docs only')
+    const merge = await rev('main~2')
+    __setMainBuildDeps(fakeSandbox().deps)
+
+    await caller().project.buildMapCatalogue({ projectId: project.id })
+    await mainBuildSettled(project.id)
+
+    const { storyHistory } = readRecord()
+    // Button's story reaches only Button: the merge, then the base commit.
+    expect(storyHistory['src/Button.stories.tsx']?.map((e) => e.subject)).toEqual([
+      "Merge branch 'feature/coupons'",
+      'base',
+    ])
+    // Card's story reaches Card and, through it, Button: newest first.
+    expect(storyHistory['src/Card.stories.tsx']?.map((e) => e.subject)).toEqual([
+      'tweak the card',
+      "Merge branch 'feature/coupons'",
+      'base',
+    ])
+    expect(storyHistory['src/Button.stories.tsx']?.[0]).toMatchObject({ commit: merge, featureSlug: 'coupons' })
+
+    const map = await caller().project.map({ projectId: project.id })
+    const button = map.groups[0]?.components.find((c) => c.name === 'Button')
+    expect(button?.history[0]).toMatchObject({ featureTitle: 'Coupons', commit: merge })
+  })
+
+  it('keeps the last good catalogue and records the failure with its log', async () => {
+    __setMainBuildDeps(fakeSandbox().deps)
+    const first = await caller().project.buildMapCatalogue({ projectId: project.id })
+    await mainBuildSettled(project.id)
+    put('src/Button.tsx', 'button v3')
+    const tip = await commitAll('break the button')
+    __setMainBuildDeps(
+      fakeSandbox({ files: {}, answer: { exitCode: 1, stdout: '', stderr: 'boom: Button broke' } }).deps,
+    )
+
+    const second = await caller().project.buildMapCatalogue({ projectId: project.id })
+    await mainBuildSettled(project.id)
+
+    expect(second).toEqual({ started: true, commit: tip })
+    expect(readRecord().commit).toBe(first.commit)
+    expect(existsSync(join(mainStoriesDir(project.id), 'iframe.html'))).toBe(true)
+    expect(readAttempt()).toMatchObject({ commit: tip, status: 'failed', log: 'build.log', finishedAt: 1234 })
+    expect(readFileSync(join(mainStoriesAttemptDir(project.id), 'build.log'), 'utf8')).toContain('boom: Button broke')
+    expect(catalogueEvents().slice(-2)).toEqual(['map.catalogue.started', 'map.catalogue.failed'])
+
+    const map = await caller().project.map({ projectId: project.id })
+    expect(map.catalogue).toMatchObject({ state: 'built', commit: first.commit, stale: true })
+    expect(map.catalogue.failure?.log).toContain('boom: Button broke')
+  })
+
+  it('answers a request while a build runs with the running one', async () => {
+    const gate = deferred()
+    const fake = fakeSandbox({ gate: gate.promise })
+    __setMainBuildDeps(fake.deps)
+
+    const first = await caller().project.buildMapCatalogue({ projectId: project.id })
+    const second = await caller().project.buildMapCatalogue({ projectId: project.id })
+    expect(second).toEqual({ started: false, commit: first.commit })
+    expect(readAttempt()).toMatchObject({ status: 'building', commit: first.commit })
+    expect((await caller().project.map({ projectId: project.id })).catalogue.building).toBe(true)
+
+    gate.resolve()
+    await mainBuildSettled(project.id)
+    expect(fake.builds).toHaveLength(1)
+    expect(catalogueEvents()).toEqual(['map.catalogue.started', 'map.catalogue.built'])
+  })
+
+  it("discards an older commit's result that lands after a newer catalogue", async () => {
+    const older = await rev('main')
+    put('src/Button.tsx', 'button v2')
+    const newer = await commitAll('restyle the button')
+    const slow = deferred()
+    const olderBuild = fakeSandbox({ gate: slow.promise })
+    __setMainBuildDeps(olderBuild.deps)
+
+    expect(await startMainBuild(ctx, project.id, { commit: older })).toEqual({ started: true, commit: older })
+    // The newer tip's catalogue lands while the older build is still out.
+    expect(await buildMainCatalogue(ctx, project.id, { commit: newer, deps: fakeSandbox().deps })).toEqual({
+      status: 'built',
+      commit: newer,
+    })
+
+    slow.resolve()
+    await mainBuildSettled(project.id)
+    expect(olderBuild.builds).toEqual([older])
+    expect(readRecord().commit).toBe(newer)
+    expect(existsSync(join(mainStoriesAttemptDir(project.id), MAIN_CATALOGUE_ATTEMPT))).toBe(false)
+    expect(catalogueEvents()).toEqual(['map.catalogue.started', 'map.catalogue.started', 'map.catalogue.built'])
+  })
+})
+
+describe('at merge', () => {
+  /** A review build of `feature/<slug>` at its tip, as a review pass leaves it. */
+  function writeReviewBuild(featureId: string, commit: string): void {
+    const dir = featureStoriesDir(featureId)
+    mkdirSync(dir, { recursive: true })
+    for (const [name, body] of Object.entries(CATALOGUE)) {
+      writeFileSync(join(dir, name), typeof body === 'string' ? body : JSON.stringify(body))
+    }
+    writeFileSync(join(dir, 'build.log'), 'built ok')
+    const manifest: StoriesManifest = {
+      featureId,
+      commit,
+      baseCommit: null,
+      base: 'none',
+      lap: 1,
+      reviewTicketId: 't1',
+      builtAt: 1,
+      status: 'built',
+      log: 'build.log',
+      stories: [],
+    }
+    writeFileSync(join(dir, STORIES_MANIFEST), JSON.stringify(manifest))
+  }
+
+  /** A feature at review on `feature/<slug>`, its review build at the branch's first commit. */
+  async function featureAtReview(slug: string, base = 'main') {
+    await createFeatureBranch(project, slug, base)
+    const g = simpleGit(repo)
+    await g.checkout(`feature/${slug}`)
+    put('src/Button.tsx', 'button v2')
+    const reviewed = await commitAll('restyle the button')
+    const feature = seedFeature(ctx, project.id, { slug, title: 'Coupons', phase: 'review', baseBranch: base })
+    writeReviewBuild(feature.id, reviewed)
+    return { feature, g }
+  }
+
+  async function merge(featureId: string) {
+    const g = simpleGit(repo)
+    await g.checkout('main')
+    return caller().feature.merge({ featureId })
+  }
+
+  it("promotes the review build into main's slot when nothing it depends on changed", async () => {
+    const { feature } = await featureAtReview('coupons')
+    // A docs-only commit after the review build, as a checkpoint lands.
+    put('docs/features/coupons/spec.md', 'checkpoint')
+    await commitAll('runcastle: checkpoint')
+    const fake = fakeSandbox()
+    __setMainBuildDeps(fake.deps)
+
+    const res = await merge(feature.id)
+
+    expect(res.ok).toBe(true)
+    const mergeCommit = (await simpleGit(repo).raw(['log', '--merges', '-1', '--format=%H', 'main'])).trim()
+    const record = readRecord()
+    expect(record).toMatchObject({ projectId: project.id, commit: mergeCommit, source: 'promoted', featureId: feature.id })
+    expect(record.storyHistory['src/Button.stories.tsx']?.[0]).toMatchObject({ featureSlug: 'coupons' })
+    expect(readFileSync(join(mainStoriesDir(project.id), 'iframe.html'), 'utf8')).toBe('<html>catalogue</html>')
+    for (const name of [STORIES_MANIFEST, 'build.log']) {
+      expect(existsSync(join(mainStoriesDir(project.id), name))).toBe(false)
+    }
+    expect(existsSync(featureStoriesDir(feature.id))).toBe(false)
+    expect(fake.builds).toEqual([])
+    expect(catalogueEvents()).toEqual(['map.catalogue.promoted'])
+
+    const map = await caller().project.map({ projectId: project.id })
+    expect(map.catalogue).toMatchObject({ state: 'built', commit: mergeCommit, stale: false })
+  })
+
+  it("builds main in the background when a story's imported file changed after review", async () => {
+    const { feature } = await featureAtReview('coupons')
+    put('src/Button.tsx', 'button v3')
+    await commitAll('restyle again after review')
+    const fake = fakeSandbox()
+    __setMainBuildDeps(fake.deps)
+
+    const res = await merge(feature.id)
+    await mainBuildSettled(project.id)
+
+    expect(res.ok).toBe(true)
+    expect(fake.builds).toEqual([await rev('main')])
+    expect(readRecord()).toMatchObject({ source: 'built', commit: await rev('main') })
+    expect(existsSync(featureStoriesDir(feature.id))).toBe(false)
+    expect(catalogueEvents()).toEqual(['map.catalogue.started', 'map.catalogue.built'])
+  })
+
+  it('changes nothing about the map when the feature merges into another branch', async () => {
+    await simpleGit(repo).branch(['develop'])
+    const { feature } = await featureAtReview('coupons', 'develop')
+    const fake = fakeSandbox()
+    __setMainBuildDeps(fake.deps)
+
+    const res = await merge(feature.id)
+
+    expect(res.ok).toBe(true)
+    expect(existsSync(mainStoriesDir(project.id))).toBe(false)
+    expect(existsSync(featureStoriesDir(feature.id))).toBe(false)
+    expect(fake.builds).toEqual([])
+    expect(catalogueEvents()).toEqual([])
+  })
+
+  it('never fails the ship when the catalogue cannot be kept', async () => {
+    const { feature } = await featureAtReview('coupons')
+    // Main's slot cannot be made: its parent is a file.
+    mkdirSync(storiesRoot(), { recursive: true })
+    writeFileSync(join(storiesRoot(), 'main'), 'in the way')
+
+    const res = await merge(feature.id)
+
+    expect(res.ok).toBe(true)
+    expect(getFeatureRow(ctx, feature.id).status).toBe('shipped')
+    expect(catalogueEvents()).toEqual(['map.catalogue.failed'])
+  })
+})
