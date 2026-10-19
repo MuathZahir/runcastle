@@ -28,6 +28,7 @@ import {
   type GateSandboxStep,
   type WithGateSandbox,
   burnGateSandbox,
+  errorDetail,
   errorText,
   execWithTimeout,
   headline,
@@ -537,8 +538,4 @@ function countKinds(stories: ClassifiedStory[]): { changed: number; new: number;
 
 function emitBuilt(input: StoriesBuildInput, type: string, message: string, data?: unknown): void {
   input.emit?.({ type, message, ...(data === undefined ? {} : { data }) })
-}
-
-function errorDetail(err: unknown): string {
-  return err instanceof Error ? (err.stack ?? err.message) : String(err)
 }

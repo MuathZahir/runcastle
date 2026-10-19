@@ -4,6 +4,7 @@ import {
   MainCatalogueAttempt,
   MainCatalogueRecord,
   type Project,
+  RuncastleConfig,
   type StoriesManifest,
 } from '@runcastle/core'
 import {
@@ -29,7 +30,7 @@ import {
 import { getFeatureRow } from '../src/services/repo'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
-import type { GateExecResult, WithGateSandbox } from '../src/workflows/review-gates'
+import { type GateExecResult, type WithGateSandbox, burnGateSandbox } from '../src/workflows/review-gates'
 import type { StoriesBuildDeps } from '../src/workflows/stories-build'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -264,6 +265,36 @@ describe('project.buildMapCatalogue', () => {
     const map = await caller().project.map({ projectId: project.id })
     expect(map.catalogue).toMatchObject({ state: 'built', commit: first.commit, stale: true })
     expect(map.catalogue.failure?.log).toContain('boom: Button broke')
+  })
+
+  it("records a failed sandbox setup as couldnt_run, with the setup's output as build.log", async () => {
+    const config = RuncastleConfig.parse({ sandbox: 'docker', burnCache: 'off', burnWorkspace: 'isolated' })
+    const commands: string[] = []
+    const withSandbox = burnGateSandbox(config, project, {
+      open: async () => ({
+        exec: async (command) => {
+          commands.push(command)
+          return { exitCode: 128, stdout: '', stderr: "fatal: couldn't find remote ref runcastle/stories-main" }
+        },
+        close: async () => ({}),
+      }),
+    })
+    __setMainBuildDeps({ withSandbox, now: () => 1234 })
+
+    const { commit } = await caller().project.buildMapCatalogue({ projectId: project.id })
+    await mainBuildSettled(project.id)
+
+    expect(commands).toHaveLength(1)
+    expect(readAttempt()).toMatchObject({
+      commit,
+      status: 'couldnt_run',
+      reason: 'the sandbox could not be set up: the sync-and-install setup exited 128',
+      log: 'build.log',
+    })
+    expect(readFileSync(join(mainStoriesAttemptDir(project.id), 'build.log'), 'utf8')).toContain(
+      "fatal: couldn't find remote ref runcastle/stories-main",
+    )
+    expect(catalogueEvents()).toEqual(['map.catalogue.started', 'map.catalogue.failed'])
   })
 
   it('answers a request while a build runs with the running one', async () => {
