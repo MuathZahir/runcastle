@@ -108,7 +108,11 @@ describe('the tickets skill', () => {
     // right after its scenario twin
     expect(text.indexOf('<ship-a-story>')).toBe(text.indexOf('</ship-a-scenario>') + '</ship-a-scenario>\n\n'.length)
     expect(block).toContain('**Ship a story when a UI state is worth seeing.**')
-    expect(block).toContain('`{ setUp }`')
+    expect(block).toContain('`{ setUp, pages }`')
+    expect(block).toContain('**The page rule.**')
+    expect(block).toContain('Update `Feature/Review` page stories')
+    expect(block).toContain('page-stories.md')
+    expect(block).toContain('**Component stories stay optional.**')
     expect(block).toContain('Ship `.runcastle/stories/<group>/<Component>.stories.<ext>`')
     expect(block).toContain('never by mocking the app')
     expect(block).toContain('Copy changes and settings toggles get none.')
