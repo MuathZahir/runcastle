@@ -34,24 +34,56 @@ describe('sharedStoryFiles', () => {
   const reach = (entries: Record<string, string[]>): Map<string, Set<string>> =>
     new Map(Object.entries(entries).map(([file, stories]) => [file, new Set(stories)]))
   const names = (n: number): string[] => Array.from({ length: n }, (_, i) => `s${i}.stories.tsx`)
+  const noImporters = new Map<string, Set<string>>()
+  const importedBy = (entries: Record<string, string[]>): Map<string, Set<string>> =>
+    new Map(Object.entries(entries).map(([file, by]) => [file, new Set(by)]))
 
   it('shares a file reached by more than a quarter of the stories', () => {
-    const shared = sharedStoryFiles(reach({ 'theme.ts': names(8), 'helper.ts': names(2) }), 10)
+    const shared = sharedStoryFiles(
+      reach({ 'theme.ts': names(8), 'helper.ts': names(2) }),
+      10,
+      noImporters,
+    )
     expect([...shared]).toEqual(['theme.ts'])
   })
 
   it('needs at least 3 stories, however small the catalogue', () => {
-    expect(sharedStoryFiles(reach({ 'helper.ts': names(2) }), 6).size).toBe(0)
-    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 6).size).toBe(1)
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(2) }), 6, noImporters).size).toBe(0)
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 6, noImporters).size).toBe(1)
   })
 
   it('needs more than a quarter, not exactly a quarter', () => {
-    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 12).size).toBe(0)
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 12, noImporters).size).toBe(0)
+  })
+
+  it('shares a hub two stories reach when 3 modules import it, as a barrel', () => {
+    const importers = importedBy({
+      'feature-ui.ts': ['ConflictCard.tsx', 'ReviewBody.tsx', 'NoteRow.tsx'],
+      'ConflictCard.tsx': ['s0.stories.tsx', 'ReviewBody.tsx'],
+    })
+    const shared = sharedStoryFiles(
+      reach({ 'feature-ui.ts': names(2), 'ConflictCard.tsx': names(2) }),
+      8,
+      importers,
+    )
+    expect([...shared]).toEqual(['feature-ui.ts'])
+  })
+
+  it('never makes a hub of a file only one story reaches', () => {
+    const importers = importedBy({ 'own-helper.ts': ['a.tsx', 'b.tsx', 'c.tsx'] })
+    expect(sharedStoryFiles(reach({ 'own-helper.ts': names(1) }), 8, importers).size).toBe(0)
+  })
+
+  it('never makes a hub of a component a story imports directly', () => {
+    const [own, page] = names(2)
+    const importers = importedBy({ 'Notice.tsx': [own!, 'a.tsx', 'b.tsx'] })
+    const stories = reach({ 'Notice.tsx': [own!, page!], [own!]: [own!], [page!]: [page!] })
+    expect(sharedStoryFiles(stories, 8, importers).size).toBe(0)
   })
 
   it('never shares a story file', () => {
     const files = names(5)
-    expect(sharedStoryFiles(reach({ [files[0]!]: files }), 5).size).toBe(0)
+    expect(sharedStoryFiles(reach({ [files[0]!]: files }), 5, noImporters).size).toBe(0)
   })
 })
 

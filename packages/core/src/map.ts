@@ -228,20 +228,29 @@ export function catalogueDependsOn(index: StoryIndex, stats: PreviewStats): stri
 
 /**
  * The files too widely shared to say anything about one story's history: those
- * reached by more than a quarter of all story files and by at least 3 of them.
- * `reach` maps a repo file to the story files whose import set holds it. A
- * story file is never shared. History only — the catalogue's dependency set
- * (staleness, promotion) keeps the full graph, since a theme change does change
- * every frame.
+ * reached by more than a quarter of all story files and by at least 3 of them,
+ * and the hubs — files more than one story reaches that 3 or more modules
+ * import directly, like a barrel. On a small catalogue a barrel reached by two
+ * stories passes the quarter rule, yet re-exports the project's changelog. A
+ * file a story imports directly is the component it shows, never a hub.
+ * `reach` maps a repo file to the story files whose import set holds it;
+ * `importers` maps it to the modules importing it directly. A story file is
+ * never shared. History only — the catalogue's dependency set (staleness,
+ * promotion) keeps the full graph, since a theme change does change every frame.
  */
 export function sharedStoryFiles(
   reach: Map<string, Set<string>>,
   storyCount: number,
+  importers: Map<string, Set<string>>,
 ): Set<string> {
+  const isStory = (file: string): boolean => reach.get(file)?.has(file) ?? false
   const shared = new Set<string>()
   for (const [file, stories] of reach) {
-    if (stories.has(file)) continue
-    if (stories.size >= 3 && stories.size > storyCount / 4) shared.add(file)
+    if (isStory(file)) continue
+    const by = [...(importers.get(file) ?? [])]
+    const wide = stories.size >= 3 && stories.size > storyCount / 4
+    const hub = stories.size >= 2 && by.length >= 3 && !by.some(isStory)
+    if (wide || hub) shared.add(file)
   }
   return shared
 }

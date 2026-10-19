@@ -136,7 +136,8 @@ Burn agents need nothing new, because they follow the path the planner wrote int
 
 **A story's set leaves shared files out** (lap 2, decision 12).
 - **What counts as shared:** a file reached by more than a quarter of the catalogue's story files, and by at least 3 of them, both counted over the build's import graph. Primitives, the theme and API types are the usual cases.
-- **What a story's set holds:** its own story file, which is never shared, plus the files it reaches that are not shared.
+  - **A hub is shared too:** a file reached by at least 2 story files and imported directly by at least 3 modules, unless a story file imports it directly (then it is the component on show). This catches a barrel, which on a small catalogue only two stories may reach; lap 2's drive found the `feature-ui` barrel crediting 50 features to ConflictCard.
+- **What a story's set holds:** its own story file, which is never shared, plus the files it reaches without passing through a shared one, so what a barrel re-exports stays out with it.
 - **History only:** the catalogue's "depends on" set for staleness and promotion keeps the full graph, because a theme change does change every frame.
 - **Why:** lap 1's drive found history over the whole graph credited 37–50 features to every runcastle component.
 

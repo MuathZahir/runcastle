@@ -362,8 +362,9 @@ const COMMIT_SENTINEL = '\x1e'
  * Each story file's changes on main's first-parent line up to `tip`, newest
  * first and capped: a commit counts when its diff against its first parent
  * touches the story file or anything it imports (per the build's import
- * graph) — except shared files, which most stories reach, so a change to a
- * primitive or the theme would credit every feature to every component.
+ * graph) — except shared files, which most stories reach or many modules
+ * import, so a change to a primitive, the theme or a barrel would credit
+ * every feature to every component.
  * Staleness and promotion still use the full graph. Uncredited — the map names features by title at read time. One
  * `git log` pass for every story; empty when git cannot answer.
  */
@@ -378,8 +379,13 @@ export async function computeStoryHistory(
       .filter((e) => e.type === 'story')
       .map((e) => normaliseStoryPath(e.importPath)),
   )
-  const storiesReaching = reachingStories(storyFiles, stats)
-  for (const file of sharedStoryFiles(storiesReaching, storyFiles.size)) storiesReaching.delete(file)
+  const graph = importGraph(stats)
+  const shared = sharedStoryFiles(
+    reachingStories(storyFiles, graph.imports, new Set()),
+    storyFiles.size,
+    graph.importers,
+  )
+  const storiesReaching = reachingStories(storyFiles, graph.imports, shared)
 
   const history: Record<string, MapHistoryEntry[]> = {}
   for (const story of storyFiles) history[story] = []
@@ -409,9 +415,13 @@ export async function computeStoryHistory(
   return history
 }
 
-/** Repo file → the story files whose import set holds it (a story file reaches itself). */
-function reachingStories(storyFiles: Set<string>, stats: PreviewStats): Map<string, Set<string>> {
+/** The build's repo-file import graph, both ways: what each file imports, and what imports it. */
+function importGraph(stats: PreviewStats): {
+  imports: Map<string, Set<string>>
+  importers: Map<string, Set<string>>
+} {
   const imports = new Map<string, Set<string>>()
+  const importers = new Map<string, Set<string>>()
   for (const mod of stats.modules) {
     const imported = normaliseStoryPath(mod.name)
     if (isNodeModule(imported)) continue
@@ -421,15 +431,31 @@ function reachingStories(storyFiles: Set<string>, stats: PreviewStats): Map<stri
       let set = imports.get(importer)
       if (!set) imports.set(importer, (set = new Set()))
       set.add(imported)
+      let by = importers.get(imported)
+      if (!by) importers.set(imported, (by = new Set()))
+      by.add(importer)
     }
   }
+  return { imports, importers }
+}
+
+/**
+ * Repo file → the story files whose import set holds it (a story file reaches
+ * itself). The walk never passes through a `shared` file, so what a barrel
+ * re-exports stays out with it.
+ */
+function reachingStories(
+  storyFiles: Set<string>,
+  imports: Map<string, Set<string>>,
+  shared: Set<string>,
+): Map<string, Set<string>> {
   const reaching = new Map<string, Set<string>>()
   for (const story of storyFiles) {
     const seen = new Set([story])
     const queue = [story]
     for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
       for (const next of imports.get(file) ?? []) {
-        if (seen.has(next)) continue
+        if (seen.has(next) || shared.has(next)) continue
         seen.add(next)
         queue.push(next)
       }

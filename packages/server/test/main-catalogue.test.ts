@@ -269,6 +269,39 @@ describe('project.buildMapCatalogue', () => {
     expect(subjects('src/B.stories.tsx')).toEqual(['stories'])
   })
 
+  it('leaves a barrel two stories reach out of history, with everything it re-exports', async () => {
+    // Tile and Page reach the barrel; three modules import it, so it is a hub
+    // even though two of eight stories is not more than a quarter.
+    const names = ['Tile', 'Page', 'C', 'D', 'E', 'F', 'G', 'H']
+    const entries = names.map((n) => entry(`g-${n.toLowerCase()}--x`, `G/${n}`, `./src/${n}.stories.tsx`))
+    const index = { v: 5, entries: Object.fromEntries(entries.map((e) => [e.id, e])) }
+    const modules = [
+      { name: './src/Tile.tsx', reasons: [{ moduleName: './src/Tile.stories.tsx' }, { moduleName: './src/Page.tsx' }] },
+      { name: './src/Page.tsx', reasons: [{ moduleName: './src/Page.stories.tsx' }] },
+      { name: './src/Other.tsx', reasons: [{ moduleName: './src/Page.tsx' }] },
+      {
+        name: './src/barrel.ts',
+        reasons: ['Tile', 'Page', 'Other'].map((n) => ({ moduleName: `./src/${n}.tsx` })),
+      },
+      { name: './src/barrel/runs.ts', reasons: [{ moduleName: './src/barrel.ts' }] },
+      ...entries.map((e) => ({ name: e.importPath, reasons: [] })),
+    ]
+    seedFeature(ctx, project.id, { slug: 'runs', title: 'Runs', phase: 'shipped' })
+    seedFeature(ctx, project.id, { slug: 'tile', title: 'Tile', phase: 'shipped' })
+    for (const n of names) put(`src/${n}.stories.tsx`, `story ${n}`)
+    for (const f of ['Tile.tsx', 'Page.tsx', 'Other.tsx', 'barrel.ts', 'barrel/runs.ts']) put(`src/${f}`, 'v1')
+    await commitAll('stories')
+    await mergeFeatureBranch('runs', { 'src/barrel/runs.ts': 'v2', 'src/barrel.ts': 'v2' })
+    await mergeFeatureBranch('tile', { 'src/Tile.tsx': 'v2' })
+    const tip = await rev('main')
+
+    const history = await computeStoryHistory(repo, tip, index as never, { modules } as never)
+
+    const subjects = (file: string) => history[file]?.map((e) => e.subject)
+    expect(subjects('src/Tile.stories.tsx')).toEqual(["Merge branch 'feature/tile'", 'stories'])
+    expect(subjects('src/Page.stories.tsx')).toEqual(["Merge branch 'feature/tile'", 'stories'])
+  })
+
   it('keeps the last good catalogue and records the failure with its log', async () => {
     __setMainBuildDeps(fakeSandbox().deps)
     const first = await caller().project.buildMapCatalogue({ projectId: project.id })
