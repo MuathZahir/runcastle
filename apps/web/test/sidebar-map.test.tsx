@@ -32,9 +32,9 @@ vi.mock('../src/trpc', () => ({
         useQuery: () => ({
           data: {
             groups: [
-              { id: 'checkout', name: 'Checkout', components: [], scenarios: [] },
-              { id: 'checkout/coupons', name: 'Coupons', parentId: 'checkout', components: [], scenarios: [] },
-              { id: MAP_UNGROUPED, name: 'Ungrouped', components: [], scenarios: [] },
+              { id: 'checkout', name: 'Checkout', pages: [], scenarios: [] },
+              { id: 'checkout/coupons', name: 'Coupons', parentId: 'checkout', pages: [], scenarios: [] },
+              { id: MAP_UNGROUPED, name: 'Ungrouped', pages: [], scenarios: [] },
             ],
           },
         }),

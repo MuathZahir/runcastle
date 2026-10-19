@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import {
   catalogueDependsOn,
   isNodeModule,
+  isPageStory,
   MainCatalogueAttempt,
   MainCatalogueRecord,
   normaliseStoryPath,
@@ -379,13 +380,22 @@ export async function computeStoryHistory(
       .filter((e) => e.type === 'story')
       .map((e) => normaliseStoryPath(e.importPath)),
   )
+  // A page story renders the whole app, so its history is its own file alone:
+  // it takes no part in the import walk or the shared-file cut.
+  const componentFiles = new Set([...storyFiles].filter((f) => !isPageStory(f)))
   const graph = importGraph(stats)
   const shared = sharedStoryFiles(
-    reachingStories(storyFiles, graph.imports, new Set()),
-    storyFiles.size,
+    reachingStories(componentFiles, graph.imports, new Set()),
+    componentFiles.size,
     graph.importers,
   )
-  const storiesReaching = reachingStories(storyFiles, graph.imports, shared)
+  const storiesReaching = reachingStories(componentFiles, graph.imports, shared)
+  for (const story of storyFiles) {
+    if (!isPageStory(story)) continue
+    let set = storiesReaching.get(story)
+    if (!set) storiesReaching.set(story, (set = new Set()))
+    set.add(story)
+  }
 
   const history: Record<string, MapHistoryEntry[]> = {}
   for (const story of storyFiles) history[story] = []

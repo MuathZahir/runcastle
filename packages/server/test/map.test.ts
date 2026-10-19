@@ -42,7 +42,7 @@ async function commitAll(message: string): Promise<string> {
   return (await g.revparse(['HEAD'])).trim()
 }
 
-const STORY_FILE = 'src/CouponField.stories.tsx'
+const STORY_FILE = '.runcastle/stories/pages/1-checkout/Checkout.stories.tsx'
 
 /** The base commit: stories set up, one story file, two scenarios (one with a call). */
 async function baseRepo(opts: { stories?: boolean } = {}): Promise<string> {
@@ -86,8 +86,8 @@ function writeCatalogue(record: Partial<MainCatalogueRecord> & { commit: string 
     JSON.stringify({
       v: 5,
       entries: {
-        'checkout-couponfield--expired': entry('checkout-couponfield--expired', 'Checkout/CouponField', 'Expired', `./${STORY_FILE}`),
-        'checkout-couponfield--applied': entry('checkout-couponfield--applied', 'Checkout/CouponField', 'Applied', `./${STORY_FILE}`),
+        'checkout-couponfield--expired': entry('checkout-couponfield--expired', 'Checkout', '1 Expired', `./${STORY_FILE}`),
+        'checkout-couponfield--applied': entry('checkout-couponfield--applied', 'Checkout', '2 Applied', `./${STORY_FILE}`),
         'button--primary': entry('button--primary', 'Button', 'Primary', './src/Button.stories.tsx'),
       },
     }),
@@ -204,7 +204,7 @@ describe('project.map', () => {
     const model = await readMap()
     expect(model.storiesSetUp).toBe(false)
     expect(model.catalogue).toEqual({ state: 'not_set_up', stale: false, building: false })
-    expect(model.groups.flatMap((g) => g.components)).toEqual([])
+    expect(model.groups.flatMap((g) => g.pages)).toEqual([])
   })
 
   it('is never_built with stories set up but no main catalogue, building from the attempt', async () => {
@@ -215,7 +215,7 @@ describe('project.map', () => {
     expect(model.catalogue).toEqual({ state: 'never_built', stale: false, building: true })
   })
 
-  it('serves the built catalogue: components, states, frame URLs under /main/<projectId>/ and story history', async () => {
+  it('serves the built catalogue: pages, states, frame URLs under /main/<projectId>/ and story history', async () => {
     const base = await baseRepo()
     const history: MapHistoryEntry[] = [
       { commit: 'abc', at: 2000, subject: "Merge branch 'feature/coupons'", featureSlug: 'coupons' },
@@ -228,27 +228,40 @@ describe('project.map', () => {
       state: 'built', commit: base, builtAt: 1234, stale: false, building: false,
     })
     const checkout = model.groups.find((g) => g.id === 'checkout')
-    expect(checkout?.components).toEqual([
+    expect(checkout?.pages).toEqual([
       {
         importPath: STORY_FILE,
-        name: 'CouponField',
         history: [{ ...history[0], featureId: feature.id, featureTitle: 'Coupons' }],
         states: [
           {
             id: 'checkout-couponfield--expired',
-            name: 'Expired',
+            name: '1 Expired',
+            step: 1,
             frameUrl: `http://localhost:4999/main/${projectId}/iframe.html?id=checkout-couponfield--expired&viewMode=story`,
           },
           {
             id: 'checkout-couponfield--applied',
-            name: 'Applied',
+            name: '2 Applied',
+            step: 2,
             frameUrl: `http://localhost:4999/main/${projectId}/iframe.html?id=checkout-couponfield--applied&viewMode=story`,
           },
         ],
       },
     ])
-    const ungrouped = model.groups.find((g) => g.id === '~ungrouped')
-    expect(ungrouped?.components.map((c) => [c.name, c.history])).toEqual([['Button', []]])
+    // The component story (Button) is in the catalogue but not on the map.
+    expect(model.groups.flatMap((g) => g.pages.map((p) => p.importPath))).toEqual([STORY_FILE])
+  })
+
+  it('lists mapped places for planning: place-named groups, and null while main has no catalogue', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'coupons', baseBranch: 'main' })
+    const base = await baseRepo()
+    const stories = async () => (await featureContextWithGit(ctx, { featureId: feature.id })).stories
+    expect(await stories()).toEqual({ setUp: true, pages: null })
+
+    writeCatalogue({ commit: base })
+    // `Checkout` has a page story; the scenario-only `Ungrouped` does not count.
+    expect(await stories()).toEqual({ setUp: true, pages: ['Checkout'] })
+    expect(await mapGroupNames(ctx, projectId)).toEqual(['Checkout'])
   })
 
   it('reports a failed attempt with its log tail, keeping the last good catalogue', async () => {

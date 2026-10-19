@@ -11,13 +11,22 @@ import {
   touchesCatalogue,
   type MapGroupSkeleton,
 } from '../src/map'
-import { PreviewStats, StoryIndex, type StoryIndexEntry } from '../src/stories'
+import { isPageStory, PreviewStats, StoryIndex, type StoryIndexEntry } from '../src/stories'
 
 const story = (title: string, name: string, file: string): StoryIndexEntry => ({
   id: `${title.toLowerCase().replace(/\//g, '-')}--${name.toLowerCase()}`,
   title,
   name,
   importPath: `./src/${file}`,
+  type: 'story',
+})
+
+/** A page story: its file sits under `.runcastle/stories/pages/`. */
+const page = (title: string, name: string, file: string): StoryIndexEntry => ({
+  id: `${title.toLowerCase().replace(/\//g, '-')}--${name.toLowerCase().replace(/\W+/g, '-')}`,
+  title,
+  name,
+  importPath: `./.runcastle/stories/pages/${file}`,
   type: 'story',
 })
 
@@ -100,38 +109,57 @@ describe('mapNameKey', () => {
 })
 
 describe('groupMap', () => {
-  it('groups a story by its title minus the component, one or two levels', () => {
+  it('recognises page stories by their path alone', () => {
+    expect(isPageStory('./.runcastle/stories/pages/1-onboarding/Welcome.stories.tsx')).toBe(true)
+    expect(isPageStory('.runcastle/stories/pages/A.stories.tsx')).toBe(true)
+    expect(isPageStory('./.runcastle/stories/burn/Lane.stories.tsx')).toBe(false)
+    expect(isPageStory('./src/pages/A.stories.tsx')).toBe(false)
+  })
+
+  it('drops component stories: only page stories reach the map', () => {
+    const groups = groupMap({
+      stories: [story('Checkout/CouponField', 'Expired', 'CouponField.stories.tsx')],
+      scenarios: [],
+    })
+    expect(groups).toEqual([])
+  })
+
+  it('groups a page story by its whole title, one or two levels', () => {
     const groups = groupMap({
       stories: [
-        story('Checkout/CouponField', 'Expired', 'CouponField.stories.tsx'),
-        story('Checkout/Coupons/CouponBadge', 'Default', 'CouponBadge.stories.tsx'),
+        page('Checkout', 'Empty', 'checkout.stories.tsx'),
+        page('Checkout/Coupons', 'Applied', 'coupons.stories.tsx'),
       ],
       scenarios: [],
     })
     expect(outline(groups)).toEqual(['checkout: Checkout', '  checkout/coupons: Coupons'])
-    expect(groups[0]?.components.map((c) => c.name)).toEqual(['CouponField'])
-    expect(groups[1]?.components.map((c) => c.name)).toEqual(['CouponBadge'])
+    expect(groups[0]?.pages[0]?.states.map((s) => s.name)).toEqual(['Empty'])
+    expect(groups[1]?.pages[0]?.states.map((s) => s.name)).toEqual(['Applied'])
   })
 
-  it('folds segments past the second level into the second', () => {
+  it('folds segments past the second level into the second, prefixed to the state name', () => {
     const groups = groupMap({
-      stories: [story('Checkout/Coupons/Deep/Deeper/Badge', 'Default', 'Badge.stories.tsx')],
-      scenarios: [scenario('checkout/coupons/deep/expired.ts')],
+      stories: [page('Feature/Review/Drive', 'Waiting', 'drive.stories.tsx')],
+      scenarios: [scenario('feature/review/deep/expired.ts')],
     })
-    expect(outline(groups)).toEqual(['checkout: Checkout', '  checkout/coupons: Coupons'])
-    expect(groups[1]?.components.map((c) => c.name)).toEqual(['Badge'])
+    expect(outline(groups)).toEqual(['feature: Feature', '  feature/review: Review'])
+    expect(groups[1]?.pages[0]?.states.map((s) => s.name)).toEqual(['Drive · Waiting'])
     expect(groups[1]?.scenarios.map((s) => s.name)).toEqual(['Expired'])
   })
 
-  it('puts single-segment titles and top-level scenario files in Ungrouped', () => {
+  it('makes a single-segment page title a top-level group of its own, never Ungrouped', () => {
     const groups = groupMap({
-      stories: [story('Button', 'Primary', 'Button.stories.tsx')],
+      stories: [page('Onboarding', '1 Welcome', 'welcome.stories.tsx')],
       scenarios: [scenario('fresh-install.ts')],
     })
+    expect(outline(groups)).toEqual(['onboarding: Onboarding', `${MAP_UNGROUPED}: Ungrouped`])
+  })
+
+  it('puts top-level scenario files in Ungrouped', () => {
+    const groups = groupMap({ stories: [], scenarios: [scenario('fresh-install.ts')] })
     expect(groups).toHaveLength(1)
     expect(groups[0]?.id).toBe(MAP_UNGROUPED)
     expect(groups[0]?.name).toBe('Ungrouped')
-    expect(groups[0]?.components.map((c) => c.name)).toEqual(['Button'])
     expect(groups[0]?.scenarios.map((s) => s.name)).toEqual(['Fresh install'])
   })
 
@@ -148,39 +176,75 @@ describe('groupMap', () => {
 
   it("matches names loosely, and a story title's spelling wins over the folder's", () => {
     const groups = groupMap({
-      stories: [story('Feature Page/Header', 'Default', 'Header.stories.tsx')],
+      stories: [page('Feature Page', 'Default', 'Header.stories.tsx')],
       scenarios: [scenario('feature-page/one-ticket.ts'), scenario('FEATURE_PAGE/two.ts')],
     })
     expect(outline(groups)).toEqual(['feature-page: Feature Page'])
-    expect(groups[0]?.components).toHaveLength(1)
+    expect(groups[0]?.pages).toHaveLength(1)
     expect(groups[0]?.scenarios.map((s) => s.name)).toEqual(['One ticket', 'Two'])
   })
 
   it('keeps names that do not match as two groups, never guessing a merge', () => {
     const groups = groupMap({
-      stories: [story('Coupons/Field', 'Default', 'Field.stories.tsx')],
+      stories: [page('Coupons', 'Default', 'Field.stories.tsx')],
       scenarios: [scenario('coupon/expired.ts')],
     })
-    expect(outline(groups)).toEqual(['coupon: Coupon', 'coupons: Coupons'])
+    expect(outline(groups)).toEqual(['coupons: Coupons', 'coupon: Coupon'])
   })
 
-  it('orders groups alphabetically, case-insensitive, children under their parent, Ungrouped last', () => {
+  it('orders places by their story files numerically, children after their parent, then scenario-only groups, Ungrouped last', () => {
     const groups = groupMap({
       stories: [
-        story('Button', 'Primary', 'Button.stories.tsx'),
-        story('checkout/Zeta/Z', 'Default', 'Z.stories.tsx'),
-        story('Auth/Login', 'Default', 'Login.stories.tsx'),
-        story('checkout/Alpha/A', 'Default', 'A.stories.tsx'),
+        page('Feature/Review', 'Findings', '10-feature/2-review.stories.tsx'),
+        page('Feature/Planning', 'Draft', '10-feature/1-planning.stories.tsx'),
+        page('Project chooser', 'Empty', '2-project-chooser/empty.stories.tsx'),
+        page('Onboarding', '1 Welcome', '1-onboarding/welcome.stories.tsx'),
       ],
-      scenarios: [scenario('billing/paid.ts')],
+      scenarios: [scenario('zeta/a.ts'), scenario('billing/paid.ts'), scenario('top.ts')],
     })
     expect(outline(groups)).toEqual([
-      'auth: Auth',
+      'onboarding: Onboarding',
+      'project-chooser: Project chooser',
+      'feature: Feature',
+      '  feature/planning: Planning',
+      '  feature/review: Review',
       'billing: Billing',
-      'checkout: checkout',
-      '  checkout/alpha: Alpha',
-      '  checkout/zeta: Zeta',
+      'zeta: Zeta',
       `${MAP_UNGROUPED}: Ungrouped`,
+    ])
+  })
+
+  it('orders a parent with no pages of its own by its children', () => {
+    const groups = groupMap({
+      stories: [
+        page('B/Child', 'x', '1-b/c.stories.tsx'),
+        page('A', 'x', '2-a/a.stories.tsx'),
+      ],
+      scenarios: [scenario('b/own.ts')],
+    })
+    expect(outline(groups)).toEqual(['b: B', '  b/child: Child', 'a: A'])
+  })
+
+  it('gives each state its step, orders by step numerically then index order, variants after their step', () => {
+    const groups = groupMap({
+      stories: [
+        page('Onboarding', 'Extras', 'o.stories.tsx'),
+        page('Onboarding', '10 Done', 'o.stories.tsx'),
+        page('Onboarding', '3 Agents · None installed', 'o.stories.tsx'),
+        page('Onboarding', '2 Identity', 'o.stories.tsx'),
+        page('Onboarding', '3 Agents', 'o.stories.tsx'),
+        page('Onboarding', 'More', 'o.stories.tsx'),
+      ],
+      scenarios: [],
+    })
+    const states = groups[0]?.pages[0]?.states ?? []
+    expect(states.map((s) => [s.step, s.name])).toEqual([
+      [2, '2 Identity'],
+      [3, '3 Agents'],
+      [3, '3 Agents · None installed'],
+      [10, '10 Done'],
+      [null, 'Extras'],
+      [null, 'More'],
     ])
   })
 
@@ -189,24 +253,26 @@ describe('groupMap', () => {
       stories: [],
       scenarios: [scenario('checkout/coupons/expired.ts')],
     })
-    expect(groups[0]).toEqual({ id: 'checkout', name: 'Checkout', components: [], scenarios: [] })
+    expect(groups[0]).toEqual({ id: 'checkout', name: 'Checkout', pages: [], scenarios: [] })
     expect(groups[1]?.parentId).toBe('checkout')
   })
 
-  it('makes one component per story file, holding its states in index order, components alphabetical', () => {
+  it('makes one page per story file, holding its states in index order, pages in path order', () => {
     const groups = groupMap({
       stories: [
-        story('Checkout/CouponField', 'Expired', 'CouponField.stories.tsx'),
-        story('Checkout/Basket', 'Empty', 'Basket.stories.tsx'),
-        story('Checkout/CouponField', 'Applied', 'CouponField.stories.tsx'),
-        { ...story('Checkout/CouponField', 'Docs', 'CouponField.stories.tsx'), type: 'docs' },
+        page('Checkout', 'Expired', 'b/Field.stories.tsx'),
+        page('Checkout', 'Empty', 'a/Basket.stories.tsx'),
+        page('Checkout', 'Applied', 'b/Field.stories.tsx'),
+        { ...page('Checkout', 'Docs', 'b/Field.stories.tsx'), type: 'docs' },
       ],
       scenarios: [],
     })
-    const components = groups[0]?.components ?? []
-    expect(components.map((c) => c.name)).toEqual(['Basket', 'CouponField'])
-    expect(components[1]?.importPath).toBe('src/CouponField.stories.tsx')
-    expect(components[1]?.states.map((s) => s.name)).toEqual(['Expired', 'Applied'])
+    const pages = groups[0]?.pages ?? []
+    expect(pages.map((p) => p.importPath)).toEqual([
+      '.runcastle/stories/pages/a/Basket.stories.tsx',
+      '.runcastle/stories/pages/b/Field.stories.tsx',
+    ])
+    expect(pages[1]?.states.map((s) => s.name)).toEqual(['Expired', 'Applied'])
   })
 
   it('skips helper code, dot-files and .http files, and calls follow their scenario', () => {

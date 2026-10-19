@@ -30,7 +30,7 @@ export const AllThreeSections: Story = {}
 export const OnlyWaysIn: Story = {
   args: {
     model: mapModel({ storiesSetUp: false, catalogue: { state: 'not_set_up', stale: false, building: false } }),
-    group: couponsGroup({ components: [], scenarios: couponsGroup().scenarios.slice(1) }),
+    group: couponsGroup({ pages: [], scenarios: couponsGroup().scenarios.slice(1) }),
   },
 }
 
@@ -48,6 +48,6 @@ export const FailedCatalogue: Story = {
         },
       },
     }),
-    group: couponsGroup({ components: [] }),
+    group: couponsGroup({ pages: [] }),
   },
 }

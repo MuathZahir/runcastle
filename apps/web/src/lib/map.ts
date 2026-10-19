@@ -11,7 +11,7 @@ const count = (n: number, one: string, many: string): string | null =>
 
 /** `4 UI states · 2 ways in · 1 call` — only the parts a group has. UI states count every state. */
 export function mapTally(group: MapGroup): string {
-  const states = group.components.reduce((n, c) => n + c.states.length, 0)
+  const states = group.pages.reduce((n, p) => n + p.states.length, 0)
   const calls = group.scenarios.filter((s) => s.call).length
   return [
     count(states, 'UI state', 'UI states'),

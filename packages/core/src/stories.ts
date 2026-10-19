@@ -97,6 +97,14 @@ export function normaliseStoryPath(path: string): string {
   return p
 }
 
+/** Where page stories live: a whole page at an address, the only stories the map shows. */
+export const PAGE_STORIES_DIR = '.runcastle/stories/pages/'
+
+/** Whether a story file is a page story, by its path alone. */
+export function isPageStory(importPath: string): boolean {
+  return normaliseStoryPath(importPath).startsWith(PAGE_STORIES_DIR)
+}
+
 /** Whether a module path is a dependency rather than repo code. */
 export const isNodeModule = (path: string): boolean => /(^|\/)node_modules\//.test(path)
 

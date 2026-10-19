@@ -62,6 +62,7 @@ export const uiStory = (id: string, name: string, base: boolean): UiStatesStory 
   name,
   frameUrl: `${FEATURE_FRAME}${id}&viewMode=story`,
   baseFrameUrl: base ? `${BASE_FRAME}${id}&viewMode=story` : null,
+  page: false,
 })
 
 export const uiStatesModel = (over: Partial<UiStatesModel> = {}): UiStatesModel => ({
@@ -102,23 +103,21 @@ export const mergedBy = (title: string, at: number): MapHistoryEntry => ({
 
 export const onMain = (subject: string, at: number): MapHistoryEntry => ({ commit: `m${at}`, at, subject })
 
-const mapState = (id: string, name: string) => ({ id, name, frameUrl: `${MAP_FRAME}${id}` })
+const mapState = (id: string, name: string, step: number | null = null) => ({ id, name, step, frameUrl: `${MAP_FRAME}${id}` })
 
 /** Checkout › Coupons: two components (2 + 3 states), two ways in, one call. */
 export const couponsGroup = (over: Partial<MapGroup> = {}): MapGroup => ({
   id: 'checkout/coupons',
   name: 'Coupons',
   parentId: 'checkout',
-  components: [
+  pages: [
     {
       importPath: 'src/CouponBadge.stories.tsx',
-      name: 'CouponBadge',
       history: [onMain('fix badge spacing', day(9, 30))],
       states: [mapState('coupon-badge--default', 'Default'), mapState('coupon-badge--stacked', 'Stacked')],
     },
     {
       importPath: 'src/CouponField.stories.tsx',
-      name: 'CouponField',
       history: [
         mergedBy('Coupons', day(10, 12)),
         mergedBy('Checkout', day(9, 2)),
@@ -165,10 +164,9 @@ export const mapModel = (over: Partial<MapModel> = {}): MapModel => ({
     {
       id: 'auth',
       name: 'Auth',
-      components: [
+      pages: [
         {
           importPath: 'src/SignIn.stories.tsx',
-          name: 'SignIn',
           history: [],
           states: [
             mapState('sign-in--empty', 'Empty'),
@@ -187,7 +185,7 @@ export const mapModel = (over: Partial<MapModel> = {}): MapModel => ({
         { file: '.runcastle/scenarios/auth/locked.ts', name: 'Locked', history: [] },
       ],
     },
-    { id: 'checkout', name: 'Checkout', components: [], scenarios: [] },
+    { id: 'checkout', name: 'Checkout', pages: [], scenarios: [] },
     couponsGroup(),
   ],
   ...over,

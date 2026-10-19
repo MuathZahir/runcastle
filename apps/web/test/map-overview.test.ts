@@ -49,10 +49,10 @@ describe('the map overview', () => {
   })
 
   it('counts in the singular where there is one of a thing', () => {
-    const [badge] = couponsGroup().components
+    const [badge] = couponsGroup().pages
     if (!badge) throw new Error('no component')
     const one = couponsGroup({
-      components: [{ ...badge, states: badge.states.slice(0, 1) }],
+      pages: [{ ...badge, states: badge.states.slice(0, 1) }],
       scenarios: couponsGroup().scenarios.slice(0, 1),
     })
     expect(text(overview(mapModel({ groups: [one] })))).toContain('1 UI state · 1 way in · 1 call')
@@ -117,7 +117,7 @@ describe('the map overview', () => {
   })
 
   it('says UI states aren’t set up, with Set up stories, on a map of scenarios alone', () => {
-    const scenariosOnly = mapModel().groups.map((g) => ({ ...g, components: [] }))
+    const scenariosOnly = mapModel().groups.map((g) => ({ ...g, pages: [] }))
     const t = text(
       overview({
         storiesSetUp: false,
@@ -164,7 +164,7 @@ describe('a group page', () => {
 
   it('leaves out every section the group has nothing of', () => {
     const waysInOnly = couponsGroup({
-      components: [],
+      pages: [],
       scenarios: couponsGroup().scenarios.slice(1),
     })
     expect(headings(groupPage(mapModel(), waysInOnly))).toEqual(['Ways in'])
@@ -174,14 +174,14 @@ describe('a group page', () => {
     const model = mapModel({
       catalogue: { state: 'never_built', stale: false, building: false, failure: { log: 'boom', at: 1 } },
     })
-    const html = groupPage(model, couponsGroup({ components: [] }))
+    const html = groupPage(model, couponsGroup({ pages: [] }))
     expect(headings(html)).toEqual(['UI states', 'Ways in', 'Calls'])
     expect(text(html)).toContain('Main’s catalogue didn’t build')
   })
 
   it('never nags about stories that are not set up', () => {
     const model = mapModel({ storiesSetUp: false, catalogue: { state: 'not_set_up', stale: false, building: false } })
-    const html = groupPage(model, couponsGroup({ components: [] }))
+    const html = groupPage(model, couponsGroup({ pages: [] }))
     expect(headings(html)).toEqual(['Ways in', 'Calls'])
     expect(text(html)).not.toContain('set up')
   })

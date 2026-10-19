@@ -1047,24 +1047,24 @@ describe('get_feature_context stories', () => {
   it('is set up when the base branch has stories.json, and rides the header', async () => {
     const feature = seedFeature(ctx, projectId, { slug: 'shown', baseBranch: 'main' })
     const stories = await featureStories(ctx, feature.id)
-    expect(stories).toEqual({ setUp: true })
+    expect(stories).toEqual({ setUp: true, pages: null })
     const context = featureContext(ctx, { featureId: feature.id }, undefined, stories)
-    expect(context.stories).toEqual({ setUp: true })
+    expect(context.stories).toEqual({ setUp: true, pages: null })
     expect(Object.keys(context).indexOf('stories')).toBeLessThan(Object.keys(context).indexOf('tickets'))
   })
 
   it('is not set up on a base without stories.json, or with no recorded base', async () => {
     const early = seedFeature(ctx, projectId, { slug: 'early', branch: 'bare-base', baseBranch: 'bare-base' })
-    expect(await featureStories(ctx, early.id)).toEqual({ setUp: false })
+    expect(await featureStories(ctx, early.id)).toEqual({ setUp: false, pages: null })
     const draft = seedFeature(ctx, projectId, { slug: 'draft', baseBranch: null })
-    expect(await featureStories(ctx, draft.id)).toEqual({ setUp: false })
+    expect(await featureStories(ctx, draft.id)).toEqual({ setUp: false, pages: null })
   })
 
   it('reads the base branch from git, not the working tree', async () => {
     // The checkout is on a branch without the file; main still has it.
     await simpleGit(repoPath).checkout('bare-base')
     const feature = seedFeature(ctx, projectId, { slug: 'shown', baseBranch: 'main' })
-    expect(await featureStories(ctx, feature.id)).toEqual({ setUp: true })
+    expect(await featureStories(ctx, feature.id)).toEqual({ setUp: true, pages: null })
   })
 
   it('names the field in the tool description', async () => {

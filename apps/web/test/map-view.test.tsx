@@ -111,7 +111,7 @@ describe('the overview', () => {
     model = {
       storiesSetUp: false,
       catalogue: { state: 'not_set_up', stale: false, building: false },
-      groups: [couponsGroup({ components: [] })],
+      groups: [couponsGroup({ pages: [] })],
     }
     const h = mount(null)
     fireEvent.click(screen.getByRole('button', { name: 'Set up stories' }))

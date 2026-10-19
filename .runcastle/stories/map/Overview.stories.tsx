@@ -32,7 +32,7 @@ export const NoStories: Story = {
     model: {
       storiesSetUp: false,
       catalogue: notSetUp,
-      groups: full.groups.map((g) => ({ ...g, components: [] })),
+      groups: full.groups.map((g) => ({ ...g, pages: [] })),
     },
   },
 }
@@ -49,7 +49,7 @@ export const NeverBuilt: Story = {
   args: {
     model: mapModel({
       catalogue: { state: 'never_built', stale: false, building: false },
-      groups: full.groups.map((g) => ({ ...g, components: [] })),
+      groups: full.groups.map((g) => ({ ...g, pages: [] })),
     }),
   },
 }

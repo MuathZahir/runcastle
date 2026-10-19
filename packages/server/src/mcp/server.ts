@@ -117,7 +117,7 @@ import {
   type TicketContentPatch,
 } from '../services/tickets'
 import { sendDriveCall } from '../services/drive-call'
-import { mapGroupNames } from '../services/map'
+import { mapGroupNames, mappedPlaces } from '../services/map'
 import {
   SCENARIO_FILE_PLACEHOLDER,
   listFeatureScenarios,
@@ -489,6 +489,12 @@ export interface FeatureContext {
 export interface FeatureStories {
   /** `.runcastle/stories.json` exists on the feature's recorded base branch. */
   setUp: boolean
+  /**
+   * The places with page stories in main's stored catalogue, as display names
+   * (`Feature › Review`); null when main's catalogue has never been built, and
+   * planning then reads `.runcastle/stories/pages/` itself.
+   */
+  pages: string[] | null
 }
 
 /** Where a project records its story build; its presence means "has stories". */
@@ -501,6 +507,7 @@ export async function featureStories(ctx: AppCtx, featureId: string): Promise<Fe
   // No recorded base (a draft) means no base to be set up on, as for scenarios.
   return {
     setUp: feature.baseBranch ? await git.fileExistsAt(project.repoPath, feature.baseBranch, STORIES_FILE) : false,
+    pages: await mappedPlaces(ctx, project.id),
   }
 }
 
@@ -3232,9 +3239,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), `stories` (`setUp`: the base branch has .runcastle/stories.json — only then ' +
-        'does a ticket that builds a UI state worth seeing ship its story), ' +
-        '`mapGroups` (the product groups on main’s map — name a new story’s or scenario’s ' +
-        '`<group>` after one of these when it fits), ' +
+        'does a ticket that builds a UI state worth seeing ship its story; `pages`: the places ' +
+        'that already have page stories on main, null when main’s catalogue is not built), ' +
+        '`mapGroups` (the places and scenario groups on main’s map — name a new page story’s ' +
+        'title or scenario’s `<group>` after one of these when it fits), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +

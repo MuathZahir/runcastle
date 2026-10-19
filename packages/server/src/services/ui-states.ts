@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type ClassifiedStory, StoriesManifest } from '@runcastle/core'
+import { type ClassifiedStory, isPageStory, StoriesManifest } from '@runcastle/core'
 import { STORIES_MANIFEST, featureStoriesDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
 
@@ -25,6 +25,8 @@ export interface UiStatesStory {
   frameUrl: string
   /** The branch point's build of the same story; only for a changed story whose base built. */
   baseFrameUrl: string | null
+  /** A page story (a whole page at an address), framed as a page. */
+  page: boolean
 }
 
 export interface UiStatesModel {
@@ -82,6 +84,7 @@ export function uiStates(ctx: AppCtx, featureId: string): UiStatesModel | null {
     name: s.name,
     frameUrl: frame(`features/${featureId}`, s.id),
     baseFrameUrl: s.kind === 'changed' && baseDir ? frame(baseDir, s.id) : null,
+    page: isPageStory(s.importPath),
   })
   const ofKind = (kind: ClassifiedStory['kind']): UiStatesStory[] =>
     manifest.stories.filter((s) => s.kind === kind).map(toStory)

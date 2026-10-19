@@ -83,11 +83,24 @@ describe('feature.uiStates', () => {
         name: 'changed-one',
         frameUrl: `http://localhost:4999/features/${FEATURE}/iframe.html?id=changed-one&viewMode=story`,
         baseFrameUrl: `http://localhost:4999/base/${BASE}/iframe.html?id=changed-one&viewMode=story`,
+        page: false,
       },
     ])
     expect(model?.new.map((s) => [s.id, s.baseFrameUrl])).toEqual([['new-one', null]])
     expect(model?.affected.map((s) => [s.id, s.baseFrameUrl])).toEqual([['far-one', null]])
     expect(model?.log).toBeNull()
+  })
+
+  it('marks a story from .runcastle/stories/pages/ as a page, and no other', async () => {
+    const pageStory: ClassifiedStory = {
+      ...story('page-one', 'new'),
+      importPath: './.runcastle/stories/pages/1-onboarding/Welcome.stories.tsx',
+    }
+    writeManifest({ stories: [pageStory, story('part-one', 'new')] })
+    expect((await query())?.new.map((s) => [s.id, s.page])).toEqual([
+      ['page-one', true],
+      ['part-one', false],
+    ])
   })
 
   it('gives a changed story no base twin when the base did not build', async () => {

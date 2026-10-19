@@ -10,6 +10,7 @@ import {
   StoryIndex,
   touchesCatalogue,
   type MapGroup,
+  type MapGroupSkeleton,
   type MapHistoryEntry,
   type MapModel,
 } from '@runcastle/core'
@@ -274,11 +275,10 @@ export async function mapModel(ctx: AppCtx, projectId: string): Promise<MapModel
     id: g.id,
     name: g.name,
     ...(g.parentId ? { parentId: g.parentId } : {}),
-    components: g.components.map((c) => ({
-      importPath: c.importPath,
-      name: c.name,
-      history: creditMapHistory(ctx, projectId, record?.storyHistory[c.importPath] ?? []),
-      states: c.states.map((s) => ({ ...s, frameUrl: frame(s.id) })),
+    pages: g.pages.map((p) => ({
+      importPath: p.importPath,
+      history: creditMapHistory(ctx, projectId, record?.storyHistory[p.importPath] ?? []),
+      states: p.states.map((s) => ({ ...s, frameUrl: frame(s.id) })),
     })),
     scenarios: g.scenarios.map((s) => {
       const fact = facts.get(s.file)
@@ -324,8 +324,33 @@ export async function mapGroupNames(ctx: AppCtx, projectId: string): Promise<str
     stories: built && stored.index ? Object.values(stored.index.entries) : [],
     scenarios: await listScenarios(repo, { ref: tip }),
   })
+  return groupDisplayNames(skeletons)
+}
+
+/** `Parent › Child` for level two, the plain name for level one; Ungrouped left out. */
+function groupDisplayNames(skeletons: MapGroupSkeleton[]): string[] {
   const names = new Map(skeletons.map((g) => [g.id, g.name]))
   return skeletons
     .filter((g) => g.id !== MAP_UNGROUPED)
     .map((g) => (g.parentId ? `${names.get(g.parentId) ?? ''} › ${g.name}` : g.name))
+}
+
+/**
+ * The places that have page stories in main's stored catalogue, as display
+ * names (`Feature › Review`) in map order; null when main's catalogue has never
+ * been built. Reads the stored index only — never builds.
+ */
+export async function mappedPlaces(ctx: AppCtx, projectId: string): Promise<string[] | null> {
+  const repo = requireProjectById(ctx, projectId).repoPath
+  const main = await detectMainBranch(repo)
+  try {
+    await simpleGit(repo).revparse([`${main}^{commit}`])
+  } catch {
+    return null
+  }
+  const stored = readCatalogue(projectId)
+  if (stored.record === null || stored.index === null) return null
+  const skeletons = groupMap({ stories: Object.values(stored.index.entries), scenarios: [] })
+  const withPages = new Set(skeletons.filter((g) => g.pages.length > 0).map((g) => g.id))
+  return groupDisplayNames(skeletons.filter((g) => withPages.has(g.id)))
 }

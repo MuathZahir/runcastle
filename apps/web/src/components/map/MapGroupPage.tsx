@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { MapComponent, MapGroup, MapModel } from '@runcastle/core'
+import type { MapGroup, MapModel, MapPage } from '@runcastle/core'
 import { IconPlay, IconSend } from '../../icons'
 import { Button, List, ListRow, PageHeader, PageSection } from '../../ui'
 import { StoryFrame, StoryLargerDialog, type LargerStory } from '../review/StoryFrame'
@@ -35,7 +35,7 @@ export function MapGroupPage({
   // Stories set up but main's catalogue not (yet) good: the section says so,
   // compactly. Not set up at all is the overview's to say, never a group page's.
   const uiStatesPending = model.storiesSetUp && model.catalogue.state !== 'built'
-  const showUiStates = group.components.length > 0 || uiStatesPending
+  const showUiStates = group.pages.length > 0 || uiStatesPending
   const children = model.groups.filter((g) => g.parentId === group.id)
   const empty = !showUiStates && group.scenarios.length === 0
 
@@ -47,10 +47,10 @@ export function MapGroupPage({
           <PageSection title="UI states">
             <CatalogueStatus catalogue={model.catalogue} build={build} withCommit />
             <div className="mt-4 flex flex-col gap-8 @container">
-              {group.components.map((c) => (
-                <ComponentBlock
-                  key={c.importPath}
-                  component={c}
+              {group.pages.map((p) => (
+                <PageBlock
+                  key={p.importPath}
+                  page={p}
                   onOpen={setLarger}
                   onOpenFeature={onOpenFeature}
                 />
@@ -121,28 +121,28 @@ export function MapGroupPage({
   )
 }
 
-/** A component (one story file): its name and history line, then every state as a frame. */
-function ComponentBlock({
-  component,
+/** A page (one story file): its name and history line, then every state as a frame. */
+function PageBlock({
+  page,
   onOpen,
   onOpenFeature,
 }: {
-  component: MapComponent
+  page: MapPage
   onOpen: (story: LargerStory) => void
   onOpenFeature?: OpenFeature
 }) {
   return (
     <article className="flex flex-col gap-2">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-        <h3 className="m-0 min-w-0 truncate text-sm font-medium text-text" title={component.importPath}>
-          {component.name}
+        <h3 className="m-0 min-w-0 truncate text-sm font-medium text-text" title={page.importPath}>
+          {pageName(page)}
         </h3>
-        <HistoryLatest history={component.history} onOpenFeature={onOpenFeature} />
+        <HistoryLatest history={page.history} onOpenFeature={onOpenFeature} />
       </div>
-      <HistoryEarlier history={component.history} onOpenFeature={onOpenFeature} />
+      <HistoryEarlier history={page.history} onOpenFeature={onOpenFeature} />
       <div className="grid grid-cols-1 gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
-        {component.states.map((state) => {
-          const title = `${component.name} · ${state.name}`
+        {page.states.map((state) => {
+          const title = `${pageName(page)} · ${state.name}`
           return (
             <StoryFrame
               key={state.id}
@@ -157,6 +157,11 @@ function ComponentBlock({
       </div>
     </article>
   )
+}
+
+/** A page's story file name without its extensions (`Review.stories.tsx` → `Review`). */
+function pageName(page: MapPage): string {
+  return fileName(page.importPath).split('.')[0] ?? page.importPath
 }
 
 function fileName(path: string): string {

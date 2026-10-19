@@ -208,7 +208,8 @@ describe('project.buildMapCatalogue', () => {
 
     const map = await caller().project.map({ projectId: project.id })
     expect(map.catalogue).toMatchObject({ state: 'built', commit: tip, stale: false, building: false })
-    expect(map.groups.map((g) => g.name)).toEqual(['Checkout'])
+    // Button and Card are component stories: in the catalogue, not on the map.
+    expect(map.groups).toEqual([])
   })
 
   it("credits each story's changes, its imports' included, to the feature merged on main", async () => {
@@ -237,10 +238,6 @@ describe('project.buildMapCatalogue', () => {
       'base',
     ])
     expect(storyHistory['src/Button.stories.tsx']?.[0]).toMatchObject({ commit: merge, featureSlug: 'coupons' })
-
-    const map = await caller().project.map({ projectId: project.id })
-    const button = map.groups[0]?.components.find((c) => c.name === 'Button')
-    expect(button?.history[0]).toMatchObject({ featureTitle: 'Coupons', commit: merge })
   })
 
   it('leaves files most stories reach out of history, and keeps a component’s own file', async () => {
@@ -300,6 +297,28 @@ describe('project.buildMapCatalogue', () => {
     const subjects = (file: string) => history[file]?.map((e) => e.subject)
     expect(subjects('src/Tile.stories.tsx')).toEqual(["Merge branch 'feature/tile'", 'stories'])
     expect(subjects('src/Page.stories.tsx')).toEqual(["Merge branch 'feature/tile'", 'stories'])
+  })
+
+  it('credits a page story with changes to its story file alone, never to what it imports', async () => {
+    const PAGE = '.runcastle/stories/pages/1-onboarding/Welcome.stories.tsx'
+    const page = entry('onboarding--welcome', 'Onboarding', `./${PAGE}`)
+    const index = { v: 5, entries: { [page.id]: page } }
+    const modules = [
+      { name: `./${PAGE}`, reasons: [] },
+      { name: './src/App.tsx', reasons: [{ moduleName: `./${PAGE}` }] },
+    ]
+    seedFeature(ctx, project.id, { slug: 'app', title: 'App', phase: 'shipped' })
+    seedFeature(ctx, project.id, { slug: 'welcome', title: 'Welcome', phase: 'shipped' })
+    put(PAGE, 'story v1')
+    put('src/App.tsx', 'v1')
+    await commitAll('stories')
+    await mergeFeatureBranch('app', { 'src/App.tsx': 'v2' })
+    await mergeFeatureBranch('welcome', { [PAGE]: 'story v2' })
+    const tip = await rev('main')
+
+    const history = await computeStoryHistory(repo, tip, index as never, { modules } as never)
+
+    expect(history[PAGE]?.map((e) => e.subject)).toEqual(["Merge branch 'feature/welcome'", 'stories'])
   })
 
   it('keeps the last good catalogue and records the failure with its log', async () => {

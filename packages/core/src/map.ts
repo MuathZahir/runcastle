@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   isNodeModule,
+  isPageStory,
   normaliseStoryPath,
   type PreviewStats,
   type StoryIndex,
@@ -55,13 +56,19 @@ function stem(name: string): string {
 // Grouping (decision 4)
 // ---------------------------------------------------------------------------
 
-export interface MapComponentSkeleton {
+export interface MapStateSkeleton {
+  id: string
+  /** The story's name, with any title segments below the place prefixed (`Drive · Waiting`). */
+  name: string
+  /** The leading number of the story's name (`3 Coding agents` → 3), when it has one. */
+  step: number | null
+}
+
+export interface MapPageSkeleton {
   /** The story file, normalised (repo-relative, no `./`). */
   importPath: string
-  /** The title's last segment. */
-  name: string
-  /** The file's states, in index order. */
-  states: { id: string; name: string }[]
+  /** The file's states: by step, then index order. */
+  states: MapStateSkeleton[]
 }
 
 export interface MapScenarioSkeleton {
@@ -77,7 +84,7 @@ export interface MapGroupSkeleton {
   /** This level's display name (`Coupons`, not `Checkout › Coupons`). */
   name: string
   parentId?: string
-  components: MapComponentSkeleton[]
+  pages: MapPageSkeleton[]
   scenarios: MapScenarioSkeleton[]
 }
 
@@ -93,9 +100,15 @@ interface GroupBuild {
   storyName?: string
   scenarioName?: string
   parentId?: string
-  components: Map<string, MapComponentSkeleton>
+  pages: Map<string, { importPath: string; states: (MapStateSkeleton & { variant: boolean })[] }>
   scenarios: MapScenarioSkeleton[]
 }
+
+const STEP = /^(\d+)\s+/
+const VARIANT_SEPARATOR = ' · '
+
+/** Order places by story file path, comparing digit runs as numbers (`2-x` before `10-x`). */
+const byPath = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 /** A group path's segments as `{ key, name }`, folded to {@link MAX_LEVELS}. */
 type GroupPath = { name: string; key: string }[]
@@ -116,15 +129,27 @@ function scenarioFolders(file: string): string[] | null {
   return segments.slice(0, -1)
 }
 
+/** Numbered states first by step, a step's variants after its plain state; else index order. */
+const byStep = (
+  a: { step: number | null; variant: boolean },
+  b: { step: number | null; variant: boolean },
+): number => {
+  if (a.step === null || b.step === null) return (a.step === null ? 1 : 0) - (b.step === null ? 1 : 0)
+  return a.step - b.step || Number(a.variant) - Number(b.variant)
+}
+
 const byName = (a: { name: string }, b: { name: string }): number =>
   a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
 
 /**
- * The map's groups from story titles and scenario paths, flat and ordered
- * parent-before-children: top-level groups alphabetically by display name,
- * each followed by its children alphabetically, Ungrouped last. Names that do
- * not match under {@link mapNameKey} stay two groups — the map never guesses a
- * merge. A second-level group implies its parent, entries or not.
+ * The map's groups from page stories and scenario paths, flat and ordered
+ * parent-before-children. Only page stories count ({@link isPageStory}); a page
+ * story's group is its whole title folded to two levels, and deeper segments
+ * prefix the state's name. Groups with pages come first, by their story files'
+ * paths (numerically) with children after their parent; scenario-only groups
+ * follow alphabetically, Ungrouped last. Names that do not match under
+ * {@link mapNameKey} stay two groups — the map never guesses a merge. A
+ * second-level group implies its parent, entries or not.
  */
 export function groupMap(input: GroupMapInput): MapGroupSkeleton[] {
   const groups = new Map<string, GroupBuild>()
@@ -134,7 +159,7 @@ export function groupMap(input: GroupMapInput): MapGroupSkeleton[] {
     if (path.length === 0) {
       let ungrouped = groups.get(MAP_UNGROUPED)
       if (!ungrouped) {
-        ungrouped = { id: MAP_UNGROUPED, components: new Map(), scenarios: [] }
+        ungrouped = { id: MAP_UNGROUPED, pages: new Map(), scenarios: [] }
         groups.set(MAP_UNGROUPED, ungrouped)
       }
       return ungrouped
@@ -145,7 +170,7 @@ export function groupMap(input: GroupMapInput): MapGroupSkeleton[] {
       const id = parentId ? `${parentId}/${segment.key}` : segment.key
       group = groups.get(id)
       if (!group) {
-        group = { id, components: new Map(), scenarios: [], ...(parentId ? { parentId } : {}) }
+        group = { id, pages: new Map(), scenarios: [], ...(parentId ? { parentId } : {}) }
         groups.set(id, group)
       }
       if (source === 'story') group.storyName ??= segment.name
@@ -156,17 +181,24 @@ export function groupMap(input: GroupMapInput): MapGroupSkeleton[] {
   }
 
   for (const entry of input.stories) {
-    if (entry.type !== 'story') continue
+    if (entry.type !== 'story' || !isPageStory(entry.importPath)) continue
     const segments = entry.title.split('/')
-    const component = (segments[segments.length - 1] ?? '').trim()
-    const group = groupAt(foldPath(segments.slice(0, -1)), 'story')
+    const path = foldPath(segments)
+    const group = groupAt(path, 'story')
+    const below = segments.slice(MAX_LEVELS).map((s) => s.trim()).filter((s) => s !== '')
     const importPath = normaliseStoryPath(entry.importPath)
-    let skeleton = group.components.get(importPath)
-    if (!skeleton) {
-      skeleton = { importPath, name: component, states: [] }
-      group.components.set(importPath, skeleton)
+    let page = group.pages.get(importPath)
+    if (!page) {
+      page = { importPath, states: [] }
+      group.pages.set(importPath, page)
     }
-    skeleton.states.push({ id: entry.id, name: entry.name })
+    const step = STEP.exec(entry.name)?.[1]
+    page.states.push({
+      id: entry.id,
+      name: [...below, entry.name].join(VARIANT_SEPARATOR),
+      step: step === undefined ? null : Number(step),
+      variant: entry.name.includes(VARIANT_SEPARATOR),
+    })
   }
 
   for (const scenario of input.scenarios) {
@@ -181,13 +213,38 @@ export function groupMap(input: GroupMapInput): MapGroupSkeleton[] {
     id: g.id,
     name: g.id === MAP_UNGROUPED ? MAP_UNGROUPED_NAME : (g.storyName ?? g.scenarioName ?? g.id),
     ...(g.parentId ? { parentId: g.parentId } : {}),
-    components: [...g.components.values()].sort(byName),
+    pages: [...g.pages.values()]
+      .sort((a, b) => byPath(a.importPath, b.importPath))
+      .map((p) => ({
+        importPath: p.importPath,
+        states: [...p.states].sort(byStep).map(({ id, name, step }) => ({ id, name, step })),
+      })),
     scenarios: [...g.scenarios].sort((a, b) => byName(a, b) || (a.file < b.file ? -1 : 1)),
   })
   const all = [...groups.values()].filter((g) => g.id !== MAP_UNGROUPED).map(finished)
+  // A group's place in the app: its smallest story file path, own or a child's.
+  const placeOf = new Map<string, string>()
+  for (const g of all) {
+    for (const page of g.pages) {
+      for (const id of [g.id, g.parentId]) {
+        if (id === undefined) continue
+        const known = placeOf.get(id)
+        if (known === undefined || byPath(page.importPath, known) < 0) placeOf.set(id, page.importPath)
+      }
+    }
+  }
+  /** Groups with a place first, by path; the rest alphabetically. */
+  const byPlace = (a: MapGroupSkeleton, b: MapGroupSkeleton): number => {
+    const pa = placeOf.get(a.id)
+    const pb = placeOf.get(b.id)
+    if (pa !== undefined && pb !== undefined) return byPath(pa, pb) || byName(a, b)
+    if (pa !== undefined) return -1
+    if (pb !== undefined) return 1
+    return byName(a, b)
+  }
   const ordered: MapGroupSkeleton[] = []
-  for (const top of all.filter((g) => !g.parentId).sort(byName)) {
-    ordered.push(top, ...all.filter((g) => g.parentId === top.id).sort(byName))
+  for (const top of all.filter((g) => !g.parentId).sort(byPlace)) {
+    ordered.push(top, ...all.filter((g) => g.parentId === top.id).sort(byPlace))
   }
   const ungrouped = groups.get(MAP_UNGROUPED)
   if (ungrouped) ordered.push(finished(ungrouped))
@@ -297,13 +354,22 @@ export const MainCatalogueAttempt = z.object({
 })
 export type MainCatalogueAttempt = z.infer<typeof MainCatalogueAttempt>
 
-export const MapComponent = z.object({
-  importPath: z.string(),
+export const MapState = z.object({
+  id: z.string(),
   name: z.string(),
-  history: z.array(MapHistoryEntry),
-  states: z.array(z.object({ id: z.string(), name: z.string(), frameUrl: z.string() })),
+  /** The leading number of the story's name, ordering a flow; null when unnumbered. */
+  step: z.number().nullable(),
+  frameUrl: z.string(),
 })
-export type MapComponent = z.infer<typeof MapComponent>
+export type MapState = z.infer<typeof MapState>
+
+/** One page story file: its history covers the story file alone. */
+export const MapPage = z.object({
+  importPath: z.string(),
+  history: z.array(MapHistoryEntry),
+  states: z.array(MapState),
+})
+export type MapPage = z.infer<typeof MapPage>
 
 export const MapScenario = z.object({
   file: z.string(),
@@ -317,7 +383,7 @@ export const MapGroup = z.object({
   id: z.string(),
   name: z.string(),
   parentId: z.string().optional(),
-  components: z.array(MapComponent),
+  pages: z.array(MapPage),
   scenarios: z.array(MapScenario),
 })
 export type MapGroup = z.infer<typeof MapGroup>
