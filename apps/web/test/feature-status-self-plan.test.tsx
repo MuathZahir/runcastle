@@ -35,6 +35,7 @@ function planningRow(selfPlanning: boolean, onAction = vi.fn()) {
     agentWorking: false,
     driving: false,
     selfPlanning,
+    now: 0,
   })
   render(
     <NextStepBar

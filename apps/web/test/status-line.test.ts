@@ -3,6 +3,7 @@ import type { NextStep } from '../src/lib/feature-ui'
 import {
   featureStatus,
   leadActions,
+  leadWakeOf,
   OVERFLOW_KINDS,
   type FeatureStatus,
   type FeatureStatusInput,
@@ -19,6 +20,8 @@ const input = (over: {
   agentWorking?: boolean
   driving?: boolean
   selfPlanning?: boolean
+  leadWake?: FeatureStatusInput['leadWake']
+  now?: number
 }): FeatureStatusInput => ({
   feature: {
     phase: 'building',
@@ -33,6 +36,8 @@ const input = (over: {
   agentWorking: over.agentWorking ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
+  ...(over.leadWake ? { leadWake: over.leadWake } : {}),
+  now: over.now ?? 0,
 })
 
 const round = (n: number, status: 'running' | 'succeeded' | 'failed' | 'cancelled', startedAt: number) => ({
@@ -126,8 +131,62 @@ describe('featureStatus', () => {
     })
   })
 
-  it('reads Working · Round 1 right after Go, before the first round is out', () => {
-    expect(featureStatus(input({}))).toMatchObject({ kind: 'working', label: 'Working · Round 1' })
+  it('reads Working · Round 1 right after Go, while the wake is inside its grace', () => {
+    expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 59_000 }))).toEqual({
+      kind: 'working',
+      label: 'Working · Round 1',
+      round: 1,
+    })
+  })
+
+  it('Go given, no round, no live lead: reads Waiting for you · the agent stopped, with the Chat door', () => {
+    expect(featureStatus(input({}))).toEqual({
+      kind: 'waiting',
+      label: 'Waiting for you',
+      why: 'the agent stopped',
+      primary: 'chat',
+    })
+  })
+
+  it('a wake pending past its grace reads the agent stopped', () => {
+    expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 60_000 }))).toMatchObject({
+      kind: 'waiting',
+      why: 'the agent stopped',
+      primary: 'chat',
+    })
+  })
+
+  it('a running round or the agent mid-turn still reads Working with no wake at all', () => {
+    expect(featureStatus(input({ rounds: [round(1, 'running', 10)] })).kind).toBe('working')
+    expect(featureStatus(input({ agentWorking: true }))).toEqual({
+      kind: 'working',
+      label: 'Working · Round 1',
+      round: 1,
+    })
+  })
+
+  it('a wake failure newer than the last round and wake reads the failure, with its exit code and the Chat door', () => {
+    expect(
+      featureStatus(
+        input({
+          rounds: [round(1, 'succeeded', 10)],
+          leadWake: { pendingSince: 20, failed: { at: 30, exitCode: 1 } },
+          now: 100_000,
+        }),
+      ),
+    ).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'the agent’s run failed (exit 1)', primary: 'chat' })
+    expect(featureStatus(input({ leadWake: { failed: { at: 30, exitCode: null } } })).why).toBe(
+      'the agent’s run failed',
+    )
+  })
+
+  it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
+    const failed = { at: 30, exitCode: 1 }
+    expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).why).toBe(
+      'round 2 done',
+    )
+    expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 100_000 })).why).toBe('the agent stopped')
+    expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 50 })).kind).toBe('working')
   })
 
   it('reads Waiting for you with the agent’s reason', () => {
@@ -243,6 +302,23 @@ describe('featureStatus', () => {
   })
 })
 
+describe('leadWakeOf', () => {
+  it('reads the newest wake and the newest wake failure off the event log', () => {
+    expect(
+      leadWakeOf([
+        { type: 'feature.go', ts: 5, data: undefined },
+        { type: 'lead.message_pending', ts: 10, data: {} },
+        { type: 'lead.wake_failed', ts: 12, data: { exitCode: null, tail: 'refused', messages: 1 } },
+        { type: 'lead.woken_headless', ts: 20, data: {} },
+        { type: 'lead.wake_failed', ts: 25, data: { sessionId: 's', exitCode: 1, tail: 'boom', messages: 1 } },
+        { type: 'session.ended', ts: 30, data: {} },
+      ]),
+    ).toEqual({ pendingSince: 20, failed: { at: 25, exitCode: 1 } })
+    expect(leadWakeOf([{ type: 'lead.message_queued', ts: 7, data: {} }])).toEqual({ pendingSince: 7 })
+    expect(leadWakeOf([])).toEqual({})
+  })
+})
+
 describe('the status line’s one primary (decision 24)', () => {
   const primary = (over: Parameters<typeof input>[0]) => featureStatus(input(over)).primary
 
@@ -340,6 +416,15 @@ describe('the action row beside the status line', () => {
     )
     expect(out.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun', danger: true })
     expect([out.primary, ...out.secondary].some((a) => a?.kind === 'burn' || a?.label === 'Go')).toBe(false)
+  })
+
+  it('offers the Chat door as the primary once the agent stopped', () => {
+    const out = leadActions(
+      ns({ secondary: [{ label: 'Chat', kind: 'chat' }, { label: 'Burn 1 ticket', kind: 'burn' }] }),
+      featureStatus(input({})),
+    )
+    expect(out.primary).toEqual({ label: 'Chat', kind: 'chat' })
+    expect(out.secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
   })
 
   it('does not offer the primary twice', () => {
