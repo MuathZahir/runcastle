@@ -71,7 +71,7 @@ export function TestDriveCard({
         icon={<IconPlay />}
         title="Test drive"
         status={running ? <StatusLabel tone="live">Running</StatusLabel> : undefined}
-        hint="Run everything that has shipped and jot what you notice. Notes land in the inbox."
+        hint="Run everything that has shipped and jot what you notice. Notes land in Notes."
         actions={
           card.state === 'prepare' ? (
             <Button icon={<IconShield />} onClick={onPrepare}>
