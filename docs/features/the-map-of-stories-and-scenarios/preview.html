@@ -345,12 +345,13 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <div class="flow">
       <div class="step"><b>A feature merges</b><span class="hint">--no-ff into main</span></div>
       <div class="join">→</div>
-      <div class="step"><b>Same tree as its last review build?</b><span class="hint">one git call, exact</span></div>
+      <div class="step"><b>Did a file the catalogue depends on change since its last review build?</b><span class="hint">story files, what they import, the stories set-up; docs commits don't count</span></div>
     </div>
     <div class="fork">
-      <div class="step"><b><i class="dot ok"></i>Yes: promote it</b><span class="hint">The review build becomes main's catalogue instead of being deleted. No cost.</span></div>
-      <div class="step"><b><i class="dot live"></i>No: build in the background</b><span class="hint">The map keeps showing the last good build until the new one lands.</span></div>
+      <div class="step"><b><i class="dot ok"></i>No: promote it</b><span class="hint">The review build becomes main's catalogue instead of being deleted. No cost.</span></div>
+      <div class="step"><b><i class="dot live"></i>Yes: build in the background</b><span class="hint">The map keeps showing the last good build until the new one lands.</span></div>
     </div>
+    <p class="cap2">The same test, run between the build and main's tip, decides "main has moved since".</p>
   </div>
 </section>
 
@@ -413,7 +414,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['The pinned Inbox is today’s Needs you lane, and “Inbox” means only that', 'The rows themselves keep attention as visible as today, whichever view is open. Notes are your own backlog, so they stay out, and the notes card is renamed “Notes”.'],
     ['Map mode is an explorer: a group tree in the sidebar, a group page in the content panel', 'The IDE pattern the brief reaches for. One group at a time keeps the number of live frames bounded. The overview gives Map a landing page without touching the project home.'],
     ['Groups come from names, matched loosely, and agents reuse existing names', 'A mismatch shows as two groups: visible, and it costs only completeness. Tags and manifests were rejected, and working groups out from code would break language-agnostic. Agents write most stories and scenarios, so the guard stops splits where they start.'],
-    ['Main’s catalogue: promoted at merge when it can be, built in the background when it can’t', 'With --no-ff merges, the merged tree is usually exactly the reviewed tree, so promotion costs nothing. Otherwise builds start only after a merge or on an explicit click, so the map never pays to show itself.'],
+    ['Main’s catalogue: promoted at merge when it can be, built in the background when it can’t', 'Usually nothing the catalogue reads changes between review and merge, so promotion costs nothing. The test ignores files the catalogue doesn’t read, because runcastle’s own docs commits land after review and after every merge. Otherwise builds start only after a merge or on an explicit click, so the map never pays to show itself.'],
     ['History follows what an entry depends on, credited to features from main’s merges', 'A story file rarely changes when its component does. The import graph, already in every build, says what each story reaches. Scenario contents are never read, so files are the honest limit there.'],
     ['The Map is always there, and an empty part says what fills it', 'A switch that comes and goes would make the sidebar shift shape. An empty map is the place to point at Set up stories and New scenario.'],
     ['Open in drive and Try it are doors into the existing project drive', 'The drive, its single slot, the picker and the App | API view belong to Drive scenarios. One click, instead of a disabled “start a drive first”.'],

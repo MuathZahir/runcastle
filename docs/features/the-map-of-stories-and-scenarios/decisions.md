@@ -52,12 +52,12 @@ Two things are parked under the spec's `## Later laps`:
 ## 5. Main's catalogue: promoted at merge when it can be, built in the background when it can't
 **Decision:**
 - **What the map shows:** main's latest *successful* catalogue build, labelled "Built from main · <age>".
-- **At merge:** if the merge commit's tree equals the tree the feature's last review build ran on, that build is promoted to be main's catalogue instead of being deleted.
-- **When the trees differ:** a build of main runs in the background after the merge. The map keeps showing the previous good build until the new one lands.
-- **When main moved outside runcastle, or a build failed:** the map keeps the last good build and says "main has moved since", with a **Rebuild** button. Runcastle does not watch main for pushes.
+- **At merge:** if no file the catalogue depends on differs between the commit the feature's last review build ran on and the merge commit, that build is promoted to be main's catalogue instead of being deleted. "Depends on" means the story files, everything they import (from that build's import graph) and the stories set-up under `.runcastle/`.
+- **When such a file differs:** a build of main runs in the background after the merge. The map keeps showing the previous good build until the new one lands.
+- **"Main has moved since":** judged by the same test, between the build's commit and main's tip, so a docs-only commit never marks it stale. When main moved outside runcastle, or a build failed, the map keeps the last good build and offers a **Rebuild** button. Runcastle does not watch main for pushes.
 - **When no build exists yet:** the UI states sections offer one **Build the catalogue** action. Opening the map never starts a build.
 
-**Why:** A build takes minutes of sandbox time, though it never starts the app. Under `--no-ff` merges, the merged tree is usually exactly the reviewed tree, so promotion gives main's catalogue at no cost, and the tree comparison is exact. Rebuilding after every merge would compete with live burns for a result that usually exists already. Starting builds only on an explicit click keeps "the map never starts the app to show itself" honest and cheap.
+**Why:** A build takes minutes of sandbox time, though it never starts the app. Usually nothing the catalogue reads changes between review and merge, so promotion gives main's catalogue at no cost. The test is on the files the catalogue depends on, not exact tree equality, because runcastle's own docs commits land after the last review (checkpoints) and after every merge (the outcome commit). Exact equality would almost never hold, and "main has moved since" would show after every merge. Rebuilding after every merge would compete with live burns for a result that usually exists already. Starting builds only on an explicit click keeps "the map never starts the app to show itself" honest and cheap.
 
 ## 6. History follows what an entry depends on, credited to features from main's merges
 **Decision:**
