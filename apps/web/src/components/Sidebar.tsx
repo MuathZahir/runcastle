@@ -82,6 +82,14 @@ export interface SidebarProps {
   onSelect: (featureId: string | null) => void
   /** The project home (its conversations, notes and drive). */
   onSelectProject: () => void
+  /**
+   * Where the map is open: undefined when not at a map address, null on its
+   * Overview, else the group id. Unused until the Map tree renders from it
+   * with {@link onOpenMap} (the-map-of-stories-and-scenarios).
+   */
+  mapSelection?: string | null | undefined
+  /** Open the map on its Overview (`null`) or one group. */
+  onOpenMap?: (group: string | null) => void
   /** New — open the project home on a fresh conversation. */
   onNewChat: () => void
   /** Draft — open the overlay that parks an idea without cutting anything. */

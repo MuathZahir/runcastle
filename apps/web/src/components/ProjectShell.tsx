@@ -27,6 +27,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
+import { MapView } from './map/MapView'
 import { CommandPalette } from './CommandPalette'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
@@ -52,10 +53,12 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     selectedFeatureId,
     projectSelected,
     preparing,
+    map,
     select,
     selectView,
     selectProject,
     startPreparation,
+    openMap,
     setCmdk,
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
@@ -143,6 +146,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
+    else if (addressed?.kind === 'map') openMap(addressed.group ?? null)
     else if (addressed) {
       // A tab in the address wins; a bare feature path restores the remembered
       // one — which, after a reload, is the view the path was showing anyway.
@@ -170,6 +174,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     selectView,
     selectProject,
     startPreparation,
+    openMap,
   ])
 
   // The address this shell is showing, and the setters a Back or Forward drives.
@@ -187,7 +192,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const featureView = selectedFeature?.status === 'draft' ? 'overview' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
-      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
+      ? locationFor({ projectId, preparing, map, projectSelected, featureSlug: selectedSlug, featureView })
       : null
 
   useHistorySync(location, (popped) => {
@@ -199,6 +204,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (!inside) select(null) // a bare `/p/<id>`: the project home
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'prepare') startPreparation()
+    else if (inside.kind === 'map') openMap(inside.group ?? null)
     else {
       // The popped path says exactly which view — a bare one is Overview, not
       // "whatever was remembered", or Back from a tab could never reach it.
@@ -263,6 +269,15 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         projectId={projectId}
         {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
       />
+    ) : view === 'map' ? (
+      <MapView
+        projectId={projectId}
+        group={ws.map?.group ?? null}
+        onOpenGroup={openMap}
+        // The intent's scenario, side and call are not yet carried into the
+        // drive view; this opens the project drive as the titlebar pill does.
+        onOpenDrive={() => openDrive()}
+      />
     ) : view === 'project' ? (
       <ProjectWorkspace
         projectId={projectId}
@@ -320,6 +335,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             talk={talk}
             onSelect={openFeature}
             onSelectProject={ws.selectProject}
+            mapSelection={map ? map.group : undefined}
+            onOpenMap={openMap}
             onNewChat={newChat}
             onDraft={ws.startDraft}
             onOpenPreparation={ws.startPreparation}

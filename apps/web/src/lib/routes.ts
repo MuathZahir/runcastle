@@ -45,6 +45,11 @@ export type AppLocation =
   | { kind: 'chat'; projectId: string }
   /** A project's preparation. */
   | { kind: 'prepare'; projectId: string }
+  /**
+   * A project's map: its overview, or one group by id (`checkout/coupons`),
+   * whose `/` separates the path's segments.
+   */
+  | { kind: 'map'; projectId: string; group?: string }
 
 /** The view a feature location names — its tab, or Overview for none. */
 export function featureViewOf(location: { tab?: FeatureTab }): FeatureView {
@@ -67,6 +72,11 @@ export function pathFor(location: AppLocation): string {
       return `${project}/chat`
     case 'prepare':
       return `${project}/prepare`
+    case 'map': {
+      const map = `${project}/map`
+      if (!location.group) return map
+      return `${map}/${location.group.split('/').map(encodeURIComponent).join('/')}`
+    }
     case 'feature': {
       const feature = `${project}/f/${encodeURIComponent(location.featureSlug)}`
       return location.tab ? `${feature}/${location.tab}` : feature
@@ -102,6 +112,11 @@ export function parsePath(path: string): AppLocation | null {
   if (parts.length === 2) return { kind: 'project', projectId }
   if (parts.length === 3 && parts[2] === 'chat') return { kind: 'chat', projectId }
   if (parts.length === 3 && parts[2] === 'prepare') return { kind: 'prepare', projectId }
+  // The map's tree is two levels deep, so a group is at most two segments.
+  if (parts[2] === 'map' && parts.length <= 5) {
+    const group = parts.slice(3).join('/')
+    return group ? { kind: 'map', projectId, group } : { kind: 'map', projectId }
+  }
   if (parts.length === 4 && parts[2] === 'f' && parts[3]) {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
   }
@@ -124,7 +139,7 @@ export function parsePath(path: string): AppLocation | null {
  */
 export type InProjectLocation = Extract<
   AppLocation,
-  { kind: 'feature' | 'chat' | 'prepare' }
+  { kind: 'feature' | 'chat' | 'prepare' | 'map' }
 >
 
 /**
@@ -151,6 +166,8 @@ export function locationFor(state: {
   projectId: string
   /** Preparation was opened deliberately — the persisted per-project flag. */
   preparing: boolean
+  /** The map is open, on its overview (`group: null`) or one group; null or omitted when not. */
+  map?: { group: string | null } | null
   projectSelected: boolean
   /** The selected feature's slug, or null when none is selected. */
   featureSlug: string | null
@@ -159,6 +176,11 @@ export function locationFor(state: {
 }): AppLocation {
   const { projectId, featureView = 'overview' } = state
   if (state.preparing) return { kind: 'prepare', projectId }
+  if (state.map) {
+    return state.map.group
+      ? { kind: 'map', projectId, group: state.map.group }
+      : { kind: 'map', projectId }
+  }
   if (state.projectSelected) return { kind: 'chat', projectId }
   if (state.featureSlug) {
     const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const

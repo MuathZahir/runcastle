@@ -215,6 +215,68 @@ describe('useHistorySync', () => {
     })
   })
 
+  /**
+   * the-map-of-stories-and-scenarios: the map and its group are places, and
+   * leaving them is selecting anything else — the shell's wiring in miniature.
+   */
+  describe('the map', () => {
+    afterEach(() => localStorage.clear())
+
+    function Mapped() {
+      const ws = useWorkspace('p1')
+      const location = locationFor({
+        projectId: 'p1',
+        preparing: ws.preparing,
+        map: ws.map,
+        projectSelected: ws.projectSelected,
+        featureSlug: ws.selectedFeatureId,
+        featureView: ws.featureView,
+      })
+      useHistorySync(location, (popped) => {
+        if (popped?.kind === 'map') ws.openMap(popped.group ?? null)
+        else if (popped?.kind === 'feature') ws.select(popped.featureSlug, featureViewOf(popped))
+        else if (popped?.kind === 'chat') ws.selectProject()
+      })
+      return (
+        <>
+          <button onClick={() => ws.select('alpha')}>alpha</button>
+          <button onClick={() => ws.openMap(null)}>map</button>
+          <button onClick={() => ws.openMap('checkout/coupons')}>coupons</button>
+          <button onClick={() => ws.selectProject()}>project row</button>
+          <span data-testid="map">{ws.map ? (ws.map.group ?? 'overview') : 'closed'}</span>
+        </>
+      )
+    }
+
+    it('addresses the overview and a group, and Back and Forward move between map and feature', () => {
+      render(<Mapped />)
+      go('alpha')
+      go('map')
+      expect(path()).toBe('/p/p1/map')
+      go('coupons')
+      expect(path()).toBe('/p/p1/map/checkout/coupons')
+
+      back('/p/p1/f/alpha')
+      expect(screen.getByTestId('map').textContent).toBe('closed')
+      back('/p/p1/map/checkout/coupons')
+      expect(screen.getByTestId('map').textContent).toBe('checkout/coupons')
+      back('/p/p1/map')
+      expect(screen.getByTestId('map').textContent).toBe('overview')
+    })
+
+    it('is left by selecting a feature or the project row', () => {
+      render(<Mapped />)
+      go('map')
+      go('alpha')
+      expect(screen.getByTestId('map').textContent).toBe('closed')
+      expect(path()).toBe('/p/p1/f/alpha')
+      go('coupons')
+      go('project row')
+      expect(screen.getByTestId('map').textContent).toBe('closed')
+      expect(path()).toBe('/p/p1/chat')
+    })
+  })
+
   it('stops listening once unmounted', () => {
     const { unmount } = render(<Harness start={{ kind: 'project', projectId: 'p1' }} />)
     unmount()
