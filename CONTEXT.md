@@ -60,8 +60,8 @@ An opinionated programming system layered on coding-agent CLIs (Claude Code, Cod
 - **Parallelization is a first-class goal** — the architecture must never assume one live feature, even where M1's UI does.
 - **Individual developers first.** Design for one developer whose work all goes through runcastle. Teams come later, and only teams that all use runcastle; teammates working outside it are out of scope.
 - **Language-agnostic by construction.** Runcastle's own code only handles paths, git, text and commands it runs. Anything that needs to understand code is an agent's job; there are no per-language parsers.
-- **Minimal docs; agents read code on demand.** Never ask a human or an agent to keep a description of the code current. What lasts is records (decisions, ADRs, dated previews and captures) and executable things that break loudly (tests, scenarios).
-- **An app's structure is its observable behaviour.** The structure a developer sees is their app's screens and calls, reached by scenarios and captured, never described. Features run through it; nothing is tagged by hand.
+- **Minimal docs; agents read code on demand.** Never ask a human or an agent to keep a description of the code current. What lasts is records (decisions, ADRs, dated previews) and executable things that break loudly (tests, scenarios, stories).
+- **Starting the app is the expensive step.** A project's app may take minutes to come up, with Docker services and a loaded machine. Runcastle starts it as rarely as possible and gets everything out of each start. It never starts the app just to look at it: UI states are shown from the project's own story catalogue, built as static files, and the drive is for end-to-end checks.
 
 ## Deferred / open threads
 
