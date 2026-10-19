@@ -1,4 +1,4 @@
-import type { Feature, ReadyDeclaration, RoundSummary } from '@runcastle/core'
+import { PLAN_UNFINISHED, planFinished, type Feature, type ReadyDeclaration, type RoundSummary } from '@runcastle/core'
 import { ACTION_KINDS, type ActionKind, type NextAction, type NextStep } from './next-step/types'
 
 /**
@@ -12,8 +12,10 @@ export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | '
  * The one primary button the status line's row carries (decision 24): Go in
  * planning, Start test drive when ready, Stop drive while driving, Stop while a
  * round runs, Stop while the feature plans itself — and none in any other state.
+ * Go before the plan is finished is `goGated`: the same button, disabled with
+ * the reason and an override that asks for one (CONTEXT.md decision 8).
  */
-export type StatusPrimary = 'go' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan'
+export type StatusPrimary = 'go' | 'goGated' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -72,7 +74,7 @@ export const STOPPED = 'stopped'
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
  * while a round runs, Stop the run while the feature plans itself, Go in
- * planning, Start test drive when ready.
+ * planning (gated until the plan is finished), Start test drive when ready.
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
@@ -89,7 +91,7 @@ function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrim
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
   if (planningItself(input)) return 'stopSelfPlan'
-  if (input.feature.phase === 'planning') return 'go'
+  if (input.feature.phase === 'planning') return planFinished(input.feature) ? 'go' : 'goGated'
   if (status.kind === 'ready') return 'testDriveStart'
   return undefined
 }
@@ -145,6 +147,13 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
 /** What each primary reads as, and the dispatcher kind it fires. */
 const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
   go: { label: 'Go', kind: 'burn' },
+  // The escape opens Go's confirmation, which asks for the override's reason.
+  goGated: {
+    label: 'Go',
+    kind: 'burn',
+    disabled: PLAN_UNFINISHED,
+    escape: { label: 'Go anyway…', kind: 'burn' },
+  },
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },

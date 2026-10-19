@@ -1,4 +1,16 @@
-import { Button, CheckLine, Dialog, DialogBody, DialogFooter, DialogHeader, SectionLabel, Spinner } from '../ui'
+import { useState } from 'react'
+import {
+  Button,
+  CheckLine,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  Field,
+  SectionLabel,
+  Spinner,
+  TextField,
+} from '../ui'
 import { IconPlay } from '../icons'
 import { ConfirmWarnings } from './MergeFeatureDialog'
 import type { GoSummary } from '../lib/feature-ui'
@@ -12,7 +24,9 @@ import type { GoSummary } from '../lib/feature-ui'
  * box-then-one-line grammar, so the operator learns ONE confirmation pattern
  * for both clicks. The warnings are computed server-side and arrive verbatim;
  * the primary is never disabled behind them, and a plan with no tickets is not
- * refused — the agent may do a small feature itself.
+ * refused — the agent may do a small feature itself. The one thing that holds
+ * it is Go's gate — the plan is not finished — and that only until the human
+ * gives the one-line reason the override records (CONTEXT.md decision 8).
  */
 export function GoFeatureDialog({
   title,
@@ -20,6 +34,7 @@ export function GoFeatureDialog({
   summary,
   busy,
   warningsPending,
+  gate,
   onConfirm,
   onCancel,
 }: {
@@ -29,7 +44,9 @@ export function GoFeatureDialog({
   busy: boolean
   /** The warnings query is still in flight — said, never waited for. */
   warningsPending?: boolean
-  onConfirm: () => void
+  /** Why Go is gated; given, this Go is the gate's override and asks for its reason. */
+  gate?: string
+  onConfirm: (overrideReason?: string) => void
   onCancel: () => void
 }) {
   return (
@@ -46,6 +63,7 @@ export function GoFeatureDialog({
         summary={summary}
         busy={busy}
         warningsPending={warningsPending}
+        {...(gate ? { gate } : {})}
         onConfirm={onConfirm}
         onCancel={onCancel}
       />
@@ -66,6 +84,7 @@ export function GoConfirmation({
   summary,
   busy,
   warningsPending,
+  gate,
   onConfirm,
   onCancel,
 }: {
@@ -74,9 +93,12 @@ export function GoConfirmation({
   summary: GoSummary
   busy: boolean
   warningsPending?: boolean
-  onConfirm: () => void
+  gate?: string
+  onConfirm: (overrideReason?: string) => void
   onCancel: () => void
 }) {
+  const [reason, setReason] = useState('')
+  const armed = !gate || reason.trim() !== ''
   return (
     <>
       <DialogHeader
@@ -112,13 +134,31 @@ export function GoConfirmation({
 
         {/* The last moment to say what the button does. */}
         <p className="m-0 text-sm text-text-tertiary">{summary.next}</p>
+
+        {/* Go's gate: crossed with a reason, which history keeps. */}
+        {gate && (
+          <Field label={`Go anyway — ${gate}. Say why; it is recorded in the feature’s history.`}>
+            <TextField
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              placeholder="One line"
+            />
+          </Field>
+        )}
       </DialogBody>
 
       <DialogFooter className="border-t border-border-subtle pt-4">
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>
-        <Button variant="primary" icon={<IconPlay />} onClick={onConfirm} disabled={busy}>
+        <Button
+          variant="primary"
+          icon={<IconPlay />}
+          onClick={() => onConfirm(gate ? reason.trim() : undefined)}
+          disabled={busy || !armed}
+        >
           {busy ? 'Going…' : 'Go'}
         </Button>
       </DialogFooter>

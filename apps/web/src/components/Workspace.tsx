@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { isStoppableHeadlessRun, parsePhase, type EventRow, type Phase } from '@runcastle/core'
+import { isStoppableHeadlessRun, parsePhase, PLAN_UNFINISHED, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -784,12 +784,15 @@ export function Workspace({
     }
   }
 
-  // The dialog closes on a burn that STARTED. A refusal — the one hard rule
-  // left at this door, a run already burning this feature — raises its toast
+  // The dialog closes on a Go that was TAKEN. A refusal — the feature planning
+  // itself, or an unfinished plan with no override reason — raises its toast
   // with the dialog still up, because closing it would take the reading away
   // and leave nothing on screen the human can act on.
-  const runBurn = () => {
-    burn.mutate({ featureId }, { onSuccess: () => setConfirmBurn(false) })
+  const runBurn = (overrideReason?: string) => {
+    burn.mutate(
+      { featureId, ...(overrideReason ? { overrideReason } : {}) },
+      { onSuccess: () => setConfirmBurn(false) },
+    )
   }
 
   const runMerge = () => {
@@ -1073,6 +1076,8 @@ export function Workspace({
           })}
           busy={burn.isPending}
           warningsPending={!burnWarningsQ.data}
+          // The row's gated Go opened this: the confirmation is its override.
+          {...(status?.primary === 'goGated' ? { gate: PLAN_UNFINISHED } : {})}
           onConfirm={runBurn}
           onCancel={() => setConfirmBurn(false)}
         />

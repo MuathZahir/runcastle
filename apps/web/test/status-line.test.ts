@@ -48,11 +48,11 @@ const declaration = (scenario: string, createdAt: number) => ({
 })
 
 describe('featureStatus', () => {
-  it('reads Planning with you before Go', () => {
+  it('reads Planning with you before Go, with Go gated until the plan is finished', () => {
     expect(featureStatus(input({ feature: { phase: 'planning' } }))).toEqual({
       kind: 'planning',
       label: 'Planning with you',
-      primary: 'go',
+      primary: 'goGated',
     })
   })
 
@@ -85,7 +85,7 @@ describe('featureStatus', () => {
     expect(featureStatus(input({ feature: { phase: 'planning' }, selfPlanning: false }))).toEqual({
       kind: 'planning',
       label: 'Planning with you',
-      primary: 'go',
+      primary: 'goGated',
     })
     expect(featureStatus(input({ feature: { phase: 'planning', ticketsReadyLap: 1 }, selfPlanning: false }))).toEqual({
       kind: 'waiting',
@@ -246,9 +246,16 @@ describe('featureStatus', () => {
 describe('the status line’s one primary (decision 24)', () => {
   const primary = (over: Parameters<typeof input>[0]) => featureStatus(input(over)).primary
 
-  it('is Go in planning, whether or not the plan is complete yet', () => {
-    expect(primary({ feature: { phase: 'planning' } })).toBe('go')
+  it('is Go in planning once this lap’s plan is finished, and gated Go before', () => {
     expect(primary({ feature: { phase: 'planning', ticketsReadyLap: 1 } })).toBe('go')
+    expect(primary({ feature: { phase: 'planning' } })).toBe('goGated')
+    expect(primary({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })).toBe('goGated')
+  })
+
+  it('is never Go while the feature plans itself', () => {
+    for (const ticketsReadyLap of [null, 1]) {
+      expect(primary({ feature: { phase: 'planning', ticketsReadyLap }, selfPlanning: true })).toBe('stopSelfPlan')
+    }
   })
 
   it('is Stop while a round runs', () => {
@@ -289,6 +296,25 @@ describe('the action row beside the status line', () => {
       status({ kind: 'planning', primary: 'go' }),
     )
     expect(out.primary).toEqual({ label: 'Go', kind: 'burn', disabled: 'busy' })
+  })
+
+  it('offers Go enabled once the plan is finished, even when the resolver offered no burn', () => {
+    const row = (over: Parameters<typeof input>[0]) =>
+      leadActions(ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }), featureStatus(input(over)))
+    expect(row({ feature: { phase: 'planning', ticketsReadyLap: 1 } }).primary).toEqual({ label: 'Go', kind: 'burn' })
+  })
+
+  it('disables Go with the reason before the plan is finished, and offers the gate’s override', () => {
+    const out = leadActions(
+      ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }),
+      featureStatus(input({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })),
+    )
+    expect(out.primary).toEqual({
+      label: 'Go',
+      kind: 'burn',
+      disabled: 'the plan is not finished',
+      escape: { label: 'Go anyway…', kind: 'burn' },
+    })
   })
 
   it('offers Start test drive, Stop drive and Stop as the one primary for their states', () => {
