@@ -150,6 +150,28 @@ export const couponsGroup = (over: Partial<MapGroup> = {}): MapGroup => ({
   ...over,
 })
 
+/** Onboarding: one page whose states are a numbered flow, step 3 with a variant, then one unnumbered state. */
+export const onboardingGroup = (over: Partial<MapGroup> = {}): MapGroup => ({
+  id: 'onboarding',
+  name: 'Onboarding',
+  pages: [
+    {
+      importPath: '.runcastle/stories/pages/1-onboarding/Onboarding.stories.tsx',
+      history: [mergedBy('Onboarding', day(10, 19))],
+      states: [
+        mapState('onboarding--welcome', '1 Welcome', 1),
+        mapState('onboarding--git-identity', '2 Git identity', 2),
+        mapState('onboarding--coding-agents', '3 Coding agents', 3),
+        mapState('onboarding--coding-agents-none', '3 Coding agents · None installed', 3),
+        mapState('onboarding--first-project', '4 First project', 4),
+        mapState('onboarding--offline', 'Offline'),
+      ],
+    },
+  ],
+  scenarios: [],
+  ...over,
+})
+
 /** Auth (3 states, 2 ways in, 1 call), Checkout (nothing of its own) and Checkout › Coupons. */
 export const mapModel = (over: Partial<MapModel> = {}): MapModel => ({
   storiesSetUp: true,

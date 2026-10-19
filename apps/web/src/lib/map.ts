@@ -1,4 +1,4 @@
-import type { MapGroup, MapHistoryEntry, MapModel } from '@runcastle/core'
+import type { MapGroup, MapHistoryEntry, MapModel, MapState } from '@runcastle/core'
 
 /**
  * The map's words (the-map-of-stories-and-scenarios): a group's tally, a
@@ -9,17 +9,37 @@ import type { MapGroup, MapHistoryEntry, MapModel } from '@runcastle/core'
 const count = (n: number, one: string, many: string): string | null =>
   n === 0 ? null : `${n} ${n === 1 ? one : many}`
 
-/** `4 UI states · 2 ways in · 1 call` — only the parts a group has. UI states count every state. */
+/** `6 states · 2 ways in · 1 call` — only the parts a place has. States count every page's states. */
 export function mapTally(group: MapGroup): string {
   const states = group.pages.reduce((n, p) => n + p.states.length, 0)
   const calls = group.scenarios.filter((s) => s.call).length
   return [
-    count(states, 'UI state', 'UI states'),
+    count(states, 'state', 'states'),
     count(group.scenarios.length, 'way in', 'ways in'),
     count(calls, 'call', 'calls'),
   ]
     .filter((part) => part !== null)
     .join(' · ')
+}
+
+/** One step of a page's flow: a numbered state and its variants, or one unnumbered state. */
+export interface MapStep {
+  step: number | null
+  states: MapState[]
+}
+
+/**
+ * A page's states as steps, in their order: states that share a step number
+ * are one step and its variants (decision 4); each unnumbered state stands alone.
+ */
+export function mapSteps(states: MapState[]): MapStep[] {
+  const steps: MapStep[] = []
+  for (const state of states) {
+    const last = steps.at(-1)
+    if (last && state.step !== null && last.step === state.step) last.states.push(state)
+    else steps.push({ step: state.step, states: [state] })
+  }
+  return steps
 }
 
 /** A history entry's day, as `Oct 12`. */
@@ -50,15 +70,32 @@ export function historyCredit(entry: MapHistoryEntry): HistoryCredit {
 }
 
 /**
- * Which empty situation the overview is in (decision 7), beside its groups:
- * - `neither`: no groups and no stories set up — one empty state with both doors;
- * - `no-stories`: scenarios but no stories set up;
- * - `no-scenarios`: stories set up but no ways in;
- * - `none`: nothing missing.
+ * What a history line says an entry's change was (the map shows every page and
+ * its states, decision 8): a component or scenario's change, or — for a page
+ * story, whose history covers its story file alone — its stories' update.
+ * A page never reads "Changed by".
  */
-export type MapGap = 'neither' | 'no-stories' | 'no-scenarios' | 'none'
+export type HistoryKind = 'change' | 'stories'
 
-export function mapGap(model: MapModel): MapGap {
-  if (!model.storiesSetUp) return model.groups.length === 0 ? 'neither' : 'no-stories'
-  return model.groups.some((g) => g.scenarios.length > 0) ? 'none' : 'no-scenarios'
+export function historyWords(kind: HistoryKind): { by: string; onMain: string } {
+  return kind === 'stories'
+    ? { by: 'Stories updated by', onMain: 'Stories updated on main' }
+    : { by: 'Changed by', onMain: 'Changed on main' }
+}
+
+/**
+ * What is missing from the map (decision 7), each said once beside its groups:
+ * - `neither`: no groups and no stories set up — one empty state with both doors, alone;
+ * - `no-stories`: scenarios but no stories set up;
+ * - `no-pages`: stories set up and main's catalogue built, but no page stories in it;
+ * - `no-scenarios`: stories set up but no ways in.
+ */
+export type MapGap = 'neither' | 'no-stories' | 'no-pages' | 'no-scenarios'
+
+export function mapGaps(model: MapModel): MapGap[] {
+  if (!model.storiesSetUp) return [model.groups.length === 0 ? 'neither' : 'no-stories']
+  const gaps: MapGap[] = []
+  if (model.catalogue.state === 'built' && model.groups.every((g) => g.pages.length === 0)) gaps.push('no-pages')
+  if (!model.groups.some((g) => g.scenarios.length > 0)) gaps.push('no-scenarios')
+  return gaps
 }

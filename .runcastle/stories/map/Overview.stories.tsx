@@ -3,9 +3,10 @@ import { MapOverview } from '../../../apps/web/src/components/map/MapOverview'
 import { mapModel } from '../../../apps/web/test/fixtures'
 
 /**
- * The map with no group selected: every group with its tally and main's
- * catalogue line, and each situation where a part of the map is missing.
- * A prop story — the model is the one `project.map` answers.
+ * The map with no group selected: the tree of places, each with a picture of
+ * its first state and its tally, main's catalogue line, and each situation
+ * where a part of the map is missing. A prop story — the model is the one
+ * `project.map` answers.
  */
 const noop = (): void => undefined
 const full = mapModel()
@@ -35,6 +36,10 @@ export const NoStories: Story = {
       groups: full.groups.map((g) => ({ ...g, pages: [] })),
     },
   },
+}
+
+export const NoPages: Story = {
+  args: { model: mapModel({ groups: full.groups.map((g) => ({ ...g, pages: [] })) }) },
 }
 
 export const NoScenarios: Story = {
