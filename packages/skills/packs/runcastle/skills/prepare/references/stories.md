@@ -30,6 +30,8 @@ Everything you write lives under `.runcastle/`. The one trace outside it is the 
 
    Story files live in `.runcastle/stories/<product-group>/<Component>.stories.<ext>`, titled `<Group>/<Component>`, for example `checkout/CouponField.stories.tsx` titled `Checkout/CouponField`.
 
+   Story title groups should match the scenario folder names under `.runcastle/scenarios/` (matched ignoring case, spaces, hyphens and underscores), because the map groups stories and scenarios together by name. List the existing scenario folders before you choose a group, and reuse a match rather than inventing a near-copy.
+
 3. **Reuse the app's bundler config**: its framework plugins, CSS pipeline and aliases, so a story compiles exactly as the app does. For Vite, point the builder at the app's config (`framework.options.builder.viteConfigPath`), or merge what you need in `viteFinal`. The dev-server proxy plays no part in a static build. For example, in a monorepo:
 
    ```ts

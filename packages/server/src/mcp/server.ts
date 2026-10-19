@@ -117,6 +117,7 @@ import {
   type TicketContentPatch,
 } from '../services/tickets'
 import { sendDriveCall } from '../services/drive-call'
+import { mapGroupNames } from '../services/map'
 import {
   SCENARIO_FILE_PLACEHOLDER,
   listFeatureScenarios,
@@ -476,6 +477,12 @@ export interface FeatureContext {
    * {@link scenarios}.
    */
   stories?: FeatureStories
+  /**
+   * The product groups on main's map (`mapGroups`): name a new story's or
+   * scenario's group after one of these when it fits (decision 4). Present on
+   * every MCP reply, like {@link stories}; empty when main has none.
+   */
+  mapGroups?: string[]
 }
 
 /** The project's UI-states state as a planning session sees it. */
@@ -602,6 +609,7 @@ export function featureContext(
   reader: FeatureReader,
   scenarios?: FeatureScenarios,
   stories?: FeatureStories,
+  mapGroups?: string[],
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
@@ -668,6 +676,7 @@ export function featureContext(
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
     ...(stories ? { stories } : {}),
+    ...(mapGroups ? { mapGroups } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
@@ -732,13 +741,15 @@ export function featureContext(
   return context
 }
 
-/** {@link featureContext} with its git-read blocks — what every MCP reply carries. */
-async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
-  const [scenarios, stories] = await Promise.all([
+/** {@link featureContext} with its git-read blocks (scenarios, stories, map groups) — what every MCP reply carries. */
+export async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
+  const project = projectForFeature(ctx, getFeatureRow(ctx, reader.featureId))
+  const [scenarios, stories, mapGroups] = await Promise.all([
     featureScenarios(ctx, reader.featureId),
     featureStories(ctx, reader.featureId),
+    mapGroupNames(ctx, project.id),
   ])
-  return featureContext(ctx, reader, scenarios, stories)
+  return featureContext(ctx, reader, scenarios, stories, mapGroups)
 }
 
 function ticketRow(ticket: Ticket): FeatureContextTicketRow {
@@ -3222,6 +3233,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), `stories` (`setUp`: the base branch has .runcastle/stories.json — only then ' +
         'does a ticket that builds a UI state worth seeing ship its story), ' +
+        '`mapGroups` (the product groups on main’s map — name a new story’s or scenario’s ' +
+        '`<group>` after one of these when it fits), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +

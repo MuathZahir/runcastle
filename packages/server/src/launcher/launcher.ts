@@ -54,6 +54,7 @@ import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { orchestratorCatchUp } from '../services/orchestrator-notify'
 import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
+import { mapGroupNames } from '../services/map'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
@@ -1224,6 +1225,7 @@ export async function launchScenarioSession(
       driveUrl: drive.devUrl,
       runner: project.scenarioRunner ?? undefined,
       files: await listScenarioPaths(project.repoPath, 'HEAD'),
+      mapGroups: await mapGroupNames(ctx, project.id),
       description: input.description,
       fix,
       setup,
