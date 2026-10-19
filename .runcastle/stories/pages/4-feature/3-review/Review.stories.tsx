@@ -1,18 +1,29 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { ReviewBody } from '../../../apps/web/src/components/bodies/ReviewBody'
-import type { FeatureFull, RouterOutputs } from '../../../apps/web/src/lib/api'
-import { REVIEW_ARTIFACTS_KEY, type ReviewArtifacts } from '../../../apps/web/src/lib/reviews'
-import { full } from '../../../apps/web/test/fixtures'
-import { withApi } from '../../storybook/fake-api'
+import { EMPTY_DISCOVERY_SNAPSHOT } from '../../../../../packages/core/src/schemas'
+import type { FeatureFull, RouterOutputs } from '../../../../../apps/web/src/lib/api'
+import { REVIEW_ARTIFACTS_KEY, type ReviewArtifacts } from '../../../../../apps/web/src/lib/reviews'
+import { full, listItem } from '../../../../../apps/web/test/fixtures'
+import { AppAt } from '../../../../storybook/app-at'
+import { withApi } from '../../../../storybook/fake-api'
+import { PROJECT_ID, withShell } from '../../../../storybook/shell-fakes'
 
 /**
- * The feature page at review, whole: the page reads its own data — findings,
- * notes, the drive, the project's prep — through tRPC, and every read is
- * answered by the story's fakes at the network edge (`.runcastle/storybook/
- * fake-api.ts`). Nothing below the app shell opens the live event stream.
+ * A feature at review, as the whole app shows it at the feature's address:
+ * sidebar, topbar and the review page, every read answered by the story's
+ * fakes at the network edge (`.runcastle/storybook/fake-api.ts`) on top of the
+ * shell's defaults (`shell-fakes.ts`).
  */
 const FEATURE_ID = 'feat_1'
-const base = full({ id: FEATURE_ID, slug: 'coupon-codes', phase: 'review' })
+const SLUG = 'coupon-codes'
+const TITLE = 'Coupon codes'
+const row = {
+  ...listItem({ id: FEATURE_ID, slug: SLUG, phase: 'review' }),
+  title: TITLE,
+  branch: `feature/${SLUG}`,
+  // Started three days before whenever the story is looked at.
+  createdAt: Date.now() - 3 * 86_400_000,
+}
+const base = full({ id: FEATURE_ID, slug: SLUG, phase: 'review' })
 
 const ticket = (over: Partial<FeatureFull['tickets'][number]>) =>
   ({
@@ -30,7 +41,7 @@ const RUN_ID = 'run_1'
 
 const feature: FeatureFull = {
   ...base,
-  feature: { ...base.feature, title: 'Coupon codes', lap: 1 },
+  feature: { ...base.feature, ...row, lap: 1 },
   tickets: [
     ticket({}),
     ticket({ id: 'tkt_2', seq: 2, title: 'show an expired coupon' }),
@@ -125,12 +136,12 @@ const pass: ReviewArtifacts = {
 }
 
 const meta = {
-  title: 'Feature page/Review',
-  component: ReviewBody,
+  title: 'Feature/Review',
+  render: () => <AppAt path={`/p/${PROJECT_ID}/f/${SLUG}`} />,
   parameters: {
     layout: 'fullscreen',
     ...withApi({
-      trpc: {
+      trpc: withShell({
         findings: {
           listByFeature: () => ({
             findings,
@@ -140,26 +151,29 @@ const meta = {
           }),
         },
         notes: { list: () => [], delivery: () => ({ waitingSince: null, lastFailure: null }) },
-        events: { list: () => [] },
+        events: { list: () => [], listByProject: () => [] },
         feature: {
-          driveInfo: () => null,
+          list: () => [row],
+          get: () => feature,
+          // No catalogue built on this branch, so no "UI states" section.
+          uiStates: () => null,
+          mergeDelta: () => ({ base: 'main', commits: 6, files: 9 }),
+          goWarnings: () => [],
           driveScenarios: () => ({ runnerConfigured: false, scenarios: [] }),
           rounds: () => rounds,
           readyDeclarations: () => declarations,
         },
-        project: {
-          list: () => [],
-          prep: () => ({ pendingKeys: [], findings: [], prepared: true, empty: false, preparedAt: 1, dryRun: null }),
-          drivePrerequisites: () => ({ missing: [] }),
-        },
-      },
+        docs: { read: () => ({ content: '# Coupon codes\n' }) },
+        settings: { get: () => ({ fields: [], discovery: EMPTY_DISCOVERY_SNAPSHOT }) },
+        ticket: { durationStats: () => ({ medianMs: 240_000, sampleSize: 12 }) },
+        project: { drivePrerequisites: () => ({ missing: [] }) },
+      }),
       cache: [[[REVIEW_ARTIFACTS_KEY, FEATURE_ID], [pass]]],
     }),
   },
-  args: { full: feature, driving: null, conflict: null },
-} satisfies Meta<typeof ReviewBody>
+} satisfies Meta
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const WithOpenFindings: Story = {}
+export const FindingsOpen: Story = { name: 'Findings open' }

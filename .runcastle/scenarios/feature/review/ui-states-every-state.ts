@@ -26,9 +26,9 @@ import {
   type StoryIndexEntry,
   StoriesManifest as StoriesManifestSchema,
   StoryIndex,
-} from '../../../packages/core/src/stories.ts'
-import { STORIES_MANIFEST, baseStoriesDir, featureStoriesDir } from '../../../packages/core/src/paths.ts'
-import { STORIES_BUILD_LOG } from '../../../packages/server/src/workflows/stories-build.ts'
+} from '../../../../packages/core/src/stories.ts'
+import { STORIES_MANIFEST, baseStoriesDir, featureStoriesDir } from '../../../../packages/core/src/paths.ts'
+import { STORIES_BUILD_LOG } from '../../../../packages/server/src/workflows/stories-build.ts'
 import {
   type SeededFeature,
   buildCatalogueOnHost,
@@ -38,7 +38,7 @@ import {
   headCommit,
   seedFeatureAtReview,
   withDriveDb,
-} from '../_fixtures/ui-states.ts'
+} from '../../_fixtures/ui-states.ts'
 
 /** The compare feature's branch point: never a real commit, so no real feature shares its base dir. */
 const FAKE_BASE_COMMIT = 'ba5eba5eba5eba5eba5eba5eba5eba5eba5eba5e'

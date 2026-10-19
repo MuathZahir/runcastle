@@ -174,15 +174,15 @@ describe('project.map', () => {
   })
 
   it('lists runcastle’s own review call with its request line', async () => {
-    put('.runcastle/scenarios/review/feature-at-review.ts', 'seed()')
+    put('.runcastle/scenarios/feature/review/feature-at-review.ts', 'seed()')
     put(
-      '.runcastle/scenarios/review/feature-at-review.http',
+      '.runcastle/scenarios/feature/review/feature-at-review.http',
       '### Runcastle version\n# A harmless read.\nGET /api/trpc/system.version\n',
     )
     await baseRepo()
-    const review = (await readMap()).groups.find((g) => g.id === 'review')
+    const review = (await readMap()).groups.find((g) => g.id === 'feature/review')
     expect(review?.scenarios[0]?.call).toEqual({
-      file: '.runcastle/scenarios/review/feature-at-review.http',
+      file: '.runcastle/scenarios/feature/review/feature-at-review.http',
       requestLine: 'GET /api/trpc/system.version',
     })
   })

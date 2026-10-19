@@ -15,8 +15,8 @@
  * comes back new. No branch, worktree or other ref is made in the repo.
  */
 import { randomBytes } from 'node:crypto'
-import { emit } from '../../../packages/server/src/services/events.ts'
-import { runStoriesBuild, storiesBuildBranch } from '../../../packages/server/src/workflows/stories-build.ts'
+import { emit } from '../../../../packages/server/src/services/events.ts'
+import { runStoriesBuild, storiesBuildBranch } from '../../../../packages/server/src/workflows/stories-build.ts'
 import {
   checkoutProject,
   checkoutRoot,
@@ -25,7 +25,7 @@ import {
   hostSandbox,
   seedFeatureAtReview,
   withDriveDb,
-} from '../_fixtures/ui-states.ts'
+} from '../../_fixtures/ui-states.ts'
 
 try {
   await withDriveDb(async (ctx) => {

@@ -15,10 +15,53 @@ import { fakeTrpcFetch, type StoryApi } from './fake-api'
 const ENDPOINT = '/api/trpc'
 
 /**
+ * The live event stream at its edge, for the page stories that render `App`
+ * (whose `useLiveSync` opens `/api/stream`): a stream that opens and never
+ * sends, so nothing reaches a server. Not even the server's `ready` handshake:
+ * the app answers that with a full resync (lib/live.ts), which would refetch
+ * the review artifacts a story seeds into the cache over a real `fetch`. So the
+ * app keeps reading the stream as connecting, and its polls tick against the
+ * story's fakes, in the page.
+ */
+class SilentEventSource extends EventTarget {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+  readonly CONNECTING = 0
+  readonly OPEN = 1
+  readonly CLOSED = 2
+  readonly withCredentials = false
+  readonly url: string
+  readyState = SilentEventSource.CONNECTING
+  onopen: ((ev: Event) => void) | null = null
+  onmessage: ((ev: MessageEvent) => void) | null = null
+  onerror: ((ev: Event) => void) | null = null
+
+  constructor(url: string | URL) {
+    super()
+    this.url = String(url)
+    setTimeout(() => {
+      if (this.readyState === SilentEventSource.CLOSED) return
+      this.readyState = SilentEventSource.OPEN
+      const open = new Event('open')
+      this.onopen?.(open)
+      this.dispatchEvent(open)
+    })
+  }
+
+  close(): void {
+    this.readyState = SilentEventSource.CLOSED
+  }
+}
+// The stand-in's shape is EventSource's; the cast is only for its generic
+// listener overloads, which EventTarget's plain ones already accept.
+globalThis.EventSource = SilentEventSource as unknown as typeof EventSource
+
+/**
  * The app's providers, as main.tsx stacks them, around every story — with a
  * story-local query client and a tRPC client whose network is the story's own
- * fakes. Never the app's live event stream: that is started by `App`, which no
- * story renders.
+ * fakes. A page story renders `App` inside them (`app-at.tsx`); its live
+ * stream is the silent one above.
  */
 function Providers({ api, children }: { api: StoryApi; children: ReactNode }) {
   const [queryClient] = useState(() => {

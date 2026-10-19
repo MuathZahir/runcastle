@@ -7,9 +7,10 @@
  * its env. The driven runcastle never builds main's catalogue on its own (the
  * map never builds on open), so this scenario does: it registers this checkout
  * as a project in the drive's data dir and runs the real `buildMainCatalogue`
- * at HEAD with a sandbox that is the checkout itself. The Review group then
- * shows runcastle's Review/… stories beside the scenarios under
- * `scenarios/review/`, framed from the drive's own stories port.
+ * at HEAD with a sandbox that is the checkout itself. The Feature › Review
+ * group then shows runcastle's Feature/Review page stories beside the
+ * scenarios under `scenarios/feature/review/`, framed from the drive's own
+ * stories port.
  *
  * No branch, worktree or other ref is made in the repo.
  */
@@ -33,7 +34,7 @@ try {
 
     const summary = 'reason' in outcome ? outcome.reason : `at ${commit.slice(0, 7)}`
     console.log(`[map-of-this-checkout] ${outcome.status}: ${summary}`)
-    console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/map/review`)
+    console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/map/feature/review`)
   })
 } catch (e) {
   console.error(`[map-of-this-checkout] ${e instanceof Error ? e.message : String(e)}`)

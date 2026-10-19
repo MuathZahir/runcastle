@@ -24,8 +24,8 @@ import { rmTemp } from './helpers/fixtures'
 
 const BUN = resolveBun()
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..')
-const REAL = join('.runcastle', 'scenarios', 'review', 'feature-with-ui-states.ts')
-const EVERY = join('.runcastle', 'scenarios', 'review', 'ui-states-every-state.ts')
+const REAL = join('.runcastle', 'scenarios', 'feature', 'review', 'feature-with-ui-states.ts')
+const EVERY = join('.runcastle', 'scenarios', 'feature', 'review', 'ui-states-every-state.ts')
 const DRIVE_BRANCH = 'drive/ui-states'
 
 const STORY_FILES = ['Coupon', 'Cart', 'Price', 'Banner'].map((n) => `.runcastle/stories/shop/${n}.stories.tsx`)
