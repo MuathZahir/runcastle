@@ -226,6 +226,15 @@ describe('the orchestrator’s headless runs on the bar', () => {
     expect(ns.secondary).toEqual([])
   })
 
+  it('offers no Stop for a lead woken headless — it is the lead taking Go, not a run to end', () => {
+    const wake = session({ id: 'sess_wake', status: 'live', purpose: 'lead-wake', headless: true })
+    const base = full({ phase: 'building' })
+    const ns = nextStep({ ...base, sessions: [wake] } as unknown as FeatureFull, { driving: false })
+
+    expect(ns.title).not.toBe('Planning itself')
+    expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('stopHeadlessRun')
+  })
+
   it('leaves an interactive start-lap chat to the ordinary review bar', () => {
     const ns = nextStep(review([lapRun({ status: 'live', headless: false })]), { driving: false })
 

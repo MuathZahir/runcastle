@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RefObject } from 'react'
-import { parsePhase, type EventRow, type Phase } from '@runcastle/core'
+import { isStoppableHeadlessRun, parsePhase, type EventRow, type Phase } from '@runcastle/core'
 import { trpc } from '../trpc'
 import { useEventLog } from '../lib/events'
 import { useLivePoll } from '../lib/live'
@@ -713,8 +713,9 @@ export function Workspace({
         else launchSelfPlan.mutate({ featureId, kind: 'chat', purpose: 'self-plan' })
         break
       // Stop is ending the run: it has no terminal to type into (decision 9).
+      // Only the run it was offered for — never a lead woken in its place.
       case 'stopHeadlessRun':
-        void endLiveSession()
+        if (liveSession && isStoppableHeadlessRun(liveSession)) void endLiveSession()
         break
       // The click opens the confirmation; `runBurn` below is what actually
       // burns. Every ex-gate that used to refuse this click is a warning inside
