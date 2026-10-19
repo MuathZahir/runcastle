@@ -75,7 +75,7 @@ And width only counts if it lands: parallel tickets touching the same files coll
 **When `setUp` is true**, ask of each ticket: will the person driving this have to build state by hand to see it — an account, a cart with an expired coupon, a feature sitting at review?
 
 - If yes, give the implementation ticket that builds that state an acceptance criterion: "Ship `.runcastle/scenarios/<group>/<name>.<ext>` that seeds <state> (reusing `_fixtures`) and prints `ENTRY_URL=<where>`". Name the fixtures from `fixtures` it should reuse. When the change is an API call, the criterion also ships a sibling `.http` file at the same path with the request, and the scenario prints `TOKEN=` when the call is authenticated.
-- Pick `<group>` from `get_feature_context`'s `mapGroups` when one fits: the folder is that group's name in kebab case (`Checkout › Coupons` → `checkout/coupons/`). Start a new group only on purpose. A story title and a scenario folder for the same product area must share the name, because the map joins them by name.
+- Pick `<group>` from `get_feature_context`'s `mapGroups` when one fits: the folder is that group's name in kebab case (`Checkout › Coupons` → `checkout/coupons/`). Start a new group only on purpose. A page story's title (the place) and a scenario folder for the same place must share the name, because the map joins them by name.
 - Name that scenario in the review ticket's `context`, so the reviewer replays it rather than improvising the setup.
 - Copy changes and settings toggles get none. A scenario is never required; it earns its place only where reaching the state is the chore.
 - The burn agent writes and typechecks the scenario but cannot run it — a sandbox has no drive. Its first run is the review drive, where a failure is a defect.
@@ -84,13 +84,15 @@ And width only counts if it lands: parallel tickets touching the same files coll
 </ship-a-scenario>
 
 <ship-a-story>
-**Ship a story when a UI state is worth seeing.** A story renders one component state with fixed sample data; review builds them and shows the ones a feature changed on its page, with no app start. Read `get_feature_context`'s `stories` field — `{ setUp }` — before you decide anything.
+**Ship a story when a UI state is worth seeing.** Two kinds. A **page story** (under `.runcastle/stories/pages/`) renders one state of a whole page at its address, and the map shows only these. A **component story** renders one component state with fixed sample data; it is review evidence on the feature page and no longer reaches the map. Review builds both with no app start. Read `get_feature_context`'s `stories` field — `{ setUp, pages }` — before you decide anything; `pages` lists the mapped places (`Feature › Review`), or is `null` when main's catalogue has never been built (then read `.runcastle/stories/pages/` yourself). The how-to is the guide `prepare/references/page-stories.md`; point burn agents at it.
 
-**When `setUp` is true**, ask of each ticket: does it build a UI state the human would want to see before merging — empty, error, loading, expired, a feature sitting at review?
+**The page rule.** When `setUp` is true, a ticket that adds a page, adds a state worth seeing on one, or changes what a page shows gets an acceptance criterion naming the page stories to add or update, by place and state: "Update `Feature/Review` page stories: add \"Findings open\"". It binds to places listed in `stories.pages` and to brand-new pages in a project that has any page stories. An existing page not yet mapped is not the ticket's job (the mapping pass covers it), and a project with no page stories is untouched. Review checks the rule and files a defect when a changed page's stories were not updated.
+
+**Component stories stay optional.** When `setUp` is true, ask of each ticket: does it build a component state the human would want to see before merging — empty, error, loading, expired?
 
 - If yes, give the implementation ticket that builds that state an acceptance criterion: "Ship `.runcastle/stories/<group>/<Component>.stories.<ext>` showing <state>, with data faked at the edge (never by mocking the app's modules)". The story must typecheck — the stories typecheck is in the verify commands.
-- Pick `<group>` from `get_feature_context`'s `mapGroups` when one fits, titling the story `<Group>/<Component>` with that group's spelling. Start a new group only on purpose. The scenario folder for the same product area takes the same name.
-- Copy changes and settings toggles get none. A backend-only project is never asked. A story is never required; it earns its place only where the state is worth seeing.
+- Pick `<group>` from `get_feature_context`'s `mapGroups` when one fits. A page story's title is the place, spelled as the group is; a scenario folder for the same place takes the same name in kebab case. Start a new group only on purpose.
+- Copy changes and settings toggles get none. A backend-only project is never asked. A component story is never required; it earns its place only where the state is worth seeing.
 
 **When `setUp` is false**, card nothing about stories — **never card a setup ticket**; setting UI states up is the prepare session's job, not a feature's. If the feature's states are worth seeing, say once in your closing message that Prepare can set up UI states for this project.
 </ship-a-story>
@@ -142,6 +144,7 @@ There is no in-session quiz — the human's review is the **Go** click in the ru
 7. If `scenarios.setUp`, does every ticket that builds hard-to-reach state ship a scenario for it, and does the review ticket name it? If not set up, have you carded none and kept the one ＋ New scenario line for your close?
 8. If `stories.setUp`, does every ticket that builds a UI state worth seeing ship its story? If not set up, have you carded no setup ticket and kept at most the one Prepare line for your close?
 9. If `mapGroups` is non-empty, does every new story title and scenario folder name an existing group when one fits, so the map joins them? A new group must be one you chose on purpose.
+10. If `stories.setUp`, does every ticket that adds a page or changes what a mapped page (`stories.pages`) shows carry a criterion to add or update that page's stories, by place and state?
 
 Then:
 - `mcp__runcastle__emit_tickets({ tickets: [...] })` — **emit the array; do NOT write ticket files.** It returns `{ stored, ids }` and logs the timeline event itself; do not record one of your own. Emit the **whole batch, fully enriched, in one call** — large payloads are supported, so a batch of long `context` fields is fine. Never emit placeholder contexts ("Context follows via `update_ticket`.") to enrich ticket by ticket afterwards: a round dispatched mid-enrichment burns agents on the placeholders.
