@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Feature, SessionRow, TestNote } from '@runcastle/core'
+import { type Feature, type SessionRow, type TestNote, isStoppableHeadlessRun } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -162,11 +162,9 @@ export const toolPlanFeature = orchestratorTool(
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    // A self-planning row is headless whether or not its launch stamped the
-    // column, so the run plan_feature starts is always one this can stop.
-    const run = activeSessionsForFeature(ctx, feature.id).find(
-      (s) => s.headless || s.purpose === 'self-plan',
-    )
+    // The run plan_feature starts is always one this can stop; the lead that
+    // go_feature's message woke never is — ending it would drop the Go it took.
+    const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
     if (!run) throw new GateError(`\`${feature.slug}\` has no headless run going, so there is nothing to stop.`)
     return endSession(ctx, run.id)
   },

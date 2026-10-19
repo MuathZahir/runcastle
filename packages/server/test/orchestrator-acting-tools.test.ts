@@ -36,6 +36,8 @@ import {
 } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { featureDocPath } from '../src/services/feature-docs'
+import { deliverToLead } from '../src/services/lead-delivery'
+import { leadMessageKey, takeOrchestratorLines } from '../src/services/orchestrator-messages'
 import {
   __resetTestDriveState,
   activeTestDriveFeatureId,
@@ -223,6 +225,36 @@ describe('the orchestrator’s acting tools', () => {
     expect(
       await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
     ).toMatch(/past planning/)
+  })
+
+  it('a lead message while it plans itself, then stop_feature_run: the woken lead is never ended', async () => {
+    const session = orchestrator()
+    const f = await owned('mid-plan')
+    const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'mid-plan' }, { spawn: false })
+    cleanup.push(sessionDir(sessionId))
+    markSessionLive(ctx, sessionId, { ccSessionId: 'cc-plan' })
+
+    await deliverToLead(ctx, getFeatureRow(ctx, f.id), { text: 'Go given', source: 'runcastle' })
+    expect(getSessionRow(ctx, sessionId)?.status).toBe('live')
+    const types = listAfter(ctx, f.id, 0).map((e) => e.type)
+    expect(types).toContain('lead.message_pending')
+    expect(types).not.toContain('session.ended')
+
+    // The plan ran out; runcastle woke the lead headless with Go.
+    toolStopFeatureRun(ctx, session, { slug: 'mid-plan' })
+    const wake = createSessionRow(ctx, {
+      featureId: f.id,
+      kind: 'chat',
+      purpose: 'lead-wake',
+      worktreePath: repoPath,
+      headless: true,
+    })
+    markSessionLive(ctx, wake.id, { ccSessionId: 'cc-plan' })
+    expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'mid-plan' }))).toMatch(
+      /no headless run going/,
+    )
+    expect(getSessionRow(ctx, wake.id)?.status).toBe('live')
+    takeOrchestratorLines(leadMessageKey(f.id))
   })
 
   it('stop_feature_run leaves a human’s interactive session alone', async () => {
