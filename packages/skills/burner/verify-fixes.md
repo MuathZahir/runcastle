@@ -1,6 +1,6 @@
 # Verification pass — tour and verify
 
-You are running a bounded verification pass on `{{FEATURE_BRANCH}}` against `{{BASE_BRANCH}}`. The pass you verify is {{VERIFIES_PASS}}. The mode is inherited and never chosen:
+You are running a bounded verification pass on `{{FEATURE_BRANCH}}` against `{{BASE_BRANCH}}`. The pass you verify is {{VERIFIES_PASS}}. The mode is inherited, not chosen afresh — with one exception. A Gates that pass took only because its ticket told it to is not inherited blindly: the review's own rule applies, so when the acceptance criteria name a screen, flow or state a human could operate and a drive is available, the mode is Drive. "The installed or host runcastle doesn't have this branch's code" is never a reason against a drive, because `review_drive` boots `{{FEATURE_BRANCH}}` itself.
 
 {{DRIVE_AVAILABILITY}}
 
@@ -48,7 +48,7 @@ Whichever mode you are in, the server has already run this project's verify comm
 
 Report findings through `mcp__runcastle__report_finding` as usual. Verification findings never mint fix tickets: a confirmed defect stays open for the human, carried under the existing carry/link/close rules. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
 
-Write `{{DIGEST_PATH}}`. Its first line must name the inherited mode and say "verification pass" (for example, `Drive verification pass`). Summarise which fixes held, which did not, and anything plainly broken on the tour. No `<promise>` markers inside the digest — the completion signal is a line in your message, never a line in this file. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. Either way, the file you write is the last thing you do before signalling COMPLETE.
+Write `{{DIGEST_PATH}}`. Its first line must name the mode you ran and say "verification pass" (for example, `Drive verification pass`) — and, when that is Drive over an inherited Gates, say why. Summarise which fixes held, which did not, and anything plainly broken on the tour. No `<promise>` markers inside the digest — the completion signal is a line in your message, never a line in this file. If the pass cannot run at all, write `{{BLOCKED_PATH}}` with the precise reason instead. Either way, the file you write is the last thing you do before signalling COMPLETE.
 
 End the digest with exactly this machine-readable block. Name the mode actually completed; after a Drive failure followed by full Gates use `gates` and keep the drive failure in the one-line reason:
 
