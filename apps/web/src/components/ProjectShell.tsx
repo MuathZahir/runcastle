@@ -24,7 +24,7 @@ import { Sidebar, SidebarRail } from './Sidebar'
 import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
-import { ProjectWorkspace } from './ProjectWorkspace'
+import { ProjectWorkspace, type DriveRequest } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
 import { MapView } from './map/MapView'
@@ -85,13 +85,15 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   }
   const consumeInboxRequest = () => setInboxRequest(0)
   // The titlebar's drive pill: the project workspace, with its live project
-  // drive brought to the front (project-level-test-drive decision 4).
-  const [driveRequest, setDriveRequest] = useState(0)
-  const openDrive = () => {
+  // drive brought to the front (project-level-test-drive decision 4). A map
+  // entry's Open in drive / Try it, and the map's New scenario, ask the same
+  // way, saying what to land on (the map of stories and scenarios, decision 8).
+  const [driveRequest, setDriveRequest] = useState<DriveRequest | null>(null)
+  const openDrive = (request: DriveRequest = {}) => {
     selectProject()
-    setDriveRequest((request) => request + 1)
+    setDriveRequest(request)
   }
-  const consumeDriveRequest = () => setDriveRequest(0)
+  const consumeDriveRequest = () => setDriveRequest(null)
   // The frame's sidebar state is app-wide (Frame.tsx); the palette toggles it.
   const frame = useFrame()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
@@ -274,9 +276,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         projectId={projectId}
         group={ws.map?.group ?? null}
         onOpenGroup={openMap}
-        // The intent's scenario, side and call are not yet carried into the
-        // drive view; this opens the project drive as the titlebar pill does.
-        onOpenDrive={() => openDrive()}
+        onOpenDrive={(intent) => openDrive({ intent })}
+        onNewScenario={() => openDrive({ newScenario: true })}
+        onOpenFeature={(featureId) => openFeature(featureId)}
+        onOpenPreparation={ws.startPreparation}
       />
     ) : view === 'project' ? (
       <ProjectWorkspace
@@ -344,7 +347,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenCmdk={() => setCmdk(true)}
             onOpenSettings={() => ws.openSettings()}
             projectDriveBranch={projectDrive?.branch ?? null}
-            onOpenProjectDrive={openDrive}
+            onOpenProjectDrive={() => openDrive()}
             driving={driving}
             onDriveChange={setDriving}
           />

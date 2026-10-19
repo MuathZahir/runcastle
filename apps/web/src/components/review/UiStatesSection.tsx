@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { UiStatesModel, UiStatesStory } from '../../lib/api'
 import { trpc } from '../../trpc'
-import { IconExpand } from '../../icons'
-import { Button, Dialog, DialogHeader, Disclosure, StatusDot, Tag, cx } from '../../ui'
+import { Disclosure, StatusDot, Tag, cx } from '../../ui'
+import { OpenLarger, StoryFrame, StoryLargerDialog } from './StoryFrame'
 
 /**
  * "UI states" (features-show-their-ui-states-as-stories, decision 12): the
@@ -96,28 +96,10 @@ export function UiStatesSection({
         </>
       )}
 
-      <Dialog
-        open={larger !== null}
+      <StoryLargerDialog
+        story={larger && { title: `${storyTitle(larger.story)} · ${larger.story.name}`, url: larger.url }}
         onClose={() => setLarger(null)}
-        size="full"
-        labelledBy="ui-states-larger-title"
-        className="flex h-[86vh] flex-col overflow-hidden"
-      >
-        {larger && (
-          <>
-            <DialogHeader
-              id="ui-states-larger-title"
-              title={`${storyTitle(larger.story)} · ${larger.story.name}`}
-              onClose={() => setLarger(null)}
-            />
-            <iframe
-              title={`${storyTitle(larger.story)} · ${larger.story.name}, full size`}
-              src={larger.url}
-              className="block min-h-0 w-full flex-1 border-0 bg-surface-inset"
-            />
-          </>
-        )}
-      </Dialog>
+      />
     </section>
   )
 }
@@ -156,20 +138,20 @@ function StoryBlock({
       </div>
       <div className={story.baseFrameUrl ? 'grid grid-cols-1 gap-3 @2xl:grid-cols-2' : 'grid grid-cols-1'}>
         {story.baseFrameUrl && (
-          <StoryFrame
+          <ReviewFrame
             label="Before"
             story={story}
             url={story.baseFrameUrl}
             onOpen={onOpen}
           />
         )}
-        <StoryFrame label="This feature" story={story} url={story.frameUrl} onOpen={onOpen} />
+        <ReviewFrame label="This feature" story={story} url={story.frameUrl} onOpen={onOpen} />
       </div>
     </article>
   )
 }
 
-function StoryFrame({
+function ReviewFrame({
   label,
   story,
   url,
@@ -181,26 +163,12 @@ function StoryFrame({
   onOpen: (story: UiStatesStory, url: string) => void
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <div className="flex min-h-6 items-center gap-2">
-        <span className="text-xs text-text-tertiary">{label}</span>
-        <OpenLarger className="ml-auto" onClick={() => onOpen(story, url)} />
-      </div>
-      <iframe
-        title={`${storyTitle(story)} · ${story.name}, ${label === 'Before' ? 'before' : 'this feature'}`}
-        src={url}
-        loading="lazy"
-        className="block h-60 w-full rounded-md border border-border-subtle bg-surface-inset"
-      />
-    </div>
-  )
-}
-
-function OpenLarger({ className, onClick }: { className?: string; onClick: () => void }) {
-  return (
-    <Button size="sm" variant="ghost" icon={<IconExpand />} className={className} onClick={onClick}>
-      Open larger
-    </Button>
+    <StoryFrame
+      label={label}
+      frameTitle={`${storyTitle(story)} · ${story.name}, ${label === 'Before' ? 'before' : 'this feature'}`}
+      url={url}
+      onOpen={() => onOpen(story, url)}
+    />
   )
 }
 

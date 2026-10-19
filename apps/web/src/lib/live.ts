@@ -401,6 +401,9 @@ export function useLiveSync(): LiveStatus {
       // A review pass's stories build lands as `stories.built`/`stories.failed`
       // on the feature; the "UI states" section has no poll of its own.
       refetches.push(u.feature.uiStates.invalidate())
+      // Main's catalogue lands as the project's `map.catalogue.*` events
+      // (started, built, failed, promoted); the map has no poll worth waiting on.
+      refetches.push(u.project.map.invalidate())
       refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
       // The review agent's walkthrough appears mid-burn, at the tail of a run

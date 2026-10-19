@@ -14,7 +14,7 @@ import {
   IconUser,
 } from '../../icons'
 import { AsideLayout, Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
-import { ScenarioDrive } from '../review/ScenarioDrive'
+import { ScenarioDrive, type DriveFocus } from '../review/ScenarioDrive'
 import { DriveFailureReport, DriveFooter } from '../review/drive-parts'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ProjectNotesRail } from './ProjectNotesRail'
@@ -40,6 +40,7 @@ export function ProjectDriveView({
   stopping,
   onOpenPreparation,
   switcher,
+  focus,
 }: {
   projectId: string
   /** The parent crumb — clicking it steps back to the project page. */
@@ -54,6 +55,8 @@ export function ProjectDriveView({
   onOpenPreparation: () => void
   /** The Chat | Drive tabs, when a live chat shares the body. */
   switcher?: ReactNode
+  /** The side (and call) a map door asked the drive to show. */
+  focus?: DriveFocus
 }) {
   // The notes aside is the point of driving, so it starts open; the topbar
   // toggle folds it away for a wider stage.
@@ -133,6 +136,7 @@ export function ProjectDriveView({
             drive={drive}
             stop={stop}
             onOpenPreparation={onOpenPreparation}
+            focus={focus}
           />
           <DriveFooter branch={drive.branch} drive={drive} />
         </div>
@@ -147,11 +151,13 @@ function ProjectStage({
   drive,
   stop,
   onOpenPreparation,
+  focus,
 }: {
   projectId: string
   drive: SlotDrive
   stop: ReactNode
   onOpenPreparation: () => void
+  focus: DriveFocus | undefined
 }) {
   const failure = driveFailure(drive)
 
@@ -216,7 +222,7 @@ function ProjectStage({
       if (drive.devUrl) {
         return (
           <div className="flex min-h-100 flex-1 flex-col">
-            <ScenarioDrive projectId={projectId} drive={{ ...drive, devUrl: drive.devUrl }} />
+            <ScenarioDrive projectId={projectId} drive={{ ...drive, devUrl: drive.devUrl }} focus={focus} />
           </div>
         )
       }
