@@ -7,3 +7,6 @@ import { nanoid } from 'nanoid'
 export function newId(prefix: string): string {
   return `${prefix}_${nanoid(12)}`
 }
+
+/** A project id as `newId('proj')` mints it; anything else never reaches the data dir. */
+export const PROJECT_ID_PATTERN = /^proj_[A-Za-z0-9_-]+$/

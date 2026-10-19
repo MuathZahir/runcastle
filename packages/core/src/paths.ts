@@ -1,5 +1,6 @@
 import { homedir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
+import { PROJECT_ID_PATTERN } from './ids'
 
 /**
  * Filesystem paths for runcastle's data dir (`~/.runcastle/`). These are the
@@ -189,6 +190,37 @@ export function baseStoriesDir(commit: string): string {
 
 /** The manifest runcastle writes inside {@link featureStoriesDir}. */
 export const STORIES_MANIFEST = 'manifest.json'
+
+function assertProjectId(projectId: string): void {
+  if (!PROJECT_ID_PATTERN.test(projectId)) throw new Error(`not a project id: ${projectId}`)
+}
+
+/**
+ * Main's current good catalogue for one project: `<storiesRoot>/main/<projectId>/`,
+ * the build's files directly in it with {@link MAIN_CATALOGUE_RECORD} beside
+ * them. Replaced whole when a review build is promoted or a main build lands.
+ * Throws on anything but a project id, so an id can never traverse out.
+ */
+export function mainStoriesDir(projectId: string): string {
+  assertProjectId(projectId)
+  return join(storiesRoot(), 'main', projectId)
+}
+
+/**
+ * The latest attempt at building main: `<storiesRoot>/main-attempts/<projectId>/`,
+ * holding {@link MAIN_CATALOGUE_ATTEMPT}, `build.log` and the in-progress
+ * output. Kept apart so a failed build never touches the last good catalogue.
+ */
+export function mainStoriesAttemptDir(projectId: string): string {
+  assertProjectId(projectId)
+  return join(storiesRoot(), 'main-attempts', projectId)
+}
+
+/** The record runcastle writes inside {@link mainStoriesDir}. */
+export const MAIN_CATALOGUE_RECORD = 'main.json'
+
+/** The attempt record inside {@link mainStoriesAttemptDir}. */
+export const MAIN_CATALOGUE_ATTEMPT = 'attempt.json'
 
 /**
  * Annotated-frame screenshots, one per test note:
