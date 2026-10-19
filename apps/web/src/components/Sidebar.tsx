@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, NavItem, SectionLabel, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
