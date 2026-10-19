@@ -46,7 +46,7 @@ The project home's notes card stops saying "Inbox". It becomes "Notes", with "No
     - The section heading carries "Built from main · <age> · commit <short sha>".
   - **Ways in:** each scenario with its history line and **Open in drive**.
   - **Calls:** each scenario's `.http` request, showing its method and path line and the scenario it sits beside, with **Try it**.
-- **The selected view and group persist in the URL.** Switching Work | Map doesn't lose the open feature: picking a feature from the Inbox while in Map opens it in the content panel, and the sidebar stays in Map.
+- **The map location and its group are in the URL.** The sidebar's Work | Map mode is a per-project preference: it is remembered in the browser, and opening a map address forces it to Map. Like an IDE's explorer toggle, switching the mode changes only the sidebar, never the content panel. So picking a feature from the Inbox while in Map opens it in the content panel, and the sidebar stays in Map.
 
 **History** (decision 6). Every entry shows its latest change inline ("Changed by Coupons, Oct 12") and the earlier ones behind a disclosure ("3 earlier").
 - **Credit:** a change credited to a feature names it by title and links to its feature page. A commit made straight to main reads "Changed on main" with the start of its subject.
