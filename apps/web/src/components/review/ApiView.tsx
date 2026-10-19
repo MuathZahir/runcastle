@@ -37,7 +37,10 @@ export function ApiView({
   strip,
   toolbar,
   onRun,
+  preselected,
 }: {
+  /** The scenario whose call starts selected — a map door's Try it, which runs it itself. */
+  preselected?: string
   projectId: string
   calls: ScenarioMenu
   scenario: DriveScenario | undefined
@@ -47,7 +50,7 @@ export function ApiView({
 }) {
   const toast = useToast()
   // A landed call already on the drive is the one shown until another is picked.
-  const [picked, setPicked] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string | null>(preselected ?? null)
   const current = picked ?? (scenario?.call ? scenario.file : null)
   const mine = scenario && scenario.file === current ? scenario : undefined
   const landing = mine?.status === 'landed' ? mine.landingId : undefined

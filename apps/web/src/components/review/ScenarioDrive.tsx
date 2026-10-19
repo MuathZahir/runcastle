@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DriveScenario } from '@runcastle/core'
 import { Button, IconButton, LINK, SegmentedControl, StatusLabel, cx } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../ui/dropdown-menu'
@@ -22,6 +22,17 @@ export interface ScenarioDriveInfo {
   scenarioSessionId?: string
 }
 
+/**
+ * Where a door from outside the drive asked it to land (the map's Open in
+ * drive / Try it): the App or API side, and the scenario whose call the API
+ * side selects. `seq` is new on every ask, so asking again re-applies it.
+ */
+export interface DriveFocus {
+  side: 'app' | 'api'
+  scenario: string
+  seq: number
+}
+
 /** What the docked chat was opened for, named in its header: ＋ New scenario, or Fix it on one. */
 type ChatErrand = { kind: 'new' } | { kind: 'fix'; name: string }
 
@@ -41,10 +52,12 @@ export function ScenarioDrive({
   projectId,
   featureId,
   drive,
+  focus,
 }: {
   projectId: string
   featureId?: string
   drive: ScenarioDriveInfo
+  focus?: DriveFocus
 }) {
   const toast = useToast()
   const utils = trpc.useUtils()
@@ -83,7 +96,10 @@ export function ScenarioDrive({
   // Blank app: back to the plain URL, until the next landing takes it again.
   const [blankOver, setBlankOver] = useState<string | null>(null)
   // App | API: the app stays mounted (hidden) under the API view, so it is not reloaded.
-  const [view, setView] = useState<'app' | 'api'>('app')
+  const [view, setView] = useState<'app' | 'api'>(focus?.side ?? 'app')
+  useEffect(() => {
+    if (focus) setView(focus.side)
+  }, [focus])
   // The nudge's ✕, held by the drive it was clicked on.
   const [nudgeHiddenFor, setNudgeHiddenFor] = useState<string | null>(null)
 
@@ -178,6 +194,9 @@ export function ScenarioDrive({
         )}
         {api && (
           <ApiView
+            // A new ask starts the view over on its call.
+            key={focus?.seq ?? 0}
+            preselected={focus?.side === 'api' ? focus.scenario : undefined}
             projectId={projectId}
             calls={callMenu(menu)}
             scenario={scenario}
