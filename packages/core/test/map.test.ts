@@ -7,6 +7,7 @@ import {
   MAP_UNGROUPED,
   mapNameKey,
   MapModel,
+  sharedStoryFiles,
   touchesCatalogue,
   type MapGroupSkeleton,
 } from '../src/map'
@@ -28,6 +29,31 @@ const scenario = (path: string, hasCall = false) => ({
 /** `id: name` per group, in order, with children marked by their parent. */
 const outline = (groups: MapGroupSkeleton[]): string[] =>
   groups.map((g) => `${g.parentId ? '  ' : ''}${g.id}: ${g.name}`)
+
+describe('sharedStoryFiles', () => {
+  const reach = (entries: Record<string, string[]>): Map<string, Set<string>> =>
+    new Map(Object.entries(entries).map(([file, stories]) => [file, new Set(stories)]))
+  const names = (n: number): string[] => Array.from({ length: n }, (_, i) => `s${i}.stories.tsx`)
+
+  it('shares a file reached by more than a quarter of the stories', () => {
+    const shared = sharedStoryFiles(reach({ 'theme.ts': names(8), 'helper.ts': names(2) }), 10)
+    expect([...shared]).toEqual(['theme.ts'])
+  })
+
+  it('needs at least 3 stories, however small the catalogue', () => {
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(2) }), 6).size).toBe(0)
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 6).size).toBe(1)
+  })
+
+  it('needs more than a quarter, not exactly a quarter', () => {
+    expect(sharedStoryFiles(reach({ 'helper.ts': names(3) }), 12).size).toBe(0)
+  })
+
+  it('never shares a story file', () => {
+    const files = names(5)
+    expect(sharedStoryFiles(reach({ [files[0]!]: files }), 5).size).toBe(0)
+  })
+})
 
 describe('mapNameKey', () => {
   it('ignores case and treats runs of spaces, hyphens and underscores as one separator', () => {

@@ -173,6 +173,20 @@ describe('project.map', () => {
     expect(ungrouped?.scenarios[0]?.call).toBeUndefined()
   })
 
+  it('lists runcastle’s own review call with its request line', async () => {
+    put('.runcastle/scenarios/review/feature-at-review.ts', 'seed()')
+    put(
+      '.runcastle/scenarios/review/feature-at-review.http',
+      '### Runcastle version\n# A harmless read.\nGET /api/trpc/system.version\n',
+    )
+    await baseRepo()
+    const review = (await readMap()).groups.find((g) => g.id === 'review')
+    expect(review?.scenarios[0]?.call).toEqual({
+      file: '.runcastle/scenarios/review/feature-at-review.http',
+      requestLine: 'GET /api/trpc/system.version',
+    })
+  })
+
   it('keeps the slug for a merge of a feature the project does not know, and omits an unparseable request line', async () => {
     await baseRepo()
     await mergeCoupons()

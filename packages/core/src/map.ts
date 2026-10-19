@@ -226,6 +226,26 @@ export function catalogueDependsOn(index: StoryIndex, stats: PreviewStats): stri
   return [...files].filter((p) => p !== '' && !isNodeModule(p)).sort()
 }
 
+/**
+ * The files too widely shared to say anything about one story's history: those
+ * reached by more than a quarter of all story files and by at least 3 of them.
+ * `reach` maps a repo file to the story files whose import set holds it. A
+ * story file is never shared. History only — the catalogue's dependency set
+ * (staleness, promotion) keeps the full graph, since a theme change does change
+ * every frame.
+ */
+export function sharedStoryFiles(
+  reach: Map<string, Set<string>>,
+  storyCount: number,
+): Set<string> {
+  const shared = new Set<string>()
+  for (const [file, stories] of reach) {
+    if (stories.has(file)) continue
+    if (stories.size >= 3 && stories.size > storyCount / 4) shared.add(file)
+  }
+  return shared
+}
+
 // ---------------------------------------------------------------------------
 // Records and the model
 // ---------------------------------------------------------------------------

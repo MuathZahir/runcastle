@@ -7,6 +7,7 @@ import {
   MainCatalogueAttempt,
   MainCatalogueRecord,
   normaliseStoryPath,
+  sharedStoryFiles,
   StoriesManifest,
   touchesCatalogue,
   type Feature,
@@ -361,7 +362,9 @@ const COMMIT_SENTINEL = '\x1e'
  * Each story file's changes on main's first-parent line up to `tip`, newest
  * first and capped: a commit counts when its diff against its first parent
  * touches the story file or anything it imports (per the build's import
- * graph). Uncredited — the map names features by title at read time. One
+ * graph) — except shared files, which most stories reach, so a change to a
+ * primitive or the theme would credit every feature to every component.
+ * Staleness and promotion still use the full graph. Uncredited — the map names features by title at read time. One
  * `git log` pass for every story; empty when git cannot answer.
  */
 export async function computeStoryHistory(
@@ -376,6 +379,7 @@ export async function computeStoryHistory(
       .map((e) => normaliseStoryPath(e.importPath)),
   )
   const storiesReaching = reachingStories(storyFiles, stats)
+  for (const file of sharedStoryFiles(storiesReaching, storyFiles.size)) storiesReaching.delete(file)
 
   const history: Record<string, MapHistoryEntry[]> = {}
   for (const story of storyFiles) history[story] = []

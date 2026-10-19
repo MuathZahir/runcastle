@@ -23,6 +23,7 @@ import { __resetTestDriveState, createFeatureBranch } from '../src/services/git'
 import {
   __setMainBuildDeps,
   buildMainCatalogue,
+  computeStoryHistory,
   mainBuildSettled,
   startMainBuild,
 } from '../src/services/main-catalogue'
@@ -239,6 +240,32 @@ describe('project.buildMapCatalogue', () => {
     const map = await caller().project.map({ projectId: project.id })
     const button = map.groups[0]?.components.find((c) => c.name === 'Button')
     expect(button?.history[0]).toMatchObject({ featureTitle: 'Coupons', commit: merge })
+  })
+
+  it('leaves files most stories reach out of history, and keeps a component’s own file', async () => {
+    const names = ['A', 'B', 'C', 'D']
+    const entries = names.map((n) => entry(`g-${n.toLowerCase()}--x`, `G/${n}`, `./src/${n}.stories.tsx`))
+    const index = { v: 5, entries: Object.fromEntries(entries.map((e) => [e.id, e])) }
+    const modules = [
+      { name: './src/theme.ts', reasons: entries.map((e) => ({ moduleName: e.importPath })) },
+      { name: './src/A.tsx', reasons: [{ moduleName: entries[0]!.importPath }] },
+      ...entries.map((e) => ({ name: e.importPath, reasons: [] })),
+    ]
+    seedFeature(ctx, project.id, { slug: 'restyle', title: 'Restyle', phase: 'shipped' })
+    seedFeature(ctx, project.id, { slug: 'badge', title: 'Badge', phase: 'shipped' })
+    for (const n of names) put(`src/${n}.stories.tsx`, `story ${n}`)
+    put('src/A.tsx', 'a v1')
+    put('src/theme.ts', 'theme v1')
+    await commitAll('stories')
+    await mergeFeatureBranch('restyle', { 'src/theme.ts': 'theme v2' })
+    await mergeFeatureBranch('badge', { 'src/A.tsx': 'a v2' })
+    const tip = await rev('main')
+
+    const history = await computeStoryHistory(repo, tip, index as never, { modules } as never)
+
+    const subjects = (file: string) => history[file]?.map((e) => e.subject)
+    expect(subjects('src/A.stories.tsx')).toEqual(["Merge branch 'feature/badge'", 'stories'])
+    expect(subjects('src/B.stories.tsx')).toEqual(['stories'])
   })
 
   it('keeps the last good catalogue and records the failure with its log', async () => {
