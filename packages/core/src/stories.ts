@@ -97,7 +97,8 @@ export function normaliseStoryPath(path: string): string {
   return p
 }
 
-const isNodeModule = (path: string): boolean => /(^|\/)node_modules\//.test(path)
+/** Whether a module path is a dependency rather than repo code. */
+export const isNodeModule = (path: string): boolean => /(^|\/)node_modules\//.test(path)
 
 // ---------------------------------------------------------------------------
 // Classifying a feature's stories (decision 7)

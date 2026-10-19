@@ -131,7 +131,7 @@ export function NotesCard({
         <EmptyState
           compact
           icon={<IconInbox />}
-          title="Inbox clear"
+          title="No open notes"
           hint="Every note has been triaged."
         />
       ) : (

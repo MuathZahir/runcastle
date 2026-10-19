@@ -6,6 +6,8 @@ import {
   baseStoriesDir,
   configPath,
   featureStoriesDir,
+  mainStoriesAttemptDir,
+  mainStoriesDir,
   storiesRoot,
   dataDir,
   dbPath,
@@ -140,5 +142,19 @@ describe('story catalogue dirs', () => {
 
   it('refuses a base commit that is not a sha', () => {
     expect(() => baseStoriesDir('../etc')).toThrow()
+  })
+
+  it("keeps main's catalogue and its attempt by project under the data dir", () => {
+    process.env.RUNCASTLE_DATA_DIR = join(homedir(), '.runcastle-dev')
+    const root = join(homedir(), '.runcastle-dev', 'stories')
+    expect(mainStoriesDir('proj_abc123')).toBe(join(root, 'main', 'proj_abc123'))
+    expect(mainStoriesAttemptDir('proj_abc123')).toBe(join(root, 'main-attempts', 'proj_abc123'))
+  })
+
+  it('refuses anything that is not a project id', () => {
+    for (const bad of ['../etc', 'feat_abc', 'proj_../x', '']) {
+      expect(() => mainStoriesDir(bad)).toThrow()
+      expect(() => mainStoriesAttemptDir(bad)).toThrow()
+    }
   })
 })

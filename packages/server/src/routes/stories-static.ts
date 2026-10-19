@@ -1,7 +1,13 @@
 import { realpathSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { STORIES_MANIFEST, storiesRoot } from '@runcastle/core/paths'
+import { PROJECT_ID_PATTERN } from '@runcastle/core'
+import {
+  MAIN_CATALOGUE_ATTEMPT,
+  MAIN_CATALOGUE_RECORD,
+  STORIES_MANIFEST,
+  storiesRoot,
+} from '@runcastle/core/paths'
 import { FEATURE_ID_PATTERN } from '../services/ui-states'
 import { STORIES_BASE_LOG, STORIES_BUILD_LOG } from '../workflows/stories-build'
 import { contentType, safeJoin } from './web'
@@ -14,15 +20,23 @@ import { contentType, safeJoin } from './web'
  *
  *   /features/<featureId>/<path>  →  featureStoriesDir(featureId)
  *   /base/<commit>/<path>         →  baseStoriesDir(commit)
+ *   /main/<projectId>/<path>      →  mainStoriesDir(projectId)
  *
- * Everything else is 404 — no API, no tRPC, no hooks, no WS. Runcastle's own
- * files beside a build (the manifest, the build logs) are never served from
- * here; what the UI needs of them comes through tRPC. `no-store` because a
- * build is replaced in place.
+ * Everything else is 404 — no API, no tRPC, no hooks, no WS, and never main's
+ * in-flight attempts (`main-attempts/`). Runcastle's own files beside a build
+ * (the manifest, main's record and attempt, the build logs) are never served
+ * from here; what the UI needs of them comes through tRPC. `no-store` because
+ * a build is replaced in place.
  */
 
 const COMMIT = /^[0-9a-f]{40}$/
-const PRIVATE_FILES = new Set([STORIES_MANIFEST, STORIES_BUILD_LOG, STORIES_BASE_LOG])
+const PRIVATE_FILES = new Set([
+  STORIES_MANIFEST,
+  STORIES_BUILD_LOG,
+  STORIES_BASE_LOG,
+  MAIN_CATALOGUE_RECORD,
+  MAIN_CATALOGUE_ATTEMPT,
+])
 
 const notFound = (): Response =>
   new Response('not found', { status: 404, headers: { 'cache-control': 'no-store' } })
@@ -54,7 +68,8 @@ export function createStoriesHandler(
     const keyOk =
       key !== undefined &&
       ((area === 'features' && FEATURE_ID_PATTERN.test(key)) ||
-        (area === 'base' && COMMIT.test(key)))
+        (area === 'base' && COMMIT.test(key)) ||
+        (area === 'main' && PROJECT_ID_PATTERN.test(key)))
     if (!keyOk) return notFound()
     const buildDir = join(base, area, key)
 

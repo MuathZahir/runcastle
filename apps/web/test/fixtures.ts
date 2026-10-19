@@ -1,3 +1,4 @@
+import type { MapGroup, MapHistoryEntry, MapModel } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem, UiStatesModel, UiStatesStory } from '../src/lib/api'
 
 /**
@@ -77,6 +78,117 @@ export const uiStatesModel = (over: Partial<UiStatesModel> = {}): UiStatesModel 
   affected: [
     uiStory('checkout-summary--with-coupon', 'With coupon', false),
     uiStory('cart-drawer--discount', 'With discount', false),
+  ],
+  ...over,
+})
+
+/**
+ * The map (the-map-of-stories-and-scenarios), as `project.map` returns it.
+ * Frames load nothing: happy-dom really fetches an iframe's `src`.
+ */
+export const MAP_FRAME = 'about:blank#'
+
+/** Midday UTC in 2026, so the day reads the same in any test machine's zone. */
+export const day = (month: number, date: number): number => Date.UTC(2026, month - 1, date, 12)
+
+export const mergedBy = (title: string, at: number): MapHistoryEntry => ({
+  commit: `c${at}`,
+  at,
+  subject: `Merge branch 'feature/${title.toLowerCase()}'`,
+  featureSlug: title.toLowerCase(),
+  featureId: `feat_${title.toLowerCase()}`,
+  featureTitle: title,
+})
+
+export const onMain = (subject: string, at: number): MapHistoryEntry => ({ commit: `m${at}`, at, subject })
+
+const mapState = (id: string, name: string) => ({ id, name, frameUrl: `${MAP_FRAME}${id}` })
+
+/** Checkout › Coupons: two components (2 + 3 states), two ways in, one call. */
+export const couponsGroup = (over: Partial<MapGroup> = {}): MapGroup => ({
+  id: 'checkout/coupons',
+  name: 'Coupons',
+  parentId: 'checkout',
+  components: [
+    {
+      importPath: 'src/CouponBadge.stories.tsx',
+      name: 'CouponBadge',
+      history: [onMain('fix badge spacing', day(9, 30))],
+      states: [mapState('coupon-badge--default', 'Default'), mapState('coupon-badge--stacked', 'Stacked')],
+    },
+    {
+      importPath: 'src/CouponField.stories.tsx',
+      name: 'CouponField',
+      history: [
+        mergedBy('Coupons', day(10, 12)),
+        mergedBy('Checkout', day(9, 2)),
+        onMain('rename coupon prop', day(8, 20)),
+        mergedBy('Cart', day(7, 1)),
+      ],
+      states: [
+        mapState('coupon-field--empty', 'Empty'),
+        mapState('coupon-field--applied', 'Applied'),
+        mapState('coupon-field--expired', 'Expired'),
+      ],
+    },
+  ],
+  scenarios: [
+    {
+      file: '.runcastle/scenarios/checkout/coupons/cart-with-coupon.ts',
+      name: 'Cart with coupon',
+      history: [mergedBy('Coupons', day(10, 12))],
+      call: {
+        file: '.runcastle/scenarios/checkout/coupons/cart-with-coupon.http',
+        requestLine: 'POST /api/cart/coupon',
+      },
+    },
+    {
+      file: '.runcastle/scenarios/checkout/coupons/expired-coupon.ts',
+      name: 'Expired coupon',
+      history: [mergedBy('Coupons', day(10, 11)), onMain('seed an older coupon', day(9, 1))],
+    },
+  ],
+  ...over,
+})
+
+/** Auth (3 states, 2 ways in, 1 call), Checkout (nothing of its own) and Checkout › Coupons. */
+export const mapModel = (over: Partial<MapModel> = {}): MapModel => ({
+  storiesSetUp: true,
+  catalogue: {
+    state: 'built',
+    commit: 'a41c09e' + 'e'.repeat(33),
+    builtAt: Date.now() - 2 * 3_600_000,
+    stale: false,
+    building: false,
+  },
+  groups: [
+    {
+      id: 'auth',
+      name: 'Auth',
+      components: [
+        {
+          importPath: 'src/SignIn.stories.tsx',
+          name: 'SignIn',
+          history: [],
+          states: [
+            mapState('sign-in--empty', 'Empty'),
+            mapState('sign-in--error', 'Error'),
+            mapState('sign-in--busy', 'Busy'),
+          ],
+        },
+      ],
+      scenarios: [
+        {
+          file: '.runcastle/scenarios/auth/signed-out.ts',
+          name: 'Signed out',
+          history: [],
+          call: { file: '.runcastle/scenarios/auth/signed-out.http' },
+        },
+        { file: '.runcastle/scenarios/auth/locked.ts', name: 'Locked', history: [] },
+      ],
+    },
+    { id: 'checkout', name: 'Checkout', components: [], scenarios: [] },
+    couponsGroup(),
   ],
   ...over,
 })

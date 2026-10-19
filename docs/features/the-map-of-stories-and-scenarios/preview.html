@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The map of stories and scenarios preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.figrow{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+/* the app frame: sidebar + content panel, in runcastle's own look */
+.app{display:grid;grid-template-columns:232px 1fr;min-height:470px}
+.sb{background:var(--color-canvas);border-right:1px solid var(--color-border);padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.sb .proj{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;font-weight:600}
+.sb .proj i{width:18px;height:18px;border-radius:5px;background:var(--color-surface-selected);display:inline-block}
+.sb .search{height:28px;margin:4px 0 6px;padding:0 8px;border-radius:var(--radius-md);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:12px;display:flex;align-items:center}
+.row{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-text-secondary);white-space:nowrap;overflow:hidden}
+.row:hover{background:var(--color-surface-hover)}
+.row.sel{background:var(--color-surface-selected);color:var(--color-text)}
+.row .n{margin-left:auto;color:var(--color-text-tertiary);font-size:12px;font-variant-numeric:tabular-nums}
+.row.ind{padding-left:26px}
+.lane{margin:10px 8px 2px;font-size:11px;color:var(--color-text-tertiary)}
+.sb .seg{margin:10px 4px 4px;display:flex}
+.sb .seg button{flex:1}
+.sb .foot{margin-top:auto;border-top:1px solid var(--color-border-subtle);padding-top:6px}
+.quiet{color:var(--color-text-tertiary)}
+.main{padding:22px 26px;overflow:hidden}
+.main h3.t{font-size:18px;line-height:24px;font-weight:600;margin:0}
+.crumb{font-size:12px;color:var(--color-text-tertiary);margin-bottom:4px}
+.sec{margin-top:22px}
+.sec > h4{margin:0 0 8px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.sec > h4 .hint{font-weight:400}
+.comp{margin-top:10px}
+.comp .h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.comp .h b{font-weight:500}
+.hist{font-size:12px;color:var(--color-text-tertiary)}
+.hist a{color:var(--color-accent-text);text-decoration:none}
+.frames{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px}
+.frame{border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface-raised)}
+.frame .cap{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:11px;color:var(--color-text-tertiary);border-top:1px solid var(--color-border-subtle)}
+.frame .stage{height:86px;display:grid;place-items:center;background:#fafafa}
+.frame .stage.lazy{background:repeating-linear-gradient(135deg,var(--color-surface-inset) 0 8px,var(--color-surface) 8px 16px)}
+/* the user's own component inside a frame: a made-up shop's coupon field */
+.cpn{display:flex;gap:6px;align-items:center;font:12px/1 system-ui,sans-serif;color:#222}
+.cpn input{width:110px;height:26px;border:1px solid #ccc;border-radius:4px;padding:0 6px;font:inherit;background:#fff;color:#222}
+.cpn input.bad{border-color:#d33}
+.cpn .b{height:26px;padding:0 10px;border-radius:4px;background:#222;color:#fff;display:grid;place-items:center}
+.cpn .ok{color:#178a46}.cpn .er{color:#d33;font-size:11px}
+.lrow{display:flex;align-items:center;gap:10px;min-height:40px;border-bottom:1px solid var(--color-border-subtle);padding:0 4px}
+.lrow:first-of-type{border-top:1px solid var(--color-border-subtle)}
+.lrow .nm{font-weight:500}
+.lrow .act{margin-left:auto;display:flex;gap:6px}
+.btn{height:26px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--color-border);background:var(--color-surface-raised);display:inline-flex;align-items:center;font-size:12px;color:var(--color-text);white-space:nowrap}
+.built{font-size:12px;color:var(--color-text-tertiary)}
+.ov{margin-top:14px}
+.ov .lrow .tally{color:var(--color-text-tertiary);font-size:12px}
+.note{margin-top:14px;font-size:12px;color:var(--color-text-tertiary)}
+.note a{color:var(--color-accent-text);text-decoration:none}
+.empty{display:grid;place-items:center;text-align:center;min-height:240px;color:var(--color-text-secondary)}
+.empty b{color:var(--color-text);font-size:15px;display:block;margin-bottom:4px}
+.empty .act{display:flex;gap:8px;justify-content:center;margin-top:12px}
+/* diagrams */
+.match{display:grid;grid-template-columns:1fr 32px 1fr 32px 1fr;align-items:center;margin-top:6px}
+.col{display:flex;flex-direction:column;gap:6px}
+.chip{padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);font:12px var(--font-mono);overflow-wrap:anywhere}
+.chip.grp{font:500 13px var(--font-sans);border-color:var(--color-accent);background:var(--color-accent-subtle)}
+.chip.dim{color:var(--color-text-tertiary)}
+.arrow{text-align:center;color:var(--color-text-tertiary)}
+.colh{font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px}
+.flow{display:flex;align-items:stretch;flex-wrap:wrap;margin-top:8px}
+.step{flex:1;min-width:160px;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step b{display:flex;align-items:center;gap:6px;font-weight:500;margin-bottom:2px}
+.step .hint{display:block}
+.join{display:grid;place-items:center;width:28px;color:var(--color-text-tertiary)}
+.fork{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.cap2{font-size:12px;color:var(--color-text-secondary);margin-top:8px}
+@media (max-width:760px){.app{grid-template-columns:1fr}.sb{border-right:0;border-bottom:1px solid var(--color-border)}.frames{grid-template-columns:1fr}.match{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.fork{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The map of stories and scenarios</h1>
+  <p class="lede">A Map view beside Work in the sidebar shows your app by product name: each group's UI states rendered live, its ways in to drive, and its calls to try, with git saying which features changed each one. What needs you stays pinned above both.</p>
+  <div class="meta"><span>Lap 1 · thin, to test whether the map holds up</span><span><span data-dcount></span> decisions</span><span class="mono">docs/features/the-map-of-stories-and-scenarios/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">The examples use a made-up shop app with Checkout and Auth groups.</p>
+
+  <div class="sub">
+    <h3>The sidebar and a group page <a class="pin" data-d="2">2</a> <a class="pin" data-d="3">3</a> <a class="pin" data-d="9">9</a></h3>
+    <p class="hint">Flip the switch. The Inbox stays put; only what sits under the switch changes.</p>
+<!-- screen:map-sidebar-and-group-page -->
+<div class="screen">
+  <div class="app">
+    <!-- sidebar: Project row unchanged (d9), Inbox pinned = the Needs you lane (d2), Work | Map switch, then lanes or the group tree (d3) -->
+    <aside class="sb">
+      <div class="proj"><i></i>shop-app</div>
+      <div class="search">Search ⌘K</div>
+      <div class="row">Project <span class="n">3 notes</span></div>
+      <div class="lane">Inbox</div>
+      <div class="row">Coupons <span class="n">Ready to burn</span></div>
+      <div class="row">Guest checkout <span class="n">Review</span></div>
+      <div class="seg"><button aria-pressed="false" data-v="work">Work</button><button aria-pressed="true" data-v="map">Map</button></div>
+      <div data-when="work" hidden>
+        <div class="lane">Agent working</div>
+        <div class="row">Password reset</div>
+        <div class="lane">In progress</div>
+        <div class="row">Order history</div>
+        <div class="lane">Drafts</div>
+        <div class="row quiet">Gift cards</div>
+        <div class="lane">Shipped</div>
+        <div class="row quiet">Saved addresses</div>
+      </div>
+      <div data-when="map">
+        <div class="row">Overview</div>
+        <div class="row">Auth</div>
+        <div class="row">Checkout</div>
+        <div class="row ind sel">Coupons</div>
+        <div class="row ind">Payment</div>
+        <div class="row quiet">Ungrouped</div>
+      </div>
+      <div class="foot"><div class="row quiet">Project drive · stopped</div></div>
+    </aside>
+    <!-- content: the group page at /p/<id>/map/<group>; three sections in fixed order, each left out when empty (d3) -->
+    <div class="main">
+      <div class="crumb">Map · Checkout</div>
+      <h3 class="t">Coupons</h3>
+      <div class="built">Built from main · 2 h ago · commit <span class="mono">a41c09e</span></div>
+
+      <div class="sec">
+        <h4>UI states</h4>
+        <!-- one block per component (story file): name + history line, then every state as a frame (d10) -->
+        <div class="comp">
+          <div class="h"><b>CouponField</b><span class="hist">Changed by <a href="#">Coupons</a>, Oct 12 · <a href="#">3 earlier</a></span></div>
+          <div class="frames">
+            <div class="frame"><div class="stage"><div class="cpn"><input placeholder="Code"><span class="b">Apply</span></div></div><div class="cap">Empty<span>Open larger</span></div></div>
+            <div class="frame"><div class="stage"><div class="cpn"><input value="SAVE10"><span class="ok">−10% applied</span></div></div><div class="cap">Applied<span>Open larger</span></div></div>
+            <div class="frame"><div class="stage"><div class="cpn" style="flex-direction:column;align-items:flex-start;gap:4px"><input class="bad" value="OLD5"><span class="er">This code has expired</span></div></div><div class="cap">Expired<span>Open larger</span></div></div>
+          </div>
+        </div>
+        <div class="comp">
+          <div class="h"><b>CouponBadge</b><span class="hist">Changed on main, "fix badge spacing", Sep 30</span></div>
+          <div class="frames">
+            <div class="frame"><div class="stage lazy"></div><div class="cap">Default<span>loads on scroll</span></div></div>
+            <div class="frame"><div class="stage lazy"></div><div class="cap">Stacked<span>loads on scroll</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h4>Ways in</h4>
+        <div class="lrow"><span class="nm">Cart with coupon</span><span class="hist">Changed by <a href="#">Coupons</a>, Oct 12</span><span class="act"><span class="btn">Open in drive</span></span></div>
+        <div class="lrow"><span class="nm">Expired coupon</span><span class="hist">Changed by <a href="#">Coupons</a>, Oct 11</span><span class="act"><span class="btn">Open in drive</span></span></div>
+      </div>
+
+      <div class="sec">
+        <h4>Calls</h4>
+        <div class="lrow"><span class="nm mono">POST /api/cart/coupon</span><span class="hist">beside "Cart with coupon"</span><span class="act"><span class="btn">Try it</span></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- /screen:map-sidebar-and-group-page -->
+    <p class="cap2">Every state is a live frame from main's catalogue <a class="pin" data-d="10">10</a>. Each history line credits features from git <a class="pin" data-d="6">6</a>. Open in drive and Try it open the existing project drive, starting it if none is running <a class="pin" data-d="8">8</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>How names make a group <a class="pin" data-d="4">4</a></h3>
+    <p class="hint">Paths and titles only. Case and separators are ignored; nothing fuzzier.</p>
+    <div class="match">
+      <div class="col"><div class="colh">Story titles</div><div class="chip">Checkout/Coupons/CouponField</div><div class="chip">Checkout/Coupons/CouponBadge</div><div class="chip dim">Button</div></div>
+      <div class="arrow">→</div>
+      <div class="col"><div class="colh">Group</div><div class="chip grp">Checkout › Coupons</div><div class="chip grp">Ungrouped</div></div>
+      <div class="arrow">←</div>
+      <div class="col"><div class="colh">Scenario files (a call rides with its scenario)</div><div class="chip">scenarios/checkout/coupons/cart-with-coupon.ts</div><div class="chip">scenarios/checkout/coupons/cart-with-coupon.http</div><div class="chip dim">scenarios/smoke.ts</div></div>
+    </div>
+    <p class="cap2">If stories say "Review" and a folder says <span class="mono">review-flow</span>, the map shows two groups and never guesses. An agent adding a story or scenario is shown the existing names and told to reuse one.</p>
+  </div>
+
+  <div class="sub">
+    <h3>The overview, and what an empty map says <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">The switch is always there. Pick a project's situation.</p>
+    <div class="figrow"><div class="seg" id="emptyseg">
+      <button aria-pressed="true" data-e="full">Both</button><button aria-pressed="false" data-e="nostories">No stories</button><button aria-pressed="false" data-e="noscen">No scenarios</button><button aria-pressed="false" data-e="neither">Neither</button><button aria-pressed="false" data-e="unbuilt">Never built</button><button aria-pressed="false" data-e="stale">Main moved</button>
+    </div></div>
+<!-- screen:map-overview -->
+<div class="screen">
+  <!-- Map with no group selected: every group with a one-line tally (d3); empty and unbuilt situations (d5, d7) -->
+  <div class="main" style="min-height:280px">
+    <div class="crumb">Map</div>
+    <h3 class="t">Overview</h3>
+    <div data-e="full nostories noscen unbuilt stale">
+      <div class="built" data-e="full noscen">Built from main · 2 h ago</div>
+      <div class="built" data-e="stale">Built from main · 3 days ago · main has moved since · <span class="btn">Rebuild</span></div>
+      <div class="ov">
+        <div class="lrow"><span class="nm">Auth</span><span class="tally" data-e="full stale">3 UI states · 2 ways in · 1 call</span><span class="tally" data-e="nostories unbuilt">2 ways in · 1 call</span><span class="tally" data-e="noscen">3 UI states</span></div>
+        <div class="lrow"><span class="nm">Checkout › Coupons</span><span class="tally" data-e="full stale">5 UI states · 2 ways in · 1 call</span><span class="tally" data-e="nostories unbuilt">2 ways in · 1 call</span><span class="tally" data-e="noscen">5 UI states</span></div>
+        <div class="lrow"><span class="nm">Checkout › Payment</span><span class="tally" data-e="full stale">4 UI states · 1 way in</span><span class="tally" data-e="nostories unbuilt">1 way in</span><span class="tally" data-e="noscen">4 UI states</span></div>
+      </div>
+      <p class="note" data-e="nostories">UI states aren't set up · <a href="#">Set up stories</a></p>
+      <p class="note" data-e="noscen">No ways in yet · <a href="#">New scenario</a></p>
+      <p class="note" data-e="unbuilt">Stories are set up, but main's catalogue hasn't been built · <span class="btn">Build the catalogue</span></p>
+    </div>
+    <div class="empty" data-e="neither">
+      <div><b>The map is built from your stories and scenarios</b><span>Stories show each part of your UI; scenarios are the ways in to drive it.</span>
+      <div class="act"><span class="btn">Set up stories</span><span class="btn">New scenario</span></div></div>
+    </div>
+  </div>
+</div>
+<!-- /screen:map-overview -->
+    <p class="cap2">Opening the map never starts a build: building happens only on that click, or after a merge <a class="pin" data-d="5">5</a>.</p>
+  </div>
+
+  <div class="sub">
+    <h3>Where main's catalogue comes from <a class="pin" data-d="5">5</a></h3>
+    <p class="hint">The catalogue is the static build of your stories. A build takes minutes in the sandbox and never starts the app.</p>
+    <div class="flow">
+      <div class="step"><b>A feature merges</b><span class="hint">--no-ff into main</span></div>
+      <div class="join">→</div>
+      <div class="step"><b>Did a file the catalogue depends on change since its last review build?</b><span class="hint">story files, what they import, the stories set-up; docs commits don't count</span></div>
+    </div>
+    <div class="fork">
+      <div class="step"><b><i class="dot ok"></i>No: promote it</b><span class="hint">The review build becomes main's catalogue instead of being deleted. No cost.</span></div>
+      <div class="step"><b><i class="dot live"></i>Yes: build in the background</b><span class="hint">The map keeps showing the last good build until the new one lands.</span></div>
+    </div>
+    <p class="cap2">The same test, run between the build and main's tip, decides "main has moved since".</p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>The project home rethink, with the Project row renamed "Talk to runcastle"</li>
+      <li><i class="dot"></i>In-flight markers: "Coupons changes this, on its branch"</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Setting up stories, and stories on the feature page (the stories feature)</li>
+      <li><i class="dot"></i>The scenario contract, the drive and its picker (Drive scenarios)</li>
+      <li><i class="dot"></i>Watching main for pushes made outside runcastle</li>
+      <li><i class="dot"></i>Fuzzy name matching, tags or a manifest</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="flow">
+        <div class="step"><b>Main catalogue</b><span class="hint">A place per project in the stories store for main's build: files, manifest and per-story history. Served from the stories port like the other builds.</span></div>
+        <div class="join">→</div>
+        <div class="step"><b>Map model</b><span class="hint">A server procedure joins the build's <span class="mono">index.json</span>, scenarios listed at main (<span class="mono">git ls-tree</span>) and history into groups.</span></div>
+        <div class="join">→</div>
+        <div class="step"><b>Web</b><span class="hint">A map location (<span class="mono">/p/:id/map[/:group]</span>) in the router-less navigation state, the sidebar switch, and the pages.</span></div>
+      </div>
+      <ul class="hint" style="margin-top:14px;padding-left:18px">
+        <li>The build reuses the stories build, refactored so it is no longer shaped around one feature. Promotion happens at merge, where the delete runs today.</li>
+        <li>Story history: the import graph gives the files each story file reaches. <span class="mono">git log --first-parent main</span> over them, read through <span class="mono">Merge branch 'feature/&lt;slug&gt;'</span>, credits a feature.</li>
+        <li>Scenario history: <span class="mono">git log</span> over the scenario file and its <span class="mono">.http</span> file, cached by main's commit.</li>
+        <li>Every change emits an event, so the map refreshes live when a build lands.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  var D = [
+    ['A thin lap 1 that tests whether the map holds up', 'The map earns its place only if stories, scenarios and calls together, with history, beat Storybook’s own sidebar. Lap 1 is the smallest thing that answers that. The project home rethink and in-flight markers wait.'],
+    ['The pinned Inbox is today’s Needs you lane, and “Inbox” means only that', 'The rows themselves keep attention as visible as today, whichever view is open. Notes are your own backlog, so they stay out, and the notes card is renamed “Notes”.'],
+    ['Map mode is an explorer: a group tree in the sidebar, a group page in the content panel', 'The IDE pattern the brief reaches for. One group at a time keeps the number of live frames bounded. The overview gives Map a landing page without touching the project home.'],
+    ['Groups come from names, matched loosely, and agents reuse existing names', 'A mismatch shows as two groups: visible, and it costs only completeness. Tags and manifests were rejected, and working groups out from code would break language-agnostic. Agents write most stories and scenarios, so the guard stops splits where they start.'],
+    ['Main’s catalogue: promoted at merge when it can be, built in the background when it can’t', 'Usually nothing the catalogue reads changes between review and merge, so promotion costs nothing. The test ignores files the catalogue doesn’t read, because runcastle’s own docs commits land after review and after every merge. Otherwise builds start only after a merge or on an explicit click, so the map never pays to show itself.'],
+    ['History follows what an entry depends on, credited to features from main’s merges', 'A story file rarely changes when its component does. The import graph, already in every build, says what each story reaches. Scenario contents are never read, so files are the honest limit there.'],
+    ['The Map is always there, and an empty part says what fills it', 'A switch that comes and goes would make the sidebar shift shape. An empty map is the place to point at Set up stories and New scenario.'],
+    ['Open in drive and Try it are doors into the existing project drive', 'The drive, its single slot, the picker and the App | API view belong to Drive scenarios. One click, instead of a disabled “start a drive first”.'],
+    ['The Project row stays as it is in lap 1, and “Talk to runcastle” waits for the home rethink', 'A label should say what it opens, and the page it opens is the one being rethought. The name doesn’t affect lap 1’s test.'],
+    ['A group’s UI states show every state of each component, framed as on the review page', 'Every state at a glance is what Storybook makes you click through. Frames load on scroll. Changed and new marks belong to a feature’s review, not the map.']
+  ]
+  // check first, a self-planned feature only; empty for a grilled feature
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the show: the sidebar's Work | Map switch
+  $$('[data-v]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var v = b.dataset.v
+      $$('[data-v]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.v === v)) })
+      $$('[data-when]').forEach(function (el) { el.hidden = el.dataset.when !== v })
+    })
+  })
+
+  // the show: the overview's situations
+  function setEmpty(e) {
+    $$('#emptyseg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.e === e)) })
+    $$('.screen [data-e]').forEach(function (el) { el.hidden = el.dataset.e.split(' ').indexOf(e) < 0 })
+  }
+  $$('#emptyseg button').forEach(function (b) { b.addEventListener('click', function () { setEmpty(b.dataset.e) }) })
+  setEmpty('full')
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    if (e.target.closest('.screen a')) e.preventDefault()
+  })
+})()
+</script>
+</body>
+</html>

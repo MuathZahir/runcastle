@@ -16,6 +16,18 @@ import { TestDriveCard } from './project/TestDriveCard'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive } from '../lib/use-project-drive'
+import { useToast } from '../lib/toast'
+import type { MapDriveIntent } from './map/MapView'
+import type { DriveFocus } from './review/ScenarioDrive'
+
+/**
+ * An ask for the project drive: the titlebar pill's (nothing more), a map
+ * entry's Open in drive / Try it (`intent`), or the map's New scenario.
+ */
+export interface DriveRequest {
+  intent?: MapDriveIntent
+  newScenario?: boolean
+}
 
 /**
  * The project workspace (decision 20) — what the rail's pinned row swaps in.
@@ -47,7 +59,7 @@ export function ProjectWorkspace({
   onConsumeInboxRequest,
   empty = false,
   onOpenPreparation,
-  driveRequest = 0,
+  driveRequest = null,
   onConsumeDriveRequest,
 }: {
   projectId: string
@@ -61,10 +73,11 @@ export function ProjectWorkspace({
   empty?: boolean
   /** Open the preparation workspace — where drive commands are established. */
   onOpenPreparation?: () => void
-  /** The titlebar's drive pill asked for the live project drive. */
-  driveRequest?: number
+  /** The titlebar's drive pill, or a map door, asked for the project drive. */
+  driveRequest?: DriveRequest | null
   onConsumeDriveRequest?: () => void
 }) {
+  const toast = useToast()
   const utils = trpc.useUtils()
   // Same query key the nav already polls, so this costs no extra fetch.
   const projectsQ = trpc.project.list.useQuery()
@@ -144,13 +157,78 @@ export function ProjectWorkspace({
     setFront('chat')
     if (session) setShowList(true)
   }
-  // The titlebar's pill: back to the drive from wherever in the project.
+  const driveCard = projectDriveCard({
+    // Nothing to say until the row answers, rather than a
+    // "Prepare drive" that flickers into "Test drive".
+    empty: empty || !project,
+    setupCommand: project?.driveSetupCommand,
+    devCommand: project?.devCommand,
+    drive: projectDrive.slot,
+    projectId,
+  })
+  const refreshDrive = () => void utils.feature.driveInfo.invalidate()
+  const runScenario = trpc.feature.runScenario.useMutation({
+    onSuccess: (res) => {
+      refreshDrive()
+      if (!res.ok) toast.push(res.denied)
+    },
+    onError: (e) => toast.push(e.message),
+  })
+  const openScenarioChat = trpc.feature.openScenarioChat.useMutation({
+    onSuccess: refreshDrive,
+    onError: (e) => toast.push(e.message),
+  })
+  // Which side of the drive view a map door asked for, and the call to select
+  // there; a new one each ask, so asking again re-applies it.
+  const [driveFocus, setDriveFocus] = useState<DriveFocus | undefined>(undefined)
+  const focusOn = (intent: MapDriveIntent): void =>
+    setDriveFocus((prev) => ({ side: intent.side, scenario: intent.scenario, seq: (prev?.seq ?? 0) + 1 }))
+  // The map's New scenario on a drive it had to start: the scenario chat opens
+  // once that drive's app answers, which is when the server will take it.
+  const [newScenarioOnceUp, setNewScenarioOnceUp] = useState(false)
+  const driveUp = Boolean(drive?.devReady && drive.devUrl)
   useEffect(() => {
-    if (driveRequest > 0) {
-      showDrive()
-      onConsumeDriveRequest?.()
+    if (newScenarioOnceUp && driveUp) {
+      setNewScenarioOnceUp(false)
+      openScenarioChat.mutate({ projectId })
     }
-  }, [driveRequest, onConsumeDriveRequest])
+  }, [newScenarioOnceUp, driveUp, openScenarioChat, projectId])
+  // The titlebar's pill: back to the drive from wherever in the project. A map
+  // door also says what to land on (the map of stories and scenarios, decision
+  // 8): on a live project drive it runs there; with the slot free it starts a
+  // project drive on it, as the Test drive picker does; with another drive in
+  // the slot it does what the picker does then — nothing starts, and the
+  // resting page's Test drive card names the holder.
+  useEffect(() => {
+    if (!driveRequest) return
+    onConsumeDriveRequest?.()
+    const { intent, newScenario } = driveRequest
+    if (!intent && !newScenario) {
+      showDrive()
+      return
+    }
+    if (drive) {
+      if (intent) {
+        focusOn(intent)
+        runScenario.mutate({ projectId, file: intent.scenario })
+      } else if (driveUp) openScenarioChat.mutate({ projectId })
+      else setNewScenarioOnceUp(true)
+      showDrive()
+    } else if (driveCard.state === 'ready') {
+      if (intent) focusOn(intent)
+      projectDrive.start(intent?.scenario ?? null, () => {
+        if (newScenario) setNewScenarioOnceUp(true)
+        showDrive()
+      })
+    } else {
+      // Held by another drive, or no drive commands yet: the resting page's
+      // card says which, with its own way on (Prepare drive).
+      setViewing(null)
+      toRestingPage()
+      if (driveCard.state === 'blocked') toast.push(driveCard.reason)
+    }
+    // Answers each request once, reading the rest as it stands at the ask.
+  }, [driveRequest])
 
   const reading = viewing
   // What fills the body. The resting page, unless a live chat or a live drive
@@ -288,15 +366,7 @@ export function ProjectWorkspace({
                     }
                   />
                   <TestDriveCard
-                    card={projectDriveCard({
-                      // Nothing to say until the row answers, rather than a
-                      // "Prepare drive" that flickers into "Test drive".
-                      empty: empty || !project,
-                      setupCommand: project?.driveSetupCommand,
-                      devCommand: project?.devCommand,
-                      drive: projectDrive.slot,
-                      projectId,
-                    })}
+                    card={driveCard}
                     branch={drive?.branch ?? (branchesQ.data?.current || null)}
                     setupCommand={project?.driveSetupCommand}
                     devCommand={project?.devCommand}
@@ -337,6 +407,7 @@ export function ProjectWorkspace({
           stopping={projectDrive.stopping}
           onOpenPreparation={() => onOpenPreparation?.()}
           switcher={switcher}
+          focus={driveFocus}
         />
       )}
       {session && (
