@@ -245,11 +245,9 @@ export async function wakeLeadHeadless(
   } catch (err) {
     requeueOrchestratorLines(key, lines)
     const reason = err instanceof Error ? err.message : String(err)
-    emitWakeFailed(ctx, featureId, `could not resume the agent headless: ${reason}`, {
-      exitCode: null,
-      tail: reason,
-      messages: lines.length,
-    })
+    // Nothing ran, so nothing printed: the refusal is the whole why.
+    const data: LeadWakeFailedData = { exitCode: null, tail: reason, messages: lines.length }
+    emit(ctx, featureId, { type: LEAD_WAKE_FAILED, message: `could not resume the agent headless: ${reason}`, data })
     return null
   } finally {
     waking.delete(featureId)

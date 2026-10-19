@@ -532,7 +532,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
     expect(await wakeLeadHeadless(ctx, f.id, refused)).toBeNull()
     expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
     const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')
-    expect(failed?.message).toContain('another terminal is open')
+    expect(failed?.message).toBe('could not resume the agent headless: another terminal is open')
     expect(failed?.data).toEqual({ exitCode: null, tail: 'another terminal is open', messages: 1 })
   })
 })
