@@ -31,6 +31,18 @@ export function completedPlanningSteps(facts: PlanningArtifactFacts): PlanningSt
   return completed
 }
 
+/**
+ * The plan is finished: the tickets step is complete for this lap (the session
+ * called `complete_phase("tickets")`). Go's gate reads it, not the ticket count —
+ * a finished plan with no tickets is one the lead builds itself.
+ */
+export function planFinished(feature: { lap: number; ticketsReadyLap: number | null }): boolean {
+  return feature.ticketsReadyLap === feature.lap
+}
+
+/** Why Go is gated before {@link planFinished}, in the bar and in `go()`'s refusal. */
+export const PLAN_UNFINISHED = 'the plan is not finished'
+
 /** The first planning artifact still missing, or null when the feature can burn. */
 export function nextPlanningStep(facts: PlanningArtifactFacts): PlanningStep | null {
   if (!facts.hasDecisions) return 'ideation'

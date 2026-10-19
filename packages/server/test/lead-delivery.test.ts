@@ -176,7 +176,7 @@ describe('Go, to a chat that planned live', () => {
   // The chat opened on ideate/revisit and never saw the lead brief, so Go's wake
   // is the only thing that can tell it to load the lead skill.
   it('tells a live Claude Code chat to invoke /runcastle:lead', async () => {
-    const f = feature({ phase: 'planning' })
+    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id)
 
     await go(ctx, f.id)
@@ -187,7 +187,7 @@ describe('Go, to a chat that planned live', () => {
   })
 
   it('spells it $lead for a live Codex chat', async () => {
-    const f = feature({ phase: 'planning' })
+    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id, { runtime: 'codex', live: false })
 
     await go(ctx, f.id)

@@ -5,6 +5,8 @@ import type { EventRow, WorkflowCtx, WorkflowDef } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runs } from '../src/db/schema'
+import { GateError } from '../src/errors'
+import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import type { AppCtx } from '../src/db/types'
 import { listAfter } from '../src/services/events'
 import { getSettings } from '../src/services/settings'
@@ -112,8 +114,8 @@ describe('the feature lead runs rounds', () => {
   })
 
   describe('Go', () => {
-    it('moves a planning feature with no tickets to building, starts no run, warns and tells the lead', async () => {
-      const featureId = seedFeature(ctx, projectId).id
+    it('moves a finished plan with no tickets to building, starts no run, warns and tells the lead', async () => {
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
 
       const { warnings } = await go(ctx, featureId)
 
@@ -121,7 +123,35 @@ describe('the feature lead runs rounds', () => {
       expect(ctx.db.select().from(runs).all()).toHaveLength(0)
       expect(warnings).toEqual([expect.stringMatching(/no spec\.md/)])
       expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(1)
+      expect(eventsOf(ctx, featureId, 'gate.overridden')).toHaveLength(0)
       expect(leadMessages(ctx, featureId)).toEqual([expect.stringMatching(/Go given/)])
+    })
+
+    it('refuses while the feature plans itself, naming the run, even with an override reason', async () => {
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
+      const run = createSessionRow(ctx, { featureId, kind: 'chat', purpose: 'self-plan', headless: true, worktreePath: '/wt' })
+      markSessionLive(ctx, run.id, { ccSessionId: `cc-${run.id}` })
+
+      await expect(go(ctx, featureId, { overrideReason: 'ship it' })).rejects.toThrow(GateError)
+      await expect(go(ctx, featureId)).rejects.toThrow(new RegExp(`planning itself \\(run ${run.id}\\)`))
+      expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
+      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(0)
+    })
+
+    it('gates an unfinished plan: refused without a reason, crossed with one that history records', async () => {
+      const featureId = seedFeature(ctx, projectId, { lap: 2, ticketsReadyLap: 1 }).id
+
+      await expect(go(ctx, featureId)).rejects.toThrow(GateError)
+      await expect(go(ctx, featureId, { overrideReason: '   ' })).rejects.toThrow(/the plan is not finished/)
+      expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
+
+      await go(ctx, featureId, { overrideReason: 'the spec is in my head, build it' })
+
+      expect(getFeatureRow(ctx, featureId).phase).toBe('building')
+      expect(eventsOf(ctx, featureId, 'gate.overridden').map((e) => e.data)).toEqual([
+        { gate: 'go', reason: 'the spec is in my head, build it' },
+      ])
+      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(1)
     })
 
     it('refuses a draft and a feature already past planning', async () => {
@@ -135,7 +165,7 @@ describe('the feature lead runs rounds', () => {
 
   describe('dispatching a round', () => {
     it('starts a run over exactly the named pending tickets, leaving the rest for later', async () => {
-      const featureId = seedFeature(ctx, projectId).id
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b, c] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b'), ticketInput('c')])
       await go(ctx, featureId)
       setWaiting(ctx, featureId, 'round proposed')
@@ -152,7 +182,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('refuses while the feature is still in planning', async () => {
-      const featureId = seedFeature(ctx, projectId).id
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
       await expect(dispatchRound(ctx, featureId, [t.seq])).rejects.toThrow(/no Go yet/)
     })
@@ -177,7 +207,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('dispatches round after round with no human message in between', async () => {
-      const featureId = seedFeature(ctx, projectId).id
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
       await go(ctx, featureId)
 
@@ -187,7 +217,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('after Stop refuses until a human message arrives, which clears the stopped mark', async () => {
-      const featureId = seedFeature(ctx, projectId).id
+      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
       await go(ctx, featureId)
       await stopFeature(ctx, featureId)
@@ -396,7 +426,7 @@ describe('the rounds over tRPC', () => {
     restoreEnv = useDataDir(home)
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
-    featureId = seedFeature(ctx, seedProject(ctx).id).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, { ticketsReadyLap: 1 }).id
     original = workflowRegistry.get('ticket-burner')
     workflowRegistry.set('ticket-burner', landingBurner)
   })

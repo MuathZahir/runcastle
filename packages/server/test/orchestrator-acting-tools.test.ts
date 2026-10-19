@@ -275,7 +275,7 @@ describe('the orchestrator’s acting tools', () => {
    */
   it('go_feature gives an owned feature Go, starting no run, and passes Go’s refusals through', async () => {
     const session = orchestrator()
-    const f = await owned('approvable')
+    const f = await owned('approvable', { ticketsReadyLap: 1 })
     storeTickets(ctx, f.id, [ticketInput('Do the work'), ticketInput('Review it', 'review')])
     const result = await toolGoFeature(ctx, session, { slug: 'approvable' })
     expect(result.warnings).toEqual(expect.any(Array))
