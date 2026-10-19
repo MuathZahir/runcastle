@@ -359,11 +359,12 @@ tier: a story never replaces a test, and no story test addon runs.
   titled `<Group>/<Component>`; their config is `.runcastle/storybook/`, which
   reuses `vite.config.ts` and this app's CSS entries. Never a root `.storybook/`,
   never stories beside components.
-- **Data is faked at the edge.** A prop story passes props. The one page story
-  answers tRPC at the client's `fetch`, from handlers typed by the router's
-  outputs (`.runcastle/storybook/fake-api.ts`), and seeds plain-HTTP reads into
-  the query cache. Never a module mock. Nothing renders `App`, so the live event
-  stream never opens.
+- **Data is faked at the edge.** A prop story passes props. A page story answers
+  tRPC at the client's `fetch`, from handlers typed by the router's outputs
+  (`.runcastle/storybook/fake-api.ts`), and seeds plain-HTTP reads into the query
+  cache. Never a module mock. A page story renders the whole `App` at an address
+  (`.runcastle/storybook/app-at.tsx`, the shell's defaults in `shell-fakes.ts`);
+  its live event stream is a silent stand-in that never reaches a server.
 - **Reuse the tests' sample data**: import from `test/fixtures.ts` rather than
   copying a payload.
 - **Typechecked.** The root `bun run typecheck` covers them
