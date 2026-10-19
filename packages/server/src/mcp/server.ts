@@ -741,8 +741,7 @@ export function featureContext(
   return context
 }
 
-/** {@link featureContext} with its git-read blocks — what every MCP reply carries. */
-/** {@link featureContext} with the git-read parts (scenarios, stories, map groups) filled in. */
+/** {@link featureContext} with its git-read blocks (scenarios, stories, map groups) — what every MCP reply carries. */
 export async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
   const project = projectForFeature(ctx, getFeatureRow(ctx, reader.featureId))
   const [scenarios, stories, mapGroups] = await Promise.all([
