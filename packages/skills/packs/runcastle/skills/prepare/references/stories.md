@@ -28,7 +28,7 @@ Everything you write lives under `.runcastle/`. The one trace outside it is the 
    - `stories: ['../stories/**/*.stories.@(js|jsx|ts|tsx|mdx)']`, narrowed to the extensions the project uses;
    - `core: { disableTelemetry: true }`.
 
-   Story files live in `.runcastle/stories/<product-group>/<Component>.stories.<ext>`, titled `<Group>/<Component>`, for example `checkout/CouponField.stories.tsx` titled `Checkout/CouponField`.
+   Page stories (the only kind the map shows) live under `.runcastle/stories/pages/`, titled by the place. Component stories live in `.runcastle/stories/<product-group>/<Component>.stories.<ext>`, titled `<Group>/<Component>`, for example `checkout/CouponField.stories.tsx` titled `Checkout/CouponField`; they are review evidence only.
 
    Story title groups should match the scenario folder names under `.runcastle/scenarios/` (matched ignoring case, spaces, hyphens and underscores), because the map groups stories and scenarios together by name. List the existing scenario folders before you choose a group, and reuse a match rather than inventing a near-copy.
 
@@ -45,7 +45,7 @@ Everything you write lives under `.runcastle/`. The one trace outside it is the 
 
 5. **Fake data at the edge only.** Either intercept the network (MSW: `msw` + `msw-storybook-addon`, its worker file generated into a static dir under `.runcastle/storybook/` and served with `staticDirs`), or answer at the data client's own transport or cache (seed TanStack Query / Apollo / SWR). Never `vi.mock`, alias, or stub the app's own modules: a story must run the component unchanged. Type the fake responses from the API's own types, so an API change breaks the typecheck. For example, with tRPC, hand the client's links a `fetch` that answers its wire format from handlers typed by `inferRouterOutputs<AppRouter>`. An unfaked call should fail loudly, never reach a real server.
 
-6. **Exactly one page-level story** that loads its data through that faking. It proves the wiring. Every other state is a plain prop story; feature work writes the rest. Reuse the tests' sample data where it exists: import it, don't copy it.
+6. **Exactly one proving page story**, as a page story: a file under `.runcastle/stories/pages/<n>-<place>/`, titled by the place, rendering the whole app at an address and loading its data through that faking. It proves the wiring. Read `page-stories.md` (beside this file) for the shape. Every other state is left to feature work and the mapping pass. Reuse the tests' sample data where it exists: import it, don't copy it.
 
 7. **Typecheck the stories.** The catalogue build does not typecheck, so add `.runcastle/storybook/tsconfig.json` covering `.runcastle/storybook` and `.runcastle/stories`, with the app's compiler options (JSX, DOM lib, path mappings). Name dot-folder files explicitly (`./**/*.ts`): tsc's wildcards skip dot-folders otherwise. Leave the project's own `tsconfig` untouched. Its command (`<pm exec> tsc --noEmit -p .runcastle/storybook/tsconfig.json`):
    - in a prepare session, propose appending it as a `verifyCommands` line and record it with the human's agreement;
@@ -53,7 +53,7 @@ Everything you write lives under `.runcastle/`. The one trace outside it is the 
 
 8. **Write `.runcastle/stories.json`** as in the contract above, with the project's exec form (`bunx`, `npx`, `pnpm exec`, `yarn`).
 
-9. **Evidence: build once.** Run the command with `{out}` replaced by a scratch directory outside the repo. It must exit 0, `index.json` must list the page story, and `preview-stats.json` must exist. Then run the stories typecheck. Never commit the output.
+9. **Evidence: build once.** Run the command with `{out}` replaced by a scratch directory outside the repo. It must exit 0, `index.json` must list the proving page story (its `importPath` under `.runcastle/stories/pages/`), and `preview-stats.json` must exist. Then run the stories typecheck. Never commit the output.
 
 10. **Show the human the files, then commit**: `.runcastle/storybook/`, `.runcastle/stories/`, `.runcastle/stories.json`, the manifest and the lockfile.
 

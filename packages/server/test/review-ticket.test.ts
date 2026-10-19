@@ -909,6 +909,19 @@ describe('what the review agent is handed', () => {
     for (const text of [built, baseFailed, failed, couldnt]) expect(text).not.toMatch(/storybook/i)
   })
 
+  it('adds the page-rule check only when the build has page stories', () => {
+    const record = {
+      status: 'built', commit: 'abcdef1234567', baseCommit: '1234567abcdef', base: 'built',
+      counts: { changed: 1, new: 0, affected: 0 },
+    } as const
+    const withPages = buildStoriesNotes(record, 'feat_1', true)
+    expect(withPages).toContain('apply the page rule')
+    expect(withPages).toContain('file a **defect**')
+    expect(buildStoriesNotes(record, 'feat_1')).not.toContain('page rule')
+    expect(buildStoriesNotes({ status: 'failed', commit: 'abcdef1234567', exitCode: 1, log: 'build.log' }, 'feat_1', true))
+      .not.toContain('page rule')
+  })
+
   it('makes the agent wait out a held slot and give up on a dirty tree at once', () => {
     const template = readFileSync(reviewTemplatePath(), 'utf8')
 

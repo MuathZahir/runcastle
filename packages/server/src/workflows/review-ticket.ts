@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
-import { resolvePreparedSettings } from '@runcastle/core'
+import { isPageStory, resolvePreparedSettings, StoryIndex } from '@runcastle/core'
 import type {
   GateCommandResult,
   ModelEntry,
@@ -621,6 +621,20 @@ export function buildGateNotes(
   return out.join('\n')
 }
 
+/** The page rule, judged by the reviewer from the diff: runcastle parses nothing. */
+const PAGE_RULE_NOTE =
+  " This catalogue has page stories, so apply the page rule: judge from the diff whether a page already on the map, or a brand-new page, was added or changed. If so and its page stories (under `.runcastle/stories/pages/`) were not added or updated to show it, file a **defect**, not an observation. A page that is not on the map yet is not this lap's job."
+
+/** Whether the feature catalogue's index lists any page story. False when it is missing or unreadable. */
+export function featureHasPageStories(featureId: string): boolean {
+  try {
+    const parsed = StoryIndex.safeParse(JSON.parse(readFileSync(join(featureStoriesDir(featureId), 'index.json'), 'utf8')))
+    return parsed.success && Object.values(parsed.data.entries).some((e) => isPageStory(e.importPath))
+  } catch {
+    return false
+  }
+}
+
 /**
  * The `{{STORIES_NOTES}}` block, rendered straight after the gate notes: the
  * UI-states build on the branch (stories decision 4). A failed build is a
@@ -629,7 +643,7 @@ export function buildGateNotes(
  * not the branch's fault. Empty when the branch has no stories, so the block
  * vanishes; otherwise it carries its own leading blank line.
  */
-export function buildStoriesNotes(record: StoriesBuildRecord, featureId: string): string {
+export function buildStoriesNotes(record: StoriesBuildRecord, featureId: string, hasPageStories = false): string {
   const logPath = (log: string): string => join(featureStoriesDir(featureId), log)
   switch (record.status) {
     case 'none':
@@ -639,7 +653,7 @@ export function buildStoriesNotes(record: StoriesBuildRecord, featureId: string)
       const base = record.base === 'failed'
         ? " The branch point's catalogue didn't build, so changed stories show without their \"before\" — that is not a defect against this branch."
         : ''
-      return `\n\nThe server also built this feature's UI-states catalogue at \`${shortCommit(record.commit)}\`, and it built: ${changed} changed, ${added} new and ${affected} more stories that use changed code. The feature page shows them.${base}`
+      return `\n\nThe server also built this feature's UI-states catalogue at \`${shortCommit(record.commit)}\`, and it built: ${changed} changed, ${added} new and ${affected} more stories that use changed code. The feature page shows them.${base}${hasPageStories ? PAGE_RULE_NOTE : ''}`
     }
     case 'failed':
       return `\n\nThe UI-states build FAILED on the feature branch at \`${shortCommit(record.commit)}\` (exit ${record.exitCode ?? 'unknown'}). Treat it exactly like a failed gate: file a finding with the log path \`${logPath(record.log)}\`, so a fix ticket repairs it.`
@@ -999,7 +1013,7 @@ async function reviewTicketOutcome(
       buildScenarioBlock(scenarios, runnerConfigured),
     ),
     GATE_NOTES: buildGateNotes(gateRun, ticket.id, deps.config, project),
-    STORIES_NOTES: buildStoriesNotes(storiesBuild, feature.id),
+    STORIES_NOTES: buildStoriesNotes(storiesBuild, feature.id, storiesBuild.status === 'built' && featureHasPageStories(feature.id)),
     DIGEST_PATH: artifacts.digestPath,
     BLOCKED_PATH: artifacts.blockedPath,
     WALKTHROUGH_PATH: artifacts.walkthroughPath,

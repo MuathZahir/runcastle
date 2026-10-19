@@ -365,6 +365,12 @@ tier: a story never replaces a test, and no story test addon runs.
   cache. Never a module mock. A page story renders the whole `App` at an address
   (`.runcastle/storybook/app-at.tsx`, the shell's defaults in `shell-fakes.ts`);
   its live event stream is a silent stand-in that never reaches a server.
+- **Page stories are the map; component stories are review evidence.** A story
+  under `.runcastle/stories/pages/` (numbered navigation-order folders, titled
+  by the place, one export per state) is a page story and the only kind the map
+  shows. Any other story is a component story: optional, shown at review. A
+  change to a page updates its page stories; the guide is
+  `packages/skills/packs/runcastle/skills/prepare/references/page-stories.md`.
 - **Reuse the tests' sample data**: import from `test/fixtures.ts` rather than
   copying a payload.
 - **Typechecked.** The root `bun run typecheck` covers them

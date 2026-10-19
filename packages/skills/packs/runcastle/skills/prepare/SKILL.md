@@ -132,7 +132,7 @@ Runcastle can show the components a feature changed on that feature's review pag
 2. Storybook's official setup, aimed at `.runcastle/storybook/` rather than a root `.storybook/`; story files in `.runcastle/stories/<group>/`.
 3. Every story wrapped in the app's providers (theme, router, translations, signed-in user).
 4. Data faked at the edge — intercepted network calls or a seeded data cache — never by mocking the app's own modules.
-5. One page-level story that loads data through that faking, and no more; feature work writes the rest.
+5. One proving page story, under `.runcastle/stories/pages/`: the whole app at an address, named by place and state, loading its data through that faking (see `references/page-stories.md`). The evidence build must list it. No more; feature work and the mapping pass write the rest.
 6. A typecheck config under `.runcastle/storybook/` covering the stories, leaving the project's own `tsconfig` untouched.
 7. `.runcastle/stories.json` with a build command that passes `--stats-json`.
 
