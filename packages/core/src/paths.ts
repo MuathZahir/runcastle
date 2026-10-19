@@ -160,6 +160,37 @@ export function reviewGateLogPath(ticketId: string, log: string): string {
 }
 
 /**
+ * Built story catalogues, served read-only on `config.storiesPort`:
+ * `~/.runcastle/stories/`. Generated output, never committed (decision 5).
+ */
+export function storiesRoot(): string {
+  return join(dataDir(), 'stories')
+}
+
+/**
+ * One feature's latest build: `<storiesRoot>/features/<featureId>/`, with its
+ * {@link STORIES_MANIFEST} beside the catalogue. Replaced every review pass and
+ * deleted when the feature merges or is deleted.
+ */
+export function featureStoriesDir(featureId: string): string {
+  return join(storiesRoot(), 'features', featureId)
+}
+
+/**
+ * A base catalogue built at a branch point: `<storiesRoot>/base/<commit>/`.
+ * Cached by commit and shared by every feature with that branch point, swept
+ * once no feature's manifest references it. Throws on anything but a hex sha,
+ * so a commit can never traverse out of the dir.
+ */
+export function baseStoriesDir(commit: string): string {
+  if (!/^[0-9a-f]{7,64}$/i.test(commit)) throw new Error(`not a commit sha: ${commit}`)
+  return join(storiesRoot(), 'base', commit)
+}
+
+/** The manifest runcastle writes inside {@link featureStoriesDir}. */
+export const STORIES_MANIFEST = 'manifest.json'
+
+/**
  * Annotated-frame screenshots, one per test note:
  * `~/.runcastle/annotations/`. Note-keyed rather than review-keyed on purpose
  * (decisions.md #4) — {@link reviewDir} is wiped when a review re-burns, and a

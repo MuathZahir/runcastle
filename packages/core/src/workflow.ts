@@ -1,4 +1,5 @@
 import type { ReviewGateRun } from './review-gates'
+import type { StoriesBuildRecord } from './stories'
 import type { TokenUsage } from './usage'
 import type { Feature, FixProgress, Project, ReviewFinding, Ticket, TicketInput } from './schemas'
 
@@ -39,6 +40,7 @@ export interface WorkflowCtx {
       reviewVerdict?: 'verified' | 'unverified' | null
       reviewVerdictReason?: string | null
       reviewGateRun?: ReviewGateRun | null
+      storiesBuild?: StoriesBuildRecord | null
     },
   ): void
   /**

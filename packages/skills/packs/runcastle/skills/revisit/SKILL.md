@@ -23,7 +23,7 @@ Once the human gives Go the feature's chat is its lead and runs on the lead skil
 4. **Ticket surgery.** Walk the ticket list against the new reality:
    - Stale but still needed → `mcp__runcastle__update_ticket({ id, ...changed fields })` (pending/failed only).
    - No longer needed → `mcp__runcastle__cancel_ticket({ id, reason })` (pending/failed only).
-   - New work required → `mcp__runcastle__emit_tickets({ tickets })` (batch, same shape as ideation). Whether a ticket ships a scenario follows the same rule as planning: `../tickets/SKILL.md`, "Ship a scenario when the state is hard to reach".
+   - New work required → `mcp__runcastle__emit_tickets({ tickets })` (batch, same shape as ideation). Whether a ticket ships a scenario follows the same rule as planning: `../tickets/SKILL.md`, "Ship a scenario when the state is hard to reach". Whether one ships a story follows the same file's "Ship a story when a UI state is worth seeing" — never a setup ticket.
    - `done` work now wrong → emit a NEW ticket that corrects it. Never touch done/burning tickets.
 5. **Close.** `mcp__runcastle__record_event({ type: "feature.revisited", message: "<one-line gist of what changed>" })`, then tell the human what state you left things in — especially, at planning, whether the plan is ready for them to click **Go**.
 

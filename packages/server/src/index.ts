@@ -19,6 +19,7 @@ import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
+import { createStoriesHandler } from './routes/stories-static'
 import { mountWebAppIfBuilt } from './routes/web'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
@@ -163,6 +164,21 @@ export async function startServer(): Promise<void> {
       `http://localhost:${config.serverPort} — data dir: ${dataDir()}`,
   )
 
+  // The stories port (decision 13): built UI-state catalogues on their own
+  // origin, so story code can never call this server's API. A port that will
+  // not bind costs the section its frames, never the server its boot.
+  const storiesHandler = createStoriesHandler()
+  let storiesServer: ReturnType<typeof Bun.serve> | undefined
+  try {
+    storiesServer = Bun.serve({
+      port: config.storiesPort,
+      hostname: SERVE_HOSTNAME,
+      fetch: storiesHandler,
+    })
+  } catch (err) {
+    console.warn(`UI states port ${config.storiesPort} did not open: ${(err as Error).message}`)
+  }
+
   // Provider failures are represented per source in the persisted snapshot;
   // an unforeseen service-level rejection is logged, never allowed to delay boot.
   startModelDiscovery(ctx)
@@ -191,7 +207,10 @@ export async function startServer(): Promise<void> {
     g[SHUTDOWN_KEY] = true
     const shutdown = createShutdown({
       killAllTrees: () => ptyRegistry().killAllTrees(),
-      stop: () => server.stop(),
+      stop: () => {
+        server.stop()
+        storiesServer?.stop()
+      },
       exit: (code) => process.exit(code),
     })
     process.on('SIGINT', shutdown)

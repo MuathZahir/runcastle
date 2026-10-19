@@ -44,7 +44,7 @@ In **Gates mode**, read each fix diff against its finding and read the server's 
 
 Whichever mode you are in, the server has already run this project's verify commands on the fixed `{{FEATURE_BRANCH}}` — these are its results. **Never run a verify command yourself**: the checkout you are in is the human's, on `{{BASE_BRANCH}}` outside a drive, so it would test the base's code, not the fixes.
 
-{{GATE_NOTES}}
+{{GATE_NOTES}}{{STORIES_NOTES}}
 
 Report findings through `mcp__runcastle__report_finding` as usual. Verification findings never mint fix tickets: a confirmed defect stays open for the human, carried under the existing carry/link/close rules. The ordinary review auto-fix cap is {{AUTO_FIX_CAP}}.
 

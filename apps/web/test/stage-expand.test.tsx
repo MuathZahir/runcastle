@@ -77,6 +77,7 @@ vi.mock('../src/trpc', () => {
         rounds: { useQuery: () => ({ data: [] }) },
         readyDeclarations: { useQuery: () => ({ data: [{ id: 'ready_1', featureId: 'feat_1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 1 }] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
+        uiStates: { useQuery: () => ({ data: null }) },
         driveInfo: { useQuery: () => ({ data: state.drive }) },
         driveScenarios: { useQuery: () => ({ data: { runnerConfigured: false, scenarios: [] } }) },
         runScenario: { useMutation: mutation },

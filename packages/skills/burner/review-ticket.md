@@ -43,7 +43,7 @@ Its `goal` says what to verify and its `acceptanceCriteria` say how you will kno
 
 The server has already run this project's verify commands on `{{FEATURE_BRANCH}}` — whichever mode you pick, this is the gate record for the branch you are reviewing:
 
-{{GATE_NOTES}}
+{{GATE_NOTES}}{{STORIES_NOTES}}
 
 ## Feature context
 

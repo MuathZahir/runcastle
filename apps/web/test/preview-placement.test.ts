@@ -3,8 +3,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { Feature, Phase, Ticket } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
+import { uiStatesModel } from './fixtures'
 
-const store = vi.hoisted(() => ({ full: undefined as unknown }))
+const store = vi.hoisted(() => ({ full: undefined as unknown, uiStates: null as unknown }))
 
 /** Every tRPC hook a planning body calls: queries answer from `store`, nothing mutates. */
 vi.mock('../src/trpc', () => {
@@ -17,6 +18,7 @@ vi.mock('../src/trpc', () => {
         get: { useQuery: () => query(store.full) },
         rounds: { useQuery: () => query([]) },
         endSession: { useMutation: () => ({ isPending: false, mutate: () => undefined }) },
+        uiStates: { useQuery: () => query(store.uiStates) },
       },
       settings: { get: { useQuery: () => query({ fields: [] }) } },
       ticket: {
@@ -41,26 +43,35 @@ const ticket = { id: 't1', featureId: 'f1', seq: 1, lap: 1, title: 'Build it', g
 function fullWith({ tickets = [] as Ticket[], preview = null as FeatureFull['preview'] } = {}): FeatureFull {
   const full = { feature, tickets, sessions: [], runs: [], docs: [{ relPath: 'decisions.md', title: 'Decisions' }], preview, dependsOn: [], blocks: [] } as unknown as FeatureFull
   store.full = full
+  store.uiStates = null
   return full
 }
 
 function body(full: FeatureFull, effective: Phase, { readonly = false, ticketsIsBody = false } = {}): string {
-  return renderToStaticMarkup(
-    createElement(PhaseBody, {
-      effective,
-      full,
-      events: [],
-      driving: null,
-      conflict: null,
-      runId: null,
-      ticketsIsBody,
-      readonly,
-      onViewPhase: () => undefined,
-    }),
+  return withoutIds(
+    renderToStaticMarkup(
+      createElement(PhaseBody, {
+        effective,
+        full,
+        events: [],
+        driving: null,
+        conflict: null,
+        runId: null,
+        ticketsIsBody,
+        readonly,
+        onViewPhase: () => undefined,
+      }),
+    ),
   )
 }
 
-const markup = (element: ReactElement) => renderToStaticMarkup(element)
+/**
+ * React's generated ids follow a node's place among its siblings, so the last
+ * review's UI-states slot beside a planning body (rendering nothing before a
+ * first review) renumbers them without changing a byte of what is shown.
+ */
+const withoutIds = (html: string) => html.replace(/_R_\w+_/g, '_R_')
+const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(element))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
 const panelAt = (html: string) => html.indexOf('<iframe')
 
@@ -104,5 +115,17 @@ describe('the preview on the planning page', () => {
     )
     const ledger = fullWith({ tickets: [ticket] })
     expect(body(ledger, 'planning', { ticketsIsBody: true })).toBe(markup(createElement(TicketsBody, { featureId: 'f1' })))
+  })
+})
+
+/** UI-states decision 12: the last review's build stays in view between reviews. */
+describe('the last review’s UI states on the planning page', () => {
+  it('follows the build, not a lap counter that no longer moves', () => {
+    const full = fullWith({ tickets: [ticket] })
+    store.uiStates = uiStatesModel()
+    const html = body(full, 'planning', { ticketsIsBody: true })
+    expect(feature.lap).toBe(1)
+    expect(html).toContain('id="ui-states"')
+    expect(html).toContain('Built at the last review')
   })
 })

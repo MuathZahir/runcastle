@@ -398,6 +398,9 @@ export function useLiveSync(): LiveStatus {
       // WHILE the human reads them, and a warning that outlives the thing it
       // warns about is worse than none.
       refetches.push(u.feature.goWarnings.invalidate())
+      // A review pass's stories build lands as `stories.built`/`stories.failed`
+      // on the feature; the "UI states" section has no poll of its own.
+      refetches.push(u.feature.uiStates.invalidate())
       refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
       // The review agent's walkthrough appears mid-burn, at the tail of a run

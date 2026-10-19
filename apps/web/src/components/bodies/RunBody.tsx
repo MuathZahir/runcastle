@@ -30,6 +30,7 @@ import { LaneTranscript } from '../run/LaneTranscript'
 import { RunHeader } from '../run/RunHeader'
 import { RunLanes } from '../run/RunLanes'
 import { RunTimeline } from '../run/RunTimeline'
+import { LastReviewUiStates } from '../review/UiStatesSection'
 import { UnrunnableGates } from '../run/UnrunnableGates'
 
 /**
@@ -383,6 +384,9 @@ export function RunBody({
       ) : (
         <RunLanes tickets={tickets} lane={lane} />
       )}
+
+      {/* The last review pass's UI states stay in view while the next burn runs (decision 12). */}
+      <LastReviewUiStates featureId={featureId} className="mt-10" />
 
       <div className="mt-8 flex flex-col">
         <RunTimeline events={runEvents} />

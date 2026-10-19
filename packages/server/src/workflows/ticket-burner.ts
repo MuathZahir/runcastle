@@ -715,17 +715,16 @@ export const TICKET_SPECIFIC_PLACEHOLDERS: readonly PlaceholderKey[] = [
 
 /**
  * Replace every `{{KEY}}` placeholder in a burner template with its value.
- * Uses split/join (not RegExp) so values may contain `$` and special chars
- * safely, and replaces all occurrences of each key. Keys absent from `values`
- * are left alone — a template is free to carry placeholders one caller fills
- * and another does not.
+ * One pass over the template, so a value that itself names a placeholder (an
+ * inlined digest quoting `{{GATE_NOTES}}`) stays literal; the replacer is a
+ * function so `$` in a value is never a replacement pattern. Keys absent from
+ * `values` are left alone — a template is free to carry placeholders one
+ * caller fills and another does not.
  */
 export function renderTemplate(template: string, values: Record<string, string>): string {
-  let out = template
-  for (const [key, value] of Object.entries(values)) {
-    out = out.split(`{{${key}}}`).join(value)
-  }
-  return out
+  return template.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key: string) =>
+    Object.hasOwn(values, key) ? (values[key] as string) : match,
+  )
 }
 
 /** {@link renderTemplate} over the implement-ticket template's fixed key set. */

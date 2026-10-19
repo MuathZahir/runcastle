@@ -1,0 +1,84 @@
+# Decisions
+
+## 1. One lap, the whole feature
+**Decision:** Lap 1 builds all of it: the catalogue build in the sandbox, keeping and serving its output, finding the feature's stories, the feature-page section, the setup in the prepare session and planning's wording, and `apps/web` set up as the first project.
+**Why:** No piece is useful alone (a catalogue nobody sees, a section with nothing behind it), and each piece is small and understood. The one unknown, whether inline stories read well on the page, only shows once it exists and is a lap-2 adjustment at worst.
+
+## 2. Runcastle's own dashboard is set up in this feature, by following the prepare recipe
+**Decision:** Besides the capability for every project, this feature adds stories to runcastle's own web UI (`apps/web`). A ticket does it by following the same setup recipe the prepare session reads (decision 14), and it also ships a few stories for hard-to-reach dashboard states, so the feature page has something real to show.
+**Why:** None of the human's projects has stories, so the capability can only be proven on one that gets them now. A burn cannot run a prepare session, and prepare's new wording only reaches live sessions after a publish and reinstall, so following the recipe from a ticket is how the recipe itself gets tested in this lap, and how review can show the section working.
+
+## 3. The build command lives in a committed `.runcastle/stories.json`
+**Decision:** A project records its catalogue build command in `.runcastle/stories.json`, committed in its own repo beside the scenarios and drive scripts. The file being present on a branch is what "this project has stories" means. No story-file pattern is recorded: runcastle matches changed files against the story list the build itself writes.
+**Why:** It is branch-correct: a feature branched before the setup has no stories and simply skips the build, where a project setting would try to build on branches that have no Storybook. It versions with the stories it builds, like the drive scripts.
+
+## 4. The catalogue is built beside the gates, on every review pass, and a failed build is a failed gate
+**Decision:** Each review pass (the first review and every fix-verifying pass) builds the catalogue in the same sandbox step that runs the gates, at the same commit at the branch tip. It runs even when the project has no gates, and is skipped silently when `.runcastle/stories.json` is not on the branch. A failed build is reported to the reviewer like a failed gate, with its output, so it becomes a finding and then a fix ticket.
+**Why:** Review is when the human looks at stories. That sandbox already has dependencies installed, and the catalogue then matches what was reviewed. Treating failure as a gate is what makes "review checks that the catalogue builds" real. Building at the end of every ticket was rejected: minutes of sandbox time per ticket for catalogues nobody opens mid-burn.
+
+## 5. One built catalogue per feature, gone at merge
+**Decision:** Runcastle keeps one built catalogue per feature. Each new build replaces it, and it is deleted when the feature merges. A failed build shows the failure and its output, and nothing else. Story files are source and merge with the feature; the built catalogue is generated output and is never committed.
+**Why:** The human: "Why overcomplicate it?" After merge the stories live on in main's source, and showing main's catalogue is *The map of stories and scenarios*' job. Rejected: keeping catalogues after ship, and showing a last good build beside a failure.
+
+## 6. Changed stories are shown beside their base version
+**Decision:** For each story the feature changed that also exists at the commit the feature branched from, the section shows the base version and the feature's version side by side, as two live frames. A story the feature added shows alone, marked new. Review builds the base catalogue at that branch point in the same step. The base build is cached by commit, so features sharing a branch point, and later review passes, reuse it.
+**Why:** The human asked for it, to judge whether a changed component got better. It is not the capture design the brief ruled out: no screenshots, no pixel diff, no determinism checks, and it never starts the app. This overrides the brief's "before/after comparison is not wanted now", which was about comparing rounds of captures. The branch point is the right "before" because it isolates what this feature changed from what other merges changed.
+
+## 7. A feature's stories are found through the build's import list
+**Decision:** The files the feature changed (its git diff against the branch point) are matched through the import list the build writes (`storybook build --stats-json` → `preview-stats.json`). A story whose story file changed, or that imports a changed file directly, is *changed* and gets the side-by-side. A story that reaches a changed file only through other files is *also affected*: counted on one collapsed line ("37 more stories use changed code") and opened on request. The setup writes the build command with `--stats-json`.
+**Why:** Matching story files alone misses a restyled component whose story file was not touched. The import list is the build's own text output, as Chromatic and Storybook's own change detection use it, so it stays paths and text. Collapsing far matches keeps a change to a shared component from flooding the page. The cost: the reader is Storybook-shaped.
+
+## 8. Storybook only; Widgetbook is parked
+**Decision:** This feature supports Storybook only. Widgetbook (Flutter) is parked as the draft *Widgetbook stories for Flutter projects*, which depends on this feature. `.runcastle/stories.json` stays tool-neutral (a build command plus where it writes output), so Widgetbook slots in without rework. On a project whose tool is not supported, prepare offers no UI-states step and planning never mentions one.
+**Why:** Widgetbook needs its own reader, setup wording and single-story addressing. None of the human's projects is Flutter, so that code could not be exercised and would be the most likely to be broken when first needed.
+
+## 9. Stories fake data at the edge, and the setup proves it with one page story
+**Decision:** Stories in every project fake data where the app talks to its backend: intercepted network calls (usually MSW), or the app's data cache seeded the same way. Never by mocking the app's own modules. The setup wraps stories in the app's providers (theme, router, translations, signed-in user), wires that data faking, and ships one page-level story that loads data through it. It does not write stories for every page. A state whose component takes its data as props gets a plain prop story.
+**Why:** Faking at the edge runs the component unchanged, and in a typed project the fake responses break the typecheck when the API changes. Mocking modules was rejected: it is quicker, but it shows a page that is not the real one and drifts silently. One page story proves the wiring without the setup ballooning into writing everyone's stories.
+
+## 10. Stories are a catalogue, not a test tier, and the typecheck covers them
+**Decision:** In `apps/web` the two test tiers in `STYLE.md` stay as they are, and no Storybook test addon is added. Stories reuse the tests' sample data where it exists. In every project, the setup makes story files typechecked: a typecheck config under `.runcastle/storybook/` plus a verify command for it, recorded with the project's other verify commands, so the project's own `tsconfig` stays untouched. `apps/web/STYLE.md` gains a short "Stories" section: story files live in `.runcastle/stories/` (decision 11), data is faked at the edge (decision 9), and a story never replaces a test.
+**Why:** The test addon needs a real browser in every test run, against `STYLE.md`'s choice of strings and a light DOM. The catalogue build does not typecheck, so a typecheck gate is what makes stories break loudly when props change, as the scenarios setup did for `.runcastle/scenarios/`.
+
+## 11. Stories are runcastle's internal machinery: never named, confined to `.runcastle/`
+**Decision:** The user never has to know Storybook exists.
+- **No Storybook vocabulary in runcastle's UI.** Prepare offers "show your components in runcastle", and the feature page says "UI states", never "Storybook" or "catalogue". Prepare names only the dev dependencies it is about to install, since they appear in the manifest.
+- **The repo footprint stays under `.runcastle/`:** Storybook's config in `.runcastle/storybook/`, story files in `.runcastle/stories/` (the same pattern as `.runcastle/scenarios/`). The one trace outside it is the dev dependencies (Storybook, MSW) in the project's own manifest and lockfile. A project that already uses Storybook its own way gets no second setup: the setup points `.runcastle/stories.json` at the existing one.
+- **Once set up**, planning follows the scenario rule (`drive-scenarios` decision 13). A ticket that builds a state worth seeing gets a criterion to ship its story. A copy change gets none, and a backend-only project is never asked.
+**Why:** The human: "From the user's POV, storybook should not be visible. It's just an internal runcastle tool. They just see their components on runcastle." The dependencies stay in the project's own manifest because the sandbox install already handles whatever the project declares, while side installs break on monorepos. Rejected: Storybook's usual root `.storybook/` and stories next to components.
+
+## 12. The "UI states" section sits in review's work tier, with no full-catalogue link
+**Decision:** The feature page's "UI states" section goes in the review page's work tier, right after the reviewer's evidence. In a later lap's planning and building it shows the last review pass's build, labelled with that lap. It shows nothing on a feature with no stories, and nothing after merge. It holds only this feature's stories: changed ones side by side (decision 6), new ones alone, far matches on one collapsed line (decision 7), each frame with an "open larger" control that shows that one story full-size. There is no link to the full catalogue.
+**Why:** The stories are evidence, read before merging. Storybook's own browsing screen carries its name and logo, against decision 11, and browsing every component is what *The map of stories and scenarios* is for. This overrides the brief's "the section can open the full catalogue".
+
+## 13. Catalogues are served from their own port
+**Decision:** The runcastle server opens a second port, 4514, beside 4512 (server) and 4513 (web). It serves only built catalogue files and has no API. The feature page frames stories from there.
+**Why:** A catalogue is the user's code compiled by agents, and fake-data libraries intercept network calls by design. Served from 4512, it would run as runcastle itself and could call runcastle's API. On its own port the browser treats it as a separate site, the way the drive frames the app's dev server. Rejected: the same port with a fully sandboxed frame, which denies Storybook the browser storage its preview needs.
+
+## 14. The setup lives in the prepare session, not in a feature's tickets
+**Decision:** Setting up UI states is a step of the prepare session, for projects with a UI. With the human present, in their own checkout, prepare installs Storybook and MSW (asking first), writes the config, providers, data faking and the one page story under `.runcastle/storybook/` and `.runcastle/stories/`, writes `.runcastle/stories.json`, records the stories' typecheck as a verify command, runs the build once on the host as evidence, and commits after showing the human the files. Prepare's write guard widens by exactly the project's package manifest and lockfile. The steps are one recipe file in the prepare skill's references, which the `apps/web` ticket follows too (decision 2). Planning never cards a setup ticket: when a feature's states are worth seeing and the project has no `.runcastle/stories.json` on its base, it says once that Prepare can set up UI states, as scenarios mention ＋ New scenario.
+**Why:** The human: "the setup shouldn't just be a ticket on a random feature. It should be in the prepare phase." It is project machinery like the drive scripts and the sandbox Dockerfile, which prepare already owns. A one-time build is evidence in prepare's own spirit (run it, don't guess), and it is not a story dev server. This removes the project-wide install from an unrelated feature's diff and the case of two features installing it at once. Rejected: planning adding a "Set up stories" ticket to the first feature that needs it.
+
+## Lap 2
+
+Lap 1 burned clean (13 tickets), but both review passes ran in Gates mode. Nobody ever saw a story render, and the UI-states section cannot appear on any review page until this branch is published and reinstalled, because review passes are run by the installed runcastle. The human did not test-drive lap 1: "I want you to complete everything first."
+
+## 15. Lap 2 completes the feature before anyone drives it
+**Decision:** Lap 2 finishes every open item instead of waiting on a test drive. It merges main into the branch, fixes both open defects, stores the stories-build record on the review ticket, fixes the review-prompt token bug, and makes UI states drivable. Nothing is deferred to a later lap.
+**Why:** The human: "I want you to complete everything first." A test drive of lap 1 could not have shown the section anyway.
+
+## 16. Main is merged into the branch first
+**Decision:** Lap 2's first ticket merges main into the feature branch. It resolves the five conflicts (`RunBody.tsx`, `lib/live.ts`, `edit-guard.ts`, `routers/feature.ts`, revisit `SKILL.md`) in main's rounds vocabulary, drops the `NothingVerifiedAlert` story's `lap` arg (open defect "Merging main still breaks the stories typecheck"), and re-runs typecheck, the tests and the real stories build on the merged tree. Every other ticket waits on it.
+**Why:** The branch forked before *The feature lead runs rounds* merged, so every green gate so far ran against an old base, and the lap arg can only be dropped once main's component is on the branch. Work done before the merge would be redone in it.
+
+## 17. The review is a Drive, and a scenario makes the section drivable
+**Decision:** Lap 2's review ticket reviews in Drive mode, never Gates. To give the drive something to see, a "Feature with UI states" scenario under `.runcastle/scenarios/` seeds the driven runcastle with a feature at review whose catalogue comes from the real build code (`runStoriesBuild` and the matcher) run on the host against this checkout. A comparison variant seeds before/after pairs, the collapsed "also affected" line and a failed build. The scenario touches only the drive's own data dir, and never cuts branches or worktrees in the developer's repo.
+**Why:** The human: "make sure that you tell the review ticket to actually do a drive (not gates mode)." The installed runcastle can't build a catalogue inside a drive, so without a scenario a Drive review would find an empty page. Lap 1 already gave drives their own stories port.
+
+## 18. The stories-build record is stored on the review ticket
+**Decision:** The stories-build record is persisted on the review ticket beside its gate record, with a migration numbered after main's latest, as the spec asked. Lap 1 rendered it into the prompt and the manifest only, to avoid a migration.
+**Why:** "Complete everything": it is spec'd scope lap 1 skipped, and once main is merged the migration costs no more than any other.
+
+## 19. Prompt tokens inside digests are no longer expanded
+**Decision:** The review-prompt renderer fills template tokens in one pass over the template, so a `{{TOKEN}}` that appears inside an inlined implementer digest stays literal text.
+**Why:** The human chose to include it. It garbled this feature's own lap-1 review (ticket 2's digest names `{{STORIES_NOTES}}`) and would garble the next one the same way. It is runcastle-wide code, a few lines, and rides on this branch.

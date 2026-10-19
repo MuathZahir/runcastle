@@ -2189,4 +2189,14 @@ describe('resolver prompt blocks', () => {
   it('renderTemplate leaves placeholders it was given no value for alone', () => {
     expect(renderTemplate('{{A}} and {{B}} and {{A}}', { A: 'x' })).toBe('x and {{B}} and x')
   })
+
+  it('renderTemplate leaves a placeholder inside a value literal', () => {
+    const template = '{{LAP_DIGESTS}}\n{{GATE_NOTES}}'
+    const values = { LAP_DIGESTS: 'ticket 2 renders {{GATE_NOTES}} here', GATE_NOTES: 'gates passed' }
+    expect(renderTemplate(template, values)).toBe('ticket 2 renders {{GATE_NOTES}} here\ngates passed')
+  })
+
+  it('renderTemplate keeps `$` patterns in a value literal', () => {
+    expect(renderTemplate('<{{A}}>', { A: 'cost $& and $1 and $$' })).toBe('<cost $& and $1 and $$>')
+  })
 })

@@ -39,6 +39,7 @@ import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
 import { RoundTrail } from '../review/RoundTrail'
 import { DeferredScope } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
+import { UiStatesSection } from '../review/UiStatesSection'
 import { WorkList, partitionWork } from '../review/WorkList'
 import type { WalkthroughHandle } from '../WalkthroughPlayer'
 
@@ -116,6 +117,12 @@ export function ReviewBody({
   // (research still-open 24), which is a timer per surface for data nothing on
   // screen was showing; the SSE feed invalidates both keys regardless.
   const reviewPoll = feature.phase === 'review' ? poll : (false as const)
+  // The "UI states" section's build (decision 12): written by each review pass,
+  // pushed as `stories.built`/`stories.failed`, gone after merge.
+  const uiStates = trpc.feature.uiStates.useQuery(
+    { featureId: feature.id },
+    { refetchInterval: reviewPoll },
+  )
   const notes = trpc.notes.list.useQuery({ featureId: feature.id }, { refetchInterval: reviewPoll })
   // What the review agent found, typed and counted server-side — the strip's
   // chip and the open-work list below both come out of this one read, and the
@@ -430,6 +437,8 @@ export function ReviewBody({
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
           {!expanded && stage}
+
+          <UiStatesSection model={uiStates.data ?? null} />
 
           <OpenWork {...workProps} />
         </div>

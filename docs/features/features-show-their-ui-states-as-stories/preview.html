@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features show their UI states as stories preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+/* flow */
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:12px;align-items:stretch}
+.step{position:relative;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);margin-right:18px}
+.step:last-child{margin-right:0}
+.step:not(:last-child)::after{content:"";position:absolute;right:-14px;top:50%;width:10px;height:10px;border-top:1.5px solid var(--color-border-strong);border-right:1.5px solid var(--color-border-strong);transform:translateY(-50%) rotate(45deg)}
+.step .k{font-size:11px;color:var(--color-text-tertiary);text-transform:none}
+.step h3{margin:2px 0 4px}
+.step p{color:var(--color-text-secondary);font-size:12px;line-height:17px}
+.step.sb{border-style:dashed}
+@media (max-width:760px){.flow{grid-template-columns:1fr}.step{margin:0 0 14px}.step:not(:last-child)::after{display:none}}
+/* the runcastle feature page mock */
+.rc{padding:16px 18px 18px;background:var(--color-surface)}
+.rc-tier{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+.rc-ev{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text-secondary)}
+.rc-sec{margin-top:16px}
+.rc-sec-h{display:flex;align-items:center;gap:8px}
+.rc-sec-h .hint{margin-left:auto}
+.story{margin-top:10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.story-h{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--color-border-subtle)}
+.story-h .mono{color:var(--color-text-tertiary)}
+.story-h .lg{margin-left:auto;display:inline-flex;align-items:center;gap:4px;color:var(--color-text-tertiary);font-size:12px}
+.story-h .lg:hover{color:var(--color-text)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px}
+.pair.one{grid-template-columns:1fr}
+.frame-l{font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px}
+.badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);font-size:11px;background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.more{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);color:var(--color-text-secondary);width:100%;text-align:left}
+.more:hover{background:var(--color-surface-hover)}
+.more-list{display:none;padding:6px 10px 0 30px;color:var(--color-text-tertiary)}
+.more-list.on{display:block}
+.fail{margin-top:10px;border:1px solid var(--color-border);border-left:2px solid var(--color-danger);border-radius:var(--radius-md);background:var(--color-surface-raised);padding:10px 12px}
+.fail pre{margin:8px 0 0;padding:8px 10px;background:var(--color-surface-inset);border-radius:var(--radius-sm);font:11px/16px var(--font-mono);color:var(--color-text-secondary);white-space:pre-wrap}
+@media (max-width:760px){.pair{grid-template-columns:1fr}}
+/* a user's shop component, in that shop's own styling, inside a story frame */
+.shop{background:#fff;color:#1d1d1f;border-radius:6px;padding:14px;font:14px/20px Georgia,"Times New Roman",serif;border:1px solid #e6e1d8;min-height:112px}
+.shop label{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#7a6f60;margin-bottom:6px;font-family:system-ui,sans-serif}
+.shop .row{display:flex;gap:8px}
+.shop .in{flex:1;height:34px;border:1px solid #cfc6b8;border-radius:4px;padding:0 10px;display:flex;align-items:center;font-family:system-ui,sans-serif;font-size:13px;color:#1d1d1f;background:#fdfbf7}
+.shop .bt{height:34px;padding:0 14px;border-radius:4px;background:#2d2a26;color:#fdfbf7;display:flex;align-items:center;font-family:system-ui,sans-serif;font-size:13px}
+.shop .msg{margin-top:8px;font-family:system-ui,sans-serif;font-size:12px}
+.shop .msg.old{color:#b3261e}
+.shop .msg.new{display:flex;align-items:center;gap:6px;color:#7a5a12;background:#fbf3df;border-radius:4px;padding:6px 8px}
+.shop .in.exp{border-color:#d9b25a}
+/* repo tree */
+.tree{margin-top:12px;padding:12px 14px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-inset);font:12px/22px var(--font-mono);color:var(--color-text-secondary)}
+.tree .n{color:var(--color-text-tertiary)}
+.tree .rc-own{color:var(--color-text)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+/* matching */
+.match{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin-top:12px}
+.box{padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);font-size:12px;line-height:18px;color:var(--color-text-secondary)}
+.box b{display:block;font-weight:500;color:var(--color-text);margin-bottom:2px}
+.arr{color:var(--color-text-tertiary)}
+@media (max-width:760px){.match{grid-template-columns:1fr}.arr{transform:rotate(90deg);justify-self:center}}
+.hood pre{margin:8px 0 0;padding:10px 12px;background:var(--color-surface-inset);border-radius:var(--radius-md);font:12px/18px var(--font-mono);color:var(--color-text-secondary);white-space:pre-wrap}
+.hood ul{margin:6px 0 0;padding-left:18px;color:var(--color-text-secondary)}
+.hood li{margin:3px 0}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Features show their UI states as stories</h1>
+  <p class="lede">At review, a feature's page shows the components it changed, rendered with sample data, next to how they looked before. No app start, no drive. The user never has to know Storybook is underneath.</p>
+  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span class="mono">docs/features/features-show-their-ui-states-as-stories/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <p class="hint">Example: a shop project's feature, "Coupons expire", changes how the coupon field looks once a code has expired.</p>
+
+  <div class="sub">
+    <h3>From plan to page</h3>
+    <p class="hint">Nothing here starts the app or takes the drive slot. Dashed steps happen once per project.</p>
+    <div class="flow">
+      <div class="step sb"><span class="k">Prepare, once per project</span><h3>UI states set up <a class="pin" data-d="14">14</a></h3><p>"Show your components in runcastle". Installs after asking, builds once on your machine as proof, commits. Planning only points here.</p></div>
+      <div class="step"><span class="k">Burn</span><h3>Tickets ship stories</h3><p>A ticket that builds a state worth seeing gets "ship its story". A copy change gets none. <a class="pin" data-d="11">11</a></p></div>
+      <div class="step"><span class="k">Each review pass</span><h3>Built beside the gates <a class="pin" data-d="4">4</a></h3><p>Same sandbox and commit as typecheck and tests. Also built at the branch point, cached <a class="pin" data-d="6">6</a>. A failed build is a failed gate.</p></div>
+      <div class="step"><span class="k">Kept</span><h3>One per feature <a class="pin" data-d="5">5</a></h3><p>Replaced by each build, deleted at merge. Served from its own port, 4514 <a class="pin" data-d="13">13</a>.</p></div>
+      <div class="step"><span class="k">Feature page</span><h3>"UI states" <a class="pin" data-d="12">12</a></h3><p>In review's work tier, after the reviewer's evidence.</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The section on the feature page</h3>
+    <p class="hint">Switch to see a failed build.</p>
+    <div class="seg" role="group" aria-label="Build outcome" style="margin-bottom:10px">
+      <button type="button" aria-pressed="true" data-build="ok">Build passed</button>
+      <button type="button" aria-pressed="false" data-build="fail">Build failed</button>
+    </div>
+<!-- screen:ui-states-section -->
+    <div class="screen">
+      <div class="rc">
+        <div class="rc-tier">Review · work</div>
+        <div class="rc-ev"><svg class="i" viewBox="0 0 16 16"><path d="M3 3h10v10H3z"/><path d="m3 10 3-3 3 3 2-2 2 2"/></svg>Reviewer's evidence: walkthrough, gates, findings</div>
+
+        <div class="rc-sec">
+          <div class="rc-sec-h"><h3>UI states</h3><a class="pin" data-d="12">12</a><span class="hint">Built at review pass 2 · commit 4e1c9a0</span></div>
+
+          <div id="build-ok">
+            <div class="story">
+              <div class="story-h"><span>Checkout / Coupon field</span><span class="mono">Expired</span><span class="badge">Changed</span><a class="pin" data-d="7">7</a><button type="button" class="lg"><svg class="i" viewBox="0 0 16 16"><path d="M9.500 2.500h4v4M6.500 13.500h-4v-4M13.500 2.500 9 7M2.500 13.500 7 9"/></svg>Open larger</button></div>
+              <div class="pair">
+                <div><div class="frame-l">Before (branch point) <a class="pin" data-d="6">6</a></div>
+                  <div class="shop"><label>Discount code</label><div class="row"><div class="in">SPRING20</div><div class="bt">Apply</div></div><div class="msg old">Invalid code.</div></div></div>
+                <div><div class="frame-l">This feature</div>
+                  <div class="shop"><label>Discount code</label><div class="row"><div class="in exp">SPRING20</div><div class="bt">Apply</div></div><div class="msg new">◷ This code expired on 30 April. Try SUMMER10.</div></div></div>
+              </div>
+            </div>
+            <div class="story">
+              <div class="story-h"><span>Checkout / Coupon field</span><span class="mono">Expiring soon</span><span class="badge">New</span><button type="button" class="lg"><svg class="i" viewBox="0 0 16 16"><path d="M9.500 2.500h4v4M6.500 13.500h-4v-4M13.500 2.500 9 7M2.500 13.500 7 9"/></svg>Open larger</button></div>
+              <div class="pair one">
+                <div><div class="frame-l">This feature</div>
+                  <div class="shop" style="max-width:420px"><label>Discount code</label><div class="row"><div class="in">SUMMER10</div><div class="bt">Apply</div></div><div class="msg new">◷ Applied. This code expires tomorrow.</div></div></div>
+              </div>
+            </div>
+            <button type="button" class="more" id="more"><svg class="i"><use href="#i-chev"/></svg>37 more stories use changed code <a class="pin" data-d="7">7</a></button>
+            <div class="more-list" id="more-list">Checkout / Order summary · With coupon<br>Checkout / Checkout page · Coupon applied<br>Cart / Cart drawer · With discount<br>… and 34 more</div>
+          </div>
+
+          <div id="build-fail" hidden>
+            <div class="fail">
+              <div style="display:flex;align-items:center;gap:8px"><i class="dot no"></i><b style="font-weight:500">The UI states didn't build</b><a class="pin" data-d="4">4</a><a class="pin" data-d="5">5</a><span class="hint" style="margin-left:auto">Review pass 2 · commit 4e1c9a0</span></div>
+              <p class="hint" style="margin-top:4px">Reported to the reviewer as a failed gate, so it comes back as a fix ticket.</p>
+              <pre>✘ [ERROR] Could not resolve "../../src/checkout/CouponBanner"
+    .runcastle/stories/checkout/CouponField.stories.tsx:4:28
+  build failed with 1 error</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+<!-- /screen:ui-states-section -->
+  </div>
+
+  <div class="sub">
+    <h3>Which stories count as this feature's <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">Only paths and text: the git diff, matched through the import list the build writes.</p>
+    <div class="match">
+      <div class="box"><b>Files the feature changed</b>git diff against the branch point<br><span class="mono">src/checkout/CouponField.tsx</span></div>
+      <span class="arr">→</span>
+      <div class="box"><b>The build's import list</b>which files each story uses, directly or further away</div>
+      <span class="arr">→</span>
+      <div class="box"><b>Changed</b> story file changed, or imports a changed file directly: side by side<br><b style="margin-top:6px">Also affected</b> reaches it only through other files: one collapsed line</div>
+    </div>
+  </div>
+
+  <div class="sub two">
+    <div>
+      <h3>What lands in the user's repo <a class="pin" data-d="11">11</a></h3>
+      <p class="hint">Written by prepare <a class="pin" data-d="14">14</a>. Everything sits under <span class="mono">.runcastle/</span> except the dev dependencies.</p>
+      <div class="tree">
+        <div class="rc-own">.runcastle/</div>
+        <div>&nbsp;&nbsp;stories.json <span class="n">· the build command <a class="pin" data-d="3">3</a></span></div>
+        <div>&nbsp;&nbsp;storybook/ <span class="n">· config, providers, data faking <a class="pin" data-d="9">9</a></span></div>
+        <div>&nbsp;&nbsp;stories/checkout/CouponField.stories.tsx</div>
+        <div>&nbsp;&nbsp;scenarios/ <span class="n">· already there</span></div>
+        <div class="rc-own">package.json <span class="n">· + storybook, msw (dev)</span></div>
+        <div class="n">verify commands (setting) · + typecheck of stories <a class="pin" data-d="10">10</a></div>
+      </div>
+    </div>
+    <div>
+      <h3>First project: runcastle's own dashboard <a class="pin" data-d="2">2</a></h3>
+      <p class="hint">Set up in this feature by a ticket that follows prepare's own recipe, with stories for states that are hard to reach today.</p>
+      <div class="tree">
+        <div>Review / open findings</div>
+        <div>Burn / a ticket failed</div>
+        <div>Feature / blocked on a gate</div>
+        <div>Feature page / review with data <span class="n">· the one page story <a class="pin" data-d="9">9</a></span></div>
+      </div>
+      <p class="hint" style="margin-top:8px">Storybook only for now <a class="pin" data-d="8">8</a>. Everything ships in one lap <a class="pin" data-d="1">1</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>None planned. One lap.</li>
+      <li><i class="dot"></i>If wanted later: building during a burn, before review</li>
+      <li><i class="dot"></i>If wanted later: running stories as browser tests</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Browsing every component: <i>The map of stories and scenarios</i></li>
+      <li><i class="dot"></i>Live editing beside the chat: <i>Design mode</i></li>
+      <li><i class="dot"></i>Flutter: <i>Widgetbook stories for Flutter projects</i> (parked)</li>
+      <li><i class="dot"></i>Keeping catalogues after merge, or across rounds</li>
+      <li><i class="dot"></i>Drives and scenarios, which stay as they are</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <h3>The contract file</h3>
+      <pre>// .runcastle/stories.json, committed in the project
+{
+  "build": "bunx storybook build -c .runcastle/storybook --stats-json -o {out}"
+}
+// {out}: where runcastle wants the static build. The build writes
+// index.json (every story, its id and source file) and
+// preview-stats.json (the import list) there.</pre>
+      <h3 style="margin-top:16px">Where things live</h3>
+      <ul>
+        <li><span class="mono">~/.runcastle/stories/&lt;featureId&gt;/</span>: the feature's latest build, or its failure log. Replaced each pass, removed at merge.</li>
+        <li><span class="mono">~/.runcastle/stories-base/&lt;commit&gt;/</span>: branch-point builds, shared by features with the same branch point, removed when nothing unmerged uses that commit.</li>
+        <li>The build runs in the gate sandbox's worktree, and its output folder is copied out before the worktree is cleaned up, since nothing copies files out of a sandbox today.</li>
+        <li>Port 4514: a static file server (traversal-guarded, like the web app's) with no API. Each frame loads Storybook's single-story URL, <span class="mono">iframe.html?id=&lt;story&gt;&amp;viewMode=story</span>.</li>
+      </ul>
+      <h3 style="margin-top:16px">Prepare and planning</h3>
+      <ul>
+        <li>The prepare skill gains a UI-states step and one recipe file in its references: official setup into <span class="mono">.runcastle/storybook/</span>, providers, edge data faking, one page story, a stories typecheck recorded as a verify command, reuse of an existing Storybook, and one build on the host as evidence.</li>
+        <li>Prepare's write guard widens from <span class="mono">.runcastle/</span> + <span class="mono">.gitignore</span> to also allow the package manifest and lockfile.</li>
+        <li><span class="mono">get_feature_context</span> reports whether stories are set up on the base. The tickets skill gains a "ship a story" block mirroring "ship a scenario", and the one-time "Prepare can set up UI states" mention.</li>
+      </ul>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['One lap, the whole feature', 'No piece is useful alone, each is small and understood, and the one unknown (how inline stories read) only shows once it exists.'],
+    ["Runcastle's own dashboard is set up in this feature, by following the prepare recipe", "None of your projects has stories, and a burn can't run a prepare session, so a ticket follows prepare's recipe on runcastle itself. That tests the recipe in this lap."],
+    ['The build command lives in a committed .runcastle/stories.json', 'Branch-correct: a feature branched before the setup has no stories and skips the build. Its presence on a branch means "has stories".'],
+    ['The catalogue is built beside the gates, on every review pass, and a failed build is a failed gate', 'Review is when you look. Dependencies are already installed there, and the build matches the reviewed commit. A failure becomes a fix ticket.'],
+    ['One built catalogue per feature, gone at merge', "Why overcomplicate it: story files merge with the feature; the built output is throwaway, and main's catalogue is the map's job."],
+    ['Changed stories are shown beside their base version', 'To judge whether a changed component got better. Two live frames, no screenshots or pixel diff. The base build is cached by commit.'],
+    ["A feature's stories are found through the build's import list", "Story files alone miss a restyled component whose story wasn't touched. Far matches are collapsed so a shared Button doesn't flood the page."],
+    ['Storybook only; Widgetbook is parked', 'No Flutter project exists to exercise it. The contract stays tool-neutral so it slots in later.'],
+    ['Stories fake data at the edge, and the setup proves it with one page story', 'The component runs unchanged and typed fakes break loudly. Mocking app modules drifts silently.'],
+    ['Stories are a catalogue, not a test tier, and the typecheck covers them', "The build doesn't typecheck, so a stories typecheck, recorded as a verify command, catches drift. Your tsconfig stays untouched. No real-browser test addon."],
+    ["Stories are runcastle's internal machinery: never named, confined to .runcastle/", "The user never needs to know Storybook exists. Only the dev dependencies sit outside .runcastle/."],
+    ['The "UI states" section sits in review\'s work tier, with no full-catalogue link', "It's evidence for the merge. Storybook's own browser would show its branding, and browsing everything is the map's job."],
+    ['Catalogues are served from their own port', "A catalogue is agent-compiled user code; on runcastle's own port it could call runcastle's API."],
+    ["The setup lives in the prepare session, not in a feature's tickets", "It's project machinery like the drive scripts and the Dockerfile. Prepare runs it with you present and builds once as proof. No project-wide install in a random feature's diff."]
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the show: build outcome toggle and the collapsed "also affected" line
+  $$('[data-build]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      $$('[data-build]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)) })
+      $('#build-ok').hidden = b.dataset.build !== 'ok'
+      $('#build-fail').hidden = b.dataset.build !== 'fail'
+    })
+  })
+  $('#more').addEventListener('click', function (e) {
+    if (e.target.closest('a.pin')) return
+    $('#more-list').classList.toggle('on')
+  })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
