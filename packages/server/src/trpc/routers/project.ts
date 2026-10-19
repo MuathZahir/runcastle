@@ -3,6 +3,7 @@ import { ProjectName } from '@runcastle/core'
 import { drivePrerequisites } from '../../services/drive-prerequisites'
 import { browseDir, listRoots } from '../../services/fsbrowse'
 import * as git from '../../services/git'
+import { mapModel } from '../../services/map'
 import { prepView } from '../../services/prep'
 import { launchPrepareSession, launchProjectSession } from '../../launcher/launcher'
 import { activeProjectSession } from '../../launcher/sessions'
@@ -173,6 +174,15 @@ export const projectRouter = router({
   drivePrerequisites: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => drivePrerequisites(requireProjectById(ctx, input.projectId))),
+
+  /**
+   * The map (the-map-of-stories-and-scenarios): the project's product groups at
+   * main's tip, with their UI states, ways in, calls and history, plus main's
+   * catalogue status. Reading never builds and never walks history live.
+   */
+  map: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => mapModel(ctx, input.projectId)),
 
   /**
    * Tear down a preparation dry-run drive by hand (decision 9). The prep session

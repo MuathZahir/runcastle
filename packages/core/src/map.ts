@@ -263,6 +263,7 @@ export const MainCatalogueAttempt = z.object({
   finishedAt: z.number().optional(),
   status: z.enum(['building', 'failed', 'couldnt_run']),
   reason: z.string().optional(),
+  /** File name inside the attempt dir, e.g. `build.log`. */
   log: z.string().optional(),
 })
 export type MainCatalogueAttempt = z.infer<typeof MainCatalogueAttempt>
