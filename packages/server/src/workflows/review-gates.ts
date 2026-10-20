@@ -30,7 +30,6 @@ import {
 } from './burn-cache'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import {
-  type CacheMount,
   ISOLATED_REPO_PATH,
   SETUP_HOOK_TIMEOUT_MS,
   buildBurnCacheMounts,

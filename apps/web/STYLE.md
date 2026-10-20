@@ -350,35 +350,6 @@ file unmounts its own renders (`afterEach(cleanup)`). Pattern:
 Reach for tier 2 only when tier 1 cannot answer the question. It costs a DOM per
 file.
 
-## Stories
-
-The dashboard's UI states, as stories. They are a catalogue, not a third test
-tier: a story never replaces a test, and no story test addon runs.
-
-- **Where.** Stories live in `.runcastle/stories/<group>/<Component>.stories.tsx`,
-  titled `<Group>/<Component>`; their config is `.runcastle/storybook/`, which
-  reuses `vite.config.ts` and this app's CSS entries. Never a root `.storybook/`,
-  never stories beside components.
-- **Data is faked at the edge.** A prop story passes props. A page story answers
-  tRPC at the client's `fetch`, from handlers typed by the router's outputs
-  (`.runcastle/storybook/fake-api.ts`), and seeds plain-HTTP reads into the query
-  cache. Never a module mock. A page story renders the whole `App` at an address
-  (`.runcastle/storybook/app-at.tsx`, the shell's defaults in `shell-fakes.ts`);
-  its live event stream is a silent stand-in that never reaches a server.
-- **Page stories are the map; component stories are review evidence.** A story
-  under `.runcastle/stories/pages/` (numbered navigation-order folders, titled
-  by the place, one export per state) is a page story and the only kind the map
-  shows. Any other story is a component story: optional, shown at review. A
-  change to a page updates its page stories; the guide is
-  `packages/skills/packs/runcastle/skills/prepare/references/page-stories.md`.
-- **Reuse the tests' sample data**: import from `test/fixtures.ts` rather than
-  copying a payload.
-- **Typechecked.** The root `bun run typecheck` covers them
-  (`.runcastle/storybook/tsconfig.json`), so a changed prop breaks the story.
-- **Shown at review.** `.runcastle/stories.json` is the build runcastle runs; a
-  feature's review page shows the stories it added or changed as its UI states.
-  Copy anywhere in runcastle says "UI states" or "stories", never "Storybook".
-
 ## Migration rule
 
 > Never add a rule to `styles.css`.
