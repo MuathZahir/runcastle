@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The web app's environment: the helpers render its components.
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    // The type-only router import apps/web/src/trpc.ts makes, mapped as
+    // apps/web/tsconfig.json maps it.
+    "paths": {
+      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
+    }
+  },
+  // tsc's wildcards skip dot-folders, so the helpers are named explicitly. The
+  // app sources they import come along.
+  "include": ["./**/*.ts", "./**/*.tsx"]
+}

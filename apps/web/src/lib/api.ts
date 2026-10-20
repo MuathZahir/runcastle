@@ -13,9 +13,6 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>
 
 export type FeatureListItem = RouterOutputs['feature']['list'][number]
 export type FeatureFull = RouterOutputs['feature']['get']
-/** The "UI states" section's model; null (no build) is never passed down. */
-export type UiStatesModel = NonNullable<RouterOutputs['feature']['uiStates']>
-export type UiStatesStory = UiStatesModel['changed'][number]
 export type DocSummary = FeatureFull['docs'][number]
 export type Project = RouterOutputs['project']['list'][number]
 export type BranchList = RouterOutputs['project']['branches']

@@ -274,26 +274,6 @@ export function markOrchestrated(
   return { ...current, orchestrated: true }
 }
 
-/**
- * Point a feature at branches that already exist, cutting nothing. Only a
- * drive's scenarios call this: they seed features on the drive's own branch so
- * the developer's repo gains no refs.
- */
-export function setFeatureBranches(
-  ctx: AppCtx,
-  featureId: string,
-  branches: { branch: string; baseBranch: string },
-): Feature {
-  const current = getFeatureRow(ctx, featureId)
-  ctx.db.update(features).set(branches).where(eq(features.id, featureId)).run()
-  emit(ctx, featureId, {
-    type: 'feature.branches',
-    message: `on ${branches.branch}, based on ${branches.baseBranch}`,
-    data: branches,
-  })
-  return { ...current, ...branches }
-}
-
 export function setFeatureStatus(
   ctx: AppCtx,
   featureId: string,

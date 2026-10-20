@@ -22,10 +22,6 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'chat' },
-  { kind: 'map', projectId: 'proj_a' },
-  { kind: 'map', projectId: 'proj_a', group: 'checkout' },
-  { kind: 'map', projectId: 'proj_a', group: 'checkout/coupons' },
-  { kind: 'map', projectId: 'proj_a', group: '~ungrouped' },
 ]
 
 describe('pathFor', () => {
@@ -37,17 +33,7 @@ describe('pathFor', () => {
       '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
       '/p/proj_a/f/flow-redesign-shell/chat',
-      '/p/proj_a/map',
-      '/p/proj_a/map/checkout',
-      '/p/proj_a/map/checkout/coupons',
-      '/p/proj_a/map/~ungrouped',
     ])
-  })
-
-  it("splits a map group's id into one escaped segment per level", () => {
-    expect(pathFor({ kind: 'map', projectId: 'proj_a', group: 'a b/c?d' })).toBe(
-      '/p/proj_a/map/a%20b/c%3Fd',
-    )
   })
 
   it('escapes ids and slugs, so a path never has an extra segment in it', () => {
@@ -75,13 +61,11 @@ describe('parsePath', () => {
   it('round-trips ids and slugs that needed escaping', () => {
     const location: AppLocation = { kind: 'feature', projectId: 'a/b', featureSlug: 'c d' }
     expect(parsePath(pathFor(location))).toEqual(location)
-    const map: AppLocation = { kind: 'map', projectId: 'a/b', group: 'a b/c?d' }
-    expect(parsePath(pathFor(map))).toEqual(map)
   })
 
-  it('reads a map path deeper than two group levels as unknown', () => {
-    expect(parsePath('/p/proj_a/map/a/b/c')).toBeNull()
-    expect(parsePath('/p/proj_a/map/')).toEqual({ kind: 'map', projectId: 'proj_a' })
+  it('reads the retired map address as unknown', () => {
+    expect(parsePath('/p/proj_a/map')).toBeNull()
+    expect(parsePath('/p/proj_a/map/checkout')).toBeNull()
   })
 
   it('reads a trailing slash as the same place', () => {
@@ -165,18 +149,6 @@ describe('locationFor', () => {
       kind: 'chat',
       projectId: 'proj_a',
     })
-  })
-
-  it('puts the map after preparation and before the project row and the feature', () => {
-    const open = { ...base, projectSelected: true, featureSlug: 'x' }
-    expect(locationFor({ ...open, map: { group: null } })).toEqual({ kind: 'map', projectId: 'proj_a' })
-    expect(locationFor({ ...open, map: { group: 'checkout/coupons' } })).toEqual({
-      kind: 'map',
-      projectId: 'proj_a',
-      group: 'checkout/coupons',
-    })
-    expect(locationFor({ ...open, preparing: true, map: { group: null } }).kind).toBe('prepare')
-    expect(locationFor({ ...open, map: null }).kind).toBe('chat')
   })
 
   it('is the project home when nothing inside it is selected', () => {

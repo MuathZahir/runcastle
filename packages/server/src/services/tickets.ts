@@ -1,4 +1,4 @@
-import type { ModelEntry, ReviewGateRun, StoriesBuildRecord, TicketInput } from '@runcastle/core'
+import type { ModelEntry, ReviewGateRun, TicketInput } from '@runcastle/core'
 import { BlockingEdgeError, Ticket, modelRoster, newId, resolveBatchBlocking } from '@runcastle/core'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -36,7 +36,6 @@ function rowToTicket(row: TicketSelect): Ticket {
     reviewVerdict: row.reviewVerdict,
     reviewVerdictReason: row.reviewVerdictReason,
     reviewGateRun: row.reviewGateRun,
-    storiesBuild: row.storiesBuild,
     completedAt: row.completedAt,
     model: row.model ?? undefined,
     lap: row.lap,
@@ -210,7 +209,6 @@ export function storeTickets(
     reviewVerdict: null,
     reviewVerdictReason: null,
     reviewGateRun: null,
-    storiesBuild: null,
     completedAt: null,
     // Validated before anything is written, so one bad id fails the whole batch
     // rather than storing a half-assigned one.
@@ -439,7 +437,6 @@ export function updateTicket(
     reviewVerdict?: 'verified' | 'unverified' | null
     reviewVerdictReason?: string | null
     reviewGateRun?: ReviewGateRun | null
-    storiesBuild?: StoriesBuildRecord | null
   },
 ): Ticket {
   const current = ctx.db.select().from(tickets).where(eq(tickets.id, id)).get()
@@ -460,7 +457,6 @@ export function updateTicket(
   if (patch.reviewVerdict !== undefined) set.reviewVerdict = patch.reviewVerdict
   if (patch.reviewVerdictReason !== undefined) set.reviewVerdictReason = patch.reviewVerdictReason
   if (patch.reviewGateRun !== undefined) set.reviewGateRun = patch.reviewGateRun
-  if (patch.storiesBuild !== undefined) set.storiesBuild = patch.storiesBuild
 
   ctx.db.update(tickets).set(set).where(eq(tickets.id, id)).run()
 

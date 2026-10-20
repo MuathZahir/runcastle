@@ -1,7 +1,6 @@
 import * as z from 'zod'
 import { AgentRuntime, ModelEntry } from './config'
 import { ReviewGateRun } from './review-gates'
-import { StoriesBuildRecord } from './stories'
 
 /**
  * Wire types for tRPC and MCP. Every schema here is the single source of
@@ -299,8 +298,6 @@ export const Ticket = TicketInput.extend({
   reviewVerdictReason: z.string().nullable().optional(),
   /** The server's gate run for this review pass; null until one is recorded. */
   reviewGateRun: ReviewGateRun.nullable().optional(),
-  /** This pass's UI-states build, stored beside its gate run; null until one is recorded. */
-  storiesBuild: StoriesBuildRecord.nullable().optional(),
   /** Wall-clock time at which this ticket most recently became terminal. */
   completedAt: z.number().nullable().default(null),
   error: z.string().optional(),

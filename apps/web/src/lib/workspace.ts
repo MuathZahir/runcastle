@@ -157,11 +157,6 @@ export interface WorkspaceApi {
    * away, and the conversation itself lives on the server either way.
    */
   preparing: boolean
-  /**
-   * The map is open — on its overview (`group: null`) or one group — or null.
-   * Not persisted: the URL is its address, so a reload lands back on it there.
-   */
-  map: { group: string | null } | null
   /** Right inspector rail collapsed. */
   inspectorCollapsed: boolean
   /** Explicit inspector choice, or null until the human has toggled it. */
@@ -196,8 +191,6 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
-  /** Open the map on its overview (`null`) or one group. */
-  openMap: (group: string | null) => void
   toggleInspector: (current?: boolean) => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
@@ -225,7 +218,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
-  const [map, setMap] = useState<{ group: string | null } | null>(null)
   const [inspectorPreference, setInspectorPreference] = useState<boolean | null>(() => {
     const stored = readLS(INSPECTOR_KEY)
     return stored === null ? null : stored === '1'
@@ -263,7 +255,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCreating(false)
     setPreparing(false)
     setProjectSelected(false)
-    setMap(null)
     setCmdk(false)
   }, [])
 
@@ -274,17 +265,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setViewedPhase(null)
     setCreating(false)
     setPreparing(false)
-    setMap(null)
-    setCmdk(false)
-  }, [])
-
-  // A swap like the project workspace: the feature underneath stays selected.
-  const openMap = useCallback((group: string | null) => {
-    setMap({ group })
-    setViewedPhase(null)
-    setCreating(false)
-    setPreparing(false)
-    setProjectSelected(false)
     setCmdk(false)
   }, [])
 
@@ -301,14 +281,12 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setCreating(true)
     setPreparing(false)
     setProjectSelected(false)
-    setMap(null)
     setCmdk(false)
   }, [])
   const startPreparation = useCallback(() => {
     setPreparing(true)
     setCreating(false)
     setProjectSelected(false)
-    setMap(null)
     setCmdk(false)
   }, [])
   // Opening settings closes the palette so only one overlay is up at a time.
@@ -332,7 +310,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     featureView,
     creating,
     preparing,
-    map,
     inspectorCollapsed: inspectorPreference ?? true,
     inspectorPreference,
     cmdkOpen,
@@ -346,7 +323,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     startPreparation,
     cancelCreate,
     closePreparation,
-    openMap,
     toggleInspector,
     setCmdk,
     openSettings,

@@ -21,7 +21,6 @@ import type {
   TicketStatus,
 } from './schemas'
 import type { ReviewGateRun } from './review-gates'
-import type { StoriesBuildRecord } from './stories'
 import type { TokenBreakdown } from './usage'
 
 /**
@@ -383,8 +382,6 @@ export const tickets = sqliteTable('tickets', {
   reviewVerdictReason: text('review_verdict_reason'),
   /** The server's gate run for this review pass (`ReviewGateRun`); null until recorded. */
   reviewGateRun: text('review_gate_run', { mode: 'json' }).$type<ReviewGateRun>(),
-  /** This pass's UI-states build (`StoriesBuildRecord`), beside its gate run; null until recorded. */
-  storiesBuild: text('stories_build', { mode: 'json' }).$type<StoriesBuildRecord>(),
   completedAt: integer('completed_at'),
   /**
    * The model this ticket burns on, or null for "resolve it the ordinary way"

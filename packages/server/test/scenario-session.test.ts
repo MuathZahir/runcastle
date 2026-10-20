@@ -340,21 +340,9 @@ describe('the scenario briefing', () => {
     driveUrl: 'http://localhost:3000',
     runner: 'bun {file}',
     files: ['.runcastle/scenarios/checkout/cart.ts', '.runcastle/scenarios/_fixtures/buyer.ts'],
-    mapGroups: [],
     description: 'a buyer with an expired coupon',
     setup: false,
     ...over,
-  })
-
-  it('lists the groups already on the map and asks for one of them when it fits', () => {
-    const text = renderScenarioPrompt(brief({ mapGroups: ['Checkout', 'Checkout › Coupons'] }))
-    expect(text).toContain(
-      'Groups already on the map: Checkout, Checkout › Coupons. Put a new scenario in the folder for one of these when it fits (kebab case); start a new group only on purpose.',
-    )
-  })
-
-  it('omits the groups line when the map has no groups yet', () => {
-    expect(renderScenarioPrompt(brief({ mapGroups: [] }))).not.toContain('Groups already on the map')
   })
 
   it('carries the drive, the runner, the scenarios, the ask and the rules', () => {

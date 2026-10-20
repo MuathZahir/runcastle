@@ -87,7 +87,6 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
    - **Left undone** — adjacent work you noticed and deliberately did not do, so the next agent inherits the observation instead of re-finding it.
 
    Write it in plain prose, for a reader who does not have your context. It is read: the tickets that depend on yours are handed it verbatim, and so is the agent that reviews this whole lap. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
-
 ## Keep the drive machinery true
 
 {{DRIVE_NOTES}}

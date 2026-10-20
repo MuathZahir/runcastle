@@ -80,7 +80,6 @@ export function loadConfig(
   }
 
   num('serverPort', env.RUNCASTLE_SERVER_PORT)
-  num('storiesPort', env.RUNCASTLE_STORIES_PORT)
   if (env.RUNCASTLE_MODEL) overrides.model = env.RUNCASTLE_MODEL
   // Legacy env var (issue #48): folded into `stepModels.smoke` by the schema's
   // read-compat preprocess unless the smoke step is already set explicitly.

@@ -37,7 +37,7 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 }
 
-export function contentType(path: string): string {
+function contentType(path: string): string {
   return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
 
@@ -50,7 +50,7 @@ function isFile(path: string): boolean {
 }
 
 /** Join under `root`, rejecting anything that escapes it (path traversal). */
-export function safeJoin(root: string, pathname: string): string | null {
+function safeJoin(root: string, pathname: string): string | null {
   let decoded: string
   try {
     decoded = decodeURIComponent(pathname)

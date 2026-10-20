@@ -350,28 +350,6 @@ file unmounts its own renders (`afterEach(cleanup)`). Pattern:
 Reach for tier 2 only when tier 1 cannot answer the question. It costs a DOM per
 file.
 
-## Stories
-
-The dashboard's UI states, as stories. They are a catalogue, not a third test
-tier: a story never replaces a test, and no story test addon runs.
-
-- **Where.** Stories live in `.runcastle/stories/<group>/<Component>.stories.tsx`,
-  titled `<Group>/<Component>`; their config is `.runcastle/storybook/`, which
-  reuses `vite.config.ts` and this app's CSS entries. Never a root `.storybook/`,
-  never stories beside components.
-- **Data is faked at the edge.** A prop story passes props. The one page story
-  answers tRPC at the client's `fetch`, from handlers typed by the router's
-  outputs (`.runcastle/storybook/fake-api.ts`), and seeds plain-HTTP reads into
-  the query cache. Never a module mock. Nothing renders `App`, so the live event
-  stream never opens.
-- **Reuse the tests' sample data**: import from `test/fixtures.ts` rather than
-  copying a payload.
-- **Typechecked.** The root `bun run typecheck` covers them
-  (`.runcastle/storybook/tsconfig.json`), so a changed prop breaks the story.
-- **Shown at review.** `.runcastle/stories.json` is the build runcastle runs; a
-  feature's review page shows the stories it added or changed as its UI states.
-  Copy anywhere in runcastle says "UI states" or "stories", never "Storybook".
-
 ## Migration rule
 
 > Never add a rule to `styles.css`.

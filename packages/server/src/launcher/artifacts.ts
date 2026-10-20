@@ -18,7 +18,6 @@ import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
 import { guardsEdits } from './edit-guard'
-import { LOCKFILES } from './lockfiles'
 import { WAIT_MESSAGES_MODE } from './hook-client'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
@@ -529,11 +528,6 @@ export interface PrepareHost {
   hasCompose: boolean
   /** `.runcastle/` already exists — this project has been prepared before. */
   hasDriveMachinery: boolean
-  /**
-   * `.runcastle/stories.json` exists — the project has UI states set up. When it
-   * does not, UI states are on the agenda even with every key established.
-   */
-  hasStories: boolean
   /** The package manager its lockfile names, when there is one. */
   packageManager?: string
 }
@@ -602,9 +596,6 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
   // it is not part of the drive loop, so a session opened to settle it alone was
   // reading a drive contract that disclaimed itself.
   const drives = remainingKeys.some((k) => (DRIVE_LOOP_KEYS as readonly string[]).includes(k))
-  // UI states are not a settings key: their presence is `.runcastle/stories.json`
-  // in the checkout, so they reopen a session whose keys are all established.
-  const uiStates = host?.hasStories === false
 
   return [
     `# runcastle — preparing ${project.name}`,
@@ -623,9 +614,8 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     'service, creates or migrates a database, installs software, or writes outside the repo',
     'needs the human to agree first — say what you are about to run and why, then wait.',
     '',
-    'You may write `.runcastle/` and `.gitignore` in this checkout, plus the package manifest and',
-    'lockfile for the UI-states dev dependencies only, and nothing else; a hook enforces it.',
-    'Any other change to the repo is theirs to make.',
+    'You may write `.runcastle/` and `.gitignore` in this checkout and nothing else; a hook',
+    'enforces it. Any other change to the repo is theirs to make.',
     '',
     ...(host
       ? [
@@ -637,9 +627,6 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
             host.hasDriveMachinery ? '**already present** — read it before you author anything' : 'not there yet'
           }.`,
           `- Package manager: ${host.packageManager ? `\`${host.packageManager}\` (from its lockfile)` : 'no lockfile found at the repo root'}.`,
-          `- \`.runcastle/stories.json\` (UI states): ${
-            host.hasStories ? '**present**' : 'not set up — on the agenda if this project has a UI'
-          }.`,
           '',
         ]
       : []),
@@ -661,22 +648,10 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     '## Still open',
     open
       ? remainingKeys.map((k) => `- \`${k}\``).join('\n')
-      : uiStates
-        ? 'Every prepared key already has a value — report what is recorded and how stale it is,\n' +
-          'and do not re-derive a settled value or propose a dry-run drive unasked. **UI states\n' +
-          'are still open**, below.'
-        : 'Nothing. Every prepared key already has a value, so this session is a **confirmation,\n' +
-          'not a preparation**: report what is recorded and how stale it is, ask the human whether\n' +
-          'it still holds, and stop. Do not re-derive a settled value and do not propose a dry-run\n' +
-          'drive unasked.',
-    ...(uiStates
-      ? [
-          '- **UI states** — offer to show the project\'s components in runcastle, only if it has a',
-          '  UI on a frontend framework the setup supports (React, Vue, Svelte, Angular, React',
-          '  Native); never on a backend-only or Flutter project. Work it last: after the keys',
-          '  above, before any closing dry-run. The skill\'s "UI states" section has the steps.',
-        ]
-      : []),
+      : 'Nothing. Every prepared key already has a value, so this session is a **confirmation,\n' +
+        'not a preparation**: report what is recorded and how stale it is, ask the human whether\n' +
+        'it still holds, and stop. Do not re-derive a settled value and do not propose a dry-run\n' +
+        'drive unasked.',
     '',
     ...(drives
       ? [
@@ -711,10 +686,7 @@ export function renderPreparePrompt(brief: PrepareBrief): string {
     open
       ? 'Then open by telling the human which fields are still open and what you need from them ' +
         'for each, and work them one at a time.'
-      : uiStates
-        ? 'Then confirm the recorded values with the human, offer UI states if this project has a ' +
-          'UI, and stop once that is settled.'
-        : 'Then confirm the recorded values with the human and stop — there is nothing open to work.',
+      : 'Then confirm the recorded values with the human and stop — there is nothing open to work.',
     '',
   ].join('\n')
 }
@@ -866,8 +838,6 @@ export interface ScenarioBrief {
   runner?: string
   /** Every path under `.runcastle/scenarios/` at HEAD, `_` shared code included. */
   files: readonly string[]
-  /** The product groups on main's map, for a new scenario's folder to reuse; empty when none. */
-  mapGroups: readonly string[]
   /** What the human asked for, from ＋ New scenario. */
   description?: string
   /** The scenario Fix it was clicked on, and how it failed. */
@@ -942,7 +912,7 @@ export function renderScenarioFollowUp(
  * picker uses, never by the agent running the script itself.
  */
 export function renderScenarioPrompt(brief: ScenarioBrief): string {
-  const { project, feature, branch, identity, envOverlay, driveUrl, runner, files, mapGroups, setup } = brief
+  const { project, feature, branch, identity, envOverlay, driveUrl, runner, files, setup } = brief
   const kv = (vars: Readonly<Record<string, string>>): string[] =>
     Object.entries(vars).map(([k, v]) => `- \`${k}\` = \`${v}\``)
   const overlay = kv(envOverlay)
@@ -1034,12 +1004,6 @@ export function renderScenarioPrompt(brief: ScenarioBrief): string {
       : 'There are no scenario files on this branch yet.',
     ...files.map((f) => `- \`${f}\``),
     '',
-    ...(mapGroups.length > 0
-      ? [
-          `Groups already on the map: ${mapGroups.join(', ')}. Put a new scenario in the folder for one of these when it fits (kebab case); start a new group only on purpose.`,
-          '',
-        ]
-      : []),
     '## The login route',
     'Only if the app has sign-in. Being signed in lives partly in the browser, which neither a',
     'scenario nor runcastle can write: the app runs in a cross-origin panel. So the app carries one',
@@ -1337,18 +1301,6 @@ export const HOST_SESSION_BASH_WRITE_RULES: readonly string[] = [
 ]
 
 /**
- * A `prepare` session's extra `git add`s: the package manifests and root
- * lockfile its edit guard lets it write for the UI-states dev dependencies
- * (`isPackageManifest` in `edit-guard.ts`). Drive-fix and scenario never get them.
- */
-export const PREPARE_BASH_WRITE_RULES: readonly string[] = [
-  ...HOST_SESSION_BASH_WRITE_RULES,
-  'Bash(git add package.json:*)',
-  'Bash(git add */package.json:*)',
-  ...LOCKFILES.map(([file]) => `Bash(git add ${file}:*)`),
-]
-
-/**
  * The `Read(...)` allow rule for the session's own skill pack — the plugin dir
  * passed as `--plugin-dir`, which lives OUTSIDE the session's working directory.
  * Without it a skill's `./references/*` read is a permission prompt, and in a
@@ -1421,7 +1373,6 @@ export function sessionBashAllowRules(kind?: SessionKind, purpose?: SessionPurpo
   if (kind === 'scenario' && purpose === 'scenario-setup') {
     return [...SESSION_BASH_READ_RULES, 'Bash(git add:*)']
   }
-  if (kind === 'prepare') return [...SESSION_BASH_READ_RULES, ...PREPARE_BASH_WRITE_RULES]
   if (kind && HOST_SIDE_KINDS.includes(kind)) {
     return [...SESSION_BASH_READ_RULES, ...HOST_SESSION_BASH_WRITE_RULES]
   }

@@ -101,23 +101,4 @@ describe('the tickets skill', () => {
     const revisit = readFileSync(join(resolvePluginDir(), 'skills', 'revisit', 'SKILL.md'), 'utf8')
     expect(revisit).toContain('"Ship a scenario when the state is hard to reach"')
   })
-
-  it('ships a story for a UI state worth seeing only in a set-up project, never a setup ticket', () => {
-    const text = skill()
-    const block = text.slice(text.indexOf('<ship-a-story>'), text.indexOf('</ship-a-story>'))
-    // right after its scenario twin
-    expect(text.indexOf('<ship-a-story>')).toBe(text.indexOf('</ship-a-scenario>') + '</ship-a-scenario>\n\n'.length)
-    expect(block).toContain('**Ship a story when a UI state is worth seeing.**')
-    expect(block).toContain('`{ setUp }`')
-    expect(block).toContain('Ship `.runcastle/stories/<group>/<Component>.stories.<ext>`')
-    expect(block).toContain('never by mocking the app')
-    expect(block).toContain('Copy changes and settings toggles get none.')
-    expect(block).toContain('**never card a setup ticket**')
-    expect(block).toContain('Prepare can set up UI states')
-    const selfCheck = text.slice(text.indexOf('## 3. Self-check, then emit'))
-    expect(selfCheck).toContain('stories.setUp')
-
-    const revisit = readFileSync(join(resolvePluginDir(), 'skills', 'revisit', 'SKILL.md'), 'utf8')
-    expect(revisit).toContain('"Ship a story when a UI state is worth seeing"')
-  })
 })

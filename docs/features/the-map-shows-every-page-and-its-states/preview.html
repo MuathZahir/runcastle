@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The map shows every page and its states preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.cap{margin:8px 0 6px;display:flex;align-items:center;gap:8px;color:var(--color-text-secondary)}
+.cap b{font-weight:500;color:var(--color-text)}
+/* the runcastle app frame, in miniature */
+.app{display:grid;grid-template-columns:150px 1fr;background:var(--color-canvas);height:100%;font-size:11px;line-height:16px}
+.app .sb{padding:8px 6px;display:flex;flex-direction:column;gap:2px;color:var(--color-text-secondary)}
+.app .sb .it{display:flex;align-items:center;gap:6px;height:22px;padding:0 6px;border-radius:var(--radius-sm)}
+.app .sb .it.sel{background:var(--color-surface-selected);color:var(--color-text)}
+.app .sb .it.l2{margin-left:12px}
+.app .sb .lab{margin:8px 6px 2px;font-size:10px;color:var(--color-text-tertiary)}
+.app .sb .sw{display:flex;gap:2px;margin:6px 4px;padding:2px;background:var(--color-surface-inset);border-radius:var(--radius-sm)}
+.app .sb .sw span{flex:1;text-align:center;border-radius:3px;height:18px;line-height:18px}
+.app .sb .sw span.on{background:var(--color-surface-selected);color:var(--color-text)}
+.app .cp{margin:6px 6px 6px 0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column}
+.app .tb{height:30px;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--color-border-subtle);color:var(--color-text-tertiary)}
+.app .tb b{color:var(--color-text);font-weight:500}
+.app .body{padding:16px 22px;overflow:hidden;flex:1}
+.app .body h4{margin:0 0 2px;font-size:15px;line-height:20px;font-weight:600}
+/* a whole-page frame: a tiny whole runcastle page, scaled like the real frames */
+.pf{position:relative;border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-canvas);aspect-ratio:16/10;cursor:zoom-in}
+.pf:hover{border-color:var(--color-border-strong)}
+.mini{position:absolute;inset:0;display:grid;grid-template-columns:18% 1fr}
+.mini .s{padding:6%;display:flex;flex-direction:column;gap:4%}
+.mini .s i{display:block;height:5%;border-radius:2px;background:var(--color-surface-hover)}
+.mini .s i.a{background:var(--color-surface-selected)}
+.mini .c{margin:2% 2% 2% 0;background:var(--color-surface);border:1px solid var(--color-border);border-radius:5px;padding:5% 8%;display:flex;flex-direction:column;gap:5%;overflow:hidden}
+.mini .c .h{height:8%;width:45%;border-radius:2px;background:var(--color-text-disabled)}
+.mini .c .l{height:4%;border-radius:2px;background:var(--color-surface-hover)}
+.mini .c .btn{height:9%;width:22%;border-radius:3px;background:var(--color-primary);opacity:.85}
+.mini .c .card{flex:1;border:1px solid var(--color-border);border-radius:4px;background:var(--color-surface-raised)}
+.mini.wiz{grid-template-columns:1fr}
+.mini.wiz .c{margin:6% 22%;}
+.strip{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-secondary);font-size:11px}
+.chip.on{background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.crop{height:52px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);overflow:hidden;position:relative}
+.crop .bar{position:absolute;left:10px;right:40%;top:12px;height:8px;border-radius:2px;background:var(--color-text-disabled)}
+.crop .bar2{position:absolute;left:10px;right:60%;top:28px;height:6px;border-radius:2px;background:var(--color-surface-hover)}
+.crop:after{content:"";position:absolute;inset:auto 0 0 0;height:16px;background:linear-gradient(transparent,var(--color-surface-raised))}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.ba > div > .hint{margin-bottom:6px}
+.tree{display:flex;flex-direction:column;gap:10px}
+.trow{display:grid;grid-template-columns:120px 1fr auto;gap:14px;align-items:center}
+.trow.l2{margin-left:28px;grid-template-columns:92px 1fr auto}
+.trow .pf{cursor:pointer}
+.trow .nm{font-weight:500}
+.flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.flow .step{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:6px 10px;background:var(--color-surface-raised)}
+.flow .arr{color:var(--color-text-tertiary)}
+.names{display:grid;grid-template-columns:auto auto 1fr;gap:4px 16px;align-items:center}
+.names .k{color:var(--color-text-tertiary)}
+.lap{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.lap > div{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 14px}
+.lap ul{margin:6px 0 0;padding-left:16px;color:var(--color-text-secondary)}
+.dlg{position:fixed;inset:0;background:var(--color-scrim);display:none;place-items:center;z-index:9}
+.dlg.open{display:grid}
+.dlg .box{width:min(92vw,980px);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden}
+.dlg .bh{display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 14px;border-bottom:1px solid var(--color-border-subtle)}
+@media (max-width:760px){.ba,.lap{grid-template-columns:1fr}.app{grid-template-columns:1fr}.app .sb{display:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 16 16"><path d="M8 1.500 14 4.750v6.500L8 14.500 2 11.250v-6.500z"/><path d="M2 4.750 8 8l6-3.250M8 8v6.500"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.500v9l7-4.500z"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>The map shows every page and its states</h1>
+  <p class="lede">The map stops listing components and shows your app the way you move through it: every page and each of its states, drawn whole with fake data, arranged as Onboarding › 1 Welcome, Project chooser › Empty, and so on.</p>
+  <div class="meta"><span>Lap 1 of 2</span><span><span data-dcount></span> decisions</span><span>Planned without you: check the five marked first</span><span class="mono">docs/features/the-map-shows-every-page-and-its-states/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>Before and after: what a frame on the map is</h3>
+    <p class="hint">Today a group is a component's states, each cropped to a 240px strip. After, a place shows each state as the whole page, scaled down. <a class="pin" data-d="6">6</a> <a class="pin" data-d="2">2</a></p>
+    <div class="ba">
+      <div>
+        <p class="hint">Today · Map › Burn</p>
+        <div class="screen" style="padding:12px">
+          <h3>Lane</h3><p class="hint" style="margin-bottom:6px">Changed by Burn lanes, Oct 9</p>
+          <div class="crop"><div class="bar"></div><div class="bar2"></div></div>
+          <p class="hint" style="margin:6px 0">Failed ticket</p>
+          <h3 style="margin-top:10px">UnrunnableGates</h3>
+          <div class="crop" style="margin-top:6px"><div class="bar"></div><div class="bar2"></div></div>
+          <p class="hint" style="margin-top:6px">Missing runtime</p>
+        </div>
+      </div>
+      <div>
+        <p class="hint">After · Map › Project chooser</p>
+        <div class="screen" style="padding:12px">
+          <div class="pf"><div class="mini"><div class="s"><i class="a"></i><i></i><i></i></div><div class="c"><div class="h"></div><div class="l"></div><div class="card"></div><div class="btn"></div></div></div></div>
+          <p class="cap"><b>Empty</b></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>A place's page: Onboarding, as a flow</h3>
+    <p class="hint">One whole page per row, numbered steps in order, a step's variants together. Click a page to open it full size. <a class="pin" data-d="4">4</a> <a class="pin" data-d="6">6</a> <a class="pin" data-d="8">8</a></p>
+<!-- screen:map-group-page -->
+    <div class="screen" style="height:620px">
+      <div class="app">
+        <div class="sb">
+          <div class="it"><b style="color:var(--color-text)">runcastle</b></div>
+          <div class="lab">Inbox</div>
+          <div class="it" style="color:var(--color-text-tertiary)">Nothing needs you</div>
+          <div class="sw"><span>Work</span><span class="on">Map</span></div>
+          <div class="it">Overview</div>
+          <div class="it sel"><svg class="i"><use href="#i-cube"/></svg>Onboarding</div>
+          <div class="it"><svg class="i"><use href="#i-cube"/></svg>Project chooser</div>
+          <div class="it"><svg class="i"><use href="#i-cube"/></svg>Project</div>
+          <div class="it"><svg class="i"><use href="#i-cube"/></svg>Feature</div>
+          <div class="it l2">Planning</div>
+          <div class="it l2">Building</div>
+          <div class="it l2">Review</div>
+          <div class="it l2">Shipped</div>
+          <div class="it"><svg class="i"><use href="#i-cube"/></svg>Settings</div>
+        </div>
+        <div class="cp">
+          <div class="tb">Map › <b>Onboarding</b></div>
+          <div class="body" style="overflow:auto">
+            <h4>Onboarding</h4>
+            <p class="hint">5 steps · 7 states · Stories updated by The map shows every page, Oct 21 <a class="pin" data-d="8">8</a></p>
+            <div class="strip" style="margin:10px 0 14px">
+              <span class="chip on">1 Welcome</span><span class="chip">2 Git identity</span><span class="chip">3 Coding agents</span><span class="chip">4 AFK burns</span><span class="chip">5 First project</span>
+            </div>
+            <p class="cap"><b>1 Welcome</b></p>
+            <div class="pf" data-open="Onboarding · 1 Welcome"><div class="mini wiz"><div class="c"><div class="h"></div><div class="l"></div><div class="l" style="width:70%"></div><div class="card"></div><div class="btn"></div></div></div></div>
+            <p class="cap"><b>2 Git identity</b></p>
+            <div class="pf" data-open="Onboarding · 2 Git identity"><div class="mini wiz"><div class="c"><div class="h" style="width:30%"></div><div class="l"></div><div class="card"></div><div class="card"></div><div class="btn"></div></div></div></div>
+            <p class="cap"><b>3 Coding agents</b><span class="hint">and its variant</span></p>
+            <div class="pf" data-open="Onboarding · 3 Coding agents"><div class="mini wiz"><div class="c"><div class="h" style="width:35%"></div><div class="card"></div><div class="card"></div><div class="btn"></div></div></div></div>
+            <p class="cap"><b>3 Coding agents · None installed</b></p>
+            <div class="pf" data-open="Onboarding · 3 Coding agents · None installed"><div class="mini wiz"><div class="c"><div class="h" style="width:35%"></div><div class="card" style="border-color:var(--color-warning)"></div><div class="card"></div><div class="btn" style="opacity:.3"></div></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+<!-- /screen:map-group-page -->
+  </div>
+
+  <div class="sub">
+    <h3>The overview: the structure of the app</h3>
+    <p class="hint">Map with nothing selected: every place in the order you move through the app, one picture each. <a class="pin" data-d="7">7</a> <a class="pin" data-d="13">13</a></p>
+<!-- screen:map-overview -->
+    <div class="screen" style="padding:18px 22px">
+      <div class="tree">
+        <div class="trow"><div class="pf"><div class="mini wiz"><div class="c"><div class="h"></div><div class="card"></div><div class="btn"></div></div></div></div><span class="nm">Onboarding</span><span class="hint">7 states</span></div>
+        <div class="trow"><div class="pf"><div class="mini"><div class="s"><i class="a"></i><i></i></div><div class="c"><div class="h"></div><div class="card"></div></div></div></div><span class="nm">Project chooser</span><span class="hint">3 states</span></div>
+        <div class="trow"><div class="pf"><div class="mini"><div class="s"><i class="a"></i><i></i><i></i></div><div class="c"><div class="h"></div><div class="l"></div><div class="card"></div></div></div></div><span class="nm">Project</span><span class="hint">5 states · 1 way in</span></div>
+        <div class="trow"><div class="pf"><div class="mini"><div class="s"><i></i><i class="a"></i><i></i></div><div class="c"><div class="h"></div><div class="l"></div><div class="l"></div><div class="card"></div></div></div></div><span class="nm">Feature</span><span class="hint">2 states</span></div>
+        <div class="trow l2"><div class="pf"><div class="mini"><div class="s"><i></i><i class="a"></i></div><div class="c"><div class="h"></div><div class="card"></div></div></div></div><span class="nm">Review</span><span class="hint">4 states · 3 ways in · 1 call</span></div>
+      </div>
+    </div>
+<!-- /screen:map-overview -->
+  </div>
+
+  <div class="sub">
+    <h3>How a story becomes a place and a state</h3>
+    <p class="hint">Runcastle only reads names and paths. The agent writing the story works out the structure from the app's navigation. <a class="pin" data-d="2">2</a> <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a> <a class="pin" data-d="13">13</a></p>
+    <div class="screen" style="padding:14px 18px">
+      <div class="names mono">
+        <span class="k">file</span><span>.runcastle/stories/pages/1-onboarding/Onboarding.stories.tsx</span><span class="hint">under pages/ → on the map; the folder's number orders the place</span>
+        <span class="k">title</span><span>Onboarding</span><span class="hint">the place, and its map group</span>
+        <span class="k">story</span><span>3 Coding agents · None installed</span><span class="hint">one state; the number orders the flow</span>
+        <span class="k">address</span><span>/</span><span class="hint">the real app starts here, with fake data</span>
+        <span class="k">step</span><span>click “Get started”, “Continue” ×2</span><span class="hint">screens with no address are reached like a user</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Keeping it complete: the page rule</h3>
+    <p class="hint">Only for places already on the map, and brand-new pages. <a class="pin" data-d="10">10</a> <a class="pin" data-d="9">9</a></p>
+    <div class="flow">
+      <div class="step"><b>Planning</b><br><span class="hint">criterion: “Feature/Review: add Findings open”</span></div><span class="arr">→</span>
+      <div class="step"><b>Burn</b><br><span class="hint">updates the page's stories</span></div><span class="arr">→</span>
+      <div class="step"><b>Review</b><br><span class="hint">page changed, stories not? a defect</span></div><span class="arr">→</span>
+      <div class="step"><b>UI states</b><br><span class="hint">before and after, as whole pages</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Two laps <a class="pin" data-d="1">1</a> <a class="pin" data-d="11">11</a></h3>
+    <div class="lap" style="margin-top:8px">
+      <div><b>Lap 1 · you check the look and the naming</b>
+        <ul><li>whole-app page stories, faked at the edge</li><li>the map drawn as places and pages</li><li>the page rule in planning, burns and review</li><li>Onboarding mapped; Feature › Review as one deep page</li><li>review's scenarios moved beside it <a class="pin" data-d="12">12</a></li></ul></div>
+      <div><b>Lap 2 · the rest of the app</b>
+        <ul><li>Project chooser, Project, Feature phases, Settings, ⌘K…</li><li>terminals replay text, the drive shows a placeholder</li><li>“Map your app” for other projects</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>Mapping the rest of runcastle, one ticket per area (lap 2)</li>
+      <li><i class="dot"></i>Canned terminals and the drive placeholder, when those pages are mapped (lap 2)</li>
+      <li><i class="dot"></i>The “Map your app” door for other projects (lap 2)</li>
+      <li><i class="dot"></i>Links between screens drawn as connections, not just a tree</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The catalogue build and promotion at merge, beyond what pages need</li>
+      <li><i class="dot"></i>Scenarios and drives (Open in drive and Try it stay as they are)</li>
+      <li><i class="dot"></i>Design mode, which will reuse page stories in its own dock</li>
+      <li><i class="dot"></i>Narrow-screen layouts as states</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <p class="hint">What changes where.</p>
+      <div class="names" style="margin-top:8px">
+        <span class="k">.runcastle/storybook/</span><span>an <span class="mono">appAt(path)</span> helper that sets the address and renders the real <span class="mono">App</span>; shared shell fakes; a silent stand-in for the live stream</span><span></span>
+        <span class="k">packages/core map.ts</span><span>pages are stories whose file is under <span class="mono">pages/</span>; the group is the title; states ordered by number then file; places ordered by path</span><span></span>
+        <span class="k">server map.ts</span><span>map model carries pages and states; story-file history only for pages; <span class="mono">mapGroups</span> from places</span><span></span>
+        <span class="k">apps/web map/ + StoryFrame</span><span>a page frame: 1440 × 900 scaled to the column, lazy, a few loading at once, theme passed through</span><span></span>
+        <span class="k">skills</span><span>a page-stories guide; the tickets step's page rule; one burner line; the review prompt's page check; prepare's proving story in the page shape</span><span></span>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<div class="dlg" id="dlg" role="dialog" aria-modal="true" aria-label="Open larger">
+  <div class="box"><div class="bh"><b id="dlgt"></b><button id="dlgx">Close</button></div>
+    <div class="pf" style="border:0;border-radius:0;cursor:default"><div class="mini wiz"><div class="c"><div class="h"></div><div class="l"></div><div class="card"></div><div class="btn"></div></div></div></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Lap 1 builds the page machinery and maps onboarding; lap 2 maps the rest', 'You asked to check onboarding’s look and naming before the rest is written, and a lap boundary is the only checkpoint with you in it. One deep page beside it tests the hard case.', 'assumed'],
+    ['A page story is one that lives under .runcastle/stories/pages/; only those reach the map', 'A visible folder, read from the index runcastle already parses; a forgotten tag would drop a page silently.', 'assumed'],
+    ['Today’s eleven stories: ten stay as component stories, the review story becomes a page', 'Component stories still earn their keep at review; the review story is already page-shaped.', 'assumed'],
+    ['A page story’s title is the place, its name is the state, and numbers order a flow', 'Gives exactly your examples with one rule; shared numbers keep a step’s variants together.', 'assumed'],
+    ['A page story renders the real app at an address, and reaches the rest by acting like a user', 'The app has no router; its tests already start it by setting the URL. Faking at the edge and clicking like a user keeps the page the real one.', 'assumed'],
+    ['A group page shows its states as whole pages, large, in flow order', 'A 240px frame crops a page to a strip. A scaled 1440 × 900 page, one per row, can still be read.', 'assumed'],
+    ['The map overview is the site’s structure', '“I want to see the structure of my website”: places in a tree, one picture each.', 'assumed'],
+    ['A place’s history line says when its stories were last updated, and says only that', 'A whole-app story reaches every file, so only the story file’s history is true; it is labelled as such.', 'assumed'],
+    ['A page story looks like a page wherever it is framed, review included', 'The page rule puts pages in front of review, where a cropped strip would be hardest to read.', 'assumed'],
+    ['The page rule: a ticket that adds or changes a page keeps that page’s stories current, and review checks it', 'Keeps the map complete after mapping; binding per place means an unmapped page never becomes an unrelated ticket’s job.', 'assumed'],
+    ['Other projects get their mapping pass from the map’s empty state, in lap 2', 'Mapping is a feature’s rounds, not a setup session; the guide is proven on runcastle first.', 'assumed'],
+    ['Scenarios move to the place they open on', 'Groups are named after places now; a scenario left in a code-shaped folder would sit in its own lone group.', 'assumed'],
+    ['Places are ordered as you move through the app, by their story folders', 'Alphabetical breaks onboarding → chooser → project; numbered folders order it and keep names clean.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = [
+    [1, 'Map all of runcastle in lap 1, onboarding first and every other area blocked on it.', 'Two laps is slower; and the challenger noted lap 1’s map shows only two places.', 'challenged'],
+    [4, 'Title is the screen, name its state (Onboarding/1 Welcome › Default).', 'This sets how every story is named. Renaming 60 stories later is costly.'],
+    [5, 'Render the shell with a chosen body, or add a “start here” prop to the app.', 'Setting the address inside Storybook’s frame is unproven; the first ticket proves it or falls back to a small seam.'],
+    [6, 'Two pages to a row: half the scroll, but thumbnails too small to read.', 'This is the look you said was wrong; one per row is my guess at “large”.'],
+    [10, 'File a missing page story as an observation, not a defect.', 'A defect sends the next round to fix it; that may be noisier than you want.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  var dlg = $('#dlg')
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+    // a page frame is a picture: clicking it opens it larger
+    var f = e.target.closest('.pf[data-open]')
+    if (f) { $('#dlgt').textContent = f.dataset.open; dlg.classList.add('open'); return }
+    if (e.target.id === 'dlgx' || e.target === dlg) dlg.classList.remove('open')
+  })
+})()
+</script>
+</body>
+</html>

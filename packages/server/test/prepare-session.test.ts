@@ -16,14 +16,14 @@ import {
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
 } from '../src/launcher/sessions'
-import { launchPrepareSession, probePrepareHost } from '../src/launcher/launcher'
+import { launchPrepareSession } from '../src/launcher/launcher'
 import { reconcileStaleSessions } from '../src/launcher/reconcile'
 import { endSession } from '../src/pty/end-session'
 import { emitForSession } from '../src/services/events'
 import { listFindings, preparedValue, recordFinding } from '../src/services/findings'
 import { preparedAt } from '../src/services/prep'
 import { toolRecordFinding } from '../src/mcp/server'
-import { renderPreparePrompt, sessionBashAllowRules } from '../src/launcher/artifacts'
+import { renderPreparePrompt } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
@@ -462,7 +462,6 @@ describe('the prepare brief', () => {
         platform: 'win32',
         hasCompose: true,
         hasDriveMachinery: false,
-        hasStories: true,
         packageManager: 'bun',
       },
     })
@@ -470,62 +469,6 @@ describe('the prepare brief', () => {
     expect(out).toContain('win32')
     expect(out).toContain('`bun`')
     expect(out).toContain('Compose file at the repo root: **yes**')
-    expect(out).toContain('`.runcastle/stories.json` (UI states): **present**')
-  })
-
-  it('probes whether UI states are set up', () => {
-    const repo = mkdtempSync(join(tmpdir(), 'rc-prep-probe-'))
-    try {
-      expect(probePrepareHost(repo).hasStories).toBe(false)
-      mkdirSync(join(repo, '.runcastle'))
-      writeFileSync(join(repo, '.runcastle', 'stories.json'), '{}\n')
-      expect(probePrepareHost(repo).hasStories).toBe(true)
-    } finally {
-      rmSync(repo, { recursive: true, force: true })
-    }
-  })
-
-  const HOST = { platform: 'linux', hasCompose: false, hasDriveMachinery: true } as const
-
-  /**
-   * UI states are not a settings key — `.runcastle/stories.json` is — so a
-   * project whose keys are all established still has them to work.
-   */
-  it('offers UI states instead of the bare confirmation when only they are open', () => {
-    const out = renderPreparePrompt({
-      project: project(),
-      remainingKeys: [],
-      established: [{ key: 'devCommand', source: 'human' }],
-      host: { ...HOST, hasStories: false },
-    })
-    expect(out).toContain('`.runcastle/stories.json` (UI states): not set up')
-    expect(out).toContain('**UI states')
-    expect(out).toContain('never on a backend-only or Flutter project')
-    expect(out).not.toMatch(/confirmation,\nnot a preparation/)
-    expect(out).not.toContain('there is nothing open to work')
-    expect(out).not.toContain('Storybook')
-  })
-
-  it('puts UI states after the open keys', () => {
-    const out = renderPreparePrompt({
-      project: project(),
-      remainingKeys: ['driveSetupCommand'],
-      established: [],
-      host: { ...HOST, hasStories: false },
-    })
-    expect(out.indexOf('- **UI states**')).toBeGreaterThan(out.indexOf('- `driveSetupCommand`'))
-    expect(out).toContain('before any closing dry-run')
-  })
-
-  it('leaves UI states off the agenda once stories.json exists', () => {
-    const out = renderPreparePrompt({
-      project: project(),
-      remainingKeys: [],
-      established: [{ key: 'devCommand', source: 'human' }],
-      host: { ...HOST, hasStories: true },
-    })
-    expect(out).not.toContain('- **UI states**')
-    expect(out).toMatch(/confirmation,\nnot a preparation/)
   })
 
   /**
@@ -623,23 +566,6 @@ describe('the prepare skill', () => {
     expect(skill).toMatch(/human-supplied/i)
   })
 
-  it('offers UI states once, for a supported UI, by following the stories recipe', () => {
-    const skill = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
-    const section = skill.slice(skill.indexOf('## UI states (once per project)'), skill.indexOf('## Recording'))
-    expect(section).toContain('show your components in runcastle')
-    expect(section).toContain('Never on a backend-only project')
-    expect(section).toContain('Flutter')
-    expect(section).toContain('Ask before installing.')
-    expect(section).toContain('./references/stories.md')
-    expect(section).toContain('`verifyCommands`')
-    expect(section).toContain('record_finding')
-    expect(section).toContain('never `storybook dev`')
-    expect(section).toContain('Show the files, then commit')
-    // and it has a place in the conversation's order
-    const order = skill.slice(skill.indexOf('## The order of the conversation'), skill.indexOf('## The eight keys'))
-    expect(order).toContain('UI states')
-  })
-
   it('keeps the recipes in a reference that loads only when reached for', () => {
     const recipes = readFileSync(join(skillDir, 'references', 'recipes.md'), 'utf8')
     expect(recipes).toContain('COMPOSE_PROJECT_NAME')
@@ -680,45 +606,6 @@ describe('the preparation edit guard', () => {
     expect(denialFor('../runcastle-notes/plan.md')).toContain('does not edit files')
     // …and the denial says where the exception is, so the agent stops guessing.
     expect(denialFor('src/index.ts')).toContain('.runcastle/')
-    expect(denialFor('src/index.ts')).toContain('package.json')
-    expect(denialFor('src/index.ts')).not.toContain('Storybook')
-  })
-
-  /** The UI-states setup installs its dev dependencies into the project's own manifest. */
-  it('allows the package manifests and root lockfile for the UI-states dependencies', () => {
-    expect(denialFor('package.json')).toBeUndefined()
-    expect(denialFor('apps/web/package.json')).toBeUndefined()
-    expect(denialFor('bun.lock')).toBeUndefined()
-    expect(denialFor('/repo/pnpm-lock.yaml')).toBeUndefined()
-    // an installed package's manifest is not the project's
-    expect(denialFor('node_modules/a/package.json')).toContain('does not edit files')
-    expect(denialFor('apps/web/node_modules/a/package.json')).toContain('does not edit files')
-    // a lockfile is only the root one, and a manifest only by its exact name
-    expect(denialFor('apps/web/bun.lock')).toContain('does not edit files')
-    expect(denialFor('apps/web/package.json.bak')).toContain('does not edit files')
-    expect(denialFor('../other/package.json')).toContain('does not edit files')
-  })
-
-  it('gives prepare alone the matching git add rules', () => {
-    const prepare = sessionBashAllowRules('prepare')
-    expect(prepare).toContain('Bash(git add package.json:*)')
-    expect(prepare).toContain('Bash(git add */package.json:*)')
-    expect(prepare).toContain('Bash(git add bun.lock:*)')
-    expect(prepare).toContain('Bash(git add .runcastle:*)')
-    for (const kind of ['drive-fix', 'scenario'] as const) {
-      expect(sessionBashAllowRules(kind)).not.toContain('Bash(git add package.json:*)')
-      expect(sessionBashAllowRules(kind)).not.toContain('Bash(git add bun.lock:*)')
-    }
-  })
-
-  it('leaves drive-fix and scenario sessions without the manifest exception', () => {
-    for (const kind of ['drive-fix', 'scenario'] as const) {
-      for (const filePath of ['package.json', 'apps/web/package.json', 'bun.lock']) {
-        expect(
-          evaluateEditGuard({ kind, toolName: 'Write', worktreePath: '/repo', filePath, featureSlug: 'f' }),
-        ).not.toBeNull()
-      }
-    }
   })
 })
 
@@ -792,12 +679,6 @@ describe('launching a preparation, fresh or resumed', () => {
    * it rode into the session with.
    */
   it('opens a nothing-open preparation with confirm-and-stop, not the agenda line', async () => {
-    // UI states are set up too, so nothing at all is open.
-    const repo = mkdtempSync(join(tmpdir(), 'rc-prep-repo-'))
-    cleanup.push(repo)
-    mkdirSync(join(repo, '.runcastle'))
-    writeFileSync(join(repo, '.runcastle', 'stories.json'), '{"build":"x {out}"}\n')
-    ctx.db.update(projects).set({ repoPath: repo }).where(eq(projects.id, PROJECT_ID)).run()
     for (const key of PREPARED_KEYS) {
       recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
     }
@@ -806,16 +687,6 @@ describe('launching a preparation, fresh or resumed', () => {
     expect(launchCommand()).toContain(PREPARE_CONFIRM_KICKOFF)
     expect(PREPARE_CONFIRM_KICKOFF).not.toContain('still open')
     expect(PREPARE_CONFIRM_KICKOFF).toMatch(/and stop/)
-  })
-
-  it('opens the agenda line, not confirm-and-stop, while only UI states are open', async () => {
-    for (const key of PREPARED_KEYS) {
-      recordFinding(ctx, PROJECT_ID, { key, value: `value for ${key}`, source: 'human' })
-    }
-    await launchPrepareSession(ctx, { projectId: PROJECT_ID }, { spawn: false })
-
-    expect(launchCommand()).not.toContain(PREPARE_CONFIRM_KICKOFF)
-    expect(launchCommand()).toContain('Proceed with your task')
   })
 
   it('starts over when asked, leaving the old conversation behind', async () => {

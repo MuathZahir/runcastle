@@ -13,8 +13,7 @@ import {
   ticketProgress,
   triageOf,
 } from '../lib/feature-ui'
-import { useSidebarMode } from '../lib/sidebar-mode'
-import { InboxLane, MapTree, SidebarModeSwitch, WorkLanes } from './SidebarLanes'
+import { InboxLane, WorkLanes } from './SidebarLanes'
 import { prepRailRow, type WorkspaceView } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
 import { isStale } from '../lib/prep-findings'
@@ -83,14 +82,6 @@ export interface SidebarProps {
   onSelect: (featureId: string | null) => void
   /** The project home (its conversations, notes and drive). */
   onSelectProject: () => void
-  /**
-   * Where the map is open: undefined when not at a map address, null on its
-   * Overview, else the group id. The Map tree highlights it, and a defined
-   * one forces the sidebar into Map (the-map-of-stories-and-scenarios).
-   */
-  mapSelection?: string | null | undefined
-  /** Open the map on its Overview (`null`) or one group. */
-  onOpenMap?: (group: string | null) => void
   /** New — open the project home on a fresh conversation. */
   onNewChat: () => void
   /** Draft — open the overlay that parks an idea without cutting anything. */
@@ -114,12 +105,11 @@ export interface SidebarProps {
  * - head — the project switcher, a Create menu (New chat · Draft · Jot a note)
  *   and the collapse button; then the search launcher (⌘/Ctrl K);
  * - nav — the project's own places (its home, preparation while it is owed);
- * - the Inbox — the features waiting on me, pinned in both modes — then the
- *   Work | Map switch (the-map-of-stories-and-scenarios). Work groups the rest
- *   by who is blocked — Agent working · In progress · Drafts · Shipped (capped,
- *   "Show all") — as one-line rows: phase glyph, title, a live or needs-you
- *   dot, ticket progress. The row's menu is a hover "…" or a right-click. Map
- *   is the explorer tree of the project's product groups;
+ * - the Inbox — the features waiting on me, pinned — then the Work lanes,
+ *   grouped by who is blocked — Agent working · In progress · Drafts · Shipped
+ *   (capped, "Show all") — as one-line rows: phase glyph, title, a live or
+ *   needs-you dot, ticket progress. The row's menu is a hover "…" or a
+ *   right-click;
  * - foot — live drives, runs elsewhere, re-prepare, then one row of status and
  *   chrome: server, sandbox, notifications, theme, settings.
  *
@@ -135,8 +125,6 @@ export function Sidebar(props: SidebarProps) {
     talk,
     onSelect,
     onSelectProject,
-    mapSelection,
-    onOpenMap,
     onNewChat,
     onDraft,
     onOpenPreparation,
@@ -171,9 +159,6 @@ export function Sidebar(props: SidebarProps) {
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
   const { inbox, lanes } = sidebarLanes(list.data ?? [], { showArchived })
   const archivedCount = (list.data ?? []).filter((f) => f.status === 'archived').length
-  const [mode, setMode] = useSidebarMode(projectId, mapSelection)
-  // Read only once Map is showing — Work never needs the groups.
-  const map = trpc.project.map.useQuery({ projectId }, { enabled: mode === 'map' })
 
   const invalidate = () => void utils.feature.list.invalidate()
   const archive = trpc.feature.archive.useMutation({
@@ -317,30 +302,23 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="-mx-2 mt-3 min-h-0 flex-1 overflow-y-auto px-2">
-        {/* Pinned in both modes (decision 2); it waits for the list rather
-            than saying "Nothing needs you" before it knows. */}
+        {/* Pinned above the lanes; it waits for the list rather than saying
+            "Nothing needs you" before it knows. */}
         {list.isLoading ? <FeatureRowsSkeleton /> : <InboxLane features={inbox} renderRow={renderRow} />}
-        <SidebarModeSwitch mode={mode} onChange={setMode} />
-        {mode === 'work' ? (
-          <>
-            {list.data && list.data.length === 0 && (
-              <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
-                No features yet. Start a chat to cut the first one.
-              </div>
-            )}
-            <WorkLanes
-              lanes={lanes}
-              renderRow={renderRow}
-              showAllShipped={showAllShipped}
-              onToggleShipped={() => setShowAllShipped((v) => !v)}
-              archivedCount={archivedCount}
-              showArchived={showArchived}
-              onToggleArchived={toggleArchived}
-            />
-          </>
-        ) : (
-          <MapTree groups={map.data?.groups ?? []} selection={mapSelection} onOpen={(g) => onOpenMap?.(g)} />
+        {list.data && list.data.length === 0 && (
+          <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
+            No features yet. Start a chat to cut the first one.
+          </div>
         )}
+        <WorkLanes
+          lanes={lanes}
+          renderRow={renderRow}
+          showAllShipped={showAllShipped}
+          onToggleShipped={() => setShowAllShipped((v) => !v)}
+          archivedCount={archivedCount}
+          showArchived={showArchived}
+          onToggleArchived={toggleArchived}
+        />
       </div>
 
       <SidebarFoot {...props} prepRow={prepRow} />

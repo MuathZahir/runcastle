@@ -30,7 +30,6 @@ import {
 } from './burn-cache'
 import { killRegistry, registerHostChildren } from './kill-registry'
 import {
-  type CacheMount,
   ISOLATED_REPO_PATH,
   SETUP_HOOK_TIMEOUT_MS,
   buildBurnCacheMounts,
@@ -72,21 +71,7 @@ export interface GateExecResult {
 /** An opened, installed sandbox holding the throwaway branch, ready for commands. */
 export interface GateSandbox {
   exec(command: string): Promise<GateExecResult>
-  /**
-   * Where the host's {@link GateSandboxOptions.outDir} is visible to `exec`'d
-   * commands — a bind mount in a container, the host path itself on the host.
-   * Absent when no `outDir` was asked for.
-   */
-  outPath?: string
 }
-
-export interface GateSandboxOptions {
-  /** A host dir commands in the sandbox may write into, read back once it closes. */
-  outDir?: string
-}
-
-/** Where a container sees {@link GateSandboxOptions.outDir}. */
-export const GATE_SANDBOX_OUT_PATH = '/home/agent/runcastle-stories-out'
 
 /**
  * Open a sandbox on `branch`, install its dependencies, hand it to `use`, and
@@ -97,20 +82,7 @@ export const GATE_SANDBOX_OUT_PATH = '/home/agent/runcastle-stories-out'
 export type WithGateSandbox = <T>(
   branch: string,
   use: (sandbox: GateSandbox) => Promise<T>,
-  options?: GateSandboxOptions,
 ) => Promise<T>
-
-/**
- * Work that rides the gate run's sandbox after its verify commands, so it costs
- * no second install (the UI-states build). `run` is handed the last sandbox the
- * commands ran in, or one opened just for it when there are none; `abandon` is
- * called instead when no sandbox could be had for it.
- */
-export interface GateSandboxStep {
-  outDir: string
-  run(sandbox: GateSandbox): Promise<void>
-  abandon(reason: string, err: unknown): void
-}
 
 export interface ReviewGatesDeps {
   /** The sandbox boundary; defaults to the burn execution path. */
@@ -126,8 +98,6 @@ export interface ReviewGatesInput {
   ticketId: string
   /** The feature-branch tip the gates run against. */
   sha: string
-  /** Run in the same sandbox once the verify commands are done; never changes the record. */
-  afterCommands?: GateSandboxStep
   deps?: ReviewGatesDeps
 }
 
@@ -263,24 +233,13 @@ export function timeoutReason(timeoutMs: number): string {
 export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGateRun> {
   const { config, project, ticketId, sha } = input
   const commands = parseVerifyCommands(resolvePreparedSettings(config, project).verifyCommands)
-  const step = input.afterCommands
-  if (commands.length === 0 && !step) return { status: 'none_configured' }
+  if (commands.length === 0) return { status: 'none_configured' }
 
   const withSandbox = input.deps?.withSandbox ?? burnGateSandbox(config, project)
   const timeoutMs = input.deps?.commandTimeoutMs ?? GATE_COMMAND_TIMEOUT_MS
   const branch = reviewGateBranch(ticketId)
 
   const results: GateCommandResult[] = []
-  let stepRan = false
-  const runStep = async (sandbox: GateSandbox): Promise<void> => {
-    if (!step) return
-    stepRan = true
-    try {
-      await step.run(sandbox)
-    } catch (err) {
-      step.abandon(`it failed in the gate sandbox: ${headline(errorText(err))}`, err)
-    }
-  }
   try {
     // Fresh logs only: a re-run of this pass must not leave an older run's
     // `run.log` or surplus `<i>.log` beside the record it replaces. Inside the
@@ -291,7 +250,7 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
       // sandcastle's `exec` cannot be aborted, so a command over its time limit
       // ends the sandbox it ran in — the teardown is what kills it — and the rest
       // run in a fresh one. No two commands ever run side by side.
-      while (results.length < commands.length || (step && !stepRan)) {
+      while (results.length < commands.length) {
         await withSandbox(branch, async (sandbox) => {
           for (const [i, command] of commands.entries()) {
             if (i < results.length) continue
@@ -301,17 +260,11 @@ export async function runReviewGates(input: ReviewGatesInput): Promise<ReviewGat
             results.push(result)
             if (stillRunning) return
           }
-          await runStep(sandbox)
-        }, step ? { outDir: step.outDir } : undefined)
+        })
       }
     })
-    if (commands.length === 0) return { status: 'none_configured' }
     return { status: 'ran', commit: sha, commands: results }
   } catch (err) {
-    if (step && !stepRan) {
-      step.abandon(`the gate sandbox could not be set up: ${headline(errorText(err))}`, err)
-    }
-    if (commands.length === 0) return { status: 'none_configured' }
     if (results.length > 0) {
       const detail = errorDetail(err)
       // Only a reopen after a timeout gets here: keep what already ran.
@@ -408,7 +361,7 @@ export function burnGateSandbox(
 ): WithGateSandbox {
   const open = deps.open ?? createSandbox
   const setupTimeoutMs = deps.setupTimeoutMs ?? SETUP_HOOK_TIMEOUT_MS
-  return (branch, use, options = {}) => {
+  return (branch, use) => {
     const allocator =
       resolveBurnCacheMode(config) === 'volume'
         ? getBurnSlotAllocator(config.burnConcurrency)
@@ -432,14 +385,8 @@ export function burnGateSandbox(
         resolvePreparedSettings(config, project).setupCommand,
       )
       const cache = buildBurnCacheMounts(slot, project.id, config.sandbox, pm)
-      // The out dir is written from inside the container and read on the host
-      // once it closes; on the host there is nothing to mount.
       const onHost = config.sandbox === 'noSandbox'
-      const mounts: CacheMount[] = options.outDir && !onHost
-        ? [...cache.mounts, { hostPath: options.outDir, sandboxPath: GATE_SANDBOX_OUT_PATH }]
-        : cache.mounts
-      const outPath = options.outDir ? (onHost ? options.outDir : GATE_SANDBOX_OUT_PATH) : undefined
-      for (const mount of mounts) {
+      for (const mount of cache.mounts) {
         if ('hostPath' in mount) mkdirSync(mount.hostPath, { recursive: true })
       }
       const setup =
@@ -467,11 +414,10 @@ export function burnGateSandbox(
       const lane = branch
       // No `onSandboxReady` hook: `createSandbox` runs one with a plain `exec`,
       // so a sync or install that failed was swallowed (its time limit too) and
-      // the commands ran in a checkout nobody installed — a fetched Storybook
-      // missing lightningcss's Linux binary, in the map's lap 1 drive.
+      // the commands ran in a checkout nobody installed.
       const sandbox = await open({
         branch,
-        sandbox: selectSandbox(config, project, mounts, cache.env, {
+        sandbox: selectSandbox(config, project, cache.mounts, cache.env, {
           onChildSpawn: registerHostChildren(lane, {}),
         }),
         cwd: project.repoPath,
@@ -493,7 +439,6 @@ export function burnGateSandbox(
           await runSandboxSetup(exec, script, setupTimeoutMs)
         }
         return await use({
-          ...(outPath ? { outPath } : {}),
           exec: (command) => exec(command, cwd ? { cwd } : {}),
         })
       } finally {
