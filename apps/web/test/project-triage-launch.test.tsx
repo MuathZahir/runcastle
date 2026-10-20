@@ -49,8 +49,6 @@ vi.mock('../src/trpc', () => {
         driveInfo: { useQuery: query(null) },
         driveScenarios: { useQuery: query({ runnerConfigured: false, scenarios: [] }) },
         // The map's drive doors, which this page answers but no test here asks.
-        runScenario: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
-        openScenarioChat: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
         endSession: {
           useMutation: (opts: { onSuccess?: () => void }) => {
             endOptions = opts

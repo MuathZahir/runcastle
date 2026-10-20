@@ -1,9 +1,8 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { MAP_UNGROUPED } from '@runcastle/core'
 import { sidebarLanes, triage } from '../src/lib/feature-ui'
-import { InboxLane, MapTree } from '../src/components/SidebarLanes'
+import { InboxLane } from '../src/components/SidebarLanes'
 import { listItem } from './fixtures'
 
 /**
@@ -74,44 +73,5 @@ describe('InboxLane', () => {
     const html = render([])
     expect(html).toContain('Nothing needs you')
     expect(html).not.toContain('<i>')
-  })
-})
-
-describe('MapTree', () => {
-  const groups = [
-    { id: 'auth', name: 'Auth' },
-    { id: 'checkout', name: 'Checkout' },
-    { id: 'checkout/coupons', name: 'Coupons', parentId: 'checkout' },
-    { id: MAP_UNGROUPED, name: 'Ungrouped' },
-  ]
-  const render = (selection: string | null | undefined) =>
-    renderToStaticMarkup(createElement(MapTree, { groups, selection, onOpen: () => undefined }))
-  /** The row (its outer div) that holds a label. */
-  const row = (html: string, label: string) => {
-    const at = html.indexOf(`>${label}<`)
-    const start = html.lastIndexOf('<div class="group/nav', at)
-    return html.slice(start, html.indexOf('>', start))
-  }
-
-  it('lists Overview, then the groups in order, Ungrouped last', () => {
-    const html = render(undefined)
-    const order = ['Overview', 'Auth', 'Checkout', 'Coupons', 'Ungrouped'].map((l) => html.indexOf(`>${l}<`))
-    expect(order.every((i) => i >= 0)).toBe(true)
-    expect([...order].sort((a, b) => a - b)).toEqual(order)
-  })
-
-  it('indents a level-2 group under its parent and quiets Ungrouped', () => {
-    const html = render(undefined)
-    expect(row(html, 'Coupons')).toContain('ml-4')
-    expect(row(html, 'Checkout')).not.toContain('ml-4')
-    expect(row(html, 'Ungrouped')).toContain('h-7')
-  })
-
-  it('highlights the open address: the Overview at null, a group by its id', () => {
-    expect(row(render(null), 'Overview')).toContain('bg-surface-selected')
-    const html = render('checkout/coupons')
-    expect(row(html, 'Coupons')).toContain('bg-surface-selected')
-    expect(row(html, 'Overview')).not.toContain('bg-surface-selected')
-    expect(render(undefined)).not.toContain('bg-surface-selected')
   })
 })

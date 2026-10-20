@@ -24,10 +24,9 @@ import { Sidebar, SidebarRail } from './Sidebar'
 import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
-import { ProjectWorkspace, type DriveRequest } from './ProjectWorkspace'
+import { ProjectWorkspace } from './ProjectWorkspace'
 import { QuickForm } from './QuickForm'
 import { PreparationWorkspace } from './PreparationWorkspace'
-import { MapView } from './map/MapView'
 import { CommandPalette } from './CommandPalette'
 import { NoteCapture } from './NoteCapture'
 import { OpenSettingsProvider } from './settings/MessageWithSettingsLink'
@@ -53,12 +52,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     selectedFeatureId,
     projectSelected,
     preparing,
-    map,
     select,
     selectView,
     selectProject,
     startPreparation,
-    openMap,
     setCmdk,
   } = ws
   const [driving, setDriving] = useState<DriveState | null>(null)
@@ -85,15 +82,13 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   }
   const consumeInboxRequest = () => setInboxRequest(0)
   // The titlebar's drive pill: the project workspace, with its live project
-  // drive brought to the front (project-level-test-drive decision 4). A map
-  // entry's Open in drive / Try it, and the map's New scenario, ask the same
-  // way, saying what to land on (the map of stories and scenarios, decision 8).
-  const [driveRequest, setDriveRequest] = useState<DriveRequest | null>(null)
-  const openDrive = (request: DriveRequest = {}) => {
+  // drive brought to the front (project-level-test-drive decision 4).
+  const [driveRequest, setDriveRequest] = useState(0)
+  const openDrive = () => {
     selectProject()
-    setDriveRequest(request)
+    setDriveRequest((request) => request + 1)
   }
-  const consumeDriveRequest = () => setDriveRequest(null)
+  const consumeDriveRequest = () => setDriveRequest(0)
   // The frame's sidebar state is app-wide (Frame.tsx); the palette toggles it.
   const frame = useFrame()
   const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
@@ -148,7 +143,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
-    else if (addressed?.kind === 'map') openMap(addressed.group ?? null)
     else if (addressed) {
       // A tab in the address wins; a bare feature path restores the remembered
       // one — which, after a reload, is the view the path was showing anyway.
@@ -176,7 +170,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     selectView,
     selectProject,
     startPreparation,
-    openMap,
   ])
 
   // The address this shell is showing, and the setters a Back or Forward drives.
@@ -194,7 +187,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   const featureView = selectedFeature?.status === 'draft' ? 'overview' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
-      ? locationFor({ projectId, preparing, map, projectSelected, featureSlug: selectedSlug, featureView })
+      ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
       : null
 
   useHistorySync(location, (popped) => {
@@ -206,7 +199,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (!inside) select(null) // a bare `/p/<id>`: the project home
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'prepare') startPreparation()
-    else if (inside.kind === 'map') openMap(inside.group ?? null)
     else {
       // The popped path says exactly which view — a bare one is Overview, not
       // "whatever was remembered", or Back from a tab could never reach it.
@@ -271,16 +263,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         projectId={projectId}
         {...(ws.preparing ? { onClose: ws.closePreparation } : {})}
       />
-    ) : view === 'map' ? (
-      <MapView
-        projectId={projectId}
-        group={ws.map?.group ?? null}
-        onOpenGroup={openMap}
-        onOpenDrive={(intent) => openDrive({ intent })}
-        onNewScenario={() => openDrive({ newScenario: true })}
-        onOpenFeature={(featureId) => openFeature(featureId)}
-        onOpenPreparation={ws.startPreparation}
-      />
     ) : view === 'project' ? (
       <ProjectWorkspace
         projectId={projectId}
@@ -338,8 +320,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             talk={talk}
             onSelect={openFeature}
             onSelectProject={ws.selectProject}
-            mapSelection={map ? map.group : undefined}
-            onOpenMap={openMap}
             onNewChat={newChat}
             onDraft={ws.startDraft}
             onOpenPreparation={ws.startPreparation}
@@ -347,7 +327,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onOpenCmdk={() => setCmdk(true)}
             onOpenSettings={() => ws.openSettings()}
             projectDriveBranch={projectDrive?.branch ?? null}
-            onOpenProjectDrive={() => openDrive()}
+            onOpenProjectDrive={openDrive}
             driving={driving}
             onDriveChange={setDriving}
           />

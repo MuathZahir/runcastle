@@ -118,12 +118,6 @@ describe('useLiveSync resync', () => {
     expect(paths).toContain('projectNotes.invalidate')
   })
 
-  it('refetches the map, so a build of main that lands (map.catalogue.*) shows at once', () => {
-    const paths = signalOneEvent()
-
-    expect(paths).toContain('project.map.invalidate')
-  })
-
   it('still leaves the doctor report off the list — it shells out to probe the machine', () => {
     const paths = signalOneEvent()
 

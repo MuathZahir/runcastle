@@ -78,7 +78,6 @@ vi.mock('../src/trpc', () => {
         },
         readyDeclarations: { useQuery: () => ({ data: [] }) },
         commitCount: { useQuery: () => ({ data: { count: 3 } }) },
-        uiStates: { useQuery: () => ({ data: null }) },
         driveInfo: { useQuery: () => ({ data: undefined }) },
         testDrive: { useMutation: mutation },
         agenticReview: {

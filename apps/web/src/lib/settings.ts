@@ -35,7 +35,6 @@ import {
 /** Env var backing each field, mirroring the server's DESCRIPTORS (issue #46). */
 export const FIELD_ENV_VAR: Record<string, string> = {
   serverPort: 'RUNCASTLE_SERVER_PORT',
-  storiesPort: 'RUNCASTLE_STORIES_PORT',
   model: 'RUNCASTLE_MODEL',
   sandbox: 'RUNCASTLE_SANDBOX',
   sandboxImage: 'RUNCASTLE_SANDBOX_IMAGE',
@@ -267,14 +266,6 @@ const FIELD_META: Record<string, FieldMeta> = {
     label: 'Server port',
     tooltip:
       'The port the runcastle server listens on. Changing it takes effect at the next server restart.',
-    control: 'number',
-    page: 'general',
-    group: 'server',
-  },
-  storiesPort: {
-    label: 'UI states port',
-    tooltip:
-      'The port a feature’s UI states are shown from — its own origin, so they can’t reach runcastle itself. Changing it takes effect at the next server restart.',
     control: 'number',
     page: 'general',
     group: 'server',

@@ -26,7 +26,6 @@ vi.mock('../src/trpc', () => ({
     },
     project: {
       prep: { useQuery: () => ({ data: { prepared: true, pendingKeys: [], findings: [] } }) },
-      map: { useQuery: () => ({ data: undefined }) },
       list: { useQuery: () => ({ data: [{ id: 'project-1', name: 'Project' }] }) },
     },
     projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },

@@ -78,7 +78,7 @@ export function sessionBranchState(
 }
 
 /** Which surface owns the workspace body. */
-export type WorkspaceView = 'create' | 'prepare' | 'map' | 'project' | 'feature'
+export type WorkspaceView = 'create' | 'prepare' | 'project' | 'feature'
 
 /**
  * The workspace body's one selector. The Draft overlay owns the body outright;
@@ -95,8 +95,6 @@ export type WorkspaceView = 'create' | 'prepare' | 'map' | 'project' | 'feature'
 export function workspaceView(state: {
   creating: boolean
   preparing: boolean
-  /** The map is open (the-map-of-stories-and-scenarios); omitted reads as closed. */
-  map?: { group: string | null } | null
   projectSelected: boolean
   selectedFeatureId: string | null
   featureCount: number
@@ -105,7 +103,6 @@ export function workspaceView(state: {
 }): WorkspaceView {
   if (state.creating) return 'create'
   if (state.preparing) return 'prepare'
-  if (state.map) return 'map'
   if (state.projectSelected) return 'project'
   if (state.selectedFeatureId) return 'feature'
   // Nothing selected is the project home itself — never a "pick a feature"

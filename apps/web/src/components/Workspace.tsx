@@ -86,7 +86,6 @@ import { FeatureStatusLine, StopAgentDialog } from './workspace/FeatureStatusLin
 import { DrivePrerequisitesNotice } from './review/DrivePrerequisitesNotice'
 import { featureStatus, leadActions, OVERFLOW_KINDS } from '../lib/feature-ui/status-line'
 import { ScenarioMenuItems } from './review/ScenarioMenuItems'
-import { LastReviewUiStates } from './review/UiStatesSection'
 import { scenarioMenu, testDriveLabel } from '../lib/feature-ui/scenarios'
 import { ReadonlyBanner } from './workspace/ReadonlyBanner'
 import { useResumeFailedAlert } from './workspace/use-resume-failed-alert'
@@ -1179,8 +1178,6 @@ export function PhaseBody({
       return (
         <PreviewLead full={full}>
           {ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />}
-          {/* The last review's UI states stay in view between reviews (decision 12). */}
-          <LastReviewUiStates featureId={full.feature.id} className="mt-10" />
         </PreviewLead>
       )
     case 'building':
