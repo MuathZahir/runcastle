@@ -224,10 +224,9 @@ export interface SidebarLanes {
 }
 
 /**
- * Split the triage into the Inbox pinned above the Work | Map switch and the
- * lanes Work shows under it (the-map-of-stories-and-scenarios decision 2). The
- * Inbox is the Needs you lane lifted out, so attention reads the same in both
- * views; the rest is {@link triage} unchanged.
+ * Split the triage into the Inbox pinned at the top of the sidebar and the
+ * Work lanes under it. The Inbox is the Needs you lane lifted out; the rest is
+ * {@link triage} unchanged.
  */
 export function sidebarLanes(
   features: FeatureListItem[],
