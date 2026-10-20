@@ -1,9 +1,14 @@
 import type { QueryKey } from '@tanstack/react-query'
 import type { RouterOutputs } from '../../apps/web/src/lib/api'
 
+// Fake data for rendering the real app without a backend: tRPC answered at the
+// `fetch` edge, the shell's session data (`shell-fakes.ts`), the app at an
+// address (`app-at.tsx`) and a silent live stream (`event-source.ts`). These
+// are design mode's starting point and are used by nothing else yet.
+
 /**
- * A story's answers to the queries it makes, typed from the router's own
- * outputs: a procedure whose result changes breaks the stories typecheck
+ * A fake's answers to the queries it makes, typed from the router's own
+ * outputs: a procedure whose result changes breaks the preview typecheck
  * instead of drifting. Keyed `router.procedure`, the shape nearly every
  * procedure has.
  */
@@ -13,16 +18,11 @@ export type TrpcFakes = {
   }
 }
 
-/** What a story's data comes from: tRPC answers, plus plain-HTTP reads seeded into the cache. */
-export interface StoryApi {
+/** Where a preview's data comes from: tRPC answers, plus plain-HTTP reads seeded into the cache. */
+export interface PreviewApi {
   trpc?: TrpcFakes
   /** Query keys the app fills over plain `fetch` (the review artifacts), seeded as-is. */
   cache?: ReadonlyArray<readonly [QueryKey, unknown]>
-}
-
-/** A story's `parameters`, typed — Storybook's own are `Record<string, any>`. */
-export function withApi(api: StoryApi): { api: StoryApi } {
-  return { api }
 }
 
 type Answer = { result: { data: unknown } } | { error: { message: string; code: number; data: { code: string; httpStatus: number; path: string } } }
@@ -32,7 +32,7 @@ function refuse(path: string, message: string): Answer {
 }
 
 /**
- * A mutation is refused unless the story answers it by name: stories show
+ * A mutation is refused unless the fakes answer it by name: a preview shows
  * states, and a write is answered only where a flow cannot move on without its
  * success (the first-run wizard's git identity, which gates every later step).
  */
@@ -43,7 +43,7 @@ function answer(fakes: TrpcFakes, path: string, input: unknown, isMutation: bool
   ]
   const handler = router?.[path.slice(dot + 1)]
   if (handler) return { result: { data: handler(input) } }
-  return refuse(path, isMutation ? 'Stories show states; they do not act.' : `Not faked in this story: ${path}`)
+  return refuse(path, isMutation ? 'A preview shows states; it does not act.' : `Not faked in this preview: ${path}`)
 }
 
 /**
@@ -54,7 +54,7 @@ function answer(fakes: TrpcFakes, path: string, input: unknown, isMutation: bool
  */
 export function fakeTrpcFetch(endpoint: string, fakes: TrpcFakes): typeof fetch {
   return (async (request: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(String(request), 'http://stories.invalid')
+    const url = new URL(String(request), 'http://preview.invalid')
     const paths = decodeURIComponent(url.pathname.slice(endpoint.length + 1)).split(',')
     const isMutation = init?.method === 'POST'
     const raw: unknown = isMutation

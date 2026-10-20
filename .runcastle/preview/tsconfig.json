@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // The web app's environment: the stories render its components.
+    // The web app's environment: the helpers render its components.
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "jsx": "react-jsx",
@@ -11,7 +11,7 @@
       "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
     }
   },
-  // The catalogue's config and its stories — tsc's wildcards skip dot-folders,
-  // so they are named explicitly. The app sources they import come along.
-  "include": ["./**/*.ts", "./**/*.tsx", "../stories/**/*.ts", "../stories/**/*.tsx"]
+  // tsc's wildcards skip dot-folders, so the helpers are named explicitly. The
+  // app sources they import come along.
+  "include": ["./**/*.ts", "./**/*.tsx"]
 }
