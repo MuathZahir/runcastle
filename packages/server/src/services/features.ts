@@ -13,7 +13,10 @@ import type {
 } from '@runcastle/core'
 import {
   DEFAULT_RUNTIME,
+  isStoppableHeadlessRun,
   newId,
+  PLAN_UNFINISHED,
+  planFinished,
   shapeCheckedTickets,
   ticketShapeWarningLine,
   ticketShapeWarnings,
@@ -860,13 +863,42 @@ export { markHumanMessage, setWaiting } from './lead-status'
  * lead, which dispatches round 1 itself; NO run starts here. Zero tickets is
  * fine: the lead may do a small feature itself (decision 5).
  *
+ * Go follows a finished plan. While the feature plans itself it is refused
+ * outright — Go would cut that planning short. Before the tickets step is
+ * complete for this lap (`ticketsReadyLap`, the arming the status line's "plan
+ * ready for Go" reads) it is a gate: refused unless the human gives a one-line
+ * reason, which is recorded in history (CONTEXT.md decision 8).
+ *
  * Go is the human acting, so it stamps the last-human-message mark too.
  */
-export async function go(ctx: AppCtx, featureId: string): Promise<{ warnings: string[] }> {
+export async function go(
+  ctx: AppCtx,
+  featureId: string,
+  opts: { overrideReason?: string } = {},
+): Promise<{ warnings: string[] }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
   if (feature.phase !== 'planning') {
     throw new GateError(`Go approves a plan — \`${feature.slug}\` is already past planning (${feature.phase})`)
+  }
+  const planning = activeSessionsForFeature(ctx, featureId).find(isStoppableHeadlessRun)
+  if (planning) {
+    throw new GateError(
+      `\`${feature.slug}\` is planning itself (run ${planning.id}) — Go would cut the plan short; wait for the run to finish, or stop it first`,
+    )
+  }
+  const reason = opts.overrideReason?.trim()
+  if (!planFinished(feature)) {
+    if (!reason) {
+      throw new GateError(
+        `${PLAN_UNFINISHED} — the tickets step is not complete for lap ${feature.lap}; give Go with a one-line reason to override`,
+      )
+    }
+    emit(ctx, featureId, {
+      type: 'gate.overridden',
+      message: `Go given before the plan was finished: ${reason}`,
+      data: { gate: 'go', reason },
+    })
   }
   const warnings = goWarnings(ctx, featureId)
   ctx.db

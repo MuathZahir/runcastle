@@ -142,6 +142,21 @@ export const SessionPurpose = z.enum([
 export type SessionPurpose = z.infer<typeof SessionPurpose>
 
 /**
+ * Whether a session is a headless run that its Stop may end: a self-planning
+ * run, a `relay`, or a headless lap — work somebody started on the feature. A
+ * `lead-wake` never is: it is runcastle handing the lead a message (Go, a
+ * round's end), and the human halts the lead with the status row's Stop, which
+ * leaves its session to finish its turn. Rows that predate the `headless`
+ * column still count a self-planning run.
+ */
+export function isStoppableHeadlessRun(
+  session: { kind: string; purpose?: SessionPurpose | null; headless?: boolean | null },
+): boolean {
+  if (session.kind !== 'chat' || session.purpose === 'lead-wake') return false
+  return !!session.headless || session.purpose === 'self-plan'
+}
+
+/**
  * The merge a `resolve-conflict` session is about — carried on the session so
  * the session-end probe knows which pair to check without re-deriving it. The
  * review card resolves base → feature; the run lane resolves ticket branch →
@@ -840,6 +855,22 @@ export const EventRow = z.object({
   data: z.unknown().optional(),
 })
 export type EventRow = z.infer<typeof EventRow>
+
+/** A headless lead wake that never got going, or died in its one turn. */
+export const LEAD_WAKE_FAILED = 'lead.wake_failed'
+
+/**
+ * `lead.wake_failed`'s data: the process's exit code (null when it never
+ * spawned or the code is unknown) and the last lines of its output, bounded —
+ * what the status line shows instead of claiming the agent is working.
+ */
+export const LeadWakeFailedData = z.object({
+  sessionId: z.string().optional(),
+  exitCode: z.number().nullable(),
+  tail: z.string(),
+  messages: z.number(),
+})
+export type LeadWakeFailedData = z.infer<typeof LeadWakeFailedData>
 
 export const DriveState = z.enum([
   'idle', 'starting', 'serving', 'bare-checkout', 'setup-failed', 'review-agent-driving',

@@ -4,6 +4,7 @@ import type { Feature } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { endSession } from '../src/pty/end-session'
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
@@ -176,7 +177,7 @@ describe('Go, to a chat that planned live', () => {
   // The chat opened on ideate/revisit and never saw the lead brief, so Go's wake
   // is the only thing that can tell it to load the lead skill.
   it('tells a live Claude Code chat to invoke /runcastle:lead', async () => {
-    const f = feature({ phase: 'planning' })
+    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id)
 
     await go(ctx, f.id)
@@ -187,7 +188,7 @@ describe('Go, to a chat that planned live', () => {
   })
 
   it('spells it $lead for a live Codex chat', async () => {
-    const f = feature({ phase: 'planning' })
+    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id, { runtime: 'codex', live: false })
 
     await go(ctx, f.id)
@@ -385,9 +386,13 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       }
     }
 
-    const exited = (featureId: string, sessionId: string, exitCode: number): void => {
+    const exited = (featureId: string, sessionId: string, exitCode: number, tail?: string): void => {
       markSessionEnded(ctx, sessionId)
-      emit(ctx, featureId, { type: 'session.pty_exited', message: 'exited', data: { sessionId, exitCode } })
+      emit(ctx, featureId, {
+        type: 'session.pty_exited',
+        message: 'exited',
+        data: { sessionId, exitCode, ...(tail ? { tail } : {}) },
+      })
     }
 
     it('releases them once the agent checks in, so its later exit puts nothing back', async () => {
@@ -403,13 +408,65 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
         expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
 
-        exited(f.id, ids[0] as string, 1)
+        exited(f.id, ids[0] as string, 0)
         await new Promise((r) => setTimeout(r, 10))
       } finally {
         stop()
       }
       expect(ids).toHaveLength(1)
       expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
+      expect(types(f.id)).not.toContain('lead.wake_failed')
+    })
+
+    it('says why when the checked-in agent exits non-zero in its turn, without retrying', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
+        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
+
+        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:lead\nAPI Error: overloaded')
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
+      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
+      const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
+      expect(failed).toHaveLength(1)
+      expect(failed[0]?.data).toEqual({
+        sessionId: ids[0],
+        exitCode: 1,
+        tail: 'Loaded skill runcastle:lead\nAPI Error: overloaded',
+        messages: 1,
+      })
+      expect(failed[0]?.message).toBe(
+        "the agent's headless wake exited (code 1) during its turn — it had 1 message(s); open the chat to see " +
+          'where it stopped — last output: API Error: overloaded',
+      )
+    })
+
+    it('reads a wake the human ended (End session) as asked for, not as a failure', async () => {
+      const f = feature()
+      const { launch, ids } = rowLauncher()
+      const stop = startLeadWaker(ctx, launch)
+      try {
+        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
+        await vi.waitFor(() => expect(ids).toHaveLength(1))
+        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
+        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
+
+        // The kill makes the headless `claude -p` exit 1, as on 2026-10-19.
+        endSession(ctx, ids[0] as string)
+        exited(f.id, ids[0] as string, 1)
+        await new Promise((r) => setTimeout(r, 10))
+      } finally {
+        stop()
+      }
+      expect(ids).toHaveLength(1)
       expect(types(f.id)).not.toContain('lead.wake_failed')
     })
 
@@ -440,7 +497,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       }
       const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
       expect(failed.map((e) => e.data?.failures)).toEqual([1, 2])
-      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, messages: 1 })
+      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, tail: '', messages: 1 })
     })
 
     it('counts a clean exit as delivered even when no hook said so', async () => {
@@ -497,6 +554,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
     expect(await wakeLeadHeadless(ctx, f.id, refused)).toBeNull()
     expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
     const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')
-    expect(failed?.message).toContain('another terminal is open')
+    expect(failed?.message).toBe('could not resume the agent headless: another terminal is open')
+    expect(failed?.data).toEqual({ exitCode: null, tail: 'another terminal is open', messages: 1 })
   })
 })

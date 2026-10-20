@@ -412,6 +412,23 @@ export function reportProjectLanding(
   }
 }
 
+/**
+ * Sessions someone asked to end (`endSession`), noted before the kill so the
+ * exit it causes is read as asked for, not as a crash: a lead wake the human
+ * ended is not a `lead.wake_failed`. Taken once, by whoever reads the exit.
+ */
+const requestedEnds = new Set<string>()
+
+/** Note that ending this session was asked for; call before killing it. */
+export function noteRequestedEnd(id: string): void {
+  requestedEnds.add(id)
+}
+
+/** Whether ending this session was asked for — and forget it, so it is read once. */
+export function takeRequestedEnd(id: string): boolean {
+  return requestedEnds.delete(id)
+}
+
 /** Mark a session `ended`; returns the updated row, or null if unknown. */
 export function markSessionEnded(ctx: AppCtx, id: string): SessionRow | null {
   const existing = getSessionRow(ctx, id)

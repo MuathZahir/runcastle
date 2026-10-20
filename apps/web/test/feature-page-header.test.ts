@@ -42,6 +42,8 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
     declarations: [{ scenario: 'Checkout', whatToTest: 'Apply SAVE10 at checkout.', createdAt: 20 }],
     agentWorking: false,
     driving: over.driving ?? false,
+    selfPlanning: false,
+    now: 0,
   })
   return renderToStaticMarkup(
     createElement(

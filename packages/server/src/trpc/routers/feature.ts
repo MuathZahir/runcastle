@@ -139,10 +139,13 @@ export const featureRouter = router({
 
   // Go (`the-feature-lead-runs-rounds` decision 8): approve the plan, move
   // planning → building and hand the feature to its lead. Starts no run — the
-  // lead dispatches every round. Replaces the human's Burn.
+  // lead dispatches every round. Replaces the human's Burn. Before the plan is
+  // finished Go is a gate: `overrideReason` is the one line that crosses it.
   go: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.go(ctx, input.featureId)),
+    .input(z.object({ featureId: z.string(), overrideReason: z.string().optional() }))
+    .mutation(({ ctx, input }) =>
+      features.go(ctx, input.featureId, input.overrideReason ? { overrideReason: input.overrideReason } : {}),
+    ),
 
   // Stop (decision 23): cancel the running round, mark the feature stopped so
   // nothing dispatches until the human replies, tell the lead.

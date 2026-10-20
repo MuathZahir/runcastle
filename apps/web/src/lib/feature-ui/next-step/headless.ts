@@ -1,3 +1,4 @@
+import { isStoppableHeadlessRun } from '@runcastle/core'
 import { isHeadlessRun } from '../session'
 import type { ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
@@ -6,7 +7,9 @@ import type { NextStep } from './types'
  * The bar around a run on the feature with no terminal (features-plan-themselves
  * decision 11, whole-cuts-plan-themselves "The page"): while one is up, a working
  * bar whose one control is Stop — there is nothing to chat with, and a chat
- * launch is refused beside it — in whichever state the feature is in.
+ * launch is refused beside it — in whichever state the feature is in. A lead
+ * woken headless is not such a run: it took Go or a round's news, and a Stop
+ * that ended it would drop that — the status row's Stop is how the lead halts.
  *
  * After a `relay` or an older `start-lap` run that the server said stopped before it
  * was finished, a stopped-short bar whose way on is the chat, until a newer chat
@@ -15,7 +18,7 @@ import type { NextStep } from './types'
  */
 export function resolveHeadlessRun(input: ResolverInput): NextStep | null {
   const { live, full, ctx } = input
-  if (live && isHeadlessRun(live)) {
+  if (live && isStoppableHeadlessRun(live)) {
     const working = WORKING[live.purpose === 'relay' || live.purpose === 'start-lap' ? live.purpose : 'self-plan']
     return {
       ...working,
