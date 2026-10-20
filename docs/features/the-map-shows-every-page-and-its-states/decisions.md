@@ -124,3 +124,51 @@ Selecting a place opens its group page.
 
 **Why:** The human lists runcastle as onboarding, then the project chooser, then the project session: how you move through the app, which alphabetical order breaks. Runcastle already reads each story's file path from the index, so ordering by it is text only, and it keeps the brief's names (`Onboarding`, not `1 Onboarding`). (A branch the challenge found.)
 **Assumed.** Alternative: numbers in the place titles, as states have them, which is one rule for both but puts "1 Onboarding" in the sidebar.
+
+---
+
+# Re-scope after the lap-1 drive (2026-10-20)
+
+Decided with the human, in a grilling after their lap-1 drive. **Decisions 1–13 above are superseded** except where a decision below keeps part of one; they stay as the record of lap 1.
+
+The human, on what they wanted all along: "The reason I wanted these components showing in runcastle was so that I can iterate with the agent on specific components/screens/states without having to test drive everytime, reach that state, then see how it looks. This was my main issue. … No need to maintain the components in a map on the sidebar." And, on the proposed map redesign: "This feels complicated and over sophisticated. I dont want to have to deal with this."
+
+## 14. This feature becomes a cleanup; the live preview is design mode's
+**Decision:** Lap 2 removes what lap 1 and the two features before it built for the map and the story catalogue, and keeps only the plain code that renders the real app with fake data. The live preview beside the chat, where the human and the agent iterate on a state, is the draft *Design mode*, re-briefed the same day with everything decided here. This feature's title stays (features cannot be renamed); its brief says it was re-scoped.
+**Why:** The cleanup is small and certain and removes code in the human's way now. Design mode has open questions of its own (installed dependencies in chat worktrees, code edits during planning, the dev server's lifecycle) that would otherwise hold the cleanup hostage.
+**Chosen by the human.** Alternative: this feature becomes design mode, one bigger feature.
+
+## 15. The map is removed
+**Decision:** The Map tab and everything only it uses go: the map views and overview, `project.map` and its service, the core map model, `main`'s copy of the catalogue with its Build/Rebuild button and its promotion at merge, the map's doors into the drive ("Open in drive", "Try it", "New scenario" from the map), and the map's mentions in agents' feature context. Scenarios themselves stay: the Test drive picker and the running drive's Scenario menu list them, and the drive's API view runs calls. The lap-1 scenario folder move (`scenarios/review/` → `scenarios/feature/review/`, decision 12) is undone, and so is the "Map of this checkout" scenario.
+**Chosen by the human** ("Remove it and any extra logic, components, etc.. that we don't need anymore. Clean things up").
+
+## 16. Storybook and the story catalogue are removed
+**Decision:** Runcastle stops building, serving and showing story catalogues:
+- the review page's "UI states" section;
+- the catalogue build at every review pass and the base build at the branch point;
+- the stories port and its static serving;
+- `.runcastle/stories.json` and everything that reads it (`stories.setUp`);
+- prepare's stories setup;
+- the planning rule that adds "ship a story" to tickets, the page rule (decision 10), and the stories notes in the burner and review prompts.
+
+Runcastle's own repo drops Storybook: its packages, `.runcastle/storybook/` config and the story files under `.runcastle/stories/`.
+**Why:** Stories existed to iterate with the agent; building them at review spends worker time and adds machinery to show something the review agent can capture instead. With no catalogue built anywhere, Storybook's only remaining job (rendering a state without the backend, with hot reload) is done by plain code plus the project's own dev server.
+**Chosen by the human,** in three steps:
+1. first keeping the review section with a gate that never fails;
+2. then "What's the point of wasting implementation time and adding extra complexity to maintain it to show the story in review.. We can probably just make the review agent take captures of the screens";
+3. then "Do we really need storybook with how simple things became?"
+
+## 17. Screens at review come from the review agent's screenshots
+**Decision:** Seeing screens at review is the job of *Review hands you a running drive with what it saw*: its "What the agent saw" section shows the screenshots the review agent takes per scenario and per check. Its brief and spec were amended the same day to say it is now the only view of screens at review. This feature builds nothing for it.
+**Chosen by the human.**
+
+## 18. The fake-data helpers survive as plain code under `.runcastle/preview/`
+**Decision:** Four modules from lap 1 move out of `.runcastle/storybook/` into `.runcastle/preview/`, with every Storybook import removed:
+- the fake network layer (`fake-api`: answers tRPC at the `fetch` edge, including the mutations a caller names);
+- the faked session data (`shell-fakes`);
+- the app-at-an-address helper (`app-at`);
+- the silent live-stream stand-in.
+
+They stay checked by `bun run typecheck` (its storybook tsconfig step becomes a preview one). Nothing else in runcastle uses them; they are design mode's starting point.
+**Why:** Faking every query the shell and a page make was most of lap 1's work, and none of it is Storybook-specific. Deleting it would make design mode redo it.
+**Assumed.** Alternative: delete them too and let design mode rewrite them.

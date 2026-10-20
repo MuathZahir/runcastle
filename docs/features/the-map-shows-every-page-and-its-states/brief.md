@@ -1,5 +1,7 @@
 # Brief
 
+> **Re-scoped on 2026-10-20, after the lap-1 drive.** This feature no longer redraws the map: it **removes** the map, Storybook and the story catalogue, keeping only the fake-data helpers as plain code for the draft *Design mode*, which now owns "iterate with the agent on a screen without driving". See `decisions.md` 14–18. The brief below is the original record.
+
 ## Why this feature exists
 
 The human, after the map shipped (2026-10-19), pointing at the Map › Burn group showing `Lane / Failed Ticket` and `UnrunnableGates / Missing Runtime`: "it still looks nothing like what I imagined… it's not comprehensive, literally just showing some components. Also, I want it to show pages and states, not individual components. I want to see the structure of my website. So in runcastle, I would want to see the onboarding and all its screens, the project chooser, the project session screen, etc.."
