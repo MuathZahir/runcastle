@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectNote, ScenarioEntry } from '@runcastle/core'
 import type { ProjectConversation, ProjectSession } from '../src/lib/api'
 import type { ProjectTalkApi } from '../src/lib/use-project-talk'
-import type { DriveRequest } from '../src/components/ProjectWorkspace'
 import { openMenu } from './floating'
 
 /**
@@ -199,7 +198,7 @@ function restShown(): boolean {
 
 function mount(
   api: ProjectTalkApi = talk(),
-  props: { onOpenPreparation?: () => void; driveRequest?: DriveRequest } = {},
+  props: { onOpenPreparation?: () => void; driveRequest?: number } = {},
 ) {
   const view = render(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />)
   return { rerender: () => view.rerender(<ProjectWorkspace projectId="proj_1" talk={api} {...props} />) }
@@ -487,75 +486,13 @@ describe('scenarios on a project drive', () => {
   })
 })
 
-describe('a drive request from the map (the map of stories and scenarios, decision 8)', () => {
-  const COUPON = '.runcastle/scenarios/checkout/cart-with-coupon.ts'
-  const CALL: ScenarioEntry = { file: COUPON, name: 'Cart with coupon', group: 'Checkout', own: false, hasCall: true }
-  const SMOKE: ScenarioEntry = { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false, hasCall: false }
-  const openInDrive: DriveRequest = { intent: { scenario: COUPON, side: 'app' } }
-  const tryIt: DriveRequest = {
-    intent: { scenario: COUPON, side: 'api', call: '.runcastle/scenarios/checkout/cart-with-coupon.http' },
-  }
-
-  beforeEach(() => {
-    scenarios = { runnerConfigured: true, scenarios: [SMOKE, CALL] }
-  })
-
-  it('brings a live drive to the front when it says nothing more — the titlebar pill', () => {
+describe('the titlebar drive pill', () => {
+  it('brings a live drive to the front', () => {
     slot = LIVE
-    mount(talk(), { driveRequest: {} })
+    mount(talk(), { driveRequest: 1 })
     expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
     expect(runScenario).not.toHaveBeenCalled()
     expect(testDrive).not.toHaveBeenCalled()
-  })
-
-  it('starts a project drive on the scenario when none is live, and opens it on the App side', () => {
-    const { rerender } = mount(talk(), { driveRequest: openInDrive })
-    expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start', scenario: COUPON })
-    rerender()
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
-    expect(screen.getByRole('radio', { name: 'App' }).getAttribute('aria-checked')).toBe('true')
-  })
-
-  it('runs the scenario on the live project drive, without a restart', () => {
-    slot = LIVE
-    mount(talk(), { driveRequest: openInDrive })
-    expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: COUPON })
-    expect(testDrive).not.toHaveBeenCalled()
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
-  })
-
-  it('lands Try it on the API side with that call selected', () => {
-    slot = LIVE
-    mount(talk(), { driveRequest: tryIt })
-    expect(runScenario).toHaveBeenCalledWith({ projectId: 'proj_1', file: COUPON })
-    // The toolbar rides on the API view and on the app panel left mounted under it.
-    for (const api of screen.getAllByRole('radio', { name: 'API' })) {
-      expect(api.getAttribute('aria-checked')).toBe('true')
-    }
-    const calls = screen.getByRole('navigation', { name: 'Calls' })
-    expect(within(calls).getByRole('button', { name: /Cart with coupon/ }).getAttribute('aria-current')).toBe('page')
-  })
-
-  it('does what the Test drive picker does while another drive holds the slot: starts nothing, names the holder', () => {
-    slot = { ...LIVE, projectDrive: undefined, projectId: undefined, holderLabel: 'a test drive of feature/x' }
-    mount(talk(), { driveRequest: openInDrive })
-    expect(testDrive).not.toHaveBeenCalled()
-    expect(runScenario).not.toHaveBeenCalled()
-    expect(toast).toHaveBeenCalledWith('A test drive of feature/x is running')
-    expect(restShown()).toBe(true)
-  })
-
-  it('opens the scenario chat on a live drive for New scenario', () => {
-    slot = LIVE
-    mount(talk(), { driveRequest: { newScenario: true } })
-    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
-  })
-
-  it('starts the drive first for New scenario, and opens the chat once its app answers', () => {
-    const { rerender } = mount(talk(), { driveRequest: { newScenario: true } })
-    expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
-    rerender()
-    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
   })
 })
+

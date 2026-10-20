@@ -43,13 +43,6 @@ describe('workspaceView', () => {
     expect(workspaceView(state({ selectedFeatureId: 'f1' }))).toBe('feature')
   })
 
-  it('gives the map the body over the project row and the feature, but not over preparation', () => {
-    const open = { map: { group: null }, projectSelected: true, selectedFeatureId: 'f1' }
-    expect(workspaceView(state(open))).toBe('map')
-    expect(workspaceView(state({ ...open, preparing: true }))).toBe('prepare')
-    expect(showsInspector('map', false)).toBe(false)
-  })
-
   it('falls back to the project home with neither selected', () => {
     expect(workspaceView(state())).toBe('project')
   })
