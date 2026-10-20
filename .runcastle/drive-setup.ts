@@ -101,11 +101,10 @@ function isFree(port: number): Promise<boolean> {
  * the same URL, so a bookmark survives a rethink. The 20000-29999 window is high
  * enough to stay clear of the developer's own install on 4512/4513, and the
  * upward probe covers the case where something else already holds the pick.
- * `after` asks for the next free port above one already picked.
  */
-async function pickPort(after?: number): Promise<number> {
+async function pickPort(): Promise<number> {
   const digest = createHash('sha1').update(slug).digest()
-  const base = after === undefined ? 20000 + (digest.readUInt32BE(0) % 10000) : after + 1
+  const base = 20000 + (digest.readUInt32BE(0) % 10000)
   for (let port = base; port < base + 200; port++) {
     if (await isFree(port)) return port
   }
@@ -187,9 +186,6 @@ if (existsSync(prodDb)) {
 }
 
 const port = await pickPort()
-// The UI states port (4514 on the host) would collide with the developer's own
-// install, so a drive serves its story catalogues one port above its own.
-const storiesPort = await pickPort(port)
 
 /**
  * The asset overrides are the subtle half of this file. A published install
@@ -207,7 +203,6 @@ const pkg = (...parts: string[]): string => join(repoRoot, ...parts)
 emit({
   RUNCASTLE_DATA_DIR: dataDir,
   RUNCASTLE_SERVER_PORT: String(port),
-  RUNCASTLE_STORIES_PORT: String(storiesPort),
   RUNCASTLE_MIGRATIONS_DIR: pkg('packages', 'server', 'drizzle'),
   RUNCASTLE_WEB_DIST: pkg('apps', 'web', 'dist'),
   RUNCASTLE_SKILLS_DIR: pkg('packages', 'skills'),

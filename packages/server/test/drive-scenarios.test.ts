@@ -430,7 +430,7 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
 
     it('lists the drive scenarios, own first, and says whether a runner is set', async () => {
       await g.checkout('feature/drive')
-      put(project.repoPath, '.runcastle/scenarios/feature/review/own.ts', "console.log('ENTRY_URL=/')")
+      put(project.repoPath, '.runcastle/scenarios/review/own.ts', "console.log('ENTRY_URL=/')")
       await g.add('.')
       await g.commit('own scenario')
       await g.checkout('main')
@@ -438,14 +438,14 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       const featureList = await caller().feature.driveScenarios({ projectId: project.id, featureId: feature.id })
       expect(featureList.runnerConfigured).toBe(true)
       expect(featureList.scenarios.map((s) => [s.file, s.own])).toEqual([
-        ['.runcastle/scenarios/feature/review/own.ts', true],
+        ['.runcastle/scenarios/review/own.ts', true],
         ['.runcastle/scenarios/broken.ts', false],
         ['.runcastle/scenarios/checkout/land.ts', false],
         ['.runcastle/scenarios/slow.ts', false],
       ])
       // A project drive reads HEAD, where the feature's scenario does not exist.
       const projectList = await caller().feature.driveScenarios({ projectId: project.id })
-      expect(projectList.scenarios.map((s) => s.file)).not.toContain('.runcastle/scenarios/feature/review/own.ts')
+      expect(projectList.scenarios.map((s) => s.file)).not.toContain('.runcastle/scenarios/review/own.ts')
     })
 
     it('starts a drive with a scenario and runs another fire-and-forget', async () => {

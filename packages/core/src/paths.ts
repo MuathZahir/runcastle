@@ -1,6 +1,5 @@
 import { homedir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
-import { PROJECT_ID_PATTERN } from './ids'
 
 /**
  * Filesystem paths for runcastle's data dir (`~/.runcastle/`). These are the
@@ -159,68 +158,6 @@ export function reviewGateLogPath(ticketId: string, log: string): string {
   if (!isReviewGateLogName(log)) throw new Error(`not a gate log name: ${log}`)
   return join(reviewGateLogDir(ticketId), log)
 }
-
-/**
- * Built story catalogues, served read-only on `config.storiesPort`:
- * `~/.runcastle/stories/`. Generated output, never committed (decision 5).
- */
-export function storiesRoot(): string {
-  return join(dataDir(), 'stories')
-}
-
-/**
- * One feature's latest build: `<storiesRoot>/features/<featureId>/`, with its
- * {@link STORIES_MANIFEST} beside the catalogue. Replaced every review pass and
- * deleted when the feature merges or is deleted.
- */
-export function featureStoriesDir(featureId: string): string {
-  return join(storiesRoot(), 'features', featureId)
-}
-
-/**
- * A base catalogue built at a branch point: `<storiesRoot>/base/<commit>/`.
- * Cached by commit and shared by every feature with that branch point, swept
- * once no feature's manifest references it. Throws on anything but a hex sha,
- * so a commit can never traverse out of the dir.
- */
-export function baseStoriesDir(commit: string): string {
-  if (!/^[0-9a-f]{7,64}$/i.test(commit)) throw new Error(`not a commit sha: ${commit}`)
-  return join(storiesRoot(), 'base', commit)
-}
-
-/** The manifest runcastle writes inside {@link featureStoriesDir}. */
-export const STORIES_MANIFEST = 'manifest.json'
-
-function assertProjectId(projectId: string): void {
-  if (!PROJECT_ID_PATTERN.test(projectId)) throw new Error(`not a project id: ${projectId}`)
-}
-
-/**
- * Main's current good catalogue for one project: `<storiesRoot>/main/<projectId>/`,
- * the build's files directly in it with {@link MAIN_CATALOGUE_RECORD} beside
- * them. Replaced whole when a review build is promoted or a main build lands.
- * Throws on anything but a project id, so an id can never traverse out.
- */
-export function mainStoriesDir(projectId: string): string {
-  assertProjectId(projectId)
-  return join(storiesRoot(), 'main', projectId)
-}
-
-/**
- * The latest attempt at building main: `<storiesRoot>/main-attempts/<projectId>/`,
- * holding {@link MAIN_CATALOGUE_ATTEMPT}, `build.log` and the in-progress
- * output. Kept apart so a failed build never touches the last good catalogue.
- */
-export function mainStoriesAttemptDir(projectId: string): string {
-  assertProjectId(projectId)
-  return join(storiesRoot(), 'main-attempts', projectId)
-}
-
-/** The record runcastle writes inside {@link mainStoriesDir}. */
-export const MAIN_CATALOGUE_RECORD = 'main.json'
-
-/** The attempt record inside {@link mainStoriesAttemptDir}. */
-export const MAIN_CATALOGUE_ATTEMPT = 'attempt.json'
 
 /**
  * Annotated-frame screenshots, one per test note:

@@ -54,7 +54,6 @@ import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { orchestratorCatchUp } from '../services/orchestrator-notify'
 import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
-import { mapGroupNames } from '../services/map'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
@@ -918,15 +917,12 @@ export async function launchPrepareSession(
   }
 
   const prepare = await buildPrepareBrief(ctx, project)
-  // Open UI states keep the session a preparation even with every key settled,
-  // so it is not typed the confirm-and-stop line.
-  const confirmOnly = prepare.remainingKeys.length === 0 && prepare.host?.hasStories !== false
 
   const kickoffLine = resumeSessionId
     ? undefined
     : kickoffLineFor(
         'prepare',
-        confirmOnly ? prepareConfirmKickoffFor(runtime.id) : undefined,
+        prepare.remainingKeys.length === 0 ? prepareConfirmKickoffFor(runtime.id) : undefined,
         runtime.id,
       )
   const spec = await runtime.writeArtifacts({
@@ -1225,7 +1221,6 @@ export async function launchScenarioSession(
       driveUrl: drive.devUrl,
       runner: project.scenarioRunner ?? undefined,
       files: await listScenarioPaths(project.repoPath, 'HEAD'),
-      mapGroups: await mapGroupNames(ctx, project.id),
       description: input.description,
       fix,
       setup,
@@ -1487,7 +1482,6 @@ export function probePrepareHost(repoPath: string): PrepareHost {
     platform: process.platform,
     hasCompose: COMPOSE_FILES.some(has),
     hasDriveMachinery: has('.runcastle'),
-    hasStories: has('.runcastle/stories.json'),
     ...(lock ? { packageManager: lock[1] } : {}),
   }
 }

@@ -117,7 +117,6 @@ import {
   type TicketContentPatch,
 } from '../services/tickets'
 import { sendDriveCall } from '../services/drive-call'
-import { mapGroupNames, mappedPlaces } from '../services/map'
 import {
   SCENARIO_FILE_PLACEHOLDER,
   listFeatureScenarios,
@@ -471,44 +470,6 @@ export interface FeatureContext {
    * Present on every MCP reply; a direct caller that read no git leaves it out.
    */
   scenarios?: FeatureScenarios
-  /**
-   * Whether this project shows UI states as stories: the planner gives a ticket
-   * a ship-a-story criterion only when `setUp`. Present on every MCP reply, like
-   * {@link scenarios}.
-   */
-  stories?: FeatureStories
-  /**
-   * The product groups on main's map (`mapGroups`): name a new story's or
-   * scenario's group after one of these when it fits (decision 4). Present on
-   * every MCP reply, like {@link stories}; empty when main has none.
-   */
-  mapGroups?: string[]
-}
-
-/** The project's UI-states state as a planning session sees it. */
-export interface FeatureStories {
-  /** `.runcastle/stories.json` exists on the feature's recorded base branch. */
-  setUp: boolean
-  /**
-   * The places with page stories in main's stored catalogue, as display names
-   * (`Feature › Review`); null when main's catalogue has never been built, and
-   * planning then reads `.runcastle/stories/pages/` itself.
-   */
-  pages: string[] | null
-}
-
-/** Where a project records its story build; its presence means "has stories". */
-const STORIES_FILE = '.runcastle/stories.json'
-
-/** {@link FeatureStories}, read from git at the feature's base branch. */
-export async function featureStories(ctx: AppCtx, featureId: string): Promise<FeatureStories> {
-  const feature = getFeatureRow(ctx, featureId)
-  const project = projectForFeature(ctx, feature)
-  // No recorded base (a draft) means no base to be set up on, as for scenarios.
-  return {
-    setUp: feature.baseBranch ? await git.fileExistsAt(project.repoPath, feature.baseBranch, STORIES_FILE) : false,
-    pages: await mappedPlaces(ctx, project.id),
-  }
 }
 
 /** The project's scenario state as a planning session sees it. */
@@ -615,8 +576,6 @@ export function featureContext(
   ctx: AppCtx,
   reader: FeatureReader,
   scenarios?: FeatureScenarios,
-  stories?: FeatureStories,
-  mapGroups?: string[],
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
@@ -682,8 +641,6 @@ export function featureContext(
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
-    ...(stories ? { stories } : {}),
-    ...(mapGroups ? { mapGroups } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
     reviewEvidence: carried.reviewEvidence,
     currentLapReview: currentLapReviewEvidence(ctx, feature.id),
@@ -748,15 +705,9 @@ export function featureContext(
   return context
 }
 
-/** {@link featureContext} with its git-read blocks (scenarios, stories, map groups) — what every MCP reply carries. */
+/** {@link featureContext} with its git-read scenarios block — what every MCP reply carries. */
 export async function featureContextWithGit(ctx: AppCtx, reader: FeatureReader): Promise<FeatureContext> {
-  const project = projectForFeature(ctx, getFeatureRow(ctx, reader.featureId))
-  const [scenarios, stories, mapGroups] = await Promise.all([
-    featureScenarios(ctx, reader.featureId),
-    featureStories(ctx, reader.featureId),
-    mapGroupNames(ctx, project.id),
-  ])
-  return featureContext(ctx, reader, scenarios, stories, mapGroups)
+  return featureContext(ctx, reader, await featureScenarios(ctx, reader.featureId))
 }
 
 function ticketRow(ticket: Ticket): FeatureContextTicketRow {
@@ -3238,11 +3189,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         '(`setUp`: the base branch has .runcastle/scenarios/ and a runner is recorded — only then ' +
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
-        'to reuse), `stories` (`setUp`: the base branch has .runcastle/stories.json — only then ' +
-        'does a ticket that builds a UI state worth seeing ship its story; `pages`: the places ' +
-        'that already have page stories on main, null when main’s catalogue is not built), ' +
-        '`mapGroups` (the places and scenario groups on main’s map — name a new page story’s ' +
-        'title or scenario’s `<group>` after one of these when it fits), ' +
+        'to reuse), ' +
         '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
         'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +

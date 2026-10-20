@@ -1569,20 +1569,6 @@ export async function headSha(repoPath: string, ref: string): Promise<string | u
 }
 
 /**
- * Does `path` exist at `ref`? Read from git (`cat-file -e`), never the working
- * tree, so it answers for a branch that is not checked out. `false` for a
- * missing ref as much as a missing file.
- */
-export async function fileExistsAt(repoPath: string, ref: string, path: string): Promise<boolean> {
-  try {
-    await git(repoPath).raw(['cat-file', '-e', `${ref}:${path}`])
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * How many commits `branch` has gained since `sha` — the staleness distance for
  * a prepared finding. `undefined` (unknown) rather than `0` whenever the answer
  * cannot be trusted: the sha may have been rewritten out of history by a rebase

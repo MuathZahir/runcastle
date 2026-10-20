@@ -1,0 +1,3 @@
+### Runcastle version
+# A harmless read, used to exercise the drive's API view on runcastle itself.
+GET /api/trpc/system.version

@@ -18,8 +18,8 @@ import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, {
   buildMcpServer,
   featureContext,
+  featureContextWithGit,
   featureScenarios,
-  featureStories,
   resolveFeatureReader,
   resolveSession,
   toolCancelTicket,
@@ -1012,67 +1012,14 @@ describe('get_feature_context scenarios', () => {
     await client.close()
     expect(tool?.description).toMatch(/`scenarios` \(`setUp`: the base branch has \.runcastle\/scenarios\/ and a runner is recorded/)
     expect(tool?.description).toMatch(/does a ticket ship a scenario/)
-  })
-})
-
-/**
- * Whether a feature's tickets ship stories (UI-states decision 11): set up
- * exactly when `.runcastle/stories.json` is on the feature's base branch.
- */
-describe('get_feature_context stories', () => {
-  let ctx: AppCtx
-  let repoPath: string
-  let projectId: string
-
-  beforeEach(async () => {
-    ctx = await makeTestCtx()
-    repoPath = tmpRepo()
-    const g = simpleGit(repoPath)
-    await g.init(['-b', 'main'])
-    await g.addConfig('user.email', 'test@runcastle.dev')
-    await g.addConfig('user.name', 'Runcastle Test')
-    writeFileSync(join(repoPath, 'README.md'), 'base\n')
-    await g.add('.')
-    await g.commit('initial commit')
-    await g.branch(['bare-base'])
-    mkdirSync(join(repoPath, '.runcastle'))
-    writeFileSync(join(repoPath, '.runcastle', 'stories.json'), '{"build":"storybook build -o {out}"}\n')
-    await g.add('.')
-    await g.commit('stories')
-    projectId = seedProject(ctx, repoPath).id
+    expect(tool?.description).not.toMatch(/`stories`|mapGroups/)
   })
 
-  afterEach(() => rmTemp(repoPath))
-
-  it('is set up when the base branch has stories.json, and rides the header', async () => {
-    const feature = seedFeature(ctx, projectId, { slug: 'shown', baseBranch: 'main' })
-    const stories = await featureStories(ctx, feature.id)
-    expect(stories).toEqual({ setUp: true, pages: null })
-    const context = featureContext(ctx, { featureId: feature.id }, undefined, stories)
-    expect(context.stories).toEqual({ setUp: true, pages: null })
-    expect(Object.keys(context).indexOf('stories')).toBeLessThan(Object.keys(context).indexOf('tickets'))
-  })
-
-  it('is not set up on a base without stories.json, or with no recorded base', async () => {
-    const early = seedFeature(ctx, projectId, { slug: 'early', branch: 'bare-base', baseBranch: 'bare-base' })
-    expect(await featureStories(ctx, early.id)).toEqual({ setUp: false, pages: null })
-    const draft = seedFeature(ctx, projectId, { slug: 'draft', baseBranch: null })
-    expect(await featureStories(ctx, draft.id)).toEqual({ setUp: false, pages: null })
-  })
-
-  it('reads the base branch from git, not the working tree', async () => {
-    // The checkout is on a branch without the file; main still has it.
-    await simpleGit(repoPath).checkout('bare-base')
-    const feature = seedFeature(ctx, projectId, { slug: 'shown', baseBranch: 'main' })
-    expect(await featureStories(ctx, feature.id)).toEqual({ setUp: true, pages: null })
-  })
-
-  it('names the field in the tool description', async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-    const client = new Client({ name: 'stories-test', version: '1' })
-    await Promise.all([buildMcpServer('chat').connect(serverTransport), client.connect(clientTransport)])
-    const tool = (await client.listTools()).tools.find((t) => t.name === 'get_feature_context')
-    await client.close()
-    expect(tool?.description).toMatch(/`stories` \(`setUp`: the base branch has \.runcastle\/stories\.json/)
+  it('carries scenarios as its only git-read block, with no stories or map groups', async () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'shipped' })
+    const context = await featureContextWithGit(ctx, { featureId: feature.id })
+    expect(context.scenarios).toBeDefined()
+    expect(context).not.toHaveProperty('stories')
+    expect(context).not.toHaveProperty('mapGroups')
   })
 })

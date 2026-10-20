@@ -434,7 +434,7 @@ describe('a live chat beside a live drive', () => {
 describe('scenarios on a project drive', () => {
   const SCENARIOS: ScenarioEntry[] = [
     { file: '.runcastle/scenarios/smoke.ts', name: 'Smoke', own: false, hasCall: false },
-    { file: '.runcastle/scenarios/feature/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true, hasCall: false },
+    { file: '.runcastle/scenarios/review/feature-at-review.ts', name: 'Feature at review', group: 'Review', own: true, hasCall: false },
     { file: '.runcastle/scenarios/auth/signed-out.ts', name: 'Signed out', group: 'Auth', own: false, hasCall: false },
   ]
 
@@ -462,7 +462,7 @@ describe('scenarios on a project drive', () => {
     expect(testDrive).toHaveBeenCalledWith({
       projectId: 'proj_1',
       action: 'start',
-      scenario: '.runcastle/scenarios/feature/review/feature-at-review.ts',
+      scenario: '.runcastle/scenarios/review/feature-at-review.ts',
     })
   })
 

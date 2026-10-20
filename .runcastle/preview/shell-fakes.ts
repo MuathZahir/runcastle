@@ -30,7 +30,7 @@ const setUpHost = {
  * What the shell asks on first render, answered for one prepared project with
  * nothing on it yet: the project list and the doctor (where to land), the
  * update check, the sidebar's features, prep, drive and notes, the project
- * session's chat and branch, the events feed and the map. A page story spreads
+ * session's chat and branch and the events feed. A page story spreads
  * these with {@link withShell} and states only what makes its page differ.
  */
 export const shellFakes = {
@@ -41,11 +41,6 @@ export const shellFakes = {
     conversations: () => [],
     sessionBranch: () => ({ stored: null, effective: 'main', detected: 'main' }),
     branches: () => ({ current: 'main', detected: 'main', branches: ['main'], remoteBranches: [] }),
-    map: () => ({
-      storiesSetUp: false,
-      catalogue: { state: 'not_set_up' as const, stale: false, building: false },
-      groups: [],
-    }),
   },
   setup: { doctor: () => setUpHost },
   system: {

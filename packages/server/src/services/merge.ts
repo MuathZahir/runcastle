@@ -4,10 +4,8 @@ import { emit, listAfter } from './events'
 import { retireShippedWorktree } from './feature-worktrees'
 import { requireNotDraft } from './features'
 import * as git from './git'
-import { promoteOrBuildMain } from './main-catalogue'
 import { promoteOutcomeDoc } from './outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from './repo'
-import { removeFeatureStories, sweepBaseStories } from './stories-store'
 
 /** What a merge click answers: landed, or the conflict and the files it stands on. */
 export interface MergeFlowResult {
@@ -50,23 +48,12 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
         message: 'conflict retired by the merge',
       })
     }
-    // The merge commit, read before the outcome doc lands on top of it: a
-    // promoted catalogue is recorded at the merge.
-    const mergeCommit = await git.headSha(project.repoPath, res.target)
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
     setPhase(ctx, featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
     setFeatureStatus(ctx, featureId, 'shipped')
     // Last, and best-effort: the merge has landed, so a worktree that will
     // not go is reported by an event, never by failing the ship.
     await retireShippedWorktree(ctx, project, feature)
-    // The review build becomes main's catalogue when nothing it depends on
-    // changed, else main is built in the background (the-map-of-stories-and-
-    // scenarios decision 5). Best-effort: it never fails the ship.
-    await promoteOrBuildMain(ctx, project, feature, res.target, mergeCommit ?? null)
-    // Built stories are generated output; after ship they live on in main's
-    // source (decision 5). A promoted build has already moved.
-    removeFeatureStories(feature.id)
-    sweepBaseStories()
   } else {
     // Carry the base branch + conflicting files on the event so the review
     // UI can surface the conflict card after a reload and brief the

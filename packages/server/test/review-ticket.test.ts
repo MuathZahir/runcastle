@@ -12,7 +12,7 @@ import type {
   WorkflowDef,
 } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { featureStoriesDir, reviewGateLogPath } from '@runcastle/core/paths'
+import { reviewGateLogPath } from '@runcastle/core/paths'
 import { runs } from '../src/db/schema'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -46,7 +46,6 @@ import {
   buildDriveInstructions,
   buildScenarioBlock,
   buildGateNotes,
-  buildStoriesNotes,
   checkExecutableHealth,
   composeReviewDigest,
   describeHealthFailure,
@@ -662,7 +661,6 @@ describe('what the review agent is handed', () => {
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Drive the sample project at /tmp/sample.'),
       SCENARIOS: buildScenarioBlock([], false),
       GATE_NOTES: buildGateNotes(ranGates('bun run typecheck'), 'tkt_3', {}),
-      STORIES_NOTES: buildStoriesNotes({ status: 'none' }, 'feat_1'),
       DIGEST_PATH: '/data/reviews/tkt_3/DIGEST.md',
       BLOCKED_PATH: '/data/reviews/tkt_3/BLOCKED.md',
       WALKTHROUGH_PATH: '/data/reviews/tkt_3/walkthrough.webm',
@@ -739,7 +737,7 @@ describe('what the review agent is handed', () => {
       DRIVE_AVAILABILITY: buildDriveAvailability('/browser', 'bun dev', 'drive'),
       DRIVE_INSTRUCTIONS: buildDriveInstructions('Log in as demo@example.com.'),
       SCENARIOS: buildScenarioBlock([], false),
-      GATE_NOTES: buildGateNotes(ranGates('bun test'), 'tkt_4', {}), STORIES_NOTES: '', DIGEST_PATH: '/digest',
+      GATE_NOTES: buildGateNotes(ranGates('bun test'), 'tkt_4', {}), DIGEST_PATH: '/digest',
       BLOCKED_PATH: '/blocked', WALKTHROUGH_PATH: '/walkthrough.webm',
       LANDED_FIXES: '#2 Fix save — repro: click Save', VERIFIES_PASS: '#1 · Drive mode',
       AUTO_FIX_CAP: String(AUTO_FIX_CAP),
@@ -761,7 +759,7 @@ describe('what the review agent is handed', () => {
     const values = (SCENARIOS: string) => ({
       TICKET_JSON: '{}', FEATURE_BRIEF: '', DOCS_DIGEST: '', LAP_DIGESTS: '', FEATURE_BRANCH: 'feature/demo',
       BASE_BRANCH: 'main', DRIVE_AVAILABILITY: '', DRIVE_INSTRUCTIONS: '', SCENARIOS, GATE_NOTES: '',
-      STORIES_NOTES: '', DIGEST_PATH: '/d', BLOCKED_PATH: '/b', WALKTHROUGH_PATH: '/w', LANDED_FIXES: '', VERIFIES_PASS: '',
+      DIGEST_PATH: '/d', BLOCKED_PATH: '/b', WALKTHROUGH_PATH: '/w', LANDED_FIXES: '', VERIFIES_PASS: '',
       AUTO_FIX_CAP: '3',
     })
 
@@ -858,68 +856,6 @@ describe('what the review agent is handed', () => {
     expect(reviewTemplate.indexOf('{{GATE_NOTES}}')).toBeLessThan(
       reviewTemplate.indexOf('### 1. Choose your mode'),
     )
-  })
-
-  it('renders the UI-states build right after the gate notes in both templates, and nothing when there are no stories', () => {
-    const notes = (STORIES_NOTES: string) => ({
-      TICKET_JSON: '{}', FEATURE_BRIEF: '', DOCS_DIGEST: '', LAP_DIGESTS: '', FEATURE_BRANCH: 'feature/demo',
-      BASE_BRANCH: 'main', DRIVE_AVAILABILITY: '', DRIVE_INSTRUCTIONS: '', SCENARIOS: '', GATE_NOTES: 'GATES-END',
-      STORIES_NOTES, DIGEST_PATH: '/d', BLOCKED_PATH: '/b', WALKTHROUGH_PATH: '/w', LANDED_FIXES: '',
-      VERIFIES_PASS: '', AUTO_FIX_CAP: '3',
-    })
-    const failed = buildStoriesNotes({ status: 'failed', commit: 'abcdef1234567', exitCode: 1, log: 'build.log' }, 'feat_1')
-    for (const ticket of [review(3), review(4, { passKind: 'verification' })]) {
-      expect(renderReviewPrompt(ticket, notes(buildStoriesNotes({ status: 'none' }, 'feat_1')))).toContain('GATES-END\n\n')
-      const prompt = renderReviewPrompt(ticket, notes(failed))
-      expect(prompt).not.toContain('{{')
-      expect(prompt).toContain('GATES-END\n\nThe UI-states build FAILED')
-    }
-  })
-
-  it('tells the reviewer what the UI-states build found, a failed build being a failed gate', () => {
-    expect(buildStoriesNotes({ status: 'none' }, 'feat_1')).toBe('')
-
-    const built = buildStoriesNotes({
-      status: 'built', commit: 'abcdef1234567', baseCommit: '1234567abcdef', base: 'built',
-      counts: { changed: 2, new: 1, affected: 37 },
-    }, 'feat_1')
-    expect(built).toContain('at `abcdef1`, and it built: 2 changed, 1 new and 37 more stories that use changed code')
-    expect(built).toContain('The feature page shows them.')
-    expect(built).not.toContain("didn't build")
-
-    const baseFailed = buildStoriesNotes({
-      status: 'built', commit: 'abcdef1234567', baseCommit: '1234567abcdef', base: 'failed',
-      counts: { changed: 0, new: 0, affected: 0 },
-    }, 'feat_1')
-    expect(baseFailed).toContain("The branch point's catalogue didn't build")
-    expect(baseFailed).toContain('not a defect against this branch')
-
-    const failed = buildStoriesNotes({ status: 'failed', commit: 'abcdef1234567', exitCode: 2, log: 'build.log' }, 'feat_1')
-    expect(failed).toContain('The UI-states build FAILED on the feature branch at `abcdef1` (exit 2)')
-    expect(failed).toContain('Treat it exactly like a failed gate: file a finding with the log path')
-    expect(failed).toContain(join(featureStoriesDir('feat_1'), 'build.log'))
-
-    const couldnt = buildStoriesNotes({
-      status: 'couldnt_run', commit: 'abcdef1234567', reason: 'the sandbox could not be set up: no docker', log: 'build.log',
-    }, 'feat_1')
-    expect(couldnt).toContain('could not build the UI-states catalogue at `abcdef1`: the sandbox could not be set up: no docker.')
-    expect(couldnt).toContain(join(featureStoriesDir('feat_1'), 'build.log'))
-    expect(couldnt).toContain("not the branch's fault")
-
-    for (const text of [built, baseFailed, failed, couldnt]) expect(text).not.toMatch(/storybook/i)
-  })
-
-  it('adds the page-rule check only when the build has page stories', () => {
-    const record = {
-      status: 'built', commit: 'abcdef1234567', baseCommit: '1234567abcdef', base: 'built',
-      counts: { changed: 1, new: 0, affected: 0 },
-    } as const
-    const withPages = buildStoriesNotes(record, 'feat_1', true)
-    expect(withPages).toContain('apply the page rule')
-    expect(withPages).toContain('file a **defect**')
-    expect(buildStoriesNotes(record, 'feat_1')).not.toContain('page rule')
-    expect(buildStoriesNotes({ status: 'failed', commit: 'abcdef1234567', exitCode: 1, log: 'build.log' }, 'feat_1', true))
-      .not.toContain('page rule')
   })
 
   it('makes the agent wait out a held slot and give up on a dirty tree at once', () => {
@@ -1688,56 +1624,9 @@ describe('the server gate run before each review pass', () => {
       expect(outcome.status).toBe('done')
       // The first reap is the pre-wipe one: the directory is prepared first.
       expect(order.slice(0, 3)).toEqual(['reap', `gates@${tip}`, 'agent'])
-      expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun, storiesBuild: { status: 'none' } }])
+      expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
       expect(prompt).toContain('`bun run typecheck` — passed')
       expect(prompt).toContain(`at \`${tip.slice(0, 7)}\``)
-      // No `.runcastle/stories.json` on the branch: no UI-states line at all.
-      expect(prompt).not.toContain('UI-states')
-    })
-
-    it(`builds the UI states in the gate sandbox of a ${kind} pass and tells the reviewer a failed build is a failed gate`, async () => {
-      const g = simpleGit(repo)
-      await g.checkout('feature/demo')
-      mkdirSync(join(repo, '.runcastle'), { recursive: true })
-      writeFileSync(join(repo, '.runcastle/stories.json'), JSON.stringify({ build: 'build-stories {out}' }))
-      await g.add(['.runcastle/stories.json'])
-      await g.commit('set up stories')
-      const storiesTip = (await g.revparse(['HEAD'])).trim()
-      await g.checkout('main')
-
-      const { pass, extra } = make()
-      const { ctx, patches } = ctxFor(pass, extra)
-      const events: string[] = []
-      ctx.emitEvent = (e) => events.push(e.type)
-      const ran: string[] = []
-      let prompt = ''
-      await executeReviewTicket(ctx, pass, deps({
-        runGates: async (input) => {
-          await input.afterCommands?.run({
-            outPath: input.afterCommands.outDir,
-            exec: async (command) => {
-              ran.push(command)
-              return { exitCode: 1, stdout: '', stderr: 'type error' }
-            },
-          })
-          return { ...ranGates('bun run typecheck'), commit: input.sha }
-        },
-        runAgent: async (options) => { prompt = String(options.prompt) },
-      }))
-
-      expect(ran).toHaveLength(1)
-      expect(ran[0]).toMatch(/^build-stories "/)
-      expect(events).toContain('stories.failed')
-      // The record is stored on the pass beside its gate run (decision 18).
-      expect(patches).toContainEqual([
-        pass.id,
-        {
-          reviewGateRun: { ...ranGates('bun run typecheck'), commit: storiesTip },
-          storiesBuild: { status: 'failed', commit: storiesTip, exitCode: 1, log: expect.any(String) },
-        },
-      ])
-      expect(prompt).toContain(`The UI-states build FAILED on the feature branch at \`${storiesTip.slice(0, 7)}\``)
-      expect(prompt).toContain(join(featureStoriesDir(ctx.feature.id), 'build.log'))
     })
   }
 
@@ -1757,7 +1646,7 @@ describe('the server gate run before each review pass', () => {
     }))
 
     expect(outcome.status).toBe('done')
-    expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun, storiesBuild: { status: 'none' } }])
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: gateRun }])
     expect(prompt).toContain('The server could not run the gates on the feature branch')
     expect(prompt).toContain('no docker')
   })
@@ -1776,7 +1665,6 @@ describe('the server gate run before each review pass', () => {
       pass.id,
       {
         reviewGateRun: { status: 'couldnt_run', commit: tip, reason: 'the gate run failed: EBUSY', log: null },
-        storiesBuild: { status: 'none' },
       },
     ])
     expect(prompt).toContain('The server could not run the gates on the feature branch')
@@ -1831,7 +1719,7 @@ describe('the server gate run before each review pass', () => {
     expect(gatesCalled).toBe(false)
     expect(launched).toBe(true)
     const unresolved = { status: 'couldnt_run', commit: '', reason: '`feature/missing` did not resolve to a commit', log: null }
-    expect(patches).toContainEqual([pass.id, { reviewGateRun: unresolved, storiesBuild: unresolved }])
+    expect(patches).toContainEqual([pass.id, { reviewGateRun: unresolved }])
   })
 })
 

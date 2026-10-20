@@ -16,7 +16,7 @@ import { resolveBun } from './helpers/bun'
 import { rmTemp } from './helpers/fixtures'
 
 /**
- * Runcastle's dogfood scenario, `.runcastle/scenarios/feature/review/feature-at-review.ts`,
+ * Runcastle's dogfood scenario, `.runcastle/scenarios/review/feature-at-review.ts`,
  * run the way the scenario runner (`bun {file}`) runs it: a bun child at the
  * repo root, env in, `ENTRY_URL=` out. The suite runs under node, which cannot
  * open `bun:sqlite`, so the drive's db file is written and read back here with
@@ -25,7 +25,7 @@ import { rmTemp } from './helpers/fixtures'
 
 const BUN = resolveBun()
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..')
-const SCENARIO = join('.runcastle', 'scenarios', 'feature', 'review', 'feature-at-review.ts')
+const SCENARIO = join('.runcastle', 'scenarios', 'review', 'feature-at-review.ts')
 
 /** The child's env: nothing runcastle inherited, plus what a drive would hand it. */
 function scenarioEnv(extra: Record<string, string>): NodeJS.ProcessEnv {

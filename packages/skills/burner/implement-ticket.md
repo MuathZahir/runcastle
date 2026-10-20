@@ -87,16 +87,6 @@ Whatever the commands are, spend them well — a full suite on a monorepo is min
    - **Left undone** — adjacent work you noticed and deliberately did not do, so the next agent inherits the observation instead of re-finding it.
 
    Write it in plain prose, for a reader who does not have your context. It is read: the tickets that depend on yours are handed it verbatim, and so is the agent that reviews this whole lap. **Never commit `DIGEST.md`** — it is harvested from the workspace, not from the repo, and a committed one is diff noise. It is a **success artifact only**: if you are blocked and writing `BLOCKED.md`, write no digest — `BLOCKED.md` is your record.
-
-## Page stories
-
-If your diff adds a page, or changes what a page already on the map shows, add or update that page's stories under `.runcastle/stories/pages/` in the same ticket. Essentials (the full guide is `packages/skills/packs/runcastle/skills/prepare/references/page-stories.md`, if the skill pack is present):
-
-- Folders are numbered in navigation order (`pages/1-onboarding/`); numbers never go in titles. The story title is the place (`Feature/Review`), each export is a state (`Findings open`); a leading step number orders a flow, and ` · <variant>` shares its step.
-- Render the real app root at the page's address with the project's address helper (runcastle: `<AppAt path>` in `.runcastle/storybook/app-at.tsx`) — never a shell plus a chosen body.
-- Fake data at the network edge only, never by mocking the app's modules; spread the shared shell fakes and override only what differs.
-- A state with no address is reached by a `play` step that acts like a user and then asserts the state is on screen.
-
 ## Keep the drive machinery true
 
 {{DRIVE_NOTES}}

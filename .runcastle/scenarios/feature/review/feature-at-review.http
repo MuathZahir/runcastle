@@ -1,3 +1,0 @@
-### Runcastle version
-# A harmless read, used to exercise the map's Calls and Try it on runcastle itself.
-GET /api/trpc/system.version

@@ -1,9 +1,6 @@
 /**
  * Lockfiles, newest-convention first — the first one present names the manager.
- *
- * Shared by the prepare host probe (which reads the manager off it) and the edit
- * guard (which lets a `prepare` session write it when it installs the UI-states
- * dev dependencies), so the two can never disagree about what a lockfile is.
+ * The prepare host probe reads the manager off it.
  */
 export const LOCKFILES: readonly (readonly [file: string, manager: string])[] = [
   ['bun.lock', 'bun'],

@@ -351,6 +351,13 @@
       "when": 1792345583347,
       "tag": "0048_new_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1792482127192,
+      "tag": "0050_tan_manta",
+      "breakpoints": true
     }
   ]
 }
