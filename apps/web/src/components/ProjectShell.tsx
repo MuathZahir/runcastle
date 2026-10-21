@@ -18,7 +18,7 @@ import {
   type FeatureView,
 } from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
-import { LandOnChatProvider } from '../lib/land-on-chat'
+import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
 import { Sidebar, SidebarRail } from './Sidebar'
 import { Frame, useFrame } from './Frame'
@@ -120,10 +120,23 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [select, features],
   )
 
-  // Every session launch under this shell lands on its feature's chat, the
-  // panel closed so the chat has the page — a view switch like any other, so
-  // it is remembered and Back undoes it.
-  const landOnChat = useCallback((featureId: string) => select(featureId, 'chat'), [select])
+  // Every session launch under this shell lands on its feature's chat. On the
+  // feature already on screen the open panel stays (the launch changes only the
+  // chat column); anywhere else it is the chat alone — a view switch like any
+  // other, so it is remembered and Back undoes it. A draft's body is its page,
+  // not a panel, so a draft's Start lands on the chat alone.
+  const shownView = ws.featureView
+  const landOnChat = useCallback(
+    (featureId: string) => {
+      const onScreen =
+        selectedFeatureId &&
+        !projectSelected &&
+        !preparing &&
+        features?.find((f) => f.id === selectedFeatureId)?.status !== 'draft'
+      select(featureId, landingView(featureId, { featureId: onScreen ? selectedFeatureId : null, view: shownView }))
+    },
+    [select, selectedFeatureId, projectSelected, preparing, features, shownView],
+  )
 
   /**
    * Where to land, once and only once, when the feature list first arrives

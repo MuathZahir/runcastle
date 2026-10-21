@@ -4,7 +4,8 @@ import { join, relative } from 'node:path'
 import type { ReactNode } from 'react'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LandOnChatProvider, useLandOnChat } from '../src/lib/land-on-chat'
+import { LandOnChatProvider, landingView, useLandOnChat } from '../src/lib/land-on-chat'
+import { locationFor, pathFor } from '../src/lib/routes'
 import { useResolveConflict } from '../src/lib/use-resolve-conflict'
 import { useWorkspace } from '../src/lib/workspace'
 
@@ -65,7 +66,7 @@ describe('the land-on-chat operation', () => {
   })
 
   it("selects the feature's Chat tab and remembers it for that feature", () => {
-    // The shell's provider, in miniature: landing is `select(featureId, 'chat')`.
+    // Landing from another feature, in miniature: `select(featureId, 'chat')`.
     const { result: ws } = renderHook(() => useWorkspace('p1'))
     act(() => ws.current.select('feat_other', 'body'))
     const { result: landing } = renderHook(() => useLandOnChat('feat_a'), {
@@ -81,6 +82,49 @@ describe('the land-on-chat operation', () => {
     expect(ws.current.selectedFeatureId).toBe('feat_a')
     expect(ws.current.featureView).toBe('chat')
     expect(localStorage.getItem('runcastle.feature.tab:feat_a')).toBe('chat')
+  })
+
+  it('keeps an open panel view, and its URL segment, when the launch is for the feature on screen', () => {
+    // A resume from the switcher while the drive is open: only the chat column changes.
+    const { result: ws } = renderHook(() => useWorkspace('p1'))
+    act(() => ws.current.select('feat_a', 'drive'))
+    const urlBefore = pathFor(
+      locationFor({ projectId: 'p1', preparing: false, projectSelected: false, featureSlug: 'a', featureView: 'drive' }),
+    )
+    const { result: landing } = renderHook(() => useLandOnChat('feat_a'), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <LandOnChatProvider
+          value={(id) =>
+            ws.current.select(id, landingView(id, { featureId: ws.current.selectedFeatureId, view: ws.current.featureView }))
+          }
+        >
+          {children}
+        </LandOnChatProvider>
+      ),
+    })
+
+    act(() => landing.current())
+
+    expect(ws.current.featureView).toBe('drive')
+    expect(
+      pathFor(
+        locationFor({
+          projectId: 'p1',
+          preparing: false,
+          projectSelected: false,
+          featureSlug: 'a',
+          featureView: ws.current.featureView,
+        }),
+      ),
+    ).toBe(urlBefore)
+    expect(urlBefore).toMatch(/\/drive$/)
+  })
+
+  it('lands on the chat alone for a feature not on screen', () => {
+    expect(landingView('feat_a', { featureId: 'feat_other', view: 'design' })).toBe('chat')
+    expect(landingView('feat_a', { featureId: null, view: 'design' })).toBe('chat')
+    expect(landingView('feat_a', { featureId: 'feat_a', view: 'chat' })).toBe('chat')
+    expect(landingView('feat_a', { featureId: 'feat_a', view: 'design' })).toBe('design')
   })
 
   it('does nothing outside a shell', () => {
