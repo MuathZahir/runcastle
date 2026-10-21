@@ -1090,7 +1090,7 @@ export function Workspace({
       ) : (
         <>
           {/* The feature strip: never hidden, so the one primary is always one click away. */}
-          <div className="flex shrink-0 flex-col gap-3 border-b border-border-subtle px-6 py-3">
+          <div data-feature-strip="" className="flex shrink-0 flex-col gap-3 border-b border-border-subtle px-6 py-3">
             {resumeAlert}
             {nextRow}
             {drivePrereqsNotice}
