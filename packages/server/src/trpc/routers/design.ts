@@ -12,7 +12,8 @@ import { publicProcedure, router } from '../context'
  * The web's side of a feature's design server (design-mode decision 3). The
  * agent starts it with a command over MCP; the web only ever starts it from the
  * recorded one (Open in design), keeps it alive while the design view is on
- * screen, and stops it. Thin over `services/design.ts`, which owns the events.
+ * screen, and stops it; its Select area sends a crop to the chat. Thin over
+ * `services/design.ts` and `services/design-crop.ts`, which own the events.
  */
 export const designRouter = router({
   status: publicProcedure
