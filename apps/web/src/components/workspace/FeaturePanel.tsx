@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import {
   INITIAL_PANEL,
+  isPanelView,
   panelReducer,
   type PanelAction,
   type PanelState,
@@ -216,7 +217,7 @@ export function FeaturePanel({
   return (
     <section aria-label={label(view)} className="flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-3">
-        <Select value={view} onValueChange={(next) => onSwitch(next as PanelView)}>
+        <Select value={view} onValueChange={(next) => isPanelView(next) && onSwitch(next)}>
           <SelectTrigger aria-label="Panel view" className={cx(SELECT_GHOST, 'text-sm text-text')}>
             <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[view]}</span>
             <SelectValue>{label(view)}</SelectValue>
