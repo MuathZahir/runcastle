@@ -21,6 +21,7 @@ import {
   activeSessionsForFeature,
   createSessionRow,
   getSessionRow,
+  kickoffLineFor,
   markSessionEnded,
   markSessionLive,
   mostRecentResumableSession,
@@ -28,6 +29,7 @@ import {
 import { toolDispatchRound, toolsForAudience } from '../src/mcp/server'
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
+import { promptMatchesKickoff } from '../src/services/conversations'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
 import { deleteFeature } from '../src/services/features'
@@ -158,6 +160,9 @@ describe('opening a side session', () => {
       expect(command).toContain(`[runcastle] ${SIDE_OPENING}: you are a side session of this feature`)
       expect(command).toContain('Feature state: planning;')
       expect(command).toContain("Wait for the human's ask.")
+      // Recognised as runcastle's kickoff, so titles and transcripts can drop it.
+      const kickoff = command.slice(command.indexOf('[runcastle]'))
+      expect(promptMatchesKickoff(kickoffLineFor('side', undefined, runtime), kickoff)).toBe(true)
       expect(getSessionRow(ctx, side)).toMatchObject({ kind: 'side', openedBeside: chat })
       expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'session.side_opened')?.data).toEqual({
         sessionId: side,
