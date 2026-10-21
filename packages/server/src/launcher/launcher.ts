@@ -57,6 +57,7 @@ import { orchestratorOn } from '../services/settings'
 import { planningFacts } from '../services/planning'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
+import { mainChatContext } from '../services/main-chat-excerpt'
 import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
 import {
   chatOpening,
@@ -843,9 +844,15 @@ export interface LaunchSideSessionInput {
 export function sideKickoff(
   ctx: AppCtx,
   feature: Feature,
+  sessionId: string,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  return chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', undefined, runtime))
+  return mainChatContext(
+    ctx,
+    feature,
+    sessionId,
+    chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', undefined, runtime)),
+  )
 }
 
 /**
@@ -899,7 +906,7 @@ export async function launchSideSession(
   const resumeSessionId = resumedFrom?.ccSessionId
   const kickoffLine = resumeSessionId
     ? undefined
-    : tagRuncastlePrompt(sideKickoff(ctx, feature, runtime.id))
+    : tagRuncastlePrompt(sideKickoff(ctx, feature, session.id, runtime.id))
 
   emit(ctx, feature.id, {
     type: 'session.launching',
@@ -1352,7 +1359,11 @@ export async function launchScenarioSession(
     },
   })
 
-  const kickoffLine = kickoffLineFor('scenario', undefined, runtime.id)
+  // On a feature drive it opens knowing the feature and the main chat's latest turns.
+  const scenarioLine = kickoffLineFor('scenario', undefined, runtime.id)
+  const kickoffLine = feature
+    ? mainChatContext(ctx, feature, session.id, chatKickoffHeader(ctx, feature, runtime.id, scenarioLine))
+    : scenarioLine
   const spec = await runtime.writeArtifacts({
     session,
     project,

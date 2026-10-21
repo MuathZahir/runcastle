@@ -487,3 +487,122 @@ describe('deleting a feature', () => {
     expect(listSessionsByFeature(ctx, f.id)).toEqual([])
   })
 })
+
+describe('what a new side session knows of the main chat', () => {
+  const claudeLine = (role: 'user' | 'assistant', text: string): string =>
+    JSON.stringify({ type: role, message: { content: text } })
+  const codexLine = (role: 'user' | 'assistant', text: string): string =>
+    JSON.stringify({
+      type: 'response_item',
+      payload: { type: 'message', role, content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }] },
+    })
+
+  function transcript(runtime: AgentRuntime, turns: Array<['user' | 'assistant', string]>): string {
+    const path = join(mkTmp('rc-side-tr-'), 'main.jsonl')
+    const line = runtime === 'codex' ? codexLine : claudeLine
+    writeFileSync(path, `${turns.map(([r, t]) => line(r, t)).join('\n')}\n`)
+    return path
+  }
+
+  function kickoffOf(featureId: string, sessionId: string): string {
+    const command = launchedCommand(featureId, sessionId)
+    return command.slice(command.indexOf('[runcastle]'))
+  }
+
+  for (const runtime of ['claude-code', 'codex'] as const) {
+    it(`carries the role, state, marked quote and both paths on ${runtime}`, async () => {
+      useRuntime(runtime)
+      const f = await feature(`excerpt-${runtime}`)
+      const chat = await mainChat(f.id, 'cc-main')
+      const path = transcript(runtime, [
+        ['user', kickoffLineFor('chat', undefined, runtime)],
+        ['user', 'lets talk about the cache'],
+        ['assistant', 'the cache should expire hourly'],
+      ])
+      markSessionLive(ctx, chat, { transcriptPath: path })
+
+      const text = kickoffOf(f.id, await openSide(f.id))
+
+      expect(text).toContain(SIDE_OPENING)
+      expect(text).toContain('Feature state: planning;')
+      expect(text).toContain('not the human speaking to you now')
+      expect(text).toContain('Human: lets talk about the cache')
+      expect(text).toContain('Assistant: the cache should expire hourly')
+      expect(text).not.toContain(kickoffLineFor('chat', undefined, runtime).slice(0, 40))
+      expect(text).toContain(path)
+      expect(text).toContain(join('docs', 'features', `excerpt-${runtime}`, 'decisions.md'))
+    })
+  }
+
+  it('drops the oldest turns first to fit the cap', async () => {
+    const f = await feature('capped')
+    const chat = await mainChat(f.id, 'cc-main')
+    const turns: Array<['user' | 'assistant', string]> = []
+    for (let i = 0; i < 12; i++) turns.push([i % 2 ? 'assistant' : 'user', `turn-${i} ${'x'.repeat(1500)}`])
+    markSessionLive(ctx, chat, { transcriptPath: transcript('claude-code', turns) })
+
+    const side = await openSide(f.id)
+
+    // 12 × 1.5k characters is over the cap, and a capped quote this long rides a file.
+    const quote = readFileSync(join(sessionDir(side), 'main-chat-excerpt.md'), 'utf8')
+    expect(quote).not.toContain('turn-0 ')
+    expect(quote).toContain('turn-11')
+    expect(quote.length).toBeLessThanOrEqual(8_100)
+  })
+
+  it('writes a quote too long for argv to a file in the artifacts dir and points at it', async () => {
+    const f = await feature('long')
+    const chat = await mainChat(f.id, 'cc-main')
+    markSessionLive(ctx, chat, {
+      transcriptPath: transcript('claude-code', [
+        ['user', 'a'.repeat(2400)],
+        ['assistant', 'b'.repeat(2400)],
+        ['user', 'c'.repeat(2400)],
+      ]),
+    })
+
+    const side = await openSide(f.id)
+    const text = kickoffOf(f.id, side)
+
+    const file = join(sessionDir(side), 'main-chat-excerpt.md')
+    expect(text).toContain(file)
+    expect(text).not.toContain('b'.repeat(100))
+    expect(readFileSync(file, 'utf8')).toContain('c'.repeat(2400))
+  })
+
+  it('says so in a line when there is no main chat, or nothing on disk', async () => {
+    const f = await feature('nothing')
+    expect(kickoffOf(f.id, await openSide(f.id))).toContain('nothing on record to quote')
+    await mainChat(f.id, 'cc-main')
+    expect(kickoffOf(f.id, await openSide(f.id))).toContain('nothing on record to quote')
+  })
+
+  it('quotes only the turns since a /clear', async () => {
+    const f = await feature('cleared')
+    const chat = await mainChat(f.id, 'cc-before', { live: true })
+    const before = transcript('claude-code', [['user', 'old talk about pears']])
+    const after = transcript('claude-code', [['user', 'fresh talk about plums']])
+    markSessionLive(ctx, chat, { transcriptPath: before })
+    const app = new Hono()
+    app.route('/api/hooks', hooksApp)
+    await app.request('/api/hooks/session-start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        event: 'session-start',
+        sessionId: chat,
+        payload: {
+          session_id: 'cc-after',
+          transcript_path: after,
+          hook_event_name: 'SessionStart',
+          source: 'clear',
+        },
+      }),
+    })
+
+    const text = kickoffOf(f.id, await openSide(f.id))
+
+    expect(text).toContain('plums')
+    expect(text).not.toContain('pears')
+  })
+})

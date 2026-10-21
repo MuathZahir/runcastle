@@ -14,7 +14,14 @@ import { GateError, InvalidInputError } from '../src/errors'
 import { type ScenarioBrief, renderScenarioPrompt, renderSettings } from '../src/launcher/artifacts'
 import { evaluateEditGuard } from '../src/launcher/edit-guard'
 import { launchScenarioSession, launchSession } from '../src/launcher/launcher'
-import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
+import {
+  createSessionRow,
+  getSessionRow,
+  kickoffLineFor,
+  markSessionEnded,
+  markSessionLive,
+} from '../src/launcher/sessions'
+import { runtimeAdapterFor } from '../src/launcher/runtimes'
 import { toolRunScenario, toolSetScenarioRunner } from '../src/mcp/server'
 import { listAfter, listByProject } from '../src/services/events'
 import { recordFinding } from '../src/services/findings'
@@ -205,6 +212,30 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       expect(text).not.toContain('Setup mode')
     }, 30_000)
 
+    it('opens a feature drive chat knowing the feature and the main chat\'s latest turns', async () => {
+      await driveUp()
+      const chat = createSessionRow(ctx, {
+        featureId: feature.id,
+        kind: 'chat',
+        worktreePath: project.repoPath,
+      })
+      const transcriptPath = join(mkTmp('rc-scs-tr-'), 'main.jsonl')
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ type: 'user', message: { content: 'we were building the cart page' } })}\n`,
+      )
+      markSessionLive(ctx, chat.id, { ccSessionId: 'cc-main', transcriptPath })
+      const write = vi.spyOn(runtimeAdapterFor('claude-code'), 'writeArtifacts')
+
+      await launch({ description: 'a buyer' })
+
+      const line = write.mock.calls.at(-1)?.[0].kickoffLine ?? ''
+      expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
+      expect(line).toContain('Feature state: planning;')
+      expect(line).toContain('Human: we were building the cart page')
+      expect(line).toContain(transcriptPath)
+    }, 30_000)
+
     it('reopens the live scenario session of this drive instead of starting a second', async () => {
       await driveUp()
       const first = await launch()
@@ -280,7 +311,10 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       expect((await projectDrive(ctx, project, 'start')).ok).toBe(true)
       await waitFor(() => activeDriveInfo(project.id)?.devReady === true)
 
+      const write = vi.spyOn(runtimeAdapterFor('claude-code'), 'writeArtifacts')
       const { sessionId } = await launch()
+      // A project drive has no main chat to quote: the kickoff is the plain line.
+      expect(write.mock.calls.at(-1)?.[0].kickoffLine).toBe(kickoffLineFor('scenario', undefined, 'claude-code'))
       expect(session(sessionId)).toMatchObject({ kind: 'scenario', projectId: project.id })
       expect(session(sessionId).featureId ?? null).toBeNull()
       expect(listByProject(ctx, project.id, 0).map((e) => e.type)).toContain('scenario.chat_opened')
