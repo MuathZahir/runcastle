@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { trpc } from '../../trpc'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
-import { Button, DimLine, EmptyState } from '../../ui'
+import { Button, DimLine, EmptyState, Spinner } from '../../ui'
 import { IconPen } from '../../icons'
 import { DrivePanel } from '../review/DrivePanel'
 
@@ -79,7 +79,8 @@ export function DesignView({ featureId, path }: DesignViewProps) {
   }
   if (!status.data || start.isPending) {
     return (
-      <div className="px-6 py-12 text-center">
+      <div className="flex items-center justify-center gap-2 px-6 py-12">
+        {start.isPending && <Spinner size="sm" />}
         <DimLine>{start.isPending ? 'Starting the design server…' : 'Looking for the design server…'}</DimLine>
       </div>
     )
