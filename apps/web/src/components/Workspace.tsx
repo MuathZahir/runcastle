@@ -1012,6 +1012,7 @@ export function Workspace({
       ticketsIsBody={ticketsIsBody}
       readonly={readonly}
       onViewPhase={viewPhase}
+      {...(views.includes('drive') ? { onOpenDrive: () => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' }) } : {})}
     />
   )
 
@@ -1230,6 +1231,7 @@ export function PhaseBody({
   ticketsIsBody,
   readonly,
   onViewPhase,
+  onOpenDrive,
 }: {
   effective: Phase
   full: FeatureFull
@@ -1241,6 +1243,8 @@ export function PhaseBody({
   ticketsIsBody: boolean
   readonly: boolean
   onViewPhase: (phase: Phase | null) => void
+  /** Open the panel's drive view — the one place a live drive shows. */
+  onOpenDrive?: () => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether. The plan
@@ -1276,6 +1280,7 @@ export function PhaseBody({
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).
           onViewPhase={onViewPhase}
+          onOpenDrive={onOpenDrive}
         />
       )
     case 'shipped':

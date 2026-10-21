@@ -373,20 +373,23 @@ describe('the review page’s arrival bands', () => {
   })
 
   /** State 3: the agent recorded a walkthrough — only now is there a stage. */
-  it('mounts the evidence stage for a recording, and for a live drive', () => {
+  it('mounts the evidence stage for a recording, and only points at a live drive', () => {
     const walkthrough = render({ recordings: [RECORDING] })
     expect(walkthrough).toContain('id="evidence-stage"')
     // The drive door is the next-step bar's, in every state — never repeated here.
     expect(walkthrough).not.toContain('Test drive</button>')
 
+    // The live drive is the panel's drive view (design-mode decision 5): the
+    // body says it is up and never embeds the app a second time.
     const driving = render({ drive: { featureId: 'feat_1', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/greetings' } })
-    expect(driving).toContain('id="evidence-stage"')
-    // ...except while a drive is up, which the stage itself is there to stop.
+    expect(driving).not.toContain('id="evidence-stage"')
+    expect(driving).not.toContain('the app on this branch')
+    expect(driving).toContain('A test drive of this branch is live')
     expect(driving).not.toContain('Test drive</button>')
-    // A drive of some OTHER feature is not this page's evidence.
+    // A drive of some OTHER feature is not this page's drive.
     expect(
       render({ drive: { featureId: 'feat_9', state: 'serving', dryRun: false, holderLabel: 'a test drive of feature/other' } }),
-    ).not.toContain('id="evidence-stage"')
+    ).not.toContain('A test drive of this branch is live')
   })
 
   /** State 4: nothing open — the page still leads with state and the account. */

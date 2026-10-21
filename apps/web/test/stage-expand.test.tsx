@@ -273,23 +273,15 @@ describe('the review page expanded', () => {
   })
 
   /**
-   * Decision 4: one mechanism, whatever the stage is showing. The drive takes
-   * the stage from the recording and gives it back, and the expand is not part
-   * of that trade.
+   * The live drive is the panel's drive view alone (design-mode decision 5):
+   * a drive starting leaves the recording on the stage, expanded or not.
    */
-  it('works the same on the drive, and survives the swap between the two', () => {
+  it('keeps the recording on the stage while a drive is up, and survives it starting', () => {
     const { root, rerender } = page()
+    key('f')
     state.drive = SERVING
     rerender()
-    expect(screen.getByTitle('the app on this branch')).toBeTruthy()
-
-    key('f')
-    expect(root.className).toContain('fixed inset-0')
-    // The drive's own toolbar is an overlay inside the panel, so it comes along.
-    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
-
-    state.drive = undefined
-    rerender()
+    expect(screen.queryByTitle('the app on this branch')).toBeNull()
     expect(screen.getByLabelText('review walkthrough')).toBeTruthy()
     expect(root.className).toContain('fixed inset-0')
 
