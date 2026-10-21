@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Several sessions per feature preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.chat{display:grid;grid-template-rows:auto 1fr;height:360px}
+.chat-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-border);background:var(--color-surface-raised);position:relative}
+.sw-btn{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--color-border)}
+.sw-btn:hover{background:var(--color-surface-hover)}
+.sw-btn .chev{transform:rotate(90deg)}
+.newside{margin-left:auto;height:28px;padding:0 10px;border-radius:var(--radius-md);background:var(--color-primary);color:var(--color-on-primary);font-weight:500}
+.menu{position:absolute;top:44px;left:12px;width:300px;z-index:2;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface-raised);padding:4px;box-shadow:0 8px 24px var(--color-scrim);display:none}
+.menu.open{display:block}
+.menu .grp{padding:6px 8px 2px;color:var(--color-text-tertiary);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;padding:4px 8px;border-radius:var(--radius-sm);text-align:left}
+.menu button:hover{background:var(--color-surface-hover)}
+.menu button .k{margin-left:auto;color:var(--color-text-tertiary);font-size:11px}
+.dot.wait{background:var(--color-warning)}
+.term{padding:12px 14px;font:12px/19px var(--font-mono);background:var(--color-surface-inset);color:var(--color-text-secondary);overflow:auto}
+.term .u{color:var(--color-text)}
+.term .s{color:var(--color-accent-text)}
+.term .h{color:var(--color-text-tertiary)}
+.ended-bar{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);font-family:var(--font-sans)}
+.ended-bar button{margin-left:auto;height:26px;padding:0 10px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);color:var(--color-text)}
+.flow{width:100%;height:auto;margin-top:8px}
+.flow text{font:12px var(--font-sans);fill:var(--color-text-secondary)}
+.flow .t1{fill:var(--color-text);font-weight:500}
+.flow .box{fill:var(--color-surface-raised);stroke:var(--color-border-strong)}
+.flow .main{stroke:var(--color-accent)}
+.flow .ln{stroke:var(--color-border-strong);fill:none;stroke-width:1.5}
+.flow .dash{stroke-dasharray:4 4}
+.roles{width:100%;border-collapse:collapse;margin-top:8px}
+.roles th,.roles td{padding:7px 10px;border-bottom:1px solid var(--color-border-subtle);text-align:left;font-weight:400}
+.roles th{color:var(--color-text-tertiary);font-size:12px}
+.roles td:first-child{color:var(--color-text)}
+.yes{color:var(--color-success)}.no{color:var(--color-text-disabled)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Several sessions per feature</h1>
+  <p class="lede">Next to a feature's main chat, open side sessions: each one starts as a copy of the main chat, so it knows the feature and what you were just discussing. The main chat stays in charge of the plan and the build.</p>
+  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span>Planned without you: check the five marked first</span><span class="mono">docs/features/several-sessions-per-feature/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>The chat's header gets a session switcher <a class="pin" data-d="10">10</a></h3>
+    <p class="hint">Click the switcher, then pick a session. The amber dot is a side session waiting on you <a class="pin" data-d="12">12</a>.</p>
+<!-- screen:session-switcher -->
+    <div class="screen">
+      <div class="chat">
+        <div class="chat-head">
+          <button class="sw-btn" id="sw" aria-haspopup="true"><i class="dot live" id="sw-dot"></i><span id="sw-name">Main chat</span><i class="dot wait" id="sw-wait" title="A side session is waiting"></i><svg class="i chev"><use href="#i-chev"/></svg></button>
+          <span class="hint" id="sw-sub">plans the feature · the lead after Go</span>
+          <button class="newside" id="newside">New side session</button>
+          <div class="menu" id="menu" role="menu">
+            <div class="grp">Main</div>
+            <button data-s="main"><i class="dot live"></i>Main chat<span class="k">live</span></button>
+            <div class="grp">Side sessions</div>
+            <button data-s="side1"><i class="dot wait"></i>Why does the burn skip ticket 4?<span class="k">waiting</span></button>
+            <button data-s="side2"><i class="dot live"></i>Write the drive scenario for…<span class="k">live</span></button>
+            <div class="grp">Ended</div>
+            <button data-s="old"><i class="dot"></i>Rename the status column<span class="k">yesterday</span></button>
+          </div>
+        </div>
+        <div class="term" id="term"></div>
+      </div>
+    </div>
+<!-- /screen:session-switcher -->
+  </div>
+
+  <div class="sub cols">
+    <div>
+      <h3>A side session is a fork of the main chat <a class="pin" data-d="2">2</a> <a class="pin" data-d="6">6</a></h3>
+      <p class="hint">It copies the conversation so far, then goes its own way. Nothing it says is merged back; the main chat just hears what it changed <a class="pin" data-d="11">11</a>.</p>
+      <svg class="flow" viewBox="0 0 460 190" role="img" aria-label="The main chat forks into side sessions">
+        <rect class="box main" x="10" y="14" width="140" height="44" rx="6"/>
+        <text class="t1" x="22" y="34">Main chat</text><text x="22" y="50">plans · leads after Go</text>
+        <path class="ln" d="M150 36 H440"/><text x="300" y="28">the main chat carries on</text>
+        <path class="ln dash" d="M110 58 V100 H210"/>
+        <rect class="box" x="210" y="80" width="200" height="40" rx="6"/>
+        <text class="t1" x="222" y="98">Side session</text><text x="222" y="113">forked at the click · own name</text>
+        <path class="ln dash" d="M80 58 V160 H210"/>
+        <rect class="box" x="210" y="140" width="200" height="40" rx="6"/>
+        <text class="t1" x="222" y="158">Scenario chat (on a drive)</text><text x="222" y="173">forked too · the drive's checkout</text>
+      </svg>
+      <p class="hint">Scenario chat: <a class="pin" data-d="9">9</a>. On Codex, which cannot fork, the side session starts fresh with the main chat's latest turns <a class="pin" data-d="6">6</a>.</p>
+    </div>
+    <div>
+      <h3>Who may do what <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></h3>
+      <table class="roles">
+        <tr><th></th><th>Main chat</th><th>Side session</th></tr>
+        <tr><td>Read the feature, ask anything</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+        <tr><td>Edit docs, edit or cancel tickets</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+        <tr><td>Edit code (after Go)</td><td class="yes">yes</td><td class="yes">yes, same folder</td></tr>
+        <tr><td>Report planning steps, emit tickets</td><td class="yes">yes</td><td class="no">no</td></tr>
+        <tr><td>Be the lead: run rounds, declare ready</td><td class="yes">yes</td><td class="no">no</td></tr>
+        <tr><td>Takes the one-terminal slot</td><td class="yes">yes</td><td class="no">no, open any number <a class="pin" data-d="7">7</a></td></tr>
+      </table>
+      <p class="hint" style="margin-top:8px">A side session opens by saying it is a side session and waiting for you <a class="pin" data-d="3">3</a>. It cannot be promoted to main chat <a class="pin" data-d="13">13</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason. All were decided without you.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>A separate folder (worktree) per side session, if sharing collides</li>
+      <li><i class="dot"></i>"Make this the main chat"</li>
+      <li><i class="dot"></i>Renaming a side session</li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>The page layout and chat column (Design mode owns them)</li>
+      <li><i class="dot"></i>The terminal as web components (Chat as web components)</li>
+      <li><i class="dot"></i>Side sessions on project chats (they already have a list)</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <svg class="flow" viewBox="0 0 960 150" role="img" aria-label="How a side session launches">
+        <rect class="box" x="10" y="20" width="170" height="54" rx="6"/><text class="t1" x="22" y="42">New side session</text><text x="22" y="60">feature.openSideSession</text>
+        <path class="ln" d="M180 47 H220"/>
+        <rect class="box" x="220" y="20" width="220" height="54" rx="6"/><text class="t1" x="232" y="42">launcher: kind "side"</text><text x="232" y="60">skips the one-terminal guard</text>
+        <path class="ln" d="M440 47 H480"/>
+        <rect class="box" x="480" y="20" width="230" height="54" rx="6"/><text class="t1" x="492" y="42">claude --resume &lt;main&gt;</text><text x="492" y="60">--fork-session · talk worktree</text>
+        <path class="ln" d="M710 47 H750"/>
+        <rect class="box" x="750" y="20" width="200" height="54" rx="6"/><text class="t1" x="762" y="42">side system prompt</text><text x="762" y="60">role + "wait for the human"</text>
+        <text x="10" y="104">A new session kind "side" means every existing "find the chat" lookup (resume, lead delivery, Chat door) never picks a side session by accident.</text>
+        <text x="10" y="124">The MCP tool table gives "side" every chat tool except the steering ones; the server refuses those from a side session too.</text>
+        <text x="10" y="144">Rows record which main-chat row they forked from; the main chat's per-turn hook reads side-session events since its last turn.</text>
+      </svg>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['One lap: the whole feature except a separate worktree', 'The need is concrete and small once side sessions share the main chat\'s folder; a second folder with its own landing path waits until sharing proves painful.', 'assumed'],
+    ['A side session always forks the main chat', 'Forking is exactly the ask: each session knows the feature and what was being discussed. One action, no choice. Fresh only when there is nothing to fork.', 'assumed'],
+    ['A side session opens by stating its role and waiting for the human', 'The fork carries the main chat\'s own instructions; without a reset the side session would pick up the main chat\'s job and race it.', 'assumed'],
+    ['The main chat alone steers; side sessions do everything else', 'Two sessions running rounds or emitting the same tickets would fight over one plan. Everything else is guarded already or recorded where the main chat sees it.', 'assumed'],
+    ['Side sessions share the main chat\'s worktree and write rules', 'No new checkout, branch or landing path: commits ride the main chat\'s existing route. Two agents in one folder is the solo developer\'s own choice.', 'assumed'],
+    ['On Codex, a side session starts fresh with the main chat\'s latest turns', 'Runcastle has no Codex fork; quoting the latest turns keeps the same promise. If the installed Codex can fork, the build uses that.', 'assumed'],
+    ['Side sessions never take the feature\'s one-terminal slot', 'The point is to talk while the main chat is busy, even while the lead runs rounds headless. No cap at solo scale.', 'assumed'],
+    ['Side sessions are named from their first message and reopened by resuming', 'The project chat list already proved this. Re-forking on reopen would throw away the side conversation you came back for.', 'assumed'],
+    ['On a feature drive, the scenario chat forks the main chat', 'You named this case. It keeps the drive\'s checkout, where the app it writes scenarios against runs.', 'assumed'],
+    ['The session switcher lives in the chat\'s header', 'Design mode puts its switcher in the same place, so the later merge is a reconcile, not a redesign.', 'assumed'],
+    ['The main chat hears what side sessions changed', 'A lead dispatching over a ticket a side session just cancelled is the bug forking invites. One line per turn, on a hook that already runs.', 'assumed'],
+    ['A side session waiting on the human shows a dot in the switcher', 'A forgotten side session is a stalled task with no signal. The feature\'s status line stays about the main chat.', 'assumed'],
+    ['A side session cannot become the main chat in lap 1', 'Promotion would move the lead role and its message queue between conversations mid-feature, with no observed need yet.', 'assumed']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  var C = [
+    [5, 'Each side session gets its own folder and branch, landed into the feature branch through the landing queue.', 'Two agents editing code in one folder can trip over each other. It is cheap now, but you may already know it will bite.'],
+    [4, 'Side sessions are read-only and only answer questions.', 'It forces the shape of everything else: what a side session may write decides how its work lands and what the main chat must be told.'],
+    [2, 'A quiet "Start fresh" next to "New side session".', 'The challenger disagreed: a fork of a long main chat starts near its context limit and pays for that history every turn.', 'challenged'],
+    [9, 'The scenario chat stays a fresh conversation, or becomes a plain side session.', 'The challenger disagreed in part: Claude Code may not find the main chat from the drive\'s folder. The build checks, and falls back to the Codex-style start.', 'challenged'],
+    [11, 'Nothing flows back; you tell the main chat when it matters.', 'A guess at what you want the lead to know. The challenger would also name a side session\'s commits.', 'challenged']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the session switcher mock
+  var S = {
+    main: { name: 'Main chat', sub: 'plans the feature · the lead after Go', dot: 'live',
+      html: '<span class="h">● main chat · one transcript · resumed</span>\n\n<span class="u">› ok, lock decision 4 and draw the preview</span>\n<span class="s">Locked. Drawing preview.html now…</span>' },
+    side1: { name: 'Why does the burn skip ticket 4?', sub: 'side session · forked from the main chat 2 min ago', dot: 'wait',
+      html: '<span class="h">[runcastle] You are a side session of this feature, forked from the main chat.\nDo not carry on its task. You may read, edit docs and tickets; you may not\nreport planning steps, emit tickets or run rounds. Wait for the human.</span>\n\n<span class="u">› why does the burn skip ticket 4?</span>\n<span class="s">Ticket 4 is blocked by ticket 2, which failed in round 1. Want me to\nedit ticket 2\'s acceptance criteria? (the main chat will be told)</span>' },
+    side2: { name: 'Write the drive scenario for…', sub: 'side session · forked from the main chat 20 min ago', dot: 'live',
+      html: '<span class="h">[runcastle] You are a side session of this feature…</span>\n\n<span class="u">› write the drive scenario for the review page</span>\n<span class="s">Writing .runcastle/scenarios/review/two-side-sessions.ts…</span>' },
+    old: { name: 'Rename the status column', sub: 'ended · yesterday', dot: '',
+      html: '<span class="u">› rename the status column to "state"</span>\n<span class="s">Done, and the spec says so too.</span>\n<div class="ended-bar"><i class="dot"></i>This side session ended. Reopening resumes it; it does not fork again.<button>Reopen</button></div>' }
+  }
+  function show(k) {
+    var s = S[k]
+    $('#sw-name').textContent = s.name
+    $('#sw-sub').textContent = s.sub
+    $('#sw-dot').className = 'dot ' + s.dot
+    $('#sw-wait').style.display = k === 'side1' ? 'none' : ''
+    $('#term').innerHTML = '<pre style="margin:0;white-space:pre-wrap">' + s.html + '</pre>'
+    $('#menu').classList.remove('open')
+  }
+  show('main')
+  $('#sw').addEventListener('click', function (e) { e.stopPropagation(); $('#menu').classList.toggle('open') })
+  $$('#menu button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.s) }) })
+  $('#newside').addEventListener('click', function () {
+    S.fresh = { name: 'New side session', sub: 'side session · forked from the main chat just now', dot: 'live',
+      html: '<span class="h">[runcastle] You are a side session of this feature, forked from the main chat.\nIt knows everything said up to this click. Wait for the human.</span>\n\n<span class="u">› _</span>' }
+    show('fresh')
+  })
+  document.addEventListener('click', function () { $('#menu').classList.remove('open') })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
