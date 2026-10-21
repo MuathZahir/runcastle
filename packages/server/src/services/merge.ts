@@ -1,5 +1,6 @@
 import { unresolvedMergeConflict } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
+import { stopDesignServer } from './design'
 import { emit, listAfter } from './events'
 import { retireShippedWorktree } from './feature-worktrees'
 import { requireNotDraft } from './features'
@@ -51,6 +52,8 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
     setPhase(ctx, featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
     setFeatureStatus(ctx, featureId, 'shipped')
+    // Before the worktree goes: the design server runs inside it.
+    await stopDesignServer(ctx, featureId, 'shipped')
     // Last, and best-effort: the merge has landed, so a worktree that will
     // not go is reported by an event, never by failing the ship.
     await retireShippedWorktree(ctx, project, feature)

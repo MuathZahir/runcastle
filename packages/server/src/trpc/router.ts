@@ -1,4 +1,5 @@
 import { router } from './context'
+import { designRouter } from './routers/design'
 import { docsRouter } from './routers/docs'
 import { eventsRouter } from './routers/events'
 import { featureRouter } from './routers/feature'
@@ -20,6 +21,7 @@ export const appRouter = router({
   project: projectRouter,
   projectNotes: projectNotesRouter,
   feature: featureRouter,
+  design: designRouter,
   run: runRouter,
   ticket: ticketRouter,
   notes: testNotesRouter,
