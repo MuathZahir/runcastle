@@ -20,6 +20,7 @@ const input = (over: {
   agentWorking?: boolean
   driving?: boolean
   selfPlanning?: boolean
+  uncommittedDesign?: boolean
   leadWake?: FeatureStatusInput['leadWake']
   now?: number
 }): FeatureStatusInput => ({
@@ -36,6 +37,7 @@ const input = (over: {
   agentWorking: over.agentWorking ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
+  ...(over.uncommittedDesign ? { uncommittedDesign: true } : {}),
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
   now: over.now ?? 0,
 })
@@ -429,6 +431,18 @@ describe('the action row beside the status line', () => {
       disabled: 'the plan is not finished',
       escape: { label: 'Go anyway…', kind: 'burn' },
     })
+  })
+
+  it('disables Go with no override while design work is uncommitted, finished plan or not', () => {
+    for (const ticketsReadyLap of [null, 1]) {
+      const over = { feature: { phase: 'planning' as const, ticketsReadyLap }, uncommittedDesign: true }
+      expect(featureStatus(input(over)).primary).toBe('goBlocked')
+      expect(leadActions(ns({}), featureStatus(input(over))).primary).toEqual({
+        label: 'Go',
+        kind: 'burn',
+        disabled: 'Uncommitted design work: ask the chat to commit or drop it',
+      })
+    }
   })
 
   it('offers Start test drive, Stop drive and Stop as the one primary for their states', () => {

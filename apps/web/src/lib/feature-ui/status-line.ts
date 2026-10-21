@@ -3,6 +3,7 @@ import {
   LeadWakeFailedData,
   PLAN_UNFINISHED,
   planFinished,
+  UNCOMMITTED_DESIGN,
   type EventRow,
   type Feature,
   type ReadyDeclaration,
@@ -26,7 +27,7 @@ export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | '
  * Go before the plan is finished is `goGated`: the same button, disabled with
  * the reason and an override that asks for one (CONTEXT.md decision 8).
  */
-export type StatusPrimary = 'go' | 'goGated' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
+export type StatusPrimary = 'go' | 'goGated' | 'goBlocked' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -60,6 +61,8 @@ export interface FeatureStatusInput {
   selfPlanning: boolean
   /** The lead's latest wake and wake failure, as {@link leadWakeOf} reads them off the event log. */
   leadWake?: LeadWake
+  /** The talk worktree holds uncommitted design work: Go is disabled, with no override. */
+  uncommittedDesign?: boolean
   /** The wall clock, passed in so a pending wake's grace is testable. */
   now: number
 }
@@ -169,7 +172,10 @@ function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrim
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
   if (planningItself(input)) return 'stopSelfPlan'
-  if (input.feature.phase === 'planning') return planFinished(input.feature) ? 'go' : 'goGated'
+  if (input.feature.phase === 'planning') {
+    if (input.uncommittedDesign) return 'goBlocked'
+    return planFinished(input.feature) ? 'go' : 'goGated'
+  }
   if (status.kind === 'ready') return 'testDriveStart'
   return undefined
 }
@@ -248,6 +254,8 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
     disabled: PLAN_UNFINISHED,
     escape: { label: 'Go anyway…', kind: 'burn' },
   },
+  // Unlike goGated there is no escape: the server refuses it whatever the reason.
+  goBlocked: { label: 'Go', kind: 'burn', disabled: UNCOMMITTED_DESIGN },
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },

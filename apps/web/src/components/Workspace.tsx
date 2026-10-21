@@ -938,6 +938,7 @@ export function Workspace({
         selfPlanning:
           (!!liveSession && isSelfPlanRun(liveSession)) || startSelfPlan.isPending || launchSelfPlan.isPending,
         leadWake,
+        uncommittedDesign: full.uncommittedDesign,
         now,
       })
   const statusLine = status && <FeatureStatusLine status={status} />
