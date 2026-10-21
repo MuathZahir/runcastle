@@ -62,7 +62,34 @@ export function ProjectDriveView({
   const where = `${repoPath ?? ''}${drive.commit ? ` @ ${drive.commit}` : ''}`
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col" data-project-drive>
+    <div className="flex h-full min-h-0 flex-1 flex-col animate-fade-in" data-project-drive>
+      {/* The branch is named up front because the checkout is driven as it is
+          (decision 3): a checkout sitting somewhere other than main is seen
+          here, before any note is taken. The header sits above the notes
+          aside, not beside it: in a narrow panel the aside floats over its
+          row, and Stop and the notes toggle must stay clickable. */}
+      <header className="flex shrink-0 flex-col gap-1.5 px-6 pt-5 pb-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="m-0 text-lg font-semibold text-text">
+            Driving <span className="font-mono text-base font-medium">{drive.branch}</span>
+          </h2>
+          {state}
+          <span className="flex-1" />
+          {stop}
+          <IconButton
+            label={notesOpen ? 'Hide notes' : 'Show notes'}
+            icon={<IconPanelRight />}
+            active={notesOpen}
+            onClick={() => setNotesOpen((open) => !open)}
+          />
+        </div>
+        <MetaLine
+          items={[
+            { icon: <IconFolder />, mono: true, text: where, title: where },
+            { icon: <IconUser />, mono: true, text: 'project-drive', title: 'the identity this drive runs as' },
+          ]}
+        />
+      </header>
       <AsideLayout
         aside={
           notesOpen && (
@@ -74,33 +101,7 @@ export function ProjectDriveView({
           )
         }
       >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4 animate-fade-in">
-          {/* The branch is named up front because the checkout is driven as it
-              is (decision 3): a checkout sitting somewhere other than main is
-              seen here, before any note is taken. */}
-          <header className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h2 className="m-0 text-lg font-semibold text-text">
-                Driving <span className="font-mono text-base font-medium">{drive.branch}</span>
-              </h2>
-              {state}
-              <span className="flex-1" />
-              {stop}
-              <IconButton
-                label={notesOpen ? 'Hide notes' : 'Show notes'}
-                icon={<IconPanelRight />}
-                active={notesOpen}
-                onClick={() => setNotesOpen((open) => !open)}
-              />
-            </div>
-            <MetaLine
-              items={[
-                { icon: <IconFolder />, mono: true, text: where, title: where },
-                { icon: <IconUser />, mono: true, text: 'project-drive', title: 'the identity this drive runs as' },
-              ]}
-            />
-          </header>
-
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4">
           <ProjectStage
             projectId={projectId}
             drive={drive}

@@ -126,11 +126,12 @@ A started feature is its chat (design-mode decisions 4, 5), not a document:
 - A **draft** has no chat: its body is the page, the next step in its header.
 
 The **project page** takes the same pieces (decision 11): its chat column
-holds the live project chat — its switcher listing the past chats, each
-opening its read-only transcript — or, with none running or after the project
-crumb, the chat list with New chat and Test drive. The panel holds the
-project drive and the Notes inbox (its details); the topbar offers Drive
-while one is live and the Notes toggle.
+holds the live project chat — its switcher listing the past chats by title
+and age, each opening its read-only transcript — or, with none running or
+after the project crumb, the chat list with New chat and Test drive. The panel
+holds the project drive and the Notes inbox (its details); the topbar offers
+Test drive while a chat is in front and no drive is up, Drive while one is
+live, and the Notes toggle.
 
 ## Colour
 

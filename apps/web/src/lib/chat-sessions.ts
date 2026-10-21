@@ -1,4 +1,5 @@
 import { conversationTitle } from './conversation-title'
+import { relTime } from './format'
 
 /**
  * The chat column's sessions (design-mode decision 9): one column shows one
@@ -50,20 +51,25 @@ export function featureChatEntries({
  * The project page's entries (design-mode decision 11): the live project chat
  * first, then every ended one in the list's own order (newest first), each
  * opening its transcript. The conversation list carries the live one too; it
- * is listed once.
+ * is listed once. A past chat carries its age, as the resting list shows it,
+ * so a run of "Untitled chat"s still tells apart.
  */
 export function projectChatEntries({
   liveId,
   conversations,
+  now = Date.now(),
 }: {
   liveId: string | null
-  conversations: readonly { id: string; title: string | null; status: string }[]
+  conversations: readonly { id: string; title: string | null; status: string; createdAt: number | null }[]
+  now?: number
 }): ChatSessionEntry[] {
   const live = conversations.find((c) => c.id === liveId)
   const ended = conversations.filter((c) => c.status === 'ended' && c.id !== liveId)
+  const pastLabel = (c: (typeof ended)[number]) =>
+    c.createdAt === null ? conversationTitle(c.title) : `${conversationTitle(c.title)} · ${relTime(c.createdAt, now)}`
   return [
     ...(liveId ? [{ id: liveId, label: conversationTitle(live?.title), live: true }] : []),
-    ...ended.map((c) => ({ id: c.id, label: conversationTitle(c.title), live: false })),
+    ...ended.map((c) => ({ id: c.id, label: pastLabel(c), live: false })),
   ]
 }
 
