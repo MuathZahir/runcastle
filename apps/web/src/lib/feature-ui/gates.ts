@@ -335,11 +335,16 @@ export function sessionStatusLabel(session: { status: string }): string {
   return session.status === 'launching' ? 'launching…' : 'live'
 }
 
-/** The feature's active session ({@link sessionActive}), if it has one. */
-export function activeSession<T extends { status: string }>(
+/**
+ * The feature's active session ({@link sessionActive}), if it has one. A side
+ * session is never it: the bar, the status line and the Chat tab's main view
+ * speak for the main chat (several-sessions-per-feature decision 12), and a side
+ * session lives in the chat header's switcher.
+ */
+export function activeSession<T extends { status: string; kind: string }>(
   sessions: readonly T[],
 ): T | undefined {
-  return sessions.find((s) => sessionActive(s))
+  return sessions.find((s) => s.kind !== 'side' && sessionActive(s))
 }
 
 /**

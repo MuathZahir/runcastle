@@ -338,6 +338,10 @@ export function useLiveSync(): LiveStatus {
       // ready declaration, all move it while it is on screen.
       refetches.push(u.feature.rounds.invalidate())
       refetches.push(u.feature.readyDeclarations.invalidate())
+      // The chat header's session switcher: a side session opened, ended or
+      // waiting on the human (`session.*` events and the `turn` signal) has to
+      // move its row and its dot at push speed.
+      refetches.push(u.feature.sessions.invalidate())
       // The scenarios a drive can land on. A scenario chat commits a new file
       // and records the runner mid-drive (`scenario.*`, `settings.updated`), and
       // the Scenario menu and the Test drive picker have no poll of their own —
