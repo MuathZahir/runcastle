@@ -141,6 +141,14 @@ describe('feature.list liveSession', () => {
 
     expect(liveSession()).toEqual({ status: 'live', awaitingInput: true })
   })
+
+  // design-mode ticket 12: a drive's scenario chat is docked to the drive, so
+  // the rail never files the feature under Agent working for it.
+  it('does not count a live scenario chat as the feature’s session', () => {
+    const scenario = createSessionRow(ctx, { featureId, kind: 'scenario', worktreePath: '/wt' }).id
+    markSessionLive(ctx, scenario)
+    expect(liveSession()).toBeNull()
+  })
 })
 
 /**

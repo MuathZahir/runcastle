@@ -28,7 +28,6 @@ import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
   burnInterruption,
-  chatContextLine,
   defaultBaseBranch,
   deferredScope,
   dependencyCandidates,
@@ -374,11 +373,8 @@ export function Workspace({
   })
   // The chat column (decision 9): the feature chat, and the drive errand's
   // scenario chat, which an errand's open brings to the front.
-  const featureLive = activeSession(q.data?.sessions ?? [])
   const column = useFeatureChatColumn({
-    featureLive: featureLive
-      ? { label: featureLive.kind === 'chat' ? 'Feature chat' : chatContextLine(featureLive) }
-      : null,
+    sessions: q.data?.sessions ?? [],
     driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
 
