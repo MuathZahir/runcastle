@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../../trpc'
 import { useEventLog } from '../../lib/events'
 import { useLivePoll } from '../../lib/live'
-import { Aside, cx, DimLine, Skeleton, SkeletonBar, Tabs } from '../../ui'
+import { cx, DimLine, Skeleton, SkeletonBar, Tabs } from '../../ui'
 import { IconActivity, IconDoc } from '../../icons'
 import { Activity } from './Activity'
 import { Knowledge } from './Knowledge'
@@ -15,24 +15,15 @@ const TABS = [
 ]
 
 /**
- * The feature's details, as the page's one right-hand aside (DESIGN.md
- * principle 1): Knowledge — the docs the sessions write — and Activity — the
- * event feed — switched by Tabs in the aside's own header. It shares the slot
- * with the feature chat: opening one closes the other, and neither is a
- * permanent rail.
+ * The feature's details, as one of the feature page's panel views
+ * (design-mode decision 5): Knowledge — the docs the sessions write — and
+ * Activity — the event feed — switched by Tabs at the view's top. The panel
+ * around it holds the header and the close.
  *
  * Feature-scoped for real (decision 5): every panel in here is about one
- * feature, so nothing renders it outside a feature view — and it is the
- * feature page that mounts it, in its own aside slot, with `onClose`. Mounted
- * without one (the retired shell-level rail), it renders nothing, so a
- * second details panel can never stand beside the page's own.
+ * feature, so nothing renders it outside a feature view.
  */
-export function Inspector({ featureId, onClose }: { featureId: string; onClose?: () => void }) {
-  if (!onClose) return null
-  return <InspectorAside featureId={featureId} onClose={onClose} />
-}
-
-function InspectorAside({ featureId, onClose }: { featureId: string; onClose: () => void }) {
+export function DetailsView({ featureId }: { featureId: string }) {
   const [tab, setTab] = useState<Tab>('knowledge')
   const full = trpc.feature.get.useQuery({ id: featureId }, { refetchInterval: useLivePoll() })
   // One feed for both tabs, mounted here rather than inside Activity so
@@ -40,12 +31,8 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
   const events = useEventLog(featureId)
 
   return (
-    <Aside
-      label="Details"
-      title={<Tabs items={TABS} value={tab} onChange={setTab} size="sm" label="Details" />}
-      onClose={onClose}
-      bodyClassName="px-4 py-4"
-    >
+    <div className="flex flex-col gap-4 px-4 py-4">
+      <Tabs items={TABS} value={tab} onChange={setTab} size="sm" label="Details" className="self-start" />
       {full.isLoading ? (
         <DetailsSkeleton />
       ) : !full.data ? (
@@ -62,7 +49,7 @@ function InspectorAside({ featureId, onClose }: { featureId: string; onClose: ()
           )}
         </div>
       )}
-    </Aside>
+    </div>
   )
 }
 

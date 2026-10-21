@@ -70,32 +70,18 @@ function body(full: FeatureFull, effective: Phase, { readonly = false, ticketsIs
 const withoutIds = (html: string) => html.replace(/_R_\w+_/g, '_R_')
 const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(element))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
-const panelAt = (html: string) => html.indexOf('<iframe')
-
-/** plan-preview decisions 6 and 11: the preview leads planning's bodies, and only theirs. */
-describe('the preview on the planning page', () => {
-  it('leads the planning body above the decisions before this lap has tickets', () => {
-    const html = body(fullWith({ preview: PREVIEW }), 'planning')
-    expect(panelAt(html)).toBeGreaterThan(-1)
-    expect(panelAt(html)).toBeLessThan(html.indexOf('Decisions so far'))
-  })
-
-  it('leads the planning body above the ticket ledger once there are tickets', () => {
-    const html = body(fullWith({ tickets: [ticket], preview: PREVIEW }), 'planning', { ticketsIsBody: true })
-    expect(panelAt(html)).toBeGreaterThan(-1)
-    expect(panelAt(html)).toBeLessThan(html.indexOf('aria-label="Tickets"'))
-  })
-
-  it('takes the planning body out of the fill layout, so the page scrolls both', () => {
-    const args = { phase: 'planning' as const, readonly: false, ticketsIsBody: false }
-    expect(planningFills({ ...args, full: { preview: null } })).toBe(true)
-    expect(planningFills({ ...args, full: { preview: PREVIEW } })).toBe(false)
-  })
-
-  it('leads the read-only Planning view', () => {
-    const html = body(fullWith({ preview: PREVIEW }), 'planning', { readonly: true })
-    expect(panelAt(html)).toBeGreaterThan(-1)
-    expect(panelAt(html)).toBeLessThan(html.indexOf('>Decisions</h2>'))
+/**
+ * design-mode decision 5: the plan preview left planning's bodies (plan-preview
+ * decisions 6 and 11 had it leading them) for a panel view of its own, which
+ * `availableViews` offers once a preview exists.
+ */
+describe('the preview and the planning body', () => {
+  it('is in no planning body, live or pinned, before tickets or after', () => {
+    expect(body(fullWith({ preview: PREVIEW }), 'planning')).not.toContain('<iframe')
+    expect(body(fullWith({ tickets: [ticket], preview: PREVIEW }), 'planning', { ticketsIsBody: true })).not.toContain(
+      '<iframe',
+    )
+    expect(body(fullWith({ preview: PREVIEW }), 'planning', { readonly: true })).not.toContain('<iframe')
   })
 
   it('is not on the Building body before a first run, though its ledger is the same', () => {
@@ -104,7 +90,15 @@ describe('the preview on the planning page', () => {
     expect(html).not.toContain('<iframe')
   })
 
-  it('leaves every planning body exactly as it was when there is no preview', () => {
+  it('lets live planning fill the body whether or not there is a preview', () => {
+    expect(planningFills({ phase: 'planning', readonly: false, ticketsIsBody: false })).toBe(true)
+    expect(planningFills({ phase: 'planning', readonly: false, ticketsIsBody: true })).toBe(false)
+    expect(planningFills({ phase: 'planning', readonly: true, ticketsIsBody: false })).toBe(false)
+  })
+
+  it('leaves every planning body exactly as it was, with a preview or without', () => {
+    const previewed = fullWith({ preview: PREVIEW })
+    expect(body(previewed, 'planning')).toBe(markup(createElement(GrillBody, { full: previewed })))
     const grill = fullWith()
     expect(body(grill, 'planning')).toBe(markup(createElement(GrillBody, { full: grill })))
     expect(body(grill, 'planning', { readonly: true })).toBe(

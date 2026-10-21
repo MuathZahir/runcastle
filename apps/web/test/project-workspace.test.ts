@@ -5,7 +5,6 @@ import {
   prepRailRow,
   projectSessionState,
   sessionBranchState,
-  showsInspector,
   workspaceView,
 } from '../src/lib/project-workspace'
 import type { ProjectSession } from '../src/lib/api'
@@ -186,21 +185,6 @@ describe('the palette on an empty query', () => {
   it('shows both project-scoped action rows', () => {
     expect(matchesPreparation('')).toBe(true)
     expect(matchesProjectChat('')).toBe(true)
-  })
-})
-
-describe('showsInspector', () => {
-  // Every Inspector panel is feature-scoped, so the project workspace hides it
-  // rather than showing panels about a feature you are not looking at.
-  it('is the feature workspace only', () => {
-    expect(showsInspector('feature', false)).toBe(true)
-    expect(showsInspector('project', false)).toBe(false)
-    expect(showsInspector('create', false)).toBe(false)
-    expect(showsInspector('prepare', false)).toBe(false)
-  })
-
-  it('still respects the collapse toggle', () => {
-    expect(showsInspector('feature', true)).toBe(false)
   })
 })
 

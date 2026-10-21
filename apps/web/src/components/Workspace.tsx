@@ -9,8 +9,8 @@ import { STOP_TIMEOUT } from '../lib/vocabulary'
 import { relTimeAgo } from '../lib/format'
 import { pathFor, type FeatureView } from '../lib/routes'
 import { useLandOnChat } from '../lib/land-on-chat'
+import { availableViews, bodyLabel, PANEL_VIEW_LABEL, type PanelView } from '../lib/feature-ui/panel'
 import {
-  AsideLayout,
   DimLine,
   IconButton,
   Page,
@@ -68,15 +68,18 @@ import { MergeFeatureDialog } from './MergeFeatureDialog'
 import { DraftBody } from './bodies/DraftBody'
 import { GrillBody } from './bodies/grill/GrillBody'
 import { PinnedBody } from './bodies/PinnedBody'
-import { PreviewLead } from './PreviewPanel'
+import { PreviewPanel } from './PreviewPanel'
 import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
-import { Inspector } from './inspector/Inspector'
+import { DesignView } from './design/DesignView'
+import { DetailsView } from './inspector/Inspector'
+import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
-import { FeatureViewTabs } from './workspace/FeatureViewTabs'
+import { FeaturePanel, PanelButtons, PanelSplit, PanelStrip, usePanel } from './workspace/FeaturePanel'
+import { usePanelShow } from './workspace/use-panel-show'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
 import { BlocksLine, DependenciesRow } from './workspace/FeatureDependencies'
 import { FeatureHeader } from './workspace/FeatureHeader'
@@ -101,16 +104,6 @@ export { FeatureCrash } from './workspace/FeaturePanes'
 /** The page's root: a column filling the content panel. */
 const FRAME = 'flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface'
 
-const DETAILS_KEY = 'runcastle.feature.details'
-
-function readSession(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
 /** The wall clock, re-read once `deadline` passes so what it decides catches up. */
 function useNowPast(deadline: number | undefined): number {
   const [, tick] = useReducer((n: number) => n + 1, 0)
@@ -124,30 +117,23 @@ function useNowPast(deadline: number | undefined): number {
   return Date.now()
 }
 
-function writeSession(key: string, value: string) {
-  try {
-    sessionStorage.setItem(key, value)
-  } catch {
-    // storage may be unavailable (private mode) — the choice still holds in-session
-  }
-}
-
 /**
  * The feature page — the page every feature lives on (DESIGN.md §Frame, §Page
- * anatomy), rendered inside the shell's content panel:
+ * anatomy), chat-first (design-mode decisions 4, 5), rendered inside the
+ * shell's content panel:
  *
- *   PageTopbar — phase glyph + title · Overview | Chat · "…" · details
- *   the page — title once, a meta line, the pipeline stepper, the next-step
- *              row (one primary), then the body for the phase in view
- *   the Chat tab — the feature's live session full-area (`FeatureChat`), kept
- *              mounted but hidden behind the other tabs
- *   one Aside — the details
+ *   PageTopbar — phase glyph + title · a button per panel view · "…" · details
+ *   the feature strip — the status line and the next step (one primary),
+ *              never hidden, so Go and Merge are always one click away
+ *   the chat — the feature's live session (`FeatureChat`), filling the page
+ *   one panel — on the right when open, one view at a time: the phase body,
+ *              the plan preview, the design, a drive, or the details
  *
- * Clicking an earlier step pins a read-only view of that phase; the next-step
- * row becomes one quiet line and a way back. Live planning's panes fill the
- * panel and scroll themselves; every other body is a document in the centred
- * page column. No body holds a terminal: every session lives on the Chat tab
- * (one-chat-layout-everywhere decision 1).
+ * The panel opens from the topbar, from the agent's `panel.show`, and from
+ * runcastle only as the result of the human's own Go or Test drive click.
+ * Clicking an earlier step pins a read-only view of that phase in the body;
+ * the strip becomes one quiet line and a way back. A draft has no chat, so its
+ * body is the page.
  */
 export function Workspace({
   featureId,
@@ -159,11 +145,9 @@ export function Workspace({
   driving,
   onDriveChange,
   onDeleted,
-  detailsOpen: detailsOpenProp,
-  onToggleDetails,
 }: {
   featureId: string
-  /** The view tab in front — the shell's, so the address bar can name it. */
+  /** The panel view beside the chat, or `chat` for none — the shell's, so the address bar can name it. */
   view: FeatureView
   onViewChange: (view: FeatureView) => void
   viewedPhase: Phase | null
@@ -176,13 +160,6 @@ export function Workspace({
    * the page's menu offers no Delete (the sidebar's still does).
    */
   onDeleted?: () => void
-  /**
-   * The details aside, when the shell holds it (so its palette command and
-   * the page's toggle are one switch). Omitted, the page holds it itself,
-   * remembered for the browser session.
-   */
-  detailsOpen?: boolean
-  onToggleDetails?: () => void
 }) {
   const utils = trpc.useUtils()
   const toast = useToast()
@@ -372,6 +349,25 @@ export function Workspace({
   // is reading all share one fetch.
   const decisions = useFeatureDoc(featureId, docPath(q.data?.docs ?? [], 'decisions.md')).content
 
+  // The panel (design-mode decision 5): the views this state offers, and the
+  // one open — the shell's, shown only while this state still offers it (a
+  // drive that stopped takes its view with it).
+  const isDriving = driving?.featureId === featureId
+  const views = q.data
+    ? availableViews({
+        isDraft,
+        phase: q.data.feature.phase,
+        hasPreview: !!q.data.preview,
+        driveActive: isDriving || (driveQ.data?.featureId === featureId && driveQ.data.state !== 'idle'),
+      })
+    : []
+  const requested = viewProp === 'chat' ? null : viewProp
+  const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
+  // The agent's `show_panel`, for a view this state offers.
+  usePanelShow(events, featureId, (request) => {
+    if (views.includes(request.view)) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
+  })
+
   // Settles once the refetches land, for a mutation that must stay pending
   // until the page shows what it caused.
   const refresh = () =>
@@ -388,7 +384,7 @@ export function Workspace({
     void refresh()
   }
 
-  // Every session this page launches lands on the Chat tab once it is up
+  // Every session this page launches lands on the chat once it is up
   // (one-chat-layout-everywhere decision 3) — the bar's Chat, a draft's Start,
   // every road into the next lap and fix drive.
   const landOnChat = useLandOnChat(featureId)
@@ -398,9 +394,11 @@ export function Workspace({
   }
   const launch = trpc.feature.launchSession.useMutation({ onSuccess: launched, onError: (e) => toast.push(e.message) })
   const burn = trpc.feature.go.useMutation({
+    // The human's Go: the run it started opens beside the chat.
     onSuccess: () => {
       invalidate()
       onViewPhase(null)
+      panel.dispatch({ type: 'follow', click: 'go' })
     },
     onError: (e) => toast.push(e.message),
   })
@@ -438,10 +436,12 @@ export function Workspace({
     onError: (e) => toast.push(e.message),
   })
   const testDrive = trpc.feature.testDrive.useMutation({
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       // A drive takes and releases the branch and stamps the timeline; the bar
       // and the review body read all of it back through these queries.
       invalidate()
+      // The human's Test drive: the drive it started opens beside the chat.
+      if (vars.action === 'start' && res.ok) panel.dispatch({ type: 'follow', click: 'testDrive' })
       // The project's own setup/teardown command failed. Surfaced first and as
       // an error: everything below is advisory, but a failed setup means the
       // app you are about to open probably is not running. The command's output
@@ -520,7 +520,7 @@ export function Workspace({
   })
   // Plan it yourself (features-plan-themselves decisions 5, 9): the same start
   // and launch as above, but the session is a headless run with no terminal, so
-  // neither lands on the Chat tab — the plan is watched from the Overview.
+  // neither lands on the chat — the plan is watched from the body.
   // It stays pending until the feature is refetched with the new run on it, so
   // the row reads Planning by itself from the click on, never idle in between.
   const launchSelfPlan = trpc.feature.launchSession.useMutation({
@@ -539,19 +539,6 @@ export function Workspace({
   // session on the way in rather than hiding until the human ends it themselves.
   const resolveConflict = useResolveConflict(featureId, q.data?.feature.branch ?? '')
 
-  // The details aside (knowledge + activity), the page's one aside.
-  // Remembered for the browser session.
-  const [ownDetailsOpen, setOwnDetailsOpen] = useState(() => readSession(DETAILS_KEY) === '1')
-  const detailsControlled = detailsOpenProp !== undefined
-  const detailsOpen = detailsControlled ? detailsOpenProp : ownDetailsOpen
-  const setDetailsOpen = (open: boolean) => {
-    if (detailsControlled) {
-      if (open !== detailsOpenProp) onToggleDetails?.()
-      return
-    }
-    setOwnDetailsOpen(open)
-    writeSession(DETAILS_KEY, open ? '1' : '0')
-  }
   const [deleteOpener, setDeleteOpener] = useState<RefObject<HTMLButtonElement | null> | null>(null)
   const archive = trpc.feature.archive.useMutation({
     onSuccess: () => {
@@ -615,7 +602,6 @@ export function Workspace({
   // an earlier phase, or already past review) is never held.
   const settling = !!settlingRunId && run?.id === settlingRunId && effective === 'review'
   const bodyPhase = settling ? 'building' : effective
-  const isDriving = driving?.featureId === feature.id
   const ns = nextStep(full, {
     driving: isDriving,
     // The server's own drive state, scoped to THIS feature (decision 20) — the
@@ -681,7 +667,7 @@ export function Workspace({
 
   /**
    * Resume the feature's one conversation, or start the first one (decisions 8
-   * and 12) — the Chat tab's own Resume / Start button.
+   * and 12) — the chat's own Resume / Start button.
    */
   const launchChat = () => {
     launch.mutate({ featureId, kind: 'chat' })
@@ -689,9 +675,9 @@ export function Workspace({
 
   /**
    * The bar's constant Chat door: it starts or resumes the conversation and
-   * lands on the Chat tab (one-chat-layout-everywhere decision 5).
+   * lands on the chat (one-chat-layout-everywhere decision 5).
    *
-   * A session that is already up is not re-launched on the way in — the tab
+   * A session that is already up is not re-launched on the way in — the chat
    * hosts whichever one is live (decision 9). The server would answer a chat
    * launch with that same session (decision 12), but it would also write a fresh
    * state header into its terminal on every click (decision 13), which is for a
@@ -699,7 +685,7 @@ export function Workspace({
    */
   const openChat = () => {
     // A headless run has no terminal to land on, and the server refuses a chat
-    // beside it — say so rather than open a tab with nothing to answer.
+    // beside it — say so rather than land on a chat with nothing to answer.
     if (liveSession && isHeadlessRun(liveSession))
       toast.push(
         isSelfPlanRun(liveSession)
@@ -850,30 +836,30 @@ export function Workspace({
 
   // ---- the frame (DESIGN.md §Frame, §Page anatomy) ----
 
-  // The page's views of the feature: Overview | Chat in every state
-  // (one-chat-layout-everywhere decision 1). A draft has no branch to chat on,
-  // so it has no views at all (decision 11).
   const ticketsIsBody = ticketsAreBody({ full, phase: bodyPhase, readonly, hasRun: !!run })
-  const view: FeatureView = isDraft ? 'overview' : viewProp
-  // Pinning a phase is a different overview; it always lands on it.
+  // Pinning a phase is a different body; it always opens it — the human's click.
   const viewPhase = (p: Phase | null) => {
-    onViewChange('overview')
+    panel.dispatch({ type: 'open', view: 'body', origin: 'human' })
     onViewPhase(p)
   }
+  const shown = panel.state.view
+  const labelOf = (v: PanelView) =>
+    v === 'body' ? bodyLabel(bodyPhase, { ticketsIsBody, hasRun: !!run }) : PANEL_VIEW_LABEL[v]
+  // A topbar button opens its view, or closes the panel when it is the one open.
+  const toggleView = (v: PanelView) =>
+    panel.dispatch(shown === v ? { type: 'close' } : { type: 'open', view: v, origin: 'human' })
 
-  // Live planning's artifact scrolls itself, so it fills the panel — unless a
-  // preview leads it; every other body is a document in the page
-  // column, the header scrolling away with it. The data-heavy ones (the run's
-  // lanes, the review's evidence, the ledger) take the wide column.
-  const fill =
-    view === 'overview' && !isDraft && planningFills({ full, phase: bodyPhase, readonly, ticketsIsBody })
-  // Per phase, not per view: switching tabs must not move the title. Every
-  // working phase (planning's panes included) shares the wide column; the
-  // shipped record and a draft read as documents.
+  // Live planning's artifact scrolls itself, so it fills the body; every other
+  // body is a document in the page column, the header scrolling away with it.
+  // The data-heavy ones (the run's lanes, the review's evidence, the ledger)
+  // take the wide column.
+  const fill = !isDraft && planningFills({ phase: bodyPhase, readonly, ticketsIsBody })
+  // Per phase: every working phase (planning's panes included) shares the wide
+  // column; the shipped record and a draft read as documents.
   const wide = !isDraft && bodyPhase !== 'shipped'
 
-  // Rises in once per navigation — feature, pinned phase, view — never on a refetch.
-  const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}:${view}`
+  // Rises in once per navigation — feature, pinned phase — never on a refetch.
+  const routeKey = `${featureId}:${isDraft ? 'draft' : bodyPhase}`
 
   const shipped = feature.status === 'shipped' ? shippedAt([...events]) : null
   const factList: Array<MetaItem | false> = [
@@ -979,16 +965,24 @@ export function Workspace({
     />
   )
 
+  const resumeAlert = resumeFailed.message && (
+    <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+      <span className="min-w-0 flex-1">
+        <span className="font-medium">Resume failed.</span> {resumeFailed.message}
+      </span>
+      <IconButton label="Dismiss" size="sm" icon={<IconX />} onClick={resumeFailed.dismiss} />
+    </div>
+  )
+  // Said where a drive starts, and only when it applies (decision 24).
+  const drivePrereqsNotice = !readonly && status?.primary === 'testDriveStart' && (
+    <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />
+  )
+
+  // The title and its facts head the body. A draft has no strip, so its next
+  // step stays in its header, where its body is the page.
   const header = (
     <FeatureHeader feature={feature} isDraft={isDraft} facts={facts}>
-      {resumeFailed.message && (
-        <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
-          <span className="min-w-0 flex-1">
-            <span className="font-medium">Resume failed.</span> {resumeFailed.message}
-          </span>
-          <IconButton label="Dismiss" size="sm" icon={<IconX />} onClick={resumeFailed.dismiss} />
-        </div>
-      )}
+      {isDraft && resumeAlert}
       <DependenciesRow
         isDraft={isDraft}
         dependsOn={full.dependsOn}
@@ -996,11 +990,8 @@ export function Workspace({
         onChange={(dependsOn) => setDependencies.mutateAsync({ featureId, dependsOn })}
       />
       <BlocksLine projectId={feature.projectId} blocks={full.blocks} />
-      {nextRow}
-      {/* Said where a drive starts, and only when it applies (decision 24). */}
-      {!readonly && status?.primary === 'testDriveStart' && (
-        <DrivePrerequisitesNotice missing={drivePrereqs.data?.missing ?? []} />
-      )}
+      {isDraft && nextRow}
+      {isDraft && drivePrereqsNotice}
     </FeatureHeader>
   )
 
@@ -1023,6 +1014,40 @@ export function Workspace({
     />
   )
 
+  // The body view: live planning's panes fill it and scroll themselves (decisions
+  // 6, 11); every other body is a document in the page column.
+  const bodyView = fill ? (
+    <div key={routeKey} className="flex min-h-0 min-w-0 flex-1 flex-col px-8 pt-8 animate-rise-in">
+      <div className="shrink-0 pb-5">{header}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 pb-6">{body}</div>
+    </div>
+  ) : (
+    <Page width={wide ? 'wide' : 'default'} routeKey={routeKey}>
+      {header}
+      <div className="mt-10">{body}</div>
+    </Page>
+  )
+
+  const panelView = (v: PanelView) => {
+    switch (v) {
+      case 'body':
+        return bodyView
+      case 'preview':
+        return full.preview ? (
+          <div className="px-6 pb-8">
+            <PreviewPanel featureId={featureId} preview={full.preview} />
+          </div>
+        ) : null
+      case 'design':
+        return <DesignView featureId={featureId} {...(panel.state.path ? { path: panel.state.path } : {})} />
+      case 'drive':
+        return <FeatureDriveView full={full} />
+      case 'details':
+        return <DetailsView featureId={featureId} />
+    }
+  }
+  const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+
   return (
     // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
     // render surface, and anything that does escape its column must not become
@@ -1030,74 +1055,92 @@ export function Workspace({
     // hiding it, and creates no scroll container, so the page below keeps
     // scrolling itself and the next step's branch menu still opens over it.
     <section className={cx(FRAME, 'overflow-clip')} aria-label={feature.title}>
-      {/* The one aside sits beside the whole page — topbar included — so its
-          own 44px header lines up with the topbar rather than stacking under it. */}
-      <AsideLayout
-        // Floating over a narrow panel, the aside starts under the topbar so
-        // the tabs, "…" and the aside's own toggle stay reachable.
-        asideClassName="@max-4xl:top-(--topbar-h)"
-        aside={detailsOpen && <Inspector featureId={featureId} onClose={() => setDetailsOpen(false)} />}
-      >
-        <PageTopbar
-          crumbs={[
-            {
-              label: feature.title,
-              icon: <PhaseIcon phase={isDraft ? 'draft' : feature.phase} size={14} label="" />,
-            },
-          ]}
-          tabs={
-            <FeatureViewTabs
-              isDraft={isDraft}
-              value={view}
-              onChange={onViewChange}
-              sessionLive={!!liveSession}
-            />
-          }
-          actions={
-            <>
-              {offline && (
-                <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
-                  Offline, retrying
-                </StatusLabel>
-              )}
-              <FeatureActionsMenu actions={menuActions} size="md" />
+      <PageTopbar
+        crumbs={[
+          {
+            label: feature.title,
+            icon: <PhaseIcon phase={isDraft ? 'draft' : feature.phase} size={14} label="" />,
+          },
+        ]}
+        actions={
+          <>
+            {offline && (
+              <StatusLabel tone="warning" className="mr-2" title="The server is unreachable — retrying">
+                Offline, retrying
+              </StatusLabel>
+            )}
+            <PanelButtons views={views} open={shown} label={labelOf} onToggle={toggleView} />
+            <FeatureActionsMenu actions={menuActions} size="md" />
+            {views.includes('details') && (
               <IconButton
-                label={detailsOpen ? 'Hide details' : 'Show details'}
+                label={shown === 'details' ? 'Hide details' : 'Show details'}
                 icon={<IconPanelRight />}
-                active={detailsOpen}
-                onClick={() => setDetailsOpen(!detailsOpen)}
+                active={shown === 'details'}
+                onClick={() => toggleView('details')}
               />
-            </>
-          }
-        />
-        {view === 'chat' ? null : fill ? (
-          // The same column, padding and entrance as `Page width="wide"`, so
-          // the title never moves between planning and any other phase or tab.
-          <div key={routeKey} className="mx-auto flex min-h-0 w-full max-w-(--content-wide) min-w-0 flex-1 flex-col px-8 pt-12 animate-rise-in">
-            <div className="shrink-0 pb-5">{header}</div>
-            {/* Each pane scrolls itself (decisions 6, 11), so the body stops
-                being the scroll container here. */}
-            <div className="flex min-h-0 min-w-0 flex-1 pb-6">{body}</div>
+            )}
+          </>
+        }
+      />
+      {isDraft ? (
+        <Page routeKey={routeKey}>
+          {header}
+          <div className="mt-10">{body}</div>
+        </Page>
+      ) : (
+        <>
+          {/* The feature strip: never hidden, so the one primary is always one click away. */}
+          <div className="flex shrink-0 flex-col gap-3 border-b border-border-subtle px-6 py-3">
+            {resumeAlert}
+            {nextRow}
+            {drivePrereqsNotice}
           </div>
-        ) : (
-          <Page width={wide ? 'wide' : 'default'} routeKey={routeKey}>
-            {header}
-            <div className="mt-10">{body}</div>
-          </Page>
-        )}
-        {/* Mounted behind the other tabs, never unmounted by them: xterm keeps
-            its buffer and the pty keeps one grid size. */}
-        {!isDraft && (
-          <FeatureChat
-            full={full}
-            events={events}
-            hidden={view !== 'chat'}
-            launching={launch.isPending}
-            onLaunch={launchChat}
-            onView={onViewChange}
+          <PanelSplit
+            chat={
+              // The same element whatever the panel does: xterm keeps its
+              // buffer. Hidden only while the panel has the whole row.
+              <FeatureChat
+                full={full}
+                events={events}
+                hidden={chatHidden}
+                launching={launch.isPending}
+                onLaunch={launchChat}
+                onView={(target) => {
+                  if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
+                }}
+              />
+            }
+            panel={
+              shown && (
+                <FeaturePanel
+                  view={shown}
+                  views={views}
+                  label={labelOf}
+                  path={panel.state.path}
+                  onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
+                  onCollapse={() => panel.dispatch({ type: 'collapse' })}
+                  onClose={() => panel.dispatch({ type: 'close' })}
+                >
+                  {panelView(shown)}
+                </FeaturePanel>
+              )
+            }
+            share={panel.state.share}
+            collapsed={panel.state.collapsed}
+            strip={
+              shown && (
+                <PanelStrip
+                  label={labelOf(shown)}
+                  onExpand={() => panel.dispatch({ type: 'expand' })}
+                  onClose={() => panel.dispatch({ type: 'close' })}
+                />
+              )
+            }
+            onResize={(share) => panel.dispatch({ type: 'setWidth', share })}
+            onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
           />
-        )}
-      </AsideLayout>
+        </>
+      )}
 
       {confirmBurn && (
         <GoFeatureDialog
@@ -1199,30 +1242,18 @@ export function PhaseBody({
   onViewPhase: (phase: Phase | null) => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
-  // buttons hidden (decision 10) — a different body altogether.
-  // The plan preview leads planning's bodies, live and pinned (plan-preview
-  // decisions 6 and 11) — never building's, though its ledger is the same one.
+  // buttons hidden (decision 10) — a different body altogether. The plan
+  // preview is not in any body: it is a panel view of its own (design-mode
+  // decision 5).
   if (readonly && effective === 'planning') {
-    return (
-      <PreviewLead full={full} live={false}>
-        <PinnedBody
-          full={full}
-          effective={effective}
-          events={events}
-        />
-      </PreviewLead>
-    )
+    return <PinnedBody full={full} effective={effective} events={events} />
   }
   switch (effective) {
     case 'planning':
       // Planning's own body is the conversation that shapes the idea; once this
       // lap has tickets, they are what the human reviews and corrects before
       // Burn — and a quick change never had a conversation to show.
-      return (
-        <PreviewLead full={full}>
-          {ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />}
-        </PreviewLead>
-      )
+      return ticketsIsBody ? <TicketsBody featureId={full.feature.id} /> : <GrillBody full={full} />
     case 'building':
       // Before the first burn there is no run to narrate, so an empty run pane
       // is the wrong thing to show — the tickets about to burn are. This is the

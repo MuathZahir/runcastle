@@ -49,18 +49,16 @@ export function ticketsAreBody({ full, phase, readonly, hasRun }: {
 }
 
 /**
- * Whether live planning's artifact fills the panel and scrolls itself — the
- * planning body before this lap has tickets. A plan preview leads that body
- * instead (plan-preview decision 6), and a full-height pane leaves no room
- * under a tall frame, so with one the body is a document in the page column.
+ * Whether live planning's artifact fills the body and scrolls itself — the
+ * planning body before this lap has tickets. The plan preview no longer leads
+ * that body: it is a panel view of its own (design-mode decision 5).
  */
-export function planningFills({ full, phase, readonly, ticketsIsBody }: {
-  full: Pick<FeatureFull, 'preview'>
+export function planningFills({ phase, readonly, ticketsIsBody }: {
   phase: Phase
   readonly: boolean
   ticketsIsBody: boolean
 }): boolean {
-  return phase === 'planning' && !readonly && !ticketsIsBody && !full.preview
+  return phase === 'planning' && !readonly && !ticketsIsBody
 }
 
 export { nextStep } from './next-step'

@@ -61,6 +61,29 @@ export function availableViews({
   })
 }
 
+/** The event the agent's `show_panel` tool emits (design-mode spec, Events). */
+export const PANEL_SHOW_EVENT = 'panel.show'
+
+export interface PanelShowRequest {
+  view: PanelView
+  path?: string
+}
+
+/**
+ * The view an event asks this feature's panel to open, or null — for any other
+ * event, for another feature's `panel.show`, and for a view this build does
+ * not know.
+ */
+export function panelShowRequest(
+  event: { type: string; featureId?: string; data?: unknown },
+  featureId: string,
+): PanelShowRequest | null {
+  if (event.type !== PANEL_SHOW_EVENT || event.featureId !== featureId) return null
+  const data = (event.data ?? {}) as { view?: unknown; path?: unknown }
+  if (typeof data.view !== 'string' || !isPanelView(data.view)) return null
+  return typeof data.path === 'string' ? { view: data.view, path: data.path } : { view: data.view }
+}
+
 /** What the phase body is called in the switcher and on its topbar button. */
 export function bodyLabel(phase: Phase, { ticketsIsBody, hasRun }: { ticketsIsBody: boolean; hasRun: boolean }): string {
   switch (phase) {
