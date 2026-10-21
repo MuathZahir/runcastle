@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext } from 'react'
 
 /**
- * Landing on the Chat tab after a session launch (one-chat-layout-everywhere
+ * Landing on the chat after a session launch (one-chat-layout-everywhere
  * decisions 3 and 9): every button that starts or resumes a feature session —
  * Chat, Start, every resolve, fix drive —
- * brings that feature's Chat tab forward once the launch has succeeded.
+ * brings that feature's chat forward, the panel closed, once the launch has succeeded.
  *
  * One operation rather than per-button navigation: the shell provides it (it
  * owns which feature and which view are selected, and remembers the view), and

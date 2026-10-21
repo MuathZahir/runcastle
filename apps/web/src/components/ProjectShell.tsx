@@ -120,8 +120,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [select, features],
   )
 
-  // Every session launch under this shell lands on its feature's Chat tab — a
-  // view switch like any other, so it is remembered and Back undoes it.
+  // Every session launch under this shell lands on its feature's chat, the
+  // panel closed so the chat has the page — a view switch like any other, so
+  // it is remembered and Back undoes it.
   const landOnChat = useCallback((featureId: string) => select(featureId, 'chat'), [select])
 
   /**
@@ -326,10 +327,9 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
         }
         rail={<SidebarRail onOpenCmdk={() => setCmdk(true)} onNewChat={newChat} />}
       >
-        {/* The view fills the panel. The feature's details panel is not
-            mounted here: the feature page owns its one aside slot (chat or
-            details), and `detailsOpen` / `onToggleDetails` above keep the
-            palette command and the page's toggle one switch. */}
+        {/* The view fills the panel. The feature's details are not mounted
+            here: they are one of the feature page's panel views, and the
+            palette's toggle switches the same `featureView` the page does. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">{body}</div>
       </Frame>
 
@@ -374,7 +374,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   // Anything under the shell — a ticket's error, a burn lane — can turn a
   // "Settings → Workers" pointer into a link that lands on the row it names.
-  // And any session launch under it lands on that feature's Chat tab.
+  // And any session launch under it lands on that feature's chat.
   return (
     <OpenSettingsProvider open={ws.openSettings}>
       <LandOnChatProvider value={landOnChat}>{shell}</LandOnChatProvider>

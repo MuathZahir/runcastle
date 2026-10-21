@@ -76,14 +76,48 @@ before adding.
 1. Topbar (above).
 2. `title-lg` (22/28, 600) — once.
 3. `MetaLine` — branch, age, counts. 2–4 facts.
-4. For features: the `PhaseStepper`, then the **next step** row: one sentence in
-   `text-secondary` on the left, the primary action (and at most two secondaries)
-   on the right; a disabled action shows its reason as a `caption` beneath. No
-   band, no border, no background.
+4. For features: the **next step** row: the status line (or one sentence in
+   `text-secondary`) on the left, the primary action (and at most two
+   secondaries) on the right; a disabled action shows its reason as a
+   `caption` beneath. No band, no background.
 5. Body sections: `title` heading (16/24, 600) + content. Facts as
    `PropertyList`, collections as `ListRow` lists, long text as prose (`body` 14/22)
    or collapsed in `Disclosure`.
 6. Empty areas are an `EmptyState` (icon, title, hint, ≤1 action) — never a box.
+
+### The feature page: chat-first
+
+A started feature is its chat (design-mode decisions 4, 5), not a document:
+
+```
+┌ topbar 44: glyph · title ········· [Tickets] [Preview] [Design] ⋯ ⓘ ┐
+│ feature strip: status line · next step ················ [Go]        │
+├─────────────────────────────────┬┬──────────────────────────────────┤
+│ the chat (fills the page)       ││ panel: [Tickets ▾]  path    › ✕  │
+│                                 ││  one view: body · preview ·      │
+│                                 ││  design · drive · details        │
+└─────────────────────────────────┴┴──────────────────────────────────┘
+```
+
+- **Topbar**: one ghost button per panel view the state offers (the body
+  under its phase's name — Plan, Tickets, Run, Review, Outcome — then
+  Preview, Design, Drive), the open one `secondary`; then "…", then the
+  details toggle. No tabs.
+- **Feature strip**: the next-step row (4 above) on a hairline, under the
+  topbar. It never hides, so Go and Merge are always one click away.
+- **The chat** fills the content panel below the strip, and stays the same
+  element whatever the panel does.
+- **One panel** on the right, one view at a time: the phase body (title,
+  meta and the body as a page column), the plan preview, the design, a
+  drive, or the details. Its 44px header holds a switcher over the views
+  the state offers, fold (to a 40px strip) and close. The divider drags
+  either side down to nothing; double-click toggles an even split and the
+  panel full; the size is remembered per browser. Under ~1100px of content
+  width the panel floats over the chat (`shadow-dialog`).
+- The panel opens from the topbar, from the agent (`panel.show`), and from
+  runcastle only as the result of the human's own click (Go opens the run,
+  Test drive the drive). Nothing else opens it.
+- A **draft** has no chat: its body is the page, the next step in its header.
 
 ## Colour
 
