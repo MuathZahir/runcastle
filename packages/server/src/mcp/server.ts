@@ -72,7 +72,7 @@ import {
   setDependencies,
   validateDependencies,
 } from '../services/dependencies'
-import { type DesignServerInfo, designServerStatus, startDesignServer } from '../services/design'
+import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
@@ -1009,6 +1009,7 @@ export function toolShowPanel(
         'no design server runs and none is recorded — call start_design_server with a command first',
       )
     }
+    if (input.path) rememberDesignPath(featureId, input.path)
   }
   const where = input.path ? ` at ${input.path}` : ''
   emit(ctx, featureId, {

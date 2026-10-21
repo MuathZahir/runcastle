@@ -74,6 +74,7 @@ describe('panelReducer', () => {
       origin: 'agent',
     })
     expect(run({ type: 'open', view: 'body', path: '/preview/x', origin: 'agent' }).path).toBeUndefined()
+    expect(run({ type: 'open', view: 'design', origin: 'human' }).path).toBeUndefined()
   })
 
   it('opens the run after Go and the drive after Test drive, as runcastle', () => {
@@ -81,14 +82,27 @@ describe('panelReducer', () => {
     expect(run({ type: 'follow', click: 'testDrive' })).toMatchObject({ view: 'drive', origin: 'runcastle' })
   })
 
-  it('switches views keeping the size, and drops the design path on the way out', () => {
-    const state = run(
+  it('switches views keeping the size, and keeps the design path for the way back', () => {
+    const away = run(
       { type: 'open', view: 'design', path: '/p', origin: 'agent' },
       { type: 'setWidth', share: 0.3 },
       { type: 'switch', view: 'details' },
     )
-    expect(state).toMatchObject({ view: 'details', share: 0.3, origin: 'human' })
-    expect(state.path).toBeUndefined()
+    expect(away).toMatchObject({ view: 'details', share: 0.3, origin: 'human' })
+    expect(panelReducer(away, { type: 'switch', view: 'design' })).toMatchObject({ view: 'design', path: '/p' })
+    expect(panelReducer(away, { type: 'open', view: 'design', origin: 'human' })).toMatchObject({
+      view: 'design',
+      path: '/p',
+    })
+  })
+
+  it('takes a new design path over the remembered one', () => {
+    const state = run(
+      { type: 'open', view: 'design', path: '/p', origin: 'agent' },
+      { type: 'switch', view: 'body' },
+      { type: 'open', view: 'design', path: '/q', origin: 'agent' },
+    )
+    expect(state.path).toBe('/q')
   })
 
   it('closes to the chat alone, keeping the size', () => {

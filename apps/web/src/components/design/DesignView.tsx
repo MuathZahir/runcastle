@@ -8,7 +8,7 @@ import { DrivePanel } from '../review/DrivePanel'
 
 export interface DesignViewProps {
   featureId: string
-  /** Where in the design server to point, as the agent's `show_panel` named it. */
+  /** Where in the design server to point, as `show_panel` or Open in design named it; else the server's `lastPath`. */
   path?: string
 }
 
@@ -41,7 +41,17 @@ export function DesignView({ featureId, path }: DesignViewProps) {
     onSettled: () => utils.design.status.invalidate({ featureId }),
   })
   const { mutate: beat } = trpc.design.heartbeat.useMutation()
+  const { mutate: rememberPath } = trpc.design.showPath.useMutation({
+    onSuccess: () => utils.design.status.invalidate({ featureId }),
+  })
   const { mutate: startMutate } = start
+  // An explicit path is told to the server, which remembers it per feature, so a
+  // bare reopen — the topbar, another feature and back, a reload — lands there.
+  const shownPath = path ?? status.data?.lastPath
+
+  useEffect(() => {
+    if (path) rememberPath({ featureId, path })
+  }, [path, featureId, rememberPath])
 
   const running = status.data?.running === true
   const hasRecordedCommand = status.data?.hasRecordedCommand === true
@@ -73,7 +83,12 @@ export function DesignView({ featureId, path }: DesignViewProps) {
   if (running && status.data?.url) {
     return (
       <div className="flex h-full min-h-0 flex-col p-3">
-        <DrivePanel featureId={featureId} sendTo="chat" url={designFrameUrl(status.data.url, path)} />
+        <DrivePanel
+          featureId={featureId}
+          sendTo="chat"
+          toolbarPlacement="bar"
+          url={designFrameUrl(status.data.url, shownPath)}
+        />
       </div>
     )
   }

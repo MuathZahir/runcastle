@@ -99,6 +99,40 @@ async function captureAndSave(
   })
 }
 
+/** Whether `el` sits in an absolutely placed layer — floating over the frame — below `root`. */
+function floats(el: Element, root: Element): boolean {
+  for (let at = el.parentElement; at && at !== root; at = at.parentElement) {
+    if (at.classList.contains('absolute')) return true
+  }
+  return false
+}
+
+describe('DrivePanel toolbar placement', () => {
+  it('floats the toolbar over the app on a drive', () => {
+    const { container } = render(<DrivePanel featureId="feat_1" url="about:blank" />)
+    expect(floats(screen.getByRole('button', { name: 'Reload' }), container)).toBe(true)
+  })
+
+  it('puts the toolbar in a bar above the frame, over none of it, and selects over the frame alone', async () => {
+    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" />)
+    const frame = container.querySelector('iframe')!
+    for (const name of ['Select area', 'Reload']) {
+      const button = screen.getByRole('button', { name })
+      expect(floats(button, container), name).toBe(false)
+      expect(frame.parentElement!.contains(button), name).toBe(false)
+      // The bar comes first in the document: above the frame, not after it.
+      expect(button.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    expect(floats(screen.getByRole('link', { name: 'Open in a new tab' }), container)).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Select area' }))
+    })
+    const shade = await screen.findByLabelText('drag over the part of the app that needs fixing')
+    expect(shade.parentElement).toBe(frame.parentElement)
+  })
+})
+
 describe('DrivePanel capture target', () => {
   it('writes a project note and attaches the screenshot on a project drive', async () => {
     render(<DrivePanel projectId="proj_1" url="about:blank" />)

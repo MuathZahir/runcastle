@@ -12,11 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * boundary and are stubbed; what Select area sends is `drive-panel-target`'s.
  */
 
-type Status = { running: boolean; url?: string; port?: number; hasRecordedCommand: boolean }
+type Status = { running: boolean; url?: string; port?: number; hasRecordedCommand: boolean; lastPath?: string }
 let status: Status | undefined
 let start: { isPending: boolean; isError: boolean; error: { message: string } | null }
 const startMutate = vi.fn()
 const heartbeat = vi.fn()
+const showPath = vi.fn()
 
 vi.mock('../src/trpc', () => ({
   trpc: {
@@ -25,6 +26,7 @@ vi.mock('../src/trpc', () => ({
       status: { useQuery: () => ({ data: status }) },
       start: { useMutation: () => ({ mutate: startMutate, ...start }) },
       heartbeat: { useMutation: () => ({ mutate: heartbeat }) },
+      showPath: { useMutation: () => ({ mutate: showPath }) },
     },
     notes: { add: { useMutation: () => ({ mutateAsync: vi.fn() }) } },
   },
@@ -75,6 +77,36 @@ describe('DesignView', () => {
       'http://localhost:30001/preview/invites',
     )
     expect(startMutate).not.toHaveBeenCalled()
+  })
+
+  it('puts its toolbar in a bar above the preview, not over it', () => {
+    status = RUNNING
+    render(<DesignView featureId="f1" path="/preview/invites" />)
+
+    const frame = document.querySelector('iframe')!
+    const reload = screen.getByRole('button', { name: 'Reload' })
+    expect(frame.parentElement!.contains(reload)).toBe(false)
+    expect(reload.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('tells the server the path it opened, so a bare reopen lands there', () => {
+    status = RUNNING
+    render(<DesignView featureId="f1" path="/preview/invites" />)
+    expect(showPath).toHaveBeenCalledWith({ featureId: 'f1', path: '/preview/invites' })
+  })
+
+  it('reopened with no path, loads the last path the server remembers, else the root', () => {
+    status = { ...RUNNING, lastPath: '/preview/invites' }
+    const { rerender } = render(<DesignView featureId="f1" />)
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+    expect(showPath).not.toHaveBeenCalled()
+
+    rerender(<DesignView featureId="f1" path="/preview/empty" />)
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/preview/empty')
+
+    status = RUNNING
+    rerender(<DesignView featureId="f1" />)
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:30001/')
   })
 
   it('starts the server from the recorded command when none runs, saying so', () => {

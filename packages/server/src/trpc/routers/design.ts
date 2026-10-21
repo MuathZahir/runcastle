@@ -2,6 +2,7 @@ import * as z from 'zod'
 import {
   designServerStatus,
   heartbeatDesignServer,
+  rememberDesignPath,
   startDesignServer,
   stopDesignServer,
 } from '../../services/design'
@@ -11,8 +12,8 @@ import { publicProcedure, router } from '../context'
 /**
  * The web's side of a feature's design server (design-mode decision 3). The
  * agent starts it with a command over MCP; the web only ever starts it from the
- * recorded one (Open in design), keeps it alive while the design view is on
- * screen, and stops it; its Select area sends a crop to the chat. Thin over
+ * recorded one (Open in design), remembers the path it opened, keeps it alive
+ * while the design view is on screen, and stops it; its Select area sends a crop to the chat. Thin over
  * `services/design.ts` and `services/design-crop.ts`, which own the events.
  */
 export const designRouter = router({
@@ -23,6 +24,14 @@ export const designRouter = router({
   start: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => startDesignServer(ctx, input.featureId)),
+
+  /** The design view opened at an explicit path (Open in design): `status.lastPath` hands it back on a bare reopen. */
+  showPath: publicProcedure
+    .input(z.object({ featureId: z.string(), path: z.string().min(1) }))
+    .mutation(({ input }) => {
+      rememberDesignPath(input.featureId, input.path)
+      return { ok: true as const }
+    }),
 
   heartbeat: publicProcedure
     .input(z.object({ featureId: z.string() }))

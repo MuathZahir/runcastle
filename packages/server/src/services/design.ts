@@ -44,6 +44,8 @@ export interface DesignServerStatus {
   url?: string
   port?: number
   hasRecordedCommand: boolean
+  /** The last path the design view was opened at, so a bare reopen lands there rather than on `/`. */
+  lastPath?: string
 }
 
 /** The env var the agent's command reads its port from. */
@@ -86,6 +88,8 @@ interface DesignServer {
 }
 
 const servers = new Map<string, DesignServer>()
+/** Per feature, the design view's last path. Apart from `servers`: it outlives a stop and a restart. */
+const lastPaths = new Map<string, string>()
 let sweepTimer: ReturnType<typeof setInterval> | undefined
 
 let now: () => number = Date.now
@@ -332,15 +336,27 @@ export function heartbeatDesignServer(featureId: string): boolean {
   return true
 }
 
-/** Whether the feature's design server is up, where, and whether a command is recorded. */
+/**
+ * Remember the path the design view was just opened at — by the agent's
+ * `show_panel` or the human's Open in design — so reopening it from the topbar,
+ * after another view, feature or a reload, lands there. Like the heartbeat, not
+ * a timeline event: the view that opened it already shows it.
+ */
+export function rememberDesignPath(featureId: string, path: string): void {
+  lastPaths.set(featureId, path)
+}
+
+/** Whether the feature's design server is up, where, whether a command is recorded, and its last path. */
 export function designServerStatus(ctx: AppCtx, featureId: string): DesignServerStatus {
   const feature = getFeatureRow(ctx, featureId)
   const project = projectForFeature(ctx, feature)
   const worktree = worktreeDir(project.id, feature.slug)
   const hasRecordedCommand = recordedCommand(worktree) !== undefined
+  const lastPath = lastPaths.get(featureId)
+  const remembered = lastPath !== undefined ? { lastPath } : {}
   const server = servers.get(featureId)
-  if (!server?.url || !devPaneLive(server.paneId)) return { running: false, hasRecordedCommand }
-  return { running: true, url: server.url, port: server.port, hasRecordedCommand }
+  if (!server?.url || !devPaneLive(server.paneId)) return { running: false, hasRecordedCommand, ...remembered }
+  return { running: true, url: server.url, port: server.port, hasRecordedCommand, ...remembered }
 }
 
 /**

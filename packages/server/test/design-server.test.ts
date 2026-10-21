@@ -352,6 +352,21 @@ describe('design MCP tools', () => {
     expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html' }])
   })
 
+  it('show_panel remembers the design path it opened, for design.status to hand back', async () => {
+    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
+    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
+    expect(designServerStatus(ctx, feature.id).lastPath).toBeUndefined()
+
+    await call('show_panel', { view: 'design', path: '/preview/cart.html' })
+    await call('show_panel', { view: 'body' })
+
+    expect(designServerStatus(ctx, feature.id)).toEqual({
+      running: false,
+      hasRecordedCommand: true,
+      lastPath: '/preview/cart.html',
+    })
+  })
+
   it.skipIf(!AVAILABLE)('start_design_server returns the running server’s URL and port', async () => {
     const out = await call('start_design_server', { command: FAKE_DEV })
     expect(out.isError).toBe(false)
@@ -364,6 +379,20 @@ describe('design MCP tools', () => {
     const out = await call('start_design_server', {})
     expect(out.isError).toBe(true)
     expect(out.text).toMatch(/no design command/)
+  })
+})
+
+describe('the design path the web opens', () => {
+  it('is remembered per feature and returned by design.status', async () => {
+    const design = createCallerFactory(appRouter)(ctx).design
+    const other = seedFeature(ctx, project.id, { slug: 'other', phase: 'planning' })
+
+    expect(await design.showPath({ featureId: feature.id, path: '/preview/invites.html' })).toEqual({ ok: true })
+
+    expect((await design.status({ featureId: feature.id })).lastPath).toBe('/preview/invites.html')
+    expect((await design.status({ featureId: other.id })).lastPath).toBeUndefined()
+    await design.showPath({ featureId: feature.id, path: '/preview/empty.html' })
+    expect((await design.status({ featureId: feature.id })).lastPath).toBe('/preview/empty.html')
   })
 })
 

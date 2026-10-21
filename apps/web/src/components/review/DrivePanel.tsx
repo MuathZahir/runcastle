@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Button, IconButton, StatusLabel, TextArea } from '../../ui'
+import { Button, IconButton, StatusLabel, TextArea, cx } from '../../ui'
 import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
 import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
@@ -108,6 +108,7 @@ export function DrivePanel({
   readonly = false,
   frameKey = '',
   toolbar,
+  toolbarPlacement = 'floating',
   ...target
 }: CaptureTarget & {
   url: string
@@ -118,8 +119,10 @@ export function DrivePanel({
    * the same entry URL twice still reloads the app (drive-scenarios decision 7).
    */
   frameKey?: string
-  /** More controls for the floating toolbar, after its own (the Scenario menu). */
+  /** More controls for the toolbar, after its own (the Scenario menu). */
   toolbar?: ReactNode
+  /** Over the app's top-left corner (a drive), or in a bar above it that covers none of it (the design view). */
+  toolbarPlacement?: 'floating' | 'bar'
 }) {
   const toast = useToast()
   const copy = CAPTURE_COPY[target.sendTo ?? 'note']
@@ -330,118 +333,133 @@ export function DrivePanel({
     }
   }
 
-  return (
-    <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
-      <iframe
-        key={`${frameKey}:${generation}`}
-        className="min-h-0 flex-1 border-0"
-        src={url}
-        title={copy.frameTitle}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-        onLoad={() => setLoaded(true)}
-      />
-
-      {/* The toolbar floats over the app rather than above it: the stage is
-          16:9 and every row of chrome is a row the app does not get. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3">
-        <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">
-          {canCapture ? (
-            <IconButton
-              label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
-              icon={<IconSelectArea />}
-              active={selecting}
-              disabled={arming}
-              tooltipSide="bottom"
-              onClick={() => void armSelection()}
-            />
-          ) : null}
+  const floating = toolbarPlacement === 'floating'
+  // Floating, each group is a raised chip over the app; in the bar they sit flat in it.
+  const group = floating
+    ? 'pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover'
+    : 'flex items-center gap-0.5'
+  const notice = floating
+    ? 'pointer-events-none rounded-md bg-surface-raised px-2 py-1 shadow-popover'
+    : 'px-1'
+  const controls = (
+    <>
+      <div className={group}>
+        {canCapture ? (
           <IconButton
-            label="Reload"
-            icon={<IconRefresh />}
+            label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
+            icon={<IconSelectArea />}
+            active={selecting}
+            disabled={arming}
             tooltipSide="bottom"
-            onClick={() => setGeneration((g) => g + 1)}
+            onClick={() => void armSelection()}
           />
-          <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+        ) : null}
+        <IconButton
+          label="Reload"
+          icon={<IconRefresh />}
+          tooltipSide="bottom"
+          onClick={() => setGeneration((g) => g + 1)}
+        />
+        <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+      </div>
+      {toolbar && <div className={group}>{toolbar}</div>}
+      {!canCapture && !readonly && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotCapture}</span>}
+      {agentDriving && (
+        <span className={notice}>
+          <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
+        </span>
+      )}
+      {!loaded && slow && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotEmbed}</span>}
+    </>
+  )
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
+      {/* The design view's toolbar sits in a bar above the preview: a small
+          component renders exactly where a floating one would cover it. */}
+      {!floating && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-raised p-1">
+          {controls}
         </div>
-        {toolbar && (
-          <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">
-            {toolbar}
+      )}
+      {/* The stage: the frame and every layer over it. The selection is
+          measured against this box, so a crop is of the frame alone. */}
+      <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col">
+        <iframe
+          key={`${frameKey}:${generation}`}
+          className="min-h-0 flex-1 border-0"
+          src={url}
+          title={copy.frameTitle}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          onLoad={() => setLoaded(true)}
+        />
+
+        {/* A drive's toolbar floats over the app rather than above it: the
+            stage is 16:9 and every row of chrome is a row the app does not get. */}
+        {floating && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3">
+            {controls}
           </div>
         )}
-        {!canCapture && !readonly && (
-          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
-            {copy.cannotCapture}
-          </span>
-        )}
-        {agentDriving && (
-          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 shadow-popover">
-            <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
-          </span>
-        )}
-        {!loaded && slow && (
-          <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
-            {copy.cannotEmbed}
-          </span>
-        )}
-      </div>
 
-      {selecting && (
-        <div
-          className="absolute inset-0 z-10 cursor-crosshair touch-none bg-scrim/20 animate-fade-in"
-          aria-label="drag over the part of the app that needs fixing"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        >
-          {marquee && (
-            <div
-              className="absolute rounded-sm border-2 border-accent bg-accent-subtle/40"
-              style={{
-                left: marquee.x,
-                top: marquee.y,
-                width: marquee.width,
-                height: marquee.height,
+        {selecting && (
+          <div
+            className="absolute inset-0 z-10 cursor-crosshair touch-none bg-scrim/20 animate-fade-in"
+            aria-label="drag over the part of the app that needs fixing"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
+            {marquee && (
+              <div
+                className="absolute rounded-sm border-2 border-accent bg-accent-subtle/40"
+                style={{
+                  left: marquee.x,
+                  top: marquee.y,
+                  width: marquee.width,
+                  height: marquee.height,
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {shot && (
+          <div className="absolute inset-x-3 bottom-3 z-20 flex items-end gap-3 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
+            <img
+              className="h-14 w-24 rounded-md bg-surface-inset object-contain"
+              src={shot.preview}
+              alt="the region you selected"
+            />
+            <TextArea
+              rows={2}
+              aria-label={copy.askLabel}
+              className="min-w-0 flex-1 resize-none"
+              placeholder={copy.ask}
+              value={text}
+              autoFocus
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.shiftKey) return
+                e.preventDefault()
+                void save()
               }}
             />
-          )}
-        </div>
-      )}
+            <Button variant="ghost" onClick={discard}>
+              Discard
+            </Button>
+            <Button variant="primary" loading={saving} onClick={() => void save()}>
+              {saving ? copy.sending : copy.send}
+            </Button>
+          </div>
+        )}
 
-      {shot && (
-        <div className="absolute inset-x-3 bottom-3 z-20 flex items-end gap-3 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
-          <img
-            className="h-14 w-24 rounded-md bg-surface-inset object-contain"
-            src={shot.preview}
-            alt="the region you selected"
-          />
-          <TextArea
-            rows={2}
-            aria-label={copy.askLabel}
-            className="min-w-0 flex-1 resize-none"
-            placeholder={copy.ask}
-            value={text}
-            autoFocus
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter' || e.shiftKey) return
-              e.preventDefault()
-              void save()
-            }}
-          />
-          <Button variant="ghost" onClick={discard}>
-            Discard
-          </Button>
-          <Button variant="primary" loading={saving} onClick={() => void save()}>
-            {saving ? copy.sending : copy.send}
-          </Button>
-        </div>
-      )}
-
-      {/* The tab's own pixels, never shown: the panel reads frames off it. In
-          the document rather than detached, because that is what the spike
-          proved; absent entirely where there is nothing to capture from. */}
-      {canCapture && <video ref={tapRef} muted playsInline className="hidden" />}
+        {/* The tab's own pixels, never shown: the panel reads frames off it. In
+            the document rather than detached, because that is what the spike
+            proved; absent entirely where there is nothing to capture from. */}
+        {canCapture && <video ref={tapRef} muted playsInline className="hidden" />}
+      </div>
     </div>
   )
 }

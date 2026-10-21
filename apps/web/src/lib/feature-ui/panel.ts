@@ -167,7 +167,7 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
     case 'follow':
       return withView(state, FOLLOWS[action.click], 'runcastle')
     case 'switch':
-      return withView(state, action.view, 'human', action.view === state.view ? state.path : undefined)
+      return withView(state, action.view, 'human')
     case 'close': {
       const { path: _path, origin: _origin, ...rest } = state
       return { ...rest, view: null, collapsed: false }
@@ -183,10 +183,14 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
   }
 }
 
+/**
+ * The design path outlives a switch to another view, so coming back to design
+ * — by the switcher or the topbar — lands where it was; only a new design
+ * path replaces it.
+ */
 function withView(state: PanelState, view: PanelView, origin: PanelOrigin, path?: string): PanelState {
-  const { path: _path, ...rest } = state
   return {
-    ...rest,
+    ...state,
     view,
     origin,
     collapsed: false,
