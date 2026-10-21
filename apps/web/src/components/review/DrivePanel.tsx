@@ -55,12 +55,50 @@ function nextStreamFrame(video: HTMLVideoElement): Promise<void> {
 }
 
 /**
- * Where a capture's note lands: a feature drive writes the feature's test note,
- * a project drive writes a project note (project-level-test-drive decision 1).
+ * Where a capture lands: a feature drive writes the feature's test note, a
+ * project drive writes a project note (project-level-test-drive decision 1),
+ * and the design view sends it into the feature's live chat as a request
+ * (design-mode decision 4) — never a note.
  */
 type CaptureTarget =
-  | { featureId: string; projectId?: undefined }
-  | { projectId: string; featureId?: undefined }
+  | { featureId: string; projectId?: undefined; sendTo?: 'note' | 'chat' }
+  | { projectId: string; featureId?: undefined; sendTo?: undefined }
+
+/** The words that differ between a drive, whose capture is a note, and the design view, whose capture is a message. */
+const CAPTURE_COPY = {
+  note: {
+    frameTitle: 'the app on this branch',
+    open: 'Open app',
+    cannotCapture: 'This browser can’t capture its own tab — paste a screenshot into a note instead',
+    cannotEmbed: 'Can’t embed? Open the app and paste a screenshot into a note.',
+    askLabel: 'what’s wrong here?',
+    ask: 'What’s wrong here? Optional — the picture is the note.',
+    send: 'Save note',
+    sending: 'Saving…',
+    failed: 'the note could not be saved',
+  },
+  chat: {
+    frameTitle: 'the design preview',
+    open: 'Open in a new tab',
+    cannotCapture: 'This browser can’t capture its own tab — tell the chat instead',
+    cannotEmbed: 'Can’t embed? Open it in a new tab.',
+    askLabel: 'what should change?',
+    ask: 'What should change? Optional — the picture shows where.',
+    send: 'Send to chat',
+    sending: 'Sending…',
+    failed: 'the selection could not be sent',
+  },
+} as const
+
+/** The PNG as base64, the shape `design.sendCrop` takes it in. */
+async function pngBase64(png: Blob): Promise<string> {
+  const bytes = new Uint8Array(await png.arrayBuffer())
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
 
 export function DrivePanel({
   url,
@@ -84,6 +122,7 @@ export function DrivePanel({
   toolbar?: ReactNode
 }) {
   const toast = useToast()
+  const copy = CAPTURE_COPY[target.sendTo ?? 'note']
   const utils = trpc.useUtils()
   const add = trpc.notes.add.useMutation()
 
@@ -254,6 +293,16 @@ export function DrivePanel({
     // overlay takes, decision 24c).
     const noteText = text.trim() || 'Screenshot from the test drive'
     try {
+      if (target.sendTo === 'chat') {
+        // A request to the agent: the picture alone is a whole message.
+        await utils.client.design.sendCrop.mutate({
+          featureId: target.featureId,
+          png: await pngBase64(shot.png),
+          text: text.trim(),
+        })
+        discard()
+        return
+      }
       let saved: { uploadError?: string }
       if (target.projectId !== undefined) {
         const projectId = target.projectId
@@ -275,7 +324,7 @@ export function DrivePanel({
       }
       discard()
     } catch (e) {
-      toast.push(e instanceof Error ? e.message : 'the note could not be saved')
+      toast.push(e instanceof Error ? e.message : copy.failed)
     } finally {
       setSaving(false)
     }
@@ -287,7 +336,7 @@ export function DrivePanel({
         key={`${frameKey}:${generation}`}
         className="min-h-0 flex-1 border-0"
         src={url}
-        title="the app on this branch"
+        title={copy.frameTitle}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         onLoad={() => setLoaded(true)}
       />
@@ -312,7 +361,7 @@ export function DrivePanel({
             tooltipSide="bottom"
             onClick={() => setGeneration((g) => g + 1)}
           />
-          <IconButton label="Open app" href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+          <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
         </div>
         {toolbar && (
           <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover">
@@ -321,7 +370,7 @@ export function DrivePanel({
         )}
         {!canCapture && !readonly && (
           <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
-            This browser can’t capture its own tab — paste a screenshot into a note instead
+            {copy.cannotCapture}
           </span>
         )}
         {agentDriving && (
@@ -331,7 +380,7 @@ export function DrivePanel({
         )}
         {!loaded && slow && (
           <span className="pointer-events-none rounded-md bg-surface-raised px-2 py-1 text-xs text-text-tertiary shadow-popover">
-            Can’t embed? Open the app and paste a screenshot into a note.
+            {copy.cannotEmbed}
           </span>
         )}
       </div>
@@ -368,9 +417,9 @@ export function DrivePanel({
           />
           <TextArea
             rows={2}
-            aria-label="what’s wrong here?"
+            aria-label={copy.askLabel}
             className="min-w-0 flex-1 resize-none"
-            placeholder="What’s wrong here? Optional — the picture is the note."
+            placeholder={copy.ask}
             value={text}
             autoFocus
             onChange={(e) => setText(e.target.value)}
@@ -384,7 +433,7 @@ export function DrivePanel({
             Discard
           </Button>
           <Button variant="primary" loading={saving} onClick={() => void save()}>
-            {saving ? 'Saving…' : 'Save note'}
+            {saving ? copy.sending : copy.send}
           </Button>
         </div>
       )}
