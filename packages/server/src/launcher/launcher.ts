@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { stripVTControlCharacters } from 'node:util'
 import type {
   AgentRuntime,
   Feature,
@@ -31,7 +30,9 @@ import {
 } from './runtimes/skills'
 import { runs } from '../db/schema'
 import { GateError, isNotImplemented } from '../errors'
+import { exitTail } from '../pty/exit-tail'
 import { ptyRegistry } from '../pty/registry'
+import { stopDesignServerForSession } from '../services/design'
 import { currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { type EmitScope, emit, emitForSession, emitProject, emitScoped } from '../services/events'
@@ -1499,23 +1500,6 @@ export interface SpawnMeta {
   findBackgroundSession?: (agentSessionId: string) => Promise<BackgroundSession | undefined>
 }
 
-/** How much of a failed process's output `session.pty_exited` carries. */
-const EXIT_TAIL_LINES = 20
-const EXIT_TAIL_CHARS = 2000
-
-/**
- * The last lines a process printed, as text: control sequences stripped, blank
- * lines dropped, at most {@link EXIT_TAIL_LINES} lines and
- * {@link EXIT_TAIL_CHARS} characters — the newest kept when it is cut.
- */
-export function exitTail(output: Buffer): string {
-  const lines = stripVTControlCharacters(output.toString('utf8'))
-    .split(/\r?\n|\r/)
-    .map((line) => line.trimEnd())
-    .filter((line) => line.trim() !== '')
-  return lines.slice(-EXIT_TAIL_LINES).join('\n').slice(-EXIT_TAIL_CHARS)
-}
-
 /**
  * PTY exit finalizer (exported for the vitest seam). Marks the session ended
  * and emits `session.pty_exited` — carrying the output's {@link exitTail} when
@@ -1540,6 +1524,7 @@ export function handlePtyExit(
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)
+  stopDesignServerForSession(ctx, session)
   if (session.runtime === 'codex' && feature) {
     void noteResolvedMerge(ctx, session, feature).catch(() => {})
   }

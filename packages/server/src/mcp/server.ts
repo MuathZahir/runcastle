@@ -72,6 +72,7 @@ import {
   setDependencies,
   validateDependencies,
 } from '../services/dependencies'
+import { type DesignServerInfo, designServerStatus, startDesignServer } from '../services/design'
 import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
@@ -969,6 +970,53 @@ export function toolWaitForYou(
   const featureId = requireLeadFeatureId(session)
   setWaiting(ctx, featureId, input.why)
   return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason }
+}
+
+/** The feature a DESIGN tool acts on: design mode belongs to the feature's own chat. */
+function requireChatFeatureId(session: SessionRow): string {
+  const featureId = requireFeatureId(session)
+  if (session.kind !== 'chat') {
+    throw new GateError(`design mode belongs to the feature's chat — a ${session.kind} session cannot use it`)
+  }
+  return featureId
+}
+
+export function toolStartDesignServer(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { command?: string },
+): Promise<DesignServerInfo> {
+  return startDesignServer(ctx, requireChatFeatureId(session), input.command)
+}
+
+/** The views the human's panel can show (design-mode decision 5). */
+const PanelView = z.enum(['body', 'preview', 'design', 'drive', 'details'])
+
+/**
+ * Open the human's panel on a view. `design` needs something to show: a server
+ * running, or a recorded command the panel can start one from.
+ */
+export function toolShowPanel(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { view: z.infer<typeof PanelView>; path?: string },
+): { ok: true } {
+  const featureId = requireChatFeatureId(session)
+  if (input.view === 'design') {
+    const status = designServerStatus(ctx, featureId)
+    if (!status.running && !status.hasRecordedCommand) {
+      throw new GateError(
+        'no design server runs and none is recorded — call start_design_server with a command first',
+      )
+    }
+  }
+  const where = input.path ? ` at ${input.path}` : ''
+  emit(ctx, featureId, {
+    type: 'panel.show',
+    message: `opened the ${input.view} panel${where}`,
+    data: { view: input.view, ...(input.path ? { path: input.path } : {}) },
+  })
+  return { ok: true }
 }
 
 /**
@@ -2495,6 +2543,9 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   stop_round: ['chat'],
   declare_ready: ['chat'],
   wait_for_you: ['chat'],
+  // Design mode: the feature's chat, in every phase (`requireChatFeatureId`).
+  start_design_server: ['chat'],
+  show_panel: ['chat'],
   // Project-scoped: `requireProject`.
   record_finding: PROJECT_KINDS,
   get_project_context: PROJECT_KINDS,
@@ -3628,6 +3679,68 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         const rs = await resolveCtxSession(extra)
         if (!rs) return noSession()
         return ok(toolWaitForYou(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('start_design_server')) {
+    server.registerTool(
+      'start_design_server',
+      {
+        title: 'Start the design server',
+        description:
+          'Run the project’s own frontend dev server in your worktree so the human can see a ' +
+          'preview page live. Runcastle picks a free port and passes it as the env var ' +
+          'RUNCASTLE_DESIGN_PORT: put it in your command, pinned (for Vite: `bunx vite --port ' +
+          '$RUNCASTLE_DESIGN_PORT --strictPort`). It returns { url, port, command } once the ' +
+          'server prints its localhost URL, or fails with the output tail after a minute without ' +
+          'one. The command is recorded in `.runcastle/design.json` — commit that file with your ' +
+          'design — so later calls may omit it. One server per feature: calling again returns ' +
+          'the running one; a different command restarts it. It stops when this session ends, ' +
+          'when the feature ships, or after 30 minutes with the design view closed.',
+        inputSchema: {
+          command: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              'The shell command that serves the preview pages on $RUNCASTLE_DESIGN_PORT. Omit it ' +
+                'to run the command recorded in `.runcastle/design.json`.',
+            ),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(await toolStartDesignServer(rs.ctx, rs.session, args))
+      },
+    )
+  }
+
+  if (wants('show_panel')) {
+    server.registerTool(
+      'show_panel',
+      {
+        title: 'Show the human a panel',
+        description:
+          'Open the panel beside the chat on the human’s screen, while you are talking about what ' +
+          'it shows: `design` (the live design server at `path`, e.g. `/preview/checkout-empty.html`), ' +
+          '`preview` (the plan preview), `body` (the phase’s tickets, runs or review), `drive` ' +
+          '(the test drive) or `details` (docs and timeline). `design` refuses until ' +
+          'start_design_server has run or a command is recorded.',
+        inputSchema: {
+          view: PanelView.describe('Which view the panel shows.'),
+          path: z
+            .string()
+            .min(1)
+            .optional()
+            .describe('For `design`: the path on the design server to open, e.g. `/preview/cart.html`.'),
+        },
+      },
+      async (args, extra) => {
+        const rs = await resolveCtxSession(extra)
+        if (!rs) return noSession()
+        return ok(toolShowPanel(rs.ctx, rs.session, args))
       },
     )
   }

@@ -86,32 +86,35 @@ export interface StartDevPaneInput {
   onUrl: (url: string) => void
 }
 
-/**
- * Spawn the dev command in a drive-owned PTY and start sniffing its output for a
- * localhost URL. Best-effort: a spawn failure emits `testdrive.dev_failed` and
- * returns `undefined` (the test drive itself still succeeds). Returns the pane
- * id so the caller can stream/stop it.
- */
-export function startDevPane(input: StartDevPaneInput): string | undefined {
-  const { ctx, scope, repoPath, devCommand, env, onUrl } = input
-  const paneId = drivePaneId('featureId' in scope ? scope.featureId : scope.projectId)
-  const { file, args } = devSpawnTarget(devCommand)
+export interface SpawnDevPaneInput {
+  /** The registry id the pane lives under — never a session id. */
+  paneId: string
+  cwd: string
+  command: string
+  env?: NodeJS.ProcessEnv
+  /** Called once, with the first sniffed localhost URL. */
+  onUrl: (url: string) => void
+  /** Called once when the process exits, for whatever reason. */
+  onExit?: () => void
+}
 
-  try {
-    ptyRegistry().create({
-      sessionId: paneId,
-      cmd: file,
-      args,
-      opts: { cwd: repoPath, env: env ?? process.env, cols: 80, rows: 24, useConpty: true },
-    })
-  } catch (err) {
-    emitScoped(ctx, scope, {
-      type: 'testdrive.dev_failed',
-      message: `dev server failed to start: ${err instanceof Error ? err.message : String(err)}`,
-      data: { paneId },
-    })
-    return undefined
-  }
+/**
+ * Spawn a dev command in a server-owned PTY under `paneId` and sniff its output
+ * for a localhost URL. Emits nothing and throws on a spawn failure: the owner —
+ * a drive ({@link startDevPane}) or a design server (`services/design.ts`) —
+ * decides what that means on its own timeline.
+ */
+export function spawnDevPane(input: SpawnDevPaneInput): void {
+  const { paneId, cwd, command, env, onUrl, onExit } = input
+  const { file, args } = devSpawnTarget(command)
+
+  ptyRegistry().create({
+    sessionId: paneId,
+    cmd: file,
+    args,
+    opts: { cwd, env: env ?? process.env, cols: 80, rows: 24, useConpty: true },
+    ...(onExit ? { onExit: () => onExit() } : {}),
+  })
 
   // The URL sniffer is just another sink on the registry entry, so it sees the
   // exact byte stream the xterm view will. It keeps a sliding window (a URL line
@@ -133,6 +136,28 @@ export function startDevPane(input: StartDevPaneInput): string | undefined {
     },
   }
   ptyRegistry().attach(paneId, sniffer)
+}
+
+/**
+ * Spawn the dev command in a drive-owned PTY and start sniffing its output for a
+ * localhost URL. Best-effort: a spawn failure emits `testdrive.dev_failed` and
+ * returns `undefined` (the test drive itself still succeeds). Returns the pane
+ * id so the caller can stream/stop it.
+ */
+export function startDevPane(input: StartDevPaneInput): string | undefined {
+  const { ctx, scope, repoPath, devCommand, env, onUrl } = input
+  const paneId = drivePaneId('featureId' in scope ? scope.featureId : scope.projectId)
+
+  try {
+    spawnDevPane({ paneId, cwd: repoPath, command: devCommand, env, onUrl })
+  } catch (err) {
+    emitScoped(ctx, scope, {
+      type: 'testdrive.dev_failed',
+      message: `dev server failed to start: ${err instanceof Error ? err.message : String(err)}`,
+      data: { paneId },
+    })
+    return undefined
+  }
 
   emitScoped(ctx, scope, {
     type: 'testdrive.dev_started',
