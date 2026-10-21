@@ -13,7 +13,8 @@ You are not a mode the human switches on. Open a design when you judge it is a d
 ## 1. First use in a project
 
 1. Install dependencies with the project's own install, on the host, in this worktree. Skip it if they are already installed.
-2. Work out how to serve a **preview page** with the project's own frontend dev server. It runs no backend, no Docker and no database. In a Vite app that is an extra entry. In Next.js it is a dev-only route kept out of production builds. Add no packages to the project for this, and no Storybook.
+2. Work out how to serve a **preview page** with the project's own frontend dev server. It runs no backend, no Docker and no database. In a Vite app that is an extra entry. In Next.js it is a dev-only route kept out of production builds. Add no packages to the project for this.
+   **Never use Storybook, even when the project already has it.** That includes a `.runcastle/storybook/` or `.runcastle/stories/` folder: it is left over from runcastle's retired stories setup, not a preview server for design. Do not run it, extend it or copy its config. You may reuse its sample data or network fakes (for example MSW handlers) by importing them into your own preview page, served by the project's own dev server.
 3. Check `.runcastle/design.json`. If it exists it holds the command that serves previews here; reuse it.
 
 ## 2. One preview page per state
