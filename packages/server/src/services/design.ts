@@ -196,6 +196,30 @@ export async function startDesignServer(
   return spawnDesignServer(ctx, featureId, worktree, resolved)
 }
 
+/**
+ * The command with `$RUNCASTLE_DESIGN_PORT`, `${RUNCASTLE_DESIGN_PORT}` and
+ * `%RUNCASTLE_DESIGN_PORT%` replaced by the port: `cmd.exe` expands none of the
+ * first two, so substituting here makes one recorded command work on every OS.
+ */
+export function substituteDesignPort(command: string, port: number): string {
+  return command.replace(
+    new RegExp(`\\$\\{${DESIGN_PORT_ENV}\\}|\\$${DESIGN_PORT_ENV}\\b|%${DESIGN_PORT_ENV}%`, 'g'),
+    String(port),
+  )
+}
+
+/** The sniffed URL, given the server's own port if it printed none. */
+export function withPort(url: string, port: number): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.port) return url
+    parsed.port = String(port)
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 async function spawnDesignServer(
   ctx: AppCtx,
   featureId: string,
@@ -241,12 +265,13 @@ async function spawnDesignServer(
     spawnDevPane({
       paneId,
       cwd: worktree,
-      command,
+      command: substituteDesignPort(command, port),
       env: { ...process.env, [DESIGN_PORT_ENV]: String(port) },
-      onUrl: (url) => {
+      onUrl: (sniffed) => {
         if (settled || servers.get(featureId) !== server) return
         settled = true
         clearTimeout(timer)
+        const url = withPort(sniffed, port)
         server.url = url
         emit(ctx, featureId, {
           type: 'design.server_started',

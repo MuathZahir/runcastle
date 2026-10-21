@@ -3692,7 +3692,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Run the project’s own frontend dev server in your worktree so the human can see a ' +
           'preview page live. Runcastle picks a free port and passes it as the env var ' +
           'RUNCASTLE_DESIGN_PORT: put it in your command, pinned (for Vite: `bunx vite --port ' +
-          '$RUNCASTLE_DESIGN_PORT --strictPort`). It returns { url, port, command } once the ' +
+          '$RUNCASTLE_DESIGN_PORT --strictPort`). Write the `$RUNCASTLE_DESIGN_PORT` form on every ' +
+          'OS, Windows included: runcastle substitutes the port before running, and records your ' +
+          'command as written. It returns { url, port, command } once the ' +
           'server prints its localhost URL, or fails with the output tail after a minute without ' +
           'one. The command is recorded in `.runcastle/design.json` — commit that file with your ' +
           'design — so later calls may omit it. One server per feature: calling again returns ' +

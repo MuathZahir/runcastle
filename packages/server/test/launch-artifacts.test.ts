@@ -205,6 +205,21 @@ describe('renderSettings', () => {
     }
   })
 
+  it('lets a feature chat read its design-crops directory, and nothing else outside the pack', () => {
+    const allow = renderSettings(
+      '/hooks/hook-client.ts',
+      'chat',
+      '/opt/pack',
+      undefined,
+      false,
+      '/data/design-crops/feat_1',
+    ).permissions.allow
+    expect(allow.filter((rule) => /^(Read|Edit)\(/.test(rule))).toEqual([
+      'Read(//opt/pack/**)',
+      'Read(//data/design-crops/feat_1/**)',
+    ])
+  })
+
   it('spells the pack read rule as an absolute path on every platform', () => {
     // `//` anchors at the filesystem root; a single `/` would anchor at the
     // settings file's own directory (code.claude.com/docs/en/permissions).

@@ -22,7 +22,9 @@ import {
   IDLE_MS,
   startDesignServer,
   stopDesignServer,
+  substituteDesignPort,
   sweepIdleDesignServers,
+  withPort,
 } from '../src/services/design'
 import { listAfter } from '../src/services/events'
 import { __resetTestDriveState, createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
@@ -113,7 +115,34 @@ async function waitFor(fn: () => boolean, ms = 5000): Promise<void> {
   }
 }
 
+describe('design port helpers', () => {
+  it('substitutes every spelling of the port variable', () => {
+    expect(substituteDesignPort('vite --port $RUNCASTLE_DESIGN_PORT --strictPort', 31000)).toBe(
+      'vite --port 31000 --strictPort',
+    )
+    expect(substituteDesignPort('vite --port ${RUNCASTLE_DESIGN_PORT}', 31000)).toBe('vite --port 31000')
+    expect(substituteDesignPort('vite --port %RUNCASTLE_DESIGN_PORT%', 31000)).toBe('vite --port 31000')
+    expect(substituteDesignPort('vite --port 5173', 31000)).toBe('vite --port 5173')
+  })
+
+  it('gives a port-less sniffed URL the server’s own port', () => {
+    expect(withPort('http://localhost', 33113)).toBe('http://localhost:33113/')
+    expect(withPort('http://localhost:5173/app', 33113)).toBe('http://localhost:5173/app')
+  })
+})
+
 describe.skipIf(!AVAILABLE)('design server', () => {
+  it('substitutes the port in the command it runs, and records the command as given', async () => {
+    const given =
+      `node -e "console.log('Local: http://localhost:'+$RUNCASTLE_DESIGN_PORT+'/'); setInterval(()=>{},1000)"`
+    const info = await startDesignServer(ctx, feature.id, given)
+    expect(info.url).toBe(`http://localhost:${info.port}/`)
+    expect(info.command).toBe(given)
+    expect(JSON.parse(readFileSync(join(worktree, '.runcastle', 'design.json'), 'utf8'))).toEqual({
+      command: given,
+    })
+  }, 15000)
+
   it('runs the command in the talk worktree on the injected port, returns the URL and records the command', async () => {
     const info = await startDesignServer(ctx, feature.id, FAKE_DEV)
 

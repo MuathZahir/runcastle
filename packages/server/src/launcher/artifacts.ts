@@ -13,7 +13,7 @@ import type {
   SessionRow,
 } from '@runcastle/core'
 import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
-import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import { designCropsDir, featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
@@ -1466,6 +1466,7 @@ export function renderSettings(
   skillPackDir?: string,
   purpose?: SessionPurpose,
   headless = false,
+  cropsDir?: string,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
@@ -1490,6 +1491,9 @@ export function renderSettings(
         ...RUNCASTLE_MCP_ALLOW_RULES,
         ...sessionBashAllowRules(kind, purpose),
         ...(skillPackDir ? [skillPackReadRule(skillPackDir)] : []),
+        // Select-area crops live under the data dir, outside the worktree; the
+        // chat reads the path typed into it without a prompt.
+        ...(cropsDir ? [skillPackReadRule(cropsDir)] : []),
       ],
       deny: entrySkillDenyRules(kind),
     },
@@ -1639,7 +1643,14 @@ export async function writeSessionArtifacts(
   writeFileSync(
     settingsPath,
     JSON.stringify(
-      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose, session.headless),
+      renderSettings(
+        hookClientPath(),
+        session.kind,
+        pluginDir,
+        session.purpose,
+        session.headless,
+        session.kind === 'chat' && session.featureId ? designCropsDir(session.featureId) : undefined,
+      ),
       null,
       2,
     ),

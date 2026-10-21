@@ -42,7 +42,13 @@ export function isDrivePaneId(id: string): boolean {
  * wrappers around the address. Network/LAN URLs are intentionally ignored — the
  * link opens the app on THIS machine.
  */
-export function sniffDevUrl(text: string): string | undefined {
+export function sniffDevUrl(rawText: string): string | undefined {
+  // Strip OSC (incl. OSC-8 hyperlink wrappers) and CSI sequences first: Vite
+  // prints `http://localhost:\x1b[1m5173\x1b[22m/`, and the escape in the middle
+  // would otherwise cut the match at `http://localhost`, port lost.
+  const text = rawText
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
   // \x1b excluded from the path segment too: an ANSI colour reset or an OSC-8
   // terminator butts directly against the URL with no whitespace between them,
   // and would otherwise be swallowed into the captured string.
