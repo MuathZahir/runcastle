@@ -285,8 +285,10 @@ function activeRunFor(ctx: AppCtx, featureId: string): Run | null {
 function assertSpawnable(ctx: AppCtx, feature: Feature, excludeSessionId?: string): void {
   // A scenario session is docked to the drive, not to the feature's checkout
   // slot, so it neither blocks nor is blocked by the feature's own terminal.
+  // Nor does a side session: it talks beside the main chat, whatever that is
+  // doing (several-sessions-per-feature decision 7).
   const live = activeSessionsForFeature(ctx, feature.id).filter(
-    (s) => s.id !== excludeSessionId && s.kind !== 'scenario',
+    (s) => s.id !== excludeSessionId && s.kind !== 'scenario' && s.kind !== 'side',
   )
   if (live.length > 0) {
     throw new GateError(
@@ -555,6 +557,11 @@ export async function launchSession(
         'not as a talk session — it writes and lands scenarios against that drive.',
     )
   }
+  // Nor a side session: it is never the feature's one terminal, and has its own
+  // launcher — see {@link launchSideSession}.
+  if (input.kind === 'side') {
+    throw new GateError('a side session is opened by New side session, beside the main chat.')
+  }
 
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
@@ -816,6 +823,143 @@ export async function launchSession(
       type: 'session.kickoff',
       message: `opening ${input.kind} session with its briefing`,
       data: { sessionId: session.id, kind: input.kind, line: kickoffLine, mechanism: 'argv' },
+    })
+  }
+  return { sessionId: session.id, resumed: !!resumeSessionId }
+}
+
+export interface LaunchSideSessionInput {
+  featureId: string
+  /** A `side` row of this feature to reopen: its own conversation is resumed. Absent opens a new one. */
+  reopenSessionId?: string
+}
+
+/**
+ * A new side session's opening prompt: its role (`sideKickoffFor`) followed by
+ * the same feature-state header the chat kickoff carries. The one place a side
+ * session's first message is composed, so what it is told about the main chat
+ * grows here.
+ */
+export function sideKickoff(
+  ctx: AppCtx,
+  feature: Feature,
+  runtime: AgentRuntime = DEFAULT_RUNTIME,
+): string {
+  return chatKickoffHeader(ctx, feature, runtime, kickoffLineFor('side', undefined, runtime))
+}
+
+/**
+ * Open a side session (backs `feature.openSideSession`; several-sessions-per-
+ * feature): an extra conversation on the feature beside its main chat.
+ *
+ * Built from {@link launchSession}'s chat path — same talk worktree (also during
+ * a burn or a drive), same model step, same permission rule — minus everything
+ * that makes the chat THE chat. It never resumes the main chat's conversation
+ * and never forks it: a new side session starts fresh with {@link sideKickoff};
+ * a reopen resumes the side session's own conversation. It skips the
+ * one-terminal guard and the headless-running refusal, so it opens whatever the
+ * main chat is doing, and any number may be live at once (decision 7). The row
+ * records the main-chat row it was opened beside.
+ */
+export async function launchSideSession(
+  ctx: AppCtx,
+  input: LaunchSideSessionInput,
+  opts: LaunchSessionOptions = {},
+): Promise<LaunchSessionResult> {
+  const feature = getFeatureRow(ctx, input.featureId)
+  requireNotDraft(feature)
+
+  const reopen = input.reopenSessionId ? getSessionRow(ctx, input.reopenSessionId) : null
+  if (input.reopenSessionId && (reopen?.kind !== 'side' || reopen.featureId !== feature.id)) {
+    throw new GateError(`no side session ${input.reopenSessionId} on ${feature.slug} to reopen`)
+  }
+  // Already up: the answer is the terminal that is there.
+  if (reopen && reopen.status !== 'ended') return { sessionId: reopen.id }
+
+  const project = projectForFeature(ctx, feature)
+  // The main chat's model step: a side session is the same conversation's sibling.
+  const model = resolveModelEntry('chat', rosterConfig(ctx), project)
+  const runtime = runtimeAdapterFor(model.runtime)
+  assertRuntimeReady(runtime, opts)
+
+  const worktreePath = await ensureWorktree(ctx, project, feature)
+  const mainChat = listSessionsByFeature(ctx, feature.id).filter((s) => s.kind === 'chat').at(-1)
+  const session = createSessionRow(ctx, {
+    featureId: feature.id,
+    kind: 'side',
+    worktreePath,
+    model,
+    ...(mainChat ? { openedBeside: mainChat.id } : {}),
+  })
+
+  // A reopen picks its own conversation back up; one whose transcript is gone
+  // (or that never went live) starts fresh rather than exiting on a bad resume.
+  const gone = reopen?.ccSessionId ? resumeGoneReason(reopen, worktreePath) : undefined
+  const resumedFrom = reopen?.ccSessionId && !gone ? reopen : undefined
+  const resumeSessionId = resumedFrom?.ccSessionId
+  const kickoffLine = resumeSessionId
+    ? undefined
+    : tagRuncastlePrompt(sideKickoff(ctx, feature, runtime.id))
+
+  emit(ctx, feature.id, {
+    type: 'session.launching',
+    message: resumeSessionId ? 'reopening a side session' : 'launching a new side session',
+    data: { sessionId: session.id, kind: 'side', worktreePath, ...modelStamp(model) },
+  })
+  if (resumeSessionId) {
+    emit(ctx, feature.id, {
+      type: 'session.resumed',
+      message: 'resuming the side session\'s own conversation',
+      data: { sessionId: session.id, kind: 'side', resumeSessionId },
+    })
+  } else if (reopen) {
+    emit(ctx, feature.id, {
+      type: 'session.resume_unavailable',
+      message: `the side session's conversation can't be resumed${gone ? ` — ${gone}` : ''}; starting it fresh`,
+      data: { sessionId: session.id },
+    })
+  }
+  emit(ctx, feature.id, {
+    type: 'session.side_opened',
+    message: reopen ? 'side session reopened' : 'side session opened beside the main chat',
+    data: { sessionId: session.id, openedBeside: mainChat?.id ?? null, reopened: !!reopen },
+  })
+
+  const spec = await runtime.writeArtifacts({
+    session,
+    feature,
+    project,
+    config: ctx.config,
+    planning: planningFacts(ctx, feature),
+    worktreePath,
+    serverUrl: serverUrlFor(ctx.config),
+    model: model.id,
+    resumeSessionId,
+    resumeSourceSessionId: resumedFrom?.id,
+    kickoffLine,
+    // The main chat's rule (decision 5): past planning it works unprompted.
+    ...(runtime.id === 'claude-code' && isUnguardedLead('side', feature.phase)
+      ? { permissionMode: 'bypassPermissions' }
+      : {}),
+  })
+
+  if (opts.spawn === false) {
+    emit(ctx, feature.id, {
+      type: 'session.launched',
+      message: 'side session prepared (terminal spawn skipped)',
+      data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
+    })
+    return { sessionId: session.id, resumed: !!resumeSessionId }
+  }
+
+  const spawned = spawnEmbeddedPty(ctx, feature, session, worktreePath, runtime, spec, {
+    resumeSessionId,
+  })
+  if (spawned && kickoffLine) {
+    emit(ctx, feature.id, {
+      type: 'session.kickoff',
+      message: 'opening side session with its briefing',
+      data: { sessionId: session.id, kind: 'side', line: kickoffLine, mechanism: 'argv' },
     })
   }
   return { sessionId: session.id, resumed: !!resumeSessionId }

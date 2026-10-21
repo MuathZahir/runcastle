@@ -355,6 +355,13 @@ export const sessions = sqliteTable('sessions', {
   tokens: integer('tokens'),
   /** The per-kind split behind `tokens` (input, output, cache…), as JSON; null until counted. */
   tokenBreakdown: text('token_breakdown', { mode: 'json' }).$type<TokenBreakdown>(),
+  /**
+   * The main-chat (`kind = 'chat'`) row a `side` session was opened beside —
+   * the feature's newest chat row at open time. Null on every other kind, and on
+   * a side session opened before the feature had any chat. Additive + nullable,
+   * so the migration cannot fail.
+   */
+  openedBeside: text('opened_beside'),
 })
 
 export const tickets = sqliteTable('tickets', {

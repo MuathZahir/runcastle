@@ -5,6 +5,7 @@ import {
   launchDriveFixSession,
   launchScenarioSession,
   launchSession,
+  launchSideSession,
 } from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
 import { setDependencies } from '../../services/dependencies'
@@ -109,6 +110,17 @@ export const featureRouter = router({
   fixDrive: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
+
+  // New side session, or reopen an ended one by its row id
+  // (several-sessions-per-feature): a conversation beside the main chat, never
+  // refused for what the main chat is doing. Its own door rather than a `kind`
+  // on launchSession, whose chat path is the main chat's alone.
+  openSideSession: publicProcedure
+    .input(z.object({ featureId: z.string(), reopenSessionId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId } = await launchSideSession(ctx, input)
+      return { sessionId }
+    }),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

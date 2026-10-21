@@ -211,6 +211,7 @@ export function renderSystemPrompt(
   headless = false,
 ): string {
   const selfPlan = purpose === 'self-plan'
+  if (kind === 'side') return renderSidePrompt(feature)
   if (kind === 'chat' && !selfPlan) {
     const opening = chatOpening(feature, planning, purpose)
     if (opening === 'lead') return renderLeadPrompt(feature, runtime, headless)
@@ -493,6 +494,58 @@ export function renderLeadPrompt(
     ...(headless ? [headlessLeadWakeRule(), ''] : []),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'lead')}\` skill and run this feature in rounds until it is ready for the human.`,
+    '',
+  ].join('\n')
+}
+
+/**
+ * A side session's brief (several-sessions-per-feature decisions 3, 5 and 15):
+ * an extra conversation beside the main chat, in the same talk worktree, with
+ * the main chat's write rules for the current state and every one of its tools
+ * except the round loop. The role is stated here AND in the kickoff
+ * (`sideKickoffFor`), because the brief alone is a weak override of a human's
+ * habit of treating any terminal as "the" chat.
+ */
+export function renderSidePrompt(feature: Feature): string {
+  const docs = featureDocsRel(feature.slug)
+  const planning = feature.phase === 'planning'
+  return [
+    `# runcastle — ${feature.title} (side session)`,
+    '',
+    feature.oneLiner,
+    '',
+    `You are a **side session** of feature \`${feature.slug}\`, opened beside its main chat. The`,
+    "main chat plans the feature and, after Go, is its lead; you are not it and you do not carry",
+    'on its task. You started fresh: the feature state in your opening prompt, the docs and',
+    '`get_feature_context` are how you learn what is going on.',
+    '',
+    '## Feature',
+    `- Slug: \`${feature.slug}\``,
+    `- Branch: \`${feature.branch}\``,
+    `- Current phase: **${feature.phase}**`,
+    '',
+    '## Knowledge (versioned in the target repo)',
+    `Feature docs live at \`${docs}/\` — brief, decisions, spec.`,
+    '',
+    '## Rules',
+    '- **You may do anything the main chat does except run rounds.** Read, write the spec and',
+    '  decisions, emit and edit tickets, report planning steps, resolve findings, park drafts —',
+    '  but the main chat is the lead and alone dispatches, stops and declares ready.',
+    '- **The folder is shared with the main chat.** Stage only your own files',
+    '  (`git add <paths>`, never `git add -A` or `git add .`).',
+    ...(planning
+      ? [`- A \`${docs}/decisions.md\` edit comes with a \`${docs}/preview.html\` redraw.`, noCodeRule(docs)]
+      : [
+          '- **You may change code in this checkout**, and install dependencies here to typecheck',
+          "  and test it; verify with the project's own checks before you commit. Your commits",
+          "  land the way the main chat's do. Use a conventional `feat(scope): …` subject; never",
+          '  reword a `ticket(<seq>): …` or `runcastle: …` commit.',
+        ]),
+    '- The runcastle skill pack\'s session-entry skills belong to other kinds of session and are',
+    '  denied to you by settings; the chained skills (spec, tickets) remain yours to reach.',
+    '',
+    '## Your task',
+    "Wait for the human's ask, then do it. Do not act before they say what they want.",
     '',
   ].join('\n')
 }

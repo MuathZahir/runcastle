@@ -164,7 +164,7 @@ hooks.post('/:event', async (c) => {
       }
       case 'user-prompt':
         if (isLiveLeadSession(session)) handleLeadPrompt(ctx, feature, body.payload)
-        return c.json(handleUserPrompt(ctx, feature))
+        return c.json(handleUserPrompt(ctx, feature, session))
       case 'session-end':
         return c.json(await handleSessionEnd(ctx, session, feature, body.payload))
       case 'pre-tool':
@@ -390,14 +390,16 @@ function projectScopedStartContext(ctx: AppCtx, session: SessionRow): string {
 /**
  * `UserPromptSubmit` for a feature session: every turn is handed the feature's
  * current shape as context. The turn-state bit is flipped by the caller, for
- * every scope at once.
+ * every scope at once. A side session's label says so every turn
+ * (several-sessions-per-feature): it is not the main chat, whatever it reads.
  */
-function handleUserPrompt(ctx: AppCtx, feature: Feature): unknown {
+function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): unknown {
   const tickets = listByFeature(ctx, feature.id).length
+  const role = session.kind === 'side' ? ' role=side' : ''
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `[runcastle] feature=${feature.slug} phase=${feature.phase} tickets=${tickets}`,
+      additionalContext: `[runcastle] feature=${feature.slug} phase=${feature.phase} tickets=${tickets}${role}`,
     },
   }
 }
@@ -464,7 +466,7 @@ function emitConversationEnded(
 /**
  * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
  * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}) and, for
- * a feature's chat in every phase, the lead's line guard
+ * a feature's chat or side session in every phase, the lead's line guard
  * ({@link evaluateLeadGuard}). A deny is returned as the verified hook shape.
  * Registered only for the kinds that may not write code (see `renderSettings` /
  * {@link evaluateEditGuard}).
@@ -522,7 +524,7 @@ async function handlePreToolUse(
           ? worktreeDir(feature.projectId, feature.slug)
           : undefined,
     }) ??
-    (feature && session.kind === 'chat' ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
+    (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
   if (denial) return editDenyResponse(denial)
   return feature && isUnguardedLead(session.kind, feature.phase) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
     ? LEAD_ALLOW_RESPONSE

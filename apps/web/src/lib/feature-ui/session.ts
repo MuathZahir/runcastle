@@ -138,5 +138,7 @@ export function sessionKindName(
       return 'Project'
     case 'scenario':
       return 'Scenario'
+    case 'side':
+      return 'Side session'
   }
 }

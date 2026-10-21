@@ -1342,6 +1342,15 @@ export async function retryTicket(
  * worktree goes too when it is clean (a relaunch after unarchive re-adds it);
  * the branch is never touched.
  */
+/**
+ * End every session still up on the feature. Not just one: side sessions
+ * (several-sessions-per-feature) run beside the main chat, and each holds a
+ * terminal of its own.
+ */
+function endLiveSessions(ctx: AppCtx, featureId: string): void {
+  for (const session of activeSessionsForFeature(ctx, featureId)) endSession(ctx, session.id)
+}
+
 export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   // Archive is refused for drafts (decision 8): `unarchiveFeature` derives the
@@ -1353,8 +1362,7 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
   }
 
   // End any live session — an archived feature must not keep a terminal alive.
-  const live = listSessionsByFeature(ctx, featureId).find((s) => s.status === 'live')
-  if (live) endSession(ctx, live.id)
+  endLiveSessions(ctx, featureId)
 
   ctx.db.update(features).set({ status: 'archived' }).where(eq(features.id, featureId)).run()
   emit(ctx, featureId, {
@@ -1424,9 +1432,8 @@ export async function deleteFeature(
     if (run.status === 'running') await cancelRun(run.id)
   }
 
-  // (2) End a live session (the same PTY-killing teardown Archive uses).
-  const live = listSessionsByFeature(ctx, featureId).find((s) => s.status === 'live')
-  if (live) endSession(ctx, live.id)
+  // (2) End the live sessions (the same PTY-killing teardown Archive uses).
+  endLiveSessions(ctx, featureId)
 
   // (3) Stop a test drive of THIS feature — it holds the main checkout on the
   // feature branch, which would block the branch delete (a drive of another
