@@ -1,5 +1,5 @@
 import type { EventRow } from '@runcastle/core'
-import type { FeatureFull } from '../api'
+import type { FeatureFull, FeatureSessionEntry } from '../api'
 import { activeSession } from './gates'
 
 // --- the Chat tab -------------------------------------------------------------
@@ -54,11 +54,50 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
 }
 
 /**
- * The Chat tab strip's context line for whichever session is live
- * (decision 9): "Chat", "Drive fix".
+ * The Chat tab's name for whichever session holds the main chat's slot
+ * (decision 9), as the session switcher shows it: "Main chat", "Drive fix".
  */
 export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>): string {
-  return session.kind === 'chat' ? 'Chat' : sessionKindName(session)
+  return session.kind === 'chat' ? 'Main chat' : sessionKindName(session)
+}
+
+// --- the chat header's session switcher -------------------------------------
+
+/**
+ * The switcher's menu, grouped (several-sessions-per-feature decision 10): the
+ * main chat, then what is up beside it — live side sessions and a scenario chat
+ * docked beside a drive — then ended side sessions. `feature.sessions` already
+ * orders them; this only cuts the list where the menu draws its headings.
+ */
+export interface SwitcherGroups {
+  main?: FeatureSessionEntry
+  live: FeatureSessionEntry[]
+  ended: FeatureSessionEntry[]
+}
+
+export function switcherGroups(sessions: readonly FeatureSessionEntry[]): SwitcherGroups {
+  const others = sessions.filter((s) => s.kind !== 'chat')
+  return {
+    main: sessions.find((s) => s.kind === 'chat'),
+    live: others.filter((s) => s.status !== 'ended'),
+    ended: others.filter((s) => s.status === 'ended'),
+  }
+}
+
+/** A live side session finished its turn and waits on the human — its row's amber dot (decision 12). */
+export function sideWaiting(session: FeatureSessionEntry): boolean {
+  return session.kind === 'side' && session.status !== 'ended' && session.awaitingInput
+}
+
+/**
+ * The switcher button's own amber dot: a side session the human is NOT looking
+ * at waits on them. The one in view needs no dot to say so.
+ */
+export function sideWaitingElsewhere(
+  sessions: readonly FeatureSessionEntry[],
+  selectedId: string | null,
+): boolean {
+  return sessions.some((s) => s.id !== selectedId && sideWaiting(s))
 }
 
 // --- the shipped body's chat terminal ---------------------------------------

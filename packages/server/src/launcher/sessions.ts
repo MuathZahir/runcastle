@@ -548,6 +548,24 @@ export function projectSessions(
     .map(rowToSession)
 }
 
+/**
+ * The feature's sessions of the given kinds, newest first — the feature-side
+ * twin of {@link projectSessions}, behind the feature's session switcher.
+ */
+export function featureSessions(
+  ctx: AppCtx,
+  featureId: string,
+  kinds: SessionKind[],
+): SessionRow[] {
+  return ctx.db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.featureId, featureId), inArray(sessions.kind, kinds)))
+    .orderBy(desc(sql`rowid`))
+    .all()
+    .map(rowToSession)
+}
+
 /** Cache a conversation's derived name on its row (see `services/conversations.ts`). */
 export function setSessionTitle(ctx: AppCtx, id: string, title: string): void {
   ctx.db.update(sessions).set({ title }).where(eq(sessions.id, id)).run()

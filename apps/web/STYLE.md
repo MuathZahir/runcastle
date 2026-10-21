@@ -317,7 +317,8 @@ the phase-body dispatch and the action switch; these moved out:
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
 | `FeatureViewTabs.tsx` | Overview \| Chat, with the Chat tab's live dot; none on a draft. |
-| `FeatureChat.tsx` | The Chat tab: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
+| `FeatureChat.tsx` | The Chat tab: the session picked in its header through `ChatView` — the main chat by default (its live session, else its transcript with Resume / Start), or a side session's terminal or transcript with Reopen. |
+| `SessionSwitcher.tsx` | The Chat tab header's session switcher: main chat, side sessions, ended ones, the waiting dot, New side session. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 
 Every chat surface — the project's chat and each feature's Chat tab — renders

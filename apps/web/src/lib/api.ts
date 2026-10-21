@@ -26,6 +26,8 @@ export type DrivePrerequisite = RouterOutputs['project']['drivePrerequisites']['
 export type ProjectSession = RouterOutputs['project']['projectSession']
 /** One row of the project's conversation list (decision 5). */
 export type ProjectConversation = RouterOutputs['project']['conversations'][number]
+/** One row of a feature's session switcher (several-sessions-per-feature decision 10). */
+export type FeatureSessionEntry = RouterOutputs['feature']['sessions'][number]
 /** Whether what was sent to a feature's agent has reached one yet (decision 28). */
 export type LeadDelivery = RouterOutputs['notes']['delivery']
 
