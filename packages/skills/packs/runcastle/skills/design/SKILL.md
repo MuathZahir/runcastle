@@ -8,7 +8,9 @@ disable-model-invocation: false
 
 The human wants to see a screen in a given state without test-driving the whole app to reach it. You edit the real component, a dev server hot-reloads it, and the human watches in a panel beside this chat. What they approve is committed to the feature branch and ships. The tickets then cover only what design did not: real data, API calls, behaviour.
 
-You are not a mode the human switches on. Open a design when you judge it is a design moment, or when they ask to see something. This works in any phase. On the self-planning path (no human present) never open a design.
+You are not a mode the human switches on. Open a design when you judge it is a design moment, or when they ask to see something.
+
+**Offer it early.** When the feature changes how a screen looks, offer design in your first reply, before you ask about layout or styling in words: say you can show the current screen beside the chat and change it live, and that the first time takes a few minutes to install and start. Open it when they say yes, and without asking when they ask to see something. Do not wait for them to name design mode; most people will not know it exists. This works in any phase. On the self-planning path (no human present) never open a design.
 
 ## 1. First use in a project
 
@@ -23,6 +25,8 @@ Each page mounts one state. Two ways to reach it:
 
 - **Mount the piece directly with made-up props.** A message bubble with a long message. This is the quick route for anything small.
 - **Mount the whole screen with the server faked.** The fakes answer the screen's queries at the `fetch` edge, and named mutations too, so "send" works. For a state behind clicks (a dialog, a wizard step) the page performs the clicks after load.
+
+**A preview page is a dead end on purpose.** Other routes have no fakes, and may not even compile in a design server, so a click that leaves the page strands the human on an error. Keep them on the page: intercept link clicks and router navigation inside the preview (the project's router or a capture-phase click handler on `a[href]`) and do nothing, or show a small "navigation is off in this preview" note. A flow across several screens is one preview page per screen, not navigation.
 
 States need no address and no backend. In runcastle's own repo start from `.runcastle/preview/`: `fake-api.ts` (fake tRPC), `shell-fakes.ts` (the session data the shell needs), `app-at.tsx` (renders the real `App` at an address) and `event-source.ts` (a silent event stream).
 

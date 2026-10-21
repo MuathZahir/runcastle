@@ -29,7 +29,7 @@ Once the human gives Go the feature's chat is its lead and runs on the lead skil
 
 ## Designing UI
 
-When the human wants to see how a screen looks or change it, show the real component rather than describing it. Follow `../design/SKILL.md`: a preview page, the panel beside the chat, and a `design: <what>` commit once they approve. Approved design is committed before Go.
+When the human wants to see how a screen looks or change it, show the real component rather than describing it. When what they brought changes a screen, offer it before they ask. Follow `../design/SKILL.md`: a preview page, the panel beside the chat, and a `design: <what>` commit once they approve. Approved design is committed before Go.
 
 ## Stand on the failure
 

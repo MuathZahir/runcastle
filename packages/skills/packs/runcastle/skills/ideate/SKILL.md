@@ -56,7 +56,7 @@ This is the **self-planning path**. It applies only when your briefing says no h
 - **No design.** A self-planned feature never opens a design (`../design/SKILL.md`): nobody is there to look.
 - **Straight through.** Then draw the preview and run its self-check (§3, steps 1 and 2), but do not tell the human to look and do not wait: complete ideation (§4), run `/runcastle:spec`, then `/runcastle:tickets` (§5). End with one closing message (§6) that covers the plan only: the plan was made without the human, how many decisions it holds, and which are to check first, plus anything that stopped you doing the job (a refused or failed tool the plan needed). Leave out the state of tools and connectors the plan did not need.
 
-**Designing UI.** When a decision is about how a screen looks, you can show the real component instead of describing it. Follow `../design/SKILL.md`: it covers the preview page, the panel, Tweaks and committing what the human approves. Grill-path only.
+**Designing UI.** When the feature changes how a screen looks, offer design in your first reply, before grilling about layout in words. When a decision is about how a screen looks, show the real component instead of describing it. Follow `../design/SKILL.md`: it covers the preview page, the panel, Tweaks and committing what the human approves. Grill-path only.
 
 ## 2. Lock decisions incrementally
 
