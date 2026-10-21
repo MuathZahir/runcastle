@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DriveScenario } from '@runcastle/core'
+import type { FeatureFull } from '../src/lib/api'
 import { openMenu } from './floating'
 
 /**
@@ -49,7 +50,10 @@ vi.mock('../src/components/TerminalView', async () => {
   }
 })
 
-const { ChatView } = await import('../src/components/chat/ChatView')
+// The live session's notices read the event log; nothing here is about them.
+vi.mock('../src/components/chat/SessionNotices', () => ({ SessionNotices: () => null }))
+
+const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioChatContext, ScenarioChatView } = await import('../src/components/chat/ScenarioChat')
 const { SessionSwitcher } = await import('../src/components/chat/SessionSwitcher')
 const { useFeatureChatColumn } = await import('../src/components/chat/use-feature-chat-column')
@@ -63,18 +67,35 @@ const FAILED: DriveScenario = {
   failure: { reason: 'exit', exitCode: 1, outputTail: 'boom' },
 }
 
+type Session = FeatureFull['sessions'][number]
+const session = (id: string, kind: Session['kind']): Session =>
+  ({ id, kind, status: 'live', lap: 1, headless: false, awaitingInput: false, worktreePath: '/wt' }) as Session
+const FEATURE_LIVE = [session('sess_feat', 'chat')]
+
 /** The feature page's column beside its drive panel, as the page assembles them. */
-function Page({ driveSessionId, scenario }: { driveSessionId?: string; scenario?: DriveScenario }) {
-  const column = useFeatureChatColumn({ featureLive: { label: 'Feature chat' }, driveSessionId })
+function Page({
+  sessions = FEATURE_LIVE,
+  driveSessionId,
+  scenario,
+}: {
+  sessions?: Session[]
+  driveSessionId?: string
+  scenario?: DriveScenario
+}) {
+  const column = useFeatureChatColumn({ sessions, driveSessionId })
   const switcher = <SessionSwitcher entries={column.entries} current={column.inFront} onPick={column.pick} />
+  const full = { feature: { id: 'feat_1' }, sessions, tickets: [] } as unknown as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
       <div data-column="">
-        <ChatView
-          label="Feature chat"
-          session={{ id: 'sess_feat', status: 'live' }}
-          contextLine={switcher}
+        <FeatureChat
+          full={full}
+          events={[]}
+          switcher={switcher}
           hidden={column.inFront !== FEATURE_CHAT}
+          launching={false}
+          onLaunch={() => {}}
+          onView={() => {}}
         />
         <ScenarioChatView chat={column.scenario} switcher={switcher} hidden={column.inFront !== column.scenario.sessionId} />
       </div>
@@ -181,5 +202,41 @@ describe('the chat column’s session switcher', () => {
     expect(document.querySelector('[data-terminal="sess_scn"]')).toBeNull()
     expect(shown(terminal('sess_feat'))).toBe(true)
     expect(options()).toEqual(['Feature chat'])
+  })
+})
+
+/**
+ * design-mode ticket 12: the scenario session is a row of the feature's own
+ * sessions too. It used to be picked up as the feature's live session, so the
+ * switcher offered "Scenario" in the feature chat's place, and the Agent region
+ * mounted a second, 0×0 terminal on the errand's session.
+ */
+describe('the column with a live scenario session among the feature’s sessions', () => {
+  const terminals = (id: string): number => document.querySelectorAll(`[data-terminal="${id}"]`).length
+
+  it('lists Feature chat and the errand’s chat, not the errand twice', () => {
+    render(<Page sessions={[session('sess_live', 'scenario')]} driveSessionId="sess_live" />)
+    expect(options()).toEqual(['Feature chat', 'Scenario chat · New scenario'])
+  })
+
+  it('shows each session’s own terminal, one per session id', () => {
+    render(<Page sessions={[session('sess_live', 'scenario')]} driveSessionId="sess_live" />)
+    expect(terminals('sess_live')).toBe(1)
+    // The feature chat, with nothing of its own up, offers its own launch.
+    const agent = screen.getByRole('region', { name: 'Agent', hidden: true })
+    expect(agent.querySelector('[data-terminal]')).toBeNull()
+
+    fireEvent.click(switcher())
+    fireEvent.click(screen.getByRole('option', { name: 'Scenario chat · New scenario' }))
+    expect(shown(terminal('sess_live'))).toBe(true)
+    expect(terminals('sess_live')).toBe(1)
+  })
+
+  it('keeps the feature’s own live chat beside it, each in its own terminal', () => {
+    render(<Page sessions={[session('sess_live', 'scenario'), session('sess_feat', 'chat')]} driveSessionId="sess_live" />)
+    expect(options()).toEqual(['Feature chat', 'Scenario chat · New scenario'])
+    expect(terminals('sess_feat')).toBe(1)
+    expect(terminals('sess_live')).toBe(1)
+    expect(shown(terminal('sess_feat'))).toBe(true)
   })
 })

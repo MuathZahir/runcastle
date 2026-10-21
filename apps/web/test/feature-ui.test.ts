@@ -522,6 +522,14 @@ describe('sessionActive', () => {
     expect(activeSession(rows([{ id: 's1', status: 'ended', kind: 'chat' }]))).toBeUndefined()
     expect(activeSession(rows([]))).toBeUndefined()
   })
+
+  // design-mode ticket 12: the drive's scenario chat is docked to the drive, not
+  // the feature's own session, so it never reads as the agent working.
+  it('passes over a live scenario session for the feature’s own one', () => {
+    const chat = { id: 's2', status: 'live', kind: 'chat' }
+    expect(activeSession(rows([{ id: 's1', status: 'live', kind: 'scenario' }, chat]))).toEqual(chat)
+    expect(activeSession(rows([{ id: 's1', status: 'live', kind: 'scenario' }]))).toBeUndefined()
+  })
 })
 
 /**

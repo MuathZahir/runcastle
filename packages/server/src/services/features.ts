@@ -734,10 +734,11 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
  * The feature's open terminal for {@link FeatureListItem.liveSession}. One
  * live HITL session per feature is the launcher's guard, so the pick only
  * matters while a second terminal is coming up: the one that reached `live`
- * wins, because it is the one somebody is actually talking to.
+ * wins, because it is the one somebody is actually talking to. A scenario chat
+ * is docked to the drive, not the feature, so it is never the feature's session.
  */
 function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
-  const open = activeSessionsForFeature(ctx, featureId)
+  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'scenario')
   const session = open.find((s) => s.status === 'live') ?? open[0]
   // `activeSessionsForFeature` never returns an ended row; the check is what
   // narrows the status to the two this reports, without a cast.

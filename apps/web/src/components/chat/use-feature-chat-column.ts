@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import type { FeatureFull } from '../../lib/api'
 import { FEATURE_CHAT, featureChatEntries, shownSession, type ChatSessionEntry } from '../../lib/chat-sessions'
+import { activeSession, chatContextLine } from '../../lib/feature-ui'
 import { useScenarioChat, type ScenarioChatApi } from './ScenarioChat'
 
 export interface FeatureChatColumn {
@@ -18,18 +20,23 @@ export interface FeatureChatColumn {
  * the column back to the feature chat.
  */
 export function useFeatureChatColumn({
-  featureLive,
+  sessions,
   driveSessionId,
 }: {
-  /** The feature's own session, named, or null when nothing is up. */
-  featureLive: { label: string } | null
+  /** The feature's sessions; its own live one names the feature chat's entry. */
+  sessions: FeatureFull['sessions']
   /** The live drive's record of its scenario chat. */
   driveSessionId: string | undefined
 }): FeatureChatColumn {
   const [picked, setPicked] = useState<string>(FEATURE_CHAT)
   const scenario = useScenarioChat(driveSessionId, setPicked)
+  // Never the scenario chat itself: `activeSession` passes over it, so the
+  // errand's session has its own entry and the feature chat keeps its own.
+  const featureLive = activeSession(sessions)
   const entries = featureChatEntries({
-    featureLive,
+    featureLive: featureLive
+      ? { label: featureLive.kind === 'chat' ? 'Feature chat' : chatContextLine(featureLive) }
+      : null,
     scenario: scenario.listed && scenario.sessionId ? { sessionId: scenario.sessionId, errand: scenario.errand } : null,
   })
   return { scenario, entries, inFront: shownSession(entries, picked)?.id ?? FEATURE_CHAT, pick: setPicked }
