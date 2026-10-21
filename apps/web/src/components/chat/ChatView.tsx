@@ -54,7 +54,7 @@ export function ChatView({
   meta?: ReactNode
   /** The feature End session refreshes; absent on the project's chat. */
   featureId?: string
-  /** Extra refresh after End session (the project's own rows). */
+  /** Extra refresh after End session, or once the terminal says its session ended. */
   onEnded?: () => void
   /** Lines between the strip and the live terminal (not-ready, check-in). */
   notices?: ReactNode
@@ -103,7 +103,7 @@ export function ChatView({
         ) : session ? (
           <div className="min-h-0 flex-1" data-chat-terminal="">
             <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} />
+              <TerminalView sessionId={session.id} onEnded={onEnded} />
             </ErrorBoundary>
           </div>
         ) : (
