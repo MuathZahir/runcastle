@@ -192,7 +192,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
     git(worktree, 'commit', '-am', 'feature moves')
 
-    // In planning: past it the feature's chat is the lead, which no guard binds.
+    // In planning: a human chat's guards are lifted in every phase (design mode).
     const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
@@ -234,23 +234,17 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual({})
   })
 
-  it('denies again the moment the merge commit lands', async () => {
+  // A human chat is unguarded in every phase now, so the merge window no longer
+  // changes what the hook answers; the pure guard tests above keep the scoping.
+  it('keeps allowing the write once the merge commit lands', async () => {
     startConflictingMerge()
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { both: true }\n')
     git(worktree, 'commit', '-am', 'resolve the merge')
 
-    const json = await preTool(sessionId, join(worktree, 'vitest.config.ts'))
-    expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
+    expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual({})
   })
 
-  it('denies before the agent has started the merge', async () => {
-    const json = await preTool(sessionId, join(worktree, 'vitest.config.ts'))
-    expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
-  })
-
-  /** The merge exemption is the edit guard's alone: resolve sessions were the main installers. */
-  it('still denies a package install while the merge is unresolved', async () => {
+  it('allows a package install from a planning chat', async () => {
     startConflictingMerge()
     const app = new Hono()
     app.route('/api/hooks', hooksApp)
@@ -267,12 +261,11 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
       }),
     })
     const json: any = await res.json()
-    expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
-    expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/docs-only/)
+    expect(json).toEqual({})
   })
 
   /** A worktree git cannot read answers "no merge", never a thrown hook. */
-  it('falls back to the ordinary rules when the worktree cannot be probed', async () => {
+  it('answers rather than throws when the worktree cannot be probed', async () => {
     const feature = seedFeature(ctx, seedProject(ctx).id, { slug: 'gone' })
     const orphan = createSessionRow(ctx, {
       featureId: feature.id,
@@ -282,8 +275,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
       worktreePath: join(tmpdir(), 'runcastle-does-not-exist', 'gone'),
     }).id
 
-    const json = await preTool(orphan, '/wt/gone/src/theme.ts')
-    expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    expect(await preTool(orphan, '/wt/gone/src/theme.ts')).toEqual({})
     expect(await preTool(orphan, 'docs/features/gone/spec.md')).toEqual({})
   })
 })

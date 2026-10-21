@@ -19,6 +19,8 @@ import {
   renderMcpConfig,
   renderSessionPrompt,
   renderSettings,
+  designRule,
+  noCodeRule,
   renderSystemPrompt,
   skillPackReadRule,
   talkingToTheHumanSection,
@@ -463,7 +465,11 @@ describe('renderSystemPrompt', () => {
     expect(selfPlan).toContain('"Planning without a human"')
     expect(selfPlan).toContain('$ideate')
     // The section is the whole difference: an ordinary ideation chat is untouched.
-    expect(selfPlan.replace(/## No human is present[\s\S]*?\n\n/, '')).toBe(ideation)
+    // ...apart from the rule: no human to approve code, so the docs-only one holds.
+    const docs = 'docs/features/dark-mode'
+    expect(selfPlan.replace(/## No human is present[\s\S]*?\n\n/, '')).toBe(
+      ideation.replace(designRule(docs), noCodeRule(docs)),
+    )
     expect(ideation).not.toContain('No human is present')
   })
 
@@ -527,18 +533,26 @@ describe('renderSystemPrompt', () => {
     )
   })
 
-  it('states the no-code rule in the revisit and ideation prompts', () => {
+  it('gives a human planning chat the design rule in the revisit and ideation prompts', () => {
     for (const p of [
       renderSystemPrompt(feature(), 'chat', undefined, undefined, empty),
       renderSystemPrompt(feature(), 'chat', undefined, undefined, grilled),
     ]) {
-      expect(p).toMatch(/Talk sessions do not write code/)
-      // and it says where the line is, and where the change goes instead
+      expect(p).not.toMatch(/Talk sessions do not write code/)
+      expect(p).toContain('`runcastle:design`')
+      expect(p).toContain('`design: <what>`')
+      expect(p).toMatch(/Go waits until no design work is left uncommitted/)
+      // and it says where the change goes instead
       expect(p).toContain('docs/features/dark-mode/')
       expect(p).toMatch(/ticket/i)
-      // and it states the install guard's rule before the guard denies one
-      expect(p).toMatch(/Package installs are blocked in this worktree/)
+      expect(p).not.toMatch(/Package installs are blocked in this worktree/)
     }
+  })
+
+  it('keeps the no-code rule for a self-planning run', () => {
+    const p = renderSystemPrompt(feature(), 'chat', 'self-plan', undefined, empty)
+    expect(p).toMatch(/Talk sessions do not write code/)
+    expect(p).not.toContain('runcastle:design')
   })
 
   /**

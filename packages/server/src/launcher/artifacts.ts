@@ -130,6 +130,25 @@ export function noCodeRule(docs: string): string {
 }
 
 /**
+ * The rule that REPLACES {@link noCodeRule} for a human-attended planning chat
+ * (design mode, decisions 2 and 6). The chat may write UI so the human can see
+ * and approve it; everything else still rides a ticket. The edit and install
+ * guards lift for it (`isUnguardedChat`), so this is the only fence before Go.
+ */
+export function designRule(docs: string): string {
+  return (
+    '- **You may write UI for design.** Besides this feature\'s docs under ' +
+    `\`${docs}/\`, you may edit components, their preview pages and sample data, following the ` +
+    '`runcastle:design` skill. Data loading, API calls and behaviour are not design: they ride ' +
+    'tickets, burned by an implementation agent in its own sandbox.\n' +
+    '- **You may install dependencies** with the project\'s own install, when design needs them.\n' +
+    '- **Commit an approved design** to this branch as `design: <what>`. Work the human has not ' +
+    'approved stays uncommitted. Go waits until no design work is left uncommitted, so ask the ' +
+    'human to approve, then commit it or drop it.'
+  )
+}
+
+/**
  * The rule that REPLACES {@link noCodeRule} for the resolve-conflict session
  * (ADR-0007 §6). Its whole job is to merge the base branch in and resolve the
  * conflicts, which is code — and the blanket ban is why it could not: told to
@@ -245,7 +264,7 @@ export function renderSystemPrompt(
     'they are committed to the feature branch automatically at phase boundaries.',
     '',
     '## Rules',
-    noCodeRule(docs),
+    selfPlan ? noCodeRule(docs) : designRule(docs),
     otherEntrySkillsRule(),
     '',
     ...(selfPlan ? [selfPlanRule(), ''] : []),
@@ -380,7 +399,7 @@ export function renderRevisitPrompt(
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
     // The conflict-resolution revisit is briefed to resolve the merge, so the
     // blanket ban would contradict the very kickoff it was opened with (F18).
-    purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
+    purpose === 'resolve-conflict' ? conflictResolutionRule() : designRule(docs),
     otherEntrySkillsRule(),
     '',
     ...(headless ? [headlessRelayRule(), ''] : []),
