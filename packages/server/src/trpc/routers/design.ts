@@ -5,6 +5,7 @@ import {
   startDesignServer,
   stopDesignServer,
 } from '../../services/design'
+import { sendDesignCrop } from '../../services/design-crop'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -31,4 +32,11 @@ export const designRouter = router({
     .mutation(async ({ ctx, input }) => ({
       stopped: await stopDesignServer(ctx, input.featureId, 'stopped'),
     })),
+
+  /** Select area in the design view: the crop and the human's words, into the live chat. */
+  sendCrop: publicProcedure
+    .input(z.object({ featureId: z.string(), png: z.string().min(1), text: z.string() }))
+    .mutation(({ ctx, input }) =>
+      sendDesignCrop(ctx, input.featureId, Buffer.from(input.png, 'base64'), input.text),
+    ),
 })
