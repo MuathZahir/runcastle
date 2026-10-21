@@ -2,10 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Feature, Project } from '@runcastle/core'
+import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
+import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import mcpApp, { toolsForAudience } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { devSpawnTarget, drivePaneId, startDevPane, stopDevPane } from '../src/pty/dev-pane'
 import { endSession } from '../src/pty/end-session'
@@ -224,6 +227,93 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     expect(stoppedReasons()).toEqual(['failed'])
     expect(designServerStatus(ctx, feature.id).running).toBe(false)
   }, 15000)
+})
+
+describe('design MCP tools', () => {
+  let app: Hono
+  let sessionId: string
+
+  beforeEach(() => {
+    sessionId = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree }).id
+    markSessionLive(ctx, sessionId)
+    setRuntimeCtx(ctx)
+    app = new Hono()
+    app.route('/mcp', mcpApp)
+  })
+
+  afterEach(() => {
+    clearRuntimeCtx()
+  })
+
+  /** The tool's answer, unwrapped from the JSON-RPC envelope, with its error flag. */
+  async function call(name: string, args: Record<string, unknown>): Promise<{ isError: boolean; text: string }> {
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'X-Runcastle-Session': sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    })
+    expect(res.status).toBe(200)
+    const envelope = (await res.json()) as { result: { isError?: boolean; content: [{ text: string }] } }
+    return { isError: !!envelope.result.isError, text: envelope.result.content[0].text }
+  }
+
+  const panelShows = (): unknown[] =>
+    listAfter(ctx, feature.id, 0)
+      .filter((e) => e.type === 'panel.show')
+      .map((e) => e.data)
+
+  it('offers both tools to the feature chat only', () => {
+    for (const tool of ['start_design_server', 'show_panel']) {
+      expect(toolsForAudience('chat')).toContain(tool)
+      for (const other of ['drive-fix', 'project', 'prepare', 'scenario', 'run'] as const) {
+        expect(toolsForAudience(other), `${tool} for ${other}`).not.toContain(tool)
+      }
+    }
+  })
+
+  it('show_panel emits panel.show with the view and path', async () => {
+    const out = await call('show_panel', { view: 'body' })
+    expect(out.isError).toBe(false)
+    expect(JSON.parse(out.text)).toEqual({ ok: true })
+    expect(panelShows()).toEqual([{ view: 'body' }])
+  })
+
+  it('show_panel refuses an unknown view', async () => {
+    const out = await call('show_panel', { view: 'storybook' })
+    expect(out.isError).toBe(true)
+    expect(panelShows()).toEqual([])
+  })
+
+  it('show_panel refuses design with no server and no recorded command, and opens it once one is recorded', async () => {
+    const refused = await call('show_panel', { view: 'design', path: '/preview/cart.html' })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toMatch(/start_design_server/)
+    expect(panelShows()).toEqual([])
+
+    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
+    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
+    const opened = await call('show_panel', { view: 'design', path: '/preview/cart.html' })
+    expect(opened.isError).toBe(false)
+    expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html' }])
+  })
+
+  it.skipIf(!AVAILABLE)('start_design_server returns the running server’s URL and port', async () => {
+    const out = await call('start_design_server', { command: FAKE_DEV })
+    expect(out.isError).toBe(false)
+    const info = JSON.parse(out.text) as { url: string; port: number }
+    expect(info.url).toBe(`http://localhost:${info.port}/`)
+    expect(designServerStatus(ctx, feature.id)).toMatchObject({ running: true, url: info.url })
+  }, 15000)
+
+  it('start_design_server refuses with a clear message when nothing is recorded', async () => {
+    const out = await call('start_design_server', {})
+    expect(out.isError).toBe(true)
+    expect(out.text).toMatch(/no design command/)
+  })
 })
 
 describe.skipIf(!AVAILABLE)('design tRPC procedures', () => {
