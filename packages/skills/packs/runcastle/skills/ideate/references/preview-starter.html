@@ -89,6 +89,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* the framed panel a mocked screen sits in; inside it, use the project's own styling */
 .screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
 
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
 /* decided / left out / under the hood */
 .dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
 .dlist details{border-bottom:1px solid var(--color-border-subtle)}
@@ -152,7 +158,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
        inside a .screen panel, wrapped in a screen block.
 
        Example screen block (copy it, rename it in kebab case, uncomment the
-       panel; delete it if the show has no screen):
+       panel; delete it if the show has no screen). A screen designed in design
+       mode gets a designed-screen entry instead of a mock; see preview.md:
+       <div class="designed"><h3>Name</h3><p>What is real, what is sample.</p>
+       <button data-open-design="/preview/path">Open in design</button></div>
   -->
 <!-- screen:example-name -->
 <!--
@@ -252,6 +261,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // navigation is unreliable inside the app's sandboxed frame
   function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
   document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
     var pin = e.target.closest('a.pin[data-d]')
     if (pin) {
       e.preventDefault()

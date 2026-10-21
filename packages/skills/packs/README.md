@@ -14,6 +14,7 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 | `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
 | `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on an Iterate from review, runs the whole front half of a lap |
+| `/runcastle:design` | by the feature chat's entry skills | *original* — live UI design beside the chat: preview pages, the design server and panel, Tweaks, `design:` commits; not an entry skill |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):

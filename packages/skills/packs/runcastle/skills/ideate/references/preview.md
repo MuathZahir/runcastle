@@ -69,6 +69,37 @@ screen names the block, and its burn agent reads only those lines — so put
 everything the screen needs to be understood between the markers, and nothing
 else. Delete the starter's `example-name` block if the show has no screen.
 
+## Designed screens
+
+A screen designed in design mode (`../../design/SKILL.md`) is **not mocked
+again**. Its place in the show is a **designed-screen entry**:
+
+- its name;
+- one line saying what is real and what is sample data;
+- an **Open in design** button: `<button data-open-design="/preview/path">Open in design</button>`,
+  where the value is the preview page's path on the design server. The starter
+  wires it; the app answers by opening the design panel at that path, starting
+  the server first if needed.
+
+Wrap the entry in a screen block, but put no markup in it. The block names the
+**committed component file and the preview page path**, so the ticket that
+connects the screen has something to point at. Use the starter's `.designed`
+entry:
+
+```html
+<!-- screen:invoice-list -->
+<div class="designed">
+  <h3>Invoice list</h3>
+  <p>Layout and states are real components; the rows are sample data.</p>
+  <p class="mono">src/components/InvoiceList.tsx · preview /preview/invoice-list</p>
+  <button data-open-design="/preview/invoice-list">Open in design</button>
+</div>
+<!-- /screen:invoice-list -->
+```
+
+Hand mocks remain for screens nobody designed live, for server-built pages and
+for native mobile, which design mode cannot preview.
+
 ## Inline only
 
 **Styles, scripts and images are inline. The file makes no network request** —
@@ -77,7 +108,8 @@ or inline SVG. This is enforced, not a preference: the app renders the preview
 in a sandboxed frame that runs scripts and refuses every fetch, external image
 and font, form post and popup. Anything hosted elsewhere simply does not load.
 In-page links scroll by script (the starter does this), because hash navigation
-is unreliable inside that frame.
+is unreliable inside that frame. The Open in design button posts a message to
+the app, which is not a request, so it stays within this rule.
 
 ## Sizing
 
@@ -95,4 +127,6 @@ minute for a small feature, a few minutes for a large one.**
   For a grilled feature, `C` is empty and no decision is marked.
 - Every pin points at the decision the spot actually shows.
 - The five parts are in order; **Under the hood** is closed.
+- Every screen designed in design mode is a designed-screen entry that names its
+  committed component and preview page, not a redrawn mock.
 - The file is still fully inline.

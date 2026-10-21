@@ -27,6 +27,10 @@ Once the human gives Go the feature's chat is its lead and runs on the lead skil
    - `done` work now wrong → emit a NEW ticket that corrects it. Never touch done/burning tickets.
 5. **Close.** `mcp__runcastle__record_event({ type: "feature.revisited", message: "<one-line gist of what changed>" })`, then tell the human what state you left things in — especially, at planning, whether the plan is ready for them to click **Go**.
 
+## Designing UI
+
+When the human wants to see how a screen looks or change it, show the real component rather than describing it. Follow `../design/SKILL.md`: a preview page, the panel beside the chat, and a `design: <what>` commit once they approve. Approved design is committed before Go.
+
 ## Stand on the failure
 
 Every bug the human reports gets exactly one of three answers before you card a fix for it:
