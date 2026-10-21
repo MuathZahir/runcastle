@@ -502,9 +502,9 @@ export function renderLeadPrompt(
  * A side session's brief (several-sessions-per-feature decisions 3, 5 and 15):
  * an extra conversation beside the main chat, in the same talk worktree, with
  * the main chat's write rules for the current state and every one of its tools
- * except the round loop. The role is stated here AND in the kickoff
- * (`sideKickoffFor`), because the brief alone is a weak override of a human's
- * habit of treating any terminal as "the" chat.
+ * except the round loop. The role is stated here, in the kickoff
+ * (`sideKickoffFor`) and in the per-turn hook label, so it holds even where one
+ * of them is read weakly (decision 3's challenge).
  */
 export function renderSidePrompt(feature: Feature): string {
   const docs = featureDocsRel(feature.slug)
