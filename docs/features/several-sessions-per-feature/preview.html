@@ -167,8 +167,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 1 · what this is -->
 <header id="what">
   <h1>Several sessions per feature</h1>
-  <p class="lede">Next to a feature's main chat, open side sessions: each one starts as a copy of the main chat, so it knows the feature and what you were just discussing. The main chat stays in charge of the plan and the build.</p>
-  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span>Planned without you: check the five marked first</span><span class="mono">docs/features/several-sessions-per-feature/preview.html</span></div>
+  <p class="lede">Next to a feature's main chat, open side sessions: each starts fresh with the feature's state and the main chat's last few turns, so it knows what you were just discussing. The main chat plans and, after Go, alone runs the rounds.</p>
+  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span>Revisited with you; one assumption left to check</span><span class="mono">docs/features/several-sessions-per-feature/preview.html</span></div>
   <nav class="jump" aria-label="Parts of this preview">
     <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
   </nav>
@@ -206,33 +206,36 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
   <div class="sub cols">
     <div>
-      <h3>A side session is a fork of the main chat <a class="pin" data-d="2">2</a> <a class="pin" data-d="6">6</a></h3>
-      <p class="hint">It copies the conversation so far, then goes its own way. Nothing it says is merged back; the main chat just hears what it changed <a class="pin" data-d="11">11</a>.</p>
-      <svg class="flow" viewBox="0 0 460 190" role="img" aria-label="The main chat forks into side sessions">
+      <h3>A side session starts fresh, with a short excerpt <a class="pin" data-d="14">14</a></h3>
+      <p class="hint">No fork: it gets the feature's state, the main chat's last few turns (capped) and a path to the full transcript. Small, fixed cost; same on Claude Code and Codex.</p>
+      <svg class="flow" viewBox="0 0 460 190" role="img" aria-label="A side session starts from the feature state and a short excerpt of the main chat">
         <rect class="box main" x="10" y="14" width="140" height="44" rx="6"/>
         <text class="t1" x="22" y="34">Main chat</text><text x="22" y="50">plans · leads after Go</text>
-        <path class="ln" d="M150 36 H440"/><text x="300" y="28">the main chat carries on</text>
-        <path class="ln dash" d="M110 58 V100 H210"/>
+        <path class="ln" d="M150 36 H440"/><text x="290" y="28">its conversation stays its own</text>
+        <rect class="box" x="10" y="100" width="140" height="44" rx="6"/>
+        <text class="t1" x="22" y="120">Feature state</text><text x="22" y="136">docs · tickets · rounds</text>
+        <path class="ln dash" d="M110 58 V100"/><text x="116" y="84">last few turns</text>
+        <path class="ln dash" d="M150 122 H210"/>
         <rect class="box" x="210" y="80" width="200" height="40" rx="6"/>
-        <text class="t1" x="222" y="98">Side session</text><text x="222" y="113">forked at the click · own name</text>
-        <path class="ln dash" d="M80 58 V160 H210"/>
+        <text class="t1" x="222" y="98">Side session</text><text x="222" y="113">fresh · state + excerpt</text>
+        <path class="ln dash" d="M180 122 V160 H210"/>
         <rect class="box" x="210" y="140" width="200" height="40" rx="6"/>
-        <text class="t1" x="222" y="158">Scenario chat (on a drive)</text><text x="222" y="173">forked too · the drive's checkout</text>
+        <text class="t1" x="222" y="158">Scenario chat (on a drive)</text><text x="222" y="173">same start · drive's checkout</text>
       </svg>
-      <p class="hint">Scenario chat: <a class="pin" data-d="9">9</a>. On Codex, which cannot fork, the side session starts fresh with the main chat's latest turns <a class="pin" data-d="6">6</a>.</p>
+      <p class="hint">Scenario chat: <a class="pin" data-d="17">17</a>. A <span class="mono">/clear</span> in the main chat keeps it the main chat <a class="pin" data-d="16">16</a>.</p>
     </div>
     <div>
-      <h3>Who may do what <a class="pin" data-d="4">4</a> <a class="pin" data-d="5">5</a></h3>
+      <h3>Who may do what <a class="pin" data-d="15">15</a> <a class="pin" data-d="5">5</a></h3>
       <table class="roles">
         <tr><th></th><th>Main chat</th><th>Side session</th></tr>
         <tr><td>Read the feature, ask anything</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+        <tr><td>Spec, emit tickets, report planning steps</td><td class="yes">yes</td><td class="yes">yes</td></tr>
         <tr><td>Edit docs, edit or cancel tickets</td><td class="yes">yes</td><td class="yes">yes</td></tr>
         <tr><td>Edit code (after Go)</td><td class="yes">yes</td><td class="yes">yes, same folder</td></tr>
-        <tr><td>Report planning steps, emit tickets</td><td class="yes">yes</td><td class="no">no</td></tr>
-        <tr><td>Be the lead: run rounds, declare ready</td><td class="yes">yes</td><td class="no">no</td></tr>
+        <tr><td>Be the lead: receive Go, run rounds, hear results</td><td class="yes">yes</td><td class="no">no</td></tr>
         <tr><td>Takes the one-terminal slot</td><td class="yes">yes</td><td class="no">no, open any number <a class="pin" data-d="7">7</a></td></tr>
       </table>
-      <p class="hint" style="margin-top:8px">A side session opens by saying it is a side session and waiting for you <a class="pin" data-d="3">3</a>. It cannot be promoted to main chat <a class="pin" data-d="13">13</a>.</p>
+      <p class="hint" style="margin-top:8px">A side session opens by saying it is a side session and waiting for you <a class="pin" data-d="3">3</a>. It cannot be promoted to main chat <a class="pin" data-d="13">13</a>, and the main chat is not sent a notice of its changes <a class="pin" data-d="18">18</a>.</p>
     </div>
   </div>
 </section>
@@ -240,7 +243,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 <!-- 3 · what was decided (built from the list in the script below) -->
 <section id="decided">
   <h2>What was decided</h2>
-  <p class="hint">Open one for the reason. All were decided without you.</p>
+  <p class="hint">Open one for the reason. Those marked "assumed" were decided without you; 14–18 are yours from the revisit.</p>
   <div class="dlist" id="dlist"></div>
 </section>
 
@@ -250,10 +253,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <div class="out2">
     <div><h3>Later laps</h3><ul>
       <li><i class="dot"></i>A separate folder (worktree) per side session, if sharing collides</li>
-      <li><i class="dot"></i>"Make this the main chat"</li>
+      <li><i class="dot"></i>"Make this the lead"</li>
+      <li><i class="dot"></i>A notice to the main chat of side-session changes</li>
       <li><i class="dot"></i>Renaming a side session</li>
     </ul></div>
     <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Forking the main chat's conversation (too much context)</li>
       <li><i class="dot"></i>The page layout and chat column (Design mode owns them)</li>
       <li><i class="dot"></i>The terminal as web components (Chat as web components)</li>
       <li><i class="dot"></i>Side sessions on project chats (they already have a list)</li>
@@ -271,12 +276,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <path class="ln" d="M180 47 H220"/>
         <rect class="box" x="220" y="20" width="220" height="54" rx="6"/><text class="t1" x="232" y="42">launcher: kind "side"</text><text x="232" y="60">skips the one-terminal guard</text>
         <path class="ln" d="M440 47 H480"/>
-        <rect class="box" x="480" y="20" width="230" height="54" rx="6"/><text class="t1" x="492" y="42">claude --resume &lt;main&gt;</text><text x="492" y="60">--fork-session · talk worktree</text>
+        <rect class="box" x="480" y="20" width="230" height="54" rx="6"/><text class="t1" x="492" y="42">fresh start, talk worktree</text><text x="492" y="60">state + capped excerpt + paths</text>
         <path class="ln" d="M710 47 H750"/>
         <rect class="box" x="750" y="20" width="200" height="54" rx="6"/><text class="t1" x="762" y="42">side system prompt</text><text x="762" y="60">role + "wait for the human"</text>
         <text x="10" y="104">A new session kind "side" means every existing "find the chat" lookup (resume, lead delivery, Chat door) never picks a side session by accident.</text>
-        <text x="10" y="124">The MCP tool table gives "side" every chat tool except the steering ones; the server refuses those from a side session too.</text>
-        <text x="10" y="144">Rows record which main-chat row they forked from; the main chat's per-turn hook reads side-session events since its last turn.</text>
+        <text x="10" y="124">The MCP tool table gives "side" every chat tool except the four round tools; the server refuses those from a side session too.</text>
+        <text x="10" y="144">The excerpt is read from the main chat's current transcript with the existing reader, so after a /clear it quotes the turns since the clear.</text>
       </svg>
     </div>
   </details>
@@ -293,26 +298,27 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   // mark is 'assumed' for a decision made without the human; a grilled feature has none
   var D = [
     ['One lap: the whole feature except a separate worktree', 'The need is concrete and small once side sessions share the main chat\'s folder; a second folder with its own landing path waits until sharing proves painful.', 'assumed'],
-    ['A side session always forks the main chat', 'Forking is exactly the ask: each session knows the feature and what was being discussed. One action, no choice. Fresh only when there is nothing to fork.', 'assumed'],
+    ['A side session always forks the main chat', 'Superseded by 14: forking cost too much context.', 'superseded'],
     ['A side session opens by stating its role and waiting for the human', 'The fork carries the main chat\'s own instructions; without a reset the side session would pick up the main chat\'s job and race it.', 'assumed'],
-    ['The main chat alone steers; side sessions do everything else', 'Two sessions running rounds or emitting the same tickets would fight over one plan. Everything else is guarded already or recorded where the main chat sees it.', 'assumed'],
+    ['The main chat alone steers; side sessions do everything else', 'Superseded by 15: only the round loop stays with the main chat.', 'superseded'],
     ['Side sessions share the main chat\'s worktree and write rules', 'No new checkout, branch or landing path: commits ride the main chat\'s existing route. Two agents in one folder is the solo developer\'s own choice.', 'assumed'],
-    ['On Codex, a side session starts fresh with the main chat\'s latest turns', 'Runcastle has no Codex fork; quoting the latest turns keeps the same promise. If the installed Codex can fork, the build uses that.', 'assumed'],
+    ['On Codex, a side session starts fresh with the main chat\'s latest turns', 'Superseded by 14, which makes this the only start, on every runtime.', 'superseded'],
     ['Side sessions never take the feature\'s one-terminal slot', 'The point is to talk while the main chat is busy, even while the lead runs rounds headless. No cap at solo scale.', 'assumed'],
     ['Side sessions are named from their first message and reopened by resuming', 'The project chat list already proved this. Re-forking on reopen would throw away the side conversation you came back for.', 'assumed'],
-    ['On a feature drive, the scenario chat forks the main chat', 'You named this case. It keeps the drive\'s checkout, where the app it writes scenarios against runs.', 'assumed'],
+    ['On a feature drive, the scenario chat forks the main chat', 'Superseded by 17: it gets the same fresh start instead.', 'superseded'],
     ['The session switcher lives in the chat\'s header', 'Design mode puts its switcher in the same place, so the later merge is a reconcile, not a redesign.', 'assumed'],
-    ['The main chat hears what side sessions changed', 'A lead dispatching over a ticket a side session just cancelled is the bug forking invites. One line per turn, on a hook that already runs.', 'assumed'],
+    ['The main chat hears what side sessions changed', 'Superseded by 18: dropped.', 'superseded'],
     ['A side session waiting on the human shows a dot in the switcher', 'A forgotten side session is a stalled task with no signal. The feature\'s status line stays about the main chat.', 'assumed'],
-    ['A side session cannot become the main chat in lap 1', 'Promotion would move the lead role and its message queue between conversations mid-feature, with no observed need yet.', 'assumed']
+    ['A side session cannot become the main chat in lap 1', 'Promotion would move the lead role and its message queue between conversations mid-feature, with no observed need yet. "Make this the lead" is a later lap.'],
+    ['A side session starts fresh with the main chat\'s latest turns', 'A fork\'s cost grows with the main chat; a capped excerpt keeps "what we were doing" at a small fixed cost, the same on every runtime.'],
+    ['Only the round loop belongs to the main chat', 'After Go the loop of dispatching and hearing results needs one owner. Everything else, spec and tickets included, any session may do.'],
+    ['/clear keeps the main chat the main chat', 'The role belongs to the session, not its conversation; the feature\'s real state is in the record the lead re-reads.'],
+    ['The scenario chat gets the same fresh start', 'You named this case; the excerpt gives it context with no cross-folder resume to get wrong.'],
+    ['No notice to the main chat about side-session changes', 'People do not drive two sessions at the same thing, and the server refuses the collisions that matter.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   var C = [
-    [5, 'Each side session gets its own folder and branch, landed into the feature branch through the landing queue.', 'Two agents editing code in one folder can trip over each other. It is cheap now, but you may already know it will bite.'],
-    [4, 'Side sessions are read-only and only answer questions.', 'It forces the shape of everything else: what a side session may write decides how its work lands and what the main chat must be told.'],
-    [2, 'A quiet "Start fresh" next to "New side session".', 'The challenger disagreed: a fork of a long main chat starts near its context limit and pays for that history every turn.', 'challenged'],
-    [9, 'The scenario chat stays a fresh conversation, or becomes a plain side session.', 'The challenger disagreed in part: Claude Code may not find the main chat from the drive\'s folder. The build checks, and falls back to the Codex-style start.', 'challenged'],
-    [11, 'Nothing flows back; you tell the main chat when it matters.', 'A guess at what you want the lead to know. The challenger would also name a side session\'s commits.', 'challenged']
+    [5, 'Each side session gets its own folder and branch, landed into the feature branch through the landing queue.', 'Two agents editing code in one folder can trip over each other. It is cheap now, but you may already know it will bite.']
   ]
   var list = $('#dlist')
   D.forEach(function (d, i) {
@@ -358,12 +364,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   var S = {
     main: { name: 'Main chat', sub: 'plans the feature · the lead after Go', dot: 'live',
       html: '<span class="h">● main chat · one transcript · resumed</span>\n\n<span class="u">› ok, lock decision 4 and draw the preview</span>\n<span class="s">Locked. Drawing preview.html now…</span>' },
-    side1: { name: 'Why does the burn skip ticket 4?', sub: 'side session · forked from the main chat 2 min ago', dot: 'wait',
-      html: '<span class="h">[runcastle] You are a side session of this feature, forked from the main chat.\nDo not carry on its task. You may read, edit docs and tickets; you may not\nreport planning steps, emit tickets or run rounds. Wait for the human.</span>\n\n<span class="u">› why does the burn skip ticket 4?</span>\n<span class="s">Ticket 4 is blocked by ticket 2, which failed in round 1. Want me to\nedit ticket 2\'s acceptance criteria? (the main chat will be told)</span>' },
-    side2: { name: 'Write the drive scenario for…', sub: 'side session · forked from the main chat 20 min ago', dot: 'live',
+    side1: { name: 'Why does the burn skip ticket 4?', sub: 'side session · opened 2 min ago', dot: 'wait',
+      html: '<span class="h">[runcastle] You are a side session of this feature. Here is its state and the\nmain chat\'s last few turns. You may do anything but run rounds: the main\nchat leads. Wait for the human.</span>\n\n<span class="u">› why does the burn skip ticket 4?</span>\n<span class="s">Ticket 4 is blocked by ticket 2, which failed in round 1. Want me to\nedit ticket 2\'s acceptance criteria?</span>' },
+    side2: { name: 'Write the drive scenario for…', sub: 'side session · opened 20 min ago', dot: 'live',
       html: '<span class="h">[runcastle] You are a side session of this feature…</span>\n\n<span class="u">› write the drive scenario for the review page</span>\n<span class="s">Writing .runcastle/scenarios/review/two-side-sessions.ts…</span>' },
     old: { name: 'Rename the status column', sub: 'ended · yesterday', dot: '',
-      html: '<span class="u">› rename the status column to "state"</span>\n<span class="s">Done, and the spec says so too.</span>\n<div class="ended-bar"><i class="dot"></i>This side session ended. Reopening resumes it; it does not fork again.<button>Reopen</button></div>' }
+      html: '<span class="u">› rename the status column to "state"</span>\n<span class="s">Done, and the spec says so too.</span>\n<div class="ended-bar"><i class="dot"></i>This side session ended. Reopening resumes its own conversation.<button>Reopen</button></div>' }
   }
   function show(k) {
     var s = S[k]
@@ -378,8 +384,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   $('#sw').addEventListener('click', function (e) { e.stopPropagation(); $('#menu').classList.toggle('open') })
   $$('#menu button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.s) }) })
   $('#newside').addEventListener('click', function () {
-    S.fresh = { name: 'New side session', sub: 'side session · forked from the main chat just now', dot: 'live',
-      html: '<span class="h">[runcastle] You are a side session of this feature, forked from the main chat.\nIt knows everything said up to this click. Wait for the human.</span>\n\n<span class="u">› _</span>' }
+    S.fresh = { name: 'New side session', sub: 'side session · opened just now', dot: 'live',
+      html: '<span class="h">[runcastle] You are a side session of this feature. Its state, the main chat\'s\nlast few turns, and the path to its full transcript follow. Wait for the human.</span>\n\n<span class="u">› _</span>' }
     show('fresh')
   })
   document.addEventListener('click', function () { $('#menu').classList.remove('open') })

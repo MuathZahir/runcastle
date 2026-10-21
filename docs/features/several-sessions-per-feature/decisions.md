@@ -1,7 +1,8 @@
 # Decisions — several-sessions-per-feature
 
-Planned without the human (self-planning run, 2026-10-21). Every decision below is
-marked **Assumed** with the main alternative it was chosen over.
+Planned without the human (self-planning run, 2026-10-21), then revisited with the
+human the same day. A decision still marked **Assumed** was made without the human;
+the rest are the human's.
 
 Terms used throughout:
 - **Main chat** — the feature's one `chat` conversation that exists today: it plans,
@@ -19,8 +20,7 @@ Terms used throughout:
 ## 2. A side session always forks the main chat
 **Decision:** "New side session" forks the main chat's conversation (Claude Code `--resume <main> --fork-session`), so it starts knowing the feature and what was being discussed. The human is not asked to choose between fork and fresh. It starts fresh, with the feature's state header, only when there is nothing to fork: no main chat yet, or its transcript is gone.
 **Why:** Forking is exactly the human's ask ("each session should have the context of the feature and what we were doing"), and one action with no choice keeps the door as simple as the Chat door. Claude Code's own auto-compact handles a fork that starts near the context limit, the same stance `one-chat-per-feature` took on long chats.
-**Assumed.** Alternative: a choice on each new side session between "fork the chat" and "start fresh with the feature's state".
-**Challenged:** Keep fork as the default but add a quiet "Start fresh" secondary action. A fork of a long main chat starts near its context limit and pays for that history on every turn, and telling it to ignore the history does not free the context.
+**Superseded by 14.**
 
 ## 3. A side session opens by stating its role and waiting for the human
 **Decision:** A forked side session's first message tells it that it is a side session of this feature, forked from the main chat; that it must not carry on the main chat's task; what it may and may not do (decision 4); and to wait for the human's ask. It does not act until the human types.
@@ -31,8 +31,7 @@ Terms used throughout:
 ## 4. The main chat alone steers; side sessions do everything else
 **Decision:** The main chat stays the feature's one steering session. Only it is the lead after Go and receives the lead's messages, and only it may report planning steps (`complete_phase`), emit tickets (`emit_tickets`), or run rounds (`dispatch_round`, `stop_round`, `declare_ready`, `wait_for_you`). A side session may read everything, edit the feature's docs, edit or cancel tickets, resolve findings, and park draft features.
 **Why:** Two sessions dispatching rounds or emitting the same ticket batch would fight over the feature's one plan. Everything else is either guarded already at call time (a ticket claimed by a running burn cannot be edited) or is recorded on disk and on the timeline, where the main chat sees it.
-**Assumed.** Alternative: side sessions are read-only and answer questions only.
-**Challenged:** The decision says who "may" steer but not how it holds. The server must enforce it: the side session's tool list leaves out the steering tools, and the server refuses those calls from a side session.
+**Superseded by 15.**
 
 ## 5. Side sessions share the main chat's worktree and write rules
 **Decision:** A side session runs in the feature's talk worktree, alongside the main chat, and may write exactly what the main chat may write in the current state (docs-only in planning today; anything after Go). Its commits land the way the main chat's do: straight onto `feature/<slug>` outside a burn, and through the chat's temp branch and the landing queue during one. Its briefing says the directory is shared and to stage only its own files.
@@ -42,8 +41,7 @@ Terms used throughout:
 ## 6. On Codex, a side session starts fresh with the main chat's latest turns
 **Decision:** Runcastle has no Codex fork today. On Codex, a side session starts a fresh conversation whose first message carries the feature's state header and a quote of the main chat's last few turns, read from its transcript. If the installed Codex CLI has a real fork command, the build uses it instead; the burn verifies this against the installed CLI rather than guessing.
 **Why:** It gives Codex the same promise ("knows what we were doing") with what runcastle already does: read transcripts. Making side sessions Claude-only would split the product by runtime for no good reason.
-**Assumed.** Alternative: side sessions are Claude Code only; the door is hidden on Codex.
-**Challenged:** Also give it the main chat's transcript path and the decisions file, so it can read further back than the last few turns when it needs to.
+**Superseded by 14**, which makes this start the only one, on every runtime.
 
 ## 7. Side sessions never take the feature's one-terminal slot
 **Decision:** The "one terminal per feature" guard keeps meaning the main chat (and the drive-fix session, which shares that slot today). Side sessions neither block nor are blocked by it, there is no cap on how many are live, and one can be opened in all four states and whatever the main chat is doing: live, ended, or running headless (a self-planning run or a lead wake).
@@ -58,8 +56,7 @@ Terms used throughout:
 ## 9. On a feature drive, the scenario chat forks the main chat
 **Decision:** The scenario chat (the "New scenario" / "Fix it" chat docked beside a running drive) forks the main chat when the drive is a feature drive, so it knows what the feature is and what was being built. It keeps everything else: its own kind, the drive's checkout, its write rules, its dock beside the drive, and its one-per-drive rule. While it is live it also appears in the feature's session list. A project drive's scenario chat is unchanged: it has no main chat to fork.
 **Why:** The human named this case ("or in this case, create the scenario"). Making it a plain side session would move it off the drive's checkout, which is where the app it is writing scenarios against actually runs.
-**Assumed.** Alternative: the scenario chat becomes just another side session in the talk worktree.
-**Challenged:** Claude Code files conversations by the folder they ran in, so resuming the main chat from the drive's checkout may not find it; this must be verified, with decision 6's fresh-plus-latest-turns start as the fallback. Its briefing must also say it works in the drive's checkout, since the inherited history is full of paths into the talk worktree.
+**Superseded by 17.**
 
 ## 10. The session switcher lives in the chat's header
 **Decision:** The feature's chat area gets a session switcher in its header: the main chat first, then live side sessions, then ended ones, and a "New side session" action. Picking one shows its terminal (live) or its transcript with Reopen (ended). This is the minimal switcher on today's Chat tab; *Design mode* puts its own switcher in the same place, and whichever merges second makes them one.
@@ -71,8 +68,7 @@ Terms used throughout:
 ## 11. The main chat hears what side sessions changed
 **Decision:** Nothing is merged back into the main chat's conversation, but its next turn is told what changed: the per-turn hook that already injects the feature's state adds one line naming side-session changes since the main chat's last turn (docs files edited, tickets edited or cancelled, findings resolved), with a pointer to `get_feature_context`. A side session's talk itself stays in the side session.
 **Why:** Decision 4 lets a side session change the plan the main chat is steering. A lead that dispatches a round over a ticket a side session just cancelled, or redraws a preview from a stale `decisions.md`, is the bug forking invites. One line per turn is cheap and uses a hook that already runs.
-**Assumed.** Alternative: nothing flows back; the record on disk and the timeline are the only channel, and the human tells the main chat when it matters.
-**Challenged:** The line should also name commits a side session made. Decision 5 lets a side session commit code after Go, and a lead unaware of a fresh commit on the feature branch is the same stale-state bug.
+**Superseded by 18.**
 
 ## Round 3 (from the challenger's unasked branches)
 
@@ -84,6 +80,29 @@ The challenger also asked how side sessions overlap the old Q&A and revisit sess
 **Assumed.** Alternative: no signal; the human checks the switcher.
 
 ## 13. A side session cannot become the main chat in lap 1
-**Decision:** There is no "make this the main chat" action. A side session that found a better direction writes it into the feature's docs, and decision 11 brings that to the main chat's attention; the human can also tell the main chat directly. Promoting a side session is recorded under `## Later laps`.
+**Decision:** There is no "make this the main chat" action. A side session that found a better direction writes it into the feature's docs; the human can also tell the main chat directly. Promoting a side session to lead is recorded under `## Later laps`.
 **Why:** Promotion would move the lead role, its message queue and the planning steps between conversations mid-feature — a new mechanism with no observed need yet.
-**Assumed.** Alternative: a "Make this the main chat" action that hands the main chat's role to a side session.
+
+## Revisited 2026-10-21
+
+The human, on the plan: forking uses too much context; "why can't all the sessions be the same"; then, remembering Go, back to a main chat and side sessions, with the line between them made as thin as Go allows. Decisions 14–18 are the human's.
+
+## 14. A side session starts fresh with the main chat's latest turns
+**Decision:** No session forks, on any runtime. A side session's first message carries the feature's current state (the same short header the chat gets), the main chat's last few turns quoted with a cap of about two thousand tokens, and the paths of the main chat's full transcript and `decisions.md` so it can read further back when asked. Claude Code and Codex start the same way. Decision 3 still holds: a side session opens by stating its role and waiting for the human. Supersedes 2, 6, and the fork parts of 1.
+**Why:** A fork's cost grows with the main chat and is paid on every turn; the excerpt keeps "what we were doing" at a small fixed cost. One way to start means no runtime-specific path.
+
+## 15. Only the round loop belongs to the main chat
+**Decision:** The main chat plans and, after Go, is the lead. It alone runs rounds (`dispatch_round`, `stop_round`, `declare_ready`, `wait_for_you`) and it alone receives Go and the messages a round sends back. A side session may do everything else, including writing the spec, emitting tickets and reporting planning steps (`complete_phase`), editing docs and tickets, resolving findings, and editing code after Go. Supersedes 4.
+**Why:** After Go the feature runs a loop on its own — dispatch, wake on the result, dispatch again — and that loop needs exactly one owner, or two sessions would both react to every result. Nothing else does: the server already refuses the collisions that matter (a second round while one runs, editing a ticket a burn has claimed), and the human is trusted not to drive two sessions at the same thing.
+
+## 16. /clear keeps the main chat the main chat
+**Decision:** The main-chat role belongs to the session, not to the conversation in it. A `/clear` empties the main chat's memory and runcastle resumes the post-clear conversation from then on; it is still the lead. A side session opened after a clear quotes the turns since the clear.
+**Why:** The feature's real state lives in the docs, tickets and rounds, which the main chat can re-read; tying the role to one conversation would make a routine `/clear` silently orphan the lead.
+
+## 17. The scenario chat gets the same fresh start
+**Decision:** On a feature drive, the scenario chat's first message carries the same feature state and main-chat excerpt as a side session (decision 14). Everything else about it is unchanged: its own kind, the drive's checkout, its write rules, its dock, one per drive. A project drive's scenario chat is unchanged. Supersedes 9.
+**Why:** The human named this case; the excerpt gives it "what we were doing" with no cross-folder resume to get wrong.
+
+## 18. No notice to the main chat about side-session changes
+**Decision:** Dropped. Side sessions' changes reach the main chat only through the record (docs, tickets, timeline) and the human. Supersedes 11.
+**Why:** The human's stance: people do not drive two sessions at the same thing, and the server refuses the collisions that matter. A notice is mechanism without an observed need; it is parked under `## Later laps`.

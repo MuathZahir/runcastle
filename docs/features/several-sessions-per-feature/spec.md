@@ -12,71 +12,87 @@ The launcher enforces this with a guard: one live terminal per feature, refused 
 
 The feature's chat area gets a **session switcher** in its header (decision 10). It lists the main chat first, then live side sessions, then ended ones, plus a **New side session** action. Picking a live session shows its terminal. Picking an ended one shows its read-only transcript with **Reopen**. A side session that has finished a turn or waits on a permission prompt shows an amber waiting dot on its row and on the switcher (decision 12). The feature's status line and next-step bar are unchanged: they speak for the main chat.
 
-**New side session** forks the main chat (decision 2). The new session holds everything said so far, then goes its own way. Its first message tells it what it is: a side session of this feature, forked from the main chat, not to carry on the main chat's task, what it may and may not do, and to wait for the human (decision 3). It is named after the first thing the human types in it, not the history it inherited (decision 8). Reopening an ended side session resumes its own conversation; it does not fork again.
+**New side session** starts a fresh conversation; nothing is forked (decision 14). Its first message carries three things:
+- the feature's current state, the same short header the chat kickoff uses;
+- the main chat's last few turns, quoted with a cap of about two thousand tokens, with runcastle's own kickoff lines left out;
+- the paths of the main chat's full transcript and `decisions.md`, so it can read further back when asked.
+
+Claude Code and Codex start the same way. The first message also tells it that it is a side session of this feature and what it may and may not do (decision 15), and to wait for the human (decision 3). It is named after the first thing the human types in it (decision 8). Reopening an ended side session resumes its own conversation.
 
 Side sessions can be opened in all four states, any number at once, whatever the main chat is doing: live, ended, or running headless as a self-planning run or a lead wake (decision 7).
 
 ### Roles
 
-The main chat alone steers (decision 4). Only it is the lead after Go and receives the lead's messages. Only it may call the steering tools: `complete_phase`, `emit_tickets`, `dispatch_round`, `stop_round`, `declare_ready`, `wait_for_you`. A side session gets every other tool the main chat has: the feature reads, docs edits, `update_ticket` / `cancel_ticket` (already refused at call time for a ticket a running burn has claimed), `resolve_finding`, `create_feature` draft parking, `record_event`. This holds in two places: the side kind's tool list leaves the steering tools out, and the server refuses a steering call that arrives from a side session.
+Only the round loop belongs to the main chat (decision 15). The main chat plans and, after Go, is the lead:
+- It alone receives Go and the messages a round sends back.
+- It alone may call the four round tools: `dispatch_round`, `stop_round`, `declare_ready` and `wait_for_you`.
 
-The role is set in three places so it holds against the inherited history: the appended system prompt written at launch, the per-turn hook's label, and the first message.
+A side session gets every other tool the main chat has. That covers the feature reads, `complete_phase`, `emit_tickets`, `update_ticket` / `cancel_ticket` (already refused at call time for a ticket a running burn has claimed), `resolve_finding`, `create_feature` draft parking, and `record_event`.
+
+The rule holds in two places. The side kind's tool list leaves the round tools out, and the server refuses a round-tool call that arrives from a side session. The server already refuses a second round while one runs. Nothing else is guarded: the human is trusted not to drive two sessions at the same thing (decision 18).
+
+The side role is set in three places so it holds:
+- the appended system prompt written at launch;
+- the per-turn hook's label;
+- the first message.
+
+A `/clear` in the main chat keeps it the main chat (decision 16). The role belongs to the session row, not to the conversation: runcastle already moves the row onto the post-clear conversation. The excerpt for a side session opened after a clear is read from the main chat's current transcript, so it quotes the turns since the clear.
 
 ### Where a side session works
 
-A side session runs in the feature's **talk worktree**, the same folder as the main chat (decision 5). It may write exactly what the main chat may write in the current state: docs-only in planning (or whatever Design mode lets the planning chat write once that merges), anything after Go. Its commits land the way the main chat's do. Outside a burn that is straight onto `feature/<slug>`. During a burn it is the chat's temp branch (`runcastle/chat/<slug>/<unique>`), landed through the per-feature landing queue at the next chat landing or at run end. The briefing says the folder is shared and to stage only its own files. Sharing the folder also means `--resume` finds the main chat's transcript: Claude Code files conversations by the folder they ran in.
-
-### The main chat hears what changed
-
-Nothing a side session says is merged into the main chat's conversation. But the main chat's next turn is told what changed (decision 11). The per-turn `UserPromptSubmit` hook, which already injects the feature's state into every main-chat turn, adds one line. That line names the side-session changes since the main chat's last turn (docs files edited, tickets edited or cancelled, findings resolved) and points at `get_feature_context`. The record of those changes is fed by the side session's own MCP writes and by the file writes the existing pre-tool hook already sees for it. Once a turn has been told, its line is not repeated.
-
-### Codex
-
-Runcastle has no Codex fork (decision 6). On Codex, a side session starts a fresh conversation. Its first message carries the feature's state header, a quote of the main chat's last few turns read through the existing transcript reader, and the paths of the main chat's transcript and `decisions.md`, so it can read further back. If the installed Codex CLI has a real fork command, the build verifies that against the CLI and uses it instead. The same fresh start is the fallback on Claude Code when there is nothing to fork: no main chat yet, or its transcript is gone.
+A side session runs in the feature's **talk worktree**, the same folder as the main chat (decision 5). It may write exactly what the main chat may write in the current state: docs-only in planning (or whatever Design mode lets the planning chat write once that merges), anything after Go. Its commits land the way the main chat's do. Outside a burn that is straight onto `feature/<slug>`. During a burn it is the chat's temp branch (`runcastle/chat/<slug>/<unique>`), landed through the per-feature landing queue at the next chat landing or at run end. The briefing says the folder is shared and to stage only its own files.
 
 ### The scenario chat
 
-The scenario chat is the "New scenario" / "Fix it" chat docked beside a running drive (`scenario` kind). On a **feature** drive it now forks the main chat (decision 9). It keeps everything else: its kind, the drive's checkout, its write rules, its dock, and one-per-drive. While live it also appears in the feature's switcher. Its briefing says it works in the drive's checkout, since the inherited history is full of paths into the talk worktree. The main chat ran in the talk worktree, so the build must check that `--resume <main> --fork-session` finds it from the drive's checkout. If it does not, the scenario chat uses the Codex-style fresh start with the latest turns. A project drive's scenario chat is unchanged.
+The scenario chat is the "New scenario" / "Fix it" chat docked beside a running drive (`scenario` kind). On a **feature** drive, its first message now carries the same feature state and main-chat excerpt as a side session (decision 17). Everything else is unchanged: its kind, the drive's checkout, its write rules, its dock, and one-per-drive. While live it also appears in the feature's switcher. A project drive's scenario chat is unchanged.
 
 ### Shape
 
-- **A new session kind, `side`.** Every existing lookup keyed to `kind = 'chat'` keeps finding only the main chat, with no audit of each call site. That covers the most-recent-resumable query, `deliverToLead`'s "find the lead", the lead waker, the Chat door and the shipped feature's question list. The edit guard, install guard, lead shell guard and per-turn hook treat `side` like `chat` for write permission in the current state. The MCP audience table gives `side` the `chat` set minus the steering tools.
-- **A fork column on the session row**: the main-chat row a side session (or scenario chat) forked from, and whether it forked or started fresh. Side sessions are grouped into conversations on `ccSessionId`, exactly as project conversations are, and named with the existing derived-title logic. The difference is that the search starts after the side session's own kickoff line, so the inherited main-chat turns never name it. The title is cached the same way.
-- **The launcher.** A side launch skips the one-terminal guard (`assertSpawnable`) and the headless-running refusal, so it never blocks the main chat or drive-fix and is never blocked by them. It resumes the main chat's newest `ccSessionId` with `--fork-session` (new) for a new side session. It resumes the side session's own `ccSessionId` without fork for a reopen. The worktree keep-alive already counts any live session; that covers side sessions.
+- **A new session kind, `side`.** Every existing lookup keyed to `kind = 'chat'` keeps finding only the main chat, with no audit of each call site. That covers the most-recent-resumable query, `deliverToLead`'s "find the lead", the lead waker, the Chat door and the shipped feature's question list. The edit guard, install guard, lead shell guard and per-turn hook treat `side` like `chat` for write permission in the current state. The MCP audience table gives `side` the `chat` set minus the four round tools.
+- **One excerpt builder**, shared by side sessions and the scenario chat. It reads the main chat's current transcript with the existing transcript reader, drops runcastle's kickoff lines the way the conversation transcript read already does, and caps the quote. A quote too long for the CLI's argv kickoff limits goes to a file in the session's artifacts directory, and the kickoff points at it.
+- **The session row** records which main-chat row a side session was opened beside. Side sessions are grouped into conversations on `ccSessionId`, exactly as project conversations are, and named with the existing derived-title logic. The title search starts after the side session's own kickoff, which carries the quoted excerpt, and it is cached the same way.
+- **The launcher.** A side launch skips the one-terminal guard (`assertSpawnable`) and the headless-running refusal, so it never blocks the main chat or drive-fix and is never blocked by them. A new side session starts fresh. A reopen resumes the side session's own `ccSessionId`. The worktree keep-alive already counts any live session, which covers side sessions.
 - **tRPC**: open a side session (new, or reopen by id), list the feature's sessions for the switcher (main chat, side sessions grouped by conversation, the live scenario chat, each with status and waiting flag), and read a side session's transcript. End uses the existing end-session path.
 - **Web**: a switcher in the header of today's feature chat component, beside the existing terminal and transcript views. Design mode puts its own switcher in the same place; whichever merges second makes them one.
 - **Feature deleted**: live side sessions end with the feature, the same way the main chat does. On Shipped they keep working like the main chat.
 
 ## Seams
 
-- **The launcher's session launch for kind `side`** (existing seam, new kind). Observable in the argv built for each runtime: `--resume <main ccSessionId> --fork-session` for new, `--resume <side ccSessionId>` for reopen, the fresh-with-latest-turns kickoff on Codex or with nothing to fork. Also observable: the guard does not refuse while the main chat or a headless main chat is live, and the system prompt and kickoff carry the side role.
-- **The MCP server's tool registration per audience, plus call-time refusal** (existing seam). Observable: `side` sees no steering tools, and a steering call carrying a side session's id is refused.
-- **Lead delivery** (existing seam). Observable: with a side session live and the main chat ended, a lead message wakes the main chat, never the side session.
+- **The launcher's session launch for kind `side`** (existing seam, new kind). Observable in the kickoff and argv built for each runtime:
+  - a fresh start whose first message carries the state header, the capped excerpt and the two paths;
+  - `--resume <side ccSessionId>` for a reopen;
+  - the guard not refusing while the main chat, or a headless main chat, is live;
+  - the system prompt and kickoff carrying the side role.
+- **The MCP server's tool registration per audience, plus call-time refusal** (existing seam). Observable: `side` sees no round tools but does see `complete_phase` and `emit_tickets`, and a round-tool call carrying a side session's id is refused.
+- **Lead delivery** (existing seam). Observable: with a side session live and the main chat ended, Go or a round's message wakes the main chat, never the side session.
 - **The edit guard decision per session** (existing seam). Observable: a side session in planning may write only `docs/features/<slug>/`, and after Go anything, matching the main chat.
-- **The per-turn `UserPromptSubmit` hook response for the main chat** (existing seam). Observable: after a side session edits a doc or cancels a ticket, the main chat's next turn carries one line naming it, and the turn after does not.
-- **The feature session list tRPC procedure** (new seam). Observable: the main chat first, side sessions grouped by conversation with derived titles that skip inherited turns, ended ones flagged, the waiting flag, and the live scenario chat on a feature drive.
-- **The scenario launch on a feature drive** (existing seam). Observable: the fork flag on the argv, or the fallback kickoff.
+- **The feature session list tRPC procedure** (new seam). Observable:
+  - the main chat first;
+  - side sessions grouped by conversation, titled from the human's first message;
+  - ended ones flagged, and the waiting flag;
+  - the live scenario chat on a feature drive.
+- **The scenario launch on a feature drive** (existing seam). Observable: its kickoff carries the excerpt.
 - **The switcher in the feature chat header** (web component, new). Observable in a component test: grouping, the waiting dot, New side session, picking a live versus an ended row.
 
 ## Out of scope
 
 - The page layout and the chat column. *Design mode* owns them; this feature adds a switcher to today's chat header only.
 - Turning the terminal into web components. *Chat as web components* owns that.
+- Forking a conversation (`--fork-session`). It costs too much context (decision 14).
 - Side sessions on project chats. The project already has a conversation list with New chat.
 - A separate worktree per side session (see Later laps).
-- Promoting a side session to main chat (decision 13).
+- Promoting a side session to lead (decision 13).
+- A notice to the main chat of side-session changes (decision 18).
 - Renaming side sessions.
-- Charter text. Only the project session may write `CONTEXT.md`. When this lands, the project session should record in an ADR that "one conversation per feature" is now "one main chat per feature, plus side sessions".
+- Charter text. Only the project session may write `CONTEXT.md`. When this lands, the project session should record in an ADR that "one conversation per feature" is now "one main chat that leads, plus side sessions".
 
 ## Open questions
 
-- Whether the installed Codex CLI has a fork command. The burn checks the installed CLI; the fallback is specified either way.
-- Whether `--resume <id> --fork-session` from the drive's checkout finds a conversation that ran in the talk worktree. The burn checks; the fallback is specified.
-- Six decisions were challenged by an independent pass and stand as decided: 2, 3, 4, 6, 9 and 11. The mechanism parts of the challenges to 3, 4, 6 and 9 are folded into this spec because they do not change the decisions: the role set at launch too, server-side refusal, the transcript path, the cross-folder check. The challenges to 2 (add "Start fresh") and 11 (also name side-session commits) are left for the human.
+- None blocking. Decision 5 (sharing the talk worktree) is the one assumption the human has not confirmed; a test drive will show whether two agents in one folder collide.
 
 ## Later laps
 
 - **A separate worktree per side session**, on its own branch landed into the feature branch through the per-feature landing queue. Only if two agents sharing the talk worktree collide in real use (decision 5).
-- **"Make this the main chat"**: handing the main chat's role, lead queue and planning steps to a side session (decision 13).
-- **A "Start fresh" secondary action** beside New side session, if forks of long main chats prove costly (the challenge to decision 2).
+- **"Make this the lead"**: handing the round loop, the lead's messages and Go to a side session (decision 13).
+- **A notice to the main chat** naming what side sessions changed since its last turn, if a lead acting on stale state shows up in practice (decision 18).
 - **Renaming a side session.**
