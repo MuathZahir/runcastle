@@ -327,6 +327,28 @@ describe('driving from the project page', () => {
     expect(addNote).toHaveBeenCalledWith({ projectId: 'proj_1', text: 'search has no empty state' })
   })
 
+  // In a narrow panel (~670px at a 50/50 split of 1600px) the notes aside
+  // floats over its row; the header's controls sit above that row, so the
+  // aside can never cover them.
+  it('keeps Stop drive and Hide notes outside the area the notes aside floats over', () => {
+    slot = LIVE
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to drive' }))
+    const root = document.querySelector<HTMLElement>('[data-project-drive]')!
+    const rail = within(root).getByRole('complementary', { name: 'Notes' })
+    const asideRow = root.querySelector<HTMLElement>(':scope > .\\@container')!
+    expect(asideRow.contains(rail)).toBe(true)
+    const stop = within(root).getByRole('button', { name: 'Stop drive' })
+    const hide = within(root).getByRole('button', { name: 'Hide notes' })
+    expect(asideRow.contains(stop)).toBe(false)
+    expect(asideRow.contains(hide)).toBe(false)
+
+    fireEvent.click(hide)
+    expect(within(root).queryByRole('complementary', { name: 'Notes' })).toBeNull()
+    fireEvent.click(stop)
+    expect(testDrive).toHaveBeenLastCalledWith({ projectId: 'proj_1', action: 'stop' })
+  })
+
   it('shows the setup failure with Open preparation, and the rail still works', () => {
     slot = {
       ...LIVE,
