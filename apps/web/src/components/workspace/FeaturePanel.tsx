@@ -72,8 +72,14 @@ export function usePanel(view: PanelView | null, onViewChange: (view: FeatureVie
   return { state, dispatch }
 }
 
-/** Below this much content width the panel floats over the chat instead of beside it. */
-const OVERLAY = '@max-[1100px]'
+/**
+ * Below ~1100px of content width the panel floats over the chat instead of
+ * beside it: docked right, full height, above the chat. Every class is a whole
+ * literal — Tailwind only generates what it can read in source, so a variant
+ * built at runtime (`${prefix}:inset-y-0`) never reaches the CSS.
+ */
+const PANEL_OVERLAY =
+  '@max-[1100px]:absolute @max-[1100px]:inset-y-0 @max-[1100px]:right-0 @max-[1100px]:z-20 @max-[1100px]:shadow-dialog'
 
 /**
  * The row the chat and the panel share. The chat is the same element whether
@@ -119,7 +125,7 @@ export function PanelSplit({
             style={{ width: `${share * 100}%` }}
             className={cx(
               'relative flex min-h-0 min-w-0 shrink-0 flex-col border-l border-border bg-surface',
-              `${OVERLAY}:absolute ${OVERLAY}:inset-y-0 ${OVERLAY}:right-0 ${OVERLAY}:z-20 ${OVERLAY}:shadow-dialog`,
+              PANEL_OVERLAY,
             )}
           >
             <PanelDivider share={share} row={row} onResize={onResize} onToggleFull={onToggleFull} />
