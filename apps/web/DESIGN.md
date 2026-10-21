@@ -106,7 +106,13 @@ A started feature is its chat (design-mode decisions 4, 5), not a document:
 - **Feature strip**: the next-step row (4 above) on a hairline, under the
   topbar. It never hides, so Go and Merge are always one click away.
 - **The chat** fills the content panel below the strip, and stays the same
-  element whatever the panel does.
+  element whatever the panel does. Its strip leads with the **session
+  switcher** (decision 9): the feature chat, and the scenario chat while a
+  drive errand (New scenario, Fix it) is live. An errand's open brings its
+  chat to the front; picking the feature chat or closing the errand goes
+  back. Every live terminal stays mounted behind the one in front. The drive
+  keeps the whole panel — no chat docks inside it, and the review body only
+  points at a live drive.
 - **One panel** on the right, one view at a time: the phase body (title,
   meta and the body as a page column), the plan preview, the design, a
   drive, or the details. Its 44px header holds a switcher over the views
@@ -118,6 +124,13 @@ A started feature is its chat (design-mode decisions 4, 5), not a document:
   runcastle only as the result of the human's own click (Go opens the run,
   Test drive the drive). Nothing else opens it.
 - A **draft** has no chat: its body is the page, the next step in its header.
+
+The **project page** takes the same pieces (decision 11): its chat column
+holds the live project chat — its switcher listing the past chats, each
+opening its read-only transcript — or, with none running or after the project
+crumb, the chat list with New chat and Test drive. The panel holds the
+project drive and the Notes inbox (its details); the topbar offers Drive
+while one is live and the Notes toggle.
 
 ## Colour
 
