@@ -1500,7 +1500,6 @@ export interface SpawnMeta {
   findBackgroundSession?: (agentSessionId: string) => Promise<BackgroundSession | undefined>
 }
 
-
 /**
  * PTY exit finalizer (exported for the vitest seam). Marks the session ended
  * and emits `session.pty_exited` — carrying the output's {@link exitTail} when

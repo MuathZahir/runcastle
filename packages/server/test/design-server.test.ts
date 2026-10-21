@@ -7,7 +7,8 @@ import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { handlePtyExit } from '../src/launcher/launcher'
+import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, { toolsForAudience } from '../src/mcp/server'
 import { createNativePtySession } from '../src/pty/pty'
 import { devSpawnTarget, drivePaneId, startDevPane, stopDevPane } from '../src/pty/dev-pane'
@@ -189,6 +190,27 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     await waitFor(() => stoppedReasons().length > 0)
     expect(stoppedReasons()).toEqual(['session-ended'])
     expect(ptyRegistry().has(designPaneId(feature.id))).toBe(false)
+  }, 15000)
+
+  it('stops when the feature’s chat process exits on its own', async () => {
+    const session = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree })
+    markSessionLive(ctx, session.id)
+    await startDesignServer(ctx, feature.id, FAKE_DEV)
+
+    handlePtyExit(ctx, feature, getSessionRow(ctx, session.id)!, {}, 0)
+
+    await waitFor(() => stoppedReasons().length > 0)
+    expect(stoppedReasons()).toEqual(['session-ended'])
+  }, 15000)
+
+  it('keeps running when a headless run of the feature ends', async () => {
+    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+    await startDesignServer(ctx, feature.id, FAKE_DEV)
+
+    handlePtyExit(ctx, feature, getSessionRow(ctx, run.id)!, {}, 0)
+
+    expect(designServerStatus(ctx, feature.id).running).toBe(true)
+    expect(stoppedReasons()).toEqual([])
   }, 15000)
 
   it('stops when the feature ships', async () => {
