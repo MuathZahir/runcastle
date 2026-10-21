@@ -1,7 +1,14 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { FEATURE_CHAT, featureChatEntries, scenarioChatLabel, shownSession } from '../src/lib/chat-sessions'
+import {
+  FEATURE_CHAT,
+  featureChatEntries,
+  projectChatEntries,
+  scenarioChatLabel,
+  shownSession,
+} from '../src/lib/chat-sessions'
+import { projectViewLabel, projectViews } from '../src/lib/feature-ui/panel'
 import { SessionSwitcher } from '../src/components/chat/SessionSwitcher'
 
 /**
@@ -32,6 +39,29 @@ describe('the feature page’s chat sessions', () => {
   })
 })
 
+describe('the project page’s chat sessions', () => {
+  const rows = [
+    { id: 'sess_live', title: 'Audit the journal', status: 'live' },
+    { id: 'sess_b', title: 'Streaks idea', status: 'ended' },
+    { id: 'sess_a', title: null, status: 'ended' },
+  ]
+
+  it('list the live chat once, first, then the past ones in the list’s order', () => {
+    expect(projectChatEntries({ liveId: 'sess_live', conversations: rows })).toEqual([
+      { id: 'sess_live', label: 'Audit the journal', live: true },
+      { id: 'sess_b', label: 'Streaks idea', live: false },
+      { id: 'sess_a', label: 'Untitled chat', live: false },
+    ])
+  })
+
+  it('list only the past ones with no chat running', () => {
+    expect(projectChatEntries({ liveId: null, conversations: rows.slice(1) }).map((e) => e.id)).toEqual([
+      'sess_b',
+      'sess_a',
+    ])
+  })
+})
+
 describe('shownSession', () => {
   const entries = featureChatEntries({
     featureLive: null,
@@ -45,6 +75,15 @@ describe('shownSession', () => {
   it('hands the column back to the first entry once the picked one is gone', () => {
     expect(shownSession(entries, 'sess_gone')?.id).toBe(FEATURE_CHAT)
     expect(shownSession(entries, null)?.id).toBe(FEATURE_CHAT)
+  })
+})
+
+describe('the project page’s panel', () => {
+  it('offers the drive while one is up and the Notes inbox once there are notes', () => {
+    expect(projectViews({ driveActive: false, hasNotes: false })).toEqual([])
+    expect(projectViews({ driveActive: true, hasNotes: true })).toEqual(['drive', 'details'])
+    expect(projectViewLabel('details')).toBe('Notes')
+    expect(projectViewLabel('drive')).toBe('Drive')
   })
 })
 

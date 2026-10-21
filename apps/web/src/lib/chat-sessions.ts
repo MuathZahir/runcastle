@@ -1,3 +1,5 @@
+import { conversationTitle } from './conversation-title'
+
 /**
  * The chat column's sessions (design-mode decision 9): one column shows one
  * conversation at a time, and the switcher in its header lists the ones it can
@@ -41,6 +43,27 @@ export function featureChatEntries({
   return [
     { id: FEATURE_CHAT, label: featureLive?.label ?? 'Feature chat', live: !!featureLive },
     ...(scenario ? [{ id: scenario.sessionId, label: scenarioChatLabel(scenario.errand), live: true }] : []),
+  ]
+}
+
+/**
+ * The project page's entries (design-mode decision 11): the live project chat
+ * first, then every ended one in the list's own order (newest first), each
+ * opening its transcript. The conversation list carries the live one too; it
+ * is listed once.
+ */
+export function projectChatEntries({
+  liveId,
+  conversations,
+}: {
+  liveId: string | null
+  conversations: readonly { id: string; title: string | null; status: string }[]
+}): ChatSessionEntry[] {
+  const live = conversations.find((c) => c.id === liveId)
+  const ended = conversations.filter((c) => c.status === 'ended' && c.id !== liveId)
+  return [
+    ...(liveId ? [{ id: liveId, label: conversationTitle(live?.title), live: true }] : []),
+    ...ended.map((c) => ({ id: c.id, label: conversationTitle(c.title), live: false })),
   ]
 }
 
