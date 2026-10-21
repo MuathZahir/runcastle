@@ -8,6 +8,7 @@ import {
   launchSideSession,
 } from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
+import { listFeatureSessions } from '../../services/conversations'
 import { setDependencies } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
@@ -121,6 +122,14 @@ export const featureRouter = router({
       const { sessionId } = await launchSideSession(ctx, input)
       return { sessionId }
     }),
+
+  // The chat header's session switcher (decision 10): the main chat, its side
+  // sessions one per conversation, and a live scenario chat. An ended side
+  // session's transcript reads through `project.conversationTranscript`, which
+  // takes any session row and drops the side kickoff by kind.
+  sessions: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => listFeatureSessions(ctx, input.featureId)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`

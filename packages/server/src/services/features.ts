@@ -734,7 +734,9 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
  * wins, because it is the one somebody is actually talking to.
  */
 function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
-  const open = activeSessionsForFeature(ctx, featureId)
+  // A side session's turns are its own errand: the feature's line speaks for
+  // the main chat (several-sessions-per-feature decision 12).
+  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side')
   const session = open.find((s) => s.status === 'live') ?? open[0]
   // `activeSessionsForFeature` never returns an ended row; the check is what
   // narrows the status to the two this reports, without a cast.
