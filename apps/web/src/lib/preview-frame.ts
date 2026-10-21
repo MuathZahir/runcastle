@@ -24,6 +24,21 @@ export const PREVIEW_CSP =
  */
 export const PREVIEW_ESCAPE_MESSAGE = 'runcastle:preview-escape'
 
+/** What a designed-screen entry's Open in design button posts (design-mode decision 7). */
+export const PREVIEW_OPEN_DESIGN_MESSAGE = 'runcastle:open-design'
+
+/**
+ * The design-server path a frame message asks to open, or null for any other
+ * message. Only `{ type: 'runcastle:open-design', path: '/…' }` counts: the path
+ * is appended to the design server's URL, so it must be one.
+ */
+export function openDesignPath(data: unknown): string | null {
+  if (typeof data !== 'object' || data === null) return null
+  const { type, path } = data as { type?: unknown; path?: unknown }
+  if (type !== PREVIEW_OPEN_DESIGN_MESSAGE || typeof path !== 'string' || !path.startsWith('/')) return null
+  return path
+}
+
 /** A leading doctype, after an optional BOM and whitespace. */
 const LEADING_DOCTYPE = /^﻿?\s*<!doctype[^>]*>/i
 

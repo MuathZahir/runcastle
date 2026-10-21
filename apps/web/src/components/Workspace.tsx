@@ -1036,7 +1036,14 @@ export function Workspace({
       case 'preview':
         return full.preview ? (
           <div className="px-6 pb-8">
-            <PreviewPanel featureId={featureId} preview={full.preview} />
+            <PreviewPanel
+              featureId={featureId}
+              preview={full.preview}
+              onOpenDesign={(path) => {
+                // The human's own click inside the preview; the design view starts the server.
+                if (views.includes('design')) panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })
+              }}
+            />
           </div>
         ) : null
       case 'design':

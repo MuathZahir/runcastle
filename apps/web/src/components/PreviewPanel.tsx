@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FeatureFull } from '../lib/api'
 import { relTimeAgo } from '../lib/format'
-import { PREVIEW_ESCAPE_MESSAGE, PREVIEW_SANDBOX, previewDocument } from '../lib/preview-frame'
+import { PREVIEW_ESCAPE_MESSAGE, PREVIEW_SANDBOX, openDesignPath, previewDocument } from '../lib/preview-frame'
 import { useTheme } from '../lib/theme'
 import { useFeatureDoc } from '../lib/use-feature-doc'
 import { IconExpand, IconX } from '../icons'
@@ -16,15 +16,20 @@ import { Dialog, DimLine, IconButton, PageSection, Skeleton, SkeletonBar, cx } f
  *
  * It refreshes through the shared `docs.read` key, which every pushed event
  * already invalidates; `live={false}` (the read-only Planning view) reads once.
+ *
+ * A designed screen's Open in design button (design-mode decision 7) posts out
+ * of the frame; `onOpenDesign` receives its path.
  */
 export function PreviewPanel({
   featureId,
   preview,
   live = true,
+  onOpenDesign,
 }: {
   featureId: string
   preview: NonNullable<FeatureFull['preview']>
   live?: boolean
+  onOpenDesign?: (path: string) => void
 }) {
   const doc = useFeatureDoc(featureId, preview.relPath, { live })
   const { resolved } = useTheme()
@@ -50,7 +55,11 @@ export function PreviewPanel({
           <SkeletonBar className="mt-3 h-3 w-2/3" />
         </Skeleton>
       ) : (
-        <PreviewFrame srcDoc={srcDoc} className="h-[60vh] min-h-[360px] w-full rounded-lg border border-border" />
+        <PreviewFrame
+          srcDoc={srcDoc}
+          onOpenDesign={onOpenDesign}
+          className="h-[60vh] min-h-[360px] w-full rounded-lg border border-border"
+        />
       )}
       <Dialog
         open={fullWindow}
@@ -70,6 +79,13 @@ export function PreviewPanel({
           <PreviewFrame
             srcDoc={srcDoc}
             onEscape={() => setFullWindow(false)}
+            onOpenDesign={
+              onOpenDesign &&
+              ((path) => {
+                setFullWindow(false)
+                onOpenDesign(path)
+              })
+            }
             className="min-h-0 w-full flex-1 border-0"
           />
         )}
@@ -87,29 +103,35 @@ export function PreviewPanel({
  * frame is remounted to put the preview back.
  *
  * Focus inside the frame is out of the app's reach, so Escape pressed there
- * arrives as the frame document's relay message; `onEscape` hears it only
- * from this frame's own window.
+ * arrives as the frame document's relay message, and a designed-screen entry's
+ * Open in design as its own message; both are heard only from this frame's
+ * own window.
  */
 function PreviewFrame({
   srcDoc,
   onEscape,
+  onOpenDesign,
   className,
 }: {
   srcDoc: string
   onEscape?: () => void
+  onOpenDesign?: ((path: string) => void) | undefined
   className: string
 }) {
   const [generation, setGeneration] = useState(0)
   const frame = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
-    if (!onEscape) return
+    if (!onEscape && !onOpenDesign) return
     const onMessage = (event: MessageEvent) => {
-      if (event.data === PREVIEW_ESCAPE_MESSAGE && event.source === frame.current?.contentWindow) onEscape()
+      if (event.source !== frame.current?.contentWindow) return
+      if (event.data === PREVIEW_ESCAPE_MESSAGE) onEscape?.()
+      const path = openDesignPath(event.data)
+      if (path !== null) onOpenDesign?.(path)
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [onEscape])
+  }, [onEscape, onOpenDesign])
   // Loads counted for one document in one mount; a new `srcDoc` (an edit, a
   // theme switch) or a remount starts the count again.
   const loads = useRef({ srcDoc, generation, count: 0 })
