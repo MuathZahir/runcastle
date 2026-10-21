@@ -150,6 +150,7 @@ describe('FeatureChat', () => {
       createElement(FeatureChat, {
         full: { ...f, feature: { ...f.feature, lap }, sessions },
         events: [],
+        switcher: 'Session switcher',
         hidden: false,
         launching: false,
         onLaunch: () => undefined,
@@ -158,14 +159,11 @@ describe('FeatureChat', () => {
     )
   }
 
-  for (const [kind, line] of [
-    ['chat', 'Chat'],
-    ['drive-fix', 'Drive fix'],
-  ] as const) {
-    it(`hosts a live ${kind} session full-area`, () => {
+  for (const kind of ['chat', 'drive-fix'] as const) {
+    it(`hosts a live ${kind} session full-area, under the session switcher`, () => {
       const out = tab([session({ id: `sess_${kind}`, kind })])
       expect(out).toContain(`data-terminal="sess_${kind}"`)
-      expect(out).toContain(line)
+      expect(out).toContain('Session switcher')
       expect(out).toContain('End session')
     })
   }
@@ -178,7 +176,7 @@ describe('FeatureChat', () => {
 
   it('with nothing live, reads back the chat transcript over Resume', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
-    expect(out).toContain('Chat')
+    expect(out).toContain('Session switcher')
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
   })
@@ -198,15 +196,15 @@ describe('the project chat', () => {
     const out = html(
       createElement(ProjectChat, {
         session: { id: 'ps_1', ccSessionId: 'f5b41d9e-rest', status: 'live' } as NonNullable<ProjectSession>,
-        title: 'Untitled',
         branch: 'main',
         hidden: false,
-        onBack: () => undefined,
         onEnded: () => undefined,
+        switcher: 'Session switcher',
       }),
     )
     expect(out).toContain('data-chat-view')
     expect(out).toContain('Project chat')
+    expect(out).toContain('Session switcher')
     expect(out).toContain('data-terminal="ps_1"')
     // The deck is the feature Chat tab's; the project chat has none.
     expect(out).not.toContain('Chat notifications')

@@ -1,13 +1,14 @@
+import type { ReactNode } from 'react'
 import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../../lib/api'
 import type { ChatNoticeTarget } from '../../lib/chat-notices'
-import { activeSession, chatContextLine, featureChat, isHeadlessRun, isSelfPlanRun } from '../../lib/feature-ui'
+import { activeSession, featureChat, isHeadlessRun, isSelfPlanRun } from '../../lib/feature-ui'
 import { ChatView } from '../chat/ChatView'
 import { FeatureNoticeDeck } from '../chat/FeatureNoticeDeck'
 import { SessionNotices } from '../chat/SessionNotices'
 
 /**
- * The feature's Chat tab (one-chat-layout-everywhere decisions 1, 5, 9): the
+ * The feature chat in the chat column (one-chat-layout-everywhere decisions 1, 5, 9): the
  * feature's live session — whatever its kind; one terminal per feature means at
  * most one — full-area through `ChatView`. With nothing live it reads back the
  * feature's chat transcript over Resume, or offers Start on a feature nobody has
@@ -18,6 +19,7 @@ import { SessionNotices } from '../chat/SessionNotices'
 export function FeatureChat({
   full,
   events,
+  switcher,
   hidden,
   launching,
   onLaunch,
@@ -26,6 +28,8 @@ export function FeatureChat({
   full: FeatureFull
   /** The feature's event log, which feeds the notice deck over the chat. */
   events: readonly EventRow[]
+  /** The chat column's session switcher, where the context line was. */
+  switcher: ReactNode
   hidden: boolean
   launching: boolean
   /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
@@ -39,7 +43,7 @@ export function FeatureChat({
     <ChatView
       label="Agent"
       session={live ?? null}
-      contextLine={live ? chatContextLine(live) : 'Chat'}
+      contextLine={switcher}
       meta="One transcript per feature"
       featureId={full.feature.id}
       notices={live && <SessionNotices featureId={full.feature.id} session={live} />}

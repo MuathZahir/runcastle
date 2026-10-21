@@ -148,23 +148,23 @@ describe('the project workspace at rest', () => {
     ...over,
   })
 
-  /** The inbox is the page's one aside, open while something waits in it. */
-  it('opens the Notes aside beside the page while a note is open, and folds it on request', () => {
+  /** The inbox is the panel's Notes view (design-mode decision 11), open while something waits in it. */
+  it('opens the Notes panel beside the chat list while a note is open, and folds it on request', () => {
     render(<ProjectWorkspace projectId="proj_1" talk={talk()} />)
 
-    const aside = screen.getByRole('complementary', { name: 'Notes' })
-    expect(within(aside).getByRole('region', { name: 'Notes' })).toBeTruthy()
-    // the page comes first, the aside beside it
-    expect(
-      screen.getByText('Talk it through').compareDocumentPosition(aside),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    const panel = (): HTMLElement | null => document.querySelector('[data-panel]')
+    expect(within(panel()!).getAllByRole('region', { name: 'Notes' }).length).toBeGreaterThan(0)
+    // the chat list comes first, the panel beside it
+    expect(screen.getByText('Talk it through').compareDocumentPosition(panel()!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
 
     const toggle = screen.getByRole('button', { name: 'Notes (1)' })
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(toggle)
-    expect(screen.queryByRole('complementary', { name: 'Notes' })).toBeNull()
+    expect(panel()).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Notes (1)' }))
-    expect(screen.getByRole('complementary', { name: 'Notes' })).toBeTruthy()
+    expect(panel()).toBeTruthy()
   })
 
   it('triages straight away when no chat is open', () => {
@@ -191,7 +191,7 @@ describe('the project workspace at rest', () => {
   })
 
   /** Capture's View asks for the inbox; a live chat must not hide it. */
-  it('steps out of a live chat to the Notes card when the inbox is asked for', () => {
+  it('opens the Notes card beside a live chat when the inbox is asked for', () => {
     const scroll = vi.fn()
     const original = HTMLElement.prototype.scrollIntoView
     HTMLElement.prototype.scrollIntoView = scroll
@@ -205,8 +205,10 @@ describe('the project workspace at rest', () => {
           onConsumeInboxRequest={consumed}
         />,
       )
-      const card = screen.getByRole('region', { name: 'Notes' })
+      // the panel is named for its view, the card inside it for itself
+      const card = screen.getAllByRole('region', { name: 'Notes' }).at(-1)!
       expect(card.closest('[hidden]')).toBeNull()
+      expect(document.querySelector('[data-live-chat]')?.closest('[hidden], .hidden')).toBeNull()
       expect(scroll.mock.contexts).toContain(card)
       expect(consumed).toHaveBeenCalled()
     } finally {

@@ -1,29 +1,25 @@
 import type { ReactNode } from 'react'
 import type { ProjectSession } from '../../lib/api'
-import { conversationTitle } from '../../lib/conversation-title'
-import { IconArrowRight, IconFolder, IconMessage } from '../../icons'
-import { PageTopbar } from '../../ui'
+import { IconArrowRight } from '../../icons'
 import { ChatView } from '../chat/ChatView'
 
 /**
- * A project conversation, live or ended: the topbar says where you are
- * (project › chat) and carries the view tabs; everything under it is the one
- * chat surface every feature's Chat tab renders too (`ChatView`). Live, that is
- * the strip, then the terminal edge to edge — Claude Code's own prompt is the
- * composer. Ended, it is ChatView at rest: the same strip over the read-back
- * transcript and its Resume, exactly as a feature's ended Chat tab looks
- * (one-chat-layout-everywhere decision 6).
+ * A project conversation, live or ended, in the project page's chat column
+ * (design-mode decision 11): the one chat surface every feature's chat renders
+ * too (`ChatView`), with the column's session switcher where its context line
+ * would be. Live, that is the strip, then the terminal edge to edge — Claude
+ * Code's own prompt is the composer. Ended, it is ChatView at rest: the same
+ * strip over the read-back transcript and its Resume, exactly as a feature's
+ * ended chat looks (one-chat-layout-everywhere decision 6). The page's topbar
+ * says where you are.
  */
 export function ProjectChat({
   session,
   transcriptId,
   onResume,
   resuming = false,
-  title,
-  projectName = 'Project',
   branch,
   hidden,
-  onBack,
   onEnded,
   switcher,
 }: {
@@ -34,32 +30,21 @@ export function ProjectChat({
   /** With nothing live: reopen it. Absent when Claude Code never picked it up. */
   onResume?: () => void
   resuming?: boolean
-  title: string
-  /** The parent crumb — clicking it steps back to the project page. */
-  projectName?: string
   branch: string | null
   hidden: boolean
-  onBack: () => void
   /** Refresh the project's own session and conversation rows after End session. */
   onEnded?: () => void
-  /** The Overview | Chat | Drive tabs, when there is more than the chat. */
-  switcher?: ReactNode
+  /** The chat column's session switcher: the live chat and the past ones. */
+  switcher: ReactNode
 }) {
   const sid = session ? (session.ccSessionId ?? session.id) : null
   return (
     <div className={hidden ? 'hidden' : 'flex min-h-0 flex-1 flex-col'} data-live-chat={session ? '' : undefined}
       aria-hidden={hidden}>
-      <PageTopbar
-        crumbs={[
-          { label: projectName, icon: <IconFolder />, onClick: onBack },
-          { label: conversationTitle(title), icon: <IconMessage /> },
-        ]}
-        tabs={switcher}
-      />
       <ChatView
         label="Project chat"
         session={session}
-        contextLine="Project chat"
+        contextLine={switcher}
         meta={
           <>
             {/* Said once the branch is known — a literal "…" read as a

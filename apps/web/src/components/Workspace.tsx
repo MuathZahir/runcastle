@@ -28,6 +28,7 @@ import type { DriveState } from '../lib/workspace'
 import {
   activeSession,
   burnInterruption,
+  chatContextLine,
   defaultBaseBranch,
   deferredScope,
   dependencyCandidates,
@@ -78,6 +79,10 @@ import { DetailsView } from './inspector/Inspector'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
+import { ScenarioChatContext, ScenarioChatView } from './chat/ScenarioChat'
+import { SessionSwitcher } from './chat/SessionSwitcher'
+import { useFeatureChatColumn } from './chat/use-feature-chat-column'
+import { FEATURE_CHAT } from '../lib/chat-sessions'
 import { FeaturePanel, PanelButtons, PanelSplit, PanelStrip, usePanel } from './workspace/FeaturePanel'
 import { usePanelShow } from './workspace/use-panel-show'
 import { UnrecognizedPhase } from './workspace/FeaturePanes'
@@ -366,6 +371,15 @@ export function Workspace({
   // The agent's `show_panel`, for a view this state offers.
   usePanelShow(events, featureId, (request) => {
     if (views.includes(request.view)) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
+  })
+  // The chat column (decision 9): the feature chat, and the drive errand's
+  // scenario chat, which an errand's open brings to the front.
+  const featureLive = activeSession(q.data?.sessions ?? [])
+  const column = useFeatureChatColumn({
+    featureLive: featureLive
+      ? { label: featureLive.kind === 'chat' ? 'Feature chat' : chatContextLine(featureLive) }
+      : null,
+    driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
 
   // Settles once the refetches land, for a mutation that must stay pending
@@ -1012,6 +1026,7 @@ export function Workspace({
       ticketsIsBody={ticketsIsBody}
       readonly={readonly}
       onViewPhase={viewPhase}
+      {...(views.includes('drive') ? { onOpenDrive: () => panel.dispatch({ type: 'open', view: 'drive', origin: 'human' }) } : {})}
     />
   )
 
@@ -1055,6 +1070,7 @@ export function Workspace({
     }
   }
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  const switcher = <SessionSwitcher entries={column.entries} current={column.inFront} onPick={column.pick} />
 
   return (
     // `overflow-clip`, not `hidden`: the feature view is the app's one unbounded
@@ -1103,50 +1119,63 @@ export function Workspace({
             {nextRow}
             {drivePrereqsNotice}
           </div>
-          <PanelSplit
-            chat={
-              // The same element whatever the panel does: xterm keeps its
-              // buffer. Hidden only while the panel has the whole row.
-              <FeatureChat
-                full={full}
-                events={events}
-                hidden={chatHidden}
-                launching={launch.isPending}
-                onLaunch={launchChat}
-                onView={(target) => {
-                  if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
-                }}
-              />
-            }
-            panel={
-              shown && (
-                <FeaturePanel
-                  view={shown}
-                  views={views}
-                  label={labelOf}
-                  path={panel.state.path}
-                  onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
-                  onCollapse={() => panel.dispatch({ type: 'collapse' })}
-                  onClose={() => panel.dispatch({ type: 'close' })}
-                >
-                  {panelView(shown)}
-                </FeaturePanel>
-              )
-            }
-            share={panel.state.share}
-            collapsed={panel.state.collapsed}
-            strip={
-              shown && (
-                <PanelStrip
-                  label={labelOf(shown)}
-                  onExpand={() => panel.dispatch({ type: 'expand' })}
-                  onClose={() => panel.dispatch({ type: 'close' })}
-                />
-              )
-            }
-            onResize={(share) => panel.dispatch({ type: 'setWidth', share })}
-            onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
-          />
+          {/* The drive's errands open their chat in this page's column. */}
+          <ScenarioChatContext.Provider value={column.scenario}>
+            <PanelSplit
+              chat={
+                // The same elements whatever the panel does: xterm keeps its
+                // buffer. The switcher picks which is in front; the column is
+                // hidden only while the panel has the whole row.
+                <>
+                  <FeatureChat
+                    full={full}
+                    events={events}
+                    switcher={switcher}
+                    hidden={chatHidden || column.inFront !== FEATURE_CHAT}
+                    launching={launch.isPending}
+                    onLaunch={launchChat}
+                    onView={(target) => {
+                      if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
+                    }}
+                  />
+                  <ScenarioChatView
+                    chat={column.scenario}
+                    switcher={switcher}
+                    featureId={featureId}
+                    hidden={chatHidden || column.inFront !== column.scenario.sessionId}
+                  />
+                </>
+              }
+              panel={
+                shown && (
+                  <FeaturePanel
+                    view={shown}
+                    views={views}
+                    label={labelOf}
+                    path={panel.state.path}
+                    onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
+                    onCollapse={() => panel.dispatch({ type: 'collapse' })}
+                    onClose={() => panel.dispatch({ type: 'close' })}
+                  >
+                    {panelView(shown)}
+                  </FeaturePanel>
+                )
+              }
+              share={panel.state.share}
+              collapsed={panel.state.collapsed}
+              strip={
+                shown && (
+                  <PanelStrip
+                    label={labelOf(shown)}
+                    onExpand={() => panel.dispatch({ type: 'expand' })}
+                    onClose={() => panel.dispatch({ type: 'close' })}
+                  />
+                )
+              }
+              onResize={(share) => panel.dispatch({ type: 'setWidth', share })}
+              onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
+            />
+          </ScenarioChatContext.Provider>
         </>
       )}
 
@@ -1237,6 +1266,7 @@ export function PhaseBody({
   ticketsIsBody,
   readonly,
   onViewPhase,
+  onOpenDrive,
 }: {
   effective: Phase
   full: FeatureFull
@@ -1248,6 +1278,8 @@ export function PhaseBody({
   ticketsIsBody: boolean
   readonly: boolean
   onViewPhase: (phase: Phase | null) => void
+  /** Open the panel's drive view — the one place a live drive shows. */
+  onOpenDrive?: () => void
 }) {
   // A pinned phase this flow owns is a frozen record, not the live body with its
   // buttons hidden (decision 10) — a different body altogether. The plan
@@ -1283,6 +1315,7 @@ export function PhaseBody({
           // A defect being fixed links to its lane, which lives in the run view
           // one phase back (decision 18c).
           onViewPhase={onViewPhase}
+          onOpenDrive={onOpenDrive}
         />
       )
     case 'shipped':
