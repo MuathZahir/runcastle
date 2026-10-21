@@ -7,7 +7,7 @@ import { MAX_KICKOFF_ARGV } from '../launcher/runtimes/types'
 import { kickoffLineFor } from '../launcher/sessions'
 import { selfPlanKickoffFor } from '../launcher/runtimes/skills'
 import { listSessionsByFeature } from './repo'
-import { promptMatchesKickoff } from './conversations'
+import { promptMatchesKickoff, saidText } from './conversations'
 import { readTranscript, type TranscriptTurn } from './transcripts'
 
 /**
@@ -67,10 +67,14 @@ export function mainChatExcerpt(ctx: AppCtx, feature: Feature): MainChatExcerpt 
     : null
   const transcript = readTranscript(chat.transcriptPath, runtime)
   const kickoffs = [kickoffLineFor('chat', undefined, runtime), selfPlanKickoffFor(runtime)]
-  const said = transcript.turns.filter(
-    (turn) =>
-      !(turn.role === 'user' && kickoffs.some((kickoff) => promptMatchesKickoff(kickoff, turn.text))),
-  )
+  // A user turn is quoted only for what the human said: no kickoff, and none of
+  // the runtime's own records (a slash command, its output, an interruption).
+  const said = transcript.turns.flatMap((turn): TranscriptTurn[] => {
+    if (turn.role !== 'user') return [turn]
+    if (kickoffs.some((kickoff) => promptMatchesKickoff(kickoff, turn.text))) return []
+    const text = saidText(turn.text)
+    return text ? [{ ...turn, text }] : []
+  })
   const quote = capTurns(said)
   return {
     quote,

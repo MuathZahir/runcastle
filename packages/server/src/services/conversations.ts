@@ -123,11 +123,16 @@ const INTERRUPTED = '[Request interrupted by user]'
  * an abandoned turn as {@link INTERRUPTED}, and a pasted screenshot as an
  * `[Image #n]` token. On the runcastle project those three had named 15 of 19
  * conversations. None of them is a sentence anyone typed to describe the work,
- * so a turn made only of them is skipped and the search moves on.
+ * so a turn made only of them is skipped and the search moves on. The command's
+ * own output is recorded as a `user` turn too (`<local-command-stdout>…`), and
+ * is skipped the same way.
+ *
+ * Also what the main-chat excerpt quotes as "Human" (`main-chat-excerpt.ts`):
+ * a quote that opened with `/clear`'s markup would credit the human with it.
  */
-function saidText(text: string): string | null {
+export function saidText(text: string): string | null {
   const trimmed = text.trim()
-  if (trimmed.startsWith('<command-name>')) return null
+  if (trimmed.startsWith('<command-name>') || trimmed.startsWith('<local-command-')) return null
   if (trimmed === INTERRUPTED) return null
   return trimmed.replace(/\[Image #\d+\]/g, ' ').trim() || null
 }

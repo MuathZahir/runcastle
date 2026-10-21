@@ -581,7 +581,12 @@ describe('what a new side session knows of the main chat', () => {
     const f = await feature('cleared')
     const chat = await mainChat(f.id, 'cc-before', { live: true })
     const before = transcript('claude-code', [['user', 'old talk about pears']])
-    const after = transcript('claude-code', [['user', 'fresh talk about plums']])
+    // How Claude Code opens a post-clear transcript: the command, then its output.
+    const after = transcript('claude-code', [
+      ['user', '<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>'],
+      ['user', '<local-command-stdout></local-command-stdout>'],
+      ['user', 'fresh talk about plums'],
+    ])
     markSessionLive(ctx, chat, { transcriptPath: before })
     const app = new Hono()
     app.route('/api/hooks', hooksApp)
@@ -602,7 +607,9 @@ describe('what a new side session knows of the main chat', () => {
 
     const text = kickoffOf(f.id, await openSide(f.id))
 
-    expect(text).toContain('plums')
+    expect(text).toContain('Human: fresh talk about plums')
     expect(text).not.toContain('pears')
+    expect(text).not.toContain('<command-name>')
+    expect(text).not.toContain('<local-command-stdout>')
   })
 })
