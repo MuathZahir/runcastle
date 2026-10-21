@@ -30,7 +30,7 @@ export function FeatureChat({
   launching: boolean
   /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
   onLaunch: () => void
-  /** Switch to the tab a notice points at. */
+  /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
 }) {
   const live = activeSession(full.sessions)
@@ -46,8 +46,8 @@ export function FeatureChat({
       headless={
         live && isHeadlessRun(live)
           ? isSelfPlanRun(live)
-            ? 'This feature is planning itself. There is no terminal to watch; the plan appears on the Overview as it is written.'
-            : 'This feature is working by itself. There is no terminal to watch; its docs and tickets update on the Overview as it works.'
+            ? 'This feature is planning itself. There is no terminal to watch; the plan appears in the body as it is written.'
+            : 'This feature is working by itself. There is no terminal to watch; its docs and tickets update in the body as it works.'
           : undefined
       }
       transcriptId={chat?.id}

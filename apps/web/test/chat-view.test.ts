@@ -36,7 +36,7 @@ import { ToastProvider } from '../src/lib/toast'
 import { ChatView } from '../src/components/chat/ChatView'
 import { ProjectChat } from '../src/components/project/ProjectChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
-import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
+import { PanelButtons } from '../src/components/workspace/FeaturePanel'
 import { full as fixture } from './fixtures'
 
 type Session = FeatureFull['sessions'][number]
@@ -214,34 +214,34 @@ describe('the project chat', () => {
   })
 })
 
-/** Overview | Chat on every non-draft feature (decisions 1, 11). */
-describe('FeatureViewTabs', () => {
-  const tabs = (props: Partial<Parameters<typeof FeatureViewTabs>[0]> = {}) =>
+/** design-mode decision 5: the tabs became a topbar door to each panel view. */
+describe('PanelButtons', () => {
+  const buttons = (props: Partial<Parameters<typeof PanelButtons>[0]> = {}) =>
     html(
-      createElement(FeatureViewTabs, {
-        isDraft: false,
-        value: 'overview',
-        onChange: () => undefined,
-        sessionLive: false,
+      createElement(PanelButtons, {
+        views: ['body', 'preview', 'design', 'details'],
+        open: null,
+        label: (v) => (v === 'body' ? 'Tickets' : v[0]!.toUpperCase() + v.slice(1)),
+        onToggle: () => undefined,
         ...props,
       }),
     )
+  const labels = (out: string) =>
+    [...out.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, ''))
 
-  it('shows the two views, Agent last, and no Tickets tab', () => {
-    const out = tabs()
-    const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
-      m[1]!.replace(/<[^>]+>/g, ''),
-    )
-    expect(labels).toEqual(['Overview', 'Agent'])
-    expect(out).not.toContain('Session live')
+  it('offers each view the state has but the details, and no Overview or Chat tab', () => {
+    const out = buttons()
+    expect(labels(out)).toEqual(['Tickets', 'Preview', 'Design'])
+    expect(out).not.toContain('role="tab"')
+    expect(out).not.toContain('aria-pressed="true"')
   })
 
-  it('puts a live dot on Agent while a session is live', () => {
-    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Agent[\s\S]*aria-label="Session live"/)
+  it('marks the open view pressed', () => {
+    expect(buttons({ open: 'design' })).toMatch(/aria-pressed="true"[^>]*>[\s\S]*?Design/)
   })
 
-  it('gives a draft no views at all', () => {
-    expect(tabs({ isDraft: true })).not.toContain('role="tab"')
+  it('gives a draft, which offers no views, nothing', () => {
+    expect(buttons({ views: [] })).not.toContain('<button')
   })
 })
 

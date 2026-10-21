@@ -111,15 +111,6 @@ export function workspaceView(state: {
 }
 
 /**
- * Whether the Inspector rail renders. Every panel in it is feature-scoped, so it
- * belongs to exactly one view — the project workspace hides it entirely rather
- * than showing panels about a feature you are not looking at.
- */
-export function showsInspector(view: WorkspaceView, inspectorCollapsed: boolean): boolean {
-  return view === 'feature' && !inspectorCollapsed
-}
-
-/**
  * What the palette's Preparation row answers to. Every word someone might type
  * looking for preparation, including the ones they type looking for it a SECOND
  * time — "re-prepare", "redo", "re-run" all missed, which is how a finished
