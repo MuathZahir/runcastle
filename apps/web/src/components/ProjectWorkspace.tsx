@@ -4,9 +4,9 @@ import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
-import { IconArrowRight, IconBranch, IconFolder, IconMessage, IconPanelRight } from '../icons'
+import { IconArrowRight, IconBranch, IconFolder, IconMessage, IconPanelRight, IconPlay } from '../icons'
 import { useLivePoll } from '../lib/live'
-import { IconButton, Page, PageHeader, PageTopbar } from '../ui'
+import { Button, IconButton, Page, PageHeader, PageTopbar } from '../ui'
 import { projectChatEntries, scenarioChatLabel, type ChatSessionEntry } from '../lib/chat-sessions'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
 import { ScenarioChatContext, ScenarioChatView, useScenarioChat } from './chat/ScenarioChat'
@@ -165,6 +165,10 @@ export function ProjectWorkspace({
     drive: projectDrive.slot,
     projectId,
   })
+  // The human's Test drive: the drive it started opens in the panel. The topbar
+  // starts the blank app, as the card's main click does.
+  const startDrive = (scenario: string | null = null): void =>
+    projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
   // The live chat in front of the column.
   const showChat = (): void => setFront(undefined)
   // Reopening leaves the read-back chat behind: what comes back is the terminal.
@@ -217,8 +221,7 @@ export function ProjectWorkspace({
             stopCommand={project?.driveStopCommand}
             starting={projectDrive.starting}
             scenarios={startScenarios}
-            // The human's Test drive: the drive it started opens in the panel.
-            onStart={(scenario) => projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))}
+            onStart={startDrive}
             onPrepare={() => onOpenPreparation?.()}
             onReturn={() => openView('drive')}
           />
@@ -290,6 +293,23 @@ export function ProjectWorkspace({
         ]}
         actions={
           <>
+            {/* The resting page's Test drive card is behind a live chat, so the
+                topbar carries its start until a drive is up — then the panel's
+                Drive button is the way to it. */}
+            {!resting && (driveCard.state === 'ready' || driveCard.state === 'blocked') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<IconPlay />}
+                className="mr-1"
+                loading={projectDrive.starting}
+                disabled={driveCard.state === 'blocked' || projectDrive.starting}
+                title={driveCard.state === 'blocked' ? driveCard.reason : undefined}
+                onClick={() => startDrive()}
+              >
+                Test drive
+              </Button>
+            )}
             <PanelButtons views={views} open={shown} label={projectViewLabel} onToggle={toggleView} />
             {hasNotes && (
               <IconButton

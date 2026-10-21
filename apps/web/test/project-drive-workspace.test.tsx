@@ -468,8 +468,11 @@ describe('a live project chat', () => {
     expect(switcher.textContent).toContain('Audit the journal')
 
     fireEvent.click(switcher)
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Audit the journal', 'An older idea'])
-    fireEvent.click(screen.getByRole('option', { name: 'An older idea' }))
+    // a past chat carries its age, as the resting list shows it
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options[0]).toBe('Audit the journal')
+    expect(options[1]).toMatch(/^An older idea · \d+d$/)
+    fireEvent.click(screen.getByRole('option', { name: /^An older idea/ }))
 
     // the transcript reads back; the live terminal is hidden, not unmounted
     expect(screen.getByText('plan the audit')).toBeTruthy()
@@ -487,6 +490,30 @@ describe('a live project chat', () => {
   it('offers the drive in the topbar only while one is live', () => {
     mount(talk({ session: liveChat }))
     expect(screen.queryByRole('button', { name: 'Drive' })).toBeNull()
+  })
+
+  it('starts the project test drive from the topbar without leaving the chat', () => {
+    const { rerender } = mount(talk({ session: liveChat, conversations: [liveRow] }))
+    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
+    fireEvent.click(screen.getByRole('button', { name: 'Test drive' }))
+    expect(testDrive).toHaveBeenCalledWith({ projectId: 'proj_1', action: 'start' })
+    rerender()
+
+    // the drive opens in the panel beside the chat, which stays in front
+    expect(document.querySelector('[data-project-drive]')!.closest('[data-panel]')).toBeTruthy()
+    expect(shown(chat)).toBe(true)
+    expect(restShown()).toBe(false)
+    // once it is up, the panel's Drive button is the way to it
+    expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Drive' })).toBeTruthy()
+  })
+
+  it('names the holder on a disabled topbar Test drive while another drive has the slot', () => {
+    slot = { ...LIVE, projectDrive: undefined, projectId: undefined, holderLabel: 'a test drive of feature/streaks' }
+    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    const button = screen.getByRole('button', { name: 'Test drive' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(button.title).toBe('A test drive of feature/streaks is running')
   })
 })
 

@@ -40,17 +40,32 @@ describe('the feature page’s chat sessions', () => {
 })
 
 describe('the project page’s chat sessions', () => {
+  const DAY = 86_400_000
+  const now = 40 * DAY
   const rows = [
-    { id: 'sess_live', title: 'Audit the journal', status: 'live' },
-    { id: 'sess_b', title: 'Streaks idea', status: 'ended' },
-    { id: 'sess_a', title: null, status: 'ended' },
+    { id: 'sess_live', title: 'Audit the journal', status: 'live', createdAt: now - 60_000 },
+    { id: 'sess_b', title: 'Streaks idea', status: 'ended', createdAt: now - 2 * DAY },
+    { id: 'sess_a', title: null, status: 'ended', createdAt: now - 32 * DAY },
   ]
 
-  it('list the live chat once, first, then the past ones in the list’s order', () => {
-    expect(projectChatEntries({ liveId: 'sess_live', conversations: rows })).toEqual([
+  it('list the live chat once, first, then the past ones in the list’s order, each with its age', () => {
+    expect(projectChatEntries({ liveId: 'sess_live', conversations: rows, now })).toEqual([
       { id: 'sess_live', label: 'Audit the journal', live: true },
-      { id: 'sess_b', label: 'Streaks idea', live: false },
-      { id: 'sess_a', label: 'Untitled chat', live: false },
+      { id: 'sess_b', label: 'Streaks idea · 2d', live: false },
+      { id: 'sess_a', label: 'Untitled chat · 32d', live: false },
+    ])
+  })
+
+  it('tell apart past chats that share a title', () => {
+    const untitled = [
+      { id: 'sess_1', title: null, status: 'ended', createdAt: now - 60_000 },
+      { id: 'sess_2', title: null, status: 'ended', createdAt: now - 32 * DAY },
+      { id: 'sess_3', title: null, status: 'ended', createdAt: null },
+    ]
+    expect(projectChatEntries({ liveId: null, conversations: untitled, now }).map((e) => e.label)).toEqual([
+      'Untitled chat · 1m',
+      'Untitled chat · 32d',
+      'Untitled chat',
     ])
   })
 
