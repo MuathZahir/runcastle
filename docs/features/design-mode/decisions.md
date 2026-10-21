@@ -74,3 +74,15 @@ The button asks the app to open the design panel at that screen's preview page, 
 ## 11. The project page takes the same chat-first shape
 **Decision:** The project page uses the feature page's layout pieces. A live project chat fills the page. The project test drive opens in the same right-hand resizable panel. The project's past chats are listed in the chat column's session switcher (decision 9). With no chat running, the page shows the chat list and the New chat button as today.
 **Why:** The human asked to change the whole layout, and two pages built differently would feel like two apps. Reusing the feature page's chat column, switcher and panel keeps the added work small. Rejected: changing the feature page only, which leaves the drive and chat behaving differently on the two pages.
+
+## Revisited 2026-10-21 (after the first test drive)
+
+## 12. One header row; Go moves to the tickets view; one collapsed sidebar state
+**Decision:** The feature page has a single header row: the title, a quiet status ("Planning with you"), the session switcher, Merge & ship when it applies, the ⋯ menu and a panel toggle. Removed from the page:
+- the feature strip (the stepper and the next-step row);
+- the chat column's own header row: End session and the "one transcript" note move into the switcher's menu;
+- the Plan and Design topbar buttons: the panel toggle opens the panel at its last view, and the panel header switches views.
+
+Go is on the tickets view (the planning body), above the ticket list. When the plan is not finished it is disabled with the reason beneath it, and "Go anyway" becomes a small link under that reason. The project page follows the same one-header rule. The sidebar has one collapsed state, closed, and the icon rail is removed; a header button brings it back.
+Supersedes: decision 5's "slim feature strip … which never hides; Go and Merge are always one click away", for Go. Merge stays in the header.
+**Why:** The human, test-driving: "So many headers one after the other… why do we have the 'Plan' and 'Design' buttons at the top, it looks so bad… The minimized sidebar is useless." and "I don't want the 'Go', 'Go anyway..' buttons. The buttons should be on the tickets page since it starts the burn." On Merge: "The merge can stay (maybe move it and unify the bars)."

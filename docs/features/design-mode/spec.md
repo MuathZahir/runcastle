@@ -13,8 +13,9 @@ The feature page also splits the conversation from what it talks about. The Over
 ### What the human sees
 
 The feature page becomes **the chat**.
-- Under the topbar there is a slim **feature strip**: the stepper, the next-step sentence and the one primary action (Go, Merge…). It never hides.
-- Below the strip, the feature's chat fills the page.
+- The page has **one header row** (decision 12): the title, a quiet status ("Planning with you"), the session switcher, Merge & ship when it applies, the ⋯ menu and a panel toggle. There is no feature strip, no stepper row and no separate chat header. End session and the "one transcript" note live in the switcher's menu.
+- **Go is on the tickets view** (the planning body), above the ticket list. When the plan is not finished it is disabled with the reason beneath it, and "Go anyway" is a small link under that reason.
+- Below the header, the feature's chat fills the page.
 - One **panel** opens on the right when there is something to show. It holds one view at a time:
   - **body**: the phase's body as today (planning panes and tickets, run lanes, review evidence, shipped outcome);
   - **preview**: the plan preview;
@@ -22,13 +23,13 @@ The feature page becomes **the chat**.
   - **drive**: a test drive;
   - **details**: the docs and the activity timeline, today's inspector aside.
 
-  A switcher in the panel's header lists the views available in the current state, and topbar buttons open each one.
+  A switcher in the panel's header lists the views available in the current state. The header's panel toggle opens the panel at its last view; there are no per-view topbar buttons.
 - The divider drags freely, either side down to nothing. Double-clicking it toggles between a 50/50 split and the panel at full width. The panel can collapse to a strip. Sizes are remembered per browser, in local storage, wrapped so a missing store is harmless.
 - Below roughly 1100px of content width, the panel becomes an overlay over the chat.
 - A draft feature has no chat, so its body is the page.
 
 The panel opens three ways:
-1. the human, from the topbar;
+1. the human, with the header's panel toggle and the panel's own switcher;
 2. the agent, through the `show_panel` MCP tool;
 3. runcastle, only as the direct result of the human's own click: Go opens the run body, and Test drive opens the drive.
 
@@ -39,7 +40,9 @@ The chat column's header holds a **session switcher**.
 - Picking the feature chat, or closing the errand, switches back. The drive keeps the whole panel.
 - The parked feature *Several sessions per feature* adds its side sessions to this same switcher. It runs in parallel and reconciles the column at merge.
 
-The **project page** takes the same shape:
+The sidebar has one collapsed state, closed; the icon rail is gone, and a header button brings the sidebar back.
+
+The **project page** takes the same shape, with the same one-header rule:
 - a live project chat fills the page;
 - the project drive opens in the same panel;
 - past project chats are listed in the session switcher;
