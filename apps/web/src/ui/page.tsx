@@ -83,19 +83,22 @@ export const SidebarDoorContext = createContext<ReactNode>(null)
 
 /**
  * The content panel's 44px top bar (`border-b border-subtle`). Left: the
- * closed sidebar's way back, then `crumbs` (or any `leading` node). Right:
- * view `tabs`, then `actions` (secondary buttons, then IconButtons — more,
- * panel toggle).
+ * closed sidebar's way back, then `crumbs` (or any `leading` node), then
+ * `status`, a quiet line that truncates before the crumbs do. Right: view
+ * `tabs`, then `actions` (secondary buttons, then IconButtons — more, panel
+ * toggle).
  */
 export function PageTopbar({
   leading,
   crumbs,
+  status,
   tabs,
   actions,
   className,
 }: {
   leading?: ReactNode
   crumbs?: Crumb[]
+  status?: ReactNode
   tabs?: ReactNode
   actions?: ReactNode
   className?: string
@@ -112,7 +115,8 @@ export function PageTopbar({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {door}
         {leading}
-        {crumbs && <Crumbs items={crumbs} />}
+        {crumbs && <Crumbs items={crumbs} className={status ? 'shrink-0 max-w-[60%]' : undefined} />}
+        {status && <div className="flex min-w-0 flex-1 items-center">{status}</div>}
       </div>
       {tabs && <div className="flex shrink-0 items-center">{tabs}</div>}
       {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}

@@ -9,9 +9,9 @@ import {
 } from '../../lib/feature-ui/panel'
 import { useRailWidth, type RailWidthSpec } from '../../lib/rail-width'
 import type { FeatureView } from '../../lib/routes'
-import { Button, IconButton, cx } from '../../ui'
+import { IconButton, cx } from '../../ui'
 import { SELECT_GHOST, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
-import { IconArrowLeft, IconChevronRight, IconEye, IconInfo, IconList, IconPen, IconPlay, IconX } from '../../icons'
+import { IconArrowLeft, IconChevronRight, IconEye, IconInfo, IconList, IconPanelRight, IconPen, IconPlay, IconX } from '../../icons'
 
 /**
  * The feature page's one panel (design-mode decisions 4, 5): the split it
@@ -49,7 +49,7 @@ export interface PanelApi {
  */
 export function usePanel(view: PanelView | null, onViewChange: (view: FeatureView) => void): PanelApi {
   const { width, setWidth } = useRailWidth(PANEL_SHARE)
-  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed'>>({
+  const [rest, setRest] = useState<Pick<PanelState, 'path' | 'origin' | 'collapsed' | 'last'>>({
     collapsed: INITIAL_PANEL.collapsed,
   })
   const state: PanelState = { ...rest, view, share: width / PANEL_SHARE.max }
@@ -62,8 +62,13 @@ export function usePanel(view: PanelView | null, onViewChange: (view: FeatureVie
   const dispatch = useCallback(
     (action: PanelAction) => {
       const before = current.current.state
-      const { view: nextView, share, path, origin, collapsed } = panelReducer(before, action)
-      setRest({ collapsed, ...(path !== undefined ? { path } : {}), ...(origin ? { origin } : {}) })
+      const { view: nextView, share, path, origin, collapsed, last } = panelReducer(before, action)
+      setRest({
+        collapsed,
+        ...(path !== undefined ? { path } : {}),
+        ...(origin ? { origin } : {}),
+        ...(last ? { last } : {}),
+      })
       if (share !== before.share) setWidth(share * PANEL_SHARE.max)
       if (nextView !== before.view) current.current.onViewChange(nextView ?? 'chat')
     },
@@ -259,38 +264,31 @@ export function PanelStrip({ label, onExpand, onClose }: { label: string; onExpa
 }
 
 /**
- * The topbar's door to each view this state offers (decision 5): a click opens
- * that view, or closes it when it is the one open. The details are not among
- * them: they keep the aside toggle's old glyph and place, after the "…".
+ * The header's one door to the panel (decision 12), last in the row: it opens
+ * the panel at its last view, or closes it. Which view is on show is the
+ * panel header's own switcher — the page has no button per view.
  */
-export function PanelButtons({
-  views,
+export function PanelToggle({
   open,
-  label,
+  views,
+  badge,
   onToggle,
 }: {
+  open: boolean
+  /** The views on offer; with none, there is no panel to open. */
   views: readonly PanelView[]
-  open: PanelView | null
-  label: (view: PanelView) => string
-  onToggle: (view: PanelView) => void
+  /** A count waiting inside (the project's open notes). */
+  badge?: number
+  onToggle: () => void
 }) {
+  if (views.length === 0) return null
   return (
-    <>
-      {views
-        .filter((v) => v !== 'details')
-        .map((v) => (
-          <Button
-            key={v}
-            size="sm"
-            variant={open === v ? 'secondary' : 'ghost'}
-            icon={PANEL_VIEW_ICON[v]}
-            aria-pressed={open === v}
-            className="mr-1"
-            onClick={() => onToggle(v)}
-          >
-            {label(v)}
-          </Button>
-        ))}
-    </>
+    <IconButton
+      label={open ? 'Hide the panel' : 'Show the panel'}
+      icon={<IconPanelRight />}
+      active={open}
+      {...(badge ? { badge } : {})}
+      onClick={onToggle}
+    />
   )
 }

@@ -9,9 +9,17 @@ import { useToast } from '../../../lib/toast'
 import { cx, DimLine, Skeleton, SkeletonBar } from '../../../ui'
 import { DocPeek } from '../../DocPeek'
 import { TicketLedger } from './TicketLedger'
+import { GoAction, type GoProps } from './GoAction'
 import type { TicketPatch } from './TicketEditor'
 
-export function TicketsBody({ featureId }: { featureId: string }) {
+export function TicketsBody({
+  featureId,
+  go,
+}: {
+  featureId: string
+  /** Go, above the list — the planning body carries it (design-mode decision 12). */
+  go?: GoProps
+}) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const poll = useLivePoll()
@@ -67,7 +75,10 @@ export function TicketsBody({ featureId }: { featureId: string }) {
   // decision 6 chose a vertical stack to avoid.
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto">
     <section aria-label="Tickets" className="flex min-h-0 flex-col">
-      <h2 className="m-0 mb-2 text-lg font-semibold text-text">Tickets</h2>
+      <div className="mb-2 flex items-start justify-between gap-4">
+        <h2 className="m-0 text-lg font-semibold text-text">Tickets</h2>
+        {go && <GoAction {...go} />}
+      </div>
       {ledger}
     </section>
     {peek && <DocPeek featureId={featureId} relPath={peek} title={docs.find((doc) => doc.relPath === peek)?.title ?? peek} onClose={() => setPeek(null)} />}

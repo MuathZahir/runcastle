@@ -12,7 +12,7 @@ import { openMenu } from './floating'
  * terminals kept mounted so xterm keeps its buffers. The drive keeps the whole
  * panel.
  *
- * Tier 2: the switcher is a portalled Select, and every assertion is about what
+ * Tier 2: the switcher is a portalled menu, and every assertion is about what
  * a click did. The seam is the column the feature page assembles: its hook, the
  * switcher, the scenario chat view and the drive that opens it. The server is
  * the boundary: `openScenarioChat` answers with the errand's session.
@@ -55,7 +55,7 @@ vi.mock('../src/components/chat/SessionNotices', () => ({ SessionNotices: () => 
 
 const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioChatContext, ScenarioChatView } = await import('../src/components/chat/ScenarioChat')
-const { SessionSwitcher } = await import('../src/components/chat/SessionSwitcher')
+const { FeatureSessionSwitcher } = await import('../src/components/chat/FeatureSessionSwitcher')
 const { useFeatureChatColumn } = await import('../src/components/chat/use-feature-chat-column')
 const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { FEATURE_CHAT } = await import('../src/lib/chat-sessions')
@@ -83,21 +83,22 @@ function Page({
   scenario?: DriveScenario
 }) {
   const column = useFeatureChatColumn({ sessions, driveSessionId })
-  const switcher = <SessionSwitcher entries={column.entries} current={column.inFront} onPick={column.pick} />
   const full = { feature: { id: 'feat_1' }, sessions, tickets: [] } as unknown as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
+      <header>
+        <FeatureSessionSwitcher column={column} featureId="feat_1" liveSessionId="sess_feat" />
+      </header>
       <div data-column="">
         <FeatureChat
           full={full}
           events={[]}
-          switcher={switcher}
           hidden={column.inFront !== FEATURE_CHAT}
           launching={false}
           onLaunch={() => {}}
           onView={() => {}}
         />
-        <ScenarioChatView chat={column.scenario} switcher={switcher} hidden={column.inFront !== column.scenario.sessionId} />
+        <ScenarioChatView chat={column.scenario} hidden={column.inFront !== column.scenario.sessionId} />
       </div>
       <div data-panel="">
         <ScenarioDrive
@@ -117,14 +118,22 @@ afterEach(() => {
 
 const shown = (el: Element): boolean => el.closest('[hidden], .hidden') === null
 const terminal = (id: string): Element => document.querySelector(`[data-terminal="${id}"]`)!
-/** The switcher of the conversation in front — each chat's strip carries one. */
-const switcher = (): HTMLElement =>
-  screen.getAllByRole('combobox', { name: 'Chat session' }).find((el) => shown(el))!
+/** The page header's one switcher (design-mode decision 12). */
+const switcher = (): HTMLElement => screen.getByRole('button', { name: 'Chat session' })
 const options = (): string[] => {
-  fireEvent.click(switcher())
-  const labels = screen.getAllByRole('option').map((o) => o.textContent ?? '')
+  openMenu(switcher())
+  const labels = screen.getAllByRole('menuitemradio').map((o) => o.textContent ?? '')
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
   return labels
+}
+/** Pick a session, or one of the menu's actions, from the switcher. */
+const pick = (name: string): void => {
+  openMenu(switcher())
+  fireEvent.click(screen.getByRole('menuitemradio', { name }))
+}
+const menuAction = (name: string): void => {
+  openMenu(switcher())
+  fireEvent.click(screen.getByRole('menuitem', { name }))
 }
 const newScenario = (): void => {
   openMenu(screen.getByRole('button', { name: 'Scenario' }))
@@ -161,16 +170,14 @@ describe('the chat column’s session switcher', () => {
   it('switches back on picking the feature chat, keeping both terminals mounted', () => {
     render(<Page />)
     newScenario()
-    fireEvent.click(switcher())
-    fireEvent.click(screen.getByRole('option', { name: 'Feature chat' }))
+    pick('Feature chat')
 
     expect(shown(terminal('sess_feat'))).toBe(true)
     // hidden, never unmounted: xterm keeps its buffer
     expect(terminal('sess_scn')).toBeTruthy()
     expect(shown(terminal('sess_scn'))).toBe(false)
 
-    fireEvent.click(switcher())
-    fireEvent.click(screen.getByRole('option', { name: 'Scenario chat · New scenario' }))
+    pick('Scenario chat · New scenario')
     expect(shown(terminal('sess_scn'))).toBe(true)
     expect(terminal('sess_feat')).toBeTruthy()
   })
@@ -178,13 +185,32 @@ describe('the chat column’s session switcher', () => {
   it('switches back when the errand is closed, and New scenario brings the same chat back', () => {
     render(<Page />)
     newScenario()
-    fireEvent.click(screen.getByRole('button', { name: 'Close the scenario chat' }))
+    menuAction('Close the scenario chat')
 
     expect(shown(terminal('sess_feat'))).toBe(true)
     expect(options()).toEqual(['Feature chat'])
 
     newScenario()
     expect(shown(terminal('sess_scn'))).toBe(true)
+  })
+
+  it('holds End session and the one-transcript note in its menu, where the chat header row was', () => {
+    render(<Page />)
+    openMenu(switcher())
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'End session' })).toBeTruthy()
+    expect(menu.textContent).toContain('One transcript per feature')
+    expect(document.querySelector('[data-column]')?.textContent).not.toContain('End session')
+  })
+
+  it('speaks for the scenario chat while it is in front: its errand, its close and End session', () => {
+    render(<Page />)
+    newScenario()
+    openMenu(switcher())
+    const menu = screen.getByRole('menu')
+    expect(menu.textContent).toContain('Describe the state you want to land in')
+    expect(within(menu).getByRole('menuitem', { name: 'Close the scenario chat' })).toBeTruthy()
+    expect(within(menu).getByRole('menuitem', { name: 'End session' })).toBeTruthy()
   })
 
   it('lists a scenario chat the live drive already has, without taking the column', () => {
@@ -226,8 +252,7 @@ describe('the column with a live scenario session among the feature’s sessions
     const agent = screen.getByRole('region', { name: 'Agent', hidden: true })
     expect(agent.querySelector('[data-terminal]')).toBeNull()
 
-    fireEvent.click(switcher())
-    fireEvent.click(screen.getByRole('option', { name: 'Scenario chat · New scenario' }))
+    pick('Scenario chat · New scenario')
     expect(shown(terminal('sess_live'))).toBe(true)
     expect(terminals('sess_live')).toBe(1)
   })

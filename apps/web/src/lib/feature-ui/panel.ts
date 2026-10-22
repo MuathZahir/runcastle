@@ -129,6 +129,8 @@ export interface PanelState {
   share: number
   /** Folded to a strip at the row's edge. */
   collapsed: boolean
+  /** The view last on show — where the header's panel toggle reopens it (decision 12). */
+  last?: PanelView
 }
 
 /** Where a fresh browser starts: an even split. */
@@ -148,6 +150,11 @@ export type PanelAction =
   | { type: 'toggleFull' }
   | { type: 'collapse' }
   | { type: 'expand' }
+  /**
+   * The header's panel toggle (decision 12): close the open panel, or open it
+   * at its last view — the first of `views` when that one is not offered now.
+   */
+  | { type: 'toggle'; views: readonly PanelView[] }
 
 /** A share inside 0..1; anything non-finite reads as the even split. */
 export function clampShare(share: number): number {
@@ -170,7 +177,9 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       return withView(state, action.view, 'human')
     case 'close': {
       const { path: _path, origin: _origin, ...rest } = state
-      return { ...rest, view: null, collapsed: false }
+      // The view the shell opened (the address bar, the palette) counts as last too.
+      const last = state.view ?? state.last
+      return { ...rest, view: null, collapsed: false, ...(last ? { last } : {}) }
     }
     case 'setWidth':
       return { ...state, share: clampShare(action.share) }
@@ -180,6 +189,11 @@ export function panelReducer(state: PanelState, action: PanelAction): PanelState
       return state.view ? { ...state, collapsed: true } : state
     case 'expand':
       return { ...state, collapsed: false }
+    case 'toggle': {
+      if (state.view) return panelReducer(state, { type: 'close' })
+      const view = state.last && action.views.includes(state.last) ? state.last : action.views[0]
+      return view ? withView(state, view, 'human') : state
+    }
   }
 }
 
@@ -192,6 +206,7 @@ function withView(state: PanelState, view: PanelView, origin: PanelOrigin, path?
   return {
     ...state,
     view,
+    last: view,
     origin,
     collapsed: false,
     ...(view === 'design' && path !== undefined ? { path } : {}),

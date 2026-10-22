@@ -4,14 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { phaseFacts, phaseSummary, ticketCount, ticketCountText } from '../src/lib/feature-ui'
 import type { FeatureFull } from '../src/lib/api'
 import { full } from './fixtures'
-import { NextStepBar } from '../src/components/workspace/NextStepBar'
 import { SidebarFootChrome } from '../src/components/Sidebar'
 import * as ui from '../src/ui'
 
 /**
- * The UX audit's consistency pass, pinned: one ticket count, Merge & ship in
- * the overflow before review, one loading look, and no "Server down" before
- * the server has had a chance to answer.
+ * The UX audit's consistency pass, pinned: one ticket count, one loading
+ * look, and no "Server down" before the server has had a chance to answer.
  */
 
 describe('the one ticket count', () => {
@@ -48,38 +46,6 @@ describe('the one ticket count', () => {
     } as unknown as FeatureFull
     expect(phaseFacts({ phase: 'planning', full: record, events: [] })).toBe('2 tickets')
     expect(phaseSummary({ phase: 'planning', full: record, events: [] })).toBe('Planning · 2 tickets')
-  })
-})
-
-describe('a demoted action on the next-step bar', () => {
-  const bar = (demote?: readonly ('merge' | 'chat')[]) =>
-    renderToStaticMarkup(
-      createElement(NextStepBar, {
-        ns: {
-          kick: 'NEXT STEP',
-          title: 'Review the tickets, then burn.',
-          primary: { label: 'Burn 3 tickets', kind: 'burn' },
-          secondary: [{ label: 'Merge & ship', kind: 'merge', disabled: 'Nothing has burned yet' }],
-          busy: false,
-        },
-        guidance: false,
-        busy: false,
-        onAction: () => undefined,
-        ...(demote ? { demote } : {}),
-      }),
-    )
-
-  it('is not a button on the row, and its refusal is not a caption under it', () => {
-    const html = bar(['merge'])
-    expect(html).not.toContain('Merge &amp; ship</button>')
-    expect(html).not.toContain('Nothing has burned yet</span>')
-    // It is one click away, in the row's More menu.
-    expect(html).toContain('aria-label="More actions"')
-    expect(html).toContain('Burn 3 tickets')
-  })
-
-  it('stays on the row when nothing demotes it', () => {
-    expect(bar()).toContain('Merge &amp; ship</button>')
   })
 })
 

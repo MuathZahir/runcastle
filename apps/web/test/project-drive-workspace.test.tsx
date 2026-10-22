@@ -297,8 +297,8 @@ describe('driving from the project page', () => {
     expect(screen.getByRole('region', { name: 'Test drive' }).textContent).toContain('Running')
     expect(testDrive).not.toHaveBeenCalled()
 
-    // the topbar's door to the drive, while one is live
-    fireEvent.click(screen.getByRole('button', { name: 'Drive' }))
+    // the header's panel toggle reopens it at the drive, its last view
+    fireEvent.click(screen.getByRole('button', { name: /^Show the panel/ }))
     expect(shown(screen.getByRole('heading', { name: 'Driving main' }))).toBe(true)
   })
 
@@ -396,12 +396,16 @@ describe('an ended project chat', () => {
 
     const chat = screen.getByRole('region', { name: 'Project chat' })
     expect(chat.hasAttribute('data-chat-view')).toBe(true)
-    // the column's switcher reads the chat in front
-    expect(within(chat).getByRole('combobox', { name: 'Chat session' }).textContent).toContain('Untitled chat')
+    // the header's switcher reads the chat in front
+    const switcher = screen.getByRole('button', { name: 'Chat session' })
+    expect(switcher.closest('header')).toBeTruthy()
+    expect(switcher.textContent).toContain('Untitled chat')
     expect(within(chat).getByText('plan the audit')).toBeTruthy()
     // nothing live: no dot, nothing to end, and no page-level Reopen
-    expect(within(chat).queryByRole('img', { name: 'Live' })).toBeNull()
-    expect(within(chat).queryByRole('button', { name: 'End session' })).toBeNull()
+    expect(switcher.querySelector('[aria-label="Live"]')).toBeNull()
+    openMenu(switcher)
+    expect(screen.queryByRole('menuitem', { name: 'End session' })).toBeNull()
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
     expect(screen.queryByRole('button', { name: 'Reopen' })).toBeNull()
     expect(screen.queryByText(/^Started /)).toBeNull()
 
@@ -445,7 +449,7 @@ describe('a live project chat', () => {
     expect(restShown()).toBe(false)
     expect(panel()).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Drive' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Show the panel/ }))
     const drive = document.querySelector<HTMLElement>('[data-project-drive]')!
     // side by side: the drive in the panel, the chat still in its column
     expect(shown(drive)).toBe(true)
@@ -464,32 +468,44 @@ describe('a live project chat', () => {
   it('lists the past chats in its switcher, an ended one opening its transcript', () => {
     mount(talk({ session: liveChat, conversations: [liveRow, older] }))
     const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
-    const switcher = within(chat).getByRole('combobox', { name: 'Chat session' })
-    expect(switcher.textContent).toContain('Audit the journal')
+    const switcher = () => screen.getByRole('button', { name: 'Chat session' })
+    expect(switcher().textContent).toContain('Audit the journal')
 
-    fireEvent.click(switcher)
+    openMenu(switcher())
     // a past chat carries its age, as the resting list shows it
-    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    const options = screen.getAllByRole('menuitemradio').map((o) => o.textContent)
     expect(options[0]).toBe('Audit the journal')
     expect(options[1]).toMatch(/^An older idea · \d+d$/)
-    fireEvent.click(screen.getByRole('option', { name: /^An older idea/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^An older idea/ }))
 
     // the transcript reads back; the live terminal is hidden, not unmounted
     expect(screen.getByText('plan the audit')).toBeTruthy()
     expect(shown(chat)).toBe(false)
     expect(document.querySelector('[data-live-chat]')).toBe(chat)
 
-    const back = screen
-      .getAllByRole('combobox', { name: 'Chat session' })
-      .find((el) => shown(el))!
-    fireEvent.click(back)
-    fireEvent.click(screen.getByRole('option', { name: 'Audit the journal' }))
+    openMenu(switcher())
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Audit the journal' }))
     expect(shown(chat)).toBe(true)
   })
 
-  it('offers the drive in the topbar only while one is live', () => {
+  it('has one header row, its switcher’s menu holding the landing branch and End session', () => {
+    mount(talk({ session: liveChat, conversations: [liveRow] }))
+    expect([...document.querySelectorAll('header')].filter(shown)).toHaveLength(1)
+    const chat = document.querySelector<HTMLElement>('[data-live-chat]')!
+    expect(chat.textContent).not.toContain('lands on')
+    openMenu(screen.getByRole('button', { name: 'Chat session' }))
+    const menu = screen.getByRole('menu')
+    expect(menu.textContent).toContain('Lands on main')
+    expect(within(menu).getByRole('menuitem', { name: 'End session' })).toBeTruthy()
+  })
+
+  it('opens the panel toggle at the Notes while no drive is up, counting the open ones', () => {
     mount(talk({ session: liveChat }))
-    expect(screen.queryByRole('button', { name: 'Drive' })).toBeNull()
+    const toggle = screen.getByRole('button', { name: /^Show the panel/ })
+    expect(toggle.textContent).toContain('1')
+    fireEvent.click(toggle)
+    expect(document.querySelector('[data-panel]')?.textContent).toContain('Notes')
+    expect(document.querySelector('[data-project-drive]')).toBeNull()
   })
 
   it('starts the project test drive from the topbar without leaving the chat', () => {
@@ -503,9 +519,9 @@ describe('a live project chat', () => {
     expect(document.querySelector('[data-project-drive]')!.closest('[data-panel]')).toBeTruthy()
     expect(shown(chat)).toBe(true)
     expect(restShown()).toBe(false)
-    // once it is up, the panel's Drive button is the way to it
+    // once it is up, the panel toggle is the way to it
     expect(screen.queryByRole('button', { name: 'Test drive' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Drive' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^Hide the panel/ })).toBeTruthy()
   })
 
   it('names the holder on a disabled topbar Test drive while another drive has the slot', () => {

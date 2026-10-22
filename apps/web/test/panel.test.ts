@@ -111,7 +111,30 @@ describe('panelReducer', () => {
       { type: 'setWidth', share: 0.7 },
       { type: 'close' },
     )
-    expect(state).toEqual({ view: null, share: 0.7, collapsed: false })
+    expect(state).toEqual({ view: null, last: 'body', share: 0.7, collapsed: false })
+  })
+
+  it('the header toggle reopens the last view, and closes an open one', () => {
+    const views = ['body', 'design', 'details'] as const
+    const closed = run(
+      { type: 'open', view: 'body', origin: 'human' },
+      { type: 'switch', view: 'details' },
+      { type: 'toggle', views },
+    )
+    expect(closed.view).toBeNull()
+    expect(panelReducer(closed, { type: 'toggle', views })).toMatchObject({ view: 'details', origin: 'human' })
+  })
+
+  it('the toggle opens the first view on offer when nothing was open, or the last is gone', () => {
+    expect(run({ type: 'toggle', views: ['body', 'details'] }).view).toBe('body')
+    const driveGone = run({ type: 'open', view: 'drive', origin: 'human' }, { type: 'close' })
+    expect(panelReducer(driveGone, { type: 'toggle', views: ['body', 'details'] }).view).toBe('body')
+    expect(run({ type: 'toggle', views: [] }).view).toBeNull()
+  })
+
+  it('counts a view the shell opened as the last one when it closes', () => {
+    const state = panelReducer({ ...INITIAL_PANEL, view: 'details' }, { type: 'close' })
+    expect(state.last).toBe('details')
   })
 
   it('lets either side shrink to nothing, and no further', () => {

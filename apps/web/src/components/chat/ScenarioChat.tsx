@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import type { ScenarioErrand } from '../../lib/chat-sessions'
 import { trpc } from '../../trpc'
 import { IconX } from '../../icons'
-import { IconButton } from '../../ui'
+import { DropdownMenuItem } from '../../ui/dropdown-menu'
+import { EndSessionItem } from '../EndSessionButton'
 import { ChatView } from './ChatView'
 
 /**
@@ -82,21 +83,11 @@ export function useScenarioChat(driveSessionId: string | undefined, onFront: (se
 }
 
 /**
- * The scenario chat in the column: the shared chat surface, its errand under
- * the switcher, and a close that hands the column back. Kept mounted while its
- * session lives — hidden, not unmounted — so xterm keeps its buffer.
+ * The scenario chat in the column: the shared chat surface. Kept mounted while
+ * its session lives — hidden, not unmounted — so xterm keeps its buffer. Its
+ * errand, its close and End session are the switcher's ({@link ScenarioChatMenu}).
  */
-export function ScenarioChatView({
-  chat,
-  switcher,
-  featureId,
-  hidden,
-}: {
-  chat: ScenarioChatApi
-  switcher: ReactNode
-  featureId?: string
-  hidden: boolean
-}) {
+export function ScenarioChatView({ chat, hidden }: { chat: ScenarioChatApi; hidden: boolean }) {
   const { sessionId } = chat
   if (!sessionId) return null
   return (
@@ -104,18 +95,35 @@ export function ScenarioChatView({
       key={sessionId}
       label="Scenario chat"
       session={{ id: sessionId, status: 'live' }}
-      contextLine={switcher}
-      meta={
-        <>
-          <span className="min-w-0 flex-1 truncate">
-            {chat.errand.kind === 'new' ? 'Describe the state you want to land in' : 'Fix the scenario that failed'}
-          </span>
-          <IconButton size="sm" label="Close the scenario chat" icon={<IconX />} onClick={chat.close} />
-        </>
-      }
-      {...(featureId ? { featureId } : {})}
       onEnded={() => chat.ended(sessionId)}
       hidden={hidden || !chat.listed}
     />
+  )
+}
+
+/** What the scenario chat is for, as the switcher's hint line says it. */
+export function scenarioErrandHint(errand: ScenarioErrand): string {
+  return errand.kind === 'new' ? 'Describe the state you want to land in' : 'Fix the scenario that failed'
+}
+
+/**
+ * The switcher's rows while the scenario chat is in front (design-mode
+ * decision 12, where its own header row was): close, which hands the column
+ * back, and End session.
+ */
+export function ScenarioChatMenu({ chat, featureId }: { chat: ScenarioChatApi; featureId?: string }) {
+  const { sessionId } = chat
+  if (!sessionId) return null
+  return (
+    <>
+      <DropdownMenuItem icon={<IconX />} onSelect={chat.close}>
+        Close the scenario chat
+      </DropdownMenuItem>
+      <EndSessionItem
+        {...(featureId ? { featureId } : {})}
+        sessionId={sessionId}
+        onEnded={() => chat.ended(sessionId)}
+      />
+    </>
   )
 }

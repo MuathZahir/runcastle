@@ -24,6 +24,10 @@ export interface FeatureAction {
   icon?: ReactNode
   /** Trailing shortcut hint. */
   kbd?: string
+  /** Why it cannot fire right now: shown disabled, the reason as its title. */
+  disabled?: string
+  /** A title for an enabled item. */
+  hint?: string
   onSelect: (triggerRef: RefObject<HTMLButtonElement | null>) => void
 }
 
@@ -75,6 +79,8 @@ export function FeatureActionsMenu({
       tone={a.danger ? 'danger' : 'default'}
       icon={a.icon ?? KEY_ICON[a.key]}
       kbd={a.kbd}
+      disabled={!!a.disabled}
+      title={a.disabled ?? a.hint}
       onSelect={() => {
         // The menu item disappears as this selection opens a dialog.
         // Put focus on the surviving trigger first so Dialog records a

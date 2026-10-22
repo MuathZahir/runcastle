@@ -159,11 +159,11 @@ describe('the project workspace at rest', () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
 
-    const toggle = screen.getByRole('button', { name: 'Notes (1)' })
+    const toggle = screen.getByRole('button', { name: 'Hide the panel (1)' })
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(toggle)
     expect(panel()).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Notes (1)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show the panel (1)' }))
     expect(panel()).toBeTruthy()
   })
 

@@ -2,13 +2,13 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NextStep } from '../src/lib/feature-ui'
-import { featureStatus, leadActions, OVERFLOW_KINDS } from '../src/lib/feature-ui/status-line'
+import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
-import { NextStepBar } from '../src/components/workspace/NextStepBar'
+import { HeaderAction } from '../src/components/workspace/HeaderAction'
 
 /**
- * The planning row while the feature plans itself: the status line says so and
- * the row carries the run's Stop, never Go, so a click on Plan it yourself
+ * The planning header while the feature plans itself: the status line says so and
+ * the header carries the run's Stop, never Go, so a click on Plan it yourself
  * visibly did something. Tier 2: Stop's click reaching the dispatcher is an
  * event, which a rendered string cannot show.
  */
@@ -37,35 +37,34 @@ function planningRow(selfPlanning: boolean, onAction = vi.fn()) {
     selfPlanning,
     now: 0,
   })
+  // The header row as the feature page composes it (design-mode decision 12).
+  const row = headerActions(selfPlanning ? selfPlanBar : planBar, status)
   render(
-    <NextStepBar
-      ns={leadActions(selfPlanning ? selfPlanBar : planBar, status)}
-      status={<FeatureStatusLine status={status} />}
-      guidance={false}
-      busy={false}
-      onAction={onAction}
-      demote={OVERFLOW_KINDS}
-    />,
+    <header>
+      <FeatureStatusLine status={status} />
+      {row.action && <HeaderAction action={row.action} busy={false} onAction={onAction} />}
+    </header>,
   )
-  return onAction
+  return { onAction, row }
 }
 
-describe('the planning row while the feature plans itself', () => {
-  it('says Planning by itself and offers the run’s Stop, not Go', () => {
-    const onAction = planningRow(true)
+describe('the planning header while the feature plans itself', () => {
+  it('says Planning by itself and offers the run’s Stop, with no Go anywhere', () => {
+    const { onAction, row } = planningRow(true)
 
     expect(screen.getByRole('status').textContent).toContain('Planning by itself')
-    expect(screen.queryByRole('button', { name: /^Go$/ })).toBeNull()
+    expect(row.go).toBeUndefined()
 
     fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }))
     expect(onAction).toHaveBeenCalledWith('stopHeadlessRun')
   })
 
-  it('reads Planning with you again once the run has ended', () => {
-    planningRow(false)
+  it('reads Planning with you again once the run has ended, Go back on the tickets view', () => {
+    const { row } = planningRow(false)
 
     expect(screen.getByRole('status').textContent).toContain('Planning with you')
     expect(screen.queryByText('Planning by itself')).toBeNull()
-    expect(screen.getByRole('button', { name: /^Go$/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^(Go|Stop)$/ })).toBeNull()
+    expect(row.go?.label).toBe('Go')
   })
 })

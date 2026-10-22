@@ -14,12 +14,13 @@ import { SessionNotices } from '../chat/SessionNotices'
  * feature's chat transcript over Resume, or offers Start on a feature nobody has
  * talked to. Showing the tab never launches anything: `onLaunch` is the one
  * explicit click that does. The notice deck floats over it while it is in
- * front (decisions 3, 4, 10).
+ * front (decisions 3, 4, 10). Its switcher and End session are the page
+ * header's (design-mode decision 12).
  */
 export function FeatureChat({
   full,
   events,
-  switcher,
+  alerts,
   hidden,
   launching,
   onLaunch,
@@ -28,8 +29,8 @@ export function FeatureChat({
   full: FeatureFull
   /** The feature's event log, which feeds the notice deck over the chat. */
   events: readonly EventRow[]
-  /** The chat column's session switcher, where the context line was. */
-  switcher: ReactNode
+  /** The page's dismissible notices, at the top of the column (a failed resume, a drive's prerequisites). */
+  alerts?: ReactNode
   hidden: boolean
   launching: boolean
   /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
@@ -39,14 +40,17 @@ export function FeatureChat({
 }) {
   const live = activeSession(full.sessions)
   const chat = featureChat(full.sessions)
+  const notices = (alerts || live) && (
+    <>
+      {alerts}
+      {live && <SessionNotices featureId={full.feature.id} session={live} />}
+    </>
+  )
   return (
     <ChatView
       label="Agent"
       session={live ?? null}
-      contextLine={switcher}
-      meta="One transcript per feature"
-      featureId={full.feature.id}
-      notices={live && <SessionNotices featureId={full.feature.id} session={live} />}
+      notices={notices}
       headless={
         live && isHeadlessRun(live)
           ? isSelfPlanRun(live)

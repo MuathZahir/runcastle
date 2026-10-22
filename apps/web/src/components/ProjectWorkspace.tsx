@@ -4,12 +4,13 @@ import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
-import { IconArrowRight, IconBranch, IconFolder, IconMessage, IconPanelRight, IconPlay } from '../icons'
+import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
 import { useLivePoll } from '../lib/live'
-import { Button, IconButton, Page, PageHeader, PageTopbar } from '../ui'
+import { Button, Page, PageHeader, PageTopbar } from '../ui'
 import { projectChatEntries, scenarioChatLabel, type ChatSessionEntry } from '../lib/chat-sessions'
 import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
-import { ScenarioChatContext, ScenarioChatView, useScenarioChat } from './chat/ScenarioChat'
+import { ScenarioChatContext, ScenarioChatMenu, ScenarioChatView, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
+import { EndSessionItem } from './EndSessionButton'
 import { SessionSwitcher } from './chat/SessionSwitcher'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
@@ -17,7 +18,7 @@ import { NotesCard } from './project/NotesCard'
 import { ProjectChat } from './project/ProjectChat'
 import { ProjectDriveView } from './project/ProjectDriveView'
 import { TestDriveCard } from './project/TestDriveCard'
-import { FeaturePanel, PanelButtons, PanelSplit, PanelStrip, usePanel } from './workspace/FeaturePanel'
+import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive } from '../lib/use-project-drive'
@@ -128,7 +129,6 @@ export function ProjectWorkspace({
   const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
   const shown = panel.state.view
   const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
-  const toggleView = (view: PanelView) => panel.dispatch(shown === view ? { type: 'close' } : { type: 'open', view, origin: 'human' })
 
   useEffect(() => {
     if (newChatRequest > 0 && session) {
@@ -178,8 +178,33 @@ export function ProjectWorkspace({
   }
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
-  const switcher = inFront && <SessionSwitcher entries={entries} current={inFront} onPick={setFront} />
-  const inFrontLabel = entries.find((e) => e.id === inFront)?.label
+  const refreshProjectChat = (): void => {
+    void utils.project.projectSession.invalidate()
+    void utils.project.conversations.invalidate()
+  }
+  // The switcher's menu speaks for the chat in front: the live chat's landing
+  // branch and End session, or the scenario chat's errand, close and End session.
+  const liveInFront = !!session && inFront === session.id
+  const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
+  const switcher = inFront && (
+    <SessionSwitcher
+      entries={entries}
+      current={inFront}
+      onPick={setFront}
+      hint={
+        scenarioInFront
+          ? scenarioErrandHint(scenarioChat.errand)
+          : liveInFront && landing.value
+            ? `Lands on ${landing.value}`
+            : undefined
+      }
+    >
+      {liveInFront && (
+        <EndSessionItem sessionId={session.id} onEnded={refreshProjectChat} />
+      )}
+      {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
+    </SessionSwitcher>
+  )
 
   const restPage = (
     <div className={resting && !chatHidden ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting || chatHidden}>
@@ -286,16 +311,19 @@ export function ProjectWorkspace({
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      {/* The one header row (design-mode decision 12): the project, then the
+          switcher naming the chat in front as the crumb after it; at most one
+          action; the panel toggle. */}
       <PageTopbar
         crumbs={[
           { label: projectName, icon: <IconFolder />, ...(resting ? {} : { onClick: () => setFront(null) }) },
-          ...(inFrontLabel && !resting ? [{ label: inFrontLabel, icon: <IconMessage /> }] : []),
+          ...(switcher && !resting ? [{ label: switcher }] : []),
         ]}
         actions={
           <>
             {/* The resting page's Test drive card is behind a live chat, so the
-                topbar carries its start until a drive is up — then the panel's
-                Drive button is the way to it. */}
+                topbar carries its start until a drive is up — then the panel
+                toggle is the way to it. */}
             {!resting && (driveCard.state === 'ready' || driveCard.state === 'blocked') && (
               <Button
                 size="sm"
@@ -310,16 +338,12 @@ export function ProjectWorkspace({
                 Test drive
               </Button>
             )}
-            <PanelButtons views={views} open={shown} label={projectViewLabel} onToggle={toggleView} />
-            {hasNotes && (
-              <IconButton
-                label="Notes"
-                badge={openNotes}
-                icon={<IconPanelRight />}
-                active={shown === 'details'}
-                onClick={() => toggleView('details')}
-              />
-            )}
+            <PanelToggle
+              open={!!shown}
+              views={views}
+              badge={openNotes}
+              onToggle={() => panel.dispatch({ type: 'toggle', views })}
+            />
           </>
         }
       />
@@ -340,28 +364,17 @@ export function ProjectWorkspace({
                   transcriptId={reading.id}
                   onResume={reading.resumable ? () => reopen(reading.id) : undefined}
                   resuming={talk.starting}
-                  branch={landing.value}
                   hidden={chatHidden}
-                  switcher={switcher}
                 />
               )}
               {session && (
                 <ProjectChat
                   session={session}
-                  branch={landing.value}
                   hidden={chatHidden || inFront !== session.id}
-                  switcher={switcher}
-                  onEnded={() => {
-                    void utils.project.projectSession.invalidate()
-                    void utils.project.conversations.invalidate()
-                  }}
+                  onEnded={refreshProjectChat}
                 />
               )}
-              <ScenarioChatView
-                chat={scenarioChat}
-                switcher={switcher}
-                hidden={chatHidden || inFront !== scenarioChat.sessionId}
-              />
+              <ScenarioChatView chat={scenarioChat} hidden={chatHidden || inFront !== scenarioChat.sessionId} />
             </>
           }
           panel={
