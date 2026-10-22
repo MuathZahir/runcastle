@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EventRow } from '@runcastle/core'
 import { FeatureNoticeDeck } from '../src/components/chat/FeatureNoticeDeck'
+import { DRIVE_NOTICE_MS } from '../src/lib/chat-notices'
 
 /**
  * The notice deck mounted over the feature Chat tab (one-chat-layout-everywhere
@@ -89,6 +90,17 @@ describe('FeatureNoticeDeck', () => {
     act(() => {
       vi.advanceTimersByTime(10 * 60_000)
     })
+    expect(screen.getByText('Tickets updated')).toBeTruthy()
+  })
+
+  it('lets the drive-start card go by itself after a few seconds, the others staying', () => {
+    const { update } = setup([])
+    update([ticketsStored(), event('testdrive.url', 'drive up', NOW + 1_000)])
+    expect(screen.getByText('Test drive running')).toBeTruthy()
+    act(() => {
+      vi.advanceTimersByTime(DRIVE_NOTICE_MS)
+    })
+    expect(screen.queryByText('Test drive running')).toBeNull()
     expect(screen.getByText('Tickets updated')).toBeTruthy()
   })
 

@@ -29,7 +29,12 @@ export interface ChatNotice {
   count: number
   /** The newest event behind the card. */
   eventId: number
+  /** A card that only confirms the human's own click leaves by itself after this long. */
+  expiresAfterMs?: number
 }
+
+/** How long "Test drive running" stays: the human just started it, and the drive opens beside the chat. */
+export const DRIVE_NOTICE_MS = 5000
 
 /** What `noticeFor` needs to know about a ticket to recognise a review pass. */
 export type NoticeTicket = Pick<Ticket, 'id' | 'kind' | 'passKind' | 'title'>
@@ -148,6 +153,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       subtitle: typeof data.url === 'string' ? data.url : event.message,
       actionLabel: 'Open',
       target: 'drive',
+      expiresAfterMs: DRIVE_NOTICE_MS,
     })
   }
 

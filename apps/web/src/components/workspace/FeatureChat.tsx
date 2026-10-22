@@ -23,6 +23,7 @@ export function FeatureChat({
   alerts,
   hidden,
   launching,
+  launchError,
   onLaunch,
   onView,
 }: {
@@ -33,6 +34,8 @@ export function FeatureChat({
   alerts?: ReactNode
   hidden: boolean
   launching: boolean
+  /** Why the last Resume or Start was refused (a talk worktree that cannot be made). */
+  launchError?: string
   /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
   onLaunch: () => void
   /** Open the panel view a notice points at. */
@@ -61,6 +64,7 @@ export function FeatureChat({
       transcriptId={chat?.id}
       onLaunch={onLaunch}
       launching={launching}
+      launchError={launchError}
       hidden={hidden}
     >
       <FeatureNoticeDeck events={events} tickets={full.tickets} active={!hidden} onView={onView} />

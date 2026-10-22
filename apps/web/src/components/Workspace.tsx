@@ -1166,6 +1166,7 @@ export function Workspace({
                     alerts={chatAlerts}
                     hidden={chatHidden || column.inFront !== FEATURE_CHAT}
                     launching={launch.isPending}
+                    launchError={launch.error?.message}
                     onLaunch={launchChat}
                     onView={(target) => {
                       if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })
