@@ -39,7 +39,7 @@ If a "small" change keeps growing, stop and make it a ticket.
 
 ## 2. Plan a round
 
-1. **Write the tickets** with `emit_tickets`, or reshape pending ones with `update_ticket` / `cancel_ticket`, following the tickets skill. Then **dispatch** with `dispatch_round({ seqs })`, naming exactly the pending tickets this round covers. Tickets you do not name wait for a later round.
+1. **Write the tickets** with `emit_tickets`, or reshape pending ones with `update_ticket` / `cancel_ticket`, following the tickets skill. Then **dispatch** with `dispatch_round({ seqs })`, naming exactly the pending tickets this round covers. Tickets you do not name wait for a later round. A ticket may stay blocked by tickets that landed or were cancelled in an earlier round: those count as satisfied, so keep those edges rather than re-emitting tickets. A blocker that is still pending must be named in the same round.
 2. **Every worker task names its deliverable and how it is checked.** A worker with no stated check reports success on its own terms. Say what is built and what proves it: the test that goes green, the command that passes, the screen that shows it.
 3. **Title tickets `{group}: {task}`** — `Checkout: apply the coupon at payment`. The group is the area of the feature; the task is the one thing this worker does.
 4. **Keep the round to `burnConcurrency` workers or fewer.** That is a soft cap, not a limit: workers past it only queue. A wider round also has more to reconcile when it comes back.
@@ -101,4 +101,4 @@ The human's notes reach you as one message, with screenshots attached as files y
 
 ## What the server refuses
 
-`dispatch_round` is refused, with the reason, while a round is already running, while the human is driving this feature, and after the human pressed Stop until they have replied. `stop_round` stops the running round; work that already landed stays.
+`dispatch_round` is refused, with the reason, while a round is already running, while the human is driving this feature, and after the human pressed Stop until they have replied. It is also refused when a ticket you name is blocked by a ticket outside the round that is still pending or failed (or does not exist): the refusal lists each such edge, and the fix is to name that blocker in the round too. `stop_round` stops the running round; work that already landed stays.

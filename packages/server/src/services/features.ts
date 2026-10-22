@@ -942,7 +942,9 @@ export async function go(
  * The only hard refusals, each saying why: the feature is still in planning (no
  * Go yet), a round is already running, a drive of this feature holds the drive
  * slot (decision 19), the human pressed Stop and has not replied since
- * (decision 23), or a seq that is unknown or has nothing left to burn. A named
+ * (decision 23), a seq that is unknown or has nothing left to burn, or a named
+ * ticket blocked by one outside the round that is not `done`/`cancelled` (or
+ * does not exist) — the refusal lists every such edge. A named
  * `failed` ticket is reset to `pending` first, as the burn's restart does.
  */
 export async function dispatchRound(
@@ -979,6 +981,23 @@ export async function dispatchRound(
     }
     return ticket
   })
+  // A blocker outside the round must already be finished (decisions 1, 3, 5).
+  const namedSeqs = new Set(named.map((t) => t.seq))
+  const unmet: string[] = []
+  for (const t of [...named].sort((a, b) => a.seq - b.seq)) {
+    for (const b of [...t.blockedBy].sort((x, y) => x - y)) {
+      if (namedSeqs.has(b)) continue
+      const blocker = bySeq.get(b)
+      if (!blocker) {
+        unmet.push(`ticket ${t.seq} is blocked by ticket ${b}, which does not exist on this feature`)
+      } else if (blocker.status !== 'done' && blocker.status !== 'cancelled') {
+        unmet.push(
+          `ticket ${t.seq} is blocked by ticket ${b}, which is not in this round and is ${blocker.status} — name ${b} in this round as well`,
+        )
+      }
+    }
+  }
+  if (unmet.length > 0) throw new GateError(`this round cannot start: ${unmet.join('; ')}`)
   for (const t of named) {
     // Keep `attemptBranch`/`conflictFiles` so the retry resumes, as burn()'s restart does.
     if (t.status === 'failed') updateTicket(ctx, t.id, { status: 'pending', error: null })

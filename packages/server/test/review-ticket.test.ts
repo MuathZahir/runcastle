@@ -319,6 +319,73 @@ describe('a review ticket waits for a whole feature', () => {
   })
 })
 
+describe('a scoped run learns of finished blockers outside it', () => {
+  const scoped = (tickets: Ticket[], satisfiedOutside: number[]): WorkflowCtx => ({
+    ...makeCtx(tickets),
+    satisfiedOutside,
+  })
+
+  it('runs an implementation ticket whose only blocker is outside the run', async () => {
+    const tickets = [ticket(4, { blockedBy: [3] })]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(scoped(tickets, [3]), deps(execute))
+    await Promise.resolve()
+    expect(started).toEqual([4])
+    await release(4)
+
+    expect((await run).status).toBe('succeeded')
+    expect(tickets[0]).toMatchObject({ status: 'done' })
+  })
+
+  it('runs a review after its in-run implementations land, over an outside blocker', async () => {
+    const tickets = [ticket(1), review(5, { blockedBy: [1, 4] })]
+    const { execute, started, release } = gatedExecute()
+
+    const run = burnRun(scoped(tickets, [4]), deps(execute))
+    await Promise.resolve()
+    expect(started).toEqual([1])
+    await release(1)
+    expect(started).toEqual([1, 5])
+
+    await release(5)
+    expect((await run).status).toBe('succeeded')
+  })
+
+  it('still defers the review when an in-run implementation failed', async () => {
+    const tickets = [ticket(1), review(5, { blockedBy: [1, 4] })]
+    const { execute, release } = gatedExecute({ 1: { status: 'failed', error: 'boom' } })
+
+    const run = burnRun(scoped(tickets, [4]), deps(execute))
+    await Promise.resolve()
+    await release(1)
+
+    expect(tickets[1]).toMatchObject({ status: 'pending' })
+    expect((await run).summary).toContain('review deferred')
+  })
+
+  it('counts only the run’s own tickets as done', async () => {
+    const tickets = [ticket(4, { blockedBy: [3] })]
+    const { execute, release } = gatedExecute()
+
+    const run = burnRun(scoped(tickets, [3, 2, 1]), deps(execute))
+    await Promise.resolve()
+    await release(4)
+
+    expect((await run).summary).toBe('1/1 tickets done')
+  })
+
+  it('still cascades on a blocker that is in neither set', async () => {
+    const tickets = [ticket(4, { blockedBy: [3, 9] })]
+    const { execute, started } = gatedExecute()
+
+    await burnRun(scoped(tickets, [3]), deps(execute))
+
+    expect(started).toEqual([])
+    expect(tickets[0]).toMatchObject({ status: 'failed', error: 'blocked by missing ticket 9' })
+  })
+})
+
 describe('a failed review is retryable after it minted fix tickets', () => {
   it('runs the review even though every fix ticket it minted failed', async () => {
     // The operator's Retry on the review itself: it is `pending` again while

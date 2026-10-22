@@ -3607,7 +3607,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Start a round: one run of sandboxed workers over exactly the pending tickets you name ' +
           '(a failed one is retried); every other pending ticket waits for a later round. Their ' +
-          'blockedBy edges order them inside the round. When the round returns you are woken ' +
+          'blockedBy edges order them inside the round. A blocker outside the round that landed ' +
+          'or was cancelled counts as satisfied; one still pending or failed, or one that does ' +
+          'not exist, refuses the round, naming each such edge. When the round returns you are woken ' +
           'with its outcome, each ticket’s status and the verify-gate result. Refused, with the ' +
           'reason, while a round is already running, while the human is test-driving this ' +
           'feature, before Go, and after the human pressed Stop until they have replied.',

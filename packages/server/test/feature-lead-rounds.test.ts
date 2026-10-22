@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { EventRow, WorkflowCtx, WorkflowDef } from '@runcastle/core'
+import type { EventRow, RuncastleConfig, WorkflowCtx, WorkflowDef } from '@runcastle/core'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { runs } from '../src/db/schema'
@@ -30,6 +30,7 @@ import { listRounds } from '../src/services/runs'
 import { listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { startRun } from '../src/workflows/runner'
+import { burnRun } from '../src/workflows/ticket-burner'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
@@ -204,6 +205,120 @@ describe('the feature lead runs rounds', () => {
 
       await expect(dispatchRound(ctx, featureId, [99])).rejects.toThrow(/ticket 99 does not exist/)
       await expect(dispatchRound(ctx, featureId, [done.seq])).rejects.toThrow(/is done/)
+    })
+
+    describe('blockers outside the round', () => {
+      /** Stores `count` tickets, then rewrites edges as global seqs. */
+      function seedGraph(featureId: string, edges: Record<number, number[]>, count: number) {
+        const rows = storeTickets(
+          ctx,
+          featureId,
+          Array.from({ length: count }, (_, i) => ({
+            ...ticketInput(`t${i + 1}`),
+            blockedBy: edges[i + 1] ?? [],
+          })),
+          { blockedByAreGlobal: true },
+        )
+        return rows
+      }
+      const runCount = () => ctx.db.select().from(runs).all().length
+
+      it('refuses a pending outside blocker, naming both seqs and the fix, and changes nothing', async () => {
+        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const [a, b, c] = seedGraph(featureId, { 2: [1] }, 3)
+        updateTicket(ctx, c.id, { status: 'failed', error: 'earlier' })
+
+        const err = await dispatchRound(ctx, featureId, [b.seq, c.seq]).catch((e: unknown) => e)
+
+        expect(err).toBeInstanceOf(GateError)
+        const message = (err as GateError).message
+        expect(message).toContain(`ticket ${b.seq} is blocked by ticket ${a.seq}, which is not in this round and is pending`)
+        expect(message).toContain(`name ${a.seq} in this round as well`)
+        expect(message).not.toMatch(/missing|cancel/)
+        expect(runCount()).toBe(0)
+        expect(listByFeature(ctx, featureId).find((t) => t.id === c.id)?.status).toBe('failed')
+        expect(eventsOf(ctx, featureId, 'round.dispatched')).toHaveLength(0)
+        expect(getFeatureRow(ctx, featureId).lastDispatchAt).toBeNull()
+      })
+
+      it('refuses a failed outside blocker and lists every offending edge in one message', async () => {
+        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const [a, b, , d, e] = seedGraph(featureId, { 4: [1, 2], 5: [9] }, 5)
+        updateTicket(ctx, b.id, { status: 'failed', error: 'x' })
+
+        const err = (await dispatchRound(ctx, featureId, [e.seq, d.seq]).catch((x: unknown) => x)) as GateError
+
+        expect(err).toBeInstanceOf(GateError)
+        expect(err.message).toBe(
+          'this round cannot start: ' +
+            `ticket 4 is blocked by ticket ${a.seq}, which is not in this round and is pending — name 1 in this round as well; ` +
+            'ticket 4 is blocked by ticket 2, which is not in this round and is failed — name 2 in this round as well; ' +
+            'ticket 5 is blocked by ticket 9, which does not exist on this feature',
+        )
+      })
+
+      it('accepts blockers outside the round that are done or cancelled', async () => {
+        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const [a, b, c] = seedGraph(featureId, { 3: [1, 2] }, 3)
+        updateTicket(ctx, a.id, { status: 'done', commits: ['abc'] })
+        updateTicket(ctx, b.id, { status: 'cancelled' })
+
+        const { runId } = await dispatchRound(ctx, featureId, [c.seq])
+
+        await waitFor(() => getRunRow(ctx, runId).status !== 'running')
+        expect(listByFeature(ctx, featureId).find((t) => t.id === c.id)?.status).toBe('done')
+      })
+
+      describe('with the real scheduler', () => {
+        const realBurner: WorkflowDef = {
+          id: 'ticket-burner',
+          run: async (wctx) => {
+            const result = await burnRun(wctx, {
+              config: { sandbox: 'docker' } as RuncastleConfig,
+              hasAuthToken: true,
+              concurrency: 4,
+              executeTicketRun: async () => ({ status: 'done', commits: ['sha'] }),
+            })
+            return result
+          },
+        }
+        beforeEach(() => workflowRegistry.set('ticket-burner', realBurner))
+
+        it('lands #4 in a round that names only it, its blocker #3 having landed earlier', async () => {
+          const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+          const [, , three, four] = seedGraph(featureId, { 4: [3] }, 4)
+          updateTicket(ctx, three.id, { status: 'done', commits: ['abc'] })
+
+          const { runId } = await dispatchRound(ctx, featureId, [four.seq])
+          await waitFor(() => getRunRow(ctx, runId).status !== 'running')
+
+          expect(listByFeature(ctx, featureId).find((t) => t.id === four.id)).toMatchObject({ status: 'done' })
+        })
+
+        it('does not fail a review as missing when a blocker outside the round was cancelled', async () => {
+          const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+          const rows = storeTickets(
+            ctx,
+            featureId,
+            [
+              ticketInput('one'),
+              ticketInput('two'),
+              ticketInput('three'),
+              ticketInput('four'),
+              { ...ticketInput('review'), kind: 'review', blockedBy: [1, 2, 3, 4] },
+            ],
+            { blockedByAreGlobal: true },
+          )
+          updateTicket(ctx, rows[3].id, { status: 'cancelled' })
+
+          const { runId } = await dispatchRound(ctx, featureId, [1, 2, 3, 5])
+          await waitFor(() => getRunRow(ctx, runId).status !== 'running')
+
+          const review = listByFeature(ctx, featureId).find((t) => t.seq === 5)
+          expect(review?.status).toBe('done')
+          expect(review?.error ?? '').not.toMatch(/missing/)
+        })
+      })
     })
 
     it('dispatches round after round with no human message in between', async () => {
