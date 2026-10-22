@@ -133,6 +133,35 @@ describe('DrivePanel toolbar placement', () => {
   })
 })
 
+describe('DrivePanel screen width', () => {
+  beforeEach(() => localStorage.clear())
+
+  const frameWidth = (container: HTMLElement): string => container.querySelector('iframe')!.style.width
+
+  it('lays the page out at Desktop 1440 by default, on a drive and in the design view alike', () => {
+    const drive = render(<DrivePanel featureId="feat_1" url="about:blank" />)
+    expect(frameWidth(drive.container)).toBe('1440px')
+    expect(screen.getByRole('combobox', { name: 'Screen width' }).textContent).toMatch(/^1440 · \d+%$/)
+    drive.unmount()
+    const design = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" />)
+    expect(frameWidth(design.container)).toBe('1440px')
+  })
+
+  it('takes the width the agent asked for over the remembered one, without remembering it', () => {
+    localStorage.setItem('runcastle.preview.width', '768')
+    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" width={390} />)
+    expect(frameWidth(container)).toBe('390px')
+    expect(localStorage.getItem('runcastle.preview.width')).toBe('768')
+  })
+
+  it('fills the pane at the remembered Fit', () => {
+    localStorage.setItem('runcastle.preview.width', 'fit')
+    const { container } = render(<DrivePanel featureId="feat_1" url="about:blank" />)
+    expect(frameWidth(container)).toBe('')
+    expect(screen.getByRole('combobox', { name: 'Screen width' }).textContent).toBe('Fit')
+  })
+})
+
 describe('DrivePanel capture target', () => {
   it('writes a project note and attaches the screenshot on a project drive', async () => {
     render(<DrivePanel projectId="proj_1" url="about:blank" />)

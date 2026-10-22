@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button, IconButton, StatusLabel, TextArea, cx } from '../../ui'
 import { IconExternalLink, IconRefresh, IconSelectArea } from '../../icons'
 import { trpc } from '../../trpc'
@@ -13,6 +13,8 @@ import {
 import { uploadProjectNoteScreenshot } from '../../lib/project-notes'
 import { uploadScreenshot } from '../../lib/reviews'
 import { saveAnnotatedNote } from '../../lib/walkthrough'
+import { frameSize, readPreviewWidth, writePreviewWidth, type PreviewWidth } from '../../lib/preview-width'
+import { WidthMenu } from './WidthMenu'
 
 /**
  * The app itself, on the evidence stage, with the video's annotate-and-attach
@@ -100,6 +102,35 @@ async function pngBase64(png: Blob): Promise<string> {
   return btoa(binary)
 }
 
+/**
+ * The screen width the frame lays out at, and the pane it is scaled into
+ * (design-mode ticket 19). The human's pick is remembered per browser; a width
+ * the agent asked for wins for as long as it asks, and is not remembered.
+ */
+function useFrameWidth(asked: number | undefined, stageRef: RefObject<HTMLDivElement | null>) {
+  const [chosen, setChosen] = useState<PreviewWidth>(() => asked ?? readPreviewWidth())
+  useEffect(() => {
+    if (asked !== undefined) setChosen(asked)
+  }, [asked])
+  const pick = (width: PreviewWidth): void => {
+    setChosen(width)
+    writePreviewWidth(width)
+  }
+
+  const [pane, setPane] = useState({ width: 0, height: 0 })
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setPane({ width: entry.contentRect.width, height: entry.contentRect.height })
+    })
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [stageRef])
+
+  return { chosen, pick, size: frameSize(chosen, pane) }
+}
+
 export function DrivePanel({
   url,
   /** The review agent is holding this drive — the human watches (decision 20). */
@@ -109,6 +140,7 @@ export function DrivePanel({
   frameKey = '',
   toolbar,
   toolbarPlacement = 'floating',
+  width,
   ...target
 }: CaptureTarget & {
   url: string
@@ -123,6 +155,8 @@ export function DrivePanel({
   toolbar?: ReactNode
   /** Over the app's top-left corner (a drive), or in a bar above it that covers none of it (the design view). */
   toolbarPlacement?: 'floating' | 'bar'
+  /** The screen width the agent asked to show (`show_panel`'s `width`), over the remembered one. */
+  width?: number
 }) {
   const toast = useToast()
   const copy = CAPTURE_COPY[target.sendTo ?? 'note']
@@ -130,6 +164,7 @@ export function DrivePanel({
   const add = trpc.notes.add.useMutation()
 
   const panelRef = useRef<HTMLDivElement>(null)
+  const frame = useFrameWidth(width, panelRef)
   // The capture stream, kept for the whole drive session: the prompt is the one
   // cost of reading cross-origin pixels, and paying it per capture would make
   // annotating the live app worse than annotating the video.
@@ -361,6 +396,7 @@ export function DrivePanel({
           onClick={() => setGeneration((g) => g + 1)}
         />
         <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+        <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
       </div>
       {toolbar && <div className={group}>{toolbar}</div>}
       {!canCapture && !readonly && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotCapture}</span>}
@@ -383,11 +419,25 @@ export function DrivePanel({
         </div>
       )}
       {/* The stage: the frame and every layer over it. The selection is
-          measured against this box, so a crop is of the frame alone. */}
-      <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col">
+          measured against this box, so a crop is of the frame alone — and,
+          since a crop reads on-screen pixels, of the frame as drawn, scaled. */}
+      <div ref={panelRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* At a screen width the page lays out at that width and is drawn
+            shrunk to the pane, so it wraps as it would on that screen; at Fit
+            it lays out at the pane's own width. */}
         <iframe
           key={`${frameKey}:${generation}`}
-          className="min-h-0 flex-1 border-0"
+          className={frame.chosen === 'fit' ? 'min-h-0 flex-1 border-0' : 'absolute top-0 origin-top-left border-0'}
+          style={
+            frame.chosen === 'fit'
+              ? undefined
+              : {
+                  left: frame.size.left,
+                  width: frame.size.width,
+                  height: frame.size.height,
+                  transform: `scale(${frame.size.scale})`,
+                }
+          }
           src={url}
           title={copy.frameTitle}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
