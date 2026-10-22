@@ -77,9 +77,28 @@ export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
       return ['project']
     case 'drive-fix':
     case 'scenario':
+    case 'side':
     case undefined:
       return []
   }
+}
+
+/**
+ * A side session's opening (several-sessions-per-feature decisions 3 and 15):
+ * what it is, its one limit, the shared folder, and to wait for the human. No
+ * skill — the role is the whole briefing, and the side session's first move is
+ * the human's ask. The fixed first sentence is what `promptMatchesKickoff`
+ * recognises, so it must stay ahead of anything feature-specific.
+ */
+export function sideKickoffFor(): string {
+  return (
+    'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
+    'chat, and you do not carry on the main chat\'s task. You may do anything the main chat does — ' +
+    'read, write the spec and decisions, emit and edit tickets, report planning steps, resolve ' +
+    'findings, park drafts, edit code after Go — except run rounds: the main chat is the lead and ' +
+    'alone dispatches, stops and declares ready. The folder is shared with the main chat, so stage ' +
+    'only your own files (`git add <paths>`, never `-A`). Wait for the human\'s ask.'
+  )
 }
 
 /** Which skill the feature's one chat opens on — see `chatOpening` in artifacts.ts. */
@@ -207,6 +226,9 @@ export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, stri
       'Proceed with your task: the drive you are writing a scenario for is in your system prompt. ' +
       'If it carries no description or failure, first ask me what state I want to land in; ' +
       'otherwise write (or fix) the scenario, commit it, and land me with run_scenario.',
+    // No skill: the side role is the briefing (see sideKickoffFor); the launcher
+    // composes it with the feature state (`sideKickoff`).
+    side: sideKickoffFor(),
   }
 }
 

@@ -319,7 +319,7 @@ the phase-body dispatch and the action switch; these moved out:
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
 | `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's view switcher, the folded strip, the topbar's view buttons, and `usePanel` (the size remembered per browser). The pure model is `lib/feature-ui/panel.ts`. |
 | `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
-| `FeatureChat.tsx` | The page's chat: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
+| `FeatureChat.tsx` | The page's chat: the feature's live session (any kind but a side session or the scenario chat, which have entries of their own) through `ChatView`, else its chat transcript with Resume / Start. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 
 Every chat surface — the project's chat and each feature's chat-first page — renders

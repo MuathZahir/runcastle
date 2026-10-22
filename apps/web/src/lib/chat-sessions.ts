@@ -15,6 +15,23 @@ export interface ChatSessionEntry {
   label: string
   /** A session is up behind it, rather than a transcript to read back. */
   live: boolean
+  /**
+   * A side session up behind it finished its turn and waits on the human — its
+   * row's amber dot (several-sessions-per-feature decision 12).
+   */
+  waiting?: boolean
+  /** A side session's entry: a conversation of its own beside the feature chat. */
+  side?: boolean
+}
+
+/** One of the feature's side sessions, as `feature.sessions` lists it. */
+export interface SideSessionRow {
+  id: string
+  title: string
+  status: string
+  awaitingInput: boolean
+  createdAt: number | null
+  endedAt?: number | null
 }
 
 /** The feature chat's entry id: the feature's one session, whichever it is. */
@@ -29,21 +46,36 @@ export function scenarioChatLabel(errand: ScenarioErrand): string {
 
 /**
  * The feature page's entries: the feature chat always, named for the session
- * up when that is not the chat itself (a lead, a revisit); and the scenario
- * chat while a drive errand's session is live.
+ * up when that is not the chat itself (a lead, a revisit); the scenario chat
+ * while a drive errand's session is live; then the feature's side sessions
+ * (several-sessions-per-feature decision 10), live ones before ended ones, an
+ * ended one carrying its age as the project's past chats do.
  */
 export function featureChatEntries({
   featureLive,
   scenario,
+  sides = [],
+  now = Date.now(),
 }: {
   /** The feature's own session, or null when nothing is up. */
   featureLive: { label: string } | null
   /** The drive errand's live session, while it is listed. */
   scenario: { sessionId: string; errand: ScenarioErrand } | null
+  /** The feature's side sessions, in `feature.sessions`' order. */
+  sides?: readonly SideSessionRow[]
+  now?: number
 }): ChatSessionEntry[] {
+  const up = sides.filter((s) => s.status !== 'ended')
+  const ended = sides.filter((s) => s.status === 'ended')
+  const age = (s: SideSessionRow): number | null => s.endedAt ?? s.createdAt
   return [
     { id: FEATURE_CHAT, label: featureLive?.label ?? 'Feature chat', live: !!featureLive },
     ...(scenario ? [{ id: scenario.sessionId, label: scenarioChatLabel(scenario.errand), live: true }] : []),
+    ...up.map((s) => ({ id: s.id, label: s.title, live: true, waiting: s.awaitingInput, side: true })),
+    ...ended.map((s) => {
+      const at = age(s)
+      return { id: s.id, label: at === null ? s.title : `${s.title} · ${relTime(at, now)}`, live: false, side: true }
+    }),
   ]
 }
 

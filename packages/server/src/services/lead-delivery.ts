@@ -214,7 +214,8 @@ export async function wakeLeadHeadless(
 ): Promise<string | null> {
   const key = leadMessageKey(featureId)
   if (waking.has(featureId) || !hasOrchestratorLines(key)) return null
-  if (activeSessionsForFeature(ctx, featureId).length > 0) return null
+  // A side session is not the feature's terminal: it never holds the lead's slot.
+  if (activeSessionsForFeature(ctx, featureId).some((s) => s.kind !== 'side')) return null
   const failures = failedWakes.get(featureId) ?? 0
   if (fromExit && failures >= 2) return null
   waking.add(featureId)

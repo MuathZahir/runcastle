@@ -17,18 +17,45 @@ import { openMenu } from './floating'
  * switcher, the scenario chat view and the drive that opens it. The server is
  * the boundary: `openScenarioChat` answers with the errand's session.
  */
+// The feature's side sessions as `feature.sessions` lists them, and what
+// `openSideSession` answers with (several-sessions-per-feature decision 10).
+const sideApi = vi.hoisted(() => ({
+  list: [] as { id: string; kind: string; title: string; status: string; awaitingInput: boolean; createdAt: number | null; endedAt: number | null }[],
+  open: vi.fn((_: unknown) => 'sess_side_new'),
+}))
+
 vi.mock('../src/trpc', () => {
   const mutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false })
   return {
     trpc: {
       useUtils: () => ({
-        feature: { driveInfo: { invalidate: vi.fn() }, get: { invalidate: vi.fn() }, list: { invalidate: vi.fn() } },
+        feature: {
+          driveInfo: { invalidate: vi.fn() },
+          get: { invalidate: vi.fn() },
+          list: { invalidate: vi.fn() },
+          sessions: { invalidate: vi.fn() },
+        },
       }),
+      project: {
+        conversationTranscript: {
+          useQuery: ({ sessionId }: { sessionId: string }) => ({
+            isPending: false,
+            data: { status: 'ok', runtime: 'claude-code', turns: [{ role: 'user', text: `said in ${sessionId}` }] },
+          }),
+        },
+      },
       notes: { add: { useMutation: mutation } },
       feature: {
         driveScenarios: { useQuery: () => ({ data: { runnerConfigured: true, scenarios: [] } }) },
         runScenario: { useMutation: mutation },
         endSession: { useMutation: mutation },
+        sessions: { useQuery: () => ({ data: sideApi.list }) },
+        openSideSession: {
+          useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
+            isPending: false,
+            mutate: (input: unknown) => opts.onSuccess({ sessionId: sideApi.open(input) }),
+          }),
+        },
         openScenarioChat: {
           useMutation: (opts: { onSuccess: (r: { sessionId: string }) => void }) => ({
             isPending: false,
@@ -57,6 +84,7 @@ const { FeatureChat } = await import('../src/components/workspace/FeatureChat')
 const { ScenarioChatContext, ScenarioChatView } = await import('../src/components/chat/ScenarioChat')
 const { FeatureSessionSwitcher } = await import('../src/components/chat/FeatureSessionSwitcher')
 const { useFeatureChatColumn } = await import('../src/components/chat/use-feature-chat-column')
+const { SideSessionsView } = await import('../src/components/chat/SideSessions')
 const { ScenarioDrive } = await import('../src/components/review/ScenarioDrive')
 const { FEATURE_CHAT } = await import('../src/lib/chat-sessions')
 
@@ -82,7 +110,7 @@ function Page({
   driveSessionId?: string
   scenario?: DriveScenario
 }) {
-  const column = useFeatureChatColumn({ sessions, driveSessionId })
+  const column = useFeatureChatColumn({ featureId: 'feat_1', sessions, driveSessionId })
   const full = { feature: { id: 'feat_1' }, sessions, tickets: [] } as unknown as FeatureFull
   return (
     <ScenarioChatContext.Provider value={column.scenario}>
@@ -99,6 +127,7 @@ function Page({
           onView={() => {}}
         />
         <ScenarioChatView chat={column.scenario} hidden={column.inFront !== column.scenario.sessionId} />
+        <SideSessionsView sides={column.sides} inFront={column.inFront} hidden={false} />
       </div>
       <div data-panel="">
         <ScenarioDrive
@@ -114,6 +143,7 @@ function Page({
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  sideApi.list = []
 })
 
 const shown = (el: Element): boolean => el.closest('[hidden], .hidden') === null
@@ -199,7 +229,7 @@ describe('the chat column’s session switcher', () => {
     openMenu(switcher())
     const menu = screen.getByRole('menu')
     expect(within(menu).getByRole('menuitem', { name: 'End session' })).toBeTruthy()
-    expect(menu.textContent).toContain('One transcript per feature')
+    expect(menu.textContent).toContain('Plans the feature · the lead after Go')
     expect(document.querySelector('[data-column]')?.textContent).not.toContain('End session')
   })
 
@@ -263,5 +293,88 @@ describe('the column with a live scenario session among the feature’s sessions
     expect(terminals('sess_feat')).toBe(1)
     expect(terminals('sess_live')).toBe(1)
     expect(shown(terminal('sess_feat'))).toBe(true)
+  })
+})
+
+/**
+ * The feature's side sessions in the same column and the same switcher
+ * (several-sessions-per-feature decisions 8, 10, 12): listed after the feature
+ * chat, live ones before ended ones; a waiting one's amber dot on its row and on
+ * the switcher; New side session in the menu; a live one's terminal kept
+ * mounted, an ended one's transcript over Reopen.
+ */
+describe('the column’s side sessions', () => {
+  const side = (id: string, title: string, over: Partial<(typeof sideApi.list)[number]> = {}) => ({
+    id,
+    kind: 'side',
+    title,
+    status: 'live',
+    awaitingInput: false,
+    createdAt: 1,
+    endedAt: null,
+    ...over,
+  })
+
+  it('lists them after the feature chat, live before ended, an ended one with its age', () => {
+    sideApi.list = [
+      side('sess_a', 'Why does ticket 4 wait?'),
+      side('sess_old', 'Rename the column', { status: 'ended', endedAt: Date.now() - 2 * 3600_000 }),
+    ]
+    render(<Page />)
+    const [feature, live, ended] = options()
+    expect(feature).toBe('Feature chat')
+    expect(live).toContain('Why does ticket 4 wait?')
+    expect(ended).toMatch(/^Rename the column · /)
+  })
+
+  it('keeps the feature chat in front, and shows a picked side session’s own terminal, both mounted', () => {
+    sideApi.list = [side('sess_a', 'Ask about tickets')]
+    render(<Page />)
+    expect(shown(terminal('sess_feat'))).toBe(true)
+    expect(shown(terminal('sess_a'))).toBe(false)
+
+    pick('Ask about tickets')
+    expect(shown(terminal('sess_a'))).toBe(true)
+    expect(terminal('sess_feat')).toBeTruthy()
+    expect(shown(terminal('sess_feat'))).toBe(false)
+  })
+
+  it('puts an amber dot on a waiting side session’s row, and on the switcher while it is not in view', () => {
+    sideApi.list = [side('sess_a', 'Ask about tickets', { awaitingInput: true })]
+    render(<Page />)
+    expect(within(switcher()).getByLabelText('A side session is waiting')).toBeTruthy()
+    openMenu(switcher())
+    const row = screen.getByRole('menuitemradio', { name: /Ask about tickets/ })
+    expect(within(row).getByLabelText('Waiting')).toBeTruthy()
+    // The row's name carries its dot's label, so it is picked by its title alone.
+    fireEvent.click(row)
+    expect(within(switcher()).queryByLabelText('A side session is waiting')).toBeNull()
+  })
+
+  it('opens a new side session from the menu and brings it to the front', () => {
+    render(<Page />)
+    menuAction('New side session')
+    expect(sideApi.open).toHaveBeenCalledWith({ featureId: 'feat_1' })
+    expect(shown(terminal('sess_side_new'))).toBe(true)
+    expect(switcher().textContent).toContain('Untitled')
+  })
+
+  it('reads an ended side session back over Reopen, which resumes it', () => {
+    sideApi.list = [side('sess_old', 'Rename the column', { status: 'ended', createdAt: null })]
+    render(<Page />)
+    pick('Rename the column')
+    expect(screen.getByText('said in sess_old')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen' }))
+    expect(sideApi.open).toHaveBeenCalledWith({ featureId: 'feat_1', reopenSessionId: 'sess_old' })
+  })
+
+  it('ends the side session in front from the switcher, not the feature chat', () => {
+    sideApi.list = [side('sess_a', 'Ask about tickets')]
+    render(<Page />)
+    pick('Ask about tickets')
+    openMenu(switcher())
+    const menu = screen.getByRole('menu')
+    expect(menu.textContent).toContain('A side session · everything but the rounds')
+    expect(within(menu).getAllByRole('menuitem', { name: 'End session' })).toHaveLength(1)
   })
 })

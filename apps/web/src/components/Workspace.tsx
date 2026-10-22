@@ -79,6 +79,7 @@ import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
 import { FeatureChat } from './workspace/FeatureChat'
 import { ScenarioChatContext, ScenarioChatView } from './chat/ScenarioChat'
+import { SideSessionsView } from './chat/SideSessions'
 import type { GoProps } from './bodies/tickets/GoAction'
 import { FeatureSessionSwitcher } from './chat/FeatureSessionSwitcher'
 import { useFeatureChatColumn } from './chat/use-feature-chat-column'
@@ -378,9 +379,11 @@ export function Workspace({
   })
   // The page the design view loads, for the panel header to name.
   const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
-  // The chat column (decision 9): the feature chat, and the drive errand's
-  // scenario chat, which an errand's open brings to the front.
+  // The chat column (decision 9): the feature chat, the drive errand's
+  // scenario chat, which an errand's open brings to the front, and the
+  // feature's side sessions (several-sessions-per-feature decision 10).
   const column = useFeatureChatColumn({
+    featureId,
     sessions: q.data?.sessions ?? [],
     driveSessionId: driveQ.data?.featureId === featureId ? driveQ.data.scenarioSessionId : undefined,
   })
@@ -1176,6 +1179,7 @@ export function Workspace({
                     chat={column.scenario}
                     hidden={chatHidden || column.inFront !== column.scenario.sessionId}
                   />
+                  <SideSessionsView sides={column.sides} inFront={column.inFront} hidden={chatHidden} />
                 </>
               }
               panel={

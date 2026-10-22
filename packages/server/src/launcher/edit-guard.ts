@@ -58,9 +58,13 @@ export function guardsEdits(kind: SessionKind): boolean {
  * so both guards lift for it. Decided per call from the feature's CURRENT
  * phase, so a chat opened in planning gains the permission the moment Go is
  * given; until then it stays docs-only, as every talk session is.
+ *
+ * A `side` session shares the main chat's worktree and write rules
+ * (several-sessions-per-feature decision 5), so it is unguarded exactly when
+ * the main chat is.
  */
 export function isUnguardedLead(kind: SessionKind, featurePhase: Phase | undefined): boolean {
-  return kind === 'chat' && featurePhase !== undefined && featurePhase !== 'planning'
+  return (kind === 'chat' || kind === 'side') && featurePhase !== undefined && featurePhase !== 'planning'
 }
 
 /**
@@ -70,13 +74,16 @@ export function isUnguardedLead(kind: SessionKind, featurePhase: Phase | undefin
  * chat that stays docs-only is the headless `self-plan` run in planning — no
  * human is present to approve what it writes. Permission posture (bypass,
  * auto-allow) stays on {@link isUnguardedLead}: a planning chat still asks.
+ *
+ * A `side` session writes exactly what the main chat writes
+ * (several-sessions-per-feature decision 5); it is never a self-plan run.
  */
 export function isUnguardedChat(
   kind: SessionKind,
   featurePhase: Phase | undefined,
   purpose?: SessionPurpose,
 ): boolean {
-  if (kind !== 'chat' || featurePhase === undefined) return false
+  if ((kind !== 'chat' && kind !== 'side') || featurePhase === undefined) return false
   return !(featurePhase === 'planning' && purpose === 'self-plan')
 }
 

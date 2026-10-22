@@ -19,7 +19,7 @@ import { SELECT_GHOST } from '../../ui/select'
  *
  * Its menu also holds what the chat's own header row used to: `children`, the
  * actions on the conversation in front (End session, closing an errand), and
- * `hint`, one quiet line about it ("One transcript per feature").
+ * `hint`, one quiet line about it ("Plans the feature · the lead after Go").
  */
 export function SessionSwitcher({
   entries,
@@ -35,6 +35,9 @@ export function SessionSwitcher({
   children?: ReactNode
 }) {
   const shown = entries.find((e) => e.id === current)
+  // A side session the human is NOT looking at waits on them; the one in view
+  // needs no dot to say so (several-sessions-per-feature decision 12).
+  const waitingElsewhere = entries.some((e) => e.waiting && e.id !== current)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -46,6 +49,7 @@ export function SessionSwitcher({
       >
         {shown?.live && <StatusDot tone="live" label="Live" />}
         <span className="min-w-0 truncate">{shown?.label}</span>
+        {waitingElsewhere && <StatusDot tone="warning" label="A side session is waiting" />}
         <IconChevronDown size={14} className="shrink-0 text-icon" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" aria-label="Chat session" className="max-w-80 text-sm">
@@ -59,7 +63,7 @@ export function SessionSwitcher({
             onSelect={() => onPick(e.id)}
           >
             <span className="inline-flex min-w-0 items-center gap-2">
-              {e.live && <StatusDot tone="live" />}
+              {e.waiting ? <StatusDot tone="warning" label="Waiting" /> : e.live && <StatusDot tone="live" />}
               <span className="truncate">{e.label}</span>
             </span>
           </DropdownMenuItem>

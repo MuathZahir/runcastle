@@ -54,11 +54,11 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
 }
 
 /**
- * The Chat tab strip's context line for whichever session is live
- * (decision 9): "Chat", "Drive fix".
+ * The switcher's name for whichever session holds the feature chat's slot
+ * (decision 9): "Feature chat", "Drive fix".
  */
 export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>): string {
-  return session.kind === 'chat' ? 'Chat' : sessionKindName(session)
+  return session.kind === 'chat' ? 'Feature chat' : sessionKindName(session)
 }
 
 // --- the shipped body's chat terminal ---------------------------------------
@@ -138,5 +138,7 @@ export function sessionKindName(
       return 'Project'
     case 'scenario':
       return 'Scenario'
+    case 'side':
+      return 'Side session'
   }
 }

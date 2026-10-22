@@ -8,6 +8,7 @@ import {
 import type { AppCtx } from '../db/types'
 import {
   clearSessionTitle,
+  featureSessions,
   getSessionRow,
   kickoffLineFor,
   projectSessions,
@@ -122,18 +123,31 @@ const INTERRUPTED = '[Request interrupted by user]'
  * an abandoned turn as {@link INTERRUPTED}, and a pasted screenshot as an
  * `[Image #n]` token. On the runcastle project those three had named 15 of 19
  * conversations. None of them is a sentence anyone typed to describe the work,
- * so a turn made only of them is skipped and the search moves on.
+ * so a turn made only of them is skipped and the search moves on. The command's
+ * own output is recorded as a `user` turn too (`<local-command-stdout>…`), and
+ * is skipped the same way.
+ *
+ * Also what the main-chat excerpt quotes as "Human" (`main-chat-excerpt.ts`):
+ * a quote that opened with `/clear`'s markup would credit the human with it.
  */
-function saidText(text: string): string | null {
+export function saidText(text: string): string | null {
   const trimmed = text.trim()
-  if (trimmed.startsWith('<command-name>')) return null
+  if (trimmed.startsWith('<command-name>') || trimmed.startsWith('<local-command-')) return null
   if (trimmed === INTERRUPTED) return null
   return trimmed.replace(/\[Image #\d+\]/g, ' ').trim() || null
 }
 
-/** The human's first real line of a conversation, as a title (see {@link saidText}). */
-export function deriveTitle(turns: TranscriptTurn[], runtime: AgentRuntime): string | null {
-  for (const turn of withoutKickoff(turns, 'project', runtime)) {
+/**
+ * The human's first real line of a conversation, as a title (see {@link saidText}).
+ * `kind` picks the kickoff to skip: a side session's opening turn quotes the
+ * main chat's own lines, and none of them is what the human said here.
+ */
+export function deriveTitle(
+  turns: TranscriptTurn[],
+  runtime: AgentRuntime,
+  kind: SessionKind = 'project',
+): string | null {
+  for (const turn of withoutKickoff(turns, kind, runtime)) {
     if (turn.role !== 'user') continue
     const said = saidText(turn.text)
     if (said) return elide(said)
@@ -238,10 +252,81 @@ function conversationTitle(ctx: AppCtx, earliest: SessionRow): string {
   const cached = earliest.title
   if (cached && !junkTitle(cached)) return cached
   const runtime = earliest.runtime ?? DEFAULT_RUNTIME
-  const derived = deriveTitle(readTranscript(earliest.transcriptPath, runtime).turns, runtime)
+  const derived = deriveTitle(
+    readTranscript(earliest.transcriptPath, runtime).turns,
+    runtime,
+    earliest.kind,
+  )
   if (derived) setSessionTitle(ctx, earliest.id, derived)
   else if (cached) clearSessionTitle(ctx, earliest.id)
   return derived ?? UNTITLED
+}
+
+/** The kinds a feature's session switcher lists. */
+export type FeatureSessionKind = Extract<SessionKind, 'chat' | 'side' | 'scenario'>
+
+/** One row of a feature's session switcher (several-sessions-per-feature decision 10). */
+export interface FeatureSession {
+  /** The latest session row — what a terminal attaches to and Reopen resumes. */
+  id: string
+  kind: FeatureSessionKind
+  /** A side session's derived name ({@link UNTITLED} until the human types); the kind's name otherwise. */
+  title: string
+  status: SessionStatus
+  /** The waiting dot (decision 12): the agent finished a turn and waits on the human. */
+  awaitingInput: boolean
+  /** The first launch; null on rows written before `sessions` carried a timestamp. */
+  createdAt: number | null
+  /** When the latest session ended; null while it runs. */
+  endedAt: number | null
+}
+
+/**
+ * A feature's sessions, in the switcher's order: the main chat, then its side
+ * sessions — live before ended, newest first within each — then the scenario
+ * chat docked beside a drive of this feature, while it is up.
+ *
+ * The main chat is the feature's newest `chat` row, listed whatever its state:
+ * it is the feature's one conversation, there to start even before the CLI has
+ * picked it up. Side sessions are conversations, not launches: reopening one
+ * resumes it into another row of the same `ccSessionId`, so they are grouped
+ * and named exactly as {@link listProjectConversations} groups and names the
+ * project's — and, as there, a row the CLI never picked up is not listed yet.
+ */
+export function listFeatureSessions(ctx: AppCtx, featureId: string): FeatureSession[] {
+  const rows = featureSessions(ctx, featureId, ['chat', 'side', 'scenario'])
+  const main = rows.find((row) => row.kind === 'chat')
+  const sides = groupByConversation(rows.filter((row) => row.kind === 'side')).map((group) => {
+    const [latest] = group
+    const earliest = group[group.length - 1]
+    return entryFor('side', latest, conversationTitle(ctx, earliest), group)
+  })
+  const scenario = rows.find((row) => row.kind === 'scenario' && row.status !== 'ended')
+  return [
+    ...(main ? [entryFor('chat', main, 'Main chat', [main])] : []),
+    ...sides.filter((side) => side.status !== 'ended'),
+    ...sides.filter((side) => side.status === 'ended'),
+    ...(scenario ? [entryFor('scenario', scenario, 'Scenario chat', [scenario])] : []),
+  ]
+}
+
+/** A switcher row for `latest`, dated by the earliest of its `group`. */
+function entryFor(
+  kind: FeatureSessionKind,
+  latest: SessionRow,
+  title: string,
+  group: SessionRow[],
+): FeatureSession {
+  const stamps = group.map((s) => s.createdAt).filter((at): at is number => at !== undefined)
+  return {
+    id: latest.id,
+    kind,
+    title,
+    status: latest.status,
+    awaitingInput: latest.awaitingInput,
+    createdAt: stamps.length ? Math.min(...stamps) : null,
+    endedAt: latest.endedAt ?? null,
+  }
 }
 
 /** A conversation's transcript, and the runtime whose voice the pane is labelling. */

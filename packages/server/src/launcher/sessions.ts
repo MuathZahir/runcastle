@@ -61,6 +61,8 @@ export type CreateSessionInput = {
   model?: ModelEntry
   /** The session runs with no terminal (a self-plan or relay run). */
   headless?: boolean
+  /** A `side` session's main-chat row at open time (see the db schema). */
+  openedBeside?: string
 } & ({ featureId: string; projectId?: never } | { projectId: string; featureId?: never })
 
 /** Insert a fresh session row in the `launching` state; returns it (with id). */
@@ -89,6 +91,7 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       // nothing to be called yet.
       title: null,
       createdAt: Date.now(),
+      openedBeside: input.openedBeside ?? null,
     })
     .returning()
     .get()
@@ -540,6 +543,24 @@ export function projectSessions(
     .select()
     .from(sessions)
     .where(and(eq(sessions.projectId, projectId), eq(sessions.kind, kind)))
+    .orderBy(desc(sql`rowid`))
+    .all()
+    .map(rowToSession)
+}
+
+/**
+ * The feature's sessions of the given kinds, newest first — the feature-side
+ * twin of {@link projectSessions}, behind the feature's session switcher.
+ */
+export function featureSessions(
+  ctx: AppCtx,
+  featureId: string,
+  kinds: SessionKind[],
+): SessionRow[] {
+  return ctx.db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.featureId, featureId), inArray(sessions.kind, kinds)))
     .orderBy(desc(sql`rowid`))
     .all()
     .map(rowToSession)

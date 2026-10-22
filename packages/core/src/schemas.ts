@@ -57,6 +57,12 @@ export type TicketStatus = z.infer<typeof TicketStatus>
  * drive's. On a feature drive it has a `featureId`; on a project drive it is
  * project-scoped (`featureId` null), so code that asks "does this session have
  * a feature?" must ask the row, never {@link isProjectSessionKind}.
+ * `side` = a side session (several-sessions-per-feature): an extra, fresh
+ * conversation on a feature, opened next to the main chat in the same talk
+ * worktree with the main chat's write rules. A kind of its own so every lookup
+ * keyed on `chat` — resume, the lead, the Chat door — keeps finding only the
+ * main chat; it may do anything the main chat does except run rounds, and it
+ * never takes the feature's one-terminal slot.
  */
 export const SessionKind = z.enum([
   'chat',
@@ -64,6 +70,7 @@ export const SessionKind = z.enum([
   'project',
   'drive-fix',
   'scenario',
+  'side',
 ])
 export type SessionKind = z.infer<typeof SessionKind>
 
@@ -720,6 +727,8 @@ export const SessionRow = z.object({
    * the db schema.
    */
   endedAt: z.number().optional(),
+  /** A `side` session's main-chat row at open time; unset on every other kind — see the db schema. */
+  openedBeside: z.string().optional(),
 })
 export type SessionRow = z.infer<typeof SessionRow>
 

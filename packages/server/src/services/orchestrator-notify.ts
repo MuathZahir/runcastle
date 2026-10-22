@@ -143,7 +143,8 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return { kind: 'end', text: `drive failed: ${clip(event.message)}. ${context}` }
     case 'session.launched':
       // A lead woken headless is runcastle delivering to it, not the human acting.
-      if (!session || session.purpose === 'lead-wake') return null
+      // A side session never makes the feature busy: it holds no terminal slot.
+      if (!session || session.purpose === 'lead-wake' || session.kind === 'side') return null
       if (session.purpose === 'start-lap') {
         return { kind: 'act', text: `the human started the next lap in a chat; it is busy until that session ends.` }
       }
@@ -151,7 +152,7 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return { kind: 'act', text: `the human opened a ${session.kind} session on it; it is busy until that session ends.` }
     case 'session.pty_exited':
       // A headless run's end is its own END event above.
-      if (!session || isHeadless(session)) return null
+      if (!session || isHeadless(session) || session.kind === 'side') return null
       return { kind: 'act', text: `the human's ${session.kind} session on it ended; it is free again. ${context}` }
     case 'burn.started':
     case 'burn.restarted':

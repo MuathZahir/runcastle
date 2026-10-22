@@ -17,9 +17,17 @@ vi.mock('../src/trpc', () => ({
       },
     },
     events: { list: { useQuery: () => ({ data: [] }) } },
-    feature: { endSession: { useMutation: () => ({ mutate: () => undefined, isPending: false }) } },
+    feature: {
+      endSession: { useMutation: () => ({ mutate: () => undefined, isPending: false }) },
+      openSideSession: { useMutation: () => ({ mutate: () => undefined, isPending: false }) },
+      sessions: { useQuery: () => ({ data: [] }) },
+    },
     useUtils: () => ({
-      feature: { get: { invalidate: () => undefined }, list: { invalidate: () => undefined } },
+      feature: {
+        get: { invalidate: () => undefined },
+        list: { invalidate: () => undefined },
+        sessions: { invalidate: () => undefined },
+      },
     }),
   },
 }))
@@ -127,7 +135,7 @@ describe('ChatView', () => {
 /** The strip names whichever session kind the Chat tab is hosting (decision 9). */
 describe('chatContextLine', () => {
   it('names each kind of feature session', () => {
-    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Chat')
+    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Feature chat')
     expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
     expect(chatContextLine(session({ kind: 'scenario' }))).toBe('Scenario')
   })
@@ -179,6 +187,16 @@ describe('FeatureChat', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
+  })
+
+  /** A side session has its own row in the switcher; it never stands in for the main chat. */
+  it('keeps the main chat in view while only a side session is live', () => {
+    const out = tab([
+      session({ id: 'sess_main', status: 'ended', ccSessionId: 'cc-1' }),
+      session({ id: 'sess_side', kind: 'side' }),
+    ])
+    expect(out).not.toContain('data-terminal')
+    expect(out).toContain('Resume the conversation')
   })
 
   it('offers Start when the feature never had a chat', () => {

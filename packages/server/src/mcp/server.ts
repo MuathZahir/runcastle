@@ -931,6 +931,12 @@ export function toolCancelTicket(
  */
 function requireLeadFeatureId(session: SessionRow): string {
   const featureId = requireFeatureId(session)
+  if (session.kind === 'side') {
+    throw new GateError(
+      "only the feature's main chat leads its rounds — a side session cannot dispatch, stop or " +
+        'declare ready. Tell the human to ask the main chat.',
+    )
+  }
   if (session.kind !== 'chat') {
     throw new GateError(`only the feature's chat leads its rounds — a ${session.kind} session cannot`)
   }
@@ -1820,7 +1826,7 @@ export interface CreateFeatureResult {
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
-const DRAFTING_KINDS: readonly SessionKindT[] = ['chat']
+const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
 
 /**
  * The project a `create_feature` call belongs to — and, on the way there, how
@@ -2499,7 +2505,7 @@ const PROJECT_READ_NOTE =
 export type McpAudience = SessionKindT | 'run'
 
 /** Every kind whose session belongs to a FEATURE (the complement of the two project kinds). */
-const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix']
+const FEATURE_KINDS: readonly SessionKindT[] = ['chat', 'drive-fix', 'side']
 
 const PROJECT_KINDS: readonly SessionKindT[] = ['prepare', 'project']
 

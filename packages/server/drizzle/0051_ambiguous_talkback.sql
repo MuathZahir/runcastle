@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `opened_beside` text;

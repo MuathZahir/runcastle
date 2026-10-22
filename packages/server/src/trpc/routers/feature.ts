@@ -5,8 +5,10 @@ import {
   launchDriveFixSession,
   launchScenarioSession,
   launchSession,
+  launchSideSession,
 } from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
+import { listFeatureSessions } from '../../services/conversations'
 import { setDependencies } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
@@ -113,6 +115,25 @@ export const featureRouter = router({
   fixDrive: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => launchDriveFixSession(ctx, { featureId: input.featureId })),
+
+  // New side session, or reopen an ended one by its row id
+  // (several-sessions-per-feature): a conversation beside the main chat, never
+  // refused for what the main chat is doing. Its own door rather than a `kind`
+  // on launchSession, whose chat path is the main chat's alone.
+  openSideSession: publicProcedure
+    .input(z.object({ featureId: z.string(), reopenSessionId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const { sessionId } = await launchSideSession(ctx, input)
+      return { sessionId }
+    }),
+
+  // The chat header's session switcher (decision 10): the main chat, its side
+  // sessions one per conversation, and a live scenario chat. An ended side
+  // session's transcript reads through `project.conversationTranscript`, which
+  // takes any session row and drops the side kickoff by kind.
+  sessions: publicProcedure
+    .input(z.object({ featureId: z.string() }))
+    .query(({ ctx, input }) => listFeatureSessions(ctx, input.featureId)),
 
   // End a live session (End session button; terminal-tab close is detach only).
   // Route added by W2 (UI-SPEC §6); backed by W1's PTY-killing `endSession`
