@@ -39,7 +39,6 @@ import {
   IconMoon,
   IconPencil,
   IconPlay,
-  IconPlus,
   IconSearch,
   IconSettings,
   IconShield,
