@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openMenu } from './floating'
 
 /**
  * The panel's design view (design-mode spec, "The design loop" steps 4-5 and
@@ -51,7 +52,25 @@ vi.mock('../src/components/TerminalView', () => ({
   TerminalView: ({ sessionId }: { sessionId: string }) => <div data-testid="terminal">{sessionId}</div>,
 }))
 
-const { DesignView, DESIGN_HEARTBEAT_MS } = await import('../src/components/design/DesignView')
+const { DesignView, DESIGN_HEARTBEAT_MS, useDesignPath } = await import('../src/components/design/DesignView')
+const { FeaturePanel } = await import('../src/components/workspace/FeaturePanel')
+
+/** The design view in the panel, its header's path wired as the feature page wires it. */
+function HeaderedDesignView({ path }: { path?: string }) {
+  return (
+    <FeaturePanel
+      view="design"
+      views={['design']}
+      label={() => 'Design'}
+      path={useDesignPath('f1', path)}
+      onSwitch={() => {}}
+      onCollapse={() => {}}
+      onClose={() => {}}
+    >
+      <DesignView featureId="f1" {...(path ? { path } : {})} />
+    </FeaturePanel>
+  )
+}
 
 const RUNNING: Status = { running: true, url: 'http://localhost:30001/', port: 30001, hasRecordedCommand: true }
 
@@ -95,14 +114,40 @@ describe('DesignView', () => {
     expect(startMutate).not.toHaveBeenCalled()
   })
 
-  it('puts its toolbar in a bar above the preview, not over it', () => {
-    status = RUNNING
-    render(<DesignView featureId="f1" path="/preview/invites" />)
+  it('holds every control in one toolbar row above the preview, with nothing else above it', () => {
+    status = { ...RUNNING, paneId: 'design:f1' }
+    const { container } = render(<DesignView featureId="f1" path="/preview/invites" />)
 
     const frame = document.querySelector('iframe')!
-    const reload = screen.getByRole('button', { name: 'Reload' })
-    expect(frame.parentElement!.contains(reload)).toBe(false)
-    expect(reload.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const [bar, ...more] = screen.getAllByRole('toolbar')
+    expect(more).toHaveLength(0)
+    const controls = [
+      screen.getByRole('combobox', { name: 'Screen width' }),
+      screen.getByRole('button', { name: 'Back to /preview/invites' }),
+      screen.getByRole('button', { name: 'Reload' }),
+      screen.getByRole('button', { name: 'Select area' }),
+      screen.getByRole('link', { name: 'Open in a new tab' }),
+      screen.getByRole('button', { name: 'Design server' }),
+    ]
+    for (const control of controls) expect(bar!.contains(control), control.textContent ?? '').toBe(true)
+    expect(frame.parentElement!.contains(bar!)).toBe(false)
+    expect(bar!.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // No second line of chrome: every control before the frame is in the bar.
+    const before = [...container.querySelectorAll('button, a, [role="combobox"]')].filter(
+      (el) => el.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(before.every((el) => bar!.contains(el))).toBe(true)
+
+    openMenu(screen.getByRole('button', { name: 'Design server' }))
+    expect(screen.getByRole('menuitem', { name: 'Restart server' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Show output' })).toBeTruthy()
+  })
+
+  it('names the page it loads in the panel header, the remembered one included', () => {
+    status = { ...RUNNING, lastPath: '/preview/invites' }
+    render(<HeaderedDesignView />)
+    const header = screen.getByRole('combobox', { name: 'Panel view' }).parentElement!
+    expect(header.textContent).toContain('/preview/invites')
   })
 
   it('tells the server the path it opened, so a bare reopen lands there', () => {
@@ -216,7 +261,8 @@ describe('DesignView', () => {
     const { rerender } = render(<DesignView featureId="f1" path="/preview/invites" />)
     const before = document.querySelector('iframe')!
 
-    act(() => screen.getByRole('button', { name: 'Restart server' }).click())
+    openMenu(screen.getByRole('button', { name: 'Design server' }))
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Restart server' })))
     expect(restartMutate).toHaveBeenCalledWith({ featureId: 'f1' }, expect.anything())
 
     restart = { isPending: true }
@@ -238,10 +284,12 @@ describe('DesignView', () => {
     render(<DesignView featureId="f1" />)
     expect(screen.queryByTestId('terminal')).toBeNull()
 
-    act(() => screen.getByRole('button', { name: 'Show output' }).click())
+    openMenu(screen.getByRole('button', { name: 'Design server' }))
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Show output' })))
 
     expect(screen.getByTestId('terminal').textContent).toBe('design:f1')
-    act(() => screen.getByRole('button', { name: 'Hide output' }).click())
+    openMenu(screen.getByRole('button', { name: 'Design server' }))
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: 'Hide output' })))
     expect(screen.queryByTestId('terminal')).toBeNull()
   })
 

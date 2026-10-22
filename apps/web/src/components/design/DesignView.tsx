@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { trpc } from '../../trpc'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
-import { Button, DimLine, EmptyState, Spinner } from '../../ui'
-import { IconArrowLeft, IconPen, IconRefresh, IconTerminal } from '../../icons'
+import { Button, DimLine, EmptyState, IconButton, Spinner } from '../../ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
+import { IconArrowLeft, IconMore, IconPen, IconRefresh, IconTerminal } from '../../icons'
 import { DrivePanel } from '../review/DrivePanel'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
@@ -25,6 +26,15 @@ export function designFrameUrl(url: string, path?: string): string {
 }
 
 /**
+ * The page the design view loads: the path asked for, else the one the server
+ * remembers. The panel header names it, so it reads what the frame shows.
+ */
+export function useDesignPath(featureId: string, path?: string, enabled = true): string | undefined {
+  const status = trpc.design.status.useQuery({ featureId }, { enabled: enabled && !path })
+  return path ?? status.data?.lastPath
+}
+
+/**
  * The panel's design view (design-mode decisions 3, 4, 5): the live preview the
  * agent serves from the feature's talk worktree, in the drive's frame and
  * toolbar — Select area sends the crop to the chat rather than to a note.
@@ -36,11 +46,11 @@ export function designFrameUrl(url: string, path?: string): string {
  * the server from idling out; Close is the panel's, and leaves the server to
  * idle out on its own.
  *
- * The human is never stranded on a page the agent did not show: the line above
- * the frame goes Back to the agent's page (a link in the preview can take the
- * frame anywhere), restarts the server from its recorded command (a dev server
- * wedged on a build error), and shows what the server printed. A server that
- * dies says so, with its last output.
+ * The human is never stranded on a page the agent did not show: the frame's one
+ * toolbar row goes Back to the agent's page (a link in the preview can take the
+ * frame anywhere), and its server menu restarts the server from its recorded
+ * command (a dev server wedged on a build error) and shows what the server
+ * printed. A server that dies says so, with its last output.
  */
 export function DesignView({ featureId, path, width }: DesignViewProps) {
   const toast = useToast()
@@ -103,28 +113,43 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
 
   if (running && status.data?.url) {
     const paneId = status.data.paneId
+    // The server's own controls ride the frame's one toolbar row, folded into a
+    // menu so the row never wraps into a second bar.
+    const serverMenu = (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton label="Design server" icon={<IconMore />} tooltipSide="bottom" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem icon={<IconRefresh />} onSelect={restartServer}>
+            Restart server
+          </DropdownMenuItem>
+          {paneId && (
+            <DropdownMenuItem icon={<IconTerminal />} onSelect={() => setShowOutput((v) => !v)}>
+              {showOutput ? 'Hide output' : 'Show output'}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
     return (
       <div className="flex h-full min-h-0 flex-col gap-2 p-3">
-        <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
-          <Button size="sm" variant="ghost" icon={<IconArrowLeft />} onClick={home}>
-            Back to {shownPath ?? '/'}
-          </Button>
-          <span className="flex-1" />
-          <Button size="sm" variant="ghost" icon={<IconRefresh />} onClick={restartServer}>
-            Restart server
-          </Button>
-          {paneId && (
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<IconTerminal />}
-              aria-expanded={showOutput}
-              onClick={() => setShowOutput((v) => !v)}
-            >
-              {showOutput ? 'Hide output' : 'Show output'}
-            </Button>
-          )}
-        </div>
+        <DrivePanel
+          featureId={featureId}
+          sendTo="chat"
+          frameKey={String(homeCount)}
+          url={designFrameUrl(status.data.url, shownPath)}
+          leading={
+            <IconButton
+              label={`Back to ${shownPath ?? '/'}`}
+              icon={<IconArrowLeft />}
+              tooltipSide="bottom"
+              onClick={home}
+            />
+          }
+          toolbar={serverMenu}
+          {...(width !== undefined ? { width } : {})}
+        />
         {showOutput && paneId && (
           <div className="relative h-60 min-h-40 shrink-0 overflow-hidden rounded-md bg-surface-inset animate-rise-in">
             <ErrorBoundary label="design server output">
@@ -132,14 +157,6 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
             </ErrorBoundary>
           </div>
         )}
-        <DrivePanel
-          featureId={featureId}
-          sendTo="chat"
-          toolbarPlacement="bar"
-          frameKey={String(homeCount)}
-          url={designFrameUrl(status.data.url, shownPath)}
-          {...(width !== undefined ? { width } : {})}
-        />
       </div>
     )
   }

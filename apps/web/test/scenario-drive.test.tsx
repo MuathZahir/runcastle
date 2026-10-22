@@ -115,6 +115,17 @@ describe('the running drive’s Scenario menu', () => {
     vi.clearAllMocks()
   })
 
+  it('sits in the drive’s one toolbar row above the app, which nothing overlaps', () => {
+    mount(landed('l1'))
+    const [bar, ...more] = screen.getAllByRole('toolbar')
+    expect(more).toHaveLength(0)
+    expect(bar!.contains(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))).toBe(true)
+    expect(bar!.contains(screen.getByRole('button', { name: 'Reload' }))).toBe(true)
+    expect(frame().parentElement!.contains(bar!)).toBe(false)
+    // Nothing but the selection layers is placed over the frame.
+    expect(frame().parentElement!.querySelectorAll('button, a, [role="combobox"]')).toHaveLength(0)
+  })
+
   it('names the current scenario and lists This feature, the others, Blank app and New scenario', () => {
     mount(landed('l1'))
     openMenu(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))

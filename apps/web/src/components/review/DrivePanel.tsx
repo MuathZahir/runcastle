@@ -138,8 +138,8 @@ export function DrivePanel({
   /** Looking back at a shipped feature: the app is shown, nothing is written. */
   readonly = false,
   frameKey = '',
+  leading,
   toolbar,
-  toolbarPlacement = 'floating',
   width,
   ...target
 }: CaptureTarget & {
@@ -151,10 +151,10 @@ export function DrivePanel({
    * the same entry URL twice still reloads the app (drive-scenarios decision 7).
    */
   frameKey?: string
-  /** More controls for the toolbar, after its own (the Scenario menu). */
+  /** Controls for the toolbar, before its own (the design view's Back). */
+  leading?: ReactNode
+  /** More controls for the toolbar, after its own (the Scenario menu, the design server's menu). */
   toolbar?: ReactNode
-  /** Over the app's top-left corner (a drive), or in a bar above it that covers none of it (the design view). */
-  toolbarPlacement?: 'floating' | 'bar'
   /** The screen width the agent asked to show (`show_panel`'s `width`), over the remembered one. */
   width?: number
 }) {
@@ -368,56 +368,50 @@ export function DrivePanel({
     }
   }
 
-  const floating = toolbarPlacement === 'floating'
-  // Floating, each group is a raised chip over the app; in the bar they sit flat in it.
-  const group = floating
-    ? 'pointer-events-auto flex items-center gap-0.5 rounded-lg bg-surface-raised p-1 shadow-popover'
-    : 'flex items-center gap-0.5'
-  const notice = floating
-    ? 'pointer-events-none rounded-md bg-surface-raised px-2 py-1 shadow-popover'
-    : 'px-1'
-  const controls = (
-    <>
-      <div className={group}>
-        {canCapture ? (
-          <IconButton
-            label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
-            icon={<IconSelectArea />}
-            active={selecting}
-            disabled={arming}
-            tooltipSide="bottom"
-            onClick={() => void armSelection()}
-          />
-        ) : null}
-        <IconButton
-          label="Reload"
-          icon={<IconRefresh />}
-          tooltipSide="bottom"
-          onClick={() => setGeneration((g) => g + 1)}
-        />
-        <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
-        <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
-      </div>
-      {toolbar && <div className={group}>{toolbar}</div>}
-      {!canCapture && !readonly && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotCapture}</span>}
-      {agentDriving && (
-        <span className={notice}>
-          <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
-        </span>
-      )}
-      {!loaded && slow && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotEmbed}</span>}
-    </>
-  )
+  const group = 'flex shrink-0 items-center gap-0.5'
+  const notice = 'min-w-0 truncate px-1'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md bg-surface-inset">
-      {/* The design view's toolbar sits in a bar above the preview: a small
-          component renders exactly where a floating one would cover it. */}
-      {!floating && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border-subtle bg-surface-raised p-1">
-          {controls}
+      {/* Every control in one bar above the app, covering none of it
+          (design-mode decision 12's one-row rule, for the panes): a page's
+          heading, or a small component, renders exactly where a floating
+          toolbar would sit. */}
+      <div
+        role="toolbar"
+        aria-label="Page controls"
+        className="flex shrink-0 items-center gap-2 overflow-hidden border-b border-border-subtle bg-surface-raised p-1"
+      >
+        <div className={group}>
+          {leading}
+          {canCapture ? (
+            <IconButton
+              label={arming ? 'Sharing…' : selecting ? 'Drag a region' : 'Select area'}
+              icon={<IconSelectArea />}
+              active={selecting}
+              disabled={arming}
+              tooltipSide="bottom"
+              onClick={() => void armSelection()}
+            />
+          ) : null}
+          <IconButton
+            label="Reload"
+            icon={<IconRefresh />}
+            tooltipSide="bottom"
+            onClick={() => setGeneration((g) => g + 1)}
+          />
+          <IconButton label={copy.open} href={url} target="_blank" icon={<IconExternalLink />} tooltipSide="bottom" />
+          <WidthMenu width={frame.chosen} scale={frame.size.scale} onPick={frame.pick} />
         </div>
-      )}
+        {toolbar && <div className={cx(group, 'min-w-0 shrink')}>{toolbar}</div>}
+        {!canCapture && !readonly && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotCapture}</span>}
+        {agentDriving && (
+          <span className={notice}>
+            <StatusLabel tone="live">Review agent driving — notes land as it finds things</StatusLabel>
+          </span>
+        )}
+        {!loaded && slow && <span className={cx(notice, 'text-xs text-text-tertiary')}>{copy.cannotEmbed}</span>}
+      </div>
       {/* The stage: the frame and every layer over it. The selection is
           measured against this box, so a crop is of the frame alone — and,
           since a crop reads on-screen pixels, of the frame as drawn, scaled. */}
@@ -443,14 +437,6 @@ export function DrivePanel({
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           onLoad={() => setLoaded(true)}
         />
-
-        {/* A drive's toolbar floats over the app rather than above it: the
-            stage is 16:9 and every row of chrome is a row the app does not get. */}
-        {floating && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-center gap-2 p-3">
-            {controls}
-          </div>
-        )}
 
         {selecting && (
           <div

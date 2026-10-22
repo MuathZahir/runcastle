@@ -108,22 +108,35 @@ function floats(el: Element, root: Element): boolean {
 }
 
 describe('DrivePanel toolbar placement', () => {
-  it('floats the toolbar over the app on a drive', () => {
-    const { container } = render(<DrivePanel featureId="feat_1" url="about:blank" />)
-    expect(floats(screen.getByRole('button', { name: 'Reload' }), container)).toBe(true)
-  })
-
-  it('puts the toolbar in a bar above the frame, over none of it, and selects over the frame alone', async () => {
-    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" />)
+  // A drive and the design view alike: one row above the frame, over none of it.
+  it.each([
+    ['a drive', {}],
+    ['the design view', { sendTo: 'chat' as const }],
+  ])('puts every control of %s in one bar above the frame, and selects over the frame alone', async (_, props) => {
+    const { container } = render(
+      <DrivePanel
+        featureId="feat_1"
+        url="about:blank"
+        leading={<button type="button">Back</button>}
+        toolbar={<button type="button">Scenario</button>}
+        {...props}
+      />,
+    )
     const frame = container.querySelector('iframe')!
-    for (const name of ['Select area', 'Reload']) {
-      const button = screen.getByRole('button', { name })
-      expect(floats(button, container), name).toBe(false)
-      expect(frame.parentElement!.contains(button), name).toBe(false)
-      // The bar comes first in the document: above the frame, not after it.
-      expect(button.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const [bar, ...more] = screen.getAllByRole('toolbar')
+    expect(more).toHaveLength(0)
+    const controls = [
+      ...['Back', 'Select area', 'Reload', 'Scenario'].map((name) => screen.getByRole('button', { name })),
+      screen.getByRole('link', { name: /Open/ }),
+      screen.getByRole('combobox', { name: 'Screen width' }),
+    ]
+    for (const control of controls) {
+      expect(bar!.contains(control), control.textContent ?? '').toBe(true)
+      expect(floats(control, container)).toBe(false)
+      expect(frame.parentElement!.contains(control)).toBe(false)
     }
-    expect(floats(screen.getByRole('link', { name: 'Open in a new tab' }), container)).toBe(false)
+    // The bar comes first in the document: above the frame, not after it.
+    expect(bar!.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Select area' }))
@@ -143,13 +156,13 @@ describe('DrivePanel screen width', () => {
     expect(frameWidth(drive.container)).toBe('1440px')
     expect(screen.getByRole('combobox', { name: 'Screen width' }).textContent).toMatch(/^1440 · \d+%$/)
     drive.unmount()
-    const design = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" />)
+    const design = render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
     expect(frameWidth(design.container)).toBe('1440px')
   })
 
   it('takes the width the agent asked for over the remembered one, without remembering it', () => {
     localStorage.setItem('runcastle.preview.width', '768')
-    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" toolbarPlacement="bar" url="about:blank" width={390} />)
+    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" width={390} />)
     expect(frameWidth(container)).toBe('390px')
     expect(localStorage.getItem('runcastle.preview.width')).toBe('768')
   })

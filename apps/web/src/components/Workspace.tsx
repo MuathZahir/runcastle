@@ -73,7 +73,7 @@ import { ReviewBody } from './bodies/ReviewBody'
 import { ShippedBody } from './bodies/ShippedBody'
 import { TicketsBody } from './bodies/tickets/TicketsBody'
 import { RunBody } from './bodies/RunBody'
-import { DesignView } from './design/DesignView'
+import { DesignView, useDesignPath } from './design/DesignView'
 import { DetailsView } from './inspector/Inspector'
 import { FeatureDriveView } from './review/FeatureDriveView'
 import { copyText } from './workspace/copy-text'
@@ -376,6 +376,8 @@ export function Workspace({
   usePanelShow(events, featureId, (request) => {
     if (views.includes(request.view)) panel.dispatch({ type: 'open', ...request, origin: 'agent' })
   })
+  // The page the design view loads, for the panel header to name.
+  const designPath = useDesignPath(featureId, panel.state.path, panel.state.view === 'design')
   // The chat column (decision 9): the feature chat, and the drive errand's
   // scenario chat, which an errand's open brings to the front.
   const column = useFeatureChatColumn({
@@ -1181,7 +1183,7 @@ export function Workspace({
                     view={shown}
                     views={views}
                     label={labelOf}
-                    path={panel.state.path}
+                    path={designPath}
                     onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
                     onCollapse={() => panel.dispatch({ type: 'collapse' })}
                     onClose={() => panel.dispatch({ type: 'close' })}
