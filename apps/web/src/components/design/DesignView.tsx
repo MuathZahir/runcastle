@@ -3,8 +3,10 @@ import { trpc } from '../../trpc'
 import { useLivePoll } from '../../lib/live'
 import { useToast } from '../../lib/toast'
 import { Button, DimLine, EmptyState, Spinner } from '../../ui'
-import { IconPen } from '../../icons'
+import { IconArrowLeft, IconPen, IconRefresh, IconTerminal } from '../../icons'
 import { DrivePanel } from '../review/DrivePanel'
+import { ErrorBoundary } from '../ErrorBoundary'
+import { TerminalView } from '../TerminalView'
 
 export interface DesignViewProps {
   featureId: string
@@ -33,6 +35,12 @@ export function designFrameUrl(url: string, path?: string): string {
  * their back. While the view is on screen it heartbeats, which is what keeps
  * the server from idling out; Close is the panel's, and leaves the server to
  * idle out on its own.
+ *
+ * The human is never stranded on a page the agent did not show: the line above
+ * the frame goes Back to the agent's page (a link in the preview can take the
+ * frame anywhere), restarts the server from its recorded command (a dev server
+ * wedged on a build error), and shows what the server printed. A server that
+ * dies says so, with its last output.
  */
 export function DesignView({ featureId, path, width }: DesignViewProps) {
   const toast = useToast()
@@ -46,7 +54,16 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
   const { mutate: rememberPath } = trpc.design.showPath.useMutation({
     onSuccess: () => utils.design.status.invalidate({ featureId }),
   })
+  const restart = trpc.design.restart.useMutation({
+    onError: (e) => toast.push(e.message),
+    onSettled: () => utils.design.status.invalidate({ featureId }),
+  })
   const { mutate: startMutate } = start
+  const { mutate: restartMutate } = restart
+  // Bumped to remount the frame at the agent's page, wherever the frame has wandered.
+  const [homeCount, setHomeCount] = useState(0)
+  const home = () => setHomeCount((n) => n + 1)
+  const [showOutput, setShowOutput] = useState(false)
   // An explicit path is told to the server, which remembers it per feature, so a
   // bare reopen — the topbar, another feature and back, a reload — lands there.
   const shownPath = path ?? status.data?.lastPath
@@ -82,30 +99,79 @@ export function DesignView({ featureId, path, width }: DesignViewProps) {
     return () => clearInterval(timer)
   }, [running, beat, featureId])
 
+  const restartServer = () => restartMutate({ featureId }, { onSuccess: home })
+
   if (running && status.data?.url) {
+    const paneId = status.data.paneId
     return (
-      <div className="flex h-full min-h-0 flex-col p-3">
+      <div className="flex h-full min-h-0 flex-col gap-2 p-3">
+        <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
+          <Button size="sm" variant="ghost" icon={<IconArrowLeft />} onClick={home}>
+            Back to {shownPath ?? '/'}
+          </Button>
+          <span className="flex-1" />
+          <Button size="sm" variant="ghost" icon={<IconRefresh />} onClick={restartServer}>
+            Restart server
+          </Button>
+          {paneId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<IconTerminal />}
+              aria-expanded={showOutput}
+              onClick={() => setShowOutput((v) => !v)}
+            >
+              {showOutput ? 'Hide output' : 'Show output'}
+            </Button>
+          )}
+        </div>
+        {showOutput && paneId && (
+          <div className="relative h-60 min-h-40 shrink-0 overflow-hidden rounded-md bg-surface-inset animate-rise-in">
+            <ErrorBoundary label="design server output">
+              <TerminalView sessionId={paneId} />
+            </ErrorBoundary>
+          </div>
+        )}
         <DrivePanel
           featureId={featureId}
           sendTo="chat"
           toolbarPlacement="bar"
+          frameKey={String(homeCount)}
           url={designFrameUrl(status.data.url, shownPath)}
           {...(width !== undefined ? { width } : {})}
         />
       </div>
     )
   }
-  if (!status.data || start.isPending) {
+  if (!status.data || start.isPending || restart.isPending) {
+    const starting = start.isPending || restart.isPending
     return (
       <div className="flex items-center justify-center gap-2 px-6 py-12">
-        {start.isPending && <Spinner size="sm" />}
-        <DimLine>{start.isPending ? 'Starting the design server…' : 'Looking for the design server…'}</DimLine>
+        {starting && <Spinner size="sm" />}
+        <DimLine>{starting ? 'Starting the design server…' : 'Looking for the design server…'}</DimLine>
       </div>
     )
   }
   const again = hasRecordedCommand ? (
     <Button onClick={() => startMutate({ featureId })}>Start it again</Button>
   ) : undefined
+  const lastError = status.data.lastError
+  if (lastError !== undefined && !start.isError) {
+    return (
+      <div className="flex flex-col items-center gap-4 px-6 py-16">
+        <EmptyState
+          className="py-0"
+          icon={<IconPen />}
+          title="The design server stopped"
+          hint="It exited on its own. What it printed last:"
+          action={hasRecordedCommand ? <Button onClick={restartServer}>Restart server</Button> : undefined}
+        />
+        <pre className="m-0 max-h-60 w-full max-w-160 overflow-auto rounded-md bg-surface-inset px-3 py-2.5 font-mono text-xs whitespace-pre-wrap text-text-secondary">
+          {lastError}
+        </pre>
+      </div>
+    )
+  }
   if (start.isError) {
     return (
       <EmptyState
