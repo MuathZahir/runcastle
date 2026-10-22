@@ -20,7 +20,7 @@ import {
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
 import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { Sidebar, SidebarRail } from './Sidebar'
+import { Sidebar } from './Sidebar'
 import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -338,7 +338,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onDriveChange={setDriving}
           />
         }
-        rail={<SidebarRail onOpenCmdk={() => setCmdk(true)} onNewChat={newChat} />}
       >
         {/* The view fills the panel. The feature's details are not mounted
             here: they are one of the feature page's panel views, and the

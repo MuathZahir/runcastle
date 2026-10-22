@@ -1,4 +1,4 @@
-import type { MouseEventHandler, ReactNode } from 'react'
+import { createContext, useContext, type MouseEventHandler, type ReactNode } from 'react'
 import { IconChevronRight, IconX } from '../icons'
 import { IconButton } from './button'
 import { cx } from './floating'
@@ -75,9 +75,17 @@ export function Crumbs({ items, className }: { items: Crumb[]; className?: strin
 }
 
 /**
- * The content panel's 44px top bar (`border-b border-subtle`). Left: `crumbs`
- * (or any `leading` node). Right: view `tabs`, then `actions` (secondary
- * buttons, then IconButtons — more, aside toggle).
+ * The way back to a closed sidebar (design-mode decision 12), which the frame
+ * provides while its sidebar is closed and every {@link PageTopbar} puts first.
+ * Null — no button — while the sidebar is open, and outside a frame.
+ */
+export const SidebarDoorContext = createContext<ReactNode>(null)
+
+/**
+ * The content panel's 44px top bar (`border-b border-subtle`). Left: the
+ * closed sidebar's way back, then `crumbs` (or any `leading` node). Right:
+ * view `tabs`, then `actions` (secondary buttons, then IconButtons — more,
+ * panel toggle).
  */
 export function PageTopbar({
   leading,
@@ -92,14 +100,17 @@ export function PageTopbar({
   actions?: ReactNode
   className?: string
 }) {
+  const door = useContext(SidebarDoorContext)
   return (
     <header
       className={cx(
-        'flex h-(--topbar-h) shrink-0 items-center gap-3 border-b border-border-subtle pr-3 pl-4',
+        'flex h-(--topbar-h) shrink-0 items-center gap-3 border-b border-border-subtle pr-3',
+        door ? 'pl-2' : 'pl-4',
         className,
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
+        {door}
         {leading}
         {crumbs && <Crumbs items={crumbs} />}
       </div>

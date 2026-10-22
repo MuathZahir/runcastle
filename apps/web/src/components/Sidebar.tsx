@@ -777,13 +777,3 @@ function SidebarFoot({
     />
   )
 }
-
-/** The collapsed rail's one-icon doors: search and create. */
-export function SidebarRail({ onOpenCmdk, onNewChat }: { onOpenCmdk: () => void; onNewChat: () => void }) {
-  return (
-    <>
-      <IconButton label="Search" kbd={modKey()} icon={<IconSearch />} tooltipSide="right" onClick={onOpenCmdk} />
-      <IconButton label="New chat" icon={<IconPlus />} tooltipSide="right" onClick={onNewChat} />
-    </>
-  )
-}
