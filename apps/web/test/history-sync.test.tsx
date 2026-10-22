@@ -181,36 +181,36 @@ describe('useHistorySync', () => {
       return (
         <>
           <button onClick={() => ws.select('alpha')}>alpha</button>
-          <button onClick={() => ws.selectView('chat')}>chat</button>
+          <button onClick={() => ws.selectView('details')}>details</button>
           <span data-testid="view">{ws.featureView}</span>
         </>
       )
     }
 
-    it('pushes an entry per tab switch, and Back returns to the previous tab', () => {
+    it('pushes an entry per view switch, and Back returns to the previous view', () => {
       render(<Tabbed />)
       go('alpha')
-      expect(path()).toBe('/p/p1/f/alpha')
+      expect(path()).toBe('/p/p1/f/alpha/chat')
       const depth = window.history.length
 
-      go('chat')
-      expect(path()).toBe('/p/p1/f/alpha/chat')
+      go('details')
+      expect(path()).toBe('/p/p1/f/alpha/details')
       expect(window.history.length).toBe(depth + 1)
 
-      back('/p/p1/f/alpha')
-      expect(screen.getByTestId('view').textContent).toBe('overview')
+      back('/p/p1/f/alpha/chat')
+      expect(screen.getByTestId('view').textContent).toBe('chat')
     })
 
-    it('keeps the tab across a reload — the address names it', () => {
+    it('keeps the view across a reload — the address names it', () => {
       const { unmount } = render(<Tabbed />)
       go('alpha')
-      go('chat')
+      go('details')
       unmount()
       expect(parsePath(path())).toEqual({
         kind: 'feature',
         projectId: 'p1',
         featureSlug: 'alpha',
-        tab: 'chat',
+        view: 'details',
       })
     })
   })

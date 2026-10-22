@@ -93,6 +93,25 @@ describe('sniffDevUrl', () => {
     expect(sniffDevUrl(out)).toBe('http://localhost:5173/')
   })
 
+  it('keeps the port when the dev server bolds it (Vite)', () => {
+    const out =
+      '  \x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m33113\x1b[22m/\x1b[39m'
+    expect(sniffDevUrl(out)).toBe('http://localhost:33113/')
+    expect(sniffDevUrl('\x1b[1mhttp://127.0.0.1:\x1b[1m4000\x1b[22m\x1b[0m')).toBe(
+      'http://127.0.0.1:4000',
+    )
+  })
+
+  it('sees through OSC-8 hyperlink wrappers', () => {
+    const st = '\x1b\\'
+    expect(sniffDevUrl(`\x1b]8;;http://localhost:5173/${st}http://localhost:5173/\x1b]8;;${st}`)).toBe(
+      'http://localhost:5173/',
+    )
+    expect(sniffDevUrl('\x1b]8;;http://localhost:5173/\x07http://localhost:5173/\x1b]8;;\x07')).toBe(
+      'http://localhost:5173/',
+    )
+  })
+
   it('strips a trailing ANSI colour reset butted directly against the URL', () => {
     const out = '\x1b[32m  ➜  Local:\x1b[39m   \x1b[1mhttp://localhost:5173/\x1b[22m'
     expect(sniffDevUrl(out)).toBe('http://localhost:5173/')

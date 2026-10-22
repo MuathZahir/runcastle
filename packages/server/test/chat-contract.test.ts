@@ -32,6 +32,8 @@ describe('chat contract', () => {
       'read_feature_doc',
       'record_event',
       'resolve_finding',
+      'show_panel',
+      'start_design_server',
       'stop_round',
       'update_ticket',
       'wait_for_you',

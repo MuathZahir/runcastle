@@ -4,39 +4,44 @@ import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
 import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
-import { IconArrowRight, IconBranch, IconFolder, IconPanelRight } from '../icons'
+import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
 import { useLivePoll } from '../lib/live'
-import { Aside, AsideLayout, Button, IconButton, Page, PageHeader, PageTopbar, StatusDot } from '../ui'
+import { Button, Page, PageHeader, PageTopbar } from '../ui'
+import { projectChatEntries, scenarioChatLabel, type ChatSessionEntry } from '../lib/chat-sessions'
+import { projectViewLabel, projectViews, type PanelView } from '../lib/feature-ui/panel'
+import { ScenarioChatContext, ScenarioChatMenu, ScenarioChatView, scenarioErrandHint, useScenarioChat } from './chat/ScenarioChat'
+import { EndSessionItem } from './EndSessionButton'
+import { SessionSwitcher } from './chat/SessionSwitcher'
 import { ConversationList } from './project/ConversationList'
 import { NewChatCard } from './project/NewChatCard'
 import { NotesCard } from './project/NotesCard'
 import { ProjectChat } from './project/ProjectChat'
-import { ProjectDriveView, ProjectViewSwitch, type ProjectView } from './project/ProjectDriveView'
+import { ProjectDriveView } from './project/ProjectDriveView'
 import { TestDriveCard } from './project/TestDriveCard'
+import { FeaturePanel, PanelSplit, PanelStrip, PanelToggle, usePanel } from './workspace/FeaturePanel'
 import { projectDriveCard } from '../lib/project-drive'
 import { scenarioMenu } from '../lib/feature-ui/scenarios'
 import { useProjectDrive } from '../lib/use-project-drive'
 
 /**
- * The project workspace (decision 20) — what the rail's pinned row swaps in.
+ * The project workspace (decision 20) — what the rail's pinned row swaps in,
+ * the one surface in the shell bound to a project rather than a feature: the
+ * project's CONVERSATIONS, and the door to a new one.
  *
- * This is the one surface in the shell bound to a project rather than a feature:
- * the project's CONVERSATIONS, and the door to a new one.
+ * Chat-first, in the feature page's own pieces (design-mode decision 11): the
+ * chat column on the left, and on its right one resizable panel holding the
+ * project drive or the Notes inbox (the project page's details).
  *
- * At rest it is three pieces and nothing else (decisions.md #6): a header
- * naming the branch this chat runs on and the branch its work lands on, the two
- * doors (New chat — the page's one primary — and Test drive) as quiet rows, and
- * the list of chats — plus the Notes inbox as the page's one aside, on the
- * projects that have jotted one. It used to carry a paragraph on every card —
- * what the chat already knows, what the landing branch means, why changing it
- * would not affect the chat already running — which is first-use explanation
- * charged to every visit. The chat's own greeting says what it knows; the
- * landing branch moved into a menu beside the button it argues (decisions.md
- * #3), which is what retired the grey note apologising for it.
+ * The column at rest is three pieces and nothing else (decisions.md #6): a
+ * header naming the branch this chat runs on and the branch its work lands on,
+ * the two doors (New chat — the page's one primary — and Test drive) as quiet
+ * rows, and the list of chats. The chat's own greeting says what it knows; the
+ * landing branch lives in a menu beside the button it argues (decisions.md #3).
  *
  * A list, not a terminal, is the resting state (decision 5). Only one chat runs
- * at a time — the launcher's rule — so a live conversation takes the body over,
- * exactly as the single session used to.
+ * at a time — the launcher's rule — so a live conversation fills the column,
+ * and its switcher lists the past ones, each opening its read-only transcript;
+ * the project crumb steps back to the list.
  */
 export function ProjectWorkspace({
   projectId,
@@ -83,38 +88,59 @@ export function ProjectWorkspace({
     runnerConfigured: (scenariosQ.data?.runnerConfigured ?? false) && !!project?.devCommand?.trim(),
   })
   const session = talk.session
-  const [viewing, setViewing] = useState<ProjectConversation | null>(null)
-  // The same key the Notes aside reads, so knowing whether to offer it is free.
+  // What is in front of the chat column: `undefined` follows the live chat (the
+  // resting list when there is none), `null` is the list, an id is that entry.
+  const [front, setFront] = useState<string | null | undefined>(session && newChatRequest > 0 ? null : undefined)
+  // The same key the Notes card reads, so knowing whether to offer it is free.
   const notesQ = trpc.projectNotes.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
-  // The Notes aside: `null` until the human toggles it (then it follows them).
-  const [notesOpen, setNotesOpen] = useState<boolean | null>(null)
-  // Keep the terminal mounted behind the list so xterm retains its client-side
-  // buffer and socket; `TerminalView` tears both down when it unmounts.
-  const [showList, setShowList] = useState(Boolean(session && newChatRequest > 0))
-  // A live chat and a live drive coexist (drive decision 4); this is which of
-  // the two fills the body when both could.
-  const [front, setFront] = useState<'chat' | 'drive'>('chat')
   const [showOpenNotice, setShowOpenNotice] = useState(Boolean(session && newChatRequest > 0))
   // What the pending open/replace choice is FOR. A Triage click on a project
   // that already has a chat open raises the same notice New chat does, and
   // "End it and start new" has to open the chat the human asked for.
   const [noticePurpose, setNoticePurpose] = useState<ProjectTalkPurpose | undefined>(undefined)
+  // The drive's scenario errands open their chat in this column too.
+  const scenarioChat = useScenarioChat(drive?.scenarioSessionId, setFront)
+
+  const entries: ChatSessionEntry[] = [
+    ...projectChatEntries({ liveId: session?.id ?? null, conversations: talk.conversations }),
+    ...(scenarioChat.listed && scenarioChat.sessionId
+      ? [{ id: scenarioChat.sessionId, label: scenarioChatLabel(scenarioChat.errand), live: true }]
+      : []),
+  ]
+  const fallback = session?.id ?? null
+  const inFront =
+    front === undefined ? fallback : front === null ? null : entries.some((e) => e.id === front) ? front : fallback
+  const reading =
+    inFront && inFront !== session?.id && inFront !== scenarioChat.sessionId
+      ? (talk.conversations.find((c) => c.id === inFront) ?? null)
+      : null
+  const resting = inFront === null
+
+  const projectName = project?.name ?? 'This project'
+  const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
+  const hasNotes = (notesQ.data ?? []).length > 0
+
+  // The panel: the views this page offers, and the one open. Untouched, the
+  // Notes inbox is open beside the resting list while something waits in it;
+  // the human's own toggle wins from then on.
+  const views = projectViews({ driveActive: !!drive, hasNotes })
+  const [picked, setPicked] = useState<PanelView | null | undefined>(undefined)
+  const wanted = picked === undefined ? (resting && openNotes > 0 ? 'details' : null) : picked
+  const panel = usePanel(wanted && views.includes(wanted) ? wanted : null, (v) => setPicked(v === 'chat' ? null : v))
+  const shown = panel.state.view
+  const openView = (view: PanelView) => panel.dispatch({ type: 'open', view, origin: 'human' })
+
   useEffect(() => {
     if (newChatRequest > 0 && session) {
-      setShowList(true)
+      setFront(null)
       setShowOpenNotice(true)
       setNoticePurpose(undefined)
       onConsumeNewChatRequest?.()
     }
   }, [newChatRequest, onConsumeNewChatRequest, session])
-  // The inbox sits on the resting page, so asking for it steps out of a live
-  // chat or a read transcript first; the card scrolls itself in once shown.
+  // Capture's View: the inbox is the panel's Notes; the card scrolls itself in.
   useEffect(() => {
-    if (inboxRequest > 0) {
-      setViewing(null)
-      setShowList(true)
-      setNotesOpen(true)
-    }
+    if (inboxRequest > 0) setPicked('details')
   }, [inboxRequest])
   useEffect(() => {
     if (!session) {
@@ -122,28 +148,14 @@ export function ProjectWorkspace({
       setNoticePurpose(undefined)
     }
   }, [session])
-  // A chat that opens is what the human just asked for, so it comes to the front
-  // of a drive that shares the body.
-  const sessionId = session?.id
+  // The titlebar's pill: the drive, from wherever in the project.
   useEffect(() => {
-    if (sessionId) setFront('chat')
-  }, [sessionId])
-  const showDrive = (): void => {
-    setViewing(null)
-    setShowList(false)
-    setFront('drive')
-  }
-  const showChat = (): void => {
-    setShowList(false)
-    setFront('chat')
-  }
-  // Out of the drive to the resting page. `showList` is only the chat's step
-  // back: with no chat, a drive out of the front already leaves the page at rest,
-  // and setting it would keep the next chat opened from taking the body.
-  const toRestingPage = (): void => {
-    setFront('chat')
-    if (session) setShowList(true)
-  }
+    if (driveRequest > 0) {
+      setPicked('drive')
+      onConsumeDriveRequest?.()
+    }
+  }, [driveRequest, onConsumeDriveRequest])
+
   const driveCard = projectDriveCard({
     // Nothing to say until the row answers, rather than a
     // "Prepare drive" that flickers into "Test drive".
@@ -153,216 +165,247 @@ export function ProjectWorkspace({
     drive: projectDrive.slot,
     projectId,
   })
-  // The titlebar's pill: back to the drive from wherever in the project.
-  useEffect(() => {
-    if (driveRequest > 0) {
-      showDrive()
-      onConsumeDriveRequest?.()
-    }
-  }, [driveRequest, onConsumeDriveRequest])
-
-  const reading = viewing
-  // What fills the body. The resting page, unless a live chat or a live drive
-  // has been brought to the front; with both live, `front` picks between them.
-  const resting = reading !== null || showList || (!session && !(drive && front === 'drive'))
-  const driveInFront = Boolean(drive) && !resting && (front === 'drive' || !session)
-  const chatInFront = Boolean(session) && !resting && !driveInFront
-  // While a chat or a drive is live, every topbar of this page carries the
-  // same view tabs, so the overview — chats, New chat, Test drive — is one
-  // labelled click away from either, and they from it.
-  const pickView = (view: ProjectView): void => {
-    if (view === 'overview') {
-      setViewing(null)
-      toRestingPage()
-    } else if (view === 'chat') {
-      setViewing(null)
-      showChat()
-    } else showDrive()
-  }
-  const switcher =
-    session || drive ? (
-      <ProjectViewSwitch
-        value={driveInFront ? 'drive' : chatInFront ? 'chat' : 'overview'}
-        chat={Boolean(session)}
-        drive={Boolean(drive)}
-        onPick={pickView}
-      />
-    ) : undefined
-  // Reopening leaves the read-back chat behind: what comes back is the terminal,
-  // and closing that should land on the list, not on the transcript of the
-  // conversation you have just been having.
+  // The human's Test drive: the drive it started opens in the panel. The topbar
+  // starts the blank app, as the card's main click does.
+  const startDrive = (scenario: string | null = null): void =>
+    projectDrive.start(scenario, () => panel.dispatch({ type: 'follow', click: 'testDrive' }))
+  // The live chat in front of the column.
+  const showChat = (): void => setFront(undefined)
+  // Reopening leaves the read-back chat behind: what comes back is the terminal.
   const reopen = (sessionId: string): void => {
     talk.resume(sessionId)
-    setViewing(null)
     showChat()
   }
 
-  const projectName = project?.name ?? 'This project'
-  const openNotes = (notesQ.data ?? []).filter((n) => n.status === 'open').length
-  const hasNotes = (notesQ.data ?? []).length > 0
-  // Open by default while something is waiting in the inbox; the human's own
-  // toggle wins from then on.
-  const notesShown = hasNotes && (notesOpen ?? openNotes > 0)
+  const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
+  const refreshProjectChat = (): void => {
+    void utils.project.projectSession.invalidate()
+    void utils.project.conversations.invalidate()
+  }
+  // The switcher's menu speaks for the chat in front: the live chat's landing
+  // branch and End session, or the scenario chat's errand, close and End session.
+  const liveInFront = !!session && inFront === session.id
+  const scenarioInFront = !!scenarioChat.sessionId && inFront === scenarioChat.sessionId
+  const switcher = inFront && (
+    <SessionSwitcher
+      entries={entries}
+      current={inFront}
+      onPick={setFront}
+      hint={
+        scenarioInFront
+          ? scenarioErrandHint(scenarioChat.errand)
+          : liveInFront && landing.value
+            ? `Lands on ${landing.value}`
+            : undefined
+      }
+    >
+      {liveInFront && (
+        <EndSessionItem sessionId={session.id} onEnded={refreshProjectChat} />
+      )}
+      {scenarioInFront && <ScenarioChatMenu chat={scenarioChat} />}
+    </SessionSwitcher>
+  )
+
+  const restPage = (
+    <div className={resting && !chatHidden ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting || chatHidden}>
+      <Page routeKey={`project-${projectId}`}>
+        <PageHeader
+          title={projectName}
+          meta={[
+            { icon: <IconBranch />, text: PROJECT_BRANCH, mono: true, title: 'the branch project chats run on' },
+            landing.value ? { icon: <IconArrowRight />, text: `lands on ${landing.value}` } : null,
+          ]}
+        />
+        <div className="mt-8">
+          <NewChatCard
+            landing={landing}
+            onStart={talk.start}
+            starting={talk.starting}
+            openSession={
+              session && showOpenNotice
+                ? {
+                    onOpen: () => {
+                      setShowOpenNotice(false)
+                      setNoticePurpose(undefined)
+                      showChat()
+                    },
+                    onReplace: () => {
+                      setShowOpenNotice(false)
+                      talk.replace(noticePurpose)
+                      showChat()
+                    },
+                  }
+                : undefined
+            }
+          />
+          <TestDriveCard
+            card={driveCard}
+            branch={drive?.branch ?? (branchesQ.data?.current || null)}
+            setupCommand={project?.driveSetupCommand}
+            devCommand={project?.devCommand}
+            stopCommand={project?.driveStopCommand}
+            starting={projectDrive.starting}
+            scenarios={startScenarios}
+            onStart={startDrive}
+            onPrepare={() => onOpenPreparation?.()}
+            onReturn={() => openView('drive')}
+          />
+        </div>
+        <ConversationList
+          conversations={talk.conversations}
+          pending={talk.conversationsPending}
+          busy={talk.starting}
+          onResume={reopen}
+          onOpen={showChat}
+          // The live conversation is the one live chat, so reading it
+          // is opening it; only an ended one is read back.
+          onView={(c: ProjectConversation) => (c.status === 'ended' ? setFront(c.id) : showChat())}
+        />
+      </Page>
+    </div>
+  )
+
+  const panelView = (view: PanelView) => {
+    switch (view) {
+      case 'drive':
+        return drive ? (
+          <ProjectDriveView
+            projectId={projectId}
+            repoPath={project?.repoPath}
+            drive={drive}
+            // Stop lands on the Notes inbox, where the drive's notes are
+            // waiting. No summary, no prompt: the inbox is the exit.
+            onStop={() =>
+              projectDrive.stop(() => panel.dispatch(hasNotes ? { type: 'switch', view: 'details' } : { type: 'close' }))
+            }
+            stopping={projectDrive.stopping}
+            onOpenPreparation={() => onOpenPreparation?.()}
+          />
+        ) : null
+      case 'details':
+        return (
+          <div className="px-6 py-5">
+            <NotesCard
+              projectId={projectId}
+              triaging={talk.starting}
+              reveal={inboxRequest > 0}
+              onRevealed={onConsumeInboxRequest}
+              onTriage={() => {
+                if (!session) {
+                  talk.triage()
+                  return
+                }
+                // One live chat per project, so the human chooses: carry on
+                // in the one that is open, or end it and triage in a fresh one.
+                setNoticePurpose('triage')
+                setShowOpenNotice(true)
+                setFront(null)
+              }}
+            />
+          </div>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <div className={resting ? 'flex min-h-0 flex-1 flex-col' : 'hidden'} hidden={!resting}>
-        {reading ? (
-          // An ended chat is the project chat at rest — the same ChatView a
-          // feature's ended Chat tab shows, never a page of its own.
-          <ProjectChat
-            session={null}
-            transcriptId={reading.id}
-            onResume={reading.resumable ? () => reopen(reading.id) : undefined}
-            resuming={talk.starting}
-            projectName={projectName}
-            title={reading.title ?? 'project'}
-            branch={landing.value}
-            hidden={false}
-            onBack={() => setViewing(null)}
-          />
-        ) : (
+      {/* The one header row (design-mode decision 12): the project, then the
+          switcher naming the chat in front as the crumb after it; at most one
+          action; the panel toggle. */}
+      <PageTopbar
+        crumbs={[
+          { label: projectName, icon: <IconFolder />, ...(resting ? {} : { onClick: () => setFront(null) }) },
+          ...(switcher && !resting ? [{ label: switcher }] : []),
+        ]}
+        actions={
           <>
-            <PageTopbar
-              crumbs={[{ label: projectName, icon: <IconFolder /> }]}
-              tabs={switcher}
-              actions={
-                <>
-                  {hasNotes && (
-                    <IconButton
-                      label="Notes"
-                      badge={openNotes}
-                      icon={<IconPanelRight />}
-                      active={notesShown}
-                      onClick={() => setNotesOpen(!notesShown)}
-                    />
-                  )}
-                </>
-              }
+            {/* The resting page's Test drive card is behind a live chat, so the
+                topbar carries its start until a drive is up — then the panel
+                toggle is the way to it. */}
+            {!resting && (driveCard.state === 'ready' || driveCard.state === 'blocked') && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<IconPlay />}
+                className="mr-1"
+                loading={projectDrive.starting}
+                disabled={driveCard.state === 'blocked' || projectDrive.starting}
+                title={driveCard.state === 'blocked' ? driveCard.reason : undefined}
+                onClick={() => startDrive()}
+              >
+                Test drive
+              </Button>
+            )}
+            <PanelToggle
+              open={!!shown}
+              views={views}
+              badge={openNotes}
+              onToggle={() => panel.dispatch({ type: 'toggle', views })}
             />
-            {/* The inbox is the page's one aside (decisions.md #10): read on
-                the way to triaging it, and triage starts from it. */}
-            <AsideLayout
-              aside={
-                notesShown && (
-                  <Aside title="Notes" onClose={() => setNotesOpen(false)}>
-                    <NotesCard
-                      projectId={projectId}
-                      triaging={talk.starting}
-                      reveal={inboxRequest > 0}
-                      onRevealed={onConsumeInboxRequest}
-                      onTriage={() => {
-                        if (!session) {
-                          talk.triage()
-                          return
-                        }
-                        // One live chat per project, so the human chooses: carry on
-                        // in the one that is open, or end it and triage in a fresh one.
-                        setNoticePurpose('triage')
-                        setShowOpenNotice(true)
-                      }}
-                    />
-                  </Aside>
-                )
-              }
-            >
-              <Page routeKey={`project-${projectId}`}>
-                <PageHeader
-                  title={projectName}
-                  meta={[
-                    { icon: <IconBranch />, text: PROJECT_BRANCH, mono: true, title: 'the branch project chats run on' },
-                    landing.value ? { icon: <IconArrowRight />, text: `lands on ${landing.value}` } : null,
-                  ]}
-                />
-                <div className="mt-8">
-                  <NewChatCard
-                    landing={landing}
-                    onStart={talk.start}
-                    starting={talk.starting}
-                    openSession={
-                      session && showOpenNotice
-                        ? {
-                            onOpen: () => {
-                              setShowOpenNotice(false)
-                              setNoticePurpose(undefined)
-                              showChat()
-                            },
-                            onReplace: () => {
-                              setShowOpenNotice(false)
-                              talk.replace(noticePurpose)
-                              showChat()
-                            },
-                          }
-                        : undefined
-                    }
-                  />
-                  <TestDriveCard
-                    card={driveCard}
-                    branch={drive?.branch ?? (branchesQ.data?.current || null)}
-                    setupCommand={project?.driveSetupCommand}
-                    devCommand={project?.devCommand}
-                    stopCommand={project?.driveStopCommand}
-                    starting={projectDrive.starting}
-                    scenarios={startScenarios}
-                    onStart={(scenario) => projectDrive.start(scenario, showDrive)}
-                    onPrepare={() => onOpenPreparation?.()}
-                    onReturn={showDrive}
-                  />
-                </div>
-                <ConversationList
-                  conversations={talk.conversations}
-                  pending={talk.conversationsPending}
-                  busy={talk.starting}
-                  onResume={reopen}
-                  onOpen={showChat}
-                  // The live conversation is the one live chat, so reading it
-                  // is opening it; only an ended one is read back.
-                  onView={(c) => (c.status === 'ended' ? setViewing(c) : showChat())}
-                />
-              </Page>
-            </AsideLayout>
           </>
-        )}
-      </div>
-      {drive && (
-        <ProjectDriveView
-          projectId={projectId}
-          projectName={projectName}
-          repoPath={project?.repoPath}
-          drive={drive}
-          hidden={!driveInFront}
-          onProjectPage={toRestingPage}
-          // Stop lands on the resting page, where the drive's notes are waiting
-          // in the Notes aside. No summary, no prompt: the inbox is the exit.
-          onStop={() => projectDrive.stop(toRestingPage)}
-          stopping={projectDrive.stopping}
-          onOpenPreparation={() => onOpenPreparation?.()}
-          switcher={switcher}
+        }
+      />
+      {/* The drive's errands open their chat in this page's column. */}
+      <ScenarioChatContext.Provider value={scenarioChat}>
+        <PanelSplit
+          chat={
+            // Every live terminal stays mounted whatever is in front, so
+            // xterm keeps its buffer and socket.
+            <>
+              {restPage}
+              {reading && (
+                // An ended chat is the project chat at rest — the same ChatView
+                // a feature's ended chat shows, never a page of its own.
+                <ProjectChat
+                  key={reading.id}
+                  session={null}
+                  transcriptId={reading.id}
+                  onResume={reading.resumable ? () => reopen(reading.id) : undefined}
+                  resuming={talk.starting}
+                  hidden={chatHidden}
+                />
+              )}
+              {session && (
+                <ProjectChat
+                  session={session}
+                  hidden={chatHidden || inFront !== session.id}
+                  onEnded={refreshProjectChat}
+                />
+              )}
+              <ScenarioChatView chat={scenarioChat} hidden={chatHidden || inFront !== scenarioChat.sessionId} />
+            </>
+          }
+          panel={
+            shown && (
+              <FeaturePanel
+                view={shown}
+                views={views}
+                label={projectViewLabel}
+                onSwitch={(view) => panel.dispatch({ type: 'switch', view })}
+                onCollapse={() => panel.dispatch({ type: 'collapse' })}
+                onClose={() => panel.dispatch({ type: 'close' })}
+              >
+                {panelView(shown)}
+              </FeaturePanel>
+            )
+          }
+          share={panel.state.share}
+          collapsed={panel.state.collapsed}
+          strip={
+            shown && (
+              <PanelStrip
+                label={projectViewLabel(shown)}
+                onExpand={() => panel.dispatch({ type: 'expand' })}
+                onClose={() => panel.dispatch({ type: 'close' })}
+              />
+            )
+          }
+          onResize={(share) => panel.dispatch({ type: 'setWidth', share })}
+          onToggleFull={() => panel.dispatch({ type: 'toggleFull' })}
         />
-      )}
-      {session && (
-        <ProjectChat
-          session={session}
-          projectName={projectName}
-          title={titleFor(talk.conversations, session.id) ?? 'project'}
-          branch={landing.value}
-          hidden={!chatInFront}
-          switcher={switcher}
-          onBack={() => {
-            setShowOpenNotice(false)
-            setShowList(true)
-          }}
-          onEnded={() => {
-            void utils.project.projectSession.invalidate()
-            void utils.project.conversations.invalidate()
-          }}
-        />
-      )}
+      </ScenarioChatContext.Provider>
     </section>
   )
-}
-
-/** The conversation's name, once the list knows it. */
-function titleFor(conversations: ProjectConversation[], sessionId: string): string | null {
-  return conversations.find((c) => c.id === sessionId)?.title ?? null
 }

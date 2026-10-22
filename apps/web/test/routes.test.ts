@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  featureViewOf,
   insideProject,
   locationFor,
   parsePath,
@@ -21,7 +22,8 @@ const LOCATIONS: AppLocation[] = [
   { kind: 'chat', projectId: 'proj_a' },
   { kind: 'prepare', projectId: 'proj_a' },
   { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' },
-  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', tab: 'chat' },
+  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'chat' },
+  { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell', view: 'preview' },
 ]
 
 describe('pathFor', () => {
@@ -33,6 +35,7 @@ describe('pathFor', () => {
       '/p/proj_a/prepare',
       '/p/proj_a/f/flow-redesign-shell',
       '/p/proj_a/f/flow-redesign-shell/chat',
+      '/p/proj_a/f/flow-redesign-shell/preview',
     ])
   })
 
@@ -50,12 +53,30 @@ describe('parsePath', () => {
     }
   })
 
-  it("reads the retired Tickets tab's path as the feature's Overview", () => {
-    expect(parsePath('/p/proj_a/f/flow-redesign-shell/tickets')).toEqual({
-      kind: 'feature',
-      projectId: 'proj_a',
-      featureSlug: 'flow-redesign-shell',
-    })
+  it("reads the retired Tickets tab's path, and a hand-typed body, as the feature's body", () => {
+    const body = { kind: 'feature', projectId: 'proj_a', featureSlug: 'flow-redesign-shell' }
+    expect(parsePath('/p/proj_a/f/flow-redesign-shell/tickets')).toEqual(body)
+    expect(parsePath('/p/proj_a/f/flow-redesign-shell/body')).toEqual(body)
+  })
+
+  // design-mode: the tabs became the panel. The old Overview link was the bare
+  // path, which still shows the body; the old Chat link is the chat alone.
+  it('lands the old Overview and Chat links on the body and on the chat alone', () => {
+    const feature = parsePath('/p/proj_a/f/slug')
+    expect(feature && feature.kind === 'feature' && featureViewOf(feature)).toBe('body')
+    const chat = parsePath('/p/proj_a/f/slug/chat')
+    expect(chat && chat.kind === 'feature' && featureViewOf(chat)).toBe('chat')
+  })
+
+  it('names every panel view but the body by its own segment', () => {
+    for (const view of ['preview', 'design', 'drive', 'details'] as const) {
+      expect(parsePath(`/p/proj_a/f/slug/${view}`)).toEqual({
+        kind: 'feature',
+        projectId: 'proj_a',
+        featureSlug: 'slug',
+        view,
+      })
+    }
   })
 
   it('round-trips ids and slugs that needed escaping', () => {
@@ -79,7 +100,7 @@ describe('parsePath', () => {
     expect(parsePath('/p/proj_a/settings')).toBeNull()
     expect(parsePath('/p/proj_a/f')).toBeNull()
     expect(parsePath('/p/proj_a/f/slug/extra')).toBeNull()
-    expect(parsePath('/p/proj_a/f/slug/overview')).toBeNull()
+    expect(parsePath('/p/proj_a/f/slug/board')).toBeNull()
     expect(parsePath('/p/proj_a/f/slug/chat/more')).toBeNull()
   })
 
@@ -137,14 +158,18 @@ describe('locationFor', () => {
     })
   })
 
-  it("carries the selected feature's tab, and none for its Overview", () => {
+  it("carries the selected feature's view, and none for its body", () => {
     const feature = { kind: 'feature', projectId: 'proj_a', featureSlug: 'x' }
-    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'overview' })).toEqual(feature)
+    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'body' })).toEqual(feature)
     expect(locationFor({ ...base, featureSlug: 'x', featureView: 'chat' })).toEqual({
       ...feature,
-      tab: 'chat',
+      view: 'chat',
     })
-    // A tab is the feature's; the project chat and preparation have none.
+    expect(locationFor({ ...base, featureSlug: 'x', featureView: 'design' })).toEqual({
+      ...feature,
+      view: 'design',
+    })
+    // A view is the feature's; the project chat and preparation have none.
     expect(locationFor({ ...base, projectSelected: true, featureSlug: 'x', featureView: 'chat' })).toEqual({
       kind: 'chat',
       projectId: 'proj_a',

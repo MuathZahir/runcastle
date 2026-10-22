@@ -3,13 +3,14 @@ import {
   LeadWakeFailedData,
   PLAN_UNFINISHED,
   planFinished,
+  UNCOMMITTED_DESIGN,
   type EventRow,
   type Feature,
   type ReadyDeclaration,
   type RoundSummary,
 } from '@runcastle/core'
 import { CHAT_ACTION } from './next-step/chat'
-import { ACTION_KINDS, type ActionKind, type NextAction, type NextStep } from './next-step/types'
+import type { ActionKind, NextAction, NextStep } from './next-step/types'
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21):
@@ -26,7 +27,7 @@ export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | '
  * Go before the plan is finished is `goGated`: the same button, disabled with
  * the reason and an override that asks for one (CONTEXT.md decision 8).
  */
-export type StatusPrimary = 'go' | 'goGated' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
+export type StatusPrimary = 'go' | 'goGated' | 'goBlocked' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -60,6 +61,8 @@ export interface FeatureStatusInput {
   selfPlanning: boolean
   /** The lead's latest wake and wake failure, as {@link leadWakeOf} reads them off the event log. */
   leadWake?: LeadWake
+  /** The talk worktree holds uncommitted design work: Go is disabled, with no override. */
+  uncommittedDesign?: boolean
   /** The wall clock, passed in so a pending wake's grace is testable. */
   now: number
 }
@@ -169,7 +172,10 @@ function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrim
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
   if (planningItself(input)) return 'stopSelfPlan'
-  if (input.feature.phase === 'planning') return planFinished(input.feature) ? 'go' : 'goGated'
+  if (input.feature.phase === 'planning') {
+    if (input.uncommittedDesign) return 'goBlocked'
+    return planFinished(input.feature) ? 'go' : 'goGated'
+  }
   if (status.kind === 'ready') return 'testDriveStart'
   return undefined
 }
@@ -248,6 +254,8 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
     disabled: PLAN_UNFINISHED,
     escape: { label: 'Go anyway…', kind: 'burn' },
   },
+  // Unlike goGated there is no escape: the server refuses it whatever the reason.
+  goBlocked: { label: 'Go', kind: 'burn', disabled: UNCOMMITTED_DESIGN },
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
@@ -270,8 +278,8 @@ const NEVER_OFFERED: readonly ActionKind[] = ['burn', 'cancelRun', 'chat']
 /**
  * The action row beside the status line (decision 24): exactly the status's one
  * primary, Merge & ship always as the secondary, and every other action the
- * resolver chose after it — the bar puts those in its "⋯" menu (see
- * {@link OVERFLOW_KINDS}). The resolver's own action of the primary's kind is
+ * resolver chose after it — {@link headerActions} spreads it over the page's
+ * one header row. The resolver's own action of the primary's kind is
  * kept when it has one, so a refusal it carries (another feature holds the drive
  * slot) still disables the button and says why.
  */
@@ -288,5 +296,32 @@ export function leadActions(ns: NextStep, status: FeatureStatus): NextStep {
   return { ...base, ...(primary ? { primary } : {}), secondary: [...merge, ...rest] }
 }
 
-/** Everything but Merge & ship goes to the row's "⋯" menu beside the status line. */
-export const OVERFLOW_KINDS: readonly ActionKind[] = ACTION_KINDS.filter((k) => k !== 'merge')
+/** Where {@link leadActions}' row goes on the feature page's one header (design-mode decision 12). */
+export interface HeaderActions {
+  /** The header's one button besides the switcher, if any. */
+  action?: NextAction
+  /** Go, gated or not — the tickets view's, above the list, never the header's. */
+  go?: NextAction
+  /** Everything else the row offered, for the header's "⋯" menu. */
+  overflow: NextAction[]
+}
+
+/**
+ * Split {@link leadActions}' row over the one header row (decision 12): the
+ * status's primary takes the header's one button — save Go, which moves to
+ * the tickets view — and with no other primary Merge & ship takes it, but only
+ * when the resolver `ns` itself offered a merge. Every other action, a Merge
+ * the resolver did not offer among them, waits in "⋯".
+ */
+export function headerActions(ns: NextStep, status: FeatureStatus): HeaderActions {
+  const row = leadActions(ns, status)
+  const go = row.primary?.kind === 'burn' ? row.primary : undefined
+  const primary = go ? undefined : row.primary
+  const offersMerge = [ns.primary, ...ns.secondary].some((a) => a?.kind === 'merge')
+  const action = primary ?? (offersMerge ? row.secondary.find((a) => a.kind === 'merge') : undefined)
+  return {
+    ...(action ? { action } : {}),
+    ...(go ? { go } : {}),
+    overflow: row.secondary.filter((a) => a !== action),
+  }
+}

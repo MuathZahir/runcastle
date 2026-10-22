@@ -81,7 +81,7 @@ export interface NoticeDeckProps {
  * (relative) parent (decision 10). Collapsed, only the newest card is readable
  * and up to two older ones peek as edges behind it; hovering the deck, or
  * moving keyboard focus into it, fans every card out, newest at the bottom.
- * Cards never expire — they leave by their action or by ✕.
+ * Cards leave by their action, by ✕, or — a confirmation — by themselves (`FeatureNoticeDeck`).
  */
 export function NoticeDeck({ notices, onAct, onDismiss }: NoticeDeckProps) {
   const [hovered, setHovered] = useState(false)

@@ -42,7 +42,7 @@ before adding.
 
 ```
 ┌ canvas ───────────────────────────────────────────────────────────────┐
-│ Sidebar (248, resizable, collapsible)  ┌ content panel (surface) ─────┐ │
+│ Sidebar (248, resizable, closable)     ┌ content panel (surface) ─────┐ │
 │  [mark] project ▾            [new]     │ topbar 44: crumbs · tabs · ⋯ │ │
 │  [search           Ctrl K]             │──────────────────────────────│ │
 │  Home · Chats · Activity               │                              │ │
@@ -61,9 +61,17 @@ before adding.
   top/right/bottom. There is no global title bar and no bottom status bar: the
   project switcher + search live at the top of the sidebar; the status dots
   (server, live, docker), notifications, theme and settings live in its foot.
-- **Content topbar** (44px, `border-b border-border-subtle`): left = glyph +
-  breadcrumb (current item in `text`, parents in `text-tertiary`); right = view
-  `Tabs`, then secondary actions, then `IconButton`s (more, aside toggle).
+- **The sidebar has two states: open or closed** (design-mode decision 12).
+  Closed is zero width — no icon rail, nothing of it left on the canvas — and
+  the content panel takes the whole window. Ctrl/⌘+B toggles it, the sidebar's
+  own head button closes it, a drag of its edge under half its minimum width
+  closes it, and while it is closed every topbar leads with a small
+  open-sidebar `IconButton`. The choice is remembered per browser.
+- **Content topbar** (44px, `border-b border-border-subtle`): left = the
+  closed sidebar's way back, then glyph + breadcrumb (current item in `text`,
+  parents in `text-tertiary`) and a quiet status line; right = view `Tabs`,
+  then secondary actions, then `IconButton`s (more, panel toggle). It is the
+  page's **one** header row: no second band under it.
 - **Page column**: centred, `max-w-(--content-max)` (760) for document-like pages,
   `max-w-(--content-wide)` (1040) for data-heavy ones (run lanes, review evidence).
   Padding 48 top / 32 sides / 64 bottom. Sections are separated by 32–40px of
@@ -76,14 +84,78 @@ before adding.
 1. Topbar (above).
 2. `title-lg` (22/28, 600) — once.
 3. `MetaLine` — branch, age, counts. 2–4 facts.
-4. For features: the `PhaseStepper`, then the **next step** row: one sentence in
-   `text-secondary` on the left, the primary action (and at most two secondaries)
-   on the right; a disabled action shows its reason as a `caption` beneath. No
-   band, no border, no background.
+4. For a parked draft: the **next step** row: one sentence in
+   `text-secondary` on the left, the primary action (and at most two
+   secondaries) on the right; a disabled action shows its reason as a
+   `caption` beneath. No band, no background. A started feature says its
+   status and carries its actions in the one header row instead (below).
 5. Body sections: `title` heading (16/24, 600) + content. Facts as
    `PropertyList`, collections as `ListRow` lists, long text as prose (`body` 14/22)
    or collapsed in `Disclosure`.
 6. Empty areas are an `EmptyState` (icon, title, hint, ≤1 action) — never a box.
+
+### The feature page: chat-first
+
+A started feature is its chat (design-mode decisions 4, 5, 12), not a
+document, under **one header row**:
+
+```
+┌ 44: ◔ title · ● Planning with you ···· [Feature chat ▾] [Merge & ship] ⋯ ◧ ┐
+├─────────────────────────────────────┬┬────────────────────────────────────┤
+│ the chat (fills the page)           ││ panel: [Tickets ▾]  path     › ✕   │
+│                                     ││  one view: body · preview ·        │
+│                                     ││  design · drive · details          │
+└─────────────────────────────────────┴┴────────────────────────────────────┘
+```
+
+- **The header row** is the topbar and nothing else: the phase glyph and the
+  title, then the status line as quiet text (a dot, "Planning with you",
+  "Working · Round 3", "Ready for you · Test drive ▸ …") — it replaces the
+  stepper and the next-step sentence on this page. On the right: the
+  **session switcher**, at most **one** action button, "…", and the panel
+  toggle. The one button is the status's primary (Start test drive, Stop
+  drive, Stop) or, with none, Merge & ship when the next step offers it;
+  every other action waits in "…", a disabled one with its reason as its
+  title. No feature strip, no stepper row, no button per panel view, no tabs.
+- **Go is on the tickets view**, not in the header: planning's body carries
+  it as its primary above the ticket list, since it starts the burn of what
+  is listed. Gated, it is disabled with the reason as a `caption` beneath it,
+  and "Go anyway…" — only for an unfinished plan — is a small link under
+  that reason. Uncommitted design work has no way past.
+- **The chat** fills the content panel below the header, and stays the same
+  element whatever the panel does. It has no header row of its own: the
+  **session switcher** (decision 9) in the page header names it and lists the
+  feature chat and the scenario chat while a drive errand (New scenario,
+  Fix it) is live. Its menu holds what a chat header would: End session, the
+  "one transcript per feature" note, and a scenario chat's errand and close.
+  An errand's open brings its chat to the front; picking the feature chat or
+  closing the errand goes back. Every live terminal stays mounted behind the
+  one in front. Notices (a failed resume, a drive's missing prerequisites,
+  what to test) sit atop the chat, never as another bar. The drive keeps the
+  whole panel — no chat docks inside it, and the review body only points at
+  a live drive.
+- **One panel** on the right, one view at a time: the phase body (title,
+  meta and the body as a page column), the plan preview, the design, a
+  drive, or the details. Its 44px header holds a switcher over the views
+  the state offers, fold (to a 40px strip) and close. The divider drags
+  either side down to nothing; double-click toggles an even split and the
+  panel full; the size is remembered per browser. Under ~1100px of content
+  width the panel floats over the chat (`shadow-dialog`).
+- The panel opens from the header's toggle (at the view it last showed), from
+  the agent (`panel.show`), and from runcastle only as the result of the
+  human's own click (Go opens the run, Test drive the drive). Nothing else
+  opens it. A pinned earlier phase says so atop its body, with the way back.
+- A **draft** has no chat: its body is the page, the next step in its header.
+
+The **project page** takes the same pieces and the same one-header rule
+(decisions 11, 12): its chat column holds the live project chat — the
+switcher, the crumb after the project's, listing the past chats by title and
+age, each opening its read-only transcript, its menu holding the landing
+branch and End session — or, with none running or after the project crumb,
+the chat list with New chat and Test drive. The panel holds the project drive
+and the Notes inbox (its details); the header offers Test drive while a chat
+is in front and no drive is up, and the panel toggle, which counts the open
+notes.
 
 ## Colour
 

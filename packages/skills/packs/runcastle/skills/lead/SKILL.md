@@ -35,6 +35,8 @@ Do a change yourself when it is small enough not to need a ticket — a one-line
 
 If a "small" change keeps growing, stop and make it a ticket.
 
+**Design.** When the human wants to see or change how a screen looks, show it live instead of sending a round: follow `../design/SKILL.md` (a preview page, the panel beside the chat, Tweaks). A design you commit takes the normal landing path above.
+
 ## 2. Plan a round
 
 1. **Write the tickets** with `emit_tickets`, or reshape pending ones with `update_ticket` / `cancel_ticket`, following the tickets skill. Then **dispatch** with `dispatch_round({ seqs })`, naming exactly the pending tickets this round covers. Tickets you do not name wait for a later round.

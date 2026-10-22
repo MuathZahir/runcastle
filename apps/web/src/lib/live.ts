@@ -404,6 +404,9 @@ export function useLiveSync(): LiveStatus {
       refetches.push(u.feature.goWarnings.invalidate())
       refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
+      // The design view's frame follows `design.server_started` / `_stopped`:
+      // a server that idled out shows its stopped state on the same push.
+      refetches.push(u.design.status.invalidate())
       // The review agent's walkthrough appears mid-burn, at the tail of a run
       // the human is already watching — so the player has to arrive on the same
       // push as everything else, not on a reload.

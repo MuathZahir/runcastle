@@ -114,6 +114,67 @@ describe('the preview starter', () => {
   })
 })
 
+describe('designed screens in the preview', () => {
+  it('wires [data-open-design] buttons to the message the app listens for, still inline', () => {
+    const text = starter()
+    expect(text).toContain("e.target.closest('[data-open-design]')")
+    expect(text).toContain("parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')")
+    expect(text).toMatch(/\.designed\{[^}]*var\(--color-/)
+  })
+
+  it('describes designed-screen entries and blocks that name the component, not markup', () => {
+    const text = read('ideate', 'references', 'preview.md')
+    const section = text.slice(text.indexOf('## Designed screens'), text.indexOf('## Inline only'))
+    expect(section).toContain('is **not mocked\nagain**')
+    expect(section).toContain('**designed-screen entry**')
+    expect(section).toContain('**Open in design**')
+    expect(section).toContain('data-open-design')
+    expect(section).toContain('committed component file and the preview page path')
+    expect(section).toContain('Hand mocks remain')
+  })
+})
+
+describe('the design guide', () => {
+  const guide = (): string => read('design', 'SKILL.md')
+
+  it('exists with frontmatter and is not an entry skill', async () => {
+    const { ENTRY_SKILLS } = await import('../src/launcher/runtimes/skills')
+    expect(guide()).toMatch(/^---\nname: design\ndescription: .+\n/)
+    expect((ENTRY_SKILLS as readonly string[]).includes('design')).toBe(false)
+  })
+
+  it('covers the loop, the tools, the screenshot line, Tweaks, commit and the limits', () => {
+    const text = guide()
+    for (const part of [
+      'First use in a project',
+      'Mount the piece directly with made-up props',
+      'Mount the whole screen with the server faked',
+      '.runcastle/preview/',
+      'start_design_server({ command? })',
+      'RUNCASTLE_DESIGN_PORT',
+      '.runcastle/design.json',
+      "show_panel({ view: 'design', path })",
+      '`body`, `preview`, `drive` and `details`',
+      '[Screenshot: <absolute png path>] <their words>',
+      '**Tweaks.**',
+      'delete the Tweaks menu',
+      '`design: <what>`',
+      'Never commit unapproved work',
+      'Go waits while design work is uncommitted',
+      'Data loading, API calls and behaviour ride tickets',
+      'Next.js server components',
+      'Native mobile has no browser',
+    ]) {
+      expect(text, part).toContain(part)
+    }
+  })
+
+  it('is pointed to by ideate, revisit and lead, and a self-planned feature never designs', () => {
+    for (const entry of ['ideate', 'revisit', 'lead']) expect(read(entry, 'SKILL.md')).toContain('../design/SKILL.md')
+    expect(read('ideate', 'SKILL.md')).toContain('A self-planned feature never opens a design')
+  })
+})
+
 describe('the preview rules (ideate/references/preview.md)', () => {
   const rules = (): string => read('ideate', 'references', 'preview.md')
 
@@ -227,5 +288,16 @@ describe('the tickets skill and the preview', () => {
     expect(block).toContain('never copy the mock\'s markup')
     expect(block).toContain('**Never tell an agent to read the whole file**')
     expect(block).toContain('A ticket with no screen does not mention the preview.')
+    expect(block).toContain('A **designed-screen block** holds no mock')
+  })
+
+  it('tells planners to connect designed components and never restyle them', () => {
+    const text = skill()
+    const rule = text.slice(text.indexOf('<connect-designed-screens>'), text.indexOf('</connect-designed-screens>'))
+    expect(rule).toContain('names the committed component and its preview page')
+    expect(rule).toContain('**the look is approved**')
+    expect(rule).toContain('**connect, never restyle**')
+    expect(rule).toContain('swap the sample data for real data')
+    expect(rule).toContain('calls it out in its digest')
   })
 })

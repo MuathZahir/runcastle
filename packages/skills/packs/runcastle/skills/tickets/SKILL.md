@@ -90,7 +90,19 @@ A **wide refactor** — one mechanical change (rename a column, retype a shared 
 When the feature has a `preview.html` and a ticket **builds a screen that appears in it as a screen block**, point that ticket at **one named screen block**, never the file. Its **context** names the path (`docs/features/<slug>/preview.html`) and the block name, and tells the burn agent to find the two markers, `<!-- screen:<name> -->` and `<!-- /screen:<name> -->`, and **read only the lines between them**. Say plainly that the block shows the approved look and behaviour and **is not the implementation**: build it with the project's real components and never copy the mock's markup. The mock's styles live in the page head and are deliberately not read. **Never tell an agent to read the whole file** — the rest repeats docs it already has.
 
 A ticket with no screen does not mention the preview.
+
+A **designed-screen block** holds no mock. It names a component committed in design mode and its preview page. Point the ticket at that component file and that preview page path, not at markup.
 </preview-screen-block>
+
+<connect-designed-screens>
+A ticket that wires a **designed screen** (one committed in design mode, `design: …` commits on the feature branch) names the committed component and its preview page in its `context`, and says plainly that **the look is approved**. Its job is to **connect, never restyle**:
+
+- swap the sample data for real data (queries, API calls);
+- add the behaviour the design left out;
+- change markup only where the wiring needs it.
+
+It does not rebuild the component or change its look. When wiring forces a visible change (a field the design lacked, say), the burner calls it out in its digest so the review sees it. No new check exists: the project's typecheck keeps preview pages compiling, and nothing else enforces them.
+</connect-designed-screens>
 
 ## 2. Build each ticket to the schema
 

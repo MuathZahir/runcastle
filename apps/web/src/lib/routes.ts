@@ -1,3 +1,5 @@
+import { isPanelView, type PanelView } from './feature-ui/panel'
+
 /**
  * The URL as a projection of the navigation state machine (decision 1).
  *
@@ -15,22 +17,34 @@
  * URL and out of history, so Back never means "close the popup".
  */
 
-/** The views a feature page switches between with its topbar tabs. */
-export type FeatureView = 'overview' | 'chat'
+/**
+ * What a feature page shows beside its chat (design-mode decision 5): one
+ * panel view, or `chat` for the chat alone with the panel closed.
+ */
+export type FeatureView = PanelView | 'chat'
 
 /**
- * The feature views that carry a path segment of their own
- * (one-chat-layout-everywhere decision 8). Overview is the feature's bare path.
+ * The feature views that carry a path segment of their own. The body is the
+ * feature's bare path — the old Overview link, which showed the body — and
+ * `chat`, the old Chat tab's segment, is the chat alone.
  */
-export type FeatureTab = Exclude<FeatureView, 'overview'>
-
-const FEATURE_TABS: readonly FeatureTab[] = ['chat']
+export type FeatureSegment = Exclude<FeatureView, 'body'>
 
 /** The path segment and remembered value the Tickets tab had before it was retired. */
 export const RETIRED_TICKETS_TAB = 'tickets'
 
-function isFeatureTab(segment: string): segment is FeatureTab {
-  return (FEATURE_TABS as readonly string[]).includes(segment)
+/** The remembered value the Overview tab had, before the body moved into the panel. */
+export const RETIRED_OVERVIEW_TAB = 'overview'
+
+function isFeatureSegment(segment: string): segment is FeatureSegment {
+  return segment === 'chat' || (segment !== 'body' && isPanelView(segment))
+}
+
+/** A feature view read from a path segment or from storage, with the retired tabs mapped onto the body. */
+export function parseFeatureView(value: string | null): FeatureView | null {
+  if (value === null) return null
+  if (value === RETIRED_TICKETS_TAB || value === RETIRED_OVERVIEW_TAB) return 'body'
+  return value === 'chat' || isPanelView(value) ? value : null
 }
 
 /** Everywhere the app can be, in a form that survives a reload. */
@@ -39,16 +53,16 @@ export type AppLocation =
   | { kind: 'home' }
   /** A project, landing on its restored feature (or its home). */
   | { kind: 'project'; projectId: string }
-  /** A feature inside a project, addressed by slug; no `tab` is its Overview. */
-  | { kind: 'feature'; projectId: string; featureSlug: string; tab?: FeatureTab }
+  /** A feature inside a project, addressed by slug; no `view` is its body. */
+  | { kind: 'feature'; projectId: string; featureSlug: string; view?: FeatureSegment }
   /** A project's conversation. */
   | { kind: 'chat'; projectId: string }
   /** A project's preparation. */
   | { kind: 'prepare'; projectId: string }
 
-/** The view a feature location names — its tab, or Overview for none. */
-export function featureViewOf(location: { tab?: FeatureTab }): FeatureView {
-  return location.tab ?? 'overview'
+/** The view a feature location names — its segment, or the body for none. */
+export function featureViewOf(location: { view?: FeatureSegment }): FeatureView {
+  return location.view ?? 'body'
 }
 
 /** The project a location is inside, or null for the portfolio home. */
@@ -69,7 +83,7 @@ export function pathFor(location: AppLocation): string {
       return `${project}/prepare`
     case 'feature': {
       const feature = `${project}/f/${encodeURIComponent(location.featureSlug)}`
-      return location.tab ? `${feature}/${location.tab}` : feature
+      return location.view ? `${feature}/${location.view}` : feature
     }
   }
 }
@@ -105,13 +119,13 @@ export function parsePath(path: string): AppLocation | null {
   if (parts.length === 4 && parts[2] === 'f' && parts[3]) {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
   }
-  const tab = parts[4]
-  if (parts.length === 5 && parts[2] === 'f' && parts[3] && tab && isFeatureTab(tab)) {
-    return { kind: 'feature', projectId, featureSlug: parts[3], tab }
+  const segment = parts[4]
+  if (parts.length === 5 && parts[2] === 'f' && parts[3] && segment && isFeatureSegment(segment)) {
+    return { kind: 'feature', projectId, featureSlug: parts[3], view: segment }
   }
-  // The retired Tickets tab: its links land on the Overview, which shows the
-  // tickets in every phase that has them.
-  if (parts.length === 5 && parts[2] === 'f' && parts[3] && tab === RETIRED_TICKETS_TAB) {
+  // The retired Tickets tab, and a hand-typed `/body`: they land on the body,
+  // which shows the tickets in every phase that has them.
+  if (parts.length === 5 && parts[2] === 'f' && parts[3] && segment && parseFeatureView(segment) === 'body') {
     return { kind: 'feature', projectId, featureSlug: parts[3] }
   }
   return null
@@ -154,15 +168,15 @@ export function locationFor(state: {
   projectSelected: boolean
   /** The selected feature's slug, or null when none is selected. */
   featureSlug: string | null
-  /** The selected feature's view; Overview when omitted. */
+  /** The selected feature's view; the body when omitted. */
   featureView?: FeatureView
 }): AppLocation {
-  const { projectId, featureView = 'overview' } = state
+  const { projectId, featureView = 'body' } = state
   if (state.preparing) return { kind: 'prepare', projectId }
   if (state.projectSelected) return { kind: 'chat', projectId }
   if (state.featureSlug) {
     const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const
-    return featureView === 'overview' ? feature : { ...feature, tab: featureView }
+    return featureView === 'body' ? feature : { ...feature, view: featureView }
   }
   return { kind: 'project', projectId }
 }

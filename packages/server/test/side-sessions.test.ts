@@ -383,19 +383,25 @@ describe('what a side session may write', () => {
     })
   }
 
-  it('writes only the feature docs in planning, and anything after Go — exactly as the main chat', () => {
+  // Design mode (its decision 2) lets a human-attended chat write code and
+  // install in every phase; a side session follows the main chat exactly.
+  it('writes docs and code in planning and after Go — exactly as the main chat', () => {
     for (const kind of ['chat', 'side'] as const) {
       expect(edit(kind, 'planning', doc)).toBeNull()
-      expect(edit(kind, 'planning', code)).not.toBeNull()
+      expect(edit(kind, 'planning', code)).toBeNull()
       expect(edit(kind, 'building', code)).toBeNull()
     }
   })
 
-  it('installs only after Go, exactly as the main chat', () => {
+  it('installs in planning and after Go, exactly as the main chat', () => {
     for (const kind of ['chat', 'side'] as const) {
-      expect(install(kind, 'planning')).not.toBeNull()
+      expect(install(kind, 'planning')).toBeNull()
       expect(install(kind, 'building')).toBeNull()
     }
+  })
+
+  it('stays out of a session kind that is neither: drive-fix keeps its narrow paths', () => {
+    expect(evaluateEditGuard({ kind: 'drive-fix', featurePhase: 'building', toolName: 'Edit', filePath: code, worktreePath, featureSlug: 'feat' })).not.toBeNull()
   })
 
   it('is held by the lead’s line guard, like the main chat', async () => {

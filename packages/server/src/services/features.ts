@@ -16,6 +16,7 @@ import {
   isStoppableHeadlessRun,
   newId,
   PLAN_UNFINISHED,
+  UNCOMMITTED_DESIGN,
   planFinished,
   shapeCheckedTickets,
   ticketShapeWarningLine,
@@ -142,6 +143,8 @@ export interface FeatureFull {
   preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
+  /** The talk worktree holds uncommitted work outside the docs; Go is refused until it is committed. */
+  uncommittedDesign: boolean
 }
 
 export interface CreateFeatureInput {
@@ -672,7 +675,7 @@ async function scaffoldDocsOnFeatureBranch(
   }
 }
 
-export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
+export function getFeatureFull(ctx: AppCtx, id: string): Omit<FeatureFull, 'uncommittedDesign'> {
   const feature = getFeatureRow(ctx, id)
   // Telemetry only (decision 25): the lead's tokens are recorded as it works, never returned.
   refreshLeadTokens(ctx, id, { lazy: true })
@@ -731,12 +734,14 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
  * The feature's open terminal for {@link FeatureListItem.liveSession}. One
  * live HITL session per feature is the launcher's guard, so the pick only
  * matters while a second terminal is coming up: the one that reached `live`
- * wins, because it is the one somebody is actually talking to.
+ * wins, because it is the one somebody is actually talking to. A scenario chat
+ * is docked to the drive, not the feature, so it is never the feature's session.
  */
 function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null {
-  // A side session's turns are its own errand: the feature's line speaks for
-  // the main chat (several-sessions-per-feature decision 12).
-  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side')
+  // A side session's turns are its own errand, and a scenario chat is docked to
+  // the drive: the feature's line speaks for the main chat
+  // (several-sessions-per-feature decision 12).
+  const open = activeSessionsForFeature(ctx, featureId).filter((s) => s.kind !== 'side' && s.kind !== 'scenario')
   const session = open.find((s) => s.status === 'live') ?? open[0]
   // `activeSessionsForFeature` never returns an ended row; the check is what
   // narrows the status to the two this reports, without a cast.
@@ -859,6 +864,12 @@ export async function burn(
 
 export { markHumanMessage, setWaiting } from './lead-status'
 
+/** Does the feature's talk worktree hold uncommitted changes outside `docs/features/`? */
+export async function hasUncommittedDesign(feature: Feature): Promise<boolean> {
+  const changed = await git.uncommittedOutsideDocs(worktreeDir(feature.projectId, feature.slug))
+  return changed.length > 0
+}
+
 /**
  * Go (`the-feature-lead-runs-rounds` decision 8) — the human's one click that
  * approves the plan. It moves planning → building and hands the feature to its
@@ -870,6 +881,10 @@ export { markHumanMessage, setWaiting } from './lead-status'
  * complete for this lap (`ticketsReadyLap`, the arming the status line's "plan
  * ready for Go" reads) it is a gate: refused unless the human gives a one-line
  * reason, which is recorded in history (CONTEXT.md decision 8).
+ *
+ * Go also waits for design work to be committed (design mode, decision 6):
+ * uncommitted changes outside the docs in the talk worktree refuse it with no
+ * override, ahead of the plan check.
  *
  * Go is the human acting, so it stamps the last-human-message mark too.
  */
@@ -889,6 +904,8 @@ export async function go(
       `\`${feature.slug}\` is planning itself (run ${planning.id}) — Go would cut the plan short; wait for the run to finish, or stop it first`,
     )
   }
+  // No override: burns fork from the branch tip and could never see this work.
+  if (await hasUncommittedDesign(feature)) throw new GateError(UNCOMMITTED_DESIGN)
   const reason = opts.overrideReason?.trim()
   if (!planFinished(feature)) {
     if (!reason) {

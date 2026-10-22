@@ -66,7 +66,13 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
     term.loadAddon(fit)
     term.open(container)
 
+    // A view kept mounted behind another (`hidden`) is laid out at 0×0, where
+    // the fit addon still proposes its two-column minimum — and that resize
+    // would shrink the one PTY under whichever view is on screen. So a sizeless
+    // view never fits or resizes; the ResizeObserver refits it once shown.
+    const hasSize = (): boolean => container.clientWidth > 0 && container.clientHeight > 0
     const doFit = (): void => {
+      if (!hasSize()) return
       try {
         fit.fit()
       } catch {
@@ -101,8 +107,9 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
       onStatus: (s) => {
         setStatus(s)
         // Sync the server PTY to our current grid once the socket is live (the
-        // initial fit's resize may have fired before the socket opened).
-        if (s === 'live') client.resize(term.cols, term.rows)
+        // initial fit's resize may have fired before the socket opened) — not
+        // while hidden, when the grid is one no one sees.
+        if (s === 'live' && hasSize()) client.resize(term.cols, term.rows)
         // `ended` is terminal — the client stops reconnecting — so this fires
         // at most once per session.
         if (s === 'ended') endedRef.current?.()

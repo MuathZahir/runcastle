@@ -516,6 +516,7 @@ async function handlePreToolUse(
     evaluateInstallGuard({
       kind: session.kind,
       featurePhase: feature?.phase,
+      purpose: session.purpose,
       worktreePath: session.worktreePath,
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,

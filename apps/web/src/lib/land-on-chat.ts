@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext } from 'react'
+import type { FeatureView } from './routes'
 
 /**
- * Landing on the Chat tab after a session launch (one-chat-layout-everywhere
+ * Landing on the chat after a session launch (one-chat-layout-everywhere
  * decisions 3 and 9): every button that starts or resumes a feature session —
  * Chat, Start, every resolve, fix drive —
- * brings that feature's Chat tab forward once the launch has succeeded.
+ * brings that feature's chat forward once the launch has succeeded. The chat
+ * is the page (design-mode decision 5), so landing changes only the chat
+ * column: a panel open beside it — the drive, the design — stays open.
  *
  * One operation rather than per-button navigation: the shell provides it (it
  * owns which feature and which view are selected, and remembers the view), and
@@ -18,6 +21,15 @@ import { createContext, useCallback, useContext } from 'react'
 const LandOnChatContext = createContext<(featureId: string) => void>(() => {})
 
 export const LandOnChatProvider = LandOnChatContext.Provider
+
+/**
+ * The view a launch lands `featureId` on: the one on screen when that is this
+ * feature's, so its panel and URL stay put; else the chat alone. `shown.featureId`
+ * is null when no feature's chat is on screen (the project page, a draft's body).
+ */
+export function landingView(featureId: string, shown: { featureId: string | null; view: FeatureView }): FeatureView {
+  return shown.featureId === featureId ? shown.view : 'chat'
+}
 
 /** The land-on-chat operation for `featureId` — call it on a launch's success. */
 export function useLandOnChat(featureId: string): () => void {
