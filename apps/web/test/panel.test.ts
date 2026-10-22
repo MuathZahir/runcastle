@@ -96,6 +96,15 @@ describe('panelReducer', () => {
     })
   })
 
+  it("holds the agent's screen width for that design open only", () => {
+    const asked = run({ type: 'open', view: 'design', path: '/p', width: 390, origin: 'agent' })
+    expect(asked).toMatchObject({ view: 'design', width: 390 })
+    expect(panelReducer(asked, { type: 'switch', view: 'body' }).width).toBe(390)
+    expect(panelReducer(asked, { type: 'open', view: 'design', origin: 'human' }).width).toBeUndefined()
+    expect(panelReducer(asked, { type: 'close' }).width).toBeUndefined()
+    expect(run({ type: 'open', view: 'body', width: 390, origin: 'agent' }).width).toBeUndefined()
+  })
+
   it('takes a new design path over the remembered one', () => {
     const state = run(
       { type: 'open', view: 'design', path: '/p', origin: 'agent' },

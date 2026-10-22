@@ -352,6 +352,18 @@ describe('design MCP tools', () => {
     expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html' }])
   })
 
+  it('show_panel carries the screen width the design view opens at, and refuses a width no screen has', async () => {
+    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
+    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
+    const opened = await call('show_panel', { view: 'design', path: '/preview/cart.html', width: 390 })
+    expect(opened.isError).toBe(false)
+    expect(panelShows()).toEqual([{ view: 'design', path: '/preview/cart.html', width: 390 }])
+
+    const refused = await call('show_panel', { view: 'design', width: -1 })
+    expect(refused.isError).toBe(true)
+    expect(panelShows()).toHaveLength(1)
+  })
+
   it('show_panel remembers the design path it opened, for design.status to hand back', async () => {
     mkdirSync(join(worktree, '.runcastle'), { recursive: true })
     writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))

@@ -999,7 +999,7 @@ const PanelView = z.enum(['body', 'preview', 'design', 'drive', 'details'])
 export function toolShowPanel(
   ctx: AppCtx,
   session: SessionRow,
-  input: { view: z.infer<typeof PanelView>; path?: string },
+  input: { view: z.infer<typeof PanelView>; path?: string; width?: number },
 ): { ok: true } {
   const featureId = requireChatFeatureId(session)
   if (input.view === 'design') {
@@ -1011,11 +1011,16 @@ export function toolShowPanel(
     }
     if (input.path) rememberDesignPath(featureId, input.path)
   }
-  const where = input.path ? ` at ${input.path}` : ''
+  const width = input.view === 'design' ? input.width : undefined
+  const where = `${input.path ? ` at ${input.path}` : ''}${width !== undefined ? `, ${width}px wide` : ''}`
   emit(ctx, featureId, {
     type: 'panel.show',
     message: `opened the ${input.view} panel${where}`,
-    data: { view: input.view, ...(input.path ? { path: input.path } : {}) },
+    data: {
+      view: input.view,
+      ...(input.path ? { path: input.path } : {}),
+      ...(width !== undefined ? { width } : {}),
+    },
   })
   return { ok: true }
 }
@@ -3730,7 +3735,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'it shows: `design` (the live design server at `path`, e.g. `/preview/checkout-empty.html`), ' +
           '`preview` (the plan preview), `body` (the phase’s tickets, runs or review), `drive` ' +
           '(the test drive) or `details` (docs and timeline). `design` refuses until ' +
-          'start_design_server has run or a command is recorded.',
+          'start_design_server has run or a command is recorded. For `design`, `width` lays the page ' +
+          'out at that screen width, scaled to fit the pane (e.g. `width: 390` for the mobile layout); ' +
+          'without it the human’s own choice holds (Desktop 1440 by default).',
         inputSchema: {
           view: PanelView.describe('Which view the panel shows.'),
           path: z
@@ -3738,6 +3745,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .min(1)
             .optional()
             .describe('For `design`: the path on the design server to open, e.g. `/preview/cart.html`.'),
+          width: z
+            .number()
+            .int()
+            .min(200)
+            .max(3840)
+            .optional()
+            .describe('For `design`: the screen width in CSS pixels to lay the page out at, e.g. `390` (mobile), `768`, `1440`.'),
         },
       },
       async (args, extra) => {

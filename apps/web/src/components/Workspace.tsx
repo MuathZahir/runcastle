@@ -1058,7 +1058,13 @@ export function Workspace({
           </div>
         ) : null
       case 'design':
-        return <DesignView featureId={featureId} {...(panel.state.path ? { path: panel.state.path } : {})} />
+        return (
+          <DesignView
+            featureId={featureId}
+            {...(panel.state.path ? { path: panel.state.path } : {})}
+            {...(panel.state.width !== undefined ? { width: panel.state.width } : {})}
+          />
+        )
       case 'drive':
         return <FeatureDriveView full={full} />
       case 'details':

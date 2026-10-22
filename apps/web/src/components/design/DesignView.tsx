@@ -10,6 +10,8 @@ export interface DesignViewProps {
   featureId: string
   /** Where in the design server to point, as `show_panel` or Open in design named it; else the server's `lastPath`. */
   path?: string
+  /** The screen width `show_panel` asked for; else the width the human last picked. */
+  width?: number
 }
 
 /** How often a visible design view tells the server it is still being looked at. */
@@ -32,7 +34,7 @@ export function designFrameUrl(url: string, path?: string): string {
  * the server from idling out; Close is the panel's, and leaves the server to
  * idle out on its own.
  */
-export function DesignView({ featureId, path }: DesignViewProps) {
+export function DesignView({ featureId, path, width }: DesignViewProps) {
   const toast = useToast()
   const utils = trpc.useUtils()
   const status = trpc.design.status.useQuery({ featureId }, { refetchInterval: useLivePoll() })
@@ -88,6 +90,7 @@ export function DesignView({ featureId, path }: DesignViewProps) {
           sendTo="chat"
           toolbarPlacement="bar"
           url={designFrameUrl(status.data.url, shownPath)}
+          {...(width !== undefined ? { width } : {})}
         />
       </div>
     )
