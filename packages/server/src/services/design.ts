@@ -29,7 +29,7 @@ import { getFeatureRow, projectForFeature } from './repo'
  */
 
 /** Why a design server stopped — carried on `design.server_stopped`. */
-export type DesignStopReason = 'session-ended' | 'idle' | 'shipped' | 'stopped' | 'failed'
+export type DesignStopReason = 'session-ended' | 'idle' | 'shipped' | 'stopped' | 'restarted' | 'failed'
 
 /** A running design server, as start returns it. */
 export interface DesignServerInfo {
@@ -43,7 +43,11 @@ export interface DesignServerStatus {
   running: boolean
   url?: string
   port?: number
+  /** The running server's pane, whose output the terminal websocket streams (the view's Show output). */
+  paneId?: string
   hasRecordedCommand: boolean
+  /** While down after dying on its own, the last lines it printed. */
+  lastError?: string
   /** The last path the design view was opened at, so a bare reopen lands there rather than on `/`. */
   lastPath?: string
 }
@@ -90,6 +94,8 @@ interface DesignServer {
 const servers = new Map<string, DesignServer>()
 /** Per feature, the design view's last path. Apart from `servers`: it outlives a stop and a restart. */
 const lastPaths = new Map<string, string>()
+/** Per feature, the output tail of a server that died on its own; cleared by the next start. */
+const lastErrors = new Map<string, string>()
 let sweepTimer: ReturnType<typeof setInterval> | undefined
 
 let now: () => number = Date.now
@@ -201,6 +207,24 @@ export async function startDesignServer(
 }
 
 /**
+ * Restart the feature's design server from its recorded command — the design
+ * view's way out when the server is wedged on a build error or has died. Stops
+ * any running one (`design.server_stopped {reason: 'restarted'}`), then starts
+ * afresh; refuses before stopping anything when no command is recorded.
+ */
+export async function restartDesignServer(ctx: AppCtx, featureId: string): Promise<DesignServerInfo> {
+  const worktree = talkWorktreeFor(ctx, featureId)
+  const command = recordedCommand(worktree)
+  if (!command) {
+    throw new GateError(
+      `no design command recorded in ${DESIGN_JSON.replaceAll('\\', '/')}: ask the chat to start the design server`,
+    )
+  }
+  await stopDesignServer(ctx, featureId, 'restarted')
+  return spawnDesignServer(ctx, featureId, worktree, command)
+}
+
+/**
  * The command with `$RUNCASTLE_DESIGN_PORT`, `${RUNCASTLE_DESIGN_PORT}` and
  * `%RUNCASTLE_DESIGN_PORT%` replaced by the port: `cmd.exe` expands none of the
  * first two, so substituting here makes one recorded command work on every OS.
@@ -253,16 +277,18 @@ async function spawnDesignServer(
     },
   }
   servers.set(featureId, server)
+  lastErrors.delete(featureId)
 
   // Both failure paths abort with the output tail BEFORE stopping, so the stop's
-  // own generic abort finds the start already settled.
-  const timer = setTimeout(() => {
-    const tail = paneTail(paneId)
-    server.abort(
-      `the design server printed no localhost URL within ${Math.round(urlTimeoutMs / 1000)}s` +
-        (tail ? `. Its output ended:\n${tail}` : ' and printed nothing'),
-    )
+  // own generic abort finds the start already settled. The tail is kept for
+  // `design.status`, since the pane and its output go with the stop.
+  const fail = (what: string, tail: string) => {
+    lastErrors.set(featureId, tail || `${what} and printed nothing`)
+    server.abort(what + (tail ? `. Its output ended:\n${tail}` : ' and printed nothing'))
     void stopDesignServer(ctx, featureId, 'failed')
+  }
+  const timer = setTimeout(() => {
+    fail(`the design server printed no localhost URL within ${Math.round(urlTimeoutMs / 1000)}s`, paneTail(paneId))
   }, urlTimeoutMs)
 
   try {
@@ -287,9 +313,7 @@ async function spawnDesignServer(
       onExit: () => {
         // A server that dies on its own is a failure; one we stopped is already gone from the map.
         if (servers.get(featureId) !== server) return
-        const tail = paneTail(paneId)
-        server.abort(`the design server exited` + (tail ? `. Its output ended:\n${tail}` : ''))
-        void stopDesignServer(ctx, featureId, 'failed')
+        fail('the design server exited', paneTail(paneId))
       },
     })
   } catch (err) {
@@ -346,7 +370,10 @@ export function rememberDesignPath(featureId: string, path: string): void {
   lastPaths.set(featureId, path)
 }
 
-/** Whether the feature's design server is up, where, whether a command is recorded, and its last path. */
+/**
+ * Whether the feature's design server is up, where and in which pane, whether a
+ * command is recorded, its last path, and — down after dying — its last output.
+ */
 export function designServerStatus(ctx: AppCtx, featureId: string): DesignServerStatus {
   const feature = getFeatureRow(ctx, featureId)
   const project = projectForFeature(ctx, feature)
@@ -355,8 +382,18 @@ export function designServerStatus(ctx: AppCtx, featureId: string): DesignServer
   const lastPath = lastPaths.get(featureId)
   const remembered = lastPath !== undefined ? { lastPath } : {}
   const server = servers.get(featureId)
-  if (!server?.url || !devPaneLive(server.paneId)) return { running: false, hasRecordedCommand, ...remembered }
-  return { running: true, url: server.url, port: server.port, hasRecordedCommand, ...remembered }
+  if (!server?.url || !devPaneLive(server.paneId)) {
+    const lastError = server ? undefined : lastErrors.get(featureId)
+    return { running: false, hasRecordedCommand, ...remembered, ...(lastError !== undefined ? { lastError } : {}) }
+  }
+  return {
+    running: true,
+    url: server.url,
+    port: server.port,
+    paneId: server.paneId,
+    hasRecordedCommand,
+    ...remembered,
+  }
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   designServerStatus,
   heartbeatDesignServer,
   IDLE_MS,
+  restartDesignServer,
   startDesignServer,
   stopDesignServer,
   substituteDesignPort,
@@ -278,6 +279,53 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     expect(stoppedReasons()).toEqual(['failed'])
     expect(designServerStatus(ctx, feature.id).running).toBe(false)
   }, 15000)
+
+  it('a server that dies leaves its last output lines on status, until the next start', async () => {
+    const dying =
+      `node -e "console.log('Local: http://localhost:'+process.env.RUNCASTLE_DESIGN_PORT+'/'); ` +
+      `setTimeout(()=>{console.log('Module not found: talkinghead'); process.exit(1)},300)"`
+    await startDesignServer(ctx, feature.id, dying)
+
+    await waitFor(() => stoppedReasons().length > 0)
+    expect(stoppedReasons()).toEqual(['failed'])
+    const status = designServerStatus(ctx, feature.id)
+    expect(status.running).toBe(false)
+    expect(status.lastError).toContain('Module not found: talkinghead')
+
+    await startDesignServer(ctx, feature.id, FAKE_DEV)
+    expect(designServerStatus(ctx, feature.id).lastError).toBeUndefined()
+  }, 15000)
+
+  it('restart stops the running server and starts it again from the recorded command', async () => {
+    const first = await startDesignServer(ctx, feature.id, FAKE_DEV)
+
+    const again = await restartDesignServer(ctx, feature.id)
+
+    expect(again).toEqual(first)
+    expect(stoppedReasons()).toEqual(['restarted'])
+    expect(types().filter((t) => t === 'design.server_started')).toHaveLength(2)
+    expect(designServerStatus(ctx, feature.id)).toMatchObject({ running: true, url: first.url })
+  }, 15000)
+
+  it('restart starts a server that is down, from the recorded command', async () => {
+    mkdirSync(join(worktree, '.runcastle'), { recursive: true })
+    writeFileSync(join(worktree, '.runcastle', 'design.json'), JSON.stringify({ command: FAKE_DEV }))
+
+    const info = await createCallerFactory(appRouter)(ctx).design.restart({ featureId: feature.id })
+
+    expect(info.command).toBe(FAKE_DEV)
+    expect(stoppedReasons()).toEqual([])
+    expect(designServerStatus(ctx, feature.id).running).toBe(true)
+  }, 15000)
+})
+
+describe('design restart with nothing recorded', () => {
+  it('refuses with a clear message', async () => {
+    await expect(createCallerFactory(appRouter)(ctx).design.restart({ featureId: feature.id })).rejects.toThrow(
+      /no design command recorded[\s\S]*ask the chat to start the design server/,
+    )
+    expect(stoppedReasons()).toEqual([])
+  })
 })
 
 describe('design MCP tools', () => {
@@ -411,6 +459,7 @@ describe.skipIf(!AVAILABLE)('design tRPC procedures', () => {
       running: true,
       url: started.url,
       port: started.port,
+      paneId: designPaneId(feature.id),
       hasRecordedCommand: true,
     })
 
