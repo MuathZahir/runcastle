@@ -106,3 +106,15 @@ The human, on the plan: forking uses too much context; "why can't all the sessio
 ## 18. No notice to the main chat about side-session changes
 **Decision:** Dropped. Side sessions' changes reach the main chat only through the record (docs, tickets, timeline) and the human. Supersedes 11.
 **Why:** The human's stance: people do not drive two sessions at the same thing, and the server refuses the collisions that matter. A notice is mechanism without an observed need; it is parked under `## Later laps`.
+
+## Revisited 2026-10-22 — reconciled with Design mode
+
+Design mode merged to main first; merging main into this branch made the two switchers one, as decision 10 said the second to merge would.
+
+## 19. Side sessions join Design mode's one switcher
+**Decision:** The switcher lives in the page's one header row (Design mode's decision 12), not in the chat's own header. It lists the feature chat, the scenario chat while a drive errand is live, live side sessions, then ended ones with their age; a waiting side session's amber dot is on its row and on the switcher. "New side session" and a side session's End session are rows of its menu. The chat that plans and leads keeps Design mode's name, "Feature chat". Clarifies decision 10.
+**Why:** Design mode built the column as a list of sessions so side sessions could join it without another layout change. Two switchers on one page is what decision 10 told the second merge to avoid.
+
+## 20. A side session follows the main chat's write rule under Design mode
+**Decision:** Design mode lets a human-attended feature chat write code (UI) and install in every phase, planning included. A side session gets exactly that rule, in its edit and install guards and in its system prompt. Applies decision 5 to Design mode's rule, as the spec anticipated.
+**Why:** Decision 5: a side session writes exactly what the main chat writes in the current state.
