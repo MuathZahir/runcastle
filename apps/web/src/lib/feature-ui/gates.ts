@@ -335,11 +335,16 @@ export function sessionStatusLabel(session: { status: string }): string {
   return session.status === 'launching' ? 'launching…' : 'live'
 }
 
-/** The feature's active session ({@link sessionActive}), if it has one. */
-export function activeSession<T extends { status: string }>(
+/**
+ * The feature's active session ({@link sessionActive}), if it has one. A
+ * scenario chat is docked to the drive, not the feature (the launcher lets it
+ * live beside the feature's own terminal), so it is never this: it would read
+ * as the agent working and fill the feature chat's place in the column.
+ */
+export function activeSession<T extends { status: string; kind: string }>(
   sessions: readonly T[],
 ): T | undefined {
-  return sessions.find((s) => sessionActive(s))
+  return sessions.find((s) => sessionActive(s) && s.kind !== 'scenario')
 }
 
 /**

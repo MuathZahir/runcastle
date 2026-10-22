@@ -56,6 +56,8 @@ vi.mock('../src/trpc', () => {
         toggle: { useMutation: mutation },
         reopen: { useMutation: mutation },
         list: { useQuery: () => ({ data: [] as TestNote[] }) },
+        // The drive notes' send line, up while this feature's own drive is.
+        delivery: { useQuery: () => ({ data: undefined }) },
       },
       findings: {
         dismiss: { useMutation: mutation },
@@ -181,5 +183,24 @@ describe('any other drive holding the slot', () => {
     page()
     expect(screen.queryByRole('button', { name: 'Stop it' })).toBeNull()
     noDuplicateControl()
+  })
+})
+
+describe("this feature's own drive", () => {
+  it('is not embedded in the body: the body points at the drive view and opens it', () => {
+    state.drive = drive({ featureId: 'feat_1' })
+    const onOpenDrive = vi.fn()
+    render(
+      <ReviewBody
+        full={full({ id: 'feat_1', phase: 'review', projectId: 'proj_1' } as never)}
+        driving={null}
+        conflict={null}
+        onOpenDrive={onOpenDrive}
+      />,
+    )
+    expect(screen.queryByTitle('the app on this branch')).toBeNull()
+    expect(screen.getByText('A test drive of this branch is live')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open the drive' }))
+    expect(onOpenDrive).toHaveBeenCalledTimes(1)
   })
 })

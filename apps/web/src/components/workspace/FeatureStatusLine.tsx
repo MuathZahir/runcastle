@@ -13,29 +13,35 @@ const STATUS_TONE: Record<FeatureStatusKind, StatusTone> = {
 }
 
 /**
- * The feature's one status line (`the-feature-lead-runs-rounds` decisions 21
- * and 24), in the action row's left column: a dot and the line — "Working ·
- * Round 3", "Waiting for you · stopped", "Ready for you · Test drive ▸
- * <scenario>" with what to test one click away. The row's buttons, Stop
- * among them, are the next-step bar's.
+ * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
+ * quiet, beside the title in the page's one header row (design-mode decision
+ * 12): a dot and the line — "Planning with you", "Working · Round 3",
+ * "Waiting for you · stopped", "Ready for you · Test drive ▸ <scenario>". It
+ * replaces the stepper and the next-step sentence on the page; the header's
+ * buttons are the header's.
  *
  * Facts are text (DESIGN.md principle 2): no pill, no box.
  */
 export function FeatureStatusLine({ status }: { status: FeatureStatus }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <p className="m-0 flex min-w-0 items-center gap-2 text-sm" role="status">
-        <StatusDot tone={STATUS_TONE[status.kind]} />
-        <span className="font-medium text-text">{status.label}</span>
-        {status.why && <span className="min-w-0 truncate text-text-secondary">· {status.why}</span>}
-      </p>
+    <p className="m-0 flex min-w-0 items-center gap-2 text-sm text-text-tertiary" role="status">
+      <StatusDot tone={STATUS_TONE[status.kind]} />
+      <span className="shrink-0 text-text-secondary">{status.label}</span>
+      {status.why && <span className="min-w-0 truncate">· {status.why}</span>}
+    </p>
+  )
+}
 
-      {status.kind === 'ready' && status.whatToTest && (
-        <Disclosure size="sm" title="What to test">
-          <p className="m-0 max-w-prose text-base whitespace-pre-line text-text-secondary">{status.whatToTest}</p>
-        </Disclosure>
-      )}
-    </div>
+/**
+ * What the agent asked to be tested, one click from Ready — closed, at the top
+ * of the chat column, since the header row has no room for it.
+ */
+export function WhatToTest({ status }: { status: FeatureStatus }) {
+  if (status.kind !== 'ready' || !status.whatToTest) return null
+  return (
+    <Disclosure size="sm" title="What to test">
+      <p className="m-0 max-w-prose text-base whitespace-pre-line text-text-secondary">{status.whatToTest}</p>
+    </Disclosure>
   )
 }
 

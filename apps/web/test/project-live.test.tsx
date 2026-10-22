@@ -53,28 +53,15 @@ const landing: SessionBranchApi = {
 describe('live project chat', () => {
   afterEach(cleanup)
 
-  it('renders the complete live strip', () => {
-    render(
-      <ProjectChat
-        session={session}
-        title="Untitled"
-        branch="main"
-        hidden={false}
-        onBack={() => {}}
-        onEnded={() => {}}
-      />,
-    )
+  it('renders the live chat edge to edge, with no header row of its own', () => {
+    render(<ProjectChat session={session} hidden={false} onEnded={() => {}} />)
 
-    // the way back is the parent crumb; the chat is the current one, its
-    // server placeholder title read as a name
-    expect(screen.getByRole('button', { name: 'Project' })).toBeTruthy()
-    expect(screen.getByText('Untitled chat').closest('[aria-current="page"]')).toBeTruthy()
-    // the strip is the one every chat surface shares (ChatView)
-    expect(screen.getByText('Project chat').closest('[data-chat-view]')).toBeTruthy()
-    expect(screen.getByRole('img', { name: 'Live' })).toBeTruthy()
-    expect(screen.getByText('main').parentElement?.textContent).toBe('lands on main')
-    expect(screen.getByText('f5b41d9e')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'End session' })).toBeTruthy()
+    // The surface every chat shares (ChatView); its switcher, landing branch
+    // and End session are the page header's (design-mode decision 12).
+    const chat = screen.getByRole('region', { name: 'Project chat' })
+    expect(chat.querySelector('[data-testid="terminal"]')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'End session' })).toBeNull()
+    expect(chat.textContent).not.toContain('lands on')
   })
 
   it('goes back to the list and opens the mounted terminal without launching', () => {
@@ -83,14 +70,10 @@ describe('live project chat', () => {
       const [list, setList] = useState(false)
       return (
         <>
-          <ProjectChat
-            session={session}
-            title="Untitled"
-            branch="main"
-            hidden={list}
-            onBack={() => setList(true)}
-            onEnded={() => {}}
-          />
+          <button type="button" onClick={() => setList(true)}>
+            Project
+          </button>
+          <ProjectChat session={session} hidden={list} onEnded={() => {}} />
           {list && (
             <>
               <NewChatCard

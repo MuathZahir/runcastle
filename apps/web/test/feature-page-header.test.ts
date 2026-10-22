@@ -3,17 +3,19 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
 import type { NextStep } from '../src/lib/feature-ui'
-import { featureStatus, leadActions, OVERFLOW_KINDS } from '../src/lib/feature-ui/status-line'
+import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { ToastProvider } from '../src/lib/toast'
 import { FeatureHeader } from '../src/components/workspace/FeatureHeader'
 import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
-import { NextStepBar } from '../src/components/workspace/NextStepBar'
+import { HeaderAction } from '../src/components/workspace/HeaderAction'
+import { PageTopbar } from '../src/ui'
 import { full } from './fixtures'
 
 /**
  * The feature page's header as `Workspace` composes it (`the-feature-lead-runs-
- * rounds` decision 24): the title, one meta line, and the status line with its
- * one action row — nothing else above the content.
+ * rounds` decision 24, design-mode decision 12): the one header row — title,
+ * status line and at most one action — over the title and one meta line;
+ * nothing else above the content.
  *
  * Reproduced first on a review-phase feature in the shape the human drove in
  * lap 1: before this change the same composition rendered the phase stepper,
@@ -45,22 +47,20 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
     selfPlanning: false,
     now: 0,
   })
+  const row = headerActions(ns, status)
+  // The header row's left and its one action, as `Workspace` composes them
+  // (design-mode decision 12), over the body's title and meta line.
   return renderToStaticMarkup(
     createElement(
       ToastProvider,
       null,
-      createElement(
-        FeatureHeader,
-        { feature: review, isDraft: false, facts: [{ text: 'Started 15m ago' }] },
-        createElement(NextStepBar, {
-          ns: leadActions(ns, status),
-          guidance: false,
-          busy: false,
-          onAction: () => undefined,
-          demote: OVERFLOW_KINDS,
-          status: createElement(FeatureStatusLine, { status }),
-        }),
-      ),
+      createElement(PageTopbar, {
+        crumbs: [{ label: review.title }],
+        status: createElement(FeatureStatusLine, { status }),
+        actions: row.action && createElement(HeaderAction, { action: row.action, busy: false, onAction: () => undefined }),
+      }),
+      createElement(FeatureHeader, { feature: review, isDraft: false, facts: [{ text: 'Started 15m ago' }] }),
+      createElement('div', { 'data-overflow': row.overflow.map((a) => a.label).join('|') }),
     ),
   )
 }
@@ -84,14 +84,13 @@ describe('the feature page header', () => {
     expect(html).not.toContain('Agent live')
   })
 
-  it('has exactly one primary — Start test drive when ready — Merge & ship beside it and the rest in ⋯', () => {
+  it('has exactly one action — Start test drive when ready — Merge & ship and the rest in ⋯', () => {
     const html = header()
     expect(html.match(/<button[^>]*class="[^"]*\bbg-primary\b/g) ?? []).toHaveLength(1)
     const labels = buttons(html)
     expect(labels).toContain('Start test drive')
-    expect(labels).toContain('Merge &amp; ship')
-    expect(labels).not.toContain('Resolve conflict')
-    expect(html).toContain('aria-label="More actions"')
+    expect(labels).not.toContain('Merge &amp; ship')
+    expect(html).toContain('data-overflow="Merge &amp; ship|Resolve conflict"')
     expect(labels.some((l) => /burn/i.test(l))).toBe(false)
   })
 
@@ -101,9 +100,7 @@ describe('the feature page header', () => {
     expect(buttons(header({ running: true }))).toContain('Stop')
   })
 
-  it('puts What to test one click from Ready', () => {
-    const html = header()
-    expect(html).toContain('What to test')
-    expect(html).not.toContain('<details open')
+  it('keeps What to test out of the one-line header — it sits atop the chat', () => {
+    expect(header()).not.toContain('What to test')
   })
 })

@@ -18,7 +18,7 @@ import {
 } from '../../icons'
 
 /** Every action leads with an icon (DESIGN.md principle 7) — one per kind. */
-const ACTION_ICON: Record<ActionKind, ReactNode> = {
+export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   startDraft: <IconPlay />,
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
@@ -48,8 +48,9 @@ function sentence(text: string): string {
 }
 
 /**
- * The next-step row under the stepper (DESIGN.md §Page anatomy 4): no band, no
- * border, no background. Left, one sentence in `text-secondary` — what is
+ * A parked draft's next-step row, in its header (DESIGN.md §Page anatomy 4) —
+ * a started feature's actions are its one header row's (design-mode decision
+ * 12). No band, no border, no background. Left, one sentence in `text-secondary` — what is
  * happening, or what you should do (the resolver's title, then its guidance
  * when guidance is on). Right, the ONE primary and at most the secondaries the
  * resolver chose. A disabled action says why as a caption beneath the buttons,
@@ -65,8 +66,6 @@ export function NextStepBar({
   busy,
   onAction,
   draftBranch,
-  demote,
-  status,
   split,
 }: {
   ns: NextStep
@@ -80,18 +79,6 @@ export function NextStepBar({
     missing: boolean
     onPick: (branch: string) => void
   }
-  /**
-   * Secondaries that are reachable here but not this state's real next step
-   * (Merge & ship before review): they go straight to the "More" menu, with
-   * the same gate — a disabled one is disabled there too.
-   */
-  demote?: readonly ActionKind[]
-  /**
-   * The feature's one status line (`the-feature-lead-runs-rounds` decision
-   * 21). Given, it IS the row's left column — the resolver's sentence, count
-   * line and note are not said beside it, so the header states its status once.
-   */
-  status?: ReactNode
   /**
    * The one action that carries choices behind a caret (Test drive and its
    * scenarios, drive-scenarios decision 7): wherever that kind sits on the row
@@ -109,14 +96,9 @@ export function NextStepBar({
   const hasActions = !!ns.primary || secondary.length > 0
   // At most two secondaries beside the primary (DESIGN.md §Page anatomy 4);
   // the rest stay one click away in a "More" menu rather than disappearing.
-  const inline = secondary.filter((a) => !demote?.includes(a.kind))
-  const demoted = secondary.filter((a) => demote?.includes(a.kind))
-  const shown = inline.length > 2 ? inline.slice(0, 2) : inline
-  const overflow = [...(inline.length > 2 ? inline.slice(2) : []), ...demoted]
-  // A demoted action's refusal is said in its menu item's title, not under
-  // the row — the row does not show that button.
-  const refusedShown = refused.filter((a) => !demote?.includes(a.kind) || a === ns.primary)
-  if (!status && !hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
+  const shown = secondary.length > 2 ? secondary.slice(0, 2) : secondary
+  const overflow = secondary.length > 2 ? secondary.slice(2) : []
+  if (!hasActions && !ns.busy && !ns.alert && !ns.counts && !ns.note) return null
 
   const labelOf = (a: NextAction): string => (split?.kind === a.kind ? split.label : a.label)
   /** One action's button — the split one where `split` names its kind. */
@@ -158,42 +140,38 @@ export function NextStepBar({
       className="flex flex-wrap items-start gap-x-6 gap-y-3 animate-fade-in"
       role={ns.alert ? 'alert' : undefined}
     >
-      {status ? (
-        <div className="min-w-0 flex-1 basis-80">{status}</div>
-      ) : (
-        <div className="min-w-0 flex-1 basis-80 text-sm text-text-secondary">
-          {(lead || guide) && (
-            <p className="m-0 text-pretty">
-              {ns.busy ? (
-                <Spinner size="sm" className="mr-2 inline-block align-[-2px]" />
-              ) : ns.alert ? (
-                <StatusDot tone="warning" className="mr-2 align-middle" />
-              ) : null}
-              {lead && <span className="font-medium text-text">{guide ? sentence(lead) : lead}</span>}
-              {lead && guide && ' '}
-              {guide}
-            </p>
-          )}
-          {/* The count line is the ONE thing here guidance cannot hide
-              (decision 3): the primary follows the count, so a row that hid it
-              would be a button whose reason is nowhere on the page. */}
-          {ns.counts && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-              {ns.counts.pills.map((pill) => (
-                <StatusLabel key={pill.label} tone={COUNT_TONE[pill.tone]} size="sm">
-                  {pill.label}
-                </StatusLabel>
-              ))}
-              {ns.counts.trailing && <span className="text-sm text-text-tertiary">{ns.counts.trailing}</span>}
-            </div>
-          )}
-          {ns.note && (
-            <p className="mt-1.5 mb-0 text-xs text-text-tertiary first-letter:uppercase" role="note">
-              {ns.note}
-            </p>
-          )}
-        </div>
-      )}
+      <div className="min-w-0 flex-1 basis-80 text-sm text-text-secondary">
+        {(lead || guide) && (
+          <p className="m-0 text-pretty">
+            {ns.busy ? (
+              <Spinner size="sm" className="mr-2 inline-block align-[-2px]" />
+            ) : ns.alert ? (
+              <StatusDot tone="warning" className="mr-2 align-middle" />
+            ) : null}
+            {lead && <span className="font-medium text-text">{guide ? sentence(lead) : lead}</span>}
+            {lead && guide && ' '}
+            {guide}
+          </p>
+        )}
+        {/* The count line is the ONE thing here guidance cannot hide
+            (decision 3): the primary follows the count, so a row that hid it
+            would be a button whose reason is nowhere on the page. */}
+        {ns.counts && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {ns.counts.pills.map((pill) => (
+              <StatusLabel key={pill.label} tone={COUNT_TONE[pill.tone]} size="sm">
+                {pill.label}
+              </StatusLabel>
+            ))}
+            {ns.counts.trailing && <span className="text-sm text-text-tertiary">{ns.counts.trailing}</span>}
+          </div>
+        )}
+        {ns.note && (
+          <p className="mt-1.5 mb-0 text-xs text-text-tertiary first-letter:uppercase" role="note">
+            {ns.note}
+          </p>
+        )}
+      </div>
 
       {hasActions && (
         // The group shrinks and wraps; the buttons inside it never do — a
@@ -246,7 +224,7 @@ export function NextStepBar({
           {/* Why a button is dead, where the eye is — beneath it — and, when
               the refusal has a way out (decision 20), the one click that
               takes it, so "Stop the test drive first" is not a dead end. */}
-          {refusedShown.map((a) => (
+          {refused.map((a) => (
             <div
               key={a.kind}
               className={cx(

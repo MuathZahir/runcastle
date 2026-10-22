@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { IconPanelLeft } from '../icons'
-import { clampSidebarWidth, useSidebarWidth } from '../lib/sidebar-width'
+import { clampSidebarWidth, SIDEBAR_MAX_W, SIDEBAR_MIN_W, useSidebarWidth } from '../lib/sidebar-width'
 import { shortcut } from '../lib/platform'
-import { cx, IconButton } from '../ui'
+import { cx, IconButton, SidebarDoorContext } from '../ui'
 import { RailResizeHandle } from './RailResizeHandle'
 
 /**
@@ -12,31 +12,45 @@ import { RailResizeHandle } from './RailResizeHandle'
  * global title bar and no status bar — the sidebar's head and foot carry what
  * those used to.
  *
- * The sidebar's width and its collapsed state are screen preferences, kept for
+ * The sidebar's width and whether it is closed are screen preferences, kept for
  * the whole app rather than per project, so they live in a provider the root
  * mounts once ({@link FrameProvider}); the portfolio home and every project
  * shell render the same {@link Frame} and read the same two values.
  */
 
-/** localStorage key for the collapsed sidebar. */
-const COLLAPSED_KEY = 'runcastle.sidebar.collapsed'
+/**
+ * localStorage key for the closed sidebar. The name is the old collapsed
+ * state's: a browser that left the sidebar collapsed (to the icon rail, since
+ * retired — design-mode decision 12) opens with it closed.
+ */
+const CLOSED_KEY = 'runcastle.sidebar.collapsed'
 
-/** The collapsed sidebar's width: a strip of canvas holding the way back. */
-const RAIL_W = 44
+/** A drag that takes the sidebar under half its minimum closes it rather than stopping at the minimum. */
+const CLOSE_BELOW_W = SIDEBAR_MIN_W / 2
 
-function readCollapsed(): boolean {
+function readClosed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSED_KEY) === '1'
+    return localStorage.getItem(CLOSED_KEY) === '1'
   } catch {
     return false
+  }
+}
+
+function writeClosed(closed: boolean): void {
+  try {
+    localStorage.setItem(CLOSED_KEY, closed ? '1' : '0')
+  } catch {
+    // No storage: the toggle still works for this session.
   }
 }
 
 export interface FrameApi {
   width: number
   setWidth: (px: number) => void
-  collapsed: boolean
+  /** The sidebar is closed: no rail, no width — the page header holds the way back. */
+  closed: boolean
   toggleSidebar: () => void
+  closeSidebar: () => void
   /** App-wide notices (update, setup check), drawn at the top of the panel. */
   notices: ReactNode
 }
@@ -51,21 +65,20 @@ function insideTerminal(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('.xterm') !== null
 }
 
-/** Holds the sidebar's width + collapsed state, and answers Ctrl/⌘+B. */
+/** Holds the sidebar's width + closed state, and answers Ctrl/⌘+B. */
 export function FrameProvider({ notices, children }: { notices?: ReactNode; children: ReactNode }) {
   const { width, setWidth } = useSidebarWidth()
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [closed, setClosed] = useState(readClosed)
 
   const toggleSidebar = useCallback(() => {
-    setCollapsed((was) => {
-      const next = !was
-      try {
-        localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
-      } catch {
-        // No storage: the toggle still works for this session.
-      }
-      return next
+    setClosed((was) => {
+      writeClosed(!was)
+      return !was
     })
+  }, [])
+  const closeSidebar = useCallback(() => {
+    writeClosed(true)
+    setClosed(true)
   }, [])
 
   useEffect(() => {
@@ -81,29 +94,30 @@ export function FrameProvider({ notices, children }: { notices?: ReactNode; chil
   }, [toggleSidebar])
 
   const api = useMemo<FrameApi>(
-    () => ({ width, setWidth, collapsed, toggleSidebar, notices: notices ?? null }),
-    [width, setWidth, collapsed, toggleSidebar, notices],
+    () => ({ width, setWidth, closed, toggleSidebar, closeSidebar, notices: notices ?? null }),
+    [width, setWidth, closed, toggleSidebar, closeSidebar, notices],
   )
   return <FrameContext.Provider value={api}>{children}</FrameContext.Provider>
 }
 
 /**
  * The frame's state. Outside a provider (a component test mounting one screen)
- * it falls back to an expanded default-width sidebar that cannot collapse.
+ * it falls back to an open default-width sidebar that cannot close.
  */
 export function useFrame(): FrameApi {
   return (
     useContext(FrameContext) ?? {
       width: clampSidebarWidth(Number.NaN),
       setWidth: () => undefined,
-      collapsed: false,
+      closed: false,
       toggleSidebar: () => undefined,
+      closeSidebar: () => undefined,
       notices: null,
     }
   )
 }
 
-/** The sidebar's own collapse button, for its head row. */
+/** The sidebar's own close button, for its head row. */
 export function CollapseSidebarButton() {
   const { toggleSidebar } = useFrame()
   return (
@@ -118,25 +132,36 @@ export function CollapseSidebarButton() {
   )
 }
 
+/** The way back while the sidebar is closed: the page header's first control. */
+function ShowSidebarButton({ onClick }: { onClick: () => void }) {
+  return (
+    <IconButton
+      label="Show sidebar"
+      kbd={shortcut('B')}
+      size="sm"
+      icon={<IconPanelLeft />}
+      tooltipSide="bottom"
+      onClick={onClick}
+    />
+  )
+}
+
+/** Clamps the top only: under the minimum, the drag is measured so it can close. */
+const clampDrag = (px: number) => Math.min(px, SIDEBAR_MAX_W)
+
 /**
- * canvas | sidebar | content panel. `sidebar` is the full sidebar; while it is
- * collapsed a 44px strip of canvas holds the expand button (and `rail`, any
- * further one-icon doors the screen wants to keep in reach — search).
+ * canvas | sidebar | content panel. The sidebar has one other state: closed
+ * (design-mode decision 12) — zero width, nothing left of the content panel,
+ * and the page header's {@link ShowSidebarButton} (through
+ * {@link SidebarDoorContext}) the way back, beside Ctrl/⌘+B.
  *
- * Collapse animates the column's width (240ms, ease-out) while the sidebar
- * fades out and the strip fades in. A drag on the resize handle skips the
- * transition, so the edge follows the pointer instead of trailing it.
+ * Closing animates the column's width (240ms, ease-out) while the sidebar
+ * fades out. A drag on the resize handle skips the transition, so the edge
+ * follows the pointer instead of trailing it; a drag under half the minimum
+ * width closes it.
  */
-export function Frame({
-  sidebar,
-  rail,
-  children,
-}: {
-  sidebar?: ReactNode
-  rail?: ReactNode
-  children: ReactNode
-}) {
-  const { width, setWidth, collapsed, toggleSidebar, notices } = useFrame()
+export function Frame({ sidebar, children }: { sidebar?: ReactNode; children: ReactNode }) {
+  const { width, setWidth, closed, toggleSidebar, closeSidebar, notices } = useFrame()
   const [resizing, setResizing] = useState(false)
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
@@ -144,6 +169,11 @@ export function Frame({
   }, [])
 
   const onResize = (px: number) => {
+    if (px < CLOSE_BELOW_W) {
+      setResizing(false)
+      closeSidebar()
+      return
+    }
     setResizing(true)
     if (settle.current) clearTimeout(settle.current)
     settle.current = setTimeout(() => setResizing(false), 160)
@@ -151,6 +181,7 @@ export function Frame({
   }
 
   const hasSidebar = sidebar !== undefined
+  const door = hasSidebar && closed ? <ShowSidebarButton onClick={toggleSidebar} /> : null
 
   return (
     <div
@@ -159,61 +190,39 @@ export function Frame({
     >
       {hasSidebar && (
         <div
-          data-sidebar={collapsed ? 'collapsed' : 'expanded'}
+          data-sidebar={closed ? 'closed' : 'open'}
           className={cx(
             'relative h-full shrink-0 overflow-hidden',
             !resizing && 'transition-[width] duration-(--dur-3) ease-out-app motion-reduce:transition-none',
           )}
-          style={{ width: collapsed ? RAIL_W : width }}
+          style={{ width: closed ? 0 : width }}
         >
           <div
-            inert={collapsed}
-            aria-hidden={collapsed || undefined}
+            inert={closed}
+            aria-hidden={closed || undefined}
             className={cx(
               'absolute inset-y-0 left-0 flex w-(--sidebar-w) flex-col',
               'transition-opacity duration-(--dur-2) ease-app',
-              collapsed ? 'pointer-events-none opacity-0' : 'opacity-100',
+              closed ? 'pointer-events-none opacity-0' : 'opacity-100',
             )}
           >
             {sidebar}
           </div>
-          <div
-            inert={!collapsed}
-            aria-hidden={!collapsed || undefined}
-            className={cx(
-              'absolute inset-y-0 left-0 flex w-11 flex-col items-center gap-1 pt-4',
-              'transition-[opacity,translate] duration-(--dur-3) ease-out-app',
-              collapsed ? 'translate-x-0 opacity-100 delay-75' : 'pointer-events-none -translate-x-2 opacity-0',
-            )}
-          >
-            <IconButton
-              label="Show sidebar"
-              kbd={shortcut('B')}
-              icon={<IconPanelLeft />}
-              tooltipSide="right"
-              onClick={toggleSidebar}
-            />
-            {rail}
-          </div>
-          {!collapsed && (
-            <RailResizeHandle
-              width={width}
-              side="left"
-              label="Resize the sidebar"
-              clamp={clampSidebarWidth}
-              onResize={onResize}
-            />
+          {!closed && (
+            <RailResizeHandle width={width} side="left" label="Resize the sidebar" clamp={clampDrag} onResize={onResize} />
           )}
         </div>
       )}
       <main
         className={cx(
           'my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface',
-          !hasSidebar && 'ml-2',
+          (!hasSidebar || closed) && 'ml-2',
         )}
       >
         {notices}
-        <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+        <SidebarDoorContext.Provider value={door}>
+          <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+        </SidebarDoorContext.Provider>
       </main>
     </div>
   )

@@ -20,6 +20,9 @@ const projectAdd = vi.fn(async (input: { projectId: string; text: string }) => (
   id: 'pnote_1',
   ...input,
 }))
+const sendCrop = vi.fn(async (input: { featureId: string; png: string; text: string }) => ({
+  path: `/data/design-crops/${input.featureId}/1.png`,
+}))
 const invalidateNotes = vi.fn()
 const invalidateProjectNotes = vi.fn()
 const uploadScreenshot = vi.fn(async () => {})
@@ -30,7 +33,7 @@ vi.mock('../src/trpc', () => ({
     useUtils: () => ({
       notes: { list: { invalidate: invalidateNotes } },
       projectNotes: { invalidate: invalidateProjectNotes },
-      client: { projectNotes: { add: { mutate: projectAdd } } },
+      client: { projectNotes: { add: { mutate: projectAdd } }, design: { sendCrop: { mutate: sendCrop } } },
     }),
     notes: { add: { useMutation: () => ({ mutateAsync: featureAdd }) } },
   },
@@ -78,7 +81,10 @@ afterEach(() => {
 })
 
 /** Select area, drag a region, then save the note with the given words. */
-async function captureAndSave(text = ''): Promise<void> {
+async function captureAndSave(
+  text = '',
+  { ask = 'what’s wrong here?', send = 'Save note' }: { ask?: string; send?: string } = {},
+): Promise<void> {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select area' }))
   })
@@ -86,12 +92,88 @@ async function captureAndSave(text = ''): Promise<void> {
   fireEvent.pointerDown(shade, { clientX: 10, clientY: 10, pointerId: 1 })
   fireEvent.pointerMove(shade, { clientX: 200, clientY: 150, pointerId: 1 })
   fireEvent.pointerUp(shade, { clientX: 200, clientY: 150, pointerId: 1 })
-  const box = await screen.findByLabelText('what’s wrong here?', {}, { timeout: 2000 })
+  const box = await screen.findByLabelText(ask, {}, { timeout: 2000 })
   if (text) fireEvent.change(box, { target: { value: text } })
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Save note' }))
+    fireEvent.click(screen.getByRole('button', { name: send }))
   })
 }
+
+/** Whether `el` sits in an absolutely placed layer — floating over the frame — below `root`. */
+function floats(el: Element, root: Element): boolean {
+  for (let at = el.parentElement; at && at !== root; at = at.parentElement) {
+    if (at.classList.contains('absolute')) return true
+  }
+  return false
+}
+
+describe('DrivePanel toolbar placement', () => {
+  // A drive and the design view alike: one row above the frame, over none of it.
+  it.each([
+    ['a drive', {}],
+    ['the design view', { sendTo: 'chat' as const }],
+  ])('puts every control of %s in one bar above the frame, and selects over the frame alone', async (_, props) => {
+    const { container } = render(
+      <DrivePanel
+        featureId="feat_1"
+        url="about:blank"
+        leading={<button type="button">Back</button>}
+        toolbar={<button type="button">Scenario</button>}
+        {...props}
+      />,
+    )
+    const frame = container.querySelector('iframe')!
+    const [bar, ...more] = screen.getAllByRole('toolbar')
+    expect(more).toHaveLength(0)
+    const controls = [
+      ...['Back', 'Select area', 'Reload', 'Scenario'].map((name) => screen.getByRole('button', { name })),
+      screen.getByRole('link', { name: /Open/ }),
+      screen.getByRole('combobox', { name: 'Screen width' }),
+    ]
+    for (const control of controls) {
+      expect(bar!.contains(control), control.textContent ?? '').toBe(true)
+      expect(floats(control, container)).toBe(false)
+      expect(frame.parentElement!.contains(control)).toBe(false)
+    }
+    // The bar comes first in the document: above the frame, not after it.
+    expect(bar!.compareDocumentPosition(frame) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Select area' }))
+    })
+    const shade = await screen.findByLabelText('drag over the part of the app that needs fixing')
+    expect(shade.parentElement).toBe(frame.parentElement)
+  })
+})
+
+describe('DrivePanel screen width', () => {
+  beforeEach(() => localStorage.clear())
+
+  const frameWidth = (container: HTMLElement): string => container.querySelector('iframe')!.style.width
+
+  it('lays the page out at Desktop 1440 by default, on a drive and in the design view alike', () => {
+    const drive = render(<DrivePanel featureId="feat_1" url="about:blank" />)
+    expect(frameWidth(drive.container)).toBe('1440px')
+    expect(screen.getByRole('combobox', { name: 'Screen width' }).textContent).toMatch(/^1440 · \d+%$/)
+    drive.unmount()
+    const design = render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
+    expect(frameWidth(design.container)).toBe('1440px')
+  })
+
+  it('takes the width the agent asked for over the remembered one, without remembering it', () => {
+    localStorage.setItem('runcastle.preview.width', '768')
+    const { container } = render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" width={390} />)
+    expect(frameWidth(container)).toBe('390px')
+    expect(localStorage.getItem('runcastle.preview.width')).toBe('768')
+  })
+
+  it('fills the pane at the remembered Fit', () => {
+    localStorage.setItem('runcastle.preview.width', 'fit')
+    const { container } = render(<DrivePanel featureId="feat_1" url="about:blank" />)
+    expect(frameWidth(container)).toBe('')
+    expect(screen.getByRole('combobox', { name: 'Screen width' }).textContent).toBe('Fit')
+  })
+})
 
 describe('DrivePanel capture target', () => {
   it('writes a project note and attaches the screenshot on a project drive', async () => {
@@ -120,5 +202,28 @@ describe('DrivePanel capture target', () => {
     expect(uploadScreenshot).toHaveBeenCalledWith('note_1', expect.any(Blob))
     expect(invalidateNotes).toHaveBeenCalledWith({ featureId: 'feat_1' })
     expect(projectAdd).not.toHaveBeenCalled()
+    expect(sendCrop).not.toHaveBeenCalled()
+  })
+
+  it('sends the crop and the words into the live chat from the design view, writing no note', async () => {
+    render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
+    await captureAndSave('make this quieter', { ask: 'what should change?', send: 'Send to chat' })
+
+    // The stubbed canvas hands back the bytes "png".
+    await waitFor(() =>
+      expect(sendCrop).toHaveBeenCalledWith({ featureId: 'feat_1', png: btoa('png'), text: 'make this quieter' }),
+    )
+    expect(featureAdd).not.toHaveBeenCalled()
+    expect(uploadScreenshot).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Send to chat' })).toBeNull())
+  })
+
+  it('toasts the server’s reason and keeps the crop when the chat is not running', async () => {
+    sendCrop.mockRejectedValueOnce(new Error('the chat is not running — open it, then select again'))
+    render(<DrivePanel featureId="feat_1" sendTo="chat" url="about:blank" />)
+    await captureAndSave('', { ask: 'what should change?', send: 'Send to chat' })
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('the chat is not running — open it, then select again'))
+    expect(screen.getByRole('button', { name: 'Send to chat' })).toBeTruthy()
   })
 })

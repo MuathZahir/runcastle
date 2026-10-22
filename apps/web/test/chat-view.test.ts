@@ -36,7 +36,7 @@ import { ToastProvider } from '../src/lib/toast'
 import { ChatView } from '../src/components/chat/ChatView'
 import { ProjectChat } from '../src/components/project/ProjectChat'
 import { FeatureChat } from '../src/components/workspace/FeatureChat'
-import { FeatureViewTabs } from '../src/components/workspace/FeatureViewTabs'
+import { PanelToggle } from '../src/components/workspace/FeaturePanel'
 import { full as fixture } from './fixtures'
 
 type Session = FeatureFull['sessions'][number]
@@ -59,30 +59,33 @@ const html = (node: ReactNode): string =>
   renderToStaticMarkup(createElement(ToastProvider, null, node))
 
 const view = (props: Partial<Parameters<typeof ChatView>[0]> = {}): string =>
-  html(createElement(ChatView, { session: null, contextLine: 'Chat · lap 2', ...props }))
+  html(createElement(ChatView, { session: null, ...props }))
 
 /**
  * Every chat surface is one component (one-chat-layout-everywhere decision 6):
- * the strip, the full-area terminal, and the at-rest state with its one button.
+ * the full-area terminal and the at-rest state with its one button — no header
+ * row of its own (design-mode decision 12).
  */
 describe('ChatView', () => {
-  it('gives a live session the strip — live dot, context line, End session — over its terminal', () => {
-    const out = view({ session: { id: 'sess_live', status: 'live' }, featureId: 'feat_1' })
+  it('gives a live session its terminal, edge to edge, with no header row of its own', () => {
+    const out = view({ session: { id: 'sess_live', status: 'live' } })
 
-    expect(out).toContain('aria-label="Live"')
-    expect(out).toContain('Chat · lap 2')
-    expect(out).toContain('End session')
     expect(out).toContain('data-terminal="sess_live"')
+    expect(out).not.toContain('End session')
+    expect(out).not.toContain('<header')
+    expect(out).not.toContain('border-b')
     // A live conversation is answered in the terminal, never resumed beside it.
     expect(out).not.toContain('Resume the conversation')
     expect(out).not.toContain('Start the conversation')
   })
 
-  it('marks a launching session as starting, still with its terminal', () => {
-    const out = view({ session: { id: 'sess_up', status: 'launching' } })
+  it('a launching session has its terminal too', () => {
+    expect(view({ session: { id: 'sess_up', status: 'launching' } })).toContain('data-terminal="sess_up"')
+  })
 
-    expect(out).toContain('aria-label="Starting"')
-    expect(out).toContain('data-terminal="sess_up"')
+  it('puts the notices it is handed above the terminal', () => {
+    const out = view({ session: { id: 'sess_live', status: 'live' }, notices: createElement('p', null, 'Resume failed.') })
+    expect(out.indexOf('Resume failed.')).toBeLessThan(out.indexOf('data-terminal'))
   })
 
   it('reads an ended chat back and offers to resume it, with nothing to end', () => {
@@ -158,15 +161,11 @@ describe('FeatureChat', () => {
     )
   }
 
-  for (const [kind, line] of [
-    ['chat', 'Chat'],
-    ['drive-fix', 'Drive fix'],
-  ] as const) {
-    it(`hosts a live ${kind} session full-area`, () => {
+  for (const kind of ['chat', 'drive-fix'] as const) {
+    it(`hosts a live ${kind} session full-area, its End session in the page header's switcher`, () => {
       const out = tab([session({ id: `sess_${kind}`, kind })])
       expect(out).toContain(`data-terminal="sess_${kind}"`)
-      expect(out).toContain(line)
-      expect(out).toContain('End session')
+      expect(out).not.toContain('End session')
     })
   }
 
@@ -178,7 +177,6 @@ describe('FeatureChat', () => {
 
   it('with nothing live, reads back the chat transcript over Resume', () => {
     const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
-    expect(out).toContain('Chat')
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
   })
@@ -198,11 +196,9 @@ describe('the project chat', () => {
     const out = html(
       createElement(ProjectChat, {
         session: { id: 'ps_1', ccSessionId: 'f5b41d9e-rest', status: 'live' } as NonNullable<ProjectSession>,
-        title: 'Untitled',
-        branch: 'main',
         hidden: false,
-        onBack: () => undefined,
         onEnded: () => undefined,
+
       }),
     )
     expect(out).toContain('data-chat-view')
@@ -210,38 +206,29 @@ describe('the project chat', () => {
     expect(out).toContain('data-terminal="ps_1"')
     // The deck is the feature Chat tab's; the project chat has none.
     expect(out).not.toContain('Chat notifications')
-    expect(out).toContain('End session')
+    // End session is the page header's switcher's (design-mode decision 12).
+    expect(out).not.toContain('End session')
   })
 })
 
-/** Overview | Chat on every non-draft feature (decisions 1, 11). */
-describe('FeatureViewTabs', () => {
-  const tabs = (props: Partial<Parameters<typeof FeatureViewTabs>[0]> = {}) =>
-    html(
-      createElement(FeatureViewTabs, {
-        isDraft: false,
-        value: 'overview',
-        onChange: () => undefined,
-        sessionLive: false,
-        ...props,
-      }),
-    )
+/** design-mode decision 12: one panel toggle in the header, no button per view. */
+describe('PanelToggle', () => {
+  const toggle = (props: Partial<Parameters<typeof PanelToggle>[0]> = {}) =>
+    html(createElement(PanelToggle, { open: false, views: ['body', 'design', 'details'], onToggle: () => undefined, ...props }))
 
-  it('shows the two views, Agent last, and no Tickets tab', () => {
-    const out = tabs()
-    const labels = [...out.matchAll(/role="tab"[^>]*>([\s\S]*?)<\/button>/g)].map((m) =>
-      m[1]!.replace(/<[^>]+>/g, ''),
-    )
-    expect(labels).toEqual(['Overview', 'Agent'])
-    expect(out).not.toContain('Session live')
+  it('is one icon button, whatever views the state offers', () => {
+    const out = toggle()
+    expect(out.match(/<button/g)).toHaveLength(1)
+    expect(out).toContain('aria-label="Show the panel"')
+    expect(out).not.toMatch(/(Tickets|Design|Details)<\/button>/)
   })
 
-  it('puts a live dot on Agent while a session is live', () => {
-    expect(tabs({ sessionLive: true, value: 'chat' })).toMatch(/aria-selected="true"[^>]*>[\s\S]*Agent[\s\S]*aria-label="Session live"/)
+  it('says Hide while the panel is open', () => {
+    expect(toggle({ open: true })).toContain('aria-label="Hide the panel"')
   })
 
-  it('gives a draft no views at all', () => {
-    expect(tabs({ isDraft: true })).not.toContain('role="tab"')
+  it('gives a draft, which offers no views, nothing', () => {
+    expect(toggle({ views: [] })).not.toContain('<button')
   })
 })
 

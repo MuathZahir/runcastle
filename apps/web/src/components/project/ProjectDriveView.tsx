@@ -5,25 +5,23 @@ import {
   IconAlert,
   IconClock,
   IconFolder,
-  IconMessage,
   IconPanelRight,
-  IconPlay,
   IconShield,
   IconStop,
   IconTerminal,
   IconUser,
 } from '../../icons'
-import { AsideLayout, Button, EmptyState, IconButton, MetaLine, PageTopbar, StatusLabel, Tabs } from '../../ui'
+import { AsideLayout, Button, EmptyState, IconButton, MetaLine, StatusLabel } from '../../ui'
 import { ScenarioDrive } from '../review/ScenarioDrive'
 import { DriveFailureReport, DriveFooter } from '../review/drive-parts'
 import { SettingsLink } from '../settings/MessageWithSettingsLink'
 import { ProjectNotesRail } from './ProjectNotesRail'
 
 /**
- * A project drive, owning the workspace body the way a live chat does
- * (project-level-test-drive decision 4): a topbar (project › Test drive, Stop,
- * the notes toggle), the checkout's app under a header that names what is being
- * driven, and the project's notes inbox as the one aside on the right.
+ * A project drive, in the project page's panel beside its chat column
+ * (project-level-test-drive decision 4, design-mode decision 11): the
+ * checkout's app under a header that names what is being driven, with Stop and
+ * the notes toggle, and this drive's notes as the one aside on the right.
  *
  * The stage is composed from the feature drive's parts rather than its
  * `EvidenceStage`, which is bound to a feature's recordings and test notes; the
@@ -31,29 +29,18 @@ import { ProjectNotesRail } from './ProjectNotesRail'
  */
 export function ProjectDriveView({
   projectId,
-  projectName = 'Project',
   repoPath,
   drive,
-  hidden,
-  onProjectPage,
   onStop,
   stopping,
   onOpenPreparation,
-  switcher,
 }: {
   projectId: string
-  /** The parent crumb — clicking it steps back to the project page. */
-  projectName?: string
   repoPath: string | undefined
   drive: SlotDrive
-  hidden: boolean
-  /** Step back to the resting page; the drive keeps running. */
-  onProjectPage: () => void
   onStop: () => void
   stopping: boolean
   onOpenPreparation: () => void
-  /** The Chat | Drive tabs, when a live chat shares the body. */
-  switcher?: ReactNode
 }) {
   // The notes aside is the point of driving, so it starts open; the topbar
   // toggle folds it away for a wider stage.
@@ -75,29 +62,34 @@ export function ProjectDriveView({
   const where = `${repoPath ?? ''}${drive.commit ? ` @ ${drive.commit}` : ''}`
 
   return (
-    <div
-      className={hidden ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}
-      aria-hidden={hidden}
-      data-project-drive
-    >
-      <PageTopbar
-        crumbs={[
-          { label: projectName, icon: <IconFolder />, onClick: onProjectPage },
-          { label: 'Test drive', icon: <IconPlay /> },
-        ]}
-        tabs={switcher}
-        actions={
-          <>
-            {stop}
-            <IconButton
-              label={notesOpen ? 'Hide notes' : 'Show notes'}
-              icon={<IconPanelRight />}
-              active={notesOpen}
-              onClick={() => setNotesOpen((open) => !open)}
-            />
-          </>
-        }
-      />
+    <div className="flex h-full min-h-0 flex-1 flex-col animate-fade-in" data-project-drive>
+      {/* The branch is named up front because the checkout is driven as it is
+          (decision 3): a checkout sitting somewhere other than main is seen
+          here, before any note is taken. The header sits above the notes
+          aside, not beside it: in a narrow panel the aside floats over its
+          row, and Stop and the notes toggle must stay clickable. */}
+      <header className="flex shrink-0 flex-col gap-1.5 px-6 pt-5 pb-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h2 className="m-0 text-lg font-semibold text-text">
+            Driving <span className="font-mono text-base font-medium">{drive.branch}</span>
+          </h2>
+          {state}
+          <span className="flex-1" />
+          {stop}
+          <IconButton
+            label={notesOpen ? 'Hide notes' : 'Show notes'}
+            icon={<IconPanelRight />}
+            active={notesOpen}
+            onClick={() => setNotesOpen((open) => !open)}
+          />
+        </div>
+        <MetaLine
+          items={[
+            { icon: <IconFolder />, mono: true, text: where, title: where },
+            { icon: <IconUser />, mono: true, text: 'project-drive', title: 'the identity this drive runs as' },
+          ]}
+        />
+      </header>
       <AsideLayout
         aside={
           notesOpen && (
@@ -109,25 +101,7 @@ export function ProjectDriveView({
           )
         }
       >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-5 pb-4 animate-fade-in">
-          {/* The branch is named up front because the checkout is driven as it
-              is (decision 3): a checkout sitting somewhere other than main is
-              seen here, before any note is taken. */}
-          <header className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <h2 className="m-0 text-lg font-semibold text-text">
-                Driving <span className="font-mono text-base font-medium">{drive.branch}</span>
-              </h2>
-              {state}
-            </div>
-            <MetaLine
-              items={[
-                { icon: <IconFolder />, mono: true, text: where, title: where },
-                { icon: <IconUser />, mono: true, text: 'project-drive', title: 'the identity this drive runs as' },
-              ]}
-            />
-          </header>
-
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-4">
           <ProjectStage
             projectId={projectId}
             drive={drive}
@@ -245,42 +219,6 @@ function ProjectStage({
         </StageFrame>
       )
   }
-}
-
-/** What fills the project page's body: the resting overview, a live chat, a live drive. */
-export type ProjectView = 'overview' | 'chat' | 'drive'
-
-/**
- * The project page's view tabs, shown in every topbar of the page while a chat
- * or a drive is live — so the overview (chats, New chat, Test drive) is never
- * more than one labelled click away from either, and back again.
- */
-export function ProjectViewSwitch({
-  value,
-  chat,
-  drive,
-  onPick,
-}: {
-  value: ProjectView
-  /** A chat is live — offer its tab. */
-  chat: boolean
-  /** A drive is live — offer its tab. */
-  drive: boolean
-  onPick: (view: ProjectView) => void
-}) {
-  return (
-    <Tabs<ProjectView>
-      label="Project views"
-      size="sm"
-      value={value}
-      onChange={onPick}
-      items={[
-        { id: 'overview', label: 'Overview', icon: <IconFolder /> },
-        ...(chat ? [{ id: 'chat' as const, label: 'Live chat', icon: <IconMessage /> }] : []),
-        ...(drive ? [{ id: 'drive' as const, label: 'Drive', icon: <IconPlay /> }] : []),
-      ]}
-    />
-  )
 }
 
 /**

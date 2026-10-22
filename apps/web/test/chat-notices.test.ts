@@ -23,7 +23,7 @@ describe('noticeFor', () => {
       title: 'Spec written',
       subtitle: 'spec.md',
       actionLabel: 'View spec',
-      target: 'overview',
+      target: 'body',
       count: 1,
       eventId: e.id,
     })
@@ -37,7 +37,7 @@ describe('noticeFor', () => {
       title: 'Preview ready',
       subtitle: 'preview.html',
       actionLabel: 'View preview',
-      target: 'overview',
+      target: 'preview',
       count: 1,
       eventId: e.id,
     })
@@ -61,7 +61,7 @@ describe('noticeFor', () => {
   })
 
   it.each(['tickets.stored', 'ticket.edited', 'ticket.cancelled'])(
-    'maps %s to "Tickets updated", going to the Overview',
+    'maps %s to "Tickets updated", opening the body',
     (type) => {
       expect(noticeFor(ev(type, 'ticket 3 content edited (title)'))).toMatchObject({
         kind: 'tickets',
@@ -69,7 +69,7 @@ describe('noticeFor', () => {
         title: 'Tickets updated',
         subtitle: 'ticket 3 content edited (title)',
         actionLabel: 'View tickets',
-        target: 'overview',
+        target: 'body',
       })
     },
   )
@@ -81,7 +81,7 @@ describe('noticeFor', () => {
       title: 'Ticket #4 failed',
       subtitle: 'typecheck failed',
       actionLabel: 'View run',
-      target: 'overview',
+      target: 'body',
     })
   })
 
@@ -95,7 +95,7 @@ describe('noticeFor', () => {
       title: 'Run finished',
       subtitle: '6 of 6 landed',
       actionLabel: 'View run',
-      target: 'overview',
+      target: 'body',
     })
   })
 
@@ -108,7 +108,7 @@ describe('noticeFor', () => {
       hue: 'danger',
       title: 'Run finished with failures',
       subtitle: '4 of 6 landed',
-      target: 'overview',
+      target: 'body',
     })
   })
 
@@ -119,7 +119,7 @@ describe('noticeFor', () => {
       title: 'Review ready',
       subtitle: 'Agentic review — lap 1',
       actionLabel: 'View review',
-      target: 'overview',
+      target: 'body',
     })
   })
 
@@ -133,7 +133,7 @@ describe('noticeFor', () => {
       title: 'Test drive running',
       subtitle: 'http://localhost:4613',
       actionLabel: 'Open',
-      target: 'overview',
+      target: 'drive',
     })
   })
 
@@ -160,7 +160,7 @@ function n(kind: ChatNotice['kind'], subtitle: string = kind, eventId = 0): Chat
     title: kind,
     subtitle,
     actionLabel: 'View',
-    target: 'overview',
+    target: 'body',
     count: 1,
     eventId,
   }

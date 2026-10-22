@@ -296,7 +296,8 @@ import a module directly, and removing the barrel is a later cleanup.
 | `rounds.ts` | The round trail: rounds numbered from runs, agent fixes and ready declarations between them, `groupByRound`, the latest round's account. |
 | `tickets.ts` | Ticket counts and labels, pending tickets, ticket model chips. |
 | `summary.ts` | Docs and the merge confirmation: headline, spec path, deferred scope, `mergeSummary`. |
-| `session.ts` | Session lifecycle: the Chat tab's session and context line, shipped QA sessions, shipped-at. |
+| `session.ts` | Session lifecycle: the feature chat's session and context line, shipped QA sessions, shipped-at. |
+| `panel.ts` | The feature page's panel: the views a state offers, their labels, the reducer (open, follow a Go or Test drive click, switch, close, size, full, fold), the agent's `panel.show` request. Not in the barrel. |
 | `internal.ts` | Shared private helpers. **Not** re-exported by the barrel. |
 
 `src/lib/feature-ui/next-step/` — the next-step bar. `index.ts` keeps the exact
@@ -316,11 +317,12 @@ the phase-body dispatch and the action switch; these moved out:
 | `FeaturePanes.tsx` | The crash and unrecognised-phase panes — a feature view that cannot do its job. |
 | `use-resume-failed-alert.ts` | Raises a banner on a new `session.resume_failed` event. |
 | `copy-text.ts` | Copy to the clipboard, with the toast either way. |
-| `FeatureViewTabs.tsx` | Overview \| Chat, with the Chat tab's live dot; none on a draft. |
-| `FeatureChat.tsx` | The Chat tab: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
+| `FeaturePanel.tsx` | The chat-first page's one panel: the split with its divider, the panel header's view switcher, the folded strip, the topbar's view buttons, and `usePanel` (the size remembered per browser). The pure model is `lib/feature-ui/panel.ts`. |
+| `use-panel-show.ts` | Opens the panel on each new `panel.show` the agent emits for this feature. |
+| `FeatureChat.tsx` | The page's chat: the feature's live session (any kind) through `ChatView`, else its chat transcript with Resume / Start. |
 | `LiveSessionBar.tsx` | Overview's one live-session line: Open chat, End session. |
 
-Every chat surface — the project's chat and each feature's Chat tab — renders
+Every chat surface — the project's chat and each feature's chat-first page — renders
 through `src/components/chat/ChatView.tsx` (the strip, the full-area terminal,
 the at-rest state). No phase body holds a terminal.
 

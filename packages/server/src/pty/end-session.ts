@@ -1,5 +1,6 @@
 import type { AppCtx } from '../db/types'
 import { getSessionRow, landProjectSession, markSessionEnded, noteRequestedEnd } from '../launcher/sessions'
+import { stopDesignServerForSession } from '../services/design'
 import { emitForSession } from '../services/events'
 import { ptyRegistry } from './registry'
 
@@ -33,6 +34,7 @@ export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
     // moves them; closing the terminal is that moment (decision 18). No-op for
     // every other kind.
     landProjectSession(ctx, session)
+    stopDesignServerForSession(ctx, session)
     emitForSession(ctx, session, {
       type: 'session.ended',
       message: 'session ended by user',

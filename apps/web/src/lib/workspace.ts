@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Phase } from '@runcastle/core'
-import { RETIRED_TICKETS_TAB } from './routes'
-import type { FeatureView } from './routes'
+import { parseFeatureView, type FeatureView } from './routes'
 import type { SettingsLocation } from './settings'
 
 /**
@@ -12,8 +11,8 @@ import type { SettingsLocation } from './settings'
  * to an earlier, completed phase to inspect it read-only; selecting a different
  * feature clears the pin so the workspace snaps back to following the live phase.
  *
- * Only `selectedFeatureId`, an open preparation, the two rail-collapse flags, the
- * guidance toggle and each feature's last view tab persist across reloads — the viewed
+ * Only `selectedFeatureId`, an open preparation, the guidance toggle and each
+ * feature's last view persist across reloads — the viewed
  * phase, command palette, and Draft overlay are ephemeral session state.
  */
 
@@ -25,22 +24,8 @@ export interface DriveState {
 
 const SELECTED_KEY = 'runcastle.selected.v1'
 const PREPARING_KEY = 'runcastle.preparing.v1'
-const INSPECTOR_KEY = 'runcastle.inspector.collapsed'
 const GUIDANCE_KEY = 'runcastle.guidance'
 const FEATURE_VIEW_KEY = 'runcastle.feature.tab'
-
-/**
- * Whether the details aside starts collapsed. It is closed by default in every
- * phase (DESIGN.md: an aside is opened on demand) — only the human's own toggle,
- * remembered as `preference`, opens it by default. `phase` is kept in the
- * signature so a caller never has to know the rule stopped depending on it.
- */
-export function inspectorCollapsedForPhase(
-  preference: boolean | null,
-  _phase?: Phase | undefined,
-): boolean {
-  return preference ?? true
-}
 
 /** Per-project selected-feature key so switching projects never restores a
  *  feature from another project (multi-project, issue #45). */
@@ -58,46 +43,34 @@ function featureViewKeyFor(featureId: string): string {
   return `${FEATURE_VIEW_KEY}:${featureId}`
 }
 
-function parseFeatureView(value: string | null): FeatureView | null {
-  // A feature left on the retired Tickets tab reopens on the Overview.
-  if (value === RETIRED_TICKETS_TAB) return 'overview'
-  return value === 'overview' || value === 'chat' ? value : null
-}
-
 /**
  * Which view a feature opens on when nothing names one (one-chat-layout-everywhere
- * decision 8): the view it was left on, if that is still a view it has; else
- * Chat when a session is live, since that is what is happening on it; else
- * Overview. A draft has no Chat tab (decision 11), so it never lands there.
+ * decision 8): the view it was left on, if that is still a view — a feature
+ * left on the retired Overview or Tickets tab reopens on its body, one left on
+ * Chat with the panel closed. Else the chat alone, which is the page
+ * (design-mode decision 5): nothing opens the panel by itself. A draft has no
+ * chat, so its body is the page whatever was remembered.
  */
 export function initialTab({
   stored,
-  hasLiveSession,
   isDraft,
 }: {
   /** The raw remembered value — anything unrecognised is treated as nothing. */
   stored: string | null
-  hasLiveSession: boolean
   isDraft: boolean
 }): FeatureView {
-  const remembered = parseFeatureView(stored)
-  if (remembered && !(isDraft && remembered === 'chat')) return remembered
-  if (hasLiveSession && !isDraft) return 'chat'
-  return 'overview'
+  if (isDraft) return 'body'
+  return parseFeatureView(stored) ?? 'chat'
 }
 
 /**
  * {@link initialTab} for a feature row, read against what this browser
  * remembers for it. A feature the list does not know (yet) opens on whatever
- * was remembered, else Overview.
+ * was remembered, else the chat alone.
  */
-export function rememberedView(
-  featureId: string,
-  feature?: { status: string; liveSession: unknown } | undefined,
-): FeatureView {
+export function rememberedView(featureId: string, feature?: { status: string } | undefined): FeatureView {
   return initialTab({
     stored: readLS(featureViewKeyFor(featureId)),
-    hasLiveSession: !!feature?.liveSession,
     isDraft: feature?.status === 'draft',
   })
 }
@@ -138,9 +111,9 @@ export interface WorkspaceApi {
   /** Pinned phase to view read-only, or null to follow the feature's live phase. */
   viewedPhase: Phase | null
   /**
-   * The selected feature's view tab (Overview | Chat). Shell state
-   * rather than the page's, so the address bar can name it and drive it
-   * (one-chat-layout-everywhere decision 8).
+   * The selected feature's view — the panel view beside its chat, or the chat
+   * alone. Shell state rather than the page's, so the address bar can name it
+   * and drive it (one-chat-layout-everywhere decision 8).
    */
   featureView: FeatureView
   /** Whether the Draft door's overlay owns the workspace (decisions.md #12). */
@@ -157,10 +130,6 @@ export interface WorkspaceApi {
    * away, and the conversation itself lives on the server either way.
    */
   preparing: boolean
-  /** Right inspector rail collapsed. */
-  inspectorCollapsed: boolean
-  /** Explicit inspector choice, or null until the human has toggled it. */
-  inspectorPreference: boolean | null
   /** Command palette (⌘K) open. */
   cmdkOpen: boolean
   /**
@@ -173,11 +142,11 @@ export interface WorkspaceApi {
   /** Show the one-line guide captions on the next-step bar and phase bodies. */
   guidance: boolean
 
-  /** Select a feature on `view` (Overview when omitted), or `null` to return to
+  /** Select a feature on `view` (the chat alone when omitted), or `null` to return to
    *  the project home (clears the phase pin, the project row, and closes the
    *  create form). The view is remembered for that feature. */
   select: (featureId: string | null, view?: FeatureView) => void
-  /** Switch the selected feature's view tab, remembered for that feature. */
+  /** Switch the selected feature's view, remembered for that feature. */
   selectView: (view: FeatureView) => void
   /** Select the pinned project row — the project workspace fills the body. */
   selectProject: () => void
@@ -191,7 +160,6 @@ export interface WorkspaceApi {
   cancelCreate: () => void
   /** Leave a deliberately-opened preparation. */
   closePreparation: () => void
-  toggleInspector: (current?: boolean) => void
   setCmdk: (open: boolean) => void
   /** Open settings, on General unless the caller names somewhere else. */
   openSettings: (location?: SettingsLocation) => void
@@ -205,10 +173,10 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
   const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   // A first guess from storage; the shell's landing settles it once the feature
-  // list says whether a session is live.
+  // list says whether the feature is a draft.
   const [featureView, setFeatureView] = useState<FeatureView>(() => {
     const selected = readLS(selectedKey)
-    return (selected && parseFeatureView(readLS(featureViewKeyFor(selected)))) || 'overview'
+    return (selected && parseFeatureView(readLS(featureViewKeyFor(selected)))) || 'chat'
   })
   const [creating, setCreating] = useState(false)
   // Persisted, unlike the create form beside it: a preparation you opened is a
@@ -218,10 +186,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // Ephemeral like the phase pin: the pinned row is always in the rail, so a
   // reload landing back on your feature is the right resting state.
   const [projectSelected, setProjectSelected] = useState(false)
-  const [inspectorPreference, setInspectorPreference] = useState<boolean | null>(() => {
-    const stored = readLS(INSPECTOR_KEY)
-    return stored === null ? null : stored === '1'
-  })
   const [cmdkOpen, setCmdk] = useState(false)
   const [settings, setSettings] = useState<SettingsLocation | null>(null)
   const [guidance, setGuidance] = useState(() => readLS(GUIDANCE_KEY) !== '0')
@@ -234,10 +198,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     writeLS(preparingKey, preparing ? '1' : '0')
   }, [preparing, preparingKey])
   useEffect(() => {
-    if (inspectorPreference !== null)
-      writeLS(INSPECTOR_KEY, inspectorPreference ? '1' : '0')
-  }, [inspectorPreference])
-  useEffect(() => {
     writeLS(GUIDANCE_KEY, guidance ? '1' : '0')
   }, [guidance])
 
@@ -247,7 +207,7 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // The view is remembered here, on the deliberate act, rather than by an effect
   // over the state: the state's first value is only a guess, and an effect would
   // overwrite what was remembered with it before the landing had a say.
-  const select = useCallback((featureId: string | null, view: FeatureView = 'overview') => {
+  const select = useCallback((featureId: string | null, view: FeatureView = 'chat') => {
     setSelected(featureId)
     setFeatureView(view)
     if (featureId) writeLS(featureViewKeyFor(featureId), view)
@@ -297,10 +257,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const closeSettings = useCallback(() => setSettings(null), [])
   const cancelCreate = useCallback(() => setCreating(false), [])
   const closePreparation = useCallback(() => setPreparing(false), [])
-  const toggleInspector = useCallback(
-    (current?: boolean) => setInspectorPreference((value) => !(current ?? value ?? false)),
-    [],
-  )
   const toggleGuidance = useCallback(() => setGuidance((v) => !v), [])
 
   return {
@@ -310,8 +266,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     featureView,
     creating,
     preparing,
-    inspectorCollapsed: inspectorPreference ?? true,
-    inspectorPreference,
     cmdkOpen,
     settings,
     guidance,
@@ -323,7 +277,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     startPreparation,
     cancelCreate,
     closePreparation,
-    toggleInspector,
     setCmdk,
     openSettings,
     closeSettings,

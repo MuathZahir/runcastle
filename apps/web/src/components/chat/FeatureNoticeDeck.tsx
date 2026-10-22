@@ -19,8 +19,9 @@ import { NoticeDeck } from './NoticeDeck'
  * is by the event's own time, not by what the log has loaded yet, because the
  * log fills in its whole history on mount.
  *
- * Cards never expire. They leave by their action, which switches to the tab
- * that shows the change, or by ✕.
+ * Cards leave by their action, which switches to the tab that shows the
+ * change, or by ✕ — and one that only confirms the human's own click ("Test
+ * drive running") by itself, after its `expiresAfterMs`.
  */
 export function FeatureNoticeDeck({
   events,
@@ -57,6 +58,17 @@ export function FeatureNoticeDeck({
       if (notice) dispatch({ type: 'push', notice })
     }
   }, [active, events, tickets])
+
+  // A card with a lifetime leaves by itself. Any change to the deck restarts
+  // the countdowns, so a burst that bumps the card gives it its full time again.
+  useEffect(() => {
+    const timers = deck.flatMap((n) =>
+      n.expiresAfterMs === undefined
+        ? []
+        : [setTimeout(() => dispatch({ type: 'dismiss', kind: n.kind }), n.expiresAfterMs)],
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [deck])
 
   const act = (kind: ChatNoticeKind) => {
     const notice = deck.find((n) => n.kind === kind)

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
-import { inspectorCollapsedForPhase, rememberedView, useWorkspace, type DriveState } from '../lib/workspace'
+import { rememberedView, useWorkspace, type DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import { useProjectTalk } from '../lib/use-project-talk'
 import { useLivePoll } from '../lib/live'
 import { isNoteHotkey } from '../lib/project-notes'
 import { isThisProjectDrive } from '../lib/project-drive'
-import { showsInspector, workspaceView } from '../lib/project-workspace'
+import { workspaceView } from '../lib/project-workspace'
 import { landingFeature } from '../lib/feature-ui'
 import {
   insideProject,
@@ -18,9 +18,9 @@ import {
   type FeatureView,
 } from '../lib/routes'
 import { currentPath, useHistorySync } from '../lib/use-history-sync'
-import { LandOnChatProvider } from '../lib/land-on-chat'
+import { LandOnChatProvider, landingView } from '../lib/land-on-chat'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import { Sidebar, SidebarRail } from './Sidebar'
+import { Sidebar } from './Sidebar'
 import { Frame, useFrame } from './Frame'
 import { FeatureCrash, Workspace } from './Workspace'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -109,8 +109,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   /**
    * Open a feature on `view`, or — when nothing names one (the rail, the
    * palette, a link that only says "this feature") — on the view it was left
-   * on, else Chat when a session is live, else Overview
-   * (one-chat-layout-everywhere decision 8). `null` is the project home.
+   * on, else the chat alone (one-chat-layout-everywhere decision 8,
+   * design-mode decision 5). `null` is the project home.
    */
   const openFeature = useCallback(
     (featureId: string | null, view?: FeatureView) => {
@@ -120,9 +120,23 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     [select, features],
   )
 
-  // Every session launch under this shell lands on its feature's Chat tab — a
-  // view switch like any other, so it is remembered and Back undoes it.
-  const landOnChat = useCallback((featureId: string) => select(featureId, 'chat'), [select])
+  // Every session launch under this shell lands on its feature's chat. On the
+  // feature already on screen the open panel stays (the launch changes only the
+  // chat column); anywhere else it is the chat alone — a view switch like any
+  // other, so it is remembered and Back undoes it. A draft's body is its page,
+  // not a panel, so a draft's Start lands on the chat alone.
+  const shownView = ws.featureView
+  const landOnChat = useCallback(
+    (featureId: string) => {
+      const onScreen =
+        selectedFeatureId &&
+        !projectSelected &&
+        !preparing &&
+        features?.find((f) => f.id === selectedFeatureId)?.status !== 'draft'
+      select(featureId, landingView(featureId, { featureId: onScreen ? selectedFeatureId : null, view: shownView }))
+    },
+    [select, selectedFeatureId, projectSelected, preparing, features, shownView],
+  )
 
   /**
    * Where to land, once and only once, when the feature list first arrives
@@ -144,10 +158,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     if (addressed?.kind === 'chat') selectProject()
     else if (addressed?.kind === 'prepare') startPreparation()
     else if (addressed) {
-      // A tab in the address wins; a bare feature path restores the remembered
+      // A view in the address wins; a bare feature path restores the remembered
       // one — which, after a reload, is the view the path was showing anyway.
       const named = features.find((f) => f.slug === addressed.featureSlug)
-      if (named) openFeature(named.id, addressed.tab)
+      if (named) openFeature(named.id, addressed.view)
       else openFeature(landingFeature(features)?.id ?? null)
     } else if (!selectedFeatureId && !projectSelected && !preparing) {
       const target = landingFeature(features)
@@ -183,8 +197,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // third breadcrumb level wants its title (decision 11).
   const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
   const selectedSlug = selectedFeature?.slug ?? null
-  // A draft has no view tabs (decision 11), so it is only ever at its Overview.
-  const featureView = selectedFeature?.status === 'draft' ? 'overview' : ws.featureView
+  // A draft has no chat and no panel (decision 11): its body is the page.
+  const featureView = selectedFeature?.status === 'draft' ? 'body' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
       ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
@@ -200,7 +214,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'prepare') startPreparation()
     else {
-      // The popped path says exactly which view — a bare one is Overview, not
+      // The popped path says exactly which view — a bare one is the body, not
       // "whatever was remembered", or Back from a tab could never reach it.
       const named = features?.find((f) => f.slug === inside.featureSlug)
       if (named) select(named.id, featureViewOf(inside))
@@ -239,16 +253,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   }, [setCmdk])
 
   const view = workspaceView({ ...ws, featureCount: features?.length ?? 0, prepared, empty })
-  // The inspector starts collapsed in ideation/spec/tickets unless the human
-  // has expressed a preference (decision: docs menu makes the panel optional).
-  const selectedPhase = features?.find((feature) => feature.id === selectedFeatureId)?.phase
-  const inspectorCollapsed = inspectorCollapsedForPhase(
-    ws.inspectorPreference,
-    ws.viewedPhase ?? selectedPhase,
-  )
-  const showInspector = showsInspector(view, inspectorCollapsed)
-
-  const detailsToggle = view === 'feature' ? () => ws.toggleInspector(inspectorCollapsed) : undefined
+  // The details are one of the feature page's panel views (design-mode
+  // decision 5), so the palette's toggle and the page's button are one switch.
+  const detailsToggle =
+    view === 'feature' ? () => ws.selectView(featureView === 'details' ? 'chat' : 'details') : undefined
 
   const body =
     view === 'create' ? (
@@ -296,8 +304,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           guidance={ws.guidance}
           driving={driving}
           onDriveChange={setDriving}
-          detailsOpen={showInspector}
-          onToggleDetails={() => ws.toggleInspector(inspectorCollapsed)}
           // Same exit as the sidebar's delete: drop the stale selection, land
           // on the project home.
           onDeleted={() => {
@@ -332,12 +338,10 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
             onDriveChange={setDriving}
           />
         }
-        rail={<SidebarRail onOpenCmdk={() => setCmdk(true)} onNewChat={newChat} />}
       >
-        {/* The view fills the panel. The feature's details panel is not
-            mounted here: the feature page owns its one aside slot (chat or
-            details), and `detailsOpen` / `onToggleDetails` above keep the
-            palette command and the page's toggle one switch. */}
+        {/* The view fills the panel. The feature's details are not mounted
+            here: they are one of the feature page's panel views, and the
+            palette's toggle switches the same `featureView` the page does. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col [&>*]:min-h-0 [&>*]:flex-1">{body}</div>
       </Frame>
 
@@ -382,7 +386,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
 
   // Anything under the shell — a ticket's error, a burn lane — can turn a
   // "Settings → Workers" pointer into a link that lands on the row it names.
-  // And any session launch under it lands on that feature's Chat tab.
+  // And any session launch under it lands on that feature's chat.
   return (
     <OpenSettingsProvider open={ws.openSettings}>
       <LandOnChatProvider value={landOnChat}>{shell}</LandOnChatProvider>

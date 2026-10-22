@@ -1,11 +1,12 @@
 import { type EventRow, PREVIEW_FILE, type Ticket } from '@runcastle/core'
+import type { PanelView } from './feature-ui/panel'
 
 /**
  * Chat notices (one-chat-layout-everywhere decisions 3, 4, 10): while a
- * feature's Chat tab is in front, the few changes elsewhere in that feature
- * worth looking up for raise a card that offers a way to the tab showing them.
- * Pure — the mapping from an event to a notice, and the deck those notices
- * collapse into. The Chat tab owns when to feed it.
+ * feature's chat is on screen, the few changes elsewhere in that feature
+ * worth looking up for raise a card that offers to open the panel view
+ * showing them. Pure — the mapping from an event to a notice, and the deck
+ * those notices collapse into. The chat owns when to feed it.
  */
 
 /** The collapse key: a repeat of the same kind counts up on one card. */
@@ -14,8 +15,8 @@ export type ChatNoticeKind = 'preview' | 'spec' | 'tickets' | 'ticket-failed' | 
 /** The phase hue a notice wears (the `--color-phase-*` token), or danger. */
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
 
-/** The feature view tab a notice's action switches to. */
-export type ChatNoticeTarget = 'overview'
+/** The panel view a notice's action opens beside the chat (design-mode decision 5). */
+export type ChatNoticeTarget = Extract<PanelView, 'body' | 'preview' | 'drive'>
 
 export interface ChatNotice {
   kind: ChatNoticeKind
@@ -28,7 +29,12 @@ export interface ChatNotice {
   count: number
   /** The newest event behind the card. */
   eventId: number
+  /** A card that only confirms the human's own click leaves by itself after this long. */
+  expiresAfterMs?: number
 }
+
+/** How long "Test drive running" stays: the human just started it, and the drive opens beside the chat. */
+export const DRIVE_NOTICE_MS = 5000
 
 /** What `noticeFor` needs to know about a ticket to recognise a review pass. */
 export type NoticeTicket = Pick<Ticket, 'id' | 'kind' | 'passKind' | 'title'>
@@ -42,7 +48,7 @@ const TICKET_FAILED = /^ticket (\d+) failed(?::\s*(.*))?$/s
 const TICKETS_DONE = /(\d+)\/(\d+) tickets done/
 
 /**
- * The notice an event raises in the Chat tab, or `null` for every event that
+ * The notice an event raises over the chat, or `null` for every event that
  * is not worth pulling the operator out of the conversation for — each locked
  * decision, notes, worktree and chat housekeeping, and the phase
  * moves the human made themselves (Burn, Merge).
@@ -73,7 +79,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
         title: 'Preview ready',
         subtitle: PREVIEW_FILE,
         actionLabel: 'View preview',
-        target: 'overview',
+        target: 'preview',
       })
     }
     if (!names('spec.md')) return null
@@ -83,7 +89,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Spec written',
       subtitle: 'spec.md',
       actionLabel: 'View spec',
-      target: 'overview',
+      target: 'body',
     })
   }
 
@@ -94,7 +100,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Tickets updated',
       subtitle: event.message,
       actionLabel: 'View tickets',
-      target: 'overview',
+      target: 'body',
     })
   }
 
@@ -106,7 +112,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: match ? `Ticket #${match[1]} failed` : 'Ticket failed',
       subtitle: match?.[2]?.trim() || event.message,
       actionLabel: 'View run',
-      target: 'overview',
+      target: 'body',
     })
   }
 
@@ -121,7 +127,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: failed ? 'Run finished with failures' : 'Run finished',
       subtitle: counts ? `${counts[1]} of ${counts[2]} landed` : summary,
       actionLabel: 'View run',
-      target: 'overview',
+      target: 'body',
     })
   }
 
@@ -134,7 +140,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Review ready',
       subtitle: ticket.title,
       actionLabel: 'View review',
-      target: 'overview',
+      target: 'body',
     })
   }
 
@@ -146,7 +152,8 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Test drive running',
       subtitle: typeof data.url === 'string' ? data.url : event.message,
       actionLabel: 'Open',
-      target: 'overview',
+      target: 'drive',
+      expiresAfterMs: DRIVE_NOTICE_MS,
     })
   }
 

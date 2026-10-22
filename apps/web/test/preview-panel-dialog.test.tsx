@@ -45,3 +45,53 @@ describe('PreviewPanel full window', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
+
+/** design-mode decision 7: a designed-screen entry's Open in design posts out of the sandboxed frame. */
+describe('PreviewPanel Open in design', () => {
+  afterEach(cleanup)
+
+  const post = (data: unknown, source: Window | null) =>
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data, source }))
+    })
+
+  it("opens the design view at the path its own frame posts, and ignores other sources and shapes", () => {
+    const onOpenDesign = vi.fn()
+    render(
+      <PreviewPanel
+        featureId="f1"
+        preview={{ relPath: 'preview.html', updatedAt: Date.now() }}
+        onOpenDesign={onOpenDesign}
+      />,
+    )
+    const frame = document.querySelector('iframe')!
+
+    post({ type: 'runcastle:open-design', path: '/preview/invites' }, window)
+    post({ type: 'runcastle:open-design', path: '/preview/invites' }, null)
+    post({ type: 'runcastle:open-design' }, frame.contentWindow)
+    post({ type: 'something-else', path: '/preview/invites' }, frame.contentWindow)
+    post('runcastle:open-design', frame.contentWindow)
+    expect(onOpenDesign).not.toHaveBeenCalled()
+
+    post({ type: 'runcastle:open-design', path: '/preview/invites' }, frame.contentWindow)
+    expect(onOpenDesign).toHaveBeenCalledTimes(1)
+    expect(onOpenDesign).toHaveBeenCalledWith('/preview/invites')
+  })
+
+  it('closes the full window as it opens the design view from there', () => {
+    const onOpenDesign = vi.fn()
+    render(
+      <PreviewPanel
+        featureId="f1"
+        preview={{ relPath: 'preview.html', updatedAt: Date.now() }}
+        onOpenDesign={onOpenDesign}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open full window' }))
+    const frame = screen.getByRole('dialog').querySelector('iframe')!
+
+    post({ type: 'runcastle:open-design', path: '/preview/list' }, frame.contentWindow)
+    expect(onOpenDesign).toHaveBeenCalledWith('/preview/list')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})

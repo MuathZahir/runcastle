@@ -7,7 +7,6 @@ import type { DriveState as BrowserDrive } from '../../lib/workspace'
 import {
   conflictResolveEnded,
   deferredScope,
-  driveFailure,
   roundOfSeq,
   latestRoundTickets,
   latestRun,
@@ -25,7 +24,8 @@ import { useReviewArtifacts } from '../../lib/reviews'
 import { useLivePoll } from '../../lib/live'
 import { useRoundTrail } from '../../lib/round-trail'
 import type { StageExpand } from '../../lib/stage-expand'
-import { AsideLayout } from '../../ui'
+import { AsideLayout, Button, StatusLabel } from '../../ui'
+import { IconPlay } from '../../icons'
 import { useToast } from '../../lib/toast'
 import { ConflictAlert, ConflictResolvedLine } from '../review/ConflictCard'
 import { DriveInstructions } from '../review/drive-parts'
@@ -82,6 +82,7 @@ export function ReviewBody({
   conflict,
   readonly = false,
   onViewPhase,
+  onOpenDrive,
 }: {
   full: FeatureFull
   driving: BrowserDrive | null
@@ -90,6 +91,8 @@ export function ReviewBody({
   readonly?: boolean
   /** Go and look at another phase — how a defect reaches the lane fixing it. */
   onViewPhase?: (phase: Phase) => void
+  /** Open the panel's drive view, where a live drive of this feature is. */
+  onOpenDrive?: () => void
 }) {
   const { feature, tickets, runs } = full
   const toast = useToast()
@@ -245,10 +248,10 @@ export function ReviewBody({
   // A drive of this feature is up — the server says so, or this browser started
   // one and the poll has not caught up yet.
   const driveUp = driveState !== 'idle' || !!driving
-  // The stage mounts only when it has something to put on it (decision 6): a
-  // recording, or that drive. With neither there is no band at all, so nothing
-  // on the page is a bordered box holding one sentence.
-  const stageMounted = recordings.length > 0 || driveUp
+  // The stage mounts only when it has a recording to play (decision 6). The
+  // live drive is the panel's drive view alone (design-mode decision 5): this
+  // body points there rather than embedding a second copy of the app.
+  const stageMounted = recordings.length > 0
   // There is nothing to expand into without a stage, so an expand outlives the
   // thing it was about by exactly nothing: a drive that stops with no recording
   // behind it takes the stage away (decision 6), and an overlay over that would
@@ -302,8 +305,7 @@ export function ReviewBody({
   const deferred = deferredScope(specQ.data?.content)
 
   // The stage is one element in both states — expanding changes what is AROUND
-  // it, never what it is, which is what lets a drive ↔ walkthrough switch happen
-  // under an expand without disturbing it.
+  // it, never what it is. It plays the recordings whatever the drive is doing.
   const stage = stageMounted ? (
     <EvidenceStage
       featureId={feature.id}
@@ -313,10 +315,9 @@ export function ReviewBody({
       picked={picked}
       notes={notes.data ?? []}
       readonly={readonly}
-      driveState={driveState}
-      drive={ownDrive}
-      dryRun={drive.data?.dryRun ?? false}
-      failure={driveFailure(ownDrive, { sessionLive: !!live })}
+      driveState="idle"
+      dryRun={false}
+      failure={null}
       expand={expand}
       handleRef={walkthroughHandle}
       onStageRecording={setStaged}
@@ -429,6 +430,7 @@ export function ReviewBody({
             walkthrough warning stands where the drive starts, in the header. */}
 
         <div data-tier="work" className="flex flex-col gap-10 empty:hidden">
+          {!readonly && driveUp && <DriveElsewhere onOpen={onOpenDrive} />}
           {!expanded && stage}
 
           <OpenWork {...workProps} />
@@ -474,6 +476,25 @@ export function ReviewBody({
         </ReferenceTier>
       </div>
       {overlay && (typeof document === 'undefined' ? overlay : createPortal(overlay, document.body))}
+    </div>
+  )
+}
+
+/**
+ * A drive of this feature is up: it lives in the panel's drive view, so the
+ * body says so and offers the way there instead of showing the app twice.
+ */
+function DriveElsewhere({ onOpen }: { onOpen?: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-md bg-surface-inset px-3 py-2">
+      <StatusLabel tone="live" size="sm" className="min-w-0 flex-1">
+        A test drive of this branch is live
+      </StatusLabel>
+      {onOpen && (
+        <Button size="sm" icon={<IconPlay />} onClick={onOpen}>
+          Open the drive
+        </Button>
+      )}
     </div>
   )
 }

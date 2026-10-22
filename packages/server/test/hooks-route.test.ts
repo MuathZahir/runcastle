@@ -322,6 +322,8 @@ describe('hooks route', () => {
       talkSession = createSessionRow(ctx, {
         featureId,
         kind: 'chat',
+        // The headless self-plan run is the planning chat the guards still bind.
+        purpose: 'self-plan',
         worktreePath: '/wt/dark-mode',
       }).id
     })
@@ -422,6 +424,11 @@ describe('hooks route', () => {
       expect(
         (await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision,
       ).toBe('allow')
+    })
+
+    it('lets a human planning chat edit source, without auto-allowing it past the prompt', async () => {
+      const human = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt/dark-mode' }).id
+      expect(await preTool(human, 'Edit', 'src/theme.ts')).toEqual({})
     })
 
     it('keeps binding every other feature-scoped kind after Go', async () => {
@@ -525,6 +532,7 @@ describe('hooks route', () => {
       const talk = createSessionRow(ctx, {
         featureId: talkFeatureId,
         kind: 'chat',
+        purpose: 'self-plan',
         worktreePath: talkPath,
       }).id
       for (const tool of ['Bash', 'PowerShell']) {
@@ -594,11 +602,21 @@ describe('hooks route', () => {
       const lead = createSessionRow(ctx, {
         featureId: talkFeatureId,
         kind: 'chat',
+        purpose: 'self-plan',
         worktreePath: talkPath,
       }).id
       expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('deny')
       setPhase(ctx, talkFeatureId, 'building')
       expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
+    })
+
+    it('lets a human planning chat install, still asking permission as before Go', async () => {
+      const human = createSessionRow(ctx, {
+        featureId: talkFeatureId,
+        kind: 'chat',
+        worktreePath: talkPath,
+      }).id
+      expect(await install(human)).toEqual({})
     })
   })
 
@@ -636,9 +654,16 @@ describe('hooks route', () => {
       expect(getSessionRow(ctx, codexSession)?.status).toBe('live')
     })
 
-    it('denies a Codex file edit outside the feature docs, and allows one inside', async () => {
+    it('denies a Codex self-plan edit outside the feature docs, and allows one inside', async () => {
+      const selfPlan = createSessionRow(ctx, {
+        featureId,
+        kind: 'chat',
+        purpose: 'self-plan',
+        worktreePath: '/wt/dark-mode',
+        model: { id: 'gpt-5.6-sol', runtime: 'codex' },
+      }).id
       const { json: denied } = await post(mount(), 'pre-tool', {
-        sessionId: codexSession,
+        sessionId: selfPlan,
         payload: {
           hook_event_name: 'PreToolUse',
           tool_name: 'apply_patch',
@@ -652,7 +677,7 @@ describe('hooks route', () => {
       expect(denied.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
 
       const { json: allowed } = await post(mount(), 'pre-tool', {
-        sessionId: codexSession,
+        sessionId: selfPlan,
         payload: {
           hook_event_name: 'PreToolUse',
           tool_name: 'apply_patch',

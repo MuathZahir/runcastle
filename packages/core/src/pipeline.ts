@@ -43,6 +43,9 @@ export function planFinished(feature: { lap: number; ticketsReadyLap: number | n
 /** Why Go is gated before {@link planFinished}, in the bar and in `go()`'s refusal. */
 export const PLAN_UNFINISHED = 'the plan is not finished'
 
+/** Why Go is refused, with no override, while the talk worktree holds design work no commit has caught. */
+export const UNCOMMITTED_DESIGN = 'Uncommitted design work: ask the chat to commit or drop it'
+
 /** The first planning artifact still missing, or null when the feature can burn. */
 export function nextPlanningStep(facts: PlanningArtifactFacts): PlanningStep | null {
   if (!facts.hasDecisions) return 'ideation'

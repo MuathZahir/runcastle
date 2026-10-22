@@ -80,7 +80,11 @@ export const featureRouter = router({
       // here. Only at review, where a merge conflict can stand.
       const feature = tryGetFeature(ctx, input.id)
       if (feature?.phase === 'review') await reconcileStandingConflict(ctx, feature)
-      return features.getFeatureFull(ctx, input.id)
+      const full = features.getFeatureFull(ctx, input.id)
+      // Git IO, so it joins the sync read here; only a planning feature gates Go on it.
+      const uncommittedDesign =
+        full.feature.phase === 'planning' && (await features.hasUncommittedDesign(full.feature))
+      return { ...full, uncommittedDesign }
     }),
 
   // B1 behavior — the stub throws NotImplementedError('B1').

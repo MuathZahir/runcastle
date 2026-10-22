@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react'
 import { IconMessage, IconPlay, IconRefresh } from '../../icons'
-import { Button, EmptyState, StatusDot } from '../../ui'
+import { Button, EmptyState } from '../../ui'
 import { ConversationTranscript } from '../ConversationTranscript'
-import { EndSessionButton } from '../EndSessionButton'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
 
@@ -17,24 +16,23 @@ export interface ChatViewSession {
  * project's chat and every feature's Chat tab render through this, so a visible
  * difference between the two is a bug here rather than two designs drifting.
  *
- *   the strip — live dot, the context line naming the session, End session
- *   the terminal — the whole area under the strip, edge to edge
+ *   the terminal — the whole area, edge to edge
  *   or, with nothing live, the last transcript (or nothing yet) over the one
  *   button that resumes or starts it
  *
- * Each caller passes only its specifics: the context line, where End session
- * refreshes, and the launch behind Resume / Start. `children` render in a
- * positioned layer over the terminal area, for anything that floats over the
- * chat (the notice deck).
+ * No header row of its own (design-mode decision 12): the page's one header
+ * holds the session switcher, and End session lives in the switcher's menu.
+ * Each caller passes only its specifics: where an ended session refreshes,
+ * the notices above the terminal, and the launch behind Resume / Start.
+ * `children` render in a positioned layer over the terminal area — at rest,
+ * over the transcript alone, clear of the launch button — for anything that
+ * floats over the chat (the notice deck).
  *
  * `hidden` keeps the view mounted behind another view — xterm keeps its buffer
  * and the pty keeps one grid size — rather than unmounting it.
  */
 export function ChatView({
   session,
-  contextLine,
-  meta,
-  featureId,
   onEnded,
   notices,
   headless,
@@ -42,21 +40,16 @@ export function ChatView({
   onLaunch,
   launchLabel,
   launching = false,
+  launchError,
   hidden = false,
   label = 'Chat',
   children,
 }: {
   /** The live or launching session, or null when nothing is up. */
   session: ChatViewSession | null
-  /** What this conversation is — "Chat", "Drive fix", the project's own. */
-  contextLine: ReactNode
-  /** Quiet facts after the context line (a landing branch, a done state). */
-  meta?: ReactNode
-  /** The feature End session refreshes; absent on the project's chat. */
-  featureId?: string
-  /** Extra refresh after End session (the project's own rows). */
+  /** Refresh once the terminal says its session ended. */
   onEnded?: () => void
-  /** Lines between the strip and the live terminal (not-ready, check-in). */
+  /** Lines above the live terminal (not-ready, check-in, a failed resume). */
   notices?: ReactNode
   /**
    * The session up has no terminal (a headless self-planning run): this stands
@@ -70,6 +63,8 @@ export function ChatView({
   launchLabel?: string
   /** A launch is in flight — the button waits for it. */
   launching?: boolean
+  /** Why the last launch was refused, said under its button. */
+  launchError?: string
   hidden?: boolean
   /** The region's accessible name. */
   label?: string
@@ -83,27 +78,14 @@ export function ChatView({
       data-chat-view=""
       className={hidden ? 'hidden' : 'flex min-h-0 min-w-0 flex-1 flex-col'}
     >
-      <div className="flex h-10 flex-none items-center gap-3 border-b border-border-subtle px-4 text-xs text-text-tertiary">
-        <span className="inline-flex min-w-0 shrink-0 items-center gap-2 text-sm font-medium text-text">
-          {session && (
-            <StatusDot
-              tone={session.status === 'launching' ? 'accent' : 'live'}
-              label={session.status === 'launching' ? 'Starting' : 'Live'}
-            />
-          )}
-          {contextLine}
-        </span>
-        <span className="flex min-w-0 flex-1 items-center gap-4 truncate">{meta}</span>
-        {session && <EndSessionButton featureId={featureId} sessionId={session.id} onEnded={onEnded} />}
-      </div>
-      {session && notices && <div className="flex-none px-4 pt-2">{notices}</div>}
+      {notices && <div className="flex flex-none flex-col gap-2 px-4 pt-2 empty:hidden">{notices}</div>}
       <div className="relative flex min-h-0 flex-1 flex-col bg-surface-inset animate-fade-in">
         {session && headless ? (
           <div className="px-6 py-6 text-sm text-text-secondary">{headless}</div>
         ) : session ? (
           <div className="min-h-0 flex-1" data-chat-terminal="">
             <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} />
+              <TerminalView sessionId={session.id} onEnded={onEnded} />
             </ErrorBoundary>
           </div>
         ) : (
@@ -112,9 +94,12 @@ export function ChatView({
             onLaunch={onLaunch}
             launchLabel={launchLabel}
             launching={launching}
-          />
+            launchError={launchError}
+          >
+            {children}
+          </ChatAtRest>
         )}
-        {children}
+        {session && children}
       </div>
     </section>
   )
@@ -130,29 +115,38 @@ function ChatAtRest({
   onLaunch,
   launchLabel,
   launching,
+  launchError,
+  children,
 }: {
   transcriptId?: string
   onLaunch?: () => void
   launchLabel?: string
   launching: boolean
+  launchError?: string
+  children?: ReactNode
 }) {
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto w-full max-w-(--content-max)">
-          {transcriptId ? (
-            <ConversationTranscript sessionId={transcriptId} className="flex flex-col gap-4" />
-          ) : (
-            <EmptyState
-              icon={<IconMessage />}
-              title="No conversation yet"
-              hint="One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it."
-            />
-          )}
+      {/* What floats over a chat at rest floats over its transcript, so it
+          never covers the button that picks the conversation up. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className="mx-auto w-full max-w-(--content-max)">
+            {transcriptId ? (
+              <ConversationTranscript sessionId={transcriptId} className="flex flex-col gap-4" />
+            ) : (
+              <EmptyState
+                icon={<IconMessage />}
+                title="No conversation yet"
+                hint="One chat per feature — it knows the state, answers questions, and plans and runs the rounds that build it."
+              />
+            )}
+          </div>
         </div>
+        {children}
       </div>
       {onLaunch && (
-        <div className="flex flex-none items-center justify-center gap-3 border-t border-border-subtle bg-surface px-4 py-3">
+        <div className="flex flex-none flex-col items-center gap-2 border-t border-border-subtle bg-surface px-4 py-3">
           <Button
             variant="primary"
             icon={transcriptId ? <IconRefresh /> : <IconPlay />}
@@ -161,6 +155,11 @@ function ChatAtRest({
           >
             {launchLabel ?? (transcriptId ? 'Resume the conversation' : 'Start the conversation')}
           </Button>
+          {launchError && !launching && (
+            <p role="alert" className="m-0 max-w-(--content-max) text-center text-sm text-danger">
+              {launchError}
+            </p>
+          )}
         </div>
       )}
     </>

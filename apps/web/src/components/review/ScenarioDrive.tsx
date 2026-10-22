@@ -7,8 +7,7 @@ import { trpc } from '../../trpc'
 import { useToast } from '../../lib/toast'
 import { callMenu, hasCalls } from '../../lib/feature-ui/api-call'
 import { scenarioFailureLine, scenarioMenu, scenarioTarget, showsScenarioNudge } from '../../lib/feature-ui/scenarios'
-import { ErrorBoundary } from '../ErrorBoundary'
-import { TerminalView } from '../TerminalView'
+import { useScenarioChatDoor } from '../chat/ScenarioChat'
 import { ApiView } from './ApiView'
 import { DrivePanel } from './DrivePanel'
 import { ScenarioMenuItems } from './ScenarioMenuItems'
@@ -22,17 +21,15 @@ export interface ScenarioDriveInfo {
   scenarioSessionId?: string
 }
 
-/** What the docked chat was opened for, named in its header: ＋ New scenario, or Fix it on one. */
-type ChatErrand = { kind: 'new' } | { kind: 'fix'; name: string }
-
 /**
  * A human's running drive with its scenarios (drive-scenarios decisions 3, 7,
  * 8): the Scenario menu in the panel's toolbar switches scenario without a
  * restart, the panel follows each landing, a running scenario shows its output
- * and a failed one its actual error with Fix it, and the scenario chat docks
- * beside the panel — never in the Chat tab, which would hide the panel the
- * result lands in. Lap 2 (decisions 11, 14): an App | API toggle when some
- * scenario has a call, and the Blank app nudge while the project has none.
+ * and a failed one its actual error with Fix it. ＋ New scenario and Fix it open
+ * the scenario chat in the page's chat column (design-mode decision 9), so the
+ * drive keeps the whole panel the result lands in. Lap 2 (decisions 11, 14): an
+ * App | API toggle when some scenario has a call, and the Blank app nudge while
+ * the project has none.
  *
  * `featureId` is set on a feature drive (its own scenarios list first, notes
  * land on the feature); absent on a project drive.
@@ -63,23 +60,15 @@ export function ScenarioDrive({
     },
     onError: (e) => toast.push(e.message),
   })
-  // The session this browser just opened, so the dock shows before the drive's
-  // poll has caught up with it.
-  const [opened, setOpened] = useState<string | null>(null)
+  // The chat an errand opens is the page's, in its chat column.
+  const chat = useScenarioChatDoor()
   const openChat = trpc.feature.openScenarioChat.useMutation({
     onSuccess: (res) => {
       refresh()
-      setOpened(res.sessionId)
-      setHidden(null)
+      chat?.opened(res.sessionId)
     },
     onError: (e) => toast.push(e.message),
   })
-  // Closing the dock only hides it; ＋ New scenario brings the same chat back.
-  const [hidden, setHidden] = useState<string | null>(null)
-  const [ended, setEnded] = useState<readonly string[]>([])
-  // Set on the click, so Fix it renames the header even when the server
-  // briefs an already-live chat instead of opening a new one.
-  const [errand, setErrand] = useState<ChatErrand>({ kind: 'new' })
   // Blank app: back to the plain URL, until the next landing takes it again.
   const [blankOver, setBlankOver] = useState<string | null>(null)
   // App | API: the app stays mounted (hidden) under the API view, so it is not reloaded.
@@ -90,10 +79,6 @@ export function ScenarioDrive({
   const scenario = drive.scenario
   const blank = !!scenario?.landingId && scenario.landingId === blankOver
   const target = blank ? { url: drive.devUrl, key: 'plain' } : scenarioTarget(drive.devUrl, scenario)
-  // This browser's own open is the newest; the drive's id covers a chat opened
-  // elsewhere, or before a reload.
-  const sessionId = opened && !ended.includes(opened) ? opened : drive.scenarioSessionId
-  const docked = !!sessionId && sessionId !== hidden && !ended.includes(sessionId)
   const withCalls = hasCalls(menu)
   const api = withCalls && view === 'api'
   const driveKey = drive.branch ?? drive.devUrl
@@ -107,12 +92,14 @@ export function ScenarioDrive({
     if (file) run.mutate({ projectId, file })
     else setBlankOver(scenario?.landingId ?? null)
   }
+  // The errand is named on the click, so Fix it renames the chat even when the
+  // server briefs an already-live one instead of opening a new one.
   const newScenario = () => {
-    setErrand({ kind: 'new' })
+    chat?.begin({ kind: 'new' })
     openChat.mutate({ projectId })
   }
   const fix = (failed: DriveScenario) => {
-    setErrand({ kind: 'fix', name: failed.name })
+    chat?.begin({ kind: 'fix', name: failed.name })
     openChat.mutate({ projectId, fixFile: failed.file })
   }
 
@@ -162,71 +149,37 @@ export function ScenarioDrive({
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 md:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        {!api && strip}
-        {nudge && (
-          <p className="m-0 flex items-center gap-2 px-1 text-xs text-text-tertiary">
-            <span className="min-w-0 flex-1">
-              Setting this up by hand every time?{' '}
-              <button type="button" className={cx(LINK, 'font-medium')} onClick={newScenario}>
-                Make it a scenario.
-              </button>
-            </span>
-            <IconButton size="sm" label="Hide this hint" icon={<IconX />} onClick={() => setNudgeHiddenFor(driveKey)} />
-          </p>
-        )}
-        {api && (
-          <ApiView
-            projectId={projectId}
-            calls={callMenu(menu)}
-            scenario={scenario}
-            strip={strip}
-            toolbar={toolbar}
-            onRun={pick}
-          />
-        )}
-        <div className={api ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
-          <DrivePanel
-            {...(featureId ? { featureId } : { projectId })}
-            url={target.url}
-            frameKey={target.key}
-            toolbar={toolbar}
-          />
-        </div>
-      </div>
-      {docked && (
-        <aside
-          aria-label="Scenario chat"
-          className="flex min-h-80 min-w-0 flex-col overflow-hidden rounded-md bg-surface-inset md:basis-2/5"
-        >
-          <header className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5">
-            <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">
-              {errand.kind === 'fix' ? (
-                <>
-                  <span className="font-medium text-text">Fix scenario</span> · {errand.name}
-                </>
-              ) : (
-                <>
-                  <span className="font-medium text-text">New scenario</span> · Describe the state you want to land in
-                </>
-              )}
-            </span>
-            <IconButton size="sm" label="Hide the scenario chat" icon={<IconX />} onClick={() => setHidden(sessionId)} />
-          </header>
-          <div className="relative min-h-0 flex-1">
-            <ErrorBoundary label="scenario chat">
-              <TerminalView
-                sessionId={sessionId}
-                onEnded={() => {
-                  setEnded((list) => [...list, sessionId])
-                  refresh()
-                }}
-              />
-            </ErrorBoundary>
-          </div>
-        </aside>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+      {!api && strip}
+      {nudge && (
+        <p className="m-0 flex items-center gap-2 px-1 text-xs text-text-tertiary">
+          <span className="min-w-0 flex-1">
+            Setting this up by hand every time?{' '}
+            <button type="button" className={cx(LINK, 'font-medium')} onClick={newScenario}>
+              Make it a scenario.
+            </button>
+          </span>
+          <IconButton size="sm" label="Hide this hint" icon={<IconX />} onClick={() => setNudgeHiddenFor(driveKey)} />
+        </p>
       )}
+      {api && (
+        <ApiView
+          projectId={projectId}
+          calls={callMenu(menu)}
+          scenario={scenario}
+          strip={strip}
+          toolbar={toolbar}
+          onRun={pick}
+        />
+      )}
+      <div className={api ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+        <DrivePanel
+          {...(featureId ? { featureId } : { projectId })}
+          url={target.url}
+          frameKey={target.key}
+          toolbar={toolbar}
+        />
+      </div>
     </div>
   )
 }

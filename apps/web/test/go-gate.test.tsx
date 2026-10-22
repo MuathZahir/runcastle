@@ -3,16 +3,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NextStep } from '../src/lib/feature-ui'
 import { goSummary } from '../src/lib/feature-ui'
-import { featureStatus, leadActions, OVERFLOW_KINDS } from '../src/lib/feature-ui/status-line'
+import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { GoConfirmation } from '../src/components/GoFeatureDialog'
-import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine'
-import { NextStepBar } from '../src/components/workspace/NextStepBar'
+import { GoAction } from '../src/components/bodies/tickets/GoAction'
 
 /**
  * Go follows a finished plan: before the tickets step is complete for this lap
- * the row's Go is disabled with the reason, and its override — Go anyway… —
- * opens the confirmation, which takes the one-line reason history records
- * (CONTEXT.md decision 8). Tier 2: the clicks and the typing are events.
+ * the tickets view's Go (design-mode decision 12) is disabled with the reason,
+ * and its override — Go anyway… — opens the confirmation, which takes the
+ * one-line reason history records (CONTEXT.md decision 8). Tier 2: the clicks
+ * and the typing are events.
  */
 afterEach(cleanup)
 
@@ -28,22 +28,13 @@ function planningRow(ticketsReadyLap: number | null, onAction = vi.fn()) {
     selfPlanning: false,
     now: 0,
   })
-  render(
-    <NextStepBar
-      ns={leadActions(planBar, status)}
-      status={<FeatureStatusLine status={status} />}
-      guidance={false}
-      busy={false}
-      onAction={onAction}
-      demote={OVERFLOW_KINDS}
-    />,
-  )
+  render(<GoAction action={headerActions(planBar, status).go!} busy={false} onGo={() => onAction('burn')} />)
   return onAction
 }
 
 const goButton = () => screen.getByRole<HTMLButtonElement>('button', { name: /^Go$/ })
 
-describe('Go on the planning row', () => {
+describe('Go on the tickets view', () => {
   it('is disabled with the reason before the plan is finished, and Go anyway… takes the override', () => {
     const onAction = planningRow(null)
 

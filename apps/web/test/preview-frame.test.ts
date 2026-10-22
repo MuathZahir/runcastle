@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PREVIEW_CSP, PREVIEW_SANDBOX, previewDocument } from '../src/lib/preview-frame'
+import { PREVIEW_CSP, PREVIEW_SANDBOX, openDesignPath, previewDocument } from '../src/lib/preview-frame'
 
 const POLICY =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'"
@@ -29,5 +29,21 @@ describe('previewDocument', () => {
   it('adds a doctype when the file has none, leaving the file untouched after it', () => {
     const html = '<html><body><p>no doctype</p></body></html>'
     expect(previewDocument(html, 'dark')).toBe(`<!doctype html>${META}${DARK}${html}`)
+  })
+})
+
+describe('openDesignPath', () => {
+  it("reads the path a designed-screen entry's Open in design posts", () => {
+    expect(openDesignPath({ type: 'runcastle:open-design', path: '/preview/invites' })).toBe('/preview/invites')
+  })
+
+  it('ignores every other shape', () => {
+    expect(openDesignPath('runcastle:open-design')).toBeNull()
+    expect(openDesignPath('runcastle:preview-escape')).toBeNull()
+    expect(openDesignPath(null)).toBeNull()
+    expect(openDesignPath({ type: 'runcastle:open-design' })).toBeNull()
+    expect(openDesignPath({ type: 'runcastle:open-design', path: 3 })).toBeNull()
+    expect(openDesignPath({ type: 'runcastle:open-design', path: 'javascript:alert(1)' })).toBeNull()
+    expect(openDesignPath({ type: 'other', path: '/preview/invites' })).toBeNull()
   })
 })

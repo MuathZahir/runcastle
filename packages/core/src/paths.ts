@@ -189,6 +189,15 @@ export function projectNotePath(noteId: string): string {
 }
 
 /**
+ * A feature's design-view crops, the PNGs Select area sends to the chat
+ * (design-mode spec, "The design loop" step 5): `<dataDir>/design-crops/<featureId>/`.
+ * Under the data dir so a crop never lands in the repo the chat commits from.
+ */
+export function designCropsDir(featureId: string): string {
+  return join(dataDir(), 'design-crops', featureId)
+}
+
+/**
  * The workspace-relative directory an annotated note's screenshot is copied
  * into for the burn that fixes it (spec.md "Riding into the burn"). Excluded
  * from git in the workspace it lands in and deleted after the run, so it can

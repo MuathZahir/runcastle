@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { NextStep } from '../src/lib/feature-ui'
 import {
   featureStatus,
+  headerActions,
   leadActions,
   leadWakeOf,
-  OVERFLOW_KINDS,
   type FeatureStatus,
   type FeatureStatusInput,
 } from '../src/lib/feature-ui/status-line'
@@ -20,6 +20,7 @@ const input = (over: {
   agentWorking?: boolean
   driving?: boolean
   selfPlanning?: boolean
+  uncommittedDesign?: boolean
   leadWake?: FeatureStatusInput['leadWake']
   now?: number
 }): FeatureStatusInput => ({
@@ -36,6 +37,7 @@ const input = (over: {
   agentWorking: over.agentWorking ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
+  ...(over.uncommittedDesign ? { uncommittedDesign: true } : {}),
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
   now: over.now ?? 0,
 })
@@ -431,6 +433,18 @@ describe('the action row beside the status line', () => {
     })
   })
 
+  it('disables Go with no override while design work is uncommitted, finished plan or not', () => {
+    for (const ticketsReadyLap of [null, 1]) {
+      const over = { feature: { phase: 'planning' as const, ticketsReadyLap }, uncommittedDesign: true }
+      expect(featureStatus(input(over)).primary).toBe('goBlocked')
+      expect(leadActions(ns({}), featureStatus(input(over))).primary).toEqual({
+        label: 'Go',
+        kind: 'burn',
+        disabled: 'Uncommitted design work: ask the chat to commit or drop it',
+      })
+    }
+  })
+
   it('offers Start test drive, Stop drive and Stop as the one primary for their states', () => {
     expect(leadActions(ns({}), status({ kind: 'ready', primary: 'testDriveStart' })).primary).toEqual({
       label: 'Start test drive',
@@ -465,8 +479,6 @@ describe('the action row beside the status line', () => {
       { label: 'Merge & ship', kind: 'merge' },
       { label: 'Resolve conflict', kind: 'resolveConflict' },
     ])
-    expect(OVERFLOW_KINDS).toContain('resolveConflict')
-    expect(OVERFLOW_KINDS).not.toContain('merge')
     expect(leadActions(ns({}), status({ kind: 'merged' })).secondary).toEqual([])
   })
 
@@ -497,5 +509,53 @@ describe('the action row beside the status line', () => {
       status({ kind: 'ready', primary: 'testDriveStart' }),
     )
     expect(out.secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
+  })
+})
+
+/** design-mode decision 12: the row spread over the one header — one button, Go to the tickets view, the rest in "⋯". */
+describe('the header’s share of the row', () => {
+  const ns = (over: Partial<NextStep>): NextStep => ({ kick: '', secondary: [], busy: false, ...over })
+  const status = (over: Partial<FeatureStatus> = {}): FeatureStatus => ({ kind: 'working', label: 'W', ...over })
+  const MERGE = { label: 'Merge & ship', kind: 'merge' } as const
+  const DRIVE = { label: 'Start test drive', kind: 'testDriveStart' } as const
+
+  it('moves Go to the tickets view, leaving Merge & ship as the header’s button when the resolver offers it', () => {
+    const out = headerActions(ns({ secondary: [MERGE] }), status({ kind: 'planning', primary: 'goGated' }))
+    expect(out.go).toMatchObject({ label: 'Go', kind: 'burn', disabled: 'the plan is not finished' })
+    expect(out.action).toEqual(MERGE)
+    expect(out.overflow).toEqual([])
+  })
+
+  it('keeps Merge & ship out of the header when the resolver did not offer it, reachable from "⋯"', () => {
+    const out = headerActions(ns({}), status({ kind: 'planning', primary: 'go' }))
+    expect(out.action).toBeUndefined()
+    expect(out.overflow).toEqual([MERGE])
+  })
+
+  it('gives the header’s one button to the status’s primary, Merge & ship going to "⋯"', () => {
+    const out = headerActions(ns({ primary: DRIVE, secondary: [MERGE] }), status({ kind: 'ready', primary: 'testDriveStart' }))
+    expect(out.action).toEqual(DRIVE)
+    expect(out.go).toBeUndefined()
+    expect(out.overflow).toEqual([MERGE])
+  })
+
+  it('puts every other former strip action in "⋯", never the human’s burn, run cancel or chat', () => {
+    const out = headerActions(
+      ns({
+        primary: MERGE,
+        secondary: [
+          { label: 'Cancel run', kind: 'cancelRun' },
+          { label: 'Chat', kind: 'chat' },
+          { label: 'Fix the drive', kind: 'fixDrive' },
+        ],
+      }),
+      status({ kind: 'waiting' }),
+    )
+    expect(out.action).toEqual(MERGE)
+    expect(out.overflow).toEqual([{ label: 'Fix the drive', kind: 'fixDrive' }])
+  })
+
+  it('has no button and nothing in "⋯" once merged', () => {
+    expect(headerActions(ns({ secondary: [MERGE] }), status({ kind: 'merged' }))).toEqual({ overflow: [] })
   })
 })

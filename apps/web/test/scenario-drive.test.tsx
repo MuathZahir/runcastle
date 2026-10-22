@@ -7,9 +7,9 @@ import { openMenu } from './floating'
 /**
  * A running drive's scenarios (drive-scenarios decisions 3, 7, 8): the Scenario
  * menu runs one against the live drive, the panel follows each landing, a
- * failure shows its actual error with Fix it, and ＋ New scenario docks the
- * scenario chat beside the panel. Tier 2: menus are portals and the dock opens
- * and closes on clicks and on the session ending.
+ * failure shows its actual error with Fix it, and ＋ New scenario opens the
+ * scenario chat — in the page's chat column, never beside the panel. Tier 2:
+ * menus are portals.
  *
  * The server is the boundary: the scenario list, and the two mutations, whose
  * calls are what is asserted.
@@ -115,6 +115,17 @@ describe('the running drive’s Scenario menu', () => {
     vi.clearAllMocks()
   })
 
+  it('sits in the drive’s one toolbar row above the app, which nothing overlaps', () => {
+    mount(landed('l1'))
+    const [bar, ...more] = screen.getAllByRole('toolbar')
+    expect(more).toHaveLength(0)
+    expect(bar!.contains(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))).toBe(true)
+    expect(bar!.contains(screen.getByRole('button', { name: 'Reload' }))).toBe(true)
+    expect(frame().parentElement!.contains(bar!)).toBe(false)
+    // Nothing but the selection layers is placed over the frame.
+    expect(frame().parentElement!.querySelectorAll('button, a, [role="combobox"]')).toHaveLength(0)
+  })
+
   it('names the current scenario and lists This feature, the others, Blank app and New scenario', () => {
     mount(landed('l1'))
     openMenu(screen.getByRole('button', { name: /Scenario: Expired coupon/ }))
@@ -191,63 +202,14 @@ describe('a failed scenario', () => {
     expect(frame().getAttribute('src')).toBe(DEV)
   })
 
-  it('opens the scenario chat on that file from Fix it, and docks it', () => {
+  it('opens the scenario chat on that file from Fix it, and docks nothing beside the drive', () => {
     mount(failed)
     fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
     expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1', fixFile: SCENARIOS[0]!.file })
-    expect(screen.getByRole('complementary', { name: 'Scenario chat' })).toBeTruthy()
-  })
-})
-
-describe('the docked scenario chat', () => {
-  afterEach(() => {
-    cleanup()
-    vi.clearAllMocks()
-  })
-
-  const dock = () => screen.queryByRole('complementary', { name: 'Scenario chat' })
-
-  it('opens from New scenario beside the panel', () => {
-    mount()
-    expect(dock()).toBeNull()
-    openMenu(screen.getByRole('button', { name: 'Scenario' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
-
-    expect(openScenarioChat).toHaveBeenCalledWith({ projectId: 'proj_1' })
-    expect(dock()?.textContent).toContain('New scenario · Describe the state you want to land in')
-    expect(dock()?.querySelector('[data-terminal="sess_scn"]')).toBeTruthy()
-  })
-
-  it('docks the drive’s live scenario session, hides on close, and reopens from New scenario', () => {
-    mount(undefined, 'sess_live')
-    expect(dock()?.querySelector('[data-terminal="sess_live"]')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hide the scenario chat' }))
-    expect(dock()).toBeNull()
-
-    openMenu(screen.getByRole('button', { name: 'Scenario' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
-    expect(dock()).toBeTruthy()
-  })
-
-  it('closes when the session ends', () => {
-    mount(undefined, 'sess_live')
-    fireEvent.click(dock()!.querySelector('[data-terminal]')!)
-    expect(dock()).toBeNull()
-  })
-
-  it('names a fix by its scenario, including when Fix it briefs the live chat', () => {
-    mount(
-      { file: SCENARIOS[0]!.file, name: 'Broken', status: 'failed', failure: { reason: 'no-entry-url', outputTail: '' } },
-      'sess_live',
-    )
-    expect(dock()?.textContent).toContain('New scenario · Describe the state you want to land in')
-    fireEvent.click(screen.getByRole('button', { name: 'Fix it' }))
-    expect(dock()?.textContent).toContain('Fix scenario · Broken')
-
-    openMenu(screen.getByRole('button', { name: /^Scenario/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'New scenario' }))
-    expect(dock()?.textContent).toContain('New scenario · Describe the state you want to land in')
+    // The chat is the page's chat column's (design-mode decision 9), never an
+    // aside inside the drive — chat-column.test covers where it lands.
+    expect(screen.queryByRole('complementary', { name: 'Scenario chat' })).toBeNull()
+    expect(document.querySelector('[data-terminal]')).toBeNull()
   })
 })
 

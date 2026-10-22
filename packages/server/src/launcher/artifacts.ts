@@ -13,7 +13,7 @@ import type {
   SessionRow,
 } from '@runcastle/core'
 import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
-import { featureDocsRel, sessionDir } from '@runcastle/core/paths'
+import { designCropsDir, featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
 import { ASSET_ENV, resolveAsset } from './asset-paths'
@@ -126,6 +126,25 @@ export function noCodeRule(docs: string): string {
     '- **Package installs are blocked in this worktree** (`bun install`, `npm ci`, `pnpm add`, ' +
     '`yarn` …): it is docs-only, so it carries no dependencies. Verification that needs them ' +
     'happens in the burn sandbox, the review lap, or a test drive of the branch.'
+  )
+}
+
+/**
+ * The rule that REPLACES {@link noCodeRule} for a human-attended planning chat
+ * (design mode, decisions 2 and 6). The chat may write UI so the human can see
+ * and approve it; everything else still rides a ticket. The edit and install
+ * guards lift for it (`isUnguardedChat`), so this is the only fence before Go.
+ */
+export function designRule(docs: string): string {
+  return (
+    '- **You may write UI for design.** Besides this feature\'s docs under ' +
+    `\`${docs}/\`, you may edit components, their preview pages and sample data, following the ` +
+    '`runcastle:design` skill. Data loading, API calls and behaviour are not design: they ride ' +
+    'tickets, burned by an implementation agent in its own sandbox.\n' +
+    '- **You may install dependencies** with the project\'s own install, when design needs them.\n' +
+    '- **Commit an approved design** to this branch as `design: <what>`. Work the human has not ' +
+    'approved stays uncommitted. Go waits until no design work is left uncommitted, so ask the ' +
+    'human to approve, then commit it or drop it.'
   )
 }
 
@@ -245,7 +264,7 @@ export function renderSystemPrompt(
     'they are committed to the feature branch automatically at phase boundaries.',
     '',
     '## Rules',
-    noCodeRule(docs),
+    selfPlan ? noCodeRule(docs) : designRule(docs),
     otherEntrySkillsRule(),
     '',
     ...(selfPlan ? [selfPlanRule(), ''] : []),
@@ -380,7 +399,7 @@ export function renderRevisitPrompt(
     '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
     // The conflict-resolution revisit is briefed to resolve the merge, so the
     // blanket ban would contradict the very kickoff it was opened with (F18).
-    purpose === 'resolve-conflict' ? conflictResolutionRule() : noCodeRule(docs),
+    purpose === 'resolve-conflict' ? conflictResolutionRule() : designRule(docs),
     otherEntrySkillsRule(),
     '',
     ...(headless ? [headlessRelayRule(), ''] : []),
@@ -1447,6 +1466,7 @@ export function renderSettings(
   skillPackDir?: string,
   purpose?: SessionPurpose,
   headless = false,
+  cropsDir?: string,
 ): SessionSettings {
   const cmd = (event: string): CommandHook => ({
     type: 'command',
@@ -1471,6 +1491,9 @@ export function renderSettings(
         ...RUNCASTLE_MCP_ALLOW_RULES,
         ...sessionBashAllowRules(kind, purpose),
         ...(skillPackDir ? [skillPackReadRule(skillPackDir)] : []),
+        // Select-area crops live under the data dir, outside the worktree; the
+        // chat reads the path typed into it without a prompt.
+        ...(cropsDir ? [skillPackReadRule(cropsDir)] : []),
       ],
       deny: entrySkillDenyRules(kind),
     },
@@ -1620,7 +1643,14 @@ export async function writeSessionArtifacts(
   writeFileSync(
     settingsPath,
     JSON.stringify(
-      renderSettings(hookClientPath(), session.kind, pluginDir, session.purpose, session.headless),
+      renderSettings(
+        hookClientPath(),
+        session.kind,
+        pluginDir,
+        session.purpose,
+        session.headless,
+        session.kind === 'chat' && session.featureId ? designCropsDir(session.featureId) : undefined,
+      ),
       null,
       2,
     ),
