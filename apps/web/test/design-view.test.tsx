@@ -12,10 +12,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * boundary and are stubbed; what Select area sends is `drive-panel-target`'s.
  */
 
-type Status = { running: boolean; url?: string; port?: number; hasRecordedCommand: boolean; lastPath?: string }
+type Status = {
+  running: boolean
+  url?: string
+  port?: number
+  paneId?: string
+  hasRecordedCommand: boolean
+  lastPath?: string
+  lastError?: string
+}
 let status: Status | undefined
 let start: { isPending: boolean; isError: boolean; error: { message: string } | null }
+let restart: { isPending: boolean }
 const startMutate = vi.fn()
+const restartMutate = vi.fn()
 const heartbeat = vi.fn()
 const showPath = vi.fn()
 
@@ -25,6 +35,7 @@ vi.mock('../src/trpc', () => ({
     design: {
       status: { useQuery: () => ({ data: status }) },
       start: { useMutation: () => ({ mutate: startMutate, ...start }) },
+      restart: { useMutation: () => ({ mutate: restartMutate, ...restart }) },
       heartbeat: { useMutation: () => ({ mutate: heartbeat }) },
       showPath: { useMutation: () => ({ mutate: showPath }) },
     },
@@ -35,6 +46,10 @@ vi.mock('../src/lib/live', () => ({ useLivePoll: () => 1500 }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: vi.fn() }) }))
 vi.mock('../src/lib/reviews', () => ({ uploadScreenshot: vi.fn() }))
 vi.mock('../src/lib/project-notes', () => ({ uploadProjectNoteScreenshot: vi.fn() }))
+// The terminal websocket is a boundary: the stand-in shows which pane it streams.
+vi.mock('../src/components/TerminalView', () => ({
+  TerminalView: ({ sessionId }: { sessionId: string }) => <div data-testid="terminal">{sessionId}</div>,
+}))
 
 const { DesignView, DESIGN_HEARTBEAT_MS } = await import('../src/components/design/DesignView')
 
@@ -47,6 +62,7 @@ let visibility: DocumentVisibilityState
 beforeEach(() => {
   status = undefined
   start = { isPending: false, isError: false, error: null }
+  restart = { isPending: false }
   visibility = 'visible'
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
   // A Chromium that can capture its own tab, so Select area is offered.
@@ -173,5 +189,79 @@ describe('DesignView', () => {
 
     act(() => screen.getByRole('button', { name: 'Start it again' }).click())
     expect(startMutate).toHaveBeenCalledWith({ featureId: 'f1' })
+  })
+
+  it('after the frame navigates away, Back returns it to the agent’s page', () => {
+    status = { ...RUNNING, lastPath: '/preview/invites' }
+    render(<DesignView featureId="f1" />)
+    const before = document.querySelector('iframe')!
+    // A link inside the cross-origin preview took the frame to the project's own route.
+    before.setAttribute('src', 'http://localhost:30001/dashboard')
+
+    act(() => screen.getByRole('button', { name: 'Back to /preview/invites' }).click())
+
+    const after = document.querySelector('iframe')!
+    expect(after).not.toBe(before)
+    expect(after.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+  })
+
+  it('Back names the root when no path was opened', () => {
+    status = RUNNING
+    render(<DesignView featureId="f1" />)
+    expect(screen.getByRole('button', { name: 'Back to /' })).toBeTruthy()
+  })
+
+  it('Restart server restarts it, says it is starting, then reloads the frame at the path', () => {
+    status = RUNNING
+    const { rerender } = render(<DesignView featureId="f1" path="/preview/invites" />)
+    const before = document.querySelector('iframe')!
+
+    act(() => screen.getByRole('button', { name: 'Restart server' }).click())
+    expect(restartMutate).toHaveBeenCalledWith({ featureId: 'f1' }, expect.anything())
+
+    restart = { isPending: true }
+    status = { running: false, hasRecordedCommand: true }
+    rerender(<DesignView featureId="f1" path="/preview/invites" />)
+    expect(screen.getByText('Starting the design server…')).toBeTruthy()
+
+    restart = { isPending: false }
+    status = RUNNING
+    act(() => restartMutate.mock.calls[0][1].onSuccess())
+    rerender(<DesignView featureId="f1" path="/preview/invites" />)
+    const after = document.querySelector('iframe')!
+    expect(after).not.toBe(before)
+    expect(after.getAttribute('src')).toBe('http://localhost:30001/preview/invites')
+  })
+
+  it('Show output opens the design server’s own terminal', () => {
+    status = { ...RUNNING, paneId: 'design:f1' }
+    render(<DesignView featureId="f1" />)
+    expect(screen.queryByTestId('terminal')).toBeNull()
+
+    act(() => screen.getByRole('button', { name: 'Show output' }).click())
+
+    expect(screen.getByTestId('terminal').textContent).toBe('design:f1')
+    act(() => screen.getByRole('button', { name: 'Hide output' }).click())
+    expect(screen.queryByTestId('terminal')).toBeNull()
+  })
+
+  it('when the server dies, shows that it stopped with its last output and Restart server', () => {
+    status = RUNNING
+    const { rerender } = render(<DesignView featureId="f1" />)
+
+    status = {
+      running: false,
+      hasRecordedCommand: true,
+      lastError: "Module not found: Can't resolve <dynamic>\n  in @met4citizen/talkinghead",
+    }
+    rerender(<DesignView featureId="f1" />)
+
+    expect(screen.getByText('The design server stopped')).toBeTruthy()
+    expect(screen.getByText(/Module not found: Can't resolve <dynamic>/).textContent).toContain(
+      '@met4citizen/talkinghead',
+    )
+    expect(document.querySelector('iframe')).toBeNull()
+    act(() => screen.getByRole('button', { name: 'Restart server' }).click())
+    expect(restartMutate).toHaveBeenCalledWith({ featureId: 'f1' }, expect.anything())
   })
 })

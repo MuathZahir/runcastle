@@ -23,6 +23,15 @@ describe('panelShowRequest', () => {
     expect(panelShowRequest(event(1, { data: { view: 'body' } }), 'f1')).toEqual({ view: 'body' })
   })
 
+  it('reads the screen width the agent asked the design view to open at, and drops one that is no width', () => {
+    expect(panelShowRequest(event(1, { data: { view: 'design', path: '/p', width: 390 } }), 'f1')).toEqual({
+      view: 'design',
+      path: '/p',
+      width: 390,
+    })
+    expect(panelShowRequest(event(1, { data: { view: 'design', width: 'wide' } }), 'f1')).toEqual({ view: 'design' })
+  })
+
   it("ignores another feature's request, another event, and a view it does not know", () => {
     expect(panelShowRequest(event(1, { featureId: 'f2' }), 'f1')).toBeNull()
     expect(panelShowRequest(event(1, { type: 'docs.changed' }), 'f1')).toBeNull()

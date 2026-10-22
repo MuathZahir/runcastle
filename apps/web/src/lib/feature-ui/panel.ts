@@ -81,6 +81,8 @@ export const PANEL_SHOW_EVENT = 'panel.show'
 export interface PanelShowRequest {
   view: PanelView
   path?: string
+  /** For the design view: the screen width the agent asked to lay the page out at. */
+  width?: number
 }
 
 /**
@@ -93,9 +95,13 @@ export function panelShowRequest(
   featureId: string,
 ): PanelShowRequest | null {
   if (event.type !== PANEL_SHOW_EVENT || event.featureId !== featureId) return null
-  const data = (event.data ?? {}) as { view?: unknown; path?: unknown }
+  const data = (event.data ?? {}) as { view?: unknown; path?: unknown; width?: unknown }
   if (typeof data.view !== 'string' || !isPanelView(data.view)) return null
-  return typeof data.path === 'string' ? { view: data.view, path: data.path } : { view: data.view }
+  return {
+    view: data.view,
+    ...(typeof data.path === 'string' ? { path: data.path } : {}),
+    ...(typeof data.width === 'number' && Number.isInteger(data.width) && data.width > 0 ? { width: data.width } : {}),
+  }
 }
 
 /** What the phase body is called in the switcher and on its topbar button. */
@@ -124,6 +130,8 @@ export interface PanelState {
   view: PanelView | null
   /** Where in the design server the design view points (decision 3). */
   path?: string
+  /** The screen width the agent opened the design view at; unset, the human's remembered one holds. */
+  width?: number
   origin?: PanelOrigin
   /** The panel's share of the row, 0 (the chat alone) to 1 (the panel full). */
   share: number
@@ -139,7 +147,7 @@ export const HALF = 0.5
 export const INITIAL_PANEL: PanelState = { view: null, share: HALF, collapsed: false }
 
 export type PanelAction =
-  | { type: 'open'; view: PanelView; path?: string; origin: Exclude<PanelOrigin, 'runcastle'> }
+  | { type: 'open'; view: PanelView; path?: string; width?: number; origin: Exclude<PanelOrigin, 'runcastle'> }
   /** Runcastle's one way in: the view the human's own click leads to. */
   | { type: 'follow'; click: PanelFollowedClick }
   | { type: 'close' }
@@ -169,14 +177,20 @@ export function clampShare(share: number): number {
  */
 export function panelReducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
-    case 'open':
-      return withView(state, action.view, action.origin, action.path)
+    case 'open': {
+      const opened = withView(state, action.view, action.origin, action.path)
+      if (action.view !== 'design') return opened
+      // A width holds for the design open that asked for it: the next one
+      // without a width goes back to the human's remembered width.
+      const { width: _width, ...rest } = opened
+      return action.width !== undefined ? { ...rest, width: action.width } : rest
+    }
     case 'follow':
       return withView(state, FOLLOWS[action.click], 'runcastle')
     case 'switch':
       return withView(state, action.view, 'human')
     case 'close': {
-      const { path: _path, origin: _origin, ...rest } = state
+      const { path: _path, width: _width, origin: _origin, ...rest } = state
       // The view the shell opened (the address bar, the palette) counts as last too.
       const last = state.view ?? state.last
       return { ...rest, view: null, collapsed: false, ...(last ? { last } : {}) }

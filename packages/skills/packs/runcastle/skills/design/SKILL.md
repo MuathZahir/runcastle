@@ -33,7 +33,7 @@ States need no address and no backend. In runcastle's own repo start from `.runc
 ## 3. Serve it and show it
 
 - `mcp__runcastle__start_design_server({ command? })` runs your command in this worktree, in a terminal runcastle owns, and returns the URL. Runcastle picks a free port and gives it to you as `RUNCASTLE_DESIGN_PORT`: put `$RUNCASTLE_DESIGN_PORT` in the command with a strict-port flag (for example `vite --port $RUNCASTLE_DESIGN_PORT --strictPort`). The command is recorded in `.runcastle/design.json`. **Commit that file with the design.** Once it exists the argument is optional.
-- `mcp__runcastle__show_panel({ view: 'design', path })` opens the human's panel at the server's URL plus `path`. It refuses while no server runs and none is recorded.
+- `mcp__runcastle__show_panel({ view: 'design', path })` opens the human's panel at the server's URL plus `path`. It refuses while no server runs and none is recorded. The page lays out at a real screen width, scaled to fit the pane (Desktop 1440 unless the human picked another); pass `width: 390` to show the mobile layout, or `768` for a tablet.
 - The other views are `body`, `preview`, `drive` and `details`. Open one only when you are talking about that thing, not otherwise.
 
 The server stops when this chat ends, when the feature ships, or after 30 minutes with no design view on screen. Opening the view again restarts it.
