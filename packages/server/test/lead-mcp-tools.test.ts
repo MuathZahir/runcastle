@@ -100,6 +100,17 @@ describe('the lead’s MCP tools', () => {
     expect(out.text).toMatch(/no Go yet/)
   })
 
+  it('dispatch_round refuses a pending blocker outside the round, as a tool error', async () => {
+    const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
+    const [b] = storeTickets(ctx, featureId, [{ ...ticketInput('b'), blockedBy: [a.seq] }], { blockedByAreGlobal: true })
+    await go(ctx, featureId)
+
+    const out = await call('dispatch_round', { seqs: [b.seq] })
+
+    expect(out.isError).toBe(true)
+    expect(out.text).toMatch(/not in this round/)
+  })
+
   it('dispatch_round starts a round over the named tickets, which the context then reports', async () => {
     const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
     await go(ctx, featureId)

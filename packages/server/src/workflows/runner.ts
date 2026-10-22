@@ -187,6 +187,13 @@ export async function startRun(
       updateTicket(ctx, id, patch)
     },
     listTickets: listRunTickets,
+    ...(scope
+      ? {
+          satisfiedOutside: opened
+            .filter((t) => !scope.has(t.id) && (t.status === 'done' || t.status === 'cancelled'))
+            .map((t) => t.seq),
+        }
+      : {}),
     addTicketTokens: (id, usage, sessionIds) => addTicketTokens(ctx, id, usage, sessionIds),
     storeTickets: (inputs) => storeTickets(ctx, featureId, inputs),
     listFindings: () => listFindingsByFeature(ctx, featureId),

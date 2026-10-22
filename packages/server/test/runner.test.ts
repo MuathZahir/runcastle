@@ -9,7 +9,7 @@ import { listAfter } from '../src/services/events'
 import { commitDocs, createFeatureBranch, ensureTalkWorktree } from '../src/services/git'
 import { getRunRow } from '../src/services/repo'
 import { listByFeature as listFindings } from '../src/services/review-findings'
-import { storeTickets } from '../src/services/tickets'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { cancelRun, startRun, workflowClaimsFeatureBranch } from '../src/workflows/runner'
 import { useDataDir } from './helpers/data-dir'
@@ -318,6 +318,41 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
       if (original) workflowRegistry.set('ticket-burner', original)
       else workflowRegistry.delete('ticket-burner')
     }
+  })
+
+  it('a scoped run carries the finished tickets it left out; an unscoped run carries none', async () => {
+    const input = (title: string) => ({ title, goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] })
+    const [done, cancelled, , failed, named] = storeTickets(
+      ctx,
+      feature.id,
+      ['a', 'b', 'c', 'd', 'e'].map(input),
+    )
+    updateTicket(ctx, done.id, { status: 'done', commits: ['abc'] })
+    updateTicket(ctx, cancelled.id, { status: 'cancelled' })
+    updateTicket(ctx, failed.id, { status: 'failed', error: 'x' })
+    const seen: Array<{ satisfiedOutside?: number[]; tickets: number; listed: number }> = []
+    const def: WorkflowDef = {
+      id: 'test-capture',
+      async run(wctx) {
+        seen.push({
+          satisfiedOutside: wctx.satisfiedOutside,
+          tickets: wctx.tickets.length,
+          listed: wctx.listTickets?.().length ?? -1,
+        })
+        return { status: 'succeeded', summary: 'ok' }
+      },
+    }
+    workflowRegistry.set(def.id, def)
+    try {
+      await (await startRun(ctx, feature.id, def.id, { ticketIds: [named.id] })).done
+      await (await startRun(ctx, feature.id, def.id)).done
+    } finally {
+      workflowRegistry.delete(def.id)
+    }
+    expect(seen).toEqual([
+      { satisfiedOutside: [done.seq, cancelled.seq], tickets: 1, listed: 1 },
+      { satisfiedOutside: undefined, tickets: 5, listed: 5 },
+    ])
   })
 
   it('parks the talk worktree on a chat branch for the run, then hands the feature branch back', async () => {

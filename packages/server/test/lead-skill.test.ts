@@ -47,6 +47,8 @@ describe('the lead skill', () => {
     expect(text).toContain('**Contract first when the work spans layers.**')
     expect(text).toContain('`blockedBy` it in the same round')
     expect(text).toContain('**Contracts live in code, never in a doc**')
+    expect(text).toContain('those count as satisfied, so keep those edges rather than re-emitting tickets')
+    expect(text).toContain('A blocker that is still pending or failed must be named in the same round.')
   })
 
   it('trusts the record when a round returns, and re-plans on a wrong contract', () => {

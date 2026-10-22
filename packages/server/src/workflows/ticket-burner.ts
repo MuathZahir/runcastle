@@ -3144,6 +3144,9 @@ export async function burnTickets(
   // of a partially-failed feature reports against work that never landed. The
   // review now waits for the whole feature instead — see `reviewGate`.
   const satisfied = (s: TicketStatus | undefined): boolean => s === 'done' || s === 'cancelled'
+  // Finished blockers a scoped run left out of its ticket set: known only as
+  // "satisfied", never scheduled, so the gate and the counts stay the run's own.
+  const satisfiedOutside = new Set(ctx.satisfiedOutside ?? [])
 
   /** A fix ticket one review owns: it declares that review as its blocker. */
   const mintedByReview = (t: Ticket, reviewSeq: number): boolean =>
@@ -3288,11 +3291,11 @@ export async function burnTickets(
       // tried and failed: no retry can produce it, so it cascades whatever the
       // kind. A blocker that FAILED cascades to an implementation ticket; for a
       // review it is `reviewGate`'s business, which defers instead.
-      if (!present) return { blockedBy: b, present }
+      if (!present && !satisfiedOutside.has(b)) return { blockedBy: b, present }
       if (bs === 'failed' && !isReviewTicket(t)) return { blockedBy: b, present }
     }
     if (isReviewTicket(t)) return reviewGate(t.seq)
-    return t.blockedBy.every((b) => satisfied(status.get(b))) ? 'ready' : 'wait'
+    return t.blockedBy.every((b) => satisfiedOutside.has(b) || satisfied(status.get(b))) ? 'ready' : 'wait'
   }
 
   /** Keep a ticket's own account of its work for the run aggregate. */
@@ -3612,7 +3615,8 @@ export async function burnRun(
   const tickets = ctx.tickets
   // Cancelled tickets never burn and never count against success — but they DO
   // stay in the scheduler's ticket set so dependents can see their blocker is
-  // satisfied (`burnTickets` receives the full list).
+  // satisfied (`burnTickets` receives the full list). A scoped run (a round)
+  // learns of finished blockers it left out through `ctx.satisfiedOutside`.
   const burnable = tickets.filter((t) => t.status !== 'cancelled')
   const cancelled = tickets.length - burnable.length
 

@@ -49,6 +49,12 @@ export interface WorkflowCtx {
    * never mints tickets mid-run needs it, and neither does a test fake.
    */
   listTickets?(): Ticket[]
+  /**
+   * Seqs of tickets a scoped run (a round) left out of `tickets` that were
+   * `done` or `cancelled` when it started. A blocker in this set is satisfied
+   * but is never scheduled or counted as the run's own. Unset on a whole-feature run.
+   */
+  satisfiedOutside?: number[]
   /** Store scheduler-created tickets through the same service as human/agent batches. */
   storeTickets?(inputs: TicketInput[]): Ticket[]
   /** Read findings when a verification ticket records the fixes it is checking. */
