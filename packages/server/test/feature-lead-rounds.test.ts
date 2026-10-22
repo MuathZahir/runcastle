@@ -257,6 +257,19 @@ describe('the feature lead runs rounds', () => {
         )
       })
 
+      it('reports an orphaned burning blocker outside the round as failed, after the sweep', async () => {
+        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const [a, b] = seedGraph(featureId, { 2: [1] }, 2)
+        updateTicket(ctx, a.id, { status: 'burning' })
+
+        const err = (await dispatchRound(ctx, featureId, [b.seq]).catch((x: unknown) => x)) as GateError
+
+        expect(err).toBeInstanceOf(GateError)
+        expect(err.message).toContain(`ticket ${b.seq} is blocked by ticket ${a.seq}, which is not in this round and is failed`)
+        expect(listByFeature(ctx, featureId).find((t) => t.id === a.id)?.status).toBe('failed')
+        expect(runCount()).toBe(0)
+      })
+
       it('accepts blockers outside the round that are done or cancelled', async () => {
         const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
         const [a, b, c] = seedGraph(featureId, { 3: [1, 2] }, 3)

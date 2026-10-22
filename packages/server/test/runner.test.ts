@@ -322,7 +322,7 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
 
   it('a scoped run carries the finished tickets it left out; an unscoped run carries none', async () => {
     const input = (title: string) => ({ title, goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [] })
-    const [done, cancelled, pending, failed, named] = storeTickets(
+    const [done, cancelled, , failed, named] = storeTickets(
       ctx,
       feature.id,
       ['a', 'b', 'c', 'd', 'e'].map(input),
@@ -349,7 +349,6 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
     } finally {
       workflowRegistry.delete(def.id)
     }
-    expect(pending.status).toBe('pending')
     expect(seen).toEqual([
       { satisfiedOutside: [done.seq, cancelled.seq], tickets: 1, listed: 1 },
       { satisfiedOutside: undefined, tickets: 5, listed: 5 },

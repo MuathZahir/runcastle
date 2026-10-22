@@ -39,7 +39,7 @@ If a "small" change keeps growing, stop and make it a ticket.
 
 ## 2. Plan a round
 
-1. **Write the tickets** with `emit_tickets`, or reshape pending ones with `update_ticket` / `cancel_ticket`, following the tickets skill. Then **dispatch** with `dispatch_round({ seqs })`, naming exactly the pending tickets this round covers. Tickets you do not name wait for a later round. A ticket may stay blocked by tickets that landed or were cancelled in an earlier round: those count as satisfied, so keep those edges rather than re-emitting tickets. A blocker that is still pending must be named in the same round.
+1. **Write the tickets** with `emit_tickets`, or reshape pending ones with `update_ticket` / `cancel_ticket`, following the tickets skill. Then **dispatch** with `dispatch_round({ seqs })`, naming exactly the pending tickets this round covers. Tickets you do not name wait for a later round. A ticket may stay blocked by tickets that landed or were cancelled in an earlier round: those count as satisfied, so keep those edges rather than re-emitting tickets. A blocker that is still pending or failed must be named in the same round.
 2. **Every worker task names its deliverable and how it is checked.** A worker with no stated check reports success on its own terms. Say what is built and what proves it: the test that goes green, the command that passes, the screen that shows it.
 3. **Title tickets `{group}: {task}`** — `Checkout: apply the coupon at payment`. The group is the area of the feature; the task is the one thing this worker does.
 4. **Keep the round to `burnConcurrency` workers or fewer.** That is a soft cap, not a limit: workers past it only queue. A wider round also has more to reconcile when it comes back.
