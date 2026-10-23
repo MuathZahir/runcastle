@@ -43,24 +43,52 @@ before adding.
 ```
 ┌ canvas ───────────────────────────────────────────────────────────────┐
 │ Sidebar (248, resizable, closable)     ┌ content panel (surface) ─────┐ │
-│  [mark] project ▾            [new]     │ topbar 44: crumbs · tabs · ⋯ │ │
-│  [search           Ctrl K]             │──────────────────────────────│ │
-│  Home · Chats · Activity               │                              │ │
-│  Needs you 2                           │   page column (760 / 1040)   │ │
-│   ◔ feature row             3/7        │   title-lg                   │ │
-│  Shipped 104                           │   meta line                  │ │
-│   ● feature row                        │   stepper · next step        │ │
-│  …                                     │   sections, separated by air │ │
-│  ─────                                 │                              │ │
-│  ● server  docker   ☾  ⚙               └──────────────────────────────┘ │
+│  [mark] project ▾      [⌕] [new] [◫]   │ topbar 44: crumbs · tabs · ⋯ │ │
+│  ╭ ⟡ Orchestrator             ● › ╮    │──────────────────────────────│ │
+│  ╰   Waiting on you · 2 notes     ╯    │                              │ │
+│   feature row                    ●     │   page column (760 / 1040)   │ │
+│   ◔ Waiting on you              7m     │   title-lg                   │ │
+│  ∿ Working  (2)                  ⌄     │   meta line                  │ │
+│  ╭ feature row ─ shimmering words ╮    │   stepper · next step        │ │
+│  ╰────────────────── light ───────╯    │   sections, separated by air │ │
+│  ☰ Backlog (3)                   ›     │                              │ │
+│  ⑂ Shipped (104)                 ›     │                              │ │
+│  ╭ ▶ Test drive                 ● ╮    │                              │ │
+│  ⚙ ☀ 🔔                       ⬡ ●     └──────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Canvas** holds the sidebar and the content panel. The content panel is
   `bg-surface`, `border border-border`, `rounded-lg`, inset 8px from the window's
   top/right/bottom. There is no global title bar and no bottom status bar: the
-  project switcher + search live at the top of the sidebar; the status dots
-  (server, live, docker), notifications, theme and settings live in its foot.
+  project switcher + search live at the top of the sidebar; settings, theme,
+  notifications and the server / sandbox reading live in its foot.
+- **The project sidebar** (`components/SidebarParts.tsx`; preview
+  `preview/sidebar.html`). Head: switcher, then Search (icon, ⌘/Ctrl K), Create,
+  Close. Under it the **Orchestrator** card, the project's own door. Then, with no
+  heading, what needs you: Preparation while owed, features waiting on you (amber
+  dot; red for a failed run), then stopped ones (grey dot, "Stopped · 4/6").
+  Then the **Working** shelf, open, its rows in the bay. Then the folded shelves
+  Backlog, Shipped (five, then "Show N more"), Archived, hairlines between them.
+  The foot: live drives as cards, then one line of icons.
+  - **Rows are two lines**: a 14px title with at most one trailing dot, then a
+    12px line of the 12px phase glyph, the state in words, and the age. Every
+    lane draws the same row; there are no lane headings over the moving work.
+  - **One card material**: `rounded-lg`, a fill of 2.5% of `text` over the
+    canvas, a hairline `ring-border-subtle`. The selected row, the Working bay
+    and a live drive wear it; rows inside a card take `rounded-md` so the
+    corners nest. Hover is a 3.5% fill — never the light `surface-selected` block.
+  - **The Orchestrator card** is the sidebar's one accent fill (a sanctioned
+    exception to "never a gradient"): a dark accent wash from the icon side, a
+    fine accent grid fading in from the far corner, `IconOrchestrator` in a
+    small accent tile, the name semibold. Still at rest; on hover
+    `orchestrator-beat` lights the hub's nodes in turn and sends one sheen across.
+  - **Live work moves, waiting work is still**: the Working bay's edge carries
+    one travelling accent light (`orbit-light`) and its rows' words shimmer
+    (`text-shimmer`); rows that need you only wear their dot.
+  - **Shelf counts sit in a small round well** (`ShelfCount`) — a sidebar-only
+    exception to "no pills"; nowhere else.
+  - Behind the head, a static `film-grain` at 7%, fading out downward.
 - **The sidebar has two states: open or closed** (design-mode decision 12).
   Closed is zero width — no icon rail, nothing of it left on the canvas — and
   the content panel takes the whole window. Ctrl/⌘+B toggles it, the sidebar's
@@ -227,7 +255,7 @@ everywhere** — no uppercase-tracked labels. Numbers that change use
 | `StatusDot` | 6px dot; tone success · warning · danger · accent · live (breathing) · neutral. |
 | `StatusLabel` | dot/glyph + word in `text-secondary` — what every former "chip" becomes. |
 | `SectionLabel` | 12px medium sentence-case group heading + count + one trailing action. |
-| `NavItem` | 32px sidebar row: icon/PhaseIcon, one-line truncated label, trailing meta; selected = `surface-selected` + `text`, nothing else. Row menu on hover "…" / right-click. |
+| `NavItem` | 32px one-line row: icon/PhaseIcon, one-line truncated label, trailing meta; selected = `surface-selected` + `text`, nothing else. Row menu on hover "…" / right-click. The project sidebar's feature rows are two-line (`SidebarFeatureRow`, §Frame). |
 | `ListRow` | 40px list row: glyph, one-line title (or wrapping prose), optional second line, trailing meta; hover actions float over the meta; a control (a model picker) sits beside the row's button, never inside it. |
 | `PropertyList` | Two quiet columns: `text-tertiary` keys, `text` values with a leading glyph. |
 | `MetaLine` | One line of small inline facts separated by space. |
@@ -279,6 +307,9 @@ everything honours `prefers-reduced-motion`, bar the progress pulse below.
   freezing into a still frame — it must still say "working".
 - Live state: `StatusDot tone="live"` breathes (`animate-breathe`, 2s); spinners
   only beside a word that says the state.
+- The sidebar's live garnish (§Frame): `text-shimmer` on a working row's words
+  (2.4s), `orbit-light` on the Working bay's edge (4s), `orchestrator-beat` on
+  hover only. Under reduced motion the words go plain and the edge evenly lit.
 - Phase advance: the PhaseIcon fill sweeps to its new fraction (240ms).
 - Toasts slide in from the bottom-right, 240ms.
 

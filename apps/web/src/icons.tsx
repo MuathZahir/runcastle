@@ -198,6 +198,22 @@ export function IconActivity(p: IconProps) {
   )
 }
 
+/**
+ * The orchestrator: a hub conducting three nodes. The nodes carry `data-node`
+ * so the Orchestrator card can light them in turn (`orchestrator-beat`).
+ */
+export function IconOrchestrator(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 4.5 6.5 7M12 4.5 9.5 7M8 10.5v2.25" opacity={0.7} />
+      <circle cx="8" cy="8.5" r="2" />
+      <circle data-node cx="3" cy="3.5" r="1.25" />
+      <circle data-node cx="13" cy="3.5" r="1.25" />
+      <circle data-node cx="8" cy="14" r="1.25" />
+    </svg>
+  )
+}
+
 export function IconFolder(p: IconProps) {
   return (
     <svg {...base(p)}>
