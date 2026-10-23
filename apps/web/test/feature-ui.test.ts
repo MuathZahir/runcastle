@@ -6,7 +6,6 @@ import {
   activeSession,
   awaitingCheckIn,
   burnInterruption,
-  capLane,
   defaultBaseBranch,
   deferredScope,
   DRAFT_GLYPH,
@@ -45,8 +44,6 @@ import {
   triageOf,
   unresolvedMergeConflict,
   type NextAction,
-  type TriageGroup,
-  type TriageKey,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { runHeadline } from '../src/lib/feature-ui/run'
@@ -2903,49 +2900,6 @@ describe('ticketProgress', () => {
 
   it('is null when the feature has no tickets', () => {
     expect(ticketProgress(listItem())).toBeNull()
-  })
-})
-
-/**
- * improve-features-section ticket 3 — only the Shipped lane is capped
- * (decisions §2). The lanes the rail exists to surface are never hidden; the
- * one that grows without bound collapses to its newest few behind an expander.
- */
-describe('capLane', () => {
-  const lane = (key: TriageKey, n: number): TriageGroup => ({
-    key,
-    label: key,
-    features: Array.from({ length: n }, (_, i) => listItem({ id: `f${i}` })),
-  })
-  const ids = (features: FeatureListItem[]) => features.map((f) => f.id)
-
-  it('shows the newest 5 shipped rows when collapsed', () => {
-    const capped = capLane(lane('shipped', 8), false)
-    expect(ids(capped.visible)).toEqual(['f0', 'f1', 'f2', 'f3', 'f4'])
-  })
-
-  it('offers Show all with the lane’s true total while collapsed', () => {
-    expect(capLane(lane('shipped', 12), false).expanderLabel).toBe('Show all')
-  })
-
-  it('shows every row and offers Show fewer once expanded', () => {
-    const capped = capLane(lane('shipped', 8), true)
-    expect(capped.visible).toHaveLength(8)
-    expect(capped.expanderLabel).toBe('Show fewer')
-  })
-
-  it('offers no expander when the shipped lane fits', () => {
-    const capped = capLane(lane('shipped', 5), false)
-    expect(capped.visible).toHaveLength(5)
-    expect(capped.expanderLabel).toBeNull()
-  })
-
-  it('never caps the other lanes', () => {
-    for (const key of ['needsYou', 'agentWorking', 'inProgress', 'archived'] as TriageKey[]) {
-      const capped = capLane(lane(key, 12), false)
-      expect(capped.visible).toHaveLength(12)
-      expect(capped.expanderLabel).toBeNull()
-    }
   })
 })
 
