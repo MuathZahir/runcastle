@@ -3,12 +3,12 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The open-note count on the sidebar's Project row (project-notes
- * decisions #10).
+ * The open-note count on the sidebar's Orchestrator card (project-notes
+ * decisions #10), said in words on its second line.
  *
- * The badge belongs to that row because the row IS the door the pile is read and
+ * The count belongs to that card because it IS the door the pile is read and
  * triaged behind, and it is on every in-project screen. Tier 2 rather than a
- * static render: the count is a query, so the row has to be mounted with one
+ * static render: the count is a query, so the card has to be mounted with one
  * answered — and hiding at zero is the half of the rule a rendered string with a
  * count in it would never catch.
  */
@@ -71,25 +71,24 @@ function rail() {
   )
 }
 
-/** The sidebar's Project row — the project home's door. */
-const projectRow = () =>
-  screen.getAllByRole('button').find((el) => el.textContent?.startsWith('Project'))!
+
+/** The sidebar's Orchestrator card — the project chat's door. */
+const orchestrator = () => screen.getByRole('button', { name: /^Orchestrator/ })
 
 afterEach(() => {
   cleanup()
   count.value = 0
 })
 
-describe('the project row’s open-note badge', () => {
+describe('the Orchestrator card’s open-note count', () => {
   it('counts the notes waiting to be triaged', () => {
     count.value = 4
 
     rail()
 
-    expect(projectRow().textContent).toBe('Project4')
-    expect(screen.getByTitle('4 notes waiting to be triaged')).toBeTruthy()
-    // A bare number is not a sentence — the row says what it counts.
-    expect(projectRow().getAttribute('title')).toBe('runcastle — 4 open notes')
+    expect(orchestrator().textContent).toBe('OrchestratorPlan, cut and ask · 4 notes')
+    // The tooltip says what the count is about.
+    expect(orchestrator().getAttribute('title')).toBe('runcastle — 4 open notes')
   })
 
   it('says "note" of a single one', () => {
@@ -97,14 +96,14 @@ describe('the project row’s open-note badge', () => {
 
     rail()
 
-    expect(projectRow().getAttribute('title')).toBe('runcastle — 1 open note')
+    expect(orchestrator().textContent).toContain('· 1 note')
+    expect(orchestrator().getAttribute('title')).toBe('runcastle — 1 open note')
   })
 
-  it('is hidden at zero — an empty inbox is not news', () => {
+  it('is left out at zero — an empty pile is not news', () => {
     rail()
 
-    expect(screen.queryByTitle(/waiting to be triaged/)).toBeNull()
-    expect(projectRow().textContent).toBe('Project')
-    expect(projectRow().getAttribute('title')).toMatch(/^Talk to the project/)
+    expect(orchestrator().textContent).toBe('OrchestratorPlan, cut and ask')
+    expect(orchestrator().getAttribute('title')).toMatch(/^Talk to the project/)
   })
 })

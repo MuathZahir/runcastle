@@ -155,23 +155,6 @@ export function projectStats(features: FeatureListItem[]): ProjectStats {
 }
 
 /**
- * Runs in flight in projects OTHER than the one being looked at — the titlebar
- * pill's number (decision 7).
- *
- * It used to be the total across every project, which double-counted work the
- * rail's own "Agent working" lane was already itemising by name three inches
- * away, and left the titlebar and the lane disagreeing by whatever this project
- * was running. The one number a frame earns is the work you cannot see from
- * here, so the current project is subtracted and the pill says "elsewhere".
- */
-export function runsElsewhere(
-  stats: readonly { projectId: string; activeRuns: number }[],
-  currentProjectId: string | null,
-): number {
-  return stats.reduce((n, s) => (s.projectId === currentProjectId ? n : n + s.activeRuns), 0)
-}
-
-/**
  * The repo's folder name — the last segment of its path (decision 8).
  *
  * Two projects can carry the same name, and the switcher's rows are then

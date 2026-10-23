@@ -2115,10 +2115,10 @@ describe.skip('draft derivations', () => {
     expect(needsMe(listItem({ phase: 'planning' }))?.kind).toBe('grill')
   })
 
-  it('chips a draft as "Draft" instead of its age', () => {
+  it('chips a draft as "In the backlog" instead of its age', () => {
     const chip = rowChip(draft({ lastActivityAt: NOW - 600_000 }), NOW)
     expect(chip.kind).toBe('draft')
-    expect(chip.text).toBe('Draft')
+    expect(chip.text).toBe('In the backlog')
   })
 
   it('wears the ◌ glyph rather than a phase glyph', () => {
@@ -2144,7 +2144,7 @@ describe.skip('draft derivations', () => {
       listItem({ id: 'active', phase: 'planning' }),
     ])
     expect(groups.map((g) => g.key)).toEqual(['inProgress', 'drafts', 'shipped'])
-    expect(groups.find((g) => g.key === 'drafts')?.label).toBe('Drafts')
+    expect(groups.find((g) => g.key === 'drafts')?.label).toBe('Backlog')
   })
 
   it('nextStep offers Start as a draft’s one action', () => {

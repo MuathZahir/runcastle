@@ -87,7 +87,7 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   if (f.status === 'draft') {
     const open = blockers(f.dependsOn)
     if (open.length === 0)
-      return { kind: 'draft', text: 'Draft', title: 'parked — click Start to cut its branch' }
+      return { kind: 'draft', text: 'In the backlog', title: 'parked — click Start to cut its branch' }
     const text = open.length === 1 ? `Waits on ${open[0]!.slug}` : `Waits on ${open.length}`
     return { kind: 'draft', text, title: `waits on ${blockerList(f.dependsOn)}` }
   }
@@ -206,7 +206,7 @@ export function triage(
     { key: 'needsYou', label: 'Needs you' },
     { key: 'agentWorking', label: 'Agent working' },
     { key: 'inProgress', label: 'In progress' },
-    { key: 'drafts', label: 'Drafts' },
+    { key: 'drafts', label: 'Backlog' },
     { key: 'shipped', label: 'Shipped' },
   ]
   if (opts.showArchived) order.push({ key: 'archived', label: 'Archived' })

@@ -65,7 +65,7 @@ describe('the one loading look', () => {
 })
 
 describe('the server status before the first answer', () => {
-  it('says Connecting, neutral — never Server down', () => {
+  it('is a neutral dot — never Server down', () => {
     const html = renderToStaticMarkup(
       createElement(SidebarFootChrome, {
         health: 'connecting',
@@ -76,8 +76,7 @@ describe('the server status before the first answer', () => {
         onToggleTheme: () => undefined,
       }),
     )
-    expect(html).toContain('Connecting')
-    expect(html).not.toContain('Server down')
-    expect(html).toContain('whitespace-nowrap')
+    expect(html).toContain('data-health-tone="neutral"')
+    expect(html).not.toContain('bg-danger')
   })
 })

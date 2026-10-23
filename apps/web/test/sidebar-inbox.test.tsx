@@ -1,34 +1,48 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { FeatureListItem } from '../src/lib/api'
+import type { FeatureListItem, PrepView } from '../src/lib/api'
+import type { DriveState } from '../src/lib/workspace'
 import { listItem } from './fixtures'
+import { openMenu } from './floating'
 
 /**
- * The sidebar's pinned Inbox above the Work lanes, rendered whole: the lanes
- * come from the feature list the sidebar polls, which a static string cannot
- * show.
+ * The project sidebar rendered whole, over faked tRPC (DESIGN.md §Frame, the
+ * project sidebar): the Orchestrator card, what needs you unheaded, the
+ * Working shelf, the folded shelves and the foot's drive cards. The grouping
+ * comes from the feature list the sidebar polls, which a static string cannot
+ * show; the row-level words and dots are pinned in sidebar-row.test.ts.
  */
 
-const data = vi.hoisted(() => ({ features: [] as FeatureListItem[] }))
+const PREPARED: PrepView = { prepared: true, pendingKeys: [], findings: [] } as unknown as PrepView
+
+const data = vi.hoisted(() => ({
+  features: [] as FeatureListItem[],
+  prep: undefined as unknown,
+  notes: 0,
+  archive: vi.fn(),
+  unarchive: vi.fn(),
+  stop: vi.fn(),
+  useQueries: vi.fn(() => []),
+}))
 
 vi.mock('../src/trpc', () => ({
   trpc: {
     useUtils: () => ({ feature: { list: { invalidate: vi.fn() }, get: { invalidate: vi.fn() } } }),
-    useQueries: () => [],
+    useQueries: data.useQueries,
     events: { listByProject: { useQuery: () => ({ data: undefined }) } },
     feature: {
-      testDrive: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
+      testDrive: { useMutation: () => ({ isPending: false, mutate: data.stop }) },
       list: { useQuery: () => ({ data: data.features, isLoading: false }) },
-      archive: { useMutation: () => ({ mutate: vi.fn() }) },
-      unarchive: { useMutation: () => ({ mutate: vi.fn() }) },
+      archive: { useMutation: () => ({ mutate: data.archive }) },
+      unarchive: { useMutation: () => ({ mutate: data.unarchive }) },
       delete: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
     },
     project: {
-      prep: { useQuery: () => ({ data: { prepared: true, pendingKeys: [], findings: [] } }) },
+      prep: { useQuery: () => ({ data: data.prep }) },
       list: { useQuery: () => ({ data: [] }) },
     },
-    projectNotes: { openCount: { useQuery: () => ({ data: 0 }) } },
+    projectNotes: { openCount: { useQuery: () => ({ data: data.notes }) } },
   },
 }))
 
@@ -36,7 +50,7 @@ const { Sidebar } = await import('../src/components/Sidebar')
 const { ToastProvider } = await import('../src/lib/toast')
 
 const nav = {
-  projects: [],
+  projects: [{ id: 'proj_a', name: 'shop-app', repoPath: '/repo' }],
   loading: false,
   doctorError: null,
   recheckDoctor: () => {},
@@ -49,53 +63,225 @@ const nav = {
   cancelOpen: () => {},
 }
 
-function rail() {
+function rail(
+  over: {
+    view?: 'feature' | 'project' | 'prepare'
+    talk?: unknown
+    driving?: DriveState | null
+    onOpenCmdk?: () => void
+    onOpenPreparation?: () => void
+  } = {},
+) {
   return render(
     <ToastProvider>
       <Sidebar
         projectId="proj_a"
         nav={nav}
-        view="feature"
+        view={over.view ?? 'feature'}
         selectedFeatureId={null}
-        talk={{ state: 'none' } as never}
+        talk={(over.talk ?? { state: 'none', session: null }) as never}
         onSelect={vi.fn()}
         onSelectProject={vi.fn()}
         onNewChat={() => {}}
         onDraft={() => {}}
-        onOpenPreparation={() => {}}
+        onOpenPreparation={over.onOpenPreparation ?? (() => {})}
+        onOpenCmdk={over.onOpenCmdk}
+        driving={over.driving ?? null}
       />
     </ToastProvider>,
   )
 }
 
-const inbox = () => screen.getByRole('region', { name: 'Inbox' })
+const titled = (title: string, over: Parameters<typeof listItem>[0] = {}) => ({
+  ...listItem({ id: title, ...over }),
+  title,
+})
+
+const orchestrator = () => screen.getByRole('button', { name: /^Orchestrator/ })
+/** The titles of a region's feature rows, in order. */
+const titles = (region: HTMLElement) =>
+  within(region)
+    .queryAllByRole('button')
+    .map((b) => b.getAttribute('title') ?? '')
+    .filter((t) => t !== '')
 
 afterEach(() => {
   cleanup()
   data.features = []
+  data.prep = PREPARED
+  data.notes = 0
+  localStorage.clear()
+  vi.clearAllMocks()
+})
+data.prep = PREPARED
+
+describe('the head', () => {
+  it('has a Search icon button, the Create menu and close — no search field row', () => {
+    const onOpenCmdk = vi.fn()
+    rail({ onOpenCmdk })
+    fireEvent.click(screen.getByRole('button', { name: 'Search or jump to' }))
+    expect(onOpenCmdk).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy()
+    expect(screen.queryByText('Search')).toBeNull()
+  })
+
+  it('offers "Add to backlog" in the Create menu', () => {
+    rail()
+    openMenu(screen.getByRole('button', { name: 'Create' }))
+    expect(screen.getByRole('menuitem', { name: /^Add to backlog/ })).toBeTruthy()
+  })
 })
 
-describe('the pinned Inbox', () => {
-  it('holds the waiting features, and the Work lanes below it keep the rest', () => {
+describe('the Orchestrator card', () => {
+  it('replaces the Project row, and is current while the project view is open', () => {
+    rail({ view: 'project' })
+    expect(orchestrator().getAttribute('aria-current')).toBe('page')
+    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull()
+    cleanup()
+    rail({ view: 'feature' })
+    expect(orchestrator().getAttribute('aria-current')).toBeNull()
+  })
+
+  it('says what the project chat is doing', () => {
+    rail()
+    expect(orchestrator().textContent).toContain('Plan, cut and ask')
+    cleanup()
+    rail({ talk: { state: 'live', session: { awaitingInput: false } } })
+    expect(orchestrator().textContent).toContain('Chat open')
+    cleanup()
+    rail({ talk: { state: 'launching', session: { awaitingInput: false } } })
+    expect(orchestrator().textContent).toContain('Starting chat…')
+  })
+
+  it('waits amber while the chat waits on you', () => {
+    rail({ talk: { state: 'live', session: { awaitingInput: true } } })
+    expect(orchestrator().textContent).toContain('Waiting on you')
+    expect(orchestrator().innerHTML).toContain('bg-warning')
+  })
+
+  it('holds Re-prepare in its menu once preparation is done', () => {
+    const onOpenPreparation = vi.fn()
+    rail({ onOpenPreparation })
+    openMenu(screen.getByRole('button', { name: 'Project actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Re-prepare the project/ }))
+    expect(onOpenPreparation).toHaveBeenCalledOnce()
+    expect(screen.queryByText('Re-prepare project')).toBeNull()
+  })
+})
+
+describe('what needs you', () => {
+  it('lists preparation, then the waiting features, then the stopped ones — unheaded', () => {
+    data.prep = { prepared: false, pendingKeys: ['a', 'b'], findings: [] }
     data.features = [
-      { ...listItem({ id: 'f1', phase: 'review' }), title: 'Coupons' },
-      { ...listItem({ id: 'f2', phase: 'building' }), title: 'Order history' },
+      titled('Order history', { phase: 'building' }),
+      titled('Coupons', { phase: 'review' }),
+      titled('Checkout', {
+        phase: 'building',
+        ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
+      }),
     ]
     rail()
-    expect(within(inbox()).getByText('Coupons')).toBeTruthy()
-    expect(screen.getByRole('region', { name: 'In progress' }).textContent).toContain('Order history')
-    expect(screen.queryByRole('region', { name: 'Needs you' })).toBeNull()
+    const needs = screen.getByRole('region', { name: 'Needs you' })
+    expect(within(needs).getByText('Prepare this project')).toBeTruthy()
+    expect(within(needs).getByText('2 to establish')).toBeTruthy()
+    expect(needs.textContent!.indexOf('Prepare this project')).toBeLessThan(needs.textContent!.indexOf('Coupons'))
+    expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
+    expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
+    expect(within(needs).getByText('Run failed')).toBeTruthy()
+    expect(within(needs).getByText('Stopped')).toBeTruthy()
+    expect(within(needs).queryByRole('heading')).toBeNull()
   })
 
-  it('has no Work | Map switch and no Map tree', () => {
+  it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
+    data.features = [titled('Coupons', { phase: 'review' }), titled('Order history', { phase: 'building' })]
     rail()
-    expect(screen.queryByRole('tab', { name: 'Map' })).toBeNull()
-    expect(screen.queryByRole('region', { name: 'Map' })).toBeNull()
+    for (const gone of ['Inbox', 'In progress', 'Agent working', 'Drafts', 'Show archived'])
+      expect(screen.queryByText(gone)).toBeNull()
+    expect(screen.queryByText(/running elsewhere/)).toBeNull()
+    expect(data.useQueries).not.toHaveBeenCalled()
+  })
+})
+
+describe('the Working shelf', () => {
+  it('holds the features with an agent at work, open in the bay', () => {
+    data.features = [
+      titled('Coupons', { phase: 'review' }),
+      titled('Search', { phase: 'building', activeRun: true, lapTally: { landed: 3, total: 7, waived: 0 } }),
+    ]
+    rail()
+    const working = screen.getByRole('region', { name: 'Working' })
+    expect(titles(working)).toEqual(['Search'])
+    expect(within(working).getByText('Building · 3/7')).toBeTruthy()
+    expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
+  })
+})
+
+describe('the folded shelves', () => {
+  const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped', phase: 'shipped' }))
+
+  it('count Backlog, Shipped and Archived while folded — archived included', () => {
+    data.features = [
+      titled('Idea', { status: 'draft' }),
+      ...shipped,
+      titled('Old', { status: 'archived' }),
+      titled('Older', { status: 'archived' }),
+    ]
+    rail()
+    for (const [name, n] of [['Backlog', '1'], ['Shipped', '7'], ['Archived', '2']] as const) {
+      const shelf = screen.getByRole('region', { name })
+      const head = within(shelf).getByRole('button', { expanded: false })
+      expect(head.textContent).toBe(`${name}${n}`)
+      expect(titles(shelf)).toEqual([])
+    }
   })
 
-  it('says Nothing needs you when nothing waits', () => {
-    data.features = [listItem({ id: 'f2', phase: 'building' })]
+  it('open Shipped on five rows, then "Show N more"', () => {
+    data.features = shipped
     rail()
-    expect(within(inbox()).getByText('Nothing needs you')).toBeTruthy()
+    const shelf = screen.getByRole('region', { name: 'Shipped' })
+    fireEvent.click(within(shelf).getByRole('button', { expanded: false }))
+    expect(titles(shelf)).toHaveLength(5)
+    fireEvent.click(within(shelf).getByText('Show 2 more'))
+    expect(titles(shelf)).toHaveLength(7)
+  })
+
+  it('start Archived open when it was left open', () => {
+    localStorage.setItem('runcastle.sidebar.showArchived', '1')
+    data.features = [titled('Old', { status: 'archived' })]
+    rail()
+    expect(titles(screen.getByRole('region', { name: 'Archived' }))).toEqual(['Old'])
+  })
+
+  it('remember the Archived shelf being opened', () => {
+    data.features = [titled('Old', { status: 'archived' })]
+    rail()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Archived' })).getByRole('button', { expanded: false }))
+    expect(localStorage.getItem('runcastle.sidebar.showArchived')).toBe('1')
+  })
+})
+
+describe('the row menus', () => {
+  it('archive a feature and unarchive an archived one', () => {
+    localStorage.setItem('runcastle.sidebar.showArchived', '1')
+    data.features = [titled('Coupons', { id: 'f1', phase: 'review' }), titled('Old', { id: 'f2', status: 'archived' })]
+    rail()
+    const [first, second] = screen.getAllByRole('button', { name: 'Feature actions' })
+    openMenu(first!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive' }))
+    expect(data.archive).toHaveBeenCalledWith({ featureId: 'f1' })
+    openMenu(second!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unarchive' }))
+    expect(data.unarchive).toHaveBeenCalledWith({ featureId: 'f2' })
+  })
+})
+
+describe('the foot', () => {
+  it('shows a test drive as a card naming its feature, with Stop', () => {
+    data.features = [titled('Coupons', { id: 'f1', phase: 'review' })]
+    rail({ driving: { featureId: 'f1', branch: 'feature/coupons' } as DriveState })
+    const card = screen.getByRole('button', { name: /^Test drive/ })
+    expect(card.textContent).toBe('Test driveCoupons')
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the test drive' }))
+    expect(data.stop).toHaveBeenCalledWith({ featureId: 'f1', action: 'stop' })
   })
 })

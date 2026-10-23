@@ -69,7 +69,7 @@ export function featureStateWords(f: FeatureListItem): string {
   }
   if (lane === 'agentWorking') return f.activeRun ? `Building${progress ? ` · ${progress}` : ''}` : 'Agent working'
   // A waiting draft says what it waits on (ADR-0013 decision 6); a ready one is just in the backlog.
-  if (f.status === 'draft') return rowChip(f).text === 'Draft' ? 'In the backlog' : rowChip(f).text
+  if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Shipped'
   if (f.status === 'archived') return 'Archived'
   return progress ? `Stopped · ${progress}` : 'Stopped'

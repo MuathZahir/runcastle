@@ -1,26 +1,17 @@
 import { useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { trpc } from '../trpc'
-import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar, StatusDot, Tooltip } from '../ui'
+import { cx, IconButton, Kbd, NavItem, Skeleton, SkeletonBar } from '../ui'
 import type { StatusTone } from '../ui'
 import { useToast } from '../lib/toast'
 import type { FeatureListItem, PrepView } from '../lib/api'
-import {
-  isWaiting,
-  needsMe,
-  rowChip,
-  sidebarLanes,
-  ticketProgress,
-  triageOf,
-} from '../lib/feature-ui'
-import { InboxLane, WorkLanes } from './SidebarLanes'
-import { prepRailRow, type WorkspaceView } from '../lib/project-workspace'
+import { sidebarLanes } from '../lib/feature-ui'
+import { prepRailRow, type ProjectSessionState, type WorkspaceView } from '../lib/project-workspace'
 import { pathFor } from '../lib/routes'
 import { isStale } from '../lib/prep-findings'
 import { useLivePoll, useLiveStatus } from '../lib/live'
 import { clampSidebarWidth } from '../lib/sidebar-width'
-import { projectStats, runsElsewhere } from '../lib/projects'
-import { modKey, shortcut } from '../lib/platform'
+import { shortcut } from '../lib/platform'
 import { SANDBOX_MODE } from '../lib/env'
 import { notifyButton, type NotifyState } from '../lib/notifications'
 import { useDesktopNotifications } from '../lib/use-notifications'
@@ -29,24 +20,14 @@ import type { DriveState } from '../lib/workspace'
 import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import {
-  IconActivity,
-  IconBell,
-  IconBellOff,
-  IconCube,
+  IconArchive,
   IconDoc,
-  IconFolder,
+  IconGitMerge,
+  IconList,
   IconMessage,
-  IconMoon,
   IconPencil,
-  IconPlay,
   IconSearch,
-  IconSettings,
-  IconShield,
-  IconStop,
-  IconSun,
-  IconUndo,
 } from '../icons'
-import type { PhaseIconPhase } from '../icons'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,12 +36,25 @@ import {
 } from '../ui/dropdown-menu'
 import { copyText } from './workspace/copy-text'
 import { RailResizeHandle } from './RailResizeHandle'
-import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
+import type { FeatureAction } from './FeatureActionsMenu'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { CollapseSidebarButton } from './Frame'
+import {
+  DriveCard,
+  OrchestratorCard,
+  PrepRow,
+  Shelf,
+  SidebarFeatureRow,
+  SidebarGrain,
+  SidebarStatusLine,
+  WorkingShelf,
+} from './SidebarParts'
 
-/** localStorage key for the sidebar's show-archived toggle (decision #8). */
+/**
+ * localStorage key for whether the Archived shelf starts open — the old
+ * show-archived toggle (decision #8), kept so the choice carries over.
+ */
 const SHOW_ARCHIVED_KEY = 'runcastle.sidebar.showArchived'
 
 function readShowArchived(): boolean {
@@ -98,20 +92,27 @@ export interface SidebarProps {
   onDriveChange?: (d: DriveState | null) => void
 }
 
+/** The Orchestrator card's second line while the project chat is not waiting on you. */
+const TALK_WORDS: Record<ProjectSessionState, string> = {
+  live: 'Chat open',
+  launching: 'Starting chat…',
+  none: 'Plan, cut and ask',
+}
+
 /**
- * The project sidebar (DESIGN.md §Frame) on the canvas:
+ * The project sidebar (DESIGN.md §Frame, "The project sidebar") on the canvas,
+ * composed from the pieces in `SidebarParts` the way /preview/sidebar.html does:
  *
- * - head — the project switcher, a Create menu (New chat · Draft · Jot a note)
- *   and the collapse button; then the search launcher (⌘/Ctrl K);
- * - nav — the project's own places (its home, preparation while it is owed);
- * - the Inbox — the features waiting on me, pinned — then the Work lanes,
- *   grouped by who is blocked — Agent working · In progress · Drafts · Shipped
- *   (capped, "Show all") — as one-line rows: phase glyph, title, a live or
- *   needs-you dot, ticket progress. The row's menu is a hover "…" or a
- *   right-click;
- * - foot — live drives, runs elsewhere, re-prepare, then one row of status and
- *   chrome: server, sandbox, notifications, theme, settings.
+ * - head — the project switcher, Search (⌘/Ctrl K), a Create menu (New chat ·
+ *   Add to backlog · Jot a note) and the collapse button, over the film grain;
+ * - the Orchestrator card — the project's own door, its chat;
+ * - what needs you, unheaded: preparation while it is owed, the features
+ *   waiting on you, then the stopped ones;
+ * - the Working shelf, its rows in the bay;
+ * - the folded shelves: Backlog, Shipped (five, then "Show N more"), Archived;
+ * - foot — live drives as cards, then the icon-only status line.
  *
+ * Every feature row is two lines; its menu is a hover "…" or a right-click.
  * The slug is not on the row: it is in the URL and the feature page, and the
  * row menu's Copy link hands over that URL. Polls `feature.list` at 1.5s.
  */
@@ -132,10 +133,7 @@ export function Sidebar(props: SidebarProps) {
   } = props
   const utils = trpc.useUtils()
   const toast = useToast()
-  const [showArchived, setShowArchived] = useState(readShowArchived)
-  // The Shipped lane's expander (decisions §2). Not persisted: it is a glance at
-  // a lane, not a standing choice about the rail.
-  const [showAllShipped, setShowAllShipped] = useState(false)
+  const [archivedOpen, setArchivedOpen] = useState(readShowArchived)
   const [pendingDelete, setPendingDelete] = useState<{
     feature: FeatureListItem
     returnFocusRef: RefObject<HTMLButtonElement | null>
@@ -156,8 +154,14 @@ export function Sidebar(props: SidebarProps) {
   // No interval of its own: every write to the pile emits a project event, and
   // the stream invalidates this key with the rest (lib/live.ts).
   const openNotes = trpc.projectNotes.openCount.useQuery({ projectId }).data ?? 0
-  const { inbox, lanes } = sidebarLanes(list.data ?? [], { showArchived })
-  const archivedCount = (list.data ?? []).filter((f) => f.status === 'archived').length
+  const features = list.data ?? []
+  const { inbox, lanes } = sidebarLanes(features)
+  const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
+  const stopped = lane('inProgress')
+  const working = lane('agentWorking')
+  // The Archived shelf counts its features while folded, so they are read
+  // whether or not it is open — `sidebarLanes` leaves them out.
+  const archived = features.filter((f) => f.status === 'archived')
 
   const invalidate = () => void utils.feature.list.invalidate()
   const archive = trpc.feature.archive.useMutation({
@@ -183,16 +187,13 @@ export function Sidebar(props: SidebarProps) {
     onError: (e) => toast.push(e.message),
   })
 
-  const toggleArchived = () => {
-    setShowArchived((v) => {
-      const next = !v
-      try {
-        localStorage.setItem(SHOW_ARCHIVED_KEY, next ? '1' : '0')
-      } catch {
-        // localStorage unavailable (private mode) — the toggle still works in-session
-      }
-      return next
-    })
+  const onArchivedOpenChange = (open: boolean) => {
+    setArchivedOpen(open)
+    try {
+      localStorage.setItem(SHOW_ARCHIVED_KEY, open ? '1' : '0')
+    } catch {
+      // localStorage unavailable (private mode) — the shelf still opens in-session
+    }
   }
 
   const actionsFor = (f: FeatureListItem): FeatureAction[] => {
@@ -235,92 +236,115 @@ export function Sidebar(props: SidebarProps) {
     return actions
   }
 
-  const renderRow = (f: FeatureListItem) => (
-    <FeatureRow
+  const row = (f: FeatureListItem, nested = false) => (
+    <SidebarFeatureRow
       key={f.id}
       f={f}
       active={f.id === selectedFeatureId && view === 'feature'}
       onSelect={onSelect}
       actions={actionsFor(f)}
+      nested={nested}
     />
   )
 
   const projectName = nav.currentProject?.name ?? 'This project'
-  const talkLive = talk.state !== 'none'
+  // The project chat stopped for an answer: the same turn state a feature's
+  // live session carries (decisions §3).
+  const talkWaiting = talk.state === 'live' && !!talk.session?.awaitingInput
+  const notesWords = openNotes > 0 ? ` · ${openNotes} note${openNotes === 1 ? '' : 's'}` : ''
+  const orchestratorActions: FeatureAction[] =
+    prepRow?.variant === 'done'
+      ? [
+          {
+            key: 'reprepare',
+            label: prepRow.badge ? `Re-prepare the project (${prepRow.badge})` : 'Re-prepare the project',
+            hint: prepRow.title,
+            onSelect: onOpenPreparation,
+          },
+        ]
+      : []
+
+  const owesPrep = prepRow?.variant === 'todo'
+  const nothingInMotion = features.length > 0 && !owesPrep && inbox.length + stopped.length + working.length === 0
 
   return (
-    <nav aria-label="Project" className="flex h-full min-h-0 flex-col p-2">
-      <div className="flex h-9 shrink-0 items-center gap-0.5">
+    <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
+      <SidebarGrain />
+      <div className="flex h-10 shrink-0 items-center gap-0.5">
         <div className="flex min-w-0 flex-1">
           <ProjectSwitcher nav={nav} />
         </div>
+        <IconButton
+          label="Search or jump to"
+          kbd={shortcut('K')}
+          size="sm"
+          icon={<IconSearch />}
+          tooltipSide="bottom"
+          onClick={onOpenCmdk}
+        />
         <CreateMenu onNewChat={onNewChat} onDraft={onDraft} onOpenNote={onOpenNote} />
         <CollapseSidebarButton />
       </div>
 
-      <div className="shrink-0 pt-1 pb-2">
-        <SearchLauncher onOpen={onOpenCmdk} />
-      </div>
-
-      <div className="flex shrink-0 flex-col gap-px">
+      <div className="mt-3">
         {/* The project's own door (decision 20): not a feature, never in a
-            lane. It carries the open-note count (project-notes decisions #10)
-            and a live dot while the project conversation is up. */}
-        <NavItem
-          icon={<IconFolder />}
-          label="Project"
+            lane. It says what the chat holds — the open notes (project-notes
+            decisions #10) — and waits amber while the chat waits on you. */}
+        <OrchestratorCard
+          status={`${talkWaiting ? 'Waiting on you' : TALK_WORDS[talk.state]}${notesWords}`}
+          waiting={talkWaiting}
           active={view === 'project'}
-          onClick={onSelectProject}
-          dot={talkLive ? 'live' : undefined}
-          meta={
-            openNotes > 0 ? (
-              <span title={`${openNotes} note${openNotes === 1 ? '' : 's'} waiting to be triaged`}>
-                {openNotes}
-              </span>
-            ) : undefined
-          }
+          onOpen={onSelectProject}
+          actions={orchestratorActions}
           title={
             openNotes > 0
               ? `${projectName} — ${openNotes} open note${openNotes === 1 ? '' : 's'}`
               : 'Talk to the project — intake, decomposition, and portfolio questions'
           }
         />
-        {/* Preparation while it is owed is a place to go, so it sits with the
-            nav; once done it drops to the foot as "Re-prepare". */}
-        {prepRow?.variant === 'todo' && (
-          <NavItem
-            icon={<IconShield />}
-            label={prepRow.label}
-            meta={prepRow.badge ?? undefined}
-            dot="warning"
-            active={view === 'prepare'}
-            onClick={onOpenPreparation}
-            title={prepRow.title}
-          />
-        )}
       </div>
 
-      <div className="-mx-2 mt-3 min-h-0 flex-1 overflow-y-auto px-2">
-        {/* Pinned above the lanes; it waits for the list rather than saying
-            "Nothing needs you" before it knows. */}
-        {list.isLoading ? <FeatureRowsSkeleton /> : <InboxLane features={inbox} renderRow={renderRow} />}
+      <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
+        {list.isLoading && <FeatureRowsSkeleton />}
         {list.data && list.data.length === 0 && (
           <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
             No features yet. Start a chat to cut the first one.
           </div>
         )}
-        <WorkLanes
-          lanes={lanes}
-          renderRow={renderRow}
-          showAllShipped={showAllShipped}
-          onToggleShipped={() => setShowAllShipped((v) => !v)}
-          archivedCount={archivedCount}
-          showArchived={showArchived}
-          onToggleArchived={toggleArchived}
-        />
+        {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
+        {(owesPrep || inbox.length + stopped.length > 0) && (
+          <section aria-label="Needs you" className="flex flex-col gap-1">
+            {/* Preparation while it is owed is the first thing asked of you;
+                once done it moves into the Orchestrator's menu. */}
+            {owesPrep && (
+              <PrepRow
+                label={prepRow.label}
+                badge={prepRow.badge}
+                title={prepRow.title}
+                active={view === 'prepare'}
+                onClick={onOpenPreparation}
+              />
+            )}
+            {inbox.map((f) => row(f))}
+            {stopped.map((f) => row(f))}
+          </section>
+        )}
+        <WorkingShelf features={working} renderRow={row} />
+        <div className="flex flex-col divide-y divide-border-subtle">
+          <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
+          <Shelf icon={<IconGitMerge />} label="Shipped" features={lane('shipped')} renderRow={(f) => row(f)} cap={5} />
+          <Shelf
+            icon={<IconArchive />}
+            label="Archived"
+            features={archived}
+            renderRow={(f) => row(f)}
+            open={archivedOpen}
+            onOpenChange={onArchivedOpenChange}
+          />
+        </div>
       </div>
 
-      <SidebarFoot {...props} prepRow={prepRow} />
+      <SidebarFoot {...props} />
 
       {pendingDelete && (
         <DeleteFeatureDialog
@@ -339,7 +363,7 @@ export function Sidebar(props: SidebarProps) {
 /**
  * The Create menu beside the switcher — the three doors onto new work, split
  * by whether it starts now (decisions.md #12): New chat is where work is born,
- * Draft is where an idea is parked, and a note is a thing you noticed.
+ * the backlog is where an idea is parked, and a note is a thing you noticed.
  */
 export function CreateMenu({
   onNewChat,
@@ -364,7 +388,7 @@ export function CreateMenu({
         />
         <CreateItem
           icon={<IconDoc />}
-          label="Draft an idea"
+          label="Add to backlog"
           hint="Write an idea down now, work it out later"
           onSelect={onDraft}
         />
@@ -406,29 +430,6 @@ function CreateItem({
   )
 }
 
-/**
- * The search launcher: looks like a search field, opens the command palette.
- * The hint is ⌘K on a Mac and Ctrl K everywhere else (findings F17.4).
- */
-export function SearchLauncher({ onOpen }: { onOpen?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label="Search or jump to"
-      className={cx(
-        'flex h-(--control-h) w-full cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-inset pr-1.5 pl-2.5',
-        'text-left text-sm text-text-tertiary transition-colors duration-(--dur-1) ease-app',
-        'hover:border-border-strong hover:text-text-secondary',
-      )}
-    >
-      <IconSearch size={14} className="shrink-0 text-icon" />
-      <span className="min-w-0 flex-1 truncate">Search</span>
-      <Kbd>{modKey()}</Kbd>
-    </button>
-  )
-}
-
 /** The features rail's drag handle — its own clamp and label on the shared handle. */
 export function SidebarResizeHandle({
   width,
@@ -448,108 +449,30 @@ export function SidebarResizeHandle({
   )
 }
 
-/** The glyph a row wears: its phase, or the draft ring for a parked idea. */
-function rowPhase(f: FeatureListItem): PhaseIconPhase {
-  if (f.status === 'draft') return 'draft'
-  return f.phase
-}
-
-/**
- * The row's one trailing dot: an agent at work breathes; something waiting on
- * me is amber — red when it is a failure rather than a queue.
- */
-function rowDot(f: FeatureListItem): StatusTone | undefined {
-  const lane = triageOf(f)
-  if (lane === 'agentWorking') return 'live'
-  if (lane === 'needsYou') return needsMe(f)?.kind === 'attention' ? 'danger' : 'warning'
-  return undefined
-}
-
-/** Why the dot is there, for the row's tooltip. */
-function rowReason(f: FeatureListItem): string | null {
-  const lane = triageOf(f)
-  if (lane === 'agentWorking') return 'agent working'
-  if (lane === 'needsYou') return needsMe(f)?.label ?? 'needs you'
-  return null
-}
-
-/**
- * Open a row's "…" menu from a right-click. The menu is the row's own
- * `FeatureActionsMenu`, anchored on its (hover-revealed) trigger — a Radix
- * dropdown opens on the pointer-down, so that is what is sent to it.
- */
-function openRowMenu(e: ReactMouseEvent<HTMLDivElement>): void {
-  const trigger = e.currentTarget.querySelector<HTMLElement>('[aria-haspopup="menu"]')
-  if (!trigger) return
-  e.preventDefault()
-  trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }))
-}
-
 /** Label widths for the placeholder feature rows. */
 const SKELETON_ROW_WIDTHS = ['w-32', 'w-24', 'w-36', 'w-28'] as const
 
 /**
- * The feature list while its first read is in flight: a lane heading and a
- * few rows on {@link FeatureRow}'s metrics — the 32px row, the phase glyph,
- * the title — so the real list lands where the bars were.
+ * The feature list while its first read is in flight: a few rows on
+ * {@link SidebarFeatureRow}'s metrics — the ~52px two-line row, the title over
+ * a shorter state line — so the real list lands where the bars were.
  */
 export function FeatureRowsSkeleton() {
   return (
     <Skeleton label="Loading features…">
-      <div className="flex h-7 items-center px-2.5">
-        <SkeletonBar className="h-2.5 w-16" />
-      </div>
-      <div className="flex flex-col gap-px">
+      <div className="flex flex-col gap-1">
         {SKELETON_ROW_WIDTHS.map((width, i) => (
-          <div key={i} className="flex h-(--row-h) items-center gap-2 pr-3 pl-2.5" data-skeleton="feature-row">
-            <SkeletonBar className="size-4 rounded-full" />
+          <div
+            key={i}
+            className="flex h-13 flex-col justify-center gap-2 rounded-lg px-2.5"
+            data-skeleton="feature-row"
+          >
             <SkeletonBar className={cx('h-2.5', width)} />
+            <SkeletonBar className="h-2 w-16" />
           </div>
         ))}
       </div>
     </Skeleton>
-  )
-}
-
-/**
- * One feature, as a one-line sidebar row (DESIGN.md: no two-line rows, no
- * progress bars, no per-row check buttons, no "…" at rest). The phase glyph
- * says where it is; one dot says whether it is moving or waiting on you; the
- * meta is its ticket progress, or what a waiting draft waits on. A feature the
- * orchestrator owns wears a second, accent ring on its glyph ("Orchestrated"
- * on hover); the page header carries the tag. Selected is `surface-selected`,
- * nothing else.
- */
-export function FeatureRow({
-  f,
-  active,
-  onSelect,
-  actions,
-}: {
-  f: FeatureListItem
-  active: boolean
-  onSelect: (id: string) => void
-  actions: FeatureAction[]
-}) {
-  // A waiting draft says what it waits on where the fraction would sit — the
-  // rail's one word on which drafts are startable (ADR-0013 decision 6).
-  const waits = isWaiting(f) ? rowChip(f) : null
-  const reason = waits?.title ?? rowReason(f)
-  return (
-    <NavItem
-      phase={rowPhase(f)}
-      // A ring, not a tag: a tag took the row's width from the title.
-      glyphRing={f.orchestrated ? 'Orchestrated' : undefined}
-      label={f.title}
-      title={reason ? `${f.title} — ${reason}` : f.title}
-      dot={rowDot(f)}
-      // Shipped work is all landed by definition — its fraction would be noise.
-      meta={waits?.text ?? (f.status === 'shipped' ? undefined : (ticketProgress(f) ?? undefined))}
-      active={active}
-      onClick={() => onSelect(f.id)}
-      actions={actions.length > 0 ? <FeatureActionsMenu actions={actions} /> : undefined}
-      onContextMenu={actions.length > 0 ? openRowMenu : undefined}
-    />
   )
 }
 
@@ -565,12 +488,12 @@ function apiOrigin(): string {
 /** The frame's one health reading: the server, and the stream from it. */
 export type FrameHealth = 'connecting' | 'ok' | 'reconnecting' | 'down'
 
-const HEALTH: Record<FrameHealth, { tone: StatusTone; word: string }> = {
+const HEALTH_TONE: Record<FrameHealth, StatusTone> = {
   // Before the first answer nothing is known — never "down" on a cold load.
-  connecting: { tone: 'neutral', word: 'Connecting' },
-  ok: { tone: 'success', word: 'Server' },
-  reconnecting: { tone: 'warning', word: 'Reconnecting' },
-  down: { tone: 'danger', word: 'Server down' },
+  connecting: 'neutral',
+  ok: 'success',
+  reconnecting: 'warning',
+  down: 'danger',
 }
 
 export interface SidebarFootState {
@@ -583,20 +506,15 @@ export interface SidebarFootState {
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   onOpenSettings?: () => void
-  /** Rows above the status line (drives, runs elsewhere, re-prepare). */
+  /** Rows above the status line (live drives). */
   rows?: ReactNode
-}
-
-const NOTIFY_LABEL: Record<NotifyState, string> = {
-  on: 'Notifications on — turn off',
-  off: 'Notifications off — turn on',
-  blocked: 'Notifications blocked by the browser',
 }
 
 /**
  * The foot as markup, with every query already resolved to a value — the seam
  * the rendered-chrome tests observe it at (apps/web/STYLE.md, tier 1). Shared
- * by the project sidebar and the portfolio home's.
+ * by the project sidebar and the portfolio home's: the rows it is handed, then
+ * the icon-only status line, the health in words in its tooltip.
  */
 export function SidebarFootChrome({
   health,
@@ -608,7 +526,6 @@ export function SidebarFootChrome({
   onOpenSettings,
   rows,
 }: SidebarFootState) {
-  const h = HEALTH[health]
   const healthTip =
     health === 'ok'
       ? `Server ok — live updates streaming from ${origin}/api`
@@ -617,45 +534,18 @@ export function SidebarFootChrome({
       : health === 'reconnecting'
         ? 'Live updates paused — reconnecting, and polling meanwhile'
         : `The runcastle API at ${origin}/api is not answering`
-  const next = theme === 'dark' ? 'light' : 'dark'
   return (
-    <div className="flex shrink-0 flex-col gap-px pt-2">
+    <div className="flex shrink-0 flex-col gap-2 pt-2">
       {rows}
-      <div className="flex h-8 items-center gap-3 pl-2.5 text-xs text-text-tertiary">
-        <Tooltip label={healthTip}>
-          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm whitespace-nowrap" data-health={health}>
-            <StatusDot tone={h.tone} />
-            {h.word}
-          </span>
-        </Tooltip>
-        <Tooltip label={`Agent sessions run sandboxed via ${sandbox}`}>
-          <span tabIndex={0} className="inline-flex items-center gap-1.5 rounded-sm whitespace-nowrap">
-            <IconCube size={14} className="text-icon" />
-            {sandbox}
-          </span>
-        </Tooltip>
-        <span className="flex-1" />
-        <span className="flex items-center">
-          {notify && (
-            <IconButton
-              size="sm"
-              label={notify.state === 'blocked' ? notify.title : NOTIFY_LABEL[notify.state]}
-              icon={notify.state === 'on' ? <IconBell /> : <IconBellOff />}
-              active={notify.state === 'on'}
-              onClick={notify.onToggle}
-            />
-          )}
-          <IconButton
-            size="sm"
-            label={`Switch to ${next} theme`}
-            icon={theme === 'dark' ? <IconSun /> : <IconMoon />}
-            onClick={onToggleTheme}
-          />
-          {onOpenSettings && (
-            <IconButton size="sm" label="Settings" icon={<IconSettings />} onClick={onOpenSettings} />
-          )}
-        </span>
-      </div>
+      <SidebarStatusLine
+        healthTone={HEALTH_TONE[health]}
+        healthTip={healthTip}
+        sandbox={sandbox}
+        notify={notify}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
+        onOpenSettings={onOpenSettings}
+      />
     </div>
   )
 }
@@ -663,41 +553,25 @@ export function SidebarFootChrome({
 /**
  * The project sidebar's foot: what the status bar and the titlebar's pills used
  * to say. A live drive (the project's, or a feature's this shell started) stays
- * in view on every in-project screen; runs in OTHER projects are counted (this
- * project's are itemised by name in the Agent working lane — decision 7);
- * re-prepare stays findable once preparation is done.
+ * in view on every in-project screen, as a card naming what it drives.
  */
 function SidebarFoot({
   projectId,
-  nav,
-  view,
   onSelect,
   onOpenSettings,
-  onOpenPreparation,
   projectDriveBranch = null,
   onOpenProjectDrive,
   driving = null,
   onDriveChange,
-  prepRow,
-}: SidebarProps & { prepRow: ReturnType<typeof prepRailRow> }) {
+}: SidebarProps) {
   const toast = useToast()
   const utils = trpc.useUtils()
-  const poll = useLivePoll()
   const live = useLiveStatus()
   const theme = useTheme()
-  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: poll })
+  const list = trpc.feature.list.useQuery({ projectId }, { refetchInterval: useLivePoll() })
   const healthy = !list.isError && list.data !== undefined
   const notify = useDesktopNotifications(projectId, list.data ?? [])
   const notifyState = notifyButton(notify)
-
-  const projects = nav.projects ?? []
-  const featureQueries = trpc.useQueries((t) =>
-    projects.map((p) => t.feature.list({ projectId: p.id }, { refetchInterval: poll })),
-  )
-  const elsewhere = runsElsewhere(
-    projects.map((p, i) => ({ projectId: p.id, ...projectStats(featureQueries[i]?.data ?? []) })),
-    nav.currentProjectId,
-  )
 
   const stopDrive = trpc.feature.testDrive.useMutation({
     onSuccess: () => {
@@ -708,54 +582,26 @@ function SidebarFoot({
     onError: (e) => toast.push(e.message),
   })
 
+  const drivenTitle = driving ? list.data?.find((f) => f.id === driving.featureId)?.title : undefined
+
   const rows = (
     <>
       {projectDriveBranch !== null && (
-        <NavItem
-          icon={<IconPlay />}
+        <DriveCard
           label="Project drive"
-          meta={<span className="font-mono">{projectDriveBranch}</span>}
-          dot="live"
-          onClick={onOpenProjectDrive}
+          detail={<span className="font-mono">{projectDriveBranch}</span>}
           title={`A project drive is live on ${projectDriveBranch} — back to it`}
+          onOpen={onOpenProjectDrive}
         />
       )}
       {driving && (
-        <NavItem
-          icon={<IconPlay />}
+        <DriveCard
           label="Test drive"
-          meta={<span className="font-mono">{driving.branch}</span>}
-          dot="live"
-          onClick={() => onSelect(driving.featureId)}
+          detail={drivenTitle ?? <span className="font-mono">{driving.branch}</span>}
           title={`Driving ${driving.branch} — back to its feature`}
-          actions={
-            <IconButton
-              size="sm"
-              label="Stop the test drive"
-              icon={<IconStop />}
-              disabled={stopDrive.isPending}
-              onClick={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
-            />
-          }
-        />
-      )}
-      {elsewhere > 0 && (
-        <NavItem
-          icon={<IconActivity />}
-          label={`${elsewhere} running elsewhere`}
-          dot="live"
-          onClick={nav.goHome}
-          title="Runs in flight in other projects — open all projects"
-        />
-      )}
-      {prepRow?.variant === 'done' && (
-        <NavItem
-          icon={<IconUndo />}
-          label="Re-prepare project"
-          meta={prepRow.badge ?? undefined}
-          active={view === 'prepare'}
-          onClick={onOpenPreparation}
-          title={prepRow.title}
+          onOpen={() => onSelect(driving.featureId)}
+          onStop={() => stopDrive.mutate({ featureId: driving.featureId, action: 'stop' })}
+          stopping={stopDrive.isPending}
         />
       )}
     </>
@@ -776,3 +622,4 @@ function SidebarFoot({
     />
   )
 }
+
