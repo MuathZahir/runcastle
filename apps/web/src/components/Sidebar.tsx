@@ -92,6 +92,14 @@ export interface SidebarProps {
   onDriveChange?: (d: DriveState | null) => void
 }
 
+/**
+ * Settled shelves (Shipped, Archived) read most recently moved first, so the
+ * ages their rows show run in order — the server's list order is not that.
+ */
+function byLastMoved(features: FeatureListItem[]): FeatureListItem[] {
+  return [...features].sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+}
+
 /** The Orchestrator card's second line while the project chat is not waiting on you. */
 const TALK_WORDS: Record<ProjectSessionState, string> = {
   live: 'Chat open',
@@ -306,11 +314,6 @@ export function Sidebar(props: SidebarProps) {
 
       <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
         {list.isLoading && <FeatureRowsSkeleton />}
-        {list.data && list.data.length === 0 && (
-          <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
-            No features yet. Start a chat to cut the first one.
-          </div>
-        )}
         {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
         {(owesPrep || inbox.length + stopped.length > 0) && (
           <section aria-label="Needs you" className="flex flex-col gap-1">
@@ -329,14 +332,27 @@ export function Sidebar(props: SidebarProps) {
             {stopped.map((f) => row(f))}
           </section>
         )}
+        {/* Below what is asked of you: on a new project "Prepare this project"
+            comes first, then this. */}
+        {list.data && list.data.length === 0 && (
+          <div className="px-2.5 py-2 text-xs text-pretty text-text-tertiary">
+            No features yet. Start a chat to cut the first one.
+          </div>
+        )}
         <WorkingShelf features={working} renderRow={row} />
         <div className="flex flex-col divide-y divide-border-subtle">
           <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
-          <Shelf icon={<IconGitMerge />} label="Shipped" features={lane('shipped')} renderRow={(f) => row(f)} cap={5} />
+          <Shelf
+            icon={<IconGitMerge />}
+            label="Shipped"
+            features={byLastMoved(lane('shipped'))}
+            renderRow={(f) => row(f)}
+            cap={5}
+          />
           <Shelf
             icon={<IconArchive />}
             label="Archived"
-            features={archived}
+            features={byLastMoved(archived)}
             renderRow={(f) => row(f)}
             open={archivedOpen}
             onOpenChange={onArchivedOpenChange}

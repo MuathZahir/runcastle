@@ -881,7 +881,7 @@ export function Workspace({
   const shipped = feature.status === 'shipped' ? shippedAt([...events]) : null
   const factList: Array<MetaItem | false> = [
     isDraft
-      ? { phase: 'draft', text: `Parked ${relTimeAgo(feature.createdAt)}` }
+      ? { phase: 'draft', text: `Added to backlog ${relTimeAgo(feature.createdAt)}` }
       : shipped
         ? { tone: 'success', text: `Merged ${relTimeAgo(shipped)}` }
         : { text: `Started ${relTimeAgo(feature.createdAt)}` },
