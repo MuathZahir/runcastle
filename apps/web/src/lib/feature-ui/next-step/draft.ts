@@ -17,7 +17,7 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
   return {
     kick: 'NEXT STEP',
     title: 'Start this feature',
-    desc: 'Parked as a draft — Start cuts its branch, writes the brief, and opens the grill with you. Plan it yourself makes the plan without you.',
+    desc: 'In the backlog — Start cuts its branch, writes the brief, and opens the grill with you. Plan it yourself makes the plan without you.',
     primary: { label: 'Start', kind: 'startDraft', ...disabled },
     // Beside Start, never instead of it (features-plan-themselves decision 12):
     // it starts the draft the same way, so it waits on the same thing.

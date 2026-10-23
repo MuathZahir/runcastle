@@ -114,7 +114,7 @@ export function setDependencies(
   const dependent = getFeatureRow(ctx, dependentId)
   if (dependent.status !== 'draft') {
     throw new InvalidInputError(
-      `\`${dependent.slug}\` is not a draft — dependencies can only be set on a draft; once started they no longer gate anything`,
+      `\`${dependent.slug}\` is not in the backlog — dependencies can only be set on a backlog feature; once started they no longer gate anything`,
     )
   }
   const resolved = validateDependencies(ctx, dependent.projectId, dependentId, dependencyIds)

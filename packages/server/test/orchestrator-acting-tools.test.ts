@@ -199,7 +199,7 @@ describe('the orchestrator’s acting tools', () => {
     expect(started?.data).toMatchObject({ actor: 'orchestrator' })
 
     expect(await refusal(() => toolStartFeature(ctx, session, { slug: 'parked' }))).toMatch(
-      /not a draft/,
+      /not in the backlog/,
     )
   })
 
@@ -287,7 +287,7 @@ describe('the orchestrator’s acting tools', () => {
       /already past planning/,
     )
     seedFeature(ctx, projectId, { slug: 'drafty', status: 'draft', orchestrated: true })
-    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'drafty' }))).toMatch(/is a draft/)
+    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'drafty' }))).toMatch(/is in the backlog/)
   })
 
   it('drive starts and stops a feature drive, and the project drive is refused while it holds the slot', async () => {

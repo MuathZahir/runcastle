@@ -110,7 +110,7 @@ describe('feature dependencies', () => {
       const a = active('a')
       const started = active('started')
       expect(() => setDependencies(ctx, started.id, [a.id])).toThrow(
-        /`started` is not a draft — dependencies can only be set on a draft/,
+        /`started` is not in the backlog — dependencies can only be set on a backlog feature/,
       )
     })
 

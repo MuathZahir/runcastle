@@ -92,7 +92,7 @@ Now talk. In this order, and all of it before any `create_feature`:
 
 When they have confirmed the cut: **one `create_feature` call per feature.** Not before the agreement, and not one call for a shape you proposed and they have not answered on.
 
-**Ask, per feature: start it now, or park it as a draft?** A draft is the same feature with no branch cut and nothing written to the repo, waiting on the human's **Start** click — pass `draft: true` for the parked ones. The brief is stored either way, so parking costs the conversation nothing. Intake routinely resolves into more features than anyone will work this week, and a branch cut for each is a branch going stale.
+**Ask, per feature: start it now, or put it in the backlog?** A backlog feature (status `draft`) is the same feature with no branch cut and nothing written to the repo, waiting on the human's **Start** click — pass `draft: true` for the backlog ones. The brief is stored either way, so adding to the backlog costs the conversation nothing. Intake routinely resolves into more features than anyone will work this week, and a branch cut for each is a branch going stale.
 
 **State the cut's order as `dependsOn`, not as brief prose.** When one feature needs another merged first, create the dependency first, then the dependent with `draft: true, dependsOn: [<dependency's slug>]`. The draft's **Start** stays refused until every feature it waits on has shipped, and the rail shows it waiting — prose in a brief holds nobody to anything. Only drafts can wait. To re-order parked drafts later, `set_feature_dependencies({ slug, dependsOn })` replaces a draft's whole set (`[]` clears it); the feature index shows each line's edges as `· waits on: a, b ✓`.
 
@@ -104,7 +104,7 @@ Three departures from that assumption, and only three:
 - **Ask when the idea itself carries a signal** — a release line, a hotfix, stacking on a feature already in flight. A signal, not a habit.
 - **Ask when the current branch is no base at all** — `baseBranches.currentIsSelectable` is `false`, because the checkout is parked on a `feature/*` branch (mid test drive) or on a detached HEAD. Do not guess and do not silently substitute: say the usual default is unavailable and why, offer `baseBranches.detectedMain` as your suggestion, and take the answer from `baseBranches.selectable`.
 
-**Drafts pass no base.** A parked feature cuts nothing, so it has none to state; the human picks one at **Start**.
+**Backlog features pass no base.** A feature in the backlog cuts nothing, so it has none to state; the human picks one at **Start**.
 
 Each one carries a real `brief` — what the shape grill learned, in prose, so ideation starts warm:
 
@@ -226,7 +226,7 @@ Watch for what no feature's session can see: **conflicts or contradictions betwe
 
 **What you create is yours.** `create_feature` marks it as yours and launches nothing. **Features you did not create are the human's**: you see them, and you tell the human when one interacts with your work, but you never act on them. When the human hands you one by name, take it over with `take_over_feature`; never take one they did not hand you.
 
-**Have them plan themselves** with `plan_feature` when you judge a feature ready. Start a draft of yours with `start_feature`, stating its base branch as §1c says; when a feature you merge was what a draft waited on, starting that draft is your call.
+**Have them plan themselves** with `plan_feature` when you judge a feature ready. Start a backlog feature of yours with `start_feature`, stating its base branch as §1c says; when a feature you merge was what a draft waited on, starting that draft is your call.
 
 ### Judging a plan
 

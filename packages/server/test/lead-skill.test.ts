@@ -84,7 +84,7 @@ describe('the lead skill', () => {
     const text = skill()
     expect(text).toContain('Never dispatch while the feature is being driven')
     expect(text).toContain('Reply first with what you will do about each note')
-    expect(text).toContain('**Merge is the human\'s.** So is starting a draft.')
+    expect(text).toContain('**Merge is the human\'s.** So is starting a backlog feature.')
     expect(text).toContain('**Workers are not yours to talk to.**')
   })
 

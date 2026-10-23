@@ -271,7 +271,7 @@ function emitFeatureCreated(ctx: AppCtx, feature: Feature, cut: BranchCut | null
  */
 export function requireNotDraft(feature: Feature): void {
   if (feature.status === 'draft') {
-    throw new GateError(`\`${feature.slug}\` is a draft — click Start to cut its branch and begin`)
+    throw new GateError(`\`${feature.slug}\` is in the backlog — click Start to cut its branch and begin`)
   }
 }
 
@@ -293,7 +293,7 @@ export async function startDraft(
 ): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   if (feature.status !== 'draft') {
-    throw new GateError(`feature ${feature.slug} is not a draft — it has already been started`)
+    throw new GateError(`feature ${feature.slug} is not in the backlog — it has already been started`)
   }
   // Merge-order dependencies (ADR-0013) gate exactly this click, before any git
   // work. No override: the way past an archived blocker is removing the edge.

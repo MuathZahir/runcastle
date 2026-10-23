@@ -126,7 +126,7 @@ describe('activityLine — no event type slug is ever the summary', () => {
         data: { slug: 'x', branch: 'feature/x', branchReady: false, draft: true },
       }),
     )
-    expect(line.summary).toBe('Feature created as a draft — feature/x is not cut yet')
+    expect(line.summary).toBe('Feature added to the backlog — feature/x is not cut yet')
   })
 
   it('says a branch is still being cut when the feature is not a draft', () => {

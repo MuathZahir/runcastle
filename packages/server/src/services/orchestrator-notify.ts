@@ -131,7 +131,7 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       return { kind: 'end', text: `${pass} (ticket ${ticket.seq}) ${verb}. ${tickets}` }
     }
     case 'feature.shipped':
-      return { kind: 'end', text: `${clip(event.message)}: shipped. Drafts waiting on it may start now. ${context}` }
+      return { kind: 'end', text: `${clip(event.message)}: shipped. Backlog features waiting on it may start now. ${context}` }
     case 'merge.conflict': {
       const files = Array.isArray(data.files) ? data.files.length : 0
       return {
