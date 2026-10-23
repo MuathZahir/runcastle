@@ -51,10 +51,13 @@ describe.each(SITES)('%s while it loads', (_site, html, label) => {
 })
 
 describe('the skeletons are shaped like their content', () => {
-  it('the sidebar: rows shaped like feature rows', () => {
+  it('the sidebar: rows shaped like the two-line feature rows', () => {
     const html = render(FeatureRowsSkeleton)
     expect(count(html, 'feature-row')).toBe(4)
-    expect(html).toContain('h-(--row-h)')
+    expect(html).toContain('h-13')
+    expect(html).toContain('rounded-lg')
+    // A title bar over a shorter state-line bar, per row.
+    expect(html.split('h-2 w-16').length - 1).toBe(4)
   })
 
   it('the first load: the portfolio title over project rows', () => {

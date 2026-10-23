@@ -87,7 +87,7 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
   if (f.status === 'draft') {
     const open = blockers(f.dependsOn)
     if (open.length === 0)
-      return { kind: 'draft', text: 'Draft', title: 'parked — click Start to cut its branch' }
+      return { kind: 'draft', text: 'In the backlog', title: 'parked — click Start to cut its branch' }
     const text = open.length === 1 ? `Waits on ${open[0]!.slug}` : `Waits on ${open.length}`
     return { kind: 'draft', text, title: `waits on ${blockerList(f.dependsOn)}` }
   }
@@ -206,7 +206,7 @@ export function triage(
     { key: 'needsYou', label: 'Needs you' },
     { key: 'agentWorking', label: 'Agent working' },
     { key: 'inProgress', label: 'In progress' },
-    { key: 'drafts', label: 'Drafts' },
+    { key: 'drafts', label: 'Backlog' },
     { key: 'shipped', label: 'Shipped' },
   ]
   if (opts.showArchived) order.push({ key: 'archived', label: 'Archived' })
@@ -215,7 +215,7 @@ export function triage(
     .filter((g) => g.features.length > 0)
 }
 
-/** The sidebar's features: the pinned Inbox, and the Work view's lanes. */
+/** The sidebar's features: what waits on the human, and the lanes under it. */
 export interface SidebarLanes {
   /** Exactly the Needs you lane's features — what waits on the human. */
   inbox: FeatureListItem[]
@@ -224,9 +224,9 @@ export interface SidebarLanes {
 }
 
 /**
- * Split the triage into the Inbox pinned at the top of the sidebar and the
- * Work lanes under it. The Inbox is the Needs you lane lifted out; the rest is
- * {@link triage} unchanged.
+ * Split the triage into what needs the human, first in the sidebar, and the
+ * lanes the sidebar draws under it (stopped rows, Working, the shelves). The
+ * first is the Needs you lane lifted out; the rest is {@link triage} unchanged.
  */
 export function sidebarLanes(
   features: FeatureListItem[],
@@ -264,40 +264,6 @@ export function landingFeature(features: FeatureListItem[]): FeatureListItem | n
     if (first) return first
   }
   return null
-}
-
-/** How many Shipped rows the rail shows collapsed (decisions §2). */
-const SHIPPED_LANE_CAP = 5
-
-export interface CappedLane {
-  /** The features the lane renders right now. */
-  visible: FeatureListItem[]
-  /**
-   * The expander button's label — 'Show all (N)' collapsed, 'Show fewer'
-   * expanded — or null when the lane shows everything it has and needs no button.
-   */
-  expanderLabel: string | null
-}
-
-/**
- * How much of a triage lane to render (decisions §2). Shipped is the only lane
- * that grows without bound, so it alone collapses to its newest
- * {@link SHIPPED_LANE_CAP} rows — the incoming order is the server's newest-first
- * — behind a "Show all (N)" expander. Every other lane is exactly what the rail
- * exists to surface and is never hidden.
- *
- * N counts the whole lane, not the hidden tail: the label beside it is the
- * lane's true total, and two different figures for one lane read as a bug.
- */
-export function capLane(group: TriageGroup, expanded: boolean): CappedLane {
-  if (group.key !== 'shipped' || group.features.length <= SHIPPED_LANE_CAP) {
-    return { visible: group.features, expanderLabel: null }
-  }
-  return {
-    visible: expanded ? group.features : group.features.slice(0, SHIPPED_LANE_CAP),
-    // The lane label above already states the total.
-    expanderLabel: expanded ? 'Show fewer' : 'Show all',
-  }
 }
 
 // --- pipeline (sidebar mini-map + workspace stepper) -----------------------
