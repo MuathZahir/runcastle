@@ -95,7 +95,7 @@ worked out has to land in whatever that destination carries.
 
 A theme with real design questions. `create_feature({ title, oneLiner, brief,
 baseBranch })` exactly as §1c describes — one call per feature, the base stated,
-`draft: true` for the ones they want parked.
+`draft: true` for the ones they want in the backlog.
 
 The `brief` carries the grilled reasoning, not the jotted line: why this exists,
 what the human actually wants, what it must not swallow, what the portfolio

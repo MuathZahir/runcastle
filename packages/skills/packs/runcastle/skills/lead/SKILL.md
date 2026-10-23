@@ -96,7 +96,7 @@ The human's notes reach you as one message, with screenshots attached as files y
 
 ## What is not yours
 
-- **Merge is the human's.** So is starting a draft. Never merge, and never start one.
+- **Merge is the human's.** So is starting a backlog feature. Never merge, and never start one.
 - **Workers are not yours to talk to.** Coordinate through tickets and rounds only.
 
 ## What the server refuses

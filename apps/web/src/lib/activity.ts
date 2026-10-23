@@ -165,7 +165,7 @@ function fromPayload(event: Pick<EventRow, 'type' | 'data'>): string | null {
   const d = fields(event.data)
   const branch = text(d?.branch)
   if (!d || !branch) return null
-  if (d.draft === true) return `Feature created as a draft — ${branch} is not cut yet`
+  if (d.draft === true) return `Feature added to the backlog — ${branch} is not cut yet`
   if (d.branchReady !== true) return `Feature created — branch ${branch} is still being cut`
   const base = text(d.baseBranch)
   return base

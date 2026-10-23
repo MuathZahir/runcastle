@@ -50,6 +50,6 @@ Never card a fix for a failure nobody has stood on: a ticket written from a one-
 
 If what the human brings is not an amendment but a whole new capability, say so — and park it rather than losing it:
 
-> That reads like a new feature, not a revision of this one. I'll park it as a draft so it isn't lost; you can start it from the runcastle UI when you want it, and it gets grilled there.
+> That reads like a new feature, not a revision of this one. I'll put it in the backlog so it isn't lost; you can start it from the runcastle UI when you want it, and it gets grilled there.
 
-`mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` — a parked draft, no branch cut and nothing written, with the `brief` carrying why you deferred it and what it must not swallow. `draft: true` is the only door open to you; a full create belongs to the project session.
+`mcp__runcastle__create_feature({ title, oneLiner, brief, draft: true })` — a backlog feature (status `draft`), no branch cut and nothing written, with the `brief` carrying why you deferred it and what it must not swallow. `draft: true` is the only door open to you; a full create belongs to the project session.

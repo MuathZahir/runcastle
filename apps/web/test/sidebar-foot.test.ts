@@ -1,43 +1,60 @@
+// @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { SidebarFootChrome, type SidebarFootState } from '../src/components/Sidebar'
+import { DriveCard } from '../src/components/SidebarParts'
+import { TooltipProvider } from '../src/ui/tooltip'
 
 /**
  * The sidebar's foot as it renders — what the retired title bar and status bar
  * used to say (decisions 7, 8; DESIGN.md §Frame). Tier-1 static markup
  * (apps/web/STYLE.md): once its queries have answered the foot is pure markup,
- * which is exactly what `SidebarFootChrome` takes.
+ * which is exactly what `SidebarFootChrome` takes. The one exception is the
+ * health tooltip, which exists only while it is open.
  *
- * What is pinned is what it *states*: one health reading that names its
- * origin, the sandbox, and three chrome toggles that are icons with names.
+ * What is pinned is what it *states*: one line of icons — settings, theme,
+ * notifications, then the sandbox and the health dot — with the words in the
+ * tooltips, and the drive cards above it.
  */
-function foot(over: Partial<SidebarFootState> = {}): string {
-  return renderToStaticMarkup(
-    createElement(SidebarFootChrome, {
-      health: 'ok',
-      origin: 'http://localhost:4513',
-      sandbox: 'docker',
-      notify: { state: 'off', title: 'Notify me when agents finish a run', onToggle: () => undefined },
-      theme: 'dark',
-      onToggleTheme: () => undefined,
-      onOpenSettings: () => undefined,
-      ...over,
-    }),
-  )
+const STATE: SidebarFootState = {
+  health: 'ok',
+  origin: 'http://localhost:4513',
+  sandbox: 'docker',
+  notify: { state: 'off', title: 'Notify me when agents finish a run', onToggle: () => undefined },
+  theme: 'dark',
+  onToggleTheme: () => undefined,
+  onOpenSettings: () => undefined,
 }
 
+function foot(over: Partial<SidebarFootState> = {}): string {
+  return renderToStaticMarkup(createElement(SidebarFootChrome, { ...STATE, ...over }))
+}
+
+afterEach(cleanup)
+
 describe('sidebar foot', () => {
-  it('states one health reading, in words beside a dot', () => {
-    expect(foot()).toContain('data-health="ok"')
-    expect(foot()).toContain('>Server<')
-    expect(foot({ health: 'reconnecting' })).toContain('Reconnecting')
-    expect(foot({ health: 'down' })).toContain('Server down')
+  it('states one health reading as a dot, toned by the server’s health', () => {
+    expect(foot()).toContain('data-health-tone="success"')
+    expect(foot({ health: 'reconnecting' })).toContain('data-health-tone="warning"')
+    expect(foot({ health: 'down' })).toContain('data-health-tone="danger"')
     expect(foot({ health: 'down' })).toContain('bg-danger')
   })
 
-  it('names the sandbox the sessions run in', () => {
-    expect(foot()).toContain('docker')
+  it('is icons only: no words on the line', () => {
+    const html = foot()
+    expect(html).not.toContain('>Server<')
+    expect(html).not.toContain('>docker<')
+  })
+
+  it('says the health in words, with its origin and the sandbox, in the tooltip', async () => {
+    render(createElement(TooltipProvider, null, createElement(SidebarFootChrome, { ...STATE, health: 'down' })))
+    const health = document.querySelector<HTMLElement>('[data-health-tone]')!
+    await act(async () => fireEvent.focus(health))
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'The runcastle API at http://localhost:4513/api is not answering · agents run sandboxed via docker',
+    )
   })
 
   it('gives notifications, theme and settings each a named icon button', () => {
@@ -67,13 +84,21 @@ describe('sidebar foot', () => {
     expect(html).not.toContain('aria-label="Settings"')
   })
 
-  it('carries the rows it is handed above the status line', () => {
-    const html = foot({ rows: createElement('span', null, '3 running elsewhere') })
+  it('carries the drive cards it is handed above the status line', () => {
+    const html = foot({
+      rows: createElement(DriveCard, {
+        label: 'Test drive',
+        detail: 'Coupons',
+        onStop: () => undefined,
+      }),
+    })
 
-    expect(html.indexOf('3 running elsewhere')).toBeLessThan(html.indexOf('data-health'))
+    expect(html.indexOf('Test drive')).toBeLessThan(html.indexOf('data-health-tone'))
+    expect(html).toContain('>Coupons<')
+    expect(html).toContain('aria-label="Stop the test drive"')
   })
 
-  it('never counts the runs of the project it is in', () => {
-    expect(foot()).not.toMatch(/\d+ runs?\b/)
+  it('never counts runs — here or elsewhere', () => {
+    expect(foot()).not.toMatch(/\d+ runs?\b|running elsewhere/)
   })
 })

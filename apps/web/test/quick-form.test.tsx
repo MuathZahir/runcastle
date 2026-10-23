@@ -16,7 +16,7 @@ describe('the Draft door', () => {
 
     expect(screen.getByText('Write it down now, work it out later. Nothing is cut until you Start it.')).toBeTruthy()
     expect(screen.getByLabelText('Notes (optional — becomes the brief)')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Park draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to backlog' }))
     expect(onSubmit).toHaveBeenCalledWith('Keep email out of scope.')
   })
 
@@ -33,7 +33,7 @@ describe('the Draft door', () => {
     expect(screen.queryByRole('button', { name: '+ Add another' })).toBeNull()
     expect(screen.queryByRole('button', { name: /^from / })).toBeNull()
     expect(screen.queryByText(/ticket.? \+ review/)).toBeNull()
-    expect(screen.getByText('feature/slack-alerts · draft')).toBeTruthy()
+    expect(screen.getByText('feature/slack-alerts · backlog')).toBeTruthy()
   })
 })
 
@@ -76,7 +76,7 @@ describe('the rhythm of the draft card', () => {
     expect(footer.classList.contains('pt-4')).toBe(true)
   })
 
-  it('has one primary, and it is Park draft', () => {
+  it('has one primary, and it is Add to backlog', () => {
     const { container } = render(<ParkDraftMode
       title="x" slug="x" oneLiner="" notes="" duplicate={null} busy={false} ready
       onTitleChange={() => {}} onOneLinerChange={() => {}} onNotesChange={() => {}}
@@ -84,6 +84,6 @@ describe('the rhythm of the draft card', () => {
     />)
     const primaries = container.querySelectorAll('[data-variant="primary"]')
     expect(primaries).toHaveLength(1)
-    expect(primaries[0]!.textContent).toContain('Park draft')
+    expect(primaries[0]!.textContent).toContain('Add to backlog')
   })
 })

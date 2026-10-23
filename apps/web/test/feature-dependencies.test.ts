@@ -51,9 +51,9 @@ describe('the rail chip of a draft', () => {
     expect(chip.title).toBe('waits on auth (building), old (archived)')
   })
 
-  it('stays Draft when every dependency merged, or there are none', () => {
-    expect(rowChip(draft('d', [MERGED])).text).toBe('Draft')
-    expect(rowChip(draft('d')).text).toBe('Draft')
+  it('stays In the backlog when every dependency merged, or there are none', () => {
+    expect(rowChip(draft('d', [MERGED])).text).toBe('In the backlog')
+    expect(rowChip(draft('d')).text).toBe('In the backlog')
   })
 
   it('changes nothing about triage or needs-me', () => {

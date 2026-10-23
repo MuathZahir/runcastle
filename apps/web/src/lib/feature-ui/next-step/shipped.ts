@@ -6,7 +6,7 @@ export function resolveShipped(_input: ResolverInput): NextStep {
   return {
     kick: 'SHIPPED',
     title: 'Shipped to main',
-    desc: 'The branch is merged and the pipeline is complete. The chat is still here — ask it anything, or draft the next feature.',
+    desc: 'The branch is merged and the pipeline is complete. The chat is still here — ask it anything, or add the next feature.',
     primary: undefined,
     secondary: [CHAT_ACTION],
     busy: false,

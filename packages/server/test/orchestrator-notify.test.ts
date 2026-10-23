@@ -95,7 +95,7 @@ describe('orchestratorLineFor — end events', () => {
       'a merge that landed',
       event('feature.shipped', undefined, { message: 'merged to main' }),
       owned,
-      '[runcastle] export-csv merged to main: shipped. Drafts waiting on it may start now. Read it with get_feature_context({ slug: "export-csv" }).',
+      '[runcastle] export-csv merged to main: shipped. Backlog features waiting on it may start now. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a merge that conflicted',
@@ -472,7 +472,7 @@ describe('the notifier and the catch-up', () => {
       'claude-code',
     )
     expect(prompt).toContain(
-      '### Since you were last live\n- mine merged to main: shipped. Drafts waiting on it may start now.',
+      '### Since you were last live\n- mine merged to main: shipped. Backlog features waiting on it may start now.',
     )
   })
 })

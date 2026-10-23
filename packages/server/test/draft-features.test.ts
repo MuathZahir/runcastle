@@ -53,7 +53,7 @@ async function initRepo(dir: string): Promise<void> {
 }
 
 /** The one refusal every live-feature verb owes a draft (decision 8). */
-const DRAFT_REFUSAL = /is a draft — click Start to cut its branch and begin/
+const DRAFT_REFUSAL = /is in the backlog — click Start to cut its branch and begin/
 
 describe('draft features', () => {
   let ctx: AppCtx

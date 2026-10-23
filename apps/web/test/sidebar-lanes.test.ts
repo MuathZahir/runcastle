@@ -1,14 +1,11 @@
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { sidebarLanes, triage } from '../src/lib/feature-ui'
-import { InboxLane } from '../src/components/SidebarLanes'
 import { listItem } from './fixtures'
 
 /**
- * The sidebar's Inbox | lanes split and the Map tree (the-map-of-stories-and-
- * scenarios decisions 2, 3). The split is pure; the Inbox and the tree are
- * tier-1 markup (apps/web/STYLE.md).
+ * The sidebar's grouping (the-map-of-stories-and-scenarios decisions 2, 3):
+ * what needs you lifted out, then the lanes the sidebar draws as the stopped
+ * rows, the Working shelf and the Backlog / Shipped shelves. The split is pure.
  */
 
 const waiting = listItem({ id: 'review', phase: 'review' })
@@ -53,25 +50,5 @@ describe('sidebarLanes', () => {
     const { inbox, lanes } = sidebarLanes([burning, draft])
     expect(inbox).toEqual([])
     expect(lanes.map((g) => g.key)).toEqual(['agentWorking', 'drafts'])
-  })
-})
-
-describe('InboxLane', () => {
-  const render = (features: typeof all) =>
-    renderToStaticMarkup(
-      createElement(InboxLane, { features, renderRow: (f) => createElement('i', { key: f.id }, f.id) }),
-    )
-
-  it('renders its waiting rows under an Inbox label', () => {
-    const html = render([waiting, failed])
-    expect(html).toContain('aria-label="Inbox"')
-    expect(html).toContain('<i>review</i><i>failed</i>')
-    expect(html).not.toContain('Nothing needs you')
-  })
-
-  it('shrinks to one quiet row when empty', () => {
-    const html = render([])
-    expect(html).toContain('Nothing needs you')
-    expect(html).not.toContain('<i>')
   })
 })

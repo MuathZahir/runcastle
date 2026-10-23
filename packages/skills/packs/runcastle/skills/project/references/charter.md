@@ -49,9 +49,9 @@ always describes the present, never the history.>
 
 ## Rules that keep it from rotting
 
-- **`## Deferred / open threads` is the charter's home for a parked idea that is
-  not yet a feature** — once it has resolved into one, park it as a draft
-  (`create_feature({ draft: true })`, §1c) instead. There is no backlog table and
+- **`## Deferred / open threads` is the charter's home for an idea that is
+  not yet a feature** — once it has resolved into one, put it in the backlog
+  (`create_feature({ draft: true })`, §1c) instead. There is no backlog table in the charter and
   no `docs/backlog.md`, and you must not create one.
 - Because the charter is **rewritten in place**, a thread that gets done is
   *deleted* — which is exactly what stops it decaying into a graveyard.

@@ -38,7 +38,7 @@ export function ParkDraftMode({
     <>
       <DialogHeader
         id="park-draft-title"
-        title="Park it for later"
+        title="Add to backlog"
         description="Write it down now, work it out later. Nothing is cut until you Start it."
         onClose={onCancel}
       />
@@ -79,7 +79,7 @@ export function ParkDraftMode({
         start={
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <IconBranch size={14} className="shrink-0 text-icon" />
-            <span className="truncate font-mono">feature/{slug || '…'} · draft</span>
+            <span className="truncate font-mono">feature/{slug || '…'} · backlog</span>
           </span>
         }
       >
@@ -87,7 +87,7 @@ export function ParkDraftMode({
           Cancel
         </Button>
         <Button variant="primary" icon={<IconDoc />} onClick={submit} disabled={!ready || busy}>
-          {busy ? 'Parking…' : 'Park draft'}
+          {busy ? 'Adding…' : 'Add to backlog'}
         </Button>
       </DialogFooter>
     </>

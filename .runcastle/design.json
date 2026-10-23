@@ -1,0 +1,3 @@
+{
+  "command": "bun run --cwd apps/web dev --port $RUNCASTLE_DESIGN_PORT --strictPort"
+}

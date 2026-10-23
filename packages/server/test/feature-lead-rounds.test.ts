@@ -159,7 +159,7 @@ describe('the feature lead runs rounds', () => {
       const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', baseBranch: null })
       const building = seedFeature(ctx, projectId, { slug: 'built', phase: 'building' })
 
-      await expect(go(ctx, draft.id)).rejects.toThrow(/draft/)
+      await expect(go(ctx, draft.id)).rejects.toThrow(/backlog/)
       await expect(go(ctx, building.id)).rejects.toThrow(/past planning/)
     })
   })
