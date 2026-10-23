@@ -5,10 +5,16 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "jsx": "react-jsx",
-    // The type-only router import apps/web/src/trpc.ts makes, mapped as
-    // apps/web/tsconfig.json maps it.
+    // This folder belongs to no workspace, and bun's isolated installs leave
+    // the root node_modules without the web app's packages. Resolve types and
+    // bare imports from the web app's own install, so the helpers and the app
+    // sources they render share one copy of react.
+    "typeRoots": ["../../apps/web/node_modules/@types"],
     "paths": {
-      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"]
+      // The type-only router import apps/web/src/trpc.ts makes, mapped as
+      // apps/web/tsconfig.json maps it.
+      "@runcastle/server": ["../../packages/server/src/trpc/router.ts"],
+      "*": ["../../apps/web/node_modules/@types/*", "../../apps/web/node_modules/*"]
     }
   },
   // tsc's wildcards skip dot-folders, so the helpers are named explicitly. The
