@@ -427,7 +427,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
         emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
 
-        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:lead\nAPI Error: overloaded')
+        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:feature\nAPI Error: overloaded')
         await new Promise((r) => setTimeout(r, 10))
       } finally {
         stop()
@@ -439,7 +439,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       expect(failed[0]?.data).toEqual({
         sessionId: ids[0],
         exitCode: 1,
-        tail: 'Loaded skill runcastle:lead\nAPI Error: overloaded',
+        tail: 'Loaded skill runcastle:feature\nAPI Error: overloaded',
         messages: 1,
       })
       expect(failed[0]?.message).toBe(

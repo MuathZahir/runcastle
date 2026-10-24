@@ -74,7 +74,7 @@ Size the read to the idea — but **do not skip it**. "I did not check" is not a
 Now talk. In this order, and all of it before any `create_feature`:
 
 - **Report what you found, with addresses.** "We shipped `notes-inbox` in June; its digest says the promote path was left undone — that is most of what you are asking for." Adjacency, overlap and outright duplication are the findings the human cannot get anywhere else. **"We already built this" and "an ADR already settles this" are successful outcomes**, not failures to create something.
-- **Shape-grill before you propose the cut.** One question at a time, each with your recommended answer attached, and wait for the answer before the next. Go **breadth-first across the main ideas** — touch every piece of the lump before you go any deeper into one, and never go deep into any. Ask only what could change the cut:
+- **Shape-grill before you propose the cut.** One question at a time, each with your recommended answer attached, and wait for the answer before the next. Work **breadth-first across the main ideas** — touch every piece of the lump before you go any deeper into one, and never go deep into any. Ask only what could change the cut:
   - **the pieces** — what separate things are in this lump;
   - **the core** — which piece is the one the rest exists for;
   - **the uncertainty** — where the human is unsure, and what they would want to test-drive first;
