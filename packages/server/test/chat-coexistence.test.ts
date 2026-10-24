@@ -70,7 +70,7 @@ describe('the chat beside a burn', () => {
     await g.commit('initial commit')
 
     project = seedProject(ctx, repo)
-    feature = seedFeature(ctx, project.id, { slug: 'coex', phase: 'building' })
+    feature = seedFeature(ctx, project.id, { slug: 'coex' })
     await createFeatureBranch(project, feature.slug, 'main')
     talkWt = await ensureTalkWorktree(project, feature)
   })

@@ -105,7 +105,7 @@ describe('launchSession — briefings', () => {
    * purpose opens the chat as any plain open does — as the feature's lead.
    */
   it('opens a start-lap launch at review as a plain chat: the lead, no lap framing', async () => {
-    const { featureId } = await seedResumable('start-lap-retired', { phase: 'review', lap: 1 })
+    const { featureId } = await seedResumable('start-lap-retired', {})
     const plain = await launchAndRead(featureId, { kind: 'chat', purpose: 'start-lap' })
 
     expect(plain.command).toContain('--resume cc-prior')
@@ -117,7 +117,7 @@ describe('launchSession — briefings', () => {
 
   it('delivers a chat kickoff override into the resumed conversation', async () => {
     const briefing = 'Resolve the merge conflict on the feature branch.'
-    const { featureId } = await seedResumable('with-briefing', { phase: 'review', lap: 1 })
+    const { featureId } = await seedResumable('with-briefing', {})
     const { command } = await launchAndRead(featureId, {
       kind: 'chat',
       kickoffLine: briefing,
@@ -132,7 +132,7 @@ describe('launchSession — briefings', () => {
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
-    const { featureId } = await seedResumable('no-briefing', { phase: 'building' })
+    const { featureId } = await seedResumable('no-briefing', {})
     const { command } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(command).toContain('--resume cc-prior')

@@ -116,7 +116,7 @@ describe('the feature lead runs rounds', () => {
 
   describe('dispatching a round', () => {
     it('starts a run over exactly the named pending tickets, leaving the rest for later', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [a, b, c] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b'), ticketInput('c')])
       setWaiting(ctx, featureId, 'round proposed')
 
@@ -153,7 +153,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('refuses while a round is already running', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
       ctx.db
         .insert(runs)
@@ -163,7 +163,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('refuses an unknown seq and one with nothing left to burn', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [done] = storeTickets(ctx, featureId, [ticketInput('a')])
       updateTicket(ctx, done.id, { status: 'done', commits: ['abc'] })
 
@@ -188,7 +188,7 @@ describe('the feature lead runs rounds', () => {
       const runCount = () => ctx.db.select().from(runs).all().length
 
       it('refuses a pending outside blocker, naming both seqs and the fix, and changes nothing', async () => {
-        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const featureId = seedFeature(ctx, projectId, {}).id
         const [a, b, c] = seedGraph(featureId, { 2: [1] }, 3)
         updateTicket(ctx, c.id, { status: 'failed', error: 'earlier' })
 
@@ -206,7 +206,7 @@ describe('the feature lead runs rounds', () => {
       })
 
       it('refuses a failed outside blocker and lists every offending edge in one message', async () => {
-        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const featureId = seedFeature(ctx, projectId, {}).id
         const [a, b, , d, e] = seedGraph(featureId, { 4: [1, 2], 5: [9] }, 5)
         updateTicket(ctx, b.id, { status: 'failed', error: 'x' })
 
@@ -222,7 +222,7 @@ describe('the feature lead runs rounds', () => {
       })
 
       it('reports an orphaned burning blocker outside the round as failed, after the sweep', async () => {
-        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const featureId = seedFeature(ctx, projectId, {}).id
         const [a, b] = seedGraph(featureId, { 2: [1] }, 2)
         updateTicket(ctx, a.id, { status: 'burning' })
 
@@ -235,7 +235,7 @@ describe('the feature lead runs rounds', () => {
       })
 
       it('accepts blockers outside the round that are done or cancelled', async () => {
-        const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+        const featureId = seedFeature(ctx, projectId, {}).id
         const [a, b, c] = seedGraph(featureId, { 3: [1, 2] }, 3)
         updateTicket(ctx, a.id, { status: 'done', commits: ['abc'] })
         updateTicket(ctx, b.id, { status: 'cancelled' })
@@ -262,7 +262,7 @@ describe('the feature lead runs rounds', () => {
         beforeEach(() => workflowRegistry.set('ticket-burner', realBurner))
 
         it('lands #4 in a round that names only it, its blocker #3 having landed earlier', async () => {
-          const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+          const featureId = seedFeature(ctx, projectId, {}).id
           const [, , three, four] = seedGraph(featureId, { 4: [3] }, 4)
           updateTicket(ctx, three.id, { status: 'done', commits: ['abc'] })
 
@@ -273,7 +273,7 @@ describe('the feature lead runs rounds', () => {
         })
 
         it('does not fail a review as missing when a blocker outside the round was cancelled', async () => {
-          const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+          const featureId = seedFeature(ctx, projectId, {}).id
           const rows = storeTickets(
             ctx,
             featureId,
@@ -299,7 +299,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('dispatches round after round with no human message in between', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
 
       const { runId } = await dispatchRound(ctx, featureId, [a.seq])
@@ -308,7 +308,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('after Stop refuses until a human message arrives, which clears the stopped mark', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
       await stopFeature(ctx, featureId)
 
@@ -330,7 +330,7 @@ describe('the feature lead runs rounds', () => {
 
   describe('a round returning', () => {
     it('stays in building, records the gates on the round and wakes the lead once', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('Add the form')])
 
       const { runId, done } = await startRun(ctx, featureId, 'ticket-burner', {
@@ -365,7 +365,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('records no gate result when no verify command is configured', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       storeTickets(ctx, featureId, [ticketInput('a')])
       const { done } = await startRun(ctx, featureId, 'ticket-burner')
       await done
@@ -376,7 +376,7 @@ describe('the feature lead runs rounds', () => {
 
     it('sends nothing on a provider-limit halt and waits for the human instead', async () => {
       workflowRegistry.set('ticket-burner', haltingBurner)
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       storeTickets(ctx, featureId, [ticketInput('a')])
       const { done } = await startRun(ctx, featureId, 'ticket-burner')
       await done
@@ -409,7 +409,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('warns about a failing last round, and not about work no review has seen', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [impl] = storeTickets(ctx, featureId, [ticketInput('a')])
       workflowRegistry.set('ticket-burner', {
         id: 'ticket-burner',
@@ -428,7 +428,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('does not warn when changed work was never reviewed — review is the agent’s call', () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [impl] = storeTickets(ctx, featureId, [ticketInput('a')])
       updateTicket(ctx, impl.id, { status: 'done', commits: ['abc'] })
 
@@ -439,7 +439,7 @@ describe('the feature lead runs rounds', () => {
   describe('stopping and waiting', () => {
     it('stop_round cancels the running round', async () => {
       workflowRegistry.set('ticket-burner', hangingBurner)
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
       const { runId } = await dispatchRound(ctx, featureId, [t.seq])
 
@@ -451,7 +451,7 @@ describe('the feature lead runs rounds', () => {
 
     it('Stop cancels the round, marks the feature stopped and waiting, and tells the lead', async () => {
       workflowRegistry.set('ticket-burner', hangingBurner)
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
       const { runId } = await dispatchRound(ctx, featureId, [t.seq])
 
@@ -470,7 +470,7 @@ describe('the feature lead runs rounds', () => {
     // stopped (and push) the moment Stop lands, not after the kill.
     it('Stop marks the feature stopped before it waits on the round to die', async () => {
       workflowRegistry.set('ticket-burner', hangingBurner)
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
       await dispatchRound(ctx, featureId, [t.seq])
 
@@ -482,7 +482,7 @@ describe('the feature lead runs rounds', () => {
     })
 
     it('a waiting reason is cleared by a human message and by a dispatch', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+      const featureId = seedFeature(ctx, projectId, {}).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
 
       setWaiting(ctx, featureId, 'stuck on the same failure')
@@ -519,7 +519,7 @@ describe('the rounds over tRPC', () => {
     restoreEnv = useDataDir(home)
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
-    featureId = seedFeature(ctx, seedProject(ctx).id, { ticketsReadyLap: 1 }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     original = workflowRegistry.get('ticket-burner')
     workflowRegistry.set('ticket-burner', landingBurner)
   })
@@ -611,7 +611,7 @@ describe('no round starts while the feature is being driven', () => {
     await g.commit('initial commit')
     const project = seedProject(ctx, repo)
     await createFeatureBranch(project, 'driven', 'main')
-    const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'building' })
+    const feature = seedFeature(ctx, project.id, { slug: 'driven' })
     const [t] = storeTickets(ctx, feature.id, [ticketInput('a')])
     expect((await testDrive(ctx, project, feature, 'start')).ok).toBe(true)
 

@@ -188,7 +188,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       await testDrive(ctx, project, feature, 'start')
       await expect(launch()).rejects.toThrow(/Open app/)
       await testDrive(ctx, project, feature, 'stop')
-      await reviewDrive(ctx, project, { ...feature, phase: 'review' }, 'start')
+      await reviewDrive(ctx, project, { ...feature }, 'start')
       await expect(launch()).rejects.toThrow(GateError)
     }, 30_000)
 

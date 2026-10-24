@@ -54,7 +54,6 @@ function feature(overrides: Partial<Feature> = {}): Feature {
     slug: 'dark-mode',
     title: 'Dark mode',
     oneLiner: 'a dark theme',
-    phase: 'planning',
     branch: 'feature/dark-mode',
     status: 'active',
     createdAt: 0,
@@ -479,9 +478,9 @@ describe('renderSystemPrompt', () => {
   ]
   const STATES: Partial<Feature>[] = [
     {},
-    { phase: 'building' },
-    { phase: 'review', waitingReason: 'ready to test' },
-    { phase: 'shipped', status: 'shipped' },
+    {},
+    { waitingReason: 'ready to test' },
+    { status: 'shipped' },
   ]
 
   it('gives every feature chat, in any state, one brief naming the feature skill and no phase', () => {
@@ -872,8 +871,8 @@ describe('renderSessionPrompt', () => {
 
   const briefs: Array<[string, Partial<WriteArtifactsInput>]> = [
     ['feature chat', { feature: feature() }],
-    ['resolve-conflict', { feature: feature({ phase: 'review' }), purpose: 'resolve-conflict' }],
-    ['qa', { session: session({ kind: 'qa' }), feature: feature({ phase: 'review' }) }],
+    ['resolve-conflict', { feature: feature({}), purpose: 'resolve-conflict' }],
+    ['qa', { session: session({ kind: 'qa' }), feature: feature({}) }],
     ['self-plan', { feature: feature(), purpose: 'self-plan' }],
     [
       'prepare',
@@ -903,7 +902,6 @@ describe('renderSessionPrompt', () => {
           project,
           feature: feature(),
           failure: {
-            phase: 'setup',
             command: 'bash .runcastle/drive-setup.sh',
             exitCode: 3,
             timedOut: false,
@@ -931,7 +929,7 @@ describe('renderSessionPrompt', () => {
     [
       'relay',
       {
-        feature: feature({ phase: 'review' }),
+        feature: feature({}),
         purpose: 'relay',
         session: session({ headless: true }),
       },
@@ -1005,7 +1003,6 @@ describe('claudeRuntime.writeArtifacts', () => {
           project,
           feature: feature(),
           failure: {
-            phase: 'setup',
             command: 'bash .runcastle/drive-setup.sh',
             exitCode: 3,
             timedOut: false,

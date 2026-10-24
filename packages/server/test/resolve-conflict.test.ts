@@ -149,7 +149,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     git(worktree, 'commit', '-am', 'feature moves')
 
     // Every feature chat is the lead, so its guards are lifted and its calls auto-allowed.
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
       kind: 'chat',
@@ -268,7 +268,7 @@ describe('session-end — merge.resolved when the resolver landed the merge', ()
     git(worktree, 'commit', '-am', 'feature moves')
 
     const project = seedProject(ctx, repo)
-    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' }).id
+    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode' }).id
     setRuntimeCtx(ctx)
   })
 
@@ -393,7 +393,7 @@ describe('a standing conflict clears once its base is in the feature branch', ()
     git(worktree, 'commit', '-am', 'feature moves')
 
     const project = seedProject(ctx, repo)
-    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' }).id
+    featureId = seedFeature(ctx, project.id, { slug: 'dark-mode' }).id
     emit(ctx, featureId, {
       type: 'merge.conflict',
       message: 'merge conflict — resolve and retry',
@@ -550,7 +550,7 @@ describe('launchSession — the purpose reaches the session row', () => {
     git(repo, 'commit', '--allow-empty', '-m', 'initial commit')
 
     const project = seedProject(ctx, repo)
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode' })
     featureId = feature.id
     await createFeatureBranch(project, 'dark-mode', 'main')
     cleanup.push(worktreeDir(project.id, 'dark-mode'))

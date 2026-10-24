@@ -302,7 +302,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('merge_feature ships a clean feature with its outcome doc', async () => {
     const session = orchestrator()
-    const f = await owned('landing', { phase: 'review' })
+    const f = await owned('landing', {})
     await g.checkout('feature/landing')
     writeFileSync(join(repoPath, 'landing.txt'), 'work\n')
     await g.add(['landing.txt'])
@@ -317,7 +317,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('merge_feature returns a conflict’s files and records merge.conflict', async () => {
     const session = orchestrator()
-    const f = await owned('clash', { phase: 'review' })
+    const f = await owned('clash', {})
     await g.checkout('feature/clash')
     writeFileSync(join(repoPath, 'README.md'), 'feature-line\n')
     await g.add(['README.md'])

@@ -40,7 +40,7 @@ describe('chat contract', () => {
 
   it('tells the chat the feature status and the rounds run, never a phase or a lap', async () => {
     const ctx = await makeTestCtx()
-    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'review', lap: 3 })
+    const feature = seedFeature(ctx, seedProject(ctx).id, {})
     ctx.db.insert(runs).values({
       id: newId('run'),
       featureId: feature.id,
@@ -120,7 +120,7 @@ describe('every chat opens on the feature skill', () => {
 
   /** A planning feature on a real branch, carrying whichever docs are named. */
   async function planningFeature(slug: string, docs: string[]): Promise<Feature> {
-    const feature = seedFeature(ctx, projectId, { slug, phase: 'planning' })
+    const feature = seedFeature(ctx, projectId, { slug })
     const docsDir = join(repoPath, ...featureDocsRel(slug).split('/'))
     mkdirSync(docsDir, { recursive: true })
     for (const doc of ['brief.md', ...docs]) {

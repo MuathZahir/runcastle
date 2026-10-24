@@ -40,7 +40,7 @@ describe('findings router', () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
     project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { phase: 'review' })
+    feature = seedFeature(ctx, project.id, {})
     reviewTicket = storeTickets(ctx, feature.id, [
       {
         title: 'Review the lap',

@@ -195,11 +195,11 @@ describe('the project drive', () => {
     const start = await projectDrive(ctx, project, 'start')
 
     expect(start.ok).toBe(true)
-    expect(start.hookFailure).toMatchObject({ phase: 'setup', exitCode: 3 })
+    expect(start.hookFailure).toMatchObject({ exitCode: 3 })
     expect(activeDriveInfo(project.id)).toMatchObject({
       projectDrive: true,
       state: 'setup-failed',
-      hookFailure: { phase: 'setup', command: 'exit 3', exitCode: 3 },
+      hookFailure: { command: 'exit 3', exitCode: 3 },
     })
   })
 
@@ -300,7 +300,7 @@ describe('the project drive', () => {
     await g.add([`${slug}.txt`])
     await g.commit('feat: work')
     await g.checkout('main')
-    return seedFeature(ctx, project.id, { slug, phase: 'review' })
+    return seedFeature(ctx, project.id, { slug })
   }
 
   it('merge stops a live project drive of the same project, then lands', async () => {

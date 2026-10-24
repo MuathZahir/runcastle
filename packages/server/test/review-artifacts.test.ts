@@ -75,7 +75,7 @@ describe('review artifacts over HTTP', () => {
     process.env.RUNCASTLE_DATA_DIR = dataDir
 
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'review' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     setRuntimeCtx(ctx)
   })
 

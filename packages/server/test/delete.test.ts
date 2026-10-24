@@ -166,7 +166,7 @@ describe('feature delete', () => {
   })
 
   it('removes DB rows, the talk worktree, and the feature branch; leaves committed docs untouched', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'del-me', phase: 'building' })
+    const feature = seedFeature(ctx, project.id, { slug: 'del-me' })
     await createFeatureBranch(project, feature.slug, 'main')
     const worktree = await ensureTalkWorktree(project, feature)
 
@@ -204,7 +204,7 @@ describe('feature delete', () => {
   })
 
   it('deletes matching runcastle temp branches, keeps unrelated branches', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'temps', phase: 'building' })
+    const feature = seedFeature(ctx, project.id, { slug: 'temps' })
     await createFeatureBranch(project, feature.slug, 'main')
 
     const g = simpleGit(project.repoPath)
@@ -226,7 +226,7 @@ describe('feature delete', () => {
   })
 
   it('emits a project-scoped feature.deleted event (surviving the row deletion)', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'evt', phase: 'planning' })
+    const feature = seedFeature(ctx, project.id, { slug: 'evt' })
     await createFeatureBranch(project, feature.slug, 'main')
 
     await deleteFeature(ctx, feature.id)
@@ -239,7 +239,7 @@ describe('feature delete', () => {
   })
 
   it('refuses to delete a shipped feature with a clear error', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'shipped', phase: 'shipped', status: 'shipped' })
+    const feature = seedFeature(ctx, project.id, { slug: 'shipped', status: 'shipped' })
 
     await expect(deleteFeature(ctx, feature.id)).rejects.toThrow(/shipped/)
     // The row is untouched.
@@ -247,7 +247,7 @@ describe('feature delete', () => {
   })
 
   it('tears down a live session and an active run before deleting, without throwing', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'live', phase: 'building' })
+    const feature = seedFeature(ctx, project.id, { slug: 'live' })
     await createFeatureBranch(project, feature.slug, 'main')
     await ensureTalkWorktree(project, feature)
 
@@ -273,7 +273,7 @@ describe('feature delete', () => {
   })
 
   it('stops a test drive of THIS feature before deleting', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'drive', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'drive' })
     await createFeatureBranch(project, feature.slug, 'main')
     await ensureTalkWorktree(project, feature)
 
@@ -293,7 +293,7 @@ describe('feature delete', () => {
   it.skipIf(process.platform === 'win32')(
     'leaves the feature row present and retryable when worktree removal fails',
     async () => {
-      const feature = seedFeature(ctx, project.id, { slug: 'locked', phase: 'building' })
+      const feature = seedFeature(ctx, project.id, { slug: 'locked' })
       await createFeatureBranch(project, feature.slug, 'main')
       const worktree = await ensureTalkWorktree(project, feature)
       seedAllRows(ctx, feature.id)

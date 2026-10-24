@@ -47,7 +47,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('archives from any phase, sets status=archived, and emits feature.archived', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'planning', status: 'active' })
+    const f = seedFeature(ctx, projectId, { status: 'active' })
 
     const archived = await archiveFeature(ctx, f.id)
 
@@ -57,7 +57,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('ends a live session before archiving', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'building', status: 'active' })
+    const f = seedFeature(ctx, projectId, { status: 'active' })
     const sessionId = seedLiveSession(ctx, f.id)
 
     await archiveFeature(ctx, f.id)
@@ -68,7 +68,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('archives a shipped feature (any status except archived)', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'shipped', status: 'shipped' })
+    const f = seedFeature(ctx, projectId, { status: 'shipped' })
     expect((await archiveFeature(ctx, f.id)).status).toBe('archived')
   })
 
@@ -78,7 +78,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('unarchives a non-shipped feature back to active', () => {
-    const f = seedFeature(ctx, projectId, { phase: 'planning', status: 'archived' })
+    const f = seedFeature(ctx, projectId, { status: 'archived' })
 
     const restored = unarchiveFeature(ctx, f.id)
 

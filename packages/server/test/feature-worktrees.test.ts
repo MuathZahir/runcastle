@@ -93,7 +93,7 @@ function eventOf(feature: Feature, type: string) {
 
 describe('ship', () => {
   it('removes the talk worktree, keeps the branch, and a relaunch recreates it', async () => {
-    const { feature, worktree } = await featureWithWorktree({ slug: 'happy', phase: 'review' })
+    const { feature, worktree } = await featureWithWorktree({ slug: 'happy' })
     writeFileSync(join(worktree, 'feature.txt'), 'hi\n')
     await simpleGit(worktree).add(['feature.txt']).commit('feat: work')
 
@@ -114,7 +114,7 @@ describe('ship', () => {
   it.skipIf(process.platform === 'win32')(
     'still ships when the worktree cannot be removed, and says so in an event',
     async () => {
-      const { feature, worktree } = await featureWithWorktree({ slug: 'locked', phase: 'review' })
+      const { feature, worktree } = await featureWithWorktree({ slug: 'locked' })
 
       const parent = projectWorktreesDir(project.id)
       chmodSync(parent, 0o500)
@@ -137,7 +137,7 @@ describe('ship', () => {
 
 describe('archive', () => {
   it('removes a clean worktree; unarchive + relaunch recreates it', async () => {
-    const { feature, worktree } = await featureWithWorktree({ slug: 'tidy', phase: 'building' })
+    const { feature, worktree } = await featureWithWorktree({ slug: 'tidy' })
 
     await archiveFeature(ctx, feature.id)
 
@@ -151,7 +151,7 @@ describe('archive', () => {
   })
 
   it('keeps a dirty worktree and emits why', async () => {
-    const { feature, worktree } = await featureWithWorktree({ slug: 'messy', phase: 'building' })
+    const { feature, worktree } = await featureWithWorktree({ slug: 'messy' })
     writeFileSync(join(worktree, 'draft.md'), 'not committed\n')
 
     await archiveFeature(ctx, feature.id)
@@ -167,7 +167,7 @@ describe('archive', () => {
 
 describe('boot sweep', () => {
   it('removes finished and orphaned worktrees, and leaves everything else alone', async () => {
-    const shipped = await featureWithWorktree({ slug: 'shipped', phase: 'shipped', status: 'shipped' })
+    const shipped = await featureWithWorktree({ slug: 'shipped', status: 'shipped' })
     const archivedDirty = await featureWithWorktree({ slug: 'dirty', status: 'archived' })
     writeFileSync(join(archivedDirty.worktree, 'wip.md'), 'wip\n')
     const active = await featureWithWorktree({ slug: 'active', status: 'active' })
@@ -201,10 +201,10 @@ describe('boot sweep', () => {
 
   it("removes a shipped feature's worktree even when it is dirty or not a checkout", async () => {
     // Merged already, so its scratch is disposable — as on the ship path itself.
-    const shippedDirty = await featureWithWorktree({ slug: 'shipped-dirty', phase: 'shipped', status: 'shipped' })
+    const shippedDirty = await featureWithWorktree({ slug: 'shipped-dirty', status: 'shipped' })
     writeFileSync(join(shippedDirty.worktree, 'shot.png'), 'x')
     // A half-failed rmSync fallback leaves a dir with no `.git`.
-    const husk = seedFeature(ctx, project.id, { slug: 'shipped-husk', phase: 'shipped', status: 'shipped' })
+    const husk = seedFeature(ctx, project.id, { slug: 'shipped-husk', status: 'shipped' })
     const huskDir = worktreeDir(project.id, husk.slug)
     mkdirSync(huskDir, { recursive: true })
     writeFileSync(join(huskDir, 'leftover.txt'), 'x\n')

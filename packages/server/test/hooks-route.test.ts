@@ -349,7 +349,7 @@ describe('hooks route', () => {
   })
 
   it('session-start never tells the session a lap (the agent would repeat it)', async () => {
-    const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
+    const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper' })
     const s = createSessionRow(ctx, {
       featureId: lapFeature.id,
       kind: 'chat',

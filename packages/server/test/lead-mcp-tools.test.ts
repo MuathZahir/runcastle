@@ -51,7 +51,7 @@ describe('the lead’s MCP tools', () => {
     ctx = await makeTestCtx()
     const repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
-    featureId = seedFeature(ctx, project.id, { slug: 'coupons', ticketsReadyLap: 1 }).id
+    featureId = seedFeature(ctx, project.id, { slug: 'coupons' }).id
     sessionId = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath }).id
     markSessionLive(ctx, sessionId)
     setRuntimeCtx(ctx)

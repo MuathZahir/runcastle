@@ -51,7 +51,7 @@ describe('token telemetry', () => {
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     dir = mkdtempSync(join(tmpdir(), 'rc-usage-'))
     original = workflowRegistry.get('ticket-burner')
     workflowRegistry.set('ticket-burner', landingBurner)

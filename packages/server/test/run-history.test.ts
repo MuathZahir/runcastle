@@ -65,7 +65,7 @@ describe('run history', () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
     project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { phase: 'building' })
+    feature = seedFeature(ctx, project.id, {})
   })
 
   it('lists a feature runs newest first, with the tickets each burned', async () => {
@@ -129,7 +129,7 @@ describe('ticket.durationStats', () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
     project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { phase: 'building' })
+    feature = seedFeature(ctx, project.id, {})
   })
 
   const timing = (ticketId: string, wallMs: number) =>

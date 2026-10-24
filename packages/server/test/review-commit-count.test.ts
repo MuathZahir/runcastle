@@ -75,7 +75,7 @@ describe('feature.commitCount', () => {
     await g.commit('feat: work')
     await g.checkout('main')
 
-    const feature = seedFeature(ctx, project.id, { slug: 'ahead', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'ahead' })
     expect(await caller.feature.commitCount({ featureId: feature.id })).toEqual({
       base: 'main',
       count: 1,
@@ -88,7 +88,7 @@ describe('feature.commitCount', () => {
   })
 
   it('reports an unknown count as undefined when the branch was never created', async () => {
-    const feature = seedFeature(ctx, project.id, { slug: 'no-branch', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'no-branch' })
     const res = await caller.feature.commitCount({ featureId: feature.id })
     expect(res.count).toBeUndefined()
   })

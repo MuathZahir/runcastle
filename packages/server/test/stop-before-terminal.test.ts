@@ -61,7 +61,6 @@ describe('a stopped ticket does not read terminal before its agent is dead', () 
     slug: 'demo',
     title: 'Demo',
     oneLiner: 'x',
-    phase: 'building',
     branch: 'feature/demo',
     baseBranch: 'main',
     status: 'active',
@@ -153,7 +152,7 @@ describe('a cancelled run does not read terminal before its agents are dead', ()
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     workflowRegistry.set(cancellableDef.id, cancellableDef)
   })
 

@@ -87,7 +87,6 @@ const feature: Feature = {
   slug: 'demo',
   title: 'Demo',
   oneLiner: 'x',
-  phase: 'building',
   branch: 'feature/demo',
   baseBranch: 'main',
   status: 'active',
@@ -524,7 +523,7 @@ describe('a retried review over the real store', () => {
   it('refreshes the one finding and burns no fix ticket in the run', async () => {
     const ctx = await makeTestCtx()
     const proj = seedProject(ctx)
-    const feat = seedFeature(ctx, proj.id, { phase: 'building' })
+    const feat = seedFeature(ctx, proj.id, {})
     const input = (title: string, over = {}) => ({
       title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [], ...over,
     })
@@ -1935,7 +1934,7 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     await g.add(['README.md'])
     await g.commit('initial commit')
     proj = await openProject(ctx, repo)
-    feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'building' })
+    feat = seedFeature(ctx, proj.id, { slug: 'reviewed' })
     await createFeatureBranch(proj, feat.slug, 'main')
     ctx.db
       .insert(runs)
@@ -2017,7 +2016,7 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('stays in building after the run and keeps the review digest in the run digest', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {
@@ -2044,7 +2043,7 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('appends no verification pass to a round with one trivial ticket and no review', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [{
       title: 'trivial change', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
@@ -2110,7 +2109,7 @@ describe('the burner mints its verification pass into a lap that already has a r
   })
 
   it('stores the second review ticket untouched, and G3 still reads satisfied', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {

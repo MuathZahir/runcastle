@@ -87,7 +87,7 @@ beforeEach(async () => {
   await g.commit('initial commit')
   project = seedProject(ctx, repo)
   await createFeatureBranch(project, 'shop', 'main')
-  feature = seedFeature(ctx, project.id, { slug: 'shop', phase: 'review' })
+  feature = seedFeature(ctx, project.id, { slug: 'shop' })
   worktree = await ensureTalkWorktree(project, feature)
 })
 
@@ -445,7 +445,7 @@ describe('design MCP tools', () => {
 describe('the design path the web opens', () => {
   it('is remembered per feature and returned by design.status', async () => {
     const design = createCallerFactory(appRouter)(ctx).design
-    const other = seedFeature(ctx, project.id, { slug: 'other', phase: 'planning' })
+    const other = seedFeature(ctx, project.id, { slug: 'other' })
 
     expect(await design.showPath({ featureId: feature.id, path: '/preview/invites.html' })).toEqual({ ok: true })
 

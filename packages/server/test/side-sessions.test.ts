@@ -227,7 +227,7 @@ describe('opening a side session', () => {
 
   it('works unprompted whatever the feature is doing, like the lead', async () => {
     const fresh = await feature('perm-fresh')
-    const building = await feature('perm-building', { phase: 'building' })
+    const building = await feature('perm-building', {})
     for (const f of [fresh, building]) {
       expect(launchedCommand(f.id, await openSide(f.id))).toContain('--permission-mode bypassPermissions')
     }
@@ -268,7 +268,7 @@ describe('a side session never blocks and is never blocked', () => {
     await openSide(relay.id)
     await expect(launch(relay.id, { purpose: 'relay', message: 'Drop decision 3.' })).resolves.toBeTruthy()
 
-    const wake = await feature('let-lead-wake', { phase: 'building' })
+    const wake = await feature('let-lead-wake', {})
     await openSide(wake.id)
     await expect(launch(wake.id, { purpose: 'lead-wake', message: 'Round 1 returned' })).resolves.toBeTruthy()
   })
@@ -293,7 +293,7 @@ describe('a side session never blocks and is never blocked', () => {
 
 describe('the main chat stays the main chat', () => {
   it('resume, the Chat door and the lead skip a live side session', async () => {
-    const f = await feature('lookups', { phase: 'building' })
+    const f = await feature('lookups', {})
     const chat = await mainChat(f.id, 'cc-main')
     const side = await openSide(f.id)
     markSessionLive(ctx, side, { ccSessionId: 'cc-side' })
@@ -330,7 +330,7 @@ describe('the main chat stays the main chat', () => {
   })
 
   it('stays the lead after a /clear moved its row onto a new conversation', async () => {
-    const f = await feature('after-clear', { phase: 'building' })
+    const f = await feature('after-clear', {})
     const chat = await mainChat(f.id, 'cc-before-clear', { live: true })
     const side = await openSide(f.id)
     markSessionLive(ctx, side, { ccSessionId: 'cc-side' })
@@ -401,7 +401,7 @@ describe('what a side session may write', () => {
   })
 
   it('is held by the lead’s line guard, like the main chat', async () => {
-    const f = await feature('line-guard', { phase: 'building' })
+    const f = await feature('line-guard', {})
     const side = await openSide(f.id)
     const app = new Hono()
     app.route('/api/hooks', hooksApp)
@@ -463,7 +463,7 @@ describe('the tools a side session gets', () => {
   })
 
   it('is refused a round at call time, pointed at the main chat', async () => {
-    const f = seedFeature(ctx, project.id, { slug: 'no-rounds', phase: 'building' })
+    const f = seedFeature(ctx, project.id, { slug: 'no-rounds' })
     const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' })
     expect(() => toolDispatchRound(ctx, side, { seqs: [1] })).toThrow(/main chat/)
   })

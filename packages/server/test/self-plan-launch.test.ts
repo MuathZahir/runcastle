@@ -168,7 +168,7 @@ describe('a self-planning run', () => {
   })
 
   it('plans a started feature whatever it has already produced or done', async () => {
-    for (const [slug, overrides] of [['decided', {}], ['building', { phase: 'building' as const }]] as const) {
+    for (const [slug, overrides] of [['decided', {}], ['building', {}]] as const) {
       const f = await feature(slug, overrides)
       const path = featureDocPath(projectForFeature(ctx, f), f, 'decisions.md')
       mkdirSync(dirname(path), { recursive: true })

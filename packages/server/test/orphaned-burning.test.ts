@@ -76,7 +76,7 @@ describe('orphaned burning tickets', () => {
 
   /** A feature parked at building with `done` + `burning` lanes and no live run. */
   function seedWedged(): { featureId: string; stuckId: string } {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     const [shipped, stuck] = storeTickets(ctx, featureId, [ticketInput('landed'), ticketInput('wedged')])
     updateTicket(ctx, shipped.id, { status: 'done', commits: ['abc1234'] })
     updateTicket(ctx, stuck.id, { status: 'burning' })
@@ -106,7 +106,7 @@ describe('orphaned burning tickets', () => {
   })
 
   it('the run finalizer fails a lane the workflow left burning', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     const [t] = storeTickets(ctx, featureId, [ticketInput('abandoned')])
 
     const abandoning: WorkflowDef = {

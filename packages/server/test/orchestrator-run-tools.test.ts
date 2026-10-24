@@ -110,7 +110,7 @@ describe('the orchestrator’s headless-run tools', () => {
 
   describe('refuses through the shared gate', () => {
     it('for a feature the orchestrator does not own', async () => {
-      await feature('humans', { orchestrated: false, phase: 'review' })
+      await feature('humans', { orchestrated: false })
       const session = orchestrator()
       await expect(
         toolSendToFeature(ctx, session, { slug: 'humans', message: 'x' }),
@@ -118,7 +118,7 @@ describe('the orchestrator’s headless-run tools', () => {
     })
 
     it('from a session that is not orchestrating', async () => {
-      await feature('owned', { phase: 'review' })
+      await feature('owned', {})
       updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
       const ordinary = projectSession()
       for (const call of [
@@ -130,7 +130,7 @@ describe('the orchestrator’s headless-run tools', () => {
     })
 
     it('once the setting is off', async () => {
-      await feature('stopped', { phase: 'review' })
+      await feature('stopped', {})
       const session = orchestrator()
       updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
       await expect(

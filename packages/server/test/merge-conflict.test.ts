@@ -115,7 +115,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
 
   it('returns the conflicting files + base and emits a merge.conflict event carrying them', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
@@ -140,7 +140,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
    */
   it('lets a recorded conflict be retried, recording the conflict as it stands now', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
     await caller.feature.merge({ featureId: feature.id })
 
     // A second file starts clashing between the two attempts. The failed merge
@@ -181,7 +181,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     await g.add(['feature.txt'])
     await g.commit('feat: work')
     await g.checkout('main')
-    const feature = seedFeature(ctx, project.id, { slug: 'happy', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'happy' })
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
@@ -233,7 +233,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     await g.add(['driven.txt'])
     await g.commit('feat: work')
     await g.checkout('main')
-    const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'driven' })
     const start = await testDrive(ctx, project, feature, 'start')
     expect(start.ok).toBe(true)
     expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
@@ -246,7 +246,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')
-    const target = seedFeature(ctx, project.id, { slug: 'target', phase: 'review' })
+    const target = seedFeature(ctx, project.id, { slug: 'target' })
     // A DIFFERENT feature holds an active drive — the merge handler only stops
     // THIS feature's drive, so the git-service guard must still deny the merge.
     const other = seedFeature(ctx, project.id, { slug: 'other' })
@@ -295,7 +295,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     await g.add([`${slug}.txt`])
     await g.commit('feat: work')
     await g.checkout('main')
-    return seedFeature(ctx, project.id, { slug, phase: 'review', title: `The ${slug} feature` })
+    return seedFeature(ctx, project.id, { slug, title: `The ${slug} feature` })
   }
 
   /** Store tickets and drive each to the terminal state the outcome doc reads. */
@@ -382,7 +382,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
 
   it('keeps the conflict payload and writes no outcome on either branch', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
     seedTickets(feature.id, [{ title: 'Clashing work', status: 'done', digest: '## Work\n- Did it.' }])
 
     const res = await caller.feature.merge({ featureId: feature.id })

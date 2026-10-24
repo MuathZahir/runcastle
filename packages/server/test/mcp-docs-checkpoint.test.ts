@@ -36,7 +36,7 @@ describe('docs checkpoint behind a pipeline write', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx, tmpRepo())
-    feature = seedFeature(ctx, project.id, { slug: 'slow-disk', phase: 'planning' })
+    feature = seedFeature(ctx, project.id, { slug: 'slow-disk' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
       kind: 'chat',

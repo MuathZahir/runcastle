@@ -296,13 +296,11 @@ describe('the drive-fix brief', () => {
       slug: 'add-billing',
       title: 'Add billing',
       oneLiner: 'bill people',
-      phase: 'review' as const,
       branch: 'feature/add-billing',
       status: 'active' as const,
       createdAt: 0,
     },
     failure: {
-      phase: 'setup' as const,
       command: 'bash .runcastle/drive-setup.sh',
       exitCode: 3,
       timedOut: false,
