@@ -147,6 +147,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'waitingReason',
         'dependsOn',
         'blocks',
+        'upNext',
         'annotatedModels',
         'burnConcurrency',
         'reviewEvidence',
