@@ -8,23 +8,23 @@ import { listItem } from './fixtures'
  * rows, the Working shelf and the Backlog / Shipped shelves. The split is pure.
  */
 
-const waiting = listItem({ id: 'review', phase: 'review' })
+const ready = listItem({ id: 'ready', waitingReason: 'ready to test' })
+const asking = listItem({ id: 'asking', liveSession: { status: 'live', awaitingInput: true } })
 const failed = listItem({
   id: 'failed',
-  phase: 'building',
   ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
 })
-const burning = listItem({ id: 'burning', phase: 'building', activeRun: true })
-const building = listItem({ id: 'building', phase: 'building' })
+const burning = listItem({ id: 'burning', activeRun: true })
+const building = listItem({ id: 'building' })
 const draft = listItem({ id: 'draft', status: 'draft' })
-const shipped = listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' })
+const shipped = listItem({ id: 'shipped', status: 'shipped' })
 const archived = listItem({ id: 'archived', status: 'archived' })
-const all = [waiting, burning, draft, failed, shipped, building, archived]
+const all = [ready, burning, draft, failed, asking, shipped, building, archived]
 
 describe('sidebarLanes', () => {
   it('lifts exactly the Needs you features into the Inbox, in their incoming order', () => {
     const { inbox } = sidebarLanes(all)
-    expect(inbox.map((f) => f.id)).toEqual(['review', 'failed'])
+    expect(inbox.map((f) => f.id)).toEqual(['ready', 'asking'])
   })
 
   it('keeps every other lane in today’s order, with no Needs you lane among them', () => {
@@ -32,7 +32,7 @@ describe('sidebarLanes', () => {
     expect(lanes.map((g) => g.key)).toEqual(['agentWorking', 'inProgress', 'drafts', 'shipped', 'archived'])
     expect(lanes.map((g) => g.features.map((f) => f.id))).toEqual([
       ['burning'],
-      ['building'],
+      ['failed', 'building'],
       ['draft'],
       ['shipped'],
       ['archived'],

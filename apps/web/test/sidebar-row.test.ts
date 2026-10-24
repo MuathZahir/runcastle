@@ -16,12 +16,19 @@ import { listItem } from './fixtures'
  * Tier-1 static markup (apps/web/STYLE.md): each piece is markup over resolved
  * values, so the assertions are on the string.
  *
- * What is pinned is the two-line row's *anatomy* — the title, then the phase
+ * What is pinned is the two-line row's *anatomy* — the title, then the progress
  * glyph, the state in words and the age; at most one dot; no slug — and the
  * row-level rules, so the `Sidebar` tests need not enumerate them.
  */
 
-const tally = (landed: number, total: number) => ({ landed, total, waived: 0 })
+const tickets = (total: number, done: number, cancelled = 0, failed = 0) => ({
+  total,
+  pending: total - done - cancelled - failed,
+  burning: 0,
+  done,
+  failed,
+  cancelled,
+})
 const blocker = (slug: string) => ({
   featureId: `feat_${slug}`,
   slug,
@@ -31,37 +38,33 @@ const blocker = (slug: string) => ({
   satisfied: false,
 })
 
-const waiting = listItem({ phase: 'building', liveSession: { status: 'live', awaitingInput: true } as never })
-const failed = listItem({
-  phase: 'building',
-  ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
-})
-const review = listItem({ phase: 'review' })
-const ticketsReady = listItem({
-  phase: 'planning',
-  ticketCounts: { total: 3, pending: 3, burning: 0, done: 0, failed: 0, cancelled: 0 },
-})
-const building = listItem({ phase: 'building', activeRun: true, lapTally: tally(3, 7) })
-const midTurn = listItem({ phase: 'building', liveSession: { status: 'live', awaitingInput: false } as never })
-const stopped = listItem({ phase: 'building', lapTally: tally(4, 6) })
+const waiting = listItem({ liveSession: { status: 'live', awaitingInput: true } as never })
+const ready = listItem({ waitingReason: 'ready to test' })
+const stopped = listItem({ waitingReason: 'stopped' })
+const asked = listItem({ waitingReason: 'which retry policy should rounds use?' })
+const failed = listItem({ ticketCounts: tickets(2, 1, 0, 1) })
+const building = listItem({ activeRun: true, ticketCounts: tickets(8, 3, 1) })
+const midTurn = listItem({ liveSession: { status: 'live', awaitingInput: false } as never })
+const idle = listItem({ ticketCounts: tickets(6, 4) })
 
 describe('featureStateWords', () => {
   it('says what a feature waiting on you waits for', () => {
     expect(featureStateWords(waiting)).toBe('Waiting on you')
-    expect(featureStateWords(failed)).toBe('Run failed')
-    expect(featureStateWords(review)).toBe('Ready to test')
-    expect(featureStateWords(ticketsReady)).toBe('Tickets ready')
+    expect(featureStateWords(ready)).toBe('Ready to test')
+    expect(featureStateWords(stopped)).toBe('Stopped')
+    expect(featureStateWords(asked)).toBe('Which retry policy should rounds use?')
   })
 
-  it('says an agent is at work, with the lap’s progress while it builds', () => {
+  it('says an agent is at work, with the tickets landed out of those not cancelled while it builds', () => {
     expect(featureStateWords(building)).toBe('Building · 3/7')
-    expect(featureStateWords(listItem({ phase: 'building', activeRun: true }))).toBe('Building')
+    expect(featureStateWords(listItem({ activeRun: true }))).toBe('Building')
     expect(featureStateWords(midTurn)).toBe('Agent working')
   })
 
-  it('says a started feature with nothing at work has stopped', () => {
-    expect(featureStateWords(stopped)).toBe('Stopped · 4/6')
-    expect(featureStateWords(listItem({ phase: 'building' }))).toBe('Stopped')
+  it('says a started feature with nothing at work and nothing asked is in progress — a failed ticket included', () => {
+    expect(featureStateWords(idle)).toBe('In progress')
+    expect(featureStateWords(listItem({}))).toBe('In progress')
+    expect(featureStateWords(failed)).toBe('In progress')
   })
 
   it('puts a parked idea in the backlog, or says what it waits on', () => {
@@ -70,7 +73,7 @@ describe('featureStateWords', () => {
   })
 
   it('says shipped and archived plainly', () => {
-    expect(featureStateWords(listItem({ status: 'shipped', phase: 'shipped' }))).toBe('Shipped')
+    expect(featureStateWords(listItem({ status: 'shipped' }))).toBe('Shipped')
     expect(featureStateWords(listItem({ status: 'archived' }))).toBe('Archived')
   })
 })
@@ -89,40 +92,52 @@ function row(f: FeatureListItem, over: { active?: boolean; actions?: FeatureActi
 }
 
 describe('the sidebar feature row', () => {
-  it('is a title over the phase glyph, the state in words and the age — never the slug', () => {
-    const html = row(stopped)
+  it('is a title over the progress glyph, the state in words and the age — never the slug', () => {
+    const html = row(idle)
     expect(html).toContain('Flow redesign: project shell')
-    expect(html).toContain('data-phase="building"')
-    expect(html).toContain('Stopped · 4/6')
+    expect(html).toContain('aria-label="67% landed"')
+    expect(html).toContain('In progress')
+    expect(html).not.toContain('data-phase')
     expect(html).not.toContain('flow-redesign-project-shell')
   })
 
-  it('wears the draft ring on a parked idea', () => {
-    expect(row(listItem({ status: 'draft' }))).toContain('data-phase="draft"')
+  it('pies the share of tickets landed, leaving cancelled ones out', () => {
+    expect(row(building)).toContain('aria-label="43% landed"')
+    expect(row(listItem({}))).toContain('aria-label="0% landed"')
   })
 
-  it('dots amber when it waits on you, red with red words when a run failed, grey when stopped', () => {
+  it('wears the dashed ring on a parked idea and the check once shipped', () => {
+    expect(row(listItem({ status: 'draft' }))).toContain('aria-label="Backlog"')
+    expect(row(listItem({ status: 'shipped', ticketCounts: tickets(3, 3) }))).toContain('aria-label="Shipped"')
+  })
+
+  it('dots amber when it needs you, and carries no dot otherwise — not even for a failed ticket', () => {
     expect(row(waiting)).toContain('bg-warning')
-    expect(row(failed)).toContain('bg-danger')
-    expect(row(failed)).toContain('text-danger')
-    expect(row(stopped)).toContain('bg-icon')
+    expect(row(ready)).toContain('bg-warning')
+    for (const f of [failed, idle]) {
+      const html = row(f)
+      expect(html).not.toContain('bg-warning')
+      expect(html).not.toContain('bg-danger')
+      expect(html).not.toContain('text-danger')
+      expect(html).not.toContain('bg-icon')
+    }
   })
 
   it('carries no dot while an agent works — its words shimmer instead', () => {
     const html = row(building)
     expect(html).toContain('text-shimmer')
     expect(html).not.toContain('bg-warning')
-    expect(row(stopped)).not.toContain('text-shimmer')
+    expect(row(idle)).not.toContain('text-shimmer')
   })
 
   it('becomes a card when selected', () => {
-    expect(row(stopped, { active: true })).toContain('aria-current="page"')
-    expect(row(stopped, { active: true })).toContain('ring-border-subtle')
-    expect(row(stopped)).not.toContain('aria-current')
+    expect(row(idle, { active: true })).toContain('aria-current="page"')
+    expect(row(idle, { active: true })).toContain('ring-border-subtle')
+    expect(row(idle)).not.toContain('aria-current')
   })
 
   it('reveals its menu on hover or focus, never at rest', () => {
-    const html = row(stopped, { actions: [copyLink] })
+    const html = row(idle, { actions: [copyLink] })
     expect(html).toContain('aria-haspopup="menu"')
     expect(html).toContain('opacity-0')
     expect(html).toContain('group-hover/nav:opacity-100')
@@ -131,7 +146,7 @@ describe('the sidebar feature row', () => {
 
 describe('a shelf', () => {
   const features = Array.from({ length: 7 }, (_, i) =>
-    listItem({ id: `s${i}`, status: 'shipped', phase: 'shipped' }),
+    listItem({ id: `s${i}`, status: 'shipped' }),
   )
   const shelf = (open: boolean) =>
     renderToStaticMarkup(

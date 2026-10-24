@@ -24,6 +24,7 @@ import {
   openAppWaitingLabel,
   PHASE_ORDER,
   phaseGlyph,
+  progressState,
   reviewOutcome,
   reviewWalkthroughUrl,
   rowChip,
@@ -39,6 +40,7 @@ import {
   ticketDurations,
   ticketModelChip,
   ticketProgress,
+  ticketShare,
   ticketsAreBody,
   triage,
   triageOf,
@@ -2747,22 +2749,21 @@ describe('shippedAt', () => {
  * The chip slot holds exactly one thing, and `rowChip` is the one place that
  * decides which (ticket 3 re-derives its inputs from live session state).
  */
-describe.skip('rowChip', () => {
+describe('rowChip', () => {
   const NOW = 1_000_000_000_000
 
-  it('shows Needs you, carrying the specific reason as its title', () => {
-    const chip = rowChip(listItem({ phase: 'planning' }), NOW)
+  it('shows Needs you, carrying the waiting reason as its title', () => {
+    const chip = rowChip(listItem({ waitingReason: 'ready to test' }), NOW)
     expect(chip.kind).toBe('needsMe')
     expect(chip.text).toBe('Needs you')
-    expect(chip.title).toBe('needs grilling')
-    expect(chip.needs).toBe('grill')
+    expect(chip.title).toBe('ready to test')
+    expect(chip.needs).toBe('waiting')
   })
 
-  it('colours a failed run’s chip by its own flavour, not the generic amber', () => {
+  it('reads a failed ticket as its age — a failure is not a needs-you reason', () => {
     const counts = { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 }
-    const chip = rowChip(listItem({ phase: 'building', ticketCounts: counts }), NOW)
-    expect(chip.kind).toBe('needsMe')
-    expect(chip.needs).toBe('attention')
+    const chip = rowChip(listItem({ ticketCounts: counts, lastActivityAt: NOW - 600_000 }), NOW)
+    expect(chip.kind).toBe('age')
   })
 
   it('shows Working while a run is active, outranking the age stamp', () => {
@@ -2772,7 +2773,7 @@ describe.skip('rowChip', () => {
   })
 
   it('shows the shipped check — glyph alone, no text', () => {
-    const chip = rowChip(listItem({ status: 'shipped', phase: 'shipped' }), NOW)
+    const chip = rowChip(listItem({ status: 'shipped' }), NOW)
     expect(chip.kind).toBe('shipped')
     expect(chip.text).toBe('')
     expect(chip.title).toBe('shipped')
@@ -2796,13 +2797,13 @@ describe.skip('rowChip', () => {
    * the agent works, the needs-you dot once it stops and waits.
    */
   it('spins while the agent is mid-turn in a live session', () => {
-    const chip = rowChip(withSession(false, { phase: 'planning' }), NOW)
+    const chip = rowChip(withSession(false), NOW)
     expect(chip.kind).toBe('working')
     expect(chip.text).toBe('Working')
   })
 
   it('shows Needs you the moment that agent stops and waits', () => {
-    const chip = rowChip(withSession(true, { phase: 'planning' }), NOW)
+    const chip = rowChip(withSession(true), NOW)
     expect(chip.kind).toBe('needsMe')
     expect(chip.text).toBe('Needs you')
   })
@@ -2818,16 +2819,16 @@ describe.skip('rowChip', () => {
  * its agent works the feature is "Agent working", and when it stops for an
  * answer that IS "Needs you", whatever phase the feature is on.
  */
-describe.skip('turn-aware feature states', () => {
-  it('keeps a mid-turn grill out of Needs you, where the phase alone would put it', () => {
-    const f = withSession(false, { phase: 'planning' })
+describe('turn-aware feature states', () => {
+  it('keeps a mid-turn chat out of Needs you', () => {
+    const f = withSession(false)
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
   })
 
   it('moves it to Needs you once the agent stops and waits for an answer', () => {
-    const f = withSession(true, { phase: 'planning' })
-    expect(needsMe(f)?.kind).toBe('grill')
+    const f = withSession(true)
+    expect(needsMe(f)?.kind).toBe('input')
     expect(triageOf(f)).toBe('needsYou')
   })
 
@@ -2837,50 +2838,53 @@ describe.skip('turn-aware feature states', () => {
     expect(triageOf(f)).toBe('agentWorking')
   })
 
-  // The lane is the honest reading of a session that has stopped talking,
-  // whatever phase the feature is on — not just the ones with a phase-derived
-  // needs-me of their own.
-  it('claims attention for a waiting session at a phase that never asks for it', () => {
-    const f = withSession(true, { phase: 'planning' })
-    expect(needsMe(f)).not.toBeNull()
-    expect(triageOf(f)).toBe('needsYou')
-  })
-
-  it('holds a working session out of Needs you at a phase that would ask for it', () => {
-    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
-    const f = withSession(false, { phase: 'planning', ticketCounts: counts })
+  it('holds a working session out of Needs you even with a waiting reason left over', () => {
+    const f = withSession(false, { waitingReason: 'stopped' })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
   })
 
-  it('leaves a feature with no live session exactly as it was', () => {
-    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
-    expect(needsMe(listItem({ phase: 'planning' }))?.kind).toBe('grill')
-    expect(needsMe(listItem({ phase: 'planning', ticketCounts: counts }))?.kind).toBe('burn')
-    expect(needsMe(listItem({ phase: 'review' }))?.kind).toBe('ship')
-    expect(needsMe(listItem({ phase: 'planning' }))).toBeNull()
-    expect(triageOf(listItem({ phase: 'planning' }))).toBe('needsYou')
-    expect(triageOf(listItem({ phase: 'planning' }))).toBe('inProgress')
+  it('puts a feature with a waiting reason in Needs you with that reason, whatever its stored phase', () => {
+    const f = listItem({ phase: 'building', waitingReason: 'ready to test' })
+    expect(needsMe(f)).toEqual({ kind: 'waiting', label: 'ready to test' })
+    expect(triageOf(f)).toBe('needsYou')
+    expect(needsMe(listItem({ phase: 'planning', waitingReason: 'stopped' }))?.label).toBe('stopped')
   })
 
-  it('leaves shipped and archived features out of the lanes either way', () => {
-    expect(needsMe(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBeNull()
-    expect(triageOf(withSession(true, { status: 'shipped', phase: 'shipped' }))).toBe('shipped')
+  it('leaves a feature with pending tickets and nothing running or asked in progress, whatever its phase', () => {
+    const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
+    const f = listItem({ phase: 'planning', ticketCounts: counts })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('inProgress')
+    expect(needsMe(listItem({ phase: 'review' }))).toBeNull()
+  })
+
+  it('does not ask for attention over a failed ticket — the agent handles it after the round', () => {
+    const counts = { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 }
+    const f = listItem({ ticketCounts: counts })
+    expect(needsMe(f)).toBeNull()
+    expect(triageOf(f)).toBe('inProgress')
+  })
+
+  it('leaves drafts, shipped and archived features out of Needs you either way', () => {
+    expect(needsMe(listItem({ status: 'draft', waitingReason: 'stopped' }))).toBeNull()
+    expect(needsMe(withSession(true, { status: 'shipped', waitingReason: 'ready to test' }))).toBeNull()
+    expect(triageOf(withSession(true, { status: 'shipped' }))).toBe('shipped')
     expect(needsMe(withSession(true, { status: 'archived' }))).toBeNull()
     expect(triageOf(withSession(true, { status: 'archived' }))).toBe('archived')
   })
 
-  it('lets an active run outrank the session — the burn is the louder fact', () => {
-    const f = withSession(true, { activeRun: true })
+  it('lets an active run outrank the session and the waiting reason — the round is the louder fact', () => {
+    const f = withSession(true, { activeRun: true, waitingReason: 'stopped' })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('agentWorking')
   })
 
   it('sorts a waiting session to the top of the rail and a working one below it', () => {
     const sorted = sortForSidebar([
-      listItem({ id: 'quiet', phase: 'planning' }),
-      withSession(false, { id: 'working', phase: 'planning' }),
-      withSession(true, { id: 'waiting', phase: 'planning' }),
+      listItem({ id: 'quiet' }),
+      withSession(false, { id: 'working' }),
+      withSession(true, { id: 'waiting' }),
     ])
     expect(sorted[0].id).toBe('waiting')
   })
@@ -2892,14 +2896,30 @@ describe.skip('turn-aware feature states', () => {
  * nothing, and the rail has one line's width to spend.
  */
 describe('ticketProgress', () => {
-  it('reads this lap’s landed over total, not the all-laps status counts', () => {
-    const allLaps = { total: 9, pending: 2, burning: 0, done: 7, failed: 0, cancelled: 0 }
-    const item = listItem({ ticketCounts: allLaps, lapTally: { landed: 3, total: 5, waived: 1 } })
-    expect(ticketProgress(item)).toBe('3/5')
+  it('reads every ticket done over every ticket not cancelled', () => {
+    const counts = { total: 9, pending: 2, burning: 0, done: 5, failed: 1, cancelled: 1 }
+    expect(ticketProgress(listItem({ ticketCounts: counts }))).toBe('5/8')
   })
 
-  it('is null when the feature has no tickets', () => {
+  it('is null when the feature has no tickets, or only cancelled ones', () => {
     expect(ticketProgress(listItem())).toBeNull()
+    const cancelled = { total: 2, pending: 0, burning: 0, done: 0, failed: 0, cancelled: 2 }
+    expect(ticketProgress(listItem({ ticketCounts: cancelled }))).toBeNull()
+  })
+})
+
+describe('ticketShare and progressState — the progress glyph', () => {
+  it('is the share of non-cancelled tickets that are done, 0 with none', () => {
+    const counts = { total: 5, pending: 1, burning: 0, done: 3, failed: 0, cancelled: 1 }
+    expect(ticketShare(listItem({ ticketCounts: counts }))).toBe(0.75)
+    expect(ticketShare(listItem())).toBe(0)
+  })
+
+  it('is a draft ring for a draft, a check once shipped, and the pie otherwise', () => {
+    expect(progressState(listItem({ status: 'draft' }))).toBe('draft')
+    expect(progressState(listItem({ status: 'shipped' }))).toBe('shipped')
+    expect(progressState(listItem({ status: 'active' }))).toBe('active')
+    expect(progressState(listItem({ status: 'archived' }))).toBe('active')
   })
 })
 
