@@ -245,7 +245,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <li><i class="dot no"></i>Quick changes <a class="pin" data-d="10">10</a></li>
       </ul>
       <ul>
-        <li><i class="dot no"></i>Separate ideate / lead / spec / tickets / revisit skills <a class="pin" data-d="4">4</a></li>
+        <li><i class="dot no"></i>Separate ideate / lead / spec / tickets / revisit / design skills <a class="pin" data-d="4">4</a></li>
         <li><i class="dot no"></i>The mandatory review ticket <a class="pin" data-d="6">6</a></li>
         <li><i class="dot no"></i>The &ldquo;What to test&rdquo; notice <a class="pin" data-d="6">6</a></li>
         <li><i class="dot no"></i>Permission prompts in feature chats <a class="pin" data-d="13">13</a></li>
@@ -291,7 +291,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
         <div class="card"><h3>core</h3><p>The phase column, <span class="mono">PIPELINE</span>, the planning steps and the lap columns go. A status helper derives the lane from facts: rounds, the waiting reason, ready declarations, the live session.</p></div>
         <div class="card"><h3>server</h3><p><span class="mono">go()</span>, the human burn, <span class="mono">agenticReview</span>, <span class="mono">quickChange</span>, <span class="mono">complete_phase</span> and <span class="mono">go_feature</span> go. <span class="mono">dispatch_round</span> and <span class="mono">declare_ready</span> stop checking the phase; <span class="mono">declare_ready</span> sets the waiting reason and keeps only the scenario. <span class="mono">emit_tickets</span> opens Work. One brief, one kickoff, no permission prompts.</p></div>
         <div class="card"><h3>web</h3><p>The panel views Plan, Work, Review and Details replace the phase body. The next-step bar and the stepper go. The sidebar's Needs you reads the waiting reason. <span class="mono">ProgressIcon</span> replaces <span class="mono">PhaseIcon</span>.</p></div>
-        <div class="card"><h3>skills</h3><p>One feature-lead skill with reference files (tickets, rounds, planning alone, the preview, design). The separate ideate, lead, spec, tickets and revisit skills go; code-review stays for review agents.</p></div>
+        <div class="card"><h3>skills</h3><p>One feature-lead skill with reference files (tickets, rounds, planning alone, the preview, design). The separate ideate, lead, spec, tickets, revisit and design skills go; code-review stays for review agents.</p></div>
       </div>
     </div>
   </details>
@@ -310,7 +310,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Specced and built whole', 'The parts depend on each other: removing Go without deriving status would leave every feature stuck at planning.'],
     ['The stored phase goes away', 'A phase moved by actions would drift from the truth. Status is derived from facts, so nothing needs migrating.'],
     ["The human's approval lives in the prompt, not the server", 'The agent needs your explicit yes in chat before the first round and before any round the plan did not settle. The server checks nothing.'],
-    ['The agent is always the lead, with one skill', 'No before and after Go, no role change. Ideate, lead, spec, tickets and revisit fold into one skill with reference files; code-review stays for review agents.'],
+    ['The agent is always the lead, with one skill', 'No before and after Go, no role change. Ideate, lead, spec, tickets, revisit and design fold into one skill with reference files; code-review stays for review agents.'],
     ['The spec follows concreteness, not delegation', 'The spec records what the feature is, whether or not workers build it.'],
     ['Review is optional; the agent tells the human in chat how the work was checked', 'The agent always runs typecheck and tests before ready. What to test and how it was checked go in its chat message, not a separate UI.'],
     ["Status is the sidebar's lanes, with \u201cNeeds you\u201d rebuilt on facts", 'Needs you reads the waiting reason: asked, Stop, provider halt, ready. \u201cPlanning with you\u201d becomes \u201cTalking with you\u201d.'],

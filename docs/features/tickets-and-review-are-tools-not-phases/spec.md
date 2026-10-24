@@ -92,7 +92,7 @@ It commits its own docs like any other change. The detail of today's ideate, spe
 - the preview;
 - design: the design skill's text, minus "Go waits".
 
-The ideate, lead, spec, tickets and revisit skills are deleted. The code-review skill stays separate, for review agents. The project skill's mentions of Go, `go_feature` and quick changes are rewritten, and only those. The other session kinds (qa, prepare, project) are otherwise untouched.
+The ideate, lead, spec, tickets, revisit and design skills are deleted. The code-review skill stays separate, for review agents. The project skill's mentions of Go, `go_feature` and quick changes are rewritten, and only those. The other session kinds (qa, prepare, project) are otherwise untouched.
 
 The pack's settings that deny other sessions' entry skills are updated to the new skill set.
 
