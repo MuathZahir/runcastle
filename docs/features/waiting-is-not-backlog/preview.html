@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waiting is not backlog preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+[hidden]{display:none !important}
+.two{display:grid;grid-template-columns:300px 1fr;gap:24px;align-items:start}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.rail{background:var(--color-canvas);padding:10px 8px 14px}
+.lane{margin-top:10px}
+.lane-h{display:flex;align-items:center;gap:6px;padding:0 8px 4px;font-size:11px;line-height:16px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.04em}
+.row{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-text-secondary)}
+.row:hover{background:var(--color-surface-hover)}
+.row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text)}
+.row.dim .name{color:var(--color-text-tertiary)}
+.chip{display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;white-space:nowrap}
+.chip.need{background:var(--color-accent-subtle);color:var(--color-accent-text)}
+.chip.need .dot{background:var(--color-warning)}
+.chip.next{color:var(--color-accent-text)}
+.chip.ready{color:var(--color-success)}
+.lane.new .lane-h{color:var(--color-accent-text)}
+.lane.new{border-left:2px solid var(--color-accent);margin-left:-2px}
+.side-note{display:grid;gap:10px;color:var(--color-text-secondary)}
+.side-note .k{color:var(--color-text);font-weight:500}
+.bar{display:grid;gap:4px;padding:14px 16px;border-top:1px solid var(--color-border);background:var(--color-surface-raised)}
+.bar .kick{font:500 10px/14px var(--font-mono);letter-spacing:.08em;color:var(--color-text-tertiary)}
+.bar .t{font-size:14px;font-weight:600}
+.bar .d{color:var(--color-text-secondary)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.btn{height:28px;padding:0 12px;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);color:var(--color-text);font-weight:500}
+.btn.pri{background:var(--color-primary);color:var(--color-on-primary);border-color:transparent}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.why{font-size:12px;color:var(--color-text-tertiary)}
+.deps{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 16px;border-top:1px solid var(--color-border-subtle);font-size:12px;color:var(--color-text-tertiary)}
+.deps .chip{color:var(--color-text-secondary)}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:0;margin-top:12px}
+.step{flex:1 1 150px;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.step b{display:block;font-weight:500;margin-bottom:2px}
+.step span{color:var(--color-text-secondary);font-size:12px}
+.arrow{display:grid;place-items:center;width:28px;color:var(--color-icon)}
+.fork{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fork .step{border-left:2px solid var(--color-success)}
+.fork .step.bad{border-left-color:var(--color-warning)}
+@media (max-width:760px){.fork{grid-template-columns:1fr}.arrow{width:100%;height:22px;transform:rotate(90deg)}}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.cmp > div{padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.cmp h3{margin-bottom:6px}
+.cmp ul{margin:0;padding-left:16px;color:var(--color-text-secondary)}
+.hood-grid{display:grid;gap:10px;color:var(--color-text-secondary)}
+.hood-grid code{font-family:var(--font-mono);font-size:12px;color:var(--color-text)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Waiting is not backlog</h1>
+  <p class="lede">"Not now" and "yes, as soon as X ships" stop sharing one place. A waiting feature sits in its own Up next group and starts by itself when its last dependency merges, so nothing you wanted gets forgotten in the backlog.</p>
+  <div class="meta"><span>Lap 1</span><span><span data-dcount></span> decisions</span><span>Planned without you, all assumed</span><span class="mono">docs/features/waiting-is-not-backlog/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+
+  <div class="sub">
+    <h3>Two ideas, two places</h3>
+    <p class="hint">Today one backlog holds both. After this, each has its own meaning.</p>
+    <div class="cmp">
+      <div><h3>Backlog: "not now"</h3><ul>
+        <li>Stays until you click Start.</li>
+        <li>May have dependencies; they only say whether it <em>could</em> start.</li>
+        <li>Never asks for your attention.</li>
+      </ul></div>
+      <div><h3>Up next: "yes, after X" <a class="pin" data-d="1">1</a></h3><ul>
+        <li>Needs something unshipped to wait on. <a class="pin" data-d="2">2</a></li>
+        <li>Starts by itself when the last one merges. <a class="pin" data-d="3">3</a></li>
+        <li>If it can't start, it asks you. <a class="pin" data-d="5">5</a></li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The sidebar</h3>
+    <p class="hint">Switch the moment. The example: <span class="mono">designs-wait-for-you</span> waits on <span class="mono">tickets-and-review</span>.</p>
+    <div class="seg" role="group" aria-label="Moment" id="seg-rail">
+      <button aria-pressed="true" data-m="before">Before the merge</button>
+      <button aria-pressed="false" data-m="after">Right after the merge</button>
+      <button aria-pressed="false" data-m="stuck">Couldn't start</button>
+    </div>
+    <div class="two" style="margin-top:12px">
+<!-- screen:sidebar-groups -->
+<!-- The sidebar's groups after this feature. "Up next" (new) sits after the
+     groups of work in motion and before Backlog. Up next chips: "After <slug>"
+     / "After N". Backlog chips: "Blocked by <slug>" (open dependency),
+     "Ready to start" (had dependencies, all shipped, sorts first),
+     "In the backlog" (never had any). A waiting feature that cannot start by
+     itself shows in Needs you with the reason. Three moments are mocked:
+     before the dependency merges, right after, and a start that failed. -->
+<div class="screen">
+  <div class="rail" data-rail>
+    <div class="lane" data-show="after stuck">
+      <div class="lane-h">Needs you</div>
+      <div class="row" data-show="after"><span class="name">Designs wait for you</span><span class="chip need"><i class="dot"></i>Needs you</span></div>
+      <div class="row" data-show="stuck" title="couldn't start by itself: its dependencies merged into different branches (main, develop) — pick a base and Start"><span class="name">Designs wait for you</span><span class="chip need"><i class="dot"></i>Needs you</span></div>
+    </div>
+    <div class="lane">
+      <div class="lane-h">In progress</div>
+      <div class="row" data-show="before"><span class="name">Tickets and review are tools</span><span class="chip">2h</span></div>
+      <div class="row"><span class="name">Review hands you a running drive</span><span class="chip">1d</span></div>
+    </div>
+    <div class="lane new" data-show="before">
+      <div class="lane-h">Up next <a class="pin" data-d="7">7</a></div>
+      <div class="row" title="starts by itself when tickets-and-review ships"><span class="name">Designs wait for you</span><span class="chip next">After tickets-and-review</span></div>
+      <div class="row" title="starts by itself when these ship: tickets-and-review, one-chat"><span class="name">One orchestrator, no mode</span><span class="chip next">After 2</span></div>
+    </div>
+    <div class="lane new" data-show="after stuck">
+      <div class="lane-h">Up next</div>
+      <div class="row" title="starts by itself when one-chat ships"><span class="name">One orchestrator, no mode</span><span class="chip next">After one-chat</span></div>
+    </div>
+    <div class="lane">
+      <div class="lane-h">Backlog</div>
+      <div class="row" data-show="after stuck"><span class="name">Stale branch cleanup</span><span class="chip ready">Ready to start</span></div>
+      <div class="row" data-show="before"><span class="name">Stale branch cleanup</span><span class="chip">Blocked by tickets-and-review</span></div>
+      <div class="row"><span class="name">Dark mode for the landing page</span><span class="chip">In the backlog</span></div>
+    </div>
+    <div class="lane">
+      <div class="lane-h">Shipped</div>
+      <div class="row dim" data-show="after stuck"><span class="name">Tickets and review are tools</span><span class="chip">✓</span></div>
+      <div class="row dim"><span class="name">Make the sidebar grain visible</span><span class="chip">✓</span></div>
+    </div>
+  </div>
+</div>
+<!-- /screen:sidebar-groups -->
+      <div class="side-note" id="rail-note"></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What happens at the merge</h3>
+    <p class="hint">No session launches and no tokens are spent. A failure never fails the merge.</p>
+    <div class="flow">
+      <div class="step"><b>You click Merge on X</b><span>Its page listed "Starts when this ships: Y". <a class="pin" data-d="13">13</a></span></div>
+      <div class="arrow"><svg class="i"><use href="#i-arrow"/></svg></div>
+      <div class="step"><b>X ships</b><span>Was X the last thing Y waited on?</span></div>
+      <div class="arrow"><svg class="i"><use href="#i-arrow"/></svg></div>
+      <div class="step"><b>Y starts like your Start click</b><span>Branch cut from the branch X merged into. <a class="pin" data-d="4">4</a></span></div>
+    </div>
+    <div class="fork">
+      <div class="step"><b>It worked</b><span>Y moves to the live lanes and needs planning. Both timelines get a line. <a class="pin" data-d="6">6</a></span></div>
+      <div class="step bad"><b>It couldn't</b><span>Y shows in Needs you with Start and the reason: start failed, mixed branches, dependency archived or deleted. <a class="pin" data-d="5">5</a></span></div>
+    </div>
+    <p class="hint" style="margin-top:8px">Chains go one step at a time: C's merge starts B, and A keeps waiting on B. <a class="pin" data-d="14">14</a> There is no unstart; archive is the way out. <a class="pin" data-d="15">15</a></p>
+  </div>
+
+  <div class="sub">
+    <h3>Moving a feature between backlog and Up next</h3>
+    <p class="hint">On the unstarted feature's own page, in the next-step bar.</p>
+    <div class="seg" role="group" aria-label="State" id="seg-bar">
+      <button aria-pressed="true" data-m="backlog">In the backlog</button>
+      <button aria-pressed="false" data-m="waiting">Up next</button>
+      <button aria-pressed="false" data-m="on-backlog">Up next, waits on a backlog feature</button>
+    </div>
+    <div style="margin-top:12px;max-width:640px">
+<!-- screen:next-step-bar -->
+<!-- The next-step bar on an unstarted feature's page, plus its "Waits on" row.
+     Backlog with an open dependency: Start stays disabled with the reason, and
+     a new "Start when ready" button marks it waiting. Waiting: the bar says it
+     starts by itself, and offers "Move to backlog". A waiting feature whose
+     dependency is itself in the backlog says it won't start until that one is
+     started. A backlog feature with nothing open to wait on just has Start. -->
+<div class="screen">
+  <div class="deps"><span>Waits on</span><span class="chip">tickets-and-review · building</span><span class="chip" data-bar="on-backlog">orchestrator-chat · in the backlog</span><span>+ Add</span></div>
+  <div class="bar" data-bar="backlog">
+    <span class="kick">NEXT STEP</span>
+    <span class="t">Start this feature</span>
+    <span class="d">In the backlog. You can make it start by itself instead, as soon as what it waits on ships.</span>
+    <div class="btns"><button class="btn pri" disabled>Start</button><button class="btn" disabled>Plan it yourself</button><button class="btn">Start when ready</button> <a class="pin" data-d="8">8</a></div>
+    <span class="why">Start: waits on tickets-and-review (building). Start when ready: starts by itself when tickets-and-review ships; it can't be undone. <a class="pin" data-d="15">15</a></span>
+  </div>
+  <div class="bar" data-bar="waiting" hidden>
+    <span class="kick">UP NEXT</span>
+    <span class="t">Starts by itself when tickets-and-review ships</span>
+    <span class="d">Its branch will be cut from the branch tickets-and-review merges into. Nothing launches and no tokens are spent.</span>
+    <div class="btns"><button class="btn">Move to backlog</button></div>
+  </div>
+  <div class="bar" data-bar="on-backlog" hidden>
+    <span class="kick">UP NEXT</span>
+    <span class="t">Won't start until you start orchestrator-chat</span>
+    <span class="d">orchestrator-chat is in the backlog, so nothing will move it. It starts by itself once tickets-and-review and orchestrator-chat have both shipped. <a class="pin" data-d="14">14</a></span>
+    <div class="btns"><button class="btn">Move to backlog</button></div>
+  </div>
+</div>
+<!-- /screen:next-step-bar -->
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>Agents</h3>
+    <p class="hint">Only the project session and the orchestrator can make a feature wait. <a class="pin" data-d="10">10</a> Its create step asks "start now, up next after X, or backlog?" <a class="pin" data-d="11">11</a></p>
+    <div class="screen" style="padding:12px 14px;max-width:640px">
+      <div class="mono" style="color:var(--color-text-secondary)">
+        create_feature({ title, oneLiner, brief, draft: true, dependsOn: ["tickets-and-review"], <span style="color:var(--color-accent-text)">waiting: true</span> })<br>
+        set_feature_dependencies({ slug, dependsOn, <span style="color:var(--color-accent-text)">waiting?</span> })<br><br>
+        designs-wait-for-you — Designs wait for you [draft, waiting] · waits on: tickets-and-review<br>
+        stale-branch-cleanup — Stale branch cleanup [draft, blocked] · waits on: tickets-and-review
+      </div>
+    </div>
+    <p class="hint" style="margin-top:8px">Existing backlog features are not converted. Mark <span class="mono">one-orchestrator-no-mode</span> and <span class="mono">designs-wait-for-you</span> by hand. <a class="pin" data-d="9">9</a></p>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason. Every decision was made without you.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Later laps</h3><ul>
+      <li><i class="dot"></i>Nothing. The whole feature is lap 1. <a class="pin" data-d="12">12</a></li>
+    </ul></div>
+    <div><h3>Not this feature</h3><ul>
+      <li><i class="dot"></i>Started features waiting on others (plan now, build later)</li>
+      <li><i class="dot"></i>Topical links between features (builds-on, related)</li>
+      <li><i class="dot"></i>The new status model and its sidebar regrouping <a class="pin" data-d="16">16</a></li>
+      <li><i class="dot"></i>Planning a feature automatically when it starts</li>
+      <li><i class="dot"></i>Writing the ADR that amends ADR-0013 (the project session does it)</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub hood-grid">
+      <p><b>Storage.</b> One new boolean column on <code>features</code>, meaningful only while <code>status = 'draft'</code>; cleared when the feature starts. No new status, no change to <code>feature_dependencies</code>.</p>
+      <p><b>Rules (core, IO-free).</b> "Up next" = draft + waiting mark + at least one unshipped dependency, none archived. "Stuck" = draft + waiting mark + (nothing unshipped, or an archived dependency). Both derived at read time; nothing about satisfaction is stored.</p>
+      <p><b>Auto-start.</b> In <code>mergeFeatureFlow</code>, after the feature ships: for each waiting dependent with nothing unshipped left, check its dependencies' bases agree, then call the same start path as the Start click with that base. Wrapped so it never fails the merge; a failure records an event whose reason the Needs you row shows.</p>
+      <p><b>Wire.</b> <code>FeatureListItem</code> and <code>FeatureFull</code> carry the mark; a <code>feature.setWaiting</code> tRPC procedure backs the two buttons; MCP <code>create_feature</code> and <code>set_feature_dependencies</code> gain <code>waiting</code>.</p>
+      <p><b>Web.</b> <code>sidebar.ts</code> gains an <code>upNext</code> triage key and lane, new chips, and the stuck case in <code>needsMe</code>; the draft next-step resolver gains the two actions; the dependency page's Blocks line splits.</p>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  var D = [
+    ['Waiting is a mark on an unstarted feature, not a new status', 'Everything that reads "draft" as "no branch yet" keeps working, and a stored intent fits the derived status model in flight.', 'assumed'],
+    ['Only a feature with something unshipped to wait on can be waiting', '"Start when X ships" with no X is just Start; everything in Up next waits on something you can name.', 'assumed'],
+    ['When the last dependency ships, the waiting feature starts by itself', 'You already said "yes, after X". It is plain Start: a branch and the brief, no session, no tokens, and it never fails the merge.', 'assumed'],
+    ['The new branch is cut from the branch the dependencies merged into', 'The feature builds on their work, which lives there. If they merged into different branches, it asks instead of guessing.', 'assumed'],
+    ['Anything that stops a waiting feature from starting puts it in Needs you', 'A waiting feature that quietly stopped waiting would be the same forgotten-feature bug. Worked out from current state, so a crash also lands here.', 'assumed'],
+    ['An automatic start shows as a timeline line on both features, and the feature needs planning', 'The row moving out of Up next is the signal; Needs you already catches a feature with no plan. No toast.', 'assumed'],
+    ['The sidebar gets an "Up next" group, and backlog chips stop saying "Waits on"', 'Waiting gets its own place and its own word. Backlog chips say Blocked by, Ready to start, or In the backlog, and never claim attention.', 'assumed'],
+    ['The human moves a feature between backlog and waiting on its page', 'The page is where you already edit dependencies and click Start: one button each way.', 'assumed'],
+    ['Existing backlog features are not converted automatically', 'Today’s backlog mixes both meanings, including scope parked as "not now". Two clicks fix the two the brief names.', 'assumed'],
+    ['Only the project session and the orchestrator can make a feature waiting', 'Waiting starts a feature without a click, so it comes from the conversation where you agreed an order of work.', 'assumed'],
+    ['The agents’ instructions and reads learn the difference', 'Otherwise the project session keeps putting ordered work in the backlog and the complaint returns.', 'assumed'],
+    ['One lap', 'A stored mark, one merge hook, a sidebar group and two buttons. Easy to test-drive end to end.', 'assumed'],
+    ['A feature’s page says what its merge will start', 'Merge now has a side effect; you see it before clicking, beside the Merge button.', 'assumed'],
+    ['A waiting feature may wait on a backlog feature, and says so', 'Lets you state an order before you know when you will start the other one; the warning stops it looking like it is on its way.', 'assumed'],
+    ['An automatic start cannot be undone', 'Undoing means deleting a branch. The start spends nothing, so archive is enough of a way out.', 'assumed'],
+    ['The Up next group is placed by meaning, so it survives the status-model rework', 'After live work, before "not now": a rule the second of the two features can follow.', 'assumed']
+  ]
+  // check first: [decisionNumber, alternative, whyUnsure, tag?]
+  var C = [
+    [10, 'Let a feature chat mark parked scope as waiting when you say "after this" in that chat.', 'The challenger disagreed: your consent is what makes an automatic start safe, not which session heard it.', 'challenged'],
+    [9, 'Convert every unstarted feature with an unshipped dependency to waiting when this lands.', 'The brief says you mean the two named features as waiting; I guessed the rest of the backlog means "not now".'],
+    [5, 'When you remove the last open dependency yourself, ask right there: start now or move to backlog?', 'The challenger disagreed for that one case: Needs you is an extra step for an edit you just made.', 'challenged'],
+    [7, 'Show waiting features as a sub-group inside Backlog.', 'The group name "Up next" and the chip words are a guess at your vocabulary; they are what you will see every day.'],
+    [1, 'A new feature status, waiting, beside draft, active, shipped and archived.', 'It shapes the ADR that amends ADR-0013 and how the in-flight status model reads unstarted features.']
+  ]
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // the sidebar's three moments
+  var NOTES = {
+    before: '<p><span class="k">Before the merge.</span> Up next holds the two features you said yes to. Stale branch cleanup is in the backlog and blocked by the same feature, but it is "not now".</p>',
+    after: '<p><span class="k">Right after.</span> Designs wait for you started by itself and now needs planning. One orchestrator still waits on its second dependency. Stale branch cleanup says Ready to start, but stays in the backlog.</p>',
+    stuck: '<p><span class="k">Couldn’t start.</span> Its dependencies merged into different branches, so it did not guess. It shows in Needs you with Start and the reason on hover.</p>'
+  }
+  function showRail(m) {
+    $$('#seg-rail button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === m)) })
+    $$('[data-rail] [data-show]').forEach(function (el) { el.hidden = el.dataset.show.split(' ').indexOf(m) < 0 })
+    $('#rail-note').innerHTML = NOTES[m]
+  }
+  $$('#seg-rail button').forEach(function (b) { b.addEventListener('click', function () { showRail(b.dataset.m) }) })
+  showRail('before')
+
+  function showBar(m) {
+    $$('#seg-bar button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === m)) })
+    $$('.bar[data-bar]').forEach(function (el) { el.hidden = el.dataset.bar !== m })
+    $$('.deps [data-bar]').forEach(function (el) { el.hidden = el.dataset.bar !== m })
+  }
+  $$('#seg-bar button').forEach(function (b) { b.addEventListener('click', function () { showBar(b.dataset.m) }) })
+  showBar('backlog')
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>
