@@ -328,7 +328,9 @@ describe('feature dependencies over MCP', () => {
     expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight: planning, lap 1]')
     expect(out.featureIndexNote).toContain('waits on')
     expect(out.featureIndexNote).toContain('✓')
-    expect(out.featureIndexNote).toContain('waiting')
+    expect(out.featureIndexNote).toContain('[draft, up next]')
+    expect(out.featureIndexNote).toContain('[draft, blocked]')
+    expect(out.featureIndexNote).not.toContain('[draft, waiting]')
   })
 
   it('get_feature_context header carries dependsOn and blocks', () => {

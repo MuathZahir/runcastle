@@ -2077,8 +2077,10 @@ const ADRS_NOTE =
 const FEATURE_INDEX_NOTE =
   'featureIndex lists every in-flight feature, then every draft, then the most recently shipped, ' +
   'one `slug — title [state]` line each. A trailing `· waits on: a, b ✓` lists the features it ' +
-  'must wait to merge (✓ = already shipped), and `[draft, waiting]` marks a draft that cannot ' +
-  'start until every unmarked one ships. A shipped feature’s docs live at docs/features/<slug>/ ' +
+  'must wait to merge (✓ = already shipped). `[draft, up next]` marks a draft that starts by ' +
+  'itself once every unmarked one ships; `[draft, up next, stuck]` one that meant to and could ' +
+  'not, and waits on the human; `[draft, blocked]` a backlog draft that cannot start until every ' +
+  'unmarked one ships, and will not start by itself. A shipped feature’s docs live at docs/features/<slug>/ ' +
   'in this worktree; an in-flight or draft feature’s docs live on an unmerged branch. Any ' +
   'feature’s brief is read_feature_brief({ slug }); what one actually did is ' +
   'get_work_record({ featureSlug }).'

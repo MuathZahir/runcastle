@@ -346,7 +346,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
   it('gives a stuck feature its reason, an enabled Start when nothing is left, and Move to backlog', () => {
     const ns = nextStep(unstarted([MERGED], true), { driving: false })
     expect(ns.alert).toBe(true)
-    expect(ns.desc).toBe('nothing left to wait on — start it or move it to the backlog')
+    expect(ns.desc).toBe('Nothing left to wait on — start it or move it to the backlog')
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
     expect(ns.secondary.map((a) => [a.kind, a.disabled])).toEqual([
       ['selfPlan', undefined],
@@ -357,7 +357,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
   it('prefers the server’s autostart problem as the stuck reason', () => {
     const problem = "didn't start by itself: its dependencies merged into different branches (a → main, b → dev) — pick a base and Start"
     const ns = nextStep(unstarted([MERGED], true, problem), { driving: false, draftBaseMissing: 'unpicked' })
-    expect(ns.desc).toBe(problem)
+    expect(ns.desc).toBe('Its dependencies merged into different branches (a → main, b → dev) — pick a base and Start')
     expect(ns.primary?.disabled).toBe('pick a branch first')
     expect(upNextBasesDiffer(problem)).toBe(true)
     expect(upNextBasesDiffer("couldn't start by itself: git refused")).toBe(false)

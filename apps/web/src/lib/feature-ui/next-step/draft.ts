@@ -85,7 +85,7 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
         alert: true,
         kick: 'NEXT STEP',
         title: "Didn't start by itself",
-        desc: full.upNextProblem ?? stuckReason(full.dependsOn),
+        desc: asSentence(full.upNextProblem ?? stuckReason(full.dependsOn), full.dependsOn),
         primary: start,
         secondary: [selfPlan, MOVE_TO_BACKLOG],
         busy: false,
@@ -100,4 +100,17 @@ export function resolveDraft({ full, ctx }: ResolverInput): NextStep {
         busy: false,
       }
   }
+}
+
+/**
+ * A stuck reason as the bar's description: the reasons are written lowercase
+ * for the sidebar's hover, and the server's autostart messages lead with what
+ * the title already says ("didn't start by itself: …"), so drop that lead-in
+ * and start the sentence with a capital — unless it starts with a slug, which
+ * is a name and keeps its own spelling.
+ */
+function asSentence(reason: string, deps: DependencyRef[]): string {
+  const body = reason.replace(/^(?:didn't|couldn't) start by itself:\s*/i, '')
+  if (deps.some((d) => body.startsWith(`${d.slug} `))) return body
+  return body.charAt(0).toUpperCase() + body.slice(1)
 }
