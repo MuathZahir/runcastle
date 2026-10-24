@@ -78,8 +78,12 @@ async function main(): Promise<void> {
 
     console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/f/${encodeURIComponent(feature.slug)}`)
   } finally {
-    // Close so the WAL is checkpointed into the db file for any reader after us.
-    ;(db as unknown as { $client: { close(): void } }).$client.close()
+    // Checkpoint the WAL into the db file for any reader after us. Closing alone
+    // is not enough: with drizzle's statements still open, bun defers the close
+    // and the process can exit with the rows only in the WAL.
+    const client = (db as unknown as { $client: { exec(sql: string): void; close(): void } }).$client
+    client.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+    client.close()
   }
 }
 
