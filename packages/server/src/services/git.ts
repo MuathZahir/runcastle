@@ -2131,29 +2131,6 @@ export async function commitDocs(worktreePath: string, message: string): Promise
   await g.raw(['commit', '--no-verify', '-m', message, '--', DOCS_PATHSPEC])
 }
 
-/**
- * Paths with uncommitted changes (staged, unstaged or untracked) outside
- * `docs/features/` in a worktree — the design work Go must wait for. Never
- * throws: a missing or unreadable worktree has no design work to wait for.
- */
-export async function uncommittedOutsideDocs(worktreePath: string): Promise<string[]> {
-  if (!existsSync(worktreePath)) return []
-  try {
-    // -z: NUL-separated, unquoted paths; a rename carries its origin as an extra entry.
-    const out = await git(worktreePath).raw(['status', '--porcelain', '-z', '--untracked-files=all'])
-    const entries = out.split('\0').filter(Boolean)
-    const paths: string[] = []
-    for (let i = 0; i < entries.length; i++) {
-      const entry = entries[i] as string
-      paths.push(entry.slice(3))
-      if (entry[0] === 'R' || entry[0] === 'C') i++
-    }
-    return paths.filter((p) => !p.startsWith(`${DOCS_PATHSPEC}/`))
-  } catch {
-    return []
-  }
-}
-
 /** Commit generated docs on a named branch in the main checkout, then restore its prior branch. */
 export async function onBranch<T>(
   repoPath: string,
