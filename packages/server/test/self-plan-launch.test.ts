@@ -113,7 +113,7 @@ describe('a self-planning run', () => {
     expect(command).toContain('Planning without a human')
     // The feature-state part of the chat header still follows the opening.
     // No lap in it: the round count is the human-facing number (decision 16).
-    expect(command).toContain('Feature state: planning; rounds run: 0;')
+    expect(command).toContain('Feature status: Talking with you; rounds run: 0;')
     expect(command).not.toMatch(/\blap\b/i)
   })
 

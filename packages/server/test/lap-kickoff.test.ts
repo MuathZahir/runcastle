@@ -125,7 +125,7 @@ describe('launchSession — briefings', () => {
 
     expect(command).toContain('--resume cc-prior')
     expect(command).toContain(briefing)
-    expect(command).toContain('Feature state:')
+    expect(command).toContain('Feature status:')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
     expect(events.map((e) => e.type)).not.toContain('session.resume_skipped')

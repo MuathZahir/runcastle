@@ -30,7 +30,7 @@ import { promoteOpenDefects, viewByFeature } from './review-findings'
  * review; each note is a row here, and `docs/features/<slug>/test-notes.md` is
  * a VIEW regenerated from the rows on every mutation — never appended to, never
  * parsed back. That file is the compatibility surface with the reader side (the
- * lap-session kickoff and the revisit skill already read its `## Lap N`
+ * lap-session kickoff and the feature skill already read its `## Lap N`
  * sections), which is why the render is idempotent and total.
  */
 
@@ -521,7 +521,7 @@ function carriedLine(note: TestNote): string {
 /**
  * Regenerate `docs/features/<slug>/test-notes.md` from the full row set. The
  * format — `## Lap N` sections ascending, one checkbox line per note in capture
- * order — is what the lap-session kickoff and the revisit skill already expect
+ * order — is what the lap-session kickoff and the feature skill already expect
  * to read, so it is a contract, not a presentation choice.
  *
  * `## Carried, still open` leads, above those sections, and is the pointer every

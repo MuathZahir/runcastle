@@ -68,7 +68,7 @@ export type TicketShapeSubject = Pick<Ticket, 'seq' | 'goal' | 'context' | 'kind
  * The tickets a shape check reads: the batch, minus its review ticket.
  *
  * A review ticket is the pipeline's own writing — the quick door generates one
- * per batch, and the tickets skill tells a session it "is not a slice", needs no
+ * per batch, and the feature skill's tickets reference says it "is not a slice", needs no
  * seams beyond the surface it exercises, and is a prose brief rather than a
  * coder's scaffolding. So a warning about its shape names a ticket the human did
  * not write and, on the quick-change path, cannot edit.
@@ -195,7 +195,7 @@ function goalRepeatsContext(ticket: TicketShapeSubject): boolean {
  *
  * Only the heading, deliberately. This also used to fire on a single bullet, a
  * single numbered line, three paragraphs, or a last character that happened to
- * be a letter ("truncated mid-word") — but the tickets skill demands a context
+ * be a letter ("truncated mid-word") — but the tickets reference demands a context
  * that names every file and pattern the ticket touches, which is exactly how a
  * good context gets long, listed and paragraphed, and ending without a full
  * stop is not truncation. Those four told a thorough session to cut the context

@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
-import type { Phase, SessionKind, SessionPurpose } from '@runcastle/core'
-import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedChat } from './edit-guard'
+import type { SessionKind } from '@runcastle/core'
+import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedLead } from './edit-guard'
 
 /**
  * The talk-worktree install guard — the edit guard's sibling on the same
@@ -19,9 +19,8 @@ import { EDIT_TOOLS, type EditDenial, guardsEdits, isUnguardedChat } from './edi
  * the developer's own checkout, where installing is legitimate; the `project`
  * session's one `__project` worktree is bounded and reused. And unlike the edit
  * guard there is NO resolve-conflict exemption — resolve sessions are the main
- * offenders (decisions §4). A feature's `chat` installs freely in every phase
- * (design mode, decision 2), so it can typecheck and test its own code edits —
- * except a headless self-plan run in planning (`isUnguardedChat`).
+ * offenders (decisions §4). A feature's `chat` and `side` sessions install freely
+ * (`isUnguardedLead`), so they can typecheck and test their own code edits.
  */
 
 /**
@@ -80,10 +79,6 @@ const INSTALL_PATTERNS: readonly RegExp[] = [
 
 export interface InstallGuardInput {
   kind: SessionKind
-  /** The feature's phase at the time of the call; past planning, a chat is the unguarded lead. */
-  featurePhase?: Phase
-  /** The session's errand; a `self-plan` chat in planning stays guarded. */
-  purpose?: SessionPurpose
   /** `tool_name` from the hook payload. */
   toolName?: string
   /** `tool_input.command` from the hook payload. */
@@ -103,7 +98,7 @@ export interface InstallGuardInput {
  */
 export function evaluateInstallGuard(input: InstallGuardInput): EditDenial | null {
   if (!guardsEdits(input.kind)) return null
-  if (isUnguardedChat(input.kind, input.featurePhase, input.purpose)) return null
+  if (isUnguardedLead(input.kind)) return null
   if (!input.toolName || !(SHELL_TOOLS as readonly string[]).includes(input.toolName)) return null
   if (!input.command || !input.talkWorktreePath) return null
   if (!samePath(input.worktreePath, input.talkWorktreePath)) return null

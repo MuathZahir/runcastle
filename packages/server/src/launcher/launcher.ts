@@ -33,7 +33,6 @@ import { GateError, isNotImplemented } from '../errors'
 import { exitTail } from '../pty/exit-tail'
 import { ptyRegistry } from '../pty/registry'
 import { stopDesignServerForSession } from '../services/design'
-import { currentLapReviewEvidence } from '../services/carried-work'
 import { startDocsWatch } from '../services/docs-watch'
 import { type EmitScope, emit, emitForSession, emitProject, emitScoped } from '../services/events'
 import { rosterConfig } from '../services/model-discovery'
@@ -55,13 +54,12 @@ import { keysToPrepare } from '../services/prep'
 import { openCount as openProjectNoteCount } from '../services/project-notes'
 import { orchestratorCatchUp } from '../services/orchestrator-notify'
 import { orchestratorOn } from '../services/settings'
-import { planningFacts } from '../services/planning'
 import { listScenarioPaths } from '../services/scenarios'
 import { noteResolvedMerge } from '../services/resolved-merge'
 import { mainChatContext } from '../services/main-chat-excerpt'
+import { featureStateLine } from '../services/feature-state'
 import { leadWakeKickoff, tagRuncastlePrompt } from '../services/lead-prompt'
 import {
-  chatOpening,
   renderScenarioFollowUp,
   serverUrlFor,
   type PrepareBrief,
@@ -157,20 +155,17 @@ export interface LaunchSessionInput {
 }
 
 /**
- * Fresh orientation for the feature's persistent chat, opening with the move its
- * state calls for.
- *
- * The opening comes from {@link chatOpening} — the same predicate the injected
- * system prompt splits on — so a brand-new Planning feature is told to ideate by
- * both, and a feature with a record on disk is told to revisit by both.
- * `opening` replaces that first sentence for a launch that brings its own (a
- * self-planning run); the feature state after it is the same either way.
+ * Fresh orientation for the feature's persistent chat: the one opening every
+ * feature chat gets ({@link chatKickoffFor}), then the feature's state in the
+ * status words the page shows ({@link featureStateLine}). `opening` replaces
+ * that first sentence for a launch that brings its own (a self-planning run);
+ * the feature state after it is the same either way.
  */
 export function chatKickoffHeader(
   ctx: AppCtx,
   feature: Feature,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
-  opening: string = chatKickoffFor(runtime, chatOpening(feature, planningFacts(ctx, feature))),
+  opening: string = chatKickoffFor(runtime),
 ): string {
   const counts = new Map<string, number>()
   for (const ticket of listTicketsByFeature(ctx, feature.id)) {
@@ -182,19 +177,7 @@ export function chatKickoffHeader(
     .join(', ') || 'none'
   const runs = listRunsByFeature(ctx, feature.id)
   const latestRun = runs[0]
-  let review = ''
-  if (feature.phase === 'review') {
-    const latestReview = currentLapReviewEvidence(ctx, feature.id).at(-1)
-    const outcome = !latestRun
-      ? 'never driven'
-      : latestReview?.status === 'done'
-        ? 'passed'
-        : latestReview?.status === 'failed'
-          ? 'failed'
-          : 'unverified'
-    review = ` Drive outcome: ${outcome}; see the review evidence in get_feature_context.`
-  }
-  return `${opening} Feature state: ${feature.phase}; rounds run: ${runs.length}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}.${review} Call get_feature_context for the full picture.`
+  return `${opening} Feature status: ${featureStateLine(ctx, feature)}; rounds run: ${runs.length}; tickets: ${ticketSummary}; latest run: ${latestRun?.status ?? 'none'}. Call get_feature_context for the full picture.`
 }
 
 export interface LaunchSessionOptions {
@@ -306,21 +289,16 @@ function isSelfPlan(input: LaunchSessionInput): boolean {
 
 /**
  * Refuse a self-planning run the feature cannot take (`features-plan-themselves`
- * decision 5): it plans a feature from nothing, so the feature must be at
- * planning with no decisions, spec or tickets yet, and — like any terminal —
- * with no other session up. Checked before the row exists, so a refusal leaves
- * nothing behind.
+ * decision 5): a draft has not been started and a shipped feature is done, so
+ * neither has anything to plan, and — like any terminal — no other session may
+ * be up. Checked before the row exists, so a refusal leaves nothing behind.
  */
 function assertSelfPlannable(ctx: AppCtx, feature: Feature): void {
-  if (feature.phase !== 'planning') {
-    throw new GateError(
-      `${feature.slug} is past planning, so there is nothing for it to plan by itself — open the chat to change it`,
-    )
+  if (feature.status === 'draft') {
+    throw new GateError(`${feature.slug} is a draft, so it cannot plan itself — start it first`)
   }
-  if (chatOpening(feature, planningFacts(ctx, feature)) !== 'ideate') {
-    throw new GateError(
-      `${feature.slug} already has planning on record (decisions, a spec or tickets), so it cannot plan itself from scratch — open the chat to carry on`,
-    )
+  if (feature.status === 'shipped') {
+    throw new GateError(`${feature.slug} is shipped, so there is nothing for it to plan — open its chat to change it`)
   }
   assertSpawnable(ctx, feature)
 }
@@ -729,8 +707,8 @@ export async function launchSession(
         : relay
           ? relayKickoffFor(runtime.id, input.message as string)
           : leadWake
-            ? leadWakeKickoff(input.message as string, !!resumeSessionId)
-            : chatKickoffFor(runtime.id, chatOpening(feature, planningFacts(ctx, feature), input.purpose)),
+            ? leadWakeKickoff(runtime.id, input.message as string, !!resumeSessionId)
+            : chatKickoffFor(runtime.id),
     )
     plan.line = plan.line ? `${plan.line} ${header}` : header
   }
@@ -787,8 +765,6 @@ export async function launchSession(
     feature,
     project,
     config: ctx.config,
-    // Which of the chat's openings its brief renders (see `chatOpening`).
-    planning: planningFacts(ctx, feature),
     purpose: input.purpose,
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
@@ -798,11 +774,11 @@ export async function launchSession(
     kickoffLine,
     // No terminal: the run takes its kickoff as its prompt and exits when done.
     ...(headless ? { headless: true } : {}),
-    // The lead past Go works while the human is away, live or headless, and a
+    // Every feature chat is the lead and works while the human is away, live or headless, and a
     // prompt nobody answers stalls the loop (`the-feature-lead-runs-rounds`
     // decision 27) — the orchestrator's posture. The line guard on the
     // pre-tool hook holds under bypass. Codex already never asks in its sandbox.
-    ...(runtime.id === 'claude-code' && isUnguardedLead(input.kind, feature.phase)
+    ...(runtime.id === 'claude-code' && isUnguardedLead(input.kind)
       ? { permissionMode: 'bypassPermissions' }
       : {}),
   })
@@ -938,15 +914,14 @@ export async function launchSideSession(
     feature,
     project,
     config: ctx.config,
-    planning: planningFacts(ctx, feature),
     worktreePath,
     serverUrl: serverUrlFor(ctx.config),
     model: model.id,
     resumeSessionId,
     resumeSourceSessionId: resumedFrom?.id,
     kickoffLine,
-    // The main chat's rule (decision 5): past planning it works unprompted.
-    ...(runtime.id === 'claude-code' && isUnguardedLead('side', feature.phase)
+    // The main chat's rule (decision 5): it works unprompted.
+    ...(runtime.id === 'claude-code' && isUnguardedLead('side')
       ? { permissionMode: 'bypassPermissions' }
       : {}),
   })

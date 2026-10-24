@@ -100,7 +100,7 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     // what was recorded is the composed chat briefing: the opening this feature's
     // state calls for (nothing on disk yet, so ideation), then the state header
     expect(recorded?.line).toContain('/runcastle:ideate')
-    expect(recorded?.line).toContain('Feature state: planning')
+    expect(recorded?.line).toContain('Feature status: Talking with you')
   })
 
   it('records nothing for a smoke launch, which spawns no CLI to brief', async () => {
