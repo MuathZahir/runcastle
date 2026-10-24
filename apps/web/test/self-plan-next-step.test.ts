@@ -21,7 +21,6 @@ const session = (over: Partial<Session> = {}): Session =>
     status: 'ended',
     awaitingInput: false,
     worktreePath: '/tmp/talk',
-    lap: 1,
     createdAt: 0,
     ...over,
   }) as Session

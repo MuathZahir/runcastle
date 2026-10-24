@@ -314,7 +314,6 @@ describe('the project drive', () => {
     expect(res.ok).toBe(true)
     expect(existsSync(teardown)).toBe(true)
     expect(activeDriveInfo(project.id)).toBeNull()
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
   }, 20_000)
 
   it('merge is still refused while a DIFFERENT feature is being driven', async () => {

@@ -223,7 +223,7 @@ describe('the Working shelf', () => {
 })
 
 describe('the folded shelves', () => {
-  const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped', phase: 'shipped' }))
+  const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped' }))
 
   it('count Backlog, Shipped and Archived while folded — archived included', () => {
     data.features = [
@@ -269,7 +269,7 @@ describe('the folded shelves', () => {
 describe('the row menus', () => {
   it('archive a feature and unarchive an archived one', () => {
     localStorage.setItem('runcastle.sidebar.showArchived', '1')
-    data.features = [titled('Coupons', { id: 'f1', phase: 'review' }), titled('Old', { id: 'f2', status: 'archived' })]
+    data.features = [titled('Coupons', { id: 'f1' }), titled('Old', { id: 'f2', status: 'archived' })]
     rail()
     const [first, second] = screen.getAllByRole('button', { name: 'Feature actions' })
     openMenu(first!)
@@ -283,7 +283,7 @@ describe('the row menus', () => {
 
 describe('the foot', () => {
   it('shows a test drive as a card naming its feature, with Stop', () => {
-    data.features = [titled('Coupons', { id: 'f1', phase: 'review' })]
+    data.features = [titled('Coupons', { id: 'f1' })]
     rail({ driving: { featureId: 'f1', branch: 'feature/coupons' } as DriveState })
     const card = screen.getByRole('button', { name: /^Test drive/ })
     expect(card.textContent).toBe('Test driveCoupons')

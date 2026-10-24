@@ -10,7 +10,7 @@ import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { GateError } from '../src/errors'
 import { emit, listAfter } from '../src/services/events'
-import { agenticReview, getFeatureFull, retryTicket } from '../src/services/features'
+import { getFeatureFull, retryTicket } from '../src/services/features'
 import { findPreservedTicketBranch, listTicketAttemptBranches } from '../src/services/git'
 import { getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import {
@@ -704,107 +704,5 @@ describe('retryTicket', () => {
       .run()
 
     await expect(retryTicket(ctx, a.id)).rejects.toThrow(/run is live/)
-  })
-
-  describe('agenticReview', () => {
-    function seedDeniedReview(dir: string, opts: { denied?: boolean } = {}) {
-      const featureId = seedFeature(ctx, seedProject(ctx, dir).id, {
-        phase: 'review',
-        slug: 'demo',
-      }).id
-      const [review] = storeTickets(ctx, featureId, [
-        { ...ticketInput('review the lap'), kind: 'review' },
-      ])
-      updateTicket(ctx, review.id, { status: 'done' })
-      ctx.db
-        .insert(runs)
-        .values({
-          id: newId('run'),
-          featureId,
-          workflow: 'ticket-burner',
-          status: 'succeeded',
-          startedAt: Date.now(),
-          endedAt: Date.now(),
-          summary: null,
-        })
-        .run()
-      if (opts.denied !== false) {
-        emit(ctx, featureId, {
-          type: 'reviewdrive.denied',
-          message: 'review drive denied — 1 uncommitted file(s) in the working tree: scratch.txt',
-          data: { code: 'dirty', dirtyFiles: ['scratch.txt'] },
-        })
-      }
-      return { featureId, review }
-    }
-
-    it('mints a fresh review pass on the current lap and starts a burn', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { featureId, review } = seedDeniedReview(dir)
-      const res = await agenticReview(ctx, featureId)
-      expect(res.runId).toMatch(/^run/)
-      const minted = listByFeature(ctx, featureId).find((ticket) => ticket.id !== review.id)
-      expect(minted).toMatchObject({ kind: 'review', passKind: 'review', lap: 1, status: 'pending' })
-      expect(minted?.goal).toMatch(/full, independent review/)
-      // The title shows in the ticket list and on the round trail: no lap in it.
-      expect(minted?.title).toBe('Agentic review')
-      expect(listAfter(ctx, featureId, 0).some((event) => event.type === 'review.agentic-minted')).toBe(true)
-    })
-
-    it('refuses while the tree is still dirty, naming what is in the way', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { featureId } = seedDeniedReview(dir)
-      writeFileSync(join(dir, 'notes.md'), 'wip\n')
-      writeFileSync(join(dir, 'scratch.txt'), 'wip\n')
-
-      await expect(agenticReview(ctx, featureId)).rejects.toThrow(GateError)
-      await expect(agenticReview(ctx, featureId)).rejects.toThrow(
-        /still dirty.*2 file\(s\) first: notes\.md, scratch\.txt/,
-      )
-      expect(listByFeature(ctx, featureId)).toHaveLength(1)
-    })
-
-    it('refuses while a run is live without minting or queueing', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { featureId, review } = seedDeniedReview(dir)
-      ctx.db
-        .insert(runs)
-        .values({
-          id: newId('run'),
-          featureId,
-          workflow: 'ticket-burner',
-          status: 'running',
-          startedAt: Date.now(),
-          endedAt: null,
-          summary: null,
-        })
-        .run()
-      await expect(agenticReview(ctx, featureId)).rejects.toThrow(/run is live/)
-      expect(listByFeature(ctx, featureId)).toEqual([expect.objectContaining({ id: review.id })])
-    })
-
-    it('burns the minted pass alone, leaving pending fix tickets and the lap where they were', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { featureId, review } = seedDeniedReview(dir, { denied: false })
-      // The state the button exists for: a review found defects and its fix
-      // tickets are sitting pending for the human to decide on.
-      const [fix] = storeTickets(ctx, featureId, [ticketInput('fix the defect')])
-
-      await agenticReview(ctx, featureId)
-
-      const minted = listByFeature(ctx, featureId).find(
-        (t) => t.kind === 'review' && t.id !== review.id,
-      )
-      expect(burnScope.opened).toEqual([minted?.id])
-      expect(burnScope.reread).toEqual([minted?.id])
-      expect(getTicket(ctx, fix.id).status).toBe('pending')
-      expect(getFeatureFull(ctx, featureId).feature.lap).toBe(1)
-    })
-
-    it('keeps ticket retry failed-only after a dirty denial', async () => {
-      const { dir } = await initRepoWithFeature()
-      const { review } = seedDeniedReview(dir)
-      await expect(retryTicket(ctx, review.id)).rejects.toThrow(/only failed tickets/)
-    })
   })
 })

@@ -1,16 +1,15 @@
 // Merge-order dependencies between features (ADR-0013) — IO-free rules shared by
 // the server's dependencies service and the web. A dependent (a draft) waits on
-// its dependencies until each one's phase is `shipped`; nothing about that is
-// stored, it is derived here at read time.
+// its dependencies until each one has shipped; nothing about that is stored, it
+// is derived here at read time.
 
-import type { FeatureStatus, Phase } from './schemas'
+import type { FeatureStatus } from './schemas'
 
 /** One dependency as surfaced to the UI and agents, with its derived state. */
 export type DependencyRef = {
   featureId: string
   slug: string
   title: string
-  phase: Phase
   status: FeatureStatus
   satisfied: boolean
 }
@@ -20,12 +19,9 @@ export type BlockRef = { featureId: string; slug: string; title: string }
 
 export type DependencyEdge = { dependentId: string; dependencyId: string }
 
-/**
- * A dependency is satisfied once it has merged — `phase === 'shipped'`. Phase,
- * not status: a shipped-then-archived feature (status `archived`) still counts.
- */
-export function isDependencySatisfied(f: { phase: Phase }): boolean {
-  return f.phase === 'shipped'
+/** A dependency is satisfied once it has merged — `status === 'shipped'`. */
+export function isDependencySatisfied(f: { status: FeatureStatus }): boolean {
+  return f.status === 'shipped'
 }
 
 /**

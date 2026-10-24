@@ -10,16 +10,7 @@ import type {
   SessionStatus,
   Ticket,
 } from '@runcastle/core'
-import {
-  DEFAULT_RUNTIME,
-  isStoppableHeadlessRun,
-  newId,
-  PLAN_UNFINISHED,
-  UNCOMMITTED_DESIGN,
-  planFinished,
-  ticketTally,
-} from '@runcastle/core'
-import type { TicketTally } from '@runcastle/core'
+import { newId } from '@runcastle/core'
 import { sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { asc, desc, eq, or } from 'drizzle-orm'
 import { rmSync } from 'node:fs'
@@ -34,7 +25,6 @@ import {
   tickets,
 } from '../db/schema'
 import { GateError, InvalidInputError, isNotImplemented } from '../errors'
-import { goWarnings } from './burn-warnings'
 import {
   blocksOf,
   dependencyMaps,
@@ -48,7 +38,6 @@ import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
 import { deliverToLead } from './lead-delivery'
-import { goWakeText } from './lead-prompt'
 import { latestBurn, runClaimedTicketIds } from './runs'
 import { refreshLeadTokens } from './usage'
 import type { DocSummary, PreviewSummary, ScaffoldOptions } from './knowledge'
@@ -60,24 +49,20 @@ import {
   projectForFeature,
   requireProjectById,
   rowToFeature,
-  setPhase,
 } from './repo'
 import { activeSessionsForFeature } from '../launcher/sessions'
 import { endSession } from '../pty/end-session'
 import {
-  carryPendingTicketsIntoLap,
   getTicket,
   isPendingTicket,
   listByFeature,
-  storeTickets,
   sweepOrphanedBurning,
   updateTicket,
 } from './tickets'
 import { cancelRun, startRun } from '../workflows/runner'
 
 /**
- * Feature service (SPEC §3/§4): create, aggregate read, phase transitions,
- * burn. Git branch creation is B2's; `createFeature` tolerates the B2 stub via
+ * Feature service (SPEC §3/§4): create, aggregate read, rounds, burn. Git branch creation is B2's; `createFeature` tolerates the B2 stub via
  * `ensureFeatureBranch` so the feature row is created and the UI is usable
  * before wave B lands (task item 5).
  */
@@ -105,10 +90,8 @@ export interface LiveSessionState {
 }
 
 export interface FeatureListItem extends Feature {
-  /** Every ticket across every lap, by status — the red dot reads `failed`. */
+  /** Every ticket, by status — the red dot reads `failed`. */
   ticketCounts: TicketCounts
-  /** This lap's progress, by the one shared definition — the row's "3/7". */
-  lapTally: TicketTally
   activeRun: boolean
   /**
    * The feature's open session, or null when it has none — an ended session
@@ -139,8 +122,6 @@ export interface FeatureFull {
   preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
-  /** The talk worktree holds uncommitted work outside the docs; Go is refused until it is committed. */
-  uncommittedDesign: boolean
 }
 
 export interface CreateFeatureInput {
@@ -191,9 +172,6 @@ export async function createFeature(
     // Only a draft parks its brief in the column (decision 4); a live create
     // writes it straight to `brief.md`, the source of truth from then on.
     brief: cut ? null : (input.brief ?? null),
-    // Burn derives and stamps the lap from prior burn runs.
-    lap: 1,
-    phase: 'planning' as const,
     // The branch NAME is recorded even for a draft (decision 2); `status:
     // 'draft'` alone means the branch does not exist in the repo yet.
     branch,
@@ -433,7 +411,7 @@ async function scaffoldDocsOnFeatureBranch(
   }
 }
 
-export function getFeatureFull(ctx: AppCtx, id: string): Omit<FeatureFull, 'uncommittedDesign'> {
+export function getFeatureFull(ctx: AppCtx, id: string): FeatureFull {
   const feature = getFeatureRow(ctx, id)
   // Telemetry only (decision 25): the lead's tokens are recorded as it works, never returned.
   refreshLeadTokens(ctx, id, { lazy: true })
@@ -478,7 +456,6 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
     return {
       ...feature,
       ticketCounts: counts,
-      lapTally: ticketTally(tickets, feature.lap),
       activeRun: hasActiveRun(ctx, feature.id),
       liveSession: liveSessionOf(ctx, feature.id),
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
@@ -508,189 +485,33 @@ function liveSessionOf(ctx: AppCtx, featureId: string): LiveSessionState | null 
 }
 
 /**
- * Burn — the first of the two human clicks, and the only mutation that moves a
- * feature into `building`.
+ * Restart the burn over the feature's pending tickets — the engine under the
+ * run lane's per-ticket retry ({@link retryTicket}), which has already reset
+ * exactly the tickets it wants burned. Rounds start through
+ * {@link dispatchRound}; this is never a door of its own.
  *
- * From `planning` (the normal case) it stamps the lap, sets phase `building`
- * and starts the ticket-burner run. It also accepts a feature already at
- * `building` with NO active run — a run that was cancelled, crashed, or
- * finished with failures left the feature parked there — and (re)starts the
- * burn, so that state never dead-ends. On restart every ticket a dead run left
- * `burning` is failed first (no run is live, so nothing is behind it), then
- * every `failed` ticket is reset to `pending` (error cleared) so the re-burn
- * actually retries it — this is the retry path the burner's "resolve manually,
- * then re-burn" messages promise.
- *
- * It also accepts a feature at `review` with ≥1 pending (non-terminal) ticket
- * and no active run — the Iterate loop (CONTEXT.md, "Laps: iteration without a
- * mode"; cited by name because the locked-decision numbers get renumbered):
- * fresh fix tickets emitted during review are burned from where the feature
- * stands. Nothing returns it to `review` when they finish any more — that is
- * the lead's ready declaration ({@link declareReady}). Kept for the engine's
- * own retries and restarts; the human's and the orchestrator's door is {@link go}.
- *
- * Exactly two things refuse: a burn already running on this feature, and git
- * safety (which surfaces as a launch failure). Everything the old gates refused
- * is a warning the operator reads and clicks through. Requires ≥1 non-cancelled
- * ticket — a burn with nothing to burn is a no-op, not a gate, and the UI does
- * not offer it.
+ * No run is live (refused first), so a ticket still marked `burning` is an
+ * orphan from a run that died without finalizing — it is failed first, so the
+ * scheduler (which only queues `pending`) never strands it.
  */
-export async function burn(
-  ctx: AppCtx,
-  featureId: string,
-  opts: {
-    modelOverride?: string
-    resetFailed?: boolean
-    advanceLap?: boolean
-    /** Burn only these tickets, leaving every other pending row for a later burn. */
-    onlyTicketIds?: string[]
-  } = {},
-): Promise<{ runId: string }> {
+export async function burn(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  // One of the two hard rules: one burn at a time on a feature branch
-  // (ADR-0002). Refusing first is what lets everything below assume no run.
+  // One burn at a time on a feature branch (ADR-0002).
   if (hasActiveRun(ctx, featureId)) throw new GateError('a run is already burning this feature')
-  let tickets = listByFeature(ctx, featureId)
-  // A ticket the burner still has to run. Fresh fix tickets from an Iterate
-  // session land as `pending`.
-  const pending = tickets.filter(isPendingTicket)
-  const restarting = feature.phase === 'building'
-  const reviewing = feature.phase === 'review' && pending.length >= 1
-  const iterating = reviewing && opts.advanceLap !== false
-
-  if (feature.phase !== 'planning' && !restarting && !reviewing) {
-    throw new GateError(
-      feature.phase === 'review'
-        ? 'no pending tickets to burn — emit fix tickets before burning from review'
-        : `feature must be planning or in review with pending tickets to burn (currently ${feature.phase})`,
-    )
+  const tickets = listByFeature(ctx, featureId)
+  if (!tickets.some(isPendingTicket)) {
+    throw new GateError(tickets.length > 0 ? 'no pending tickets to burn' : 'no tickets to burn')
   }
-  if (tickets.filter((t) => t.status !== 'cancelled').length < 1) {
-    throw new GateError(
-      tickets.length > 0 ? 'no burnable tickets — every ticket is cancelled' : 'no tickets to burn',
-    )
-  }
-  // The lap this burn runs in. Burning from review opens the next one — the
-  // review being answered closed the last; every other road runs the lap the
-  // feature is already on. A restart opens nothing at all: it resumes a run
-  // that died mid-lap, and counting runs (a retry is a run of its own) invented
-  // a lap for work that never moved. The tickets the click is about to burn are
-  // carried onto it, because the session wrote them before the click.
-  const lap = iterating ? feature.lap + 1 : feature.lap
-  if (iterating) carryPendingTicketsIntoLap(ctx, featureId, feature.lap, lap)
-  ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
-
-  if (restarting) {
-    // No run is live (that is what `restarting` means), so a ticket still
-    // marked `burning` is an orphan from a run that died without finalizing —
-    // fail it first so the reset below can pick it up. Without this the
-    // scheduler (which only queues `pending`) skips it and the re-burn returns
-    // instantly with "N-1/N tickets done", leaving the ticket stuck forever.
-    sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
-    tickets = listByFeature(ctx, featureId)
-    // `resetFailed: false` is the selective-retry path (retryTicket already
-    // reset exactly the tickets it wants burned — the rest stay failed).
-    //
-    // Deliberately UNSCOPED by lap: resuming a dead burn is about rescuing
-    // whatever the run left broken, so an earlier lap's failed ticket is
-    // retried here too.
-    const failed = opts.resetFailed === false ? [] : tickets.filter((t) => t.status === 'failed')
-    for (const t of failed) {
-      // Keep `attemptBranch` (the re-burn resumes from the preserved commits)
-      // and `conflictFiles` (a ticket that only failed to LAND gets its
-      // conflict resolved rather than re-implemented).
-      updateTicket(ctx, t.id, { status: 'pending', error: null })
-    }
-    emit(ctx, featureId, {
-      type: 'burn.restarted',
-      message:
-        failed.length > 0
-          ? `restarting burn — retrying ${failed.length} failed ticket(s)`
-          : 'restarting burn (previous run cancelled or crashed)',
-      data: { retried: failed.map((t) => t.seq) },
-    })
-  } else setPhase(ctx, featureId, 'building', 'burn.started', `burning tickets — lap ${lap}`)
+  sweepOrphanedBurning(ctx, featureId, 'orphaned — the previous run died while it was burning')
+  emit(ctx, featureId, { type: 'burn.restarted', message: 'restarting burn' })
   // Only the id crosses the seam — `startRun` also hands back a `done` promise
   // the caller must not await (the run finishes long after the click returns).
-  const { runId } = await startRun(ctx, featureId, 'ticket-burner', {
-    modelOverride: opts.modelOverride,
-    ...(opts.onlyTicketIds ? { ticketIds: opts.onlyTicketIds } : {}),
-  })
+  const { runId } = await startRun(ctx, featureId, 'ticket-burner')
   return { runId }
 }
 
 export { markHumanMessage, setWaiting } from './lead-status'
-
-/** Does the feature's talk worktree hold uncommitted changes outside `docs/features/`? */
-export async function hasUncommittedDesign(feature: Feature): Promise<boolean> {
-  const changed = await git.uncommittedOutsideDocs(worktreeDir(feature.projectId, feature.slug))
-  return changed.length > 0
-}
-
-/**
- * Go (`the-feature-lead-runs-rounds` decision 8) — the human's one click that
- * approves the plan. It moves planning → building and hands the feature to its
- * lead, which dispatches round 1 itself; NO run starts here. Zero tickets is
- * fine: the lead may do a small feature itself (decision 5).
- *
- * Go follows a finished plan. While the feature plans itself it is refused
- * outright — Go would cut that planning short. Before the tickets step is
- * complete for this lap (`ticketsReadyLap`, the arming the status line's "plan
- * ready for Go" reads) it is a gate: refused unless the human gives a one-line
- * reason, which is recorded in history (CONTEXT.md decision 8).
- *
- * Go also waits for design work to be committed (design mode, decision 6):
- * uncommitted changes outside the docs in the talk worktree refuse it with no
- * override, ahead of the plan check.
- *
- * Go is the human acting, so it stamps the last-human-message mark too.
- */
-export async function go(
-  ctx: AppCtx,
-  featureId: string,
-  opts: { overrideReason?: string } = {},
-): Promise<{ warnings: string[] }> {
-  const feature = getFeatureRow(ctx, featureId)
-  requireNotDraft(feature)
-  if (feature.phase !== 'planning') {
-    throw new GateError(`Go approves a plan — \`${feature.slug}\` is already past planning (${feature.phase})`)
-  }
-  const planning = activeSessionsForFeature(ctx, featureId).find(isStoppableHeadlessRun)
-  if (planning) {
-    throw new GateError(
-      `\`${feature.slug}\` is planning itself (run ${planning.id}) — Go would cut the plan short; wait for the run to finish, or stop it first`,
-    )
-  }
-  // No override: burns fork from the branch tip and could never see this work.
-  if (await hasUncommittedDesign(feature)) throw new GateError(UNCOMMITTED_DESIGN)
-  const reason = opts.overrideReason?.trim()
-  if (!planFinished(feature)) {
-    if (!reason) {
-      throw new GateError(
-        `${PLAN_UNFINISHED} — the tickets step is not complete for lap ${feature.lap}; give Go with a one-line reason to override`,
-      )
-    }
-    emit(ctx, featureId, {
-      type: 'gate.overridden',
-      message: `Go given before the plan was finished: ${reason}`,
-      data: { gate: 'go', reason },
-    })
-  }
-  const warnings = goWarnings(ctx, featureId)
-  ctx.db
-    .update(features)
-    .set({ lastHumanMessageAt: Date.now(), waitingReason: null })
-    .where(eq(features.id, featureId))
-    .run()
-  const building = setPhase(ctx, featureId, 'building', 'feature.go', 'Go given — the agent builds from here')
-  const chat = activeSessionsForFeature(ctx, featureId).find((s) => s.kind === 'chat')
-  await deliverToLead(ctx, building, {
-    text: goWakeText(chat?.runtime ?? DEFAULT_RUNTIME),
-    source: 'runcastle',
-  })
-  return { warnings }
-}
 
 /**
  * Dispatch a round (decision 13): one ticket-burner run over exactly the named
@@ -866,8 +687,6 @@ export function declareReady(
       featureId,
       runId: lastRound?.id ?? null,
       scenario,
-      // NOT NULL until the column is dropped; what to test is said in chat now.
-      whatToTest: '',
       createdAt: Date.now(),
     })
     .returning()
@@ -896,77 +715,6 @@ function readyWarnings(ctx: AppCtx, lastRound: Run | undefined): string[] {
     lastRound.status !== 'succeeded' ||
     listByFeature(ctx, lastRound.featureId).some((t) => held.has(t.id) && t.status === 'failed')
   return failed ? ['the last round had failures — tell the human what failed before they drive it.'] : []
-}
-
-/**
- * Did the feature's most recent run record a review drive refused over a dirty
- * working tree?
- *
- * The evidence is the `reviewdrive.denied` event the drive guard emits at the
- * moment it refuses (services/git.ts) — no new ticket status and no new column
- * (decisions §6): a denial never ends a review, it only downgrades it to a
- * repo-only pass, so the ticket ends `done` like any other and the timeline is
- * the only place the refusal is written down.
- *
- * Scoped to the latest run because the record has to be about the review the
- * human is looking at: a denial from an earlier run has already been superseded
- * by a burn that ran after it — including the retry this very check admits, so
- * one denial buys one retry.
- */
-export function latestRunDeniedDirty(ctx: AppCtx, featureId: string): boolean {
-  const latestRun = listRunsByFeature(ctx, featureId)[0]
-  if (!latestRun) return false
-  const deniedAt = latestEventTs(ctx, featureId, 'reviewdrive.denied')
-  return deniedAt !== undefined && deniedAt >= latestRun.startedAt
-}
-
-/** Mint a standalone review pass for the current lap and burn it immediately. */
-export async function agenticReview(ctx: AppCtx, featureId: string): Promise<{ runId: string }> {
-  const feature = getFeatureRow(ctx, featureId)
-  if (hasActiveRun(ctx, feature.id)) {
-    throw new GateError('a run is live for this feature — start an agentic review after it finishes')
-  }
-
-  const project = projectForFeature(ctx, feature)
-  if (latestRunDeniedDirty(ctx, feature.id)) {
-    const stillDirty = await git.driveBlockingPaths(project.repoPath, project.docsCommitPrefix)
-    if (stillDirty.length > 0) {
-      throw new GateError(
-        `the working tree is still dirty — the review drive would be denied again. Commit or ` +
-          `discard ${stillDirty.length} file(s) first: ${git.truncatedFileList(stillDirty)}`,
-      )
-    }
-  }
-
-  const [ticket] = storeTickets(ctx, feature.id, [
-    {
-      title: 'Agentic review',
-      goal: "Perform a full, independent review of the feature's landed work.",
-      context: 'Review the complete landed diff and report defects with evidence. Choose the review mode from current availability.',
-      acceptanceCriteria: ['The landed work is reviewed in full and every finding is reported.'],
-      seams: ['The landed work and its observable acceptance criteria'],
-      blockedBy: [],
-      kind: 'review',
-      passKind: 'review',
-    },
-  ])
-  emit(ctx, feature.id, {
-    type: 'review.agentic-minted',
-    message: `agentic review minted as ticket ${ticket.seq}`,
-    ticketId: ticket.id,
-    data: { ticketSeq: ticket.seq, lap: feature.lap },
-  })
-  // Scoped to the ticket just minted: the button asks for another review pass,
-  // not for the pending fix queue beside it. An unscoped burn would launch
-  // every fix the last review found — code changes nobody clicked Burn for —
-  // and then hold the new pass behind them at the review gate. It also lands
-  // those fixes on the lap that already burned them, because a review pass
-  // opens no lap (decision 7: the mint is FOR the current lap).
-  return burn(ctx, feature.id, {
-    resetFailed: false,
-    advanceLap: false,
-    onlyTicketIds: [ticket.id],
-  })
 }
 
 /**
@@ -1105,12 +853,12 @@ export async function retryTicket(
     data: { retried: seqs, fresh: !!opts.fresh, resumedFrom, preservedCommits, resolvingConflict },
   })
 
-  const { runId } = await burn(ctx, feature.id, { resetFailed: false })
+  const { runId } = await burn(ctx, feature.id)
   return { runId, retried: seqs, resumedFrom, preservedCommits, resolvingConflict }
 }
 
 /**
- * Archive a feature (decision #8): allowed from any phase and any status except
+ * Archive a feature (decision #8): allowed from any status except a draft or
  * an already-archived one. Ends any live session first (the same PTY-killing
  * teardown the End-session button uses), flips status to `archived`, and emits
  * `feature.archived`. All data is kept — archiving only hides the feature behind
@@ -1130,7 +878,7 @@ function endLiveSessions(ctx: AppCtx, featureId: string): void {
 export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   // Archive is refused for drafts (decision 8): `unarchiveFeature` derives the
-  // restored status from the phase and would resurrect a draft as
+  // restored status from the merge record and would resurrect a draft as
   // active-without-a-branch. A draft IS the shelf; delete covers dead ideas.
   requireNotDraft(feature)
   if (feature.status === 'archived') {
@@ -1152,9 +900,9 @@ export async function archiveFeature(ctx: AppCtx, featureId: string): Promise<Fe
 
 /**
  * Unarchive a feature (decision #8): restore its pre-archive status, derived
- * from the phase — a feature that reached `shipped` is restored to `shipped`,
- * everything else to `active` (status only ever holds those three values, so
- * deriving is exact). Emits `feature.unarchived`.
+ * from the record of its merge — a feature whose merge landed (`feature.shipped`)
+ * is restored to `shipped`, everything else to `active` (a draft is never
+ * archived, so deriving is exact). Emits `feature.unarchived`.
  */
 export function unarchiveFeature(ctx: AppCtx, featureId: string): Feature {
   const feature = getFeatureRow(ctx, featureId)
@@ -1162,7 +910,8 @@ export function unarchiveFeature(ctx: AppCtx, featureId: string): Feature {
     throw new GateError(`feature ${feature.slug} is not archived`)
   }
 
-  const restored: FeatureStatus = feature.phase === 'shipped' ? 'shipped' : 'active'
+  const merged = latestEventTs(ctx, featureId, 'feature.shipped') !== undefined
+  const restored: FeatureStatus = merged ? 'shipped' : 'active'
   ctx.db.update(features).set({ status: restored }).where(eq(features.id, featureId)).run()
   emit(ctx, featureId, {
     type: 'feature.unarchived',

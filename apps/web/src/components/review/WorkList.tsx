@@ -2,7 +2,7 @@ import { useEffect, useState, type RefObject } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
 import { Button, IconButton } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
-import { IconMore, IconPencil, IconTrash, IconUndo, IconX } from '../../icons'
+import { IconMore, IconPencil, IconTrash, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
@@ -31,10 +31,8 @@ export interface WorkRow {
 
 /** Where a defect stands, keyed off the server's own open set so it cannot
  *  disagree with the count beside it. What is left to derive is what that set
- *  cannot say: fixed-versus-fixing, which the join with the fix ticket decides,
- *  and — since the set describes the CURRENT lap only — whether a defect it
- *  leaves out was parked or is an earlier lap's leftover. */
-type DefectStanding = 'open' | 'fixing' | 'fixed' | 'dismissed' | 'carried'
+ *  cannot say: fixed-versus-fixing, which the join with the fix ticket decides. */
+type DefectStanding = 'open' | 'fixing' | 'fixed' | 'dismissed'
 
 function defectStanding(
   finding: ReviewFinding,
@@ -43,19 +41,8 @@ function defectStanding(
 ): DefectStanding {
   if (openIds.has(finding.id)) return 'open'
   if (finding.status === 'dismissed') return 'dismissed'
-  // Carried outranks the fix-ticket join, exactly as the server's own state does:
-  // a defect is only carriable once its fix attempt was given up on, so the dead
-  // ticket must not drag it back into a state the lap has already answered for.
-  if (finding.status === 'carried') return 'carried'
   if (finding.status === 'fixed' || fixTicket?.status === 'done') return 'fixed'
-  if (fixTicket && fixTicket.status !== 'failed' && fixTicket.status !== 'cancelled') {
-    return 'fixing'
-  }
-  // Outside this lap's open set with no live fix ticket behind it: an earlier
-  // lap's leftover, which the server counts on no lap but nobody has answered
-  // either — so the row keeps the human's Dismiss rather than claiming a burn
-  // is on it.
-  return finding.status === 'open' || finding.status === 'failed' ? 'open' : 'fixing'
+  return 'fixing'
 }
 
 /**
@@ -74,8 +61,8 @@ function byUrgency(a: WorkRow, b: WorkRow): number {
  * The review's defects and the human's notes, split into what still needs
  * attention and what has been dealt with (decision 27b).
  *
- * Everything carried, quick-fixed into a ticket, scratched off, fixed
- * or dismissed leaves the attention list at the moment it is dealt with and
+ * Everything quick-fixed into a ticket, scratched off, fixed or dismissed
+ * leaves the attention list at the moment it is dealt with and
  * lands in the settled half, where it keeps its evidence and can be reopened. So
  * the rows on arrival are only ever what is genuinely unaddressed.
  */
@@ -100,7 +87,6 @@ export function partitionWork(input: {
     if (finding.kind !== 'defect') continue
     const fix = ticketOf(finding.fixTicketId)
     const standing = defectStanding(finding, openIds, fix)
-    // A parked defect is settled work: it keeps its Reopen and Dismiss there.
     file(
       {
         kind: 'defect',
@@ -171,9 +157,6 @@ export function WorkList({
   // Dismissing is how the open count reaches zero without a burn — a defect the
   // human judged shippable is a decision, not a fix.
   const dismiss = trpc.findings.dismiss.useMutation({ onSuccess: refreshFindings, onError })
-  // The other half of carry, and the human's alone (decisions #3): a lap session
-  // parks a defect, only a person un-parks one.
-  const reopenFinding = trpc.findings.reopen.useMutation({ onSuccess: refreshFindings, onError })
 
   // Both directions of a jump are visible (decision 25b): a marker click or a
   // fresh annotation brings its row into view rather than changing the list off
@@ -239,24 +222,6 @@ export function WorkList({
           Dismiss
         </Button>
       )
-      // A parked defect offers both of the human's verbs: back into the open
-      // pile, or waved away for good. Nothing about it is the burn's any more.
-      if (item.finding.status === 'carried') {
-        return (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<IconUndo />}
-              disabled={reopenFinding.isPending}
-              onClick={() => reopenFinding.mutate({ findingId })}
-            >
-              Reopen
-            </Button>
-            {wave}
-          </>
-        )
-      }
       // Only a defect the server still calls open is the human's to wave away;
       // one being fixed has not been given up on yet.
       if (!row.open) return undefined

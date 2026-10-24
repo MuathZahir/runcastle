@@ -45,15 +45,13 @@ describe('test notes service', () => {
     return listAfter(ctx, feature.id).map((e) => e.type)
   }
 
-  it('captures an open note stamped with the feature current lap', () => {
-    const onLapTwo = seedFeature(ctx, project.id, { slug: 'later', lap: 2 })
-
+  it('captures an open note, with no lap', () => {
     const note = addNote(ctx, feature.id, 'the header wraps at 400px')
 
-    expect(note).toMatchObject({ text: 'the header wraps at 400px', status: 'open', lap: 1 })
+    expect(note).toMatchObject({ text: 'the header wraps at 400px', status: 'open' })
+    expect(note).not.toHaveProperty('lap')
     expect(note.ticketId).toBeUndefined()
     expect(listByFeature(ctx, feature.id)).toEqual([note])
-    expect(addNote(ctx, onLapTwo.id, 'still wraps').lap).toBe(2)
     expect(eventTypes()).toContain('note.added')
   })
 

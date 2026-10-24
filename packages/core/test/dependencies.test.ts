@@ -5,17 +5,12 @@ const edge = (dependentId: string, dependencyId: string) => ({ dependentId, depe
 
 describe('isDependencySatisfied', () => {
   it('is satisfied once the dependency has shipped', () => {
-    expect(isDependencySatisfied({ phase: 'shipped' })).toBe(true)
+    expect(isDependencySatisfied({ status: 'shipped' })).toBe(true)
   })
 
-  it('counts a shipped-then-archived feature as merged', () => {
-    const shippedThenArchived = { phase: 'shipped', status: 'archived' } as const
-    expect(isDependencySatisfied(shippedThenArchived)).toBe(true)
-  })
-
-  it('is unsatisfied in every other phase', () => {
-    for (const phase of ['planning', 'building', 'review'] as const) {
-      expect(isDependencySatisfied({ phase })).toBe(false)
+  it('is unsatisfied in every other status', () => {
+    for (const status of ['draft', 'active', 'archived'] as const) {
+      expect(isDependencySatisfied({ status })).toBe(false)
     }
   })
 })

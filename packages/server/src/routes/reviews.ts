@@ -52,7 +52,6 @@ const reviews = new Hono()
 export interface ReviewTicketArtifacts {
   ticketId: string
   seq: number
-  lap: number
   passKind: 'review' | 'verification'
   // What the pass actually ran and what it verified, as the pass itself
   // recorded them. All three are null on passes that ran before a verdict was
@@ -166,7 +165,6 @@ reviews.get(REVIEW_ARTIFACTS_ROUTE, async (c) => {
       return {
         ticketId: t.id,
         seq: t.seq,
-        lap: t.lap,
         passKind: t.passKind,
         reviewMode: t.reviewMode ?? null,
         reviewVerdict: t.reviewVerdict ?? null,

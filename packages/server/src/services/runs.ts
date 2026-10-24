@@ -22,8 +22,6 @@ export interface RunSummary {
   status: RunStatus
   startedAt: number
   endedAt?: number
-  /** The feature's lap when the run started, stamped on its first event. */
-  lap: number
   ticketIds: string[]
 }
 
@@ -112,18 +110,6 @@ export function activeBurnClaim(ctx: AppCtx, featureId: string, ticketId: string
     .find((run) => runClaimedTicketIds(ctx, run.id).includes(ticketId))
 }
 
-/** The lap a run belongs to — the lap its first event was stamped with. */
-function runLap(ctx: AppCtx, runId: string): number {
-  const row = ctx.db
-    .select({ lap: events.lap })
-    .from(events)
-    .where(eq(events.runId, runId))
-    .orderBy(asc(events.id))
-    .limit(1)
-    .get()
-  return row?.lap ?? 1
-}
-
 /** Every run of a feature, newest first, for the run-history picker. */
 export function listRunSummaries(ctx: AppCtx, featureId: string): RunSummary[] {
   return listRunsByFeature(ctx, featureId).map((run) => ({
@@ -131,7 +117,6 @@ export function listRunSummaries(ctx: AppCtx, featureId: string): RunSummary[] {
     status: run.status,
     startedAt: run.startedAt,
     ...(run.endedAt === undefined ? {} : { endedAt: run.endedAt }),
-    lap: runLap(ctx, run.id),
     ticketIds: runTicketIds(ctx, run.id),
   }))
 }

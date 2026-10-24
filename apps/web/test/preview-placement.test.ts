@@ -32,7 +32,7 @@ vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined })
 const { PlanBody } = await import('../src/components/bodies/PlanBody')
 const { GrillBody } = await import('../src/components/bodies/grill/GrillBody')
 
-const feature = { id: 'f1', projectId: 'p1', slug: 'x', title: 'X', lap: 1, status: 'active' } as Feature
+const feature = { id: 'f1', projectId: 'p1', slug: 'x', title: 'X', status: 'active' } as Feature
 
 function fullWith({ preview = null as FeatureFull['preview'], docs = ['decisions.md'] } = {}): FeatureFull {
   const full = {

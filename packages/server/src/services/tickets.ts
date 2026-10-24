@@ -5,7 +5,6 @@ import type { AppCtx } from '../db/types'
 import { events, tickets } from '../db/schema'
 import { InvalidInputError, NotFoundError } from '../errors'
 import { emit } from './events'
-import { getFeatureRow } from './repo'
 import { markFailed } from './review-findings'
 import { rosterConfig } from './model-discovery'
 
@@ -38,7 +37,6 @@ function rowToTicket(row: TicketSelect): Ticket {
     reviewGateRun: row.reviewGateRun,
     completedAt: row.completedAt,
     model: row.model ?? undefined,
-    lap: row.lap,
     status: row.status,
     commits: row.commits,
     error: row.error ?? undefined,
@@ -164,10 +162,6 @@ export function pendingTickets(ctx: AppCtx, featureId: string): Ticket[] {
  * to global seqs — and out-of-range/self edges rejected — by core's
  * `resolveBatchBlocking` (see that utility for the seq-vs-id note). An invalid
  * edge surfaces as `InvalidInputError`.
- *
- * Every row is stamped with the feature's CURRENT lap (ADR-0010 / SPEC §15.1);
- * the emitting session never chooses it, which is why `TicketInput` has no
- * `lap`. Earlier laps' tickets keep the lap they were stored in.
  */
 export function storeTickets(
   ctx: AppCtx,
@@ -176,8 +170,6 @@ export function storeTickets(
   options: { blockedByAreGlobal?: boolean } = {},
 ): Ticket[] {
   if (inputs.length === 0) return []
-
-  const { lap } = getFeatureRow(ctx, featureId)
 
   const existing = ctx.db
     .select({ seq: tickets.seq })
@@ -213,7 +205,6 @@ export function storeTickets(
     // Validated before anything is written, so one bad id fails the whole batch
     // rather than storing a half-assigned one.
     model: normalizeModel(ctx, t.model),
-    lap,
     status: 'pending' as const,
     commits: [] as string[],
     error: null,
@@ -233,47 +224,6 @@ export function storeTickets(
   })
 
   return rows.map(rowToTicket)
-}
-
-/**
- * Move the tickets an Iterate session wrote onto the lap that is about to burn
- * them — every `pending` row still stamped `from`, re-stamped `to`.
- *
- * `storeTickets` stamps the feature's CURRENT lap, which is right for the
- * planning batch: it is written and burned inside the same lap. The Iterate
- * road is the exception. The session emits its fix tickets while the feature
- * is still at review on lap N, and the Burn click that opens lap N+1 comes
- * after them — so without this every ticket burned in lap N+1 reports lap N,
- * and everything the `lap` column groups (the trail, per-lap burn reporting,
- * the review page's account) files the new lap's work under the lap that only
- * found the bugs.
- *
- * Scoped twice, deliberately. Terminal rows never move: they carry the lap
- * that ran them. And a pending row from an EARLIER lap is standing debt, which
- * the burn summaries name by the lap that wrote it — only the lap now closing
- * hands its unburned work forward.
- *
- * No event of its own: this is a step inside `burn`, whose `burn.started` says
- * which lap it opened, and one event is all the UI's resync needs.
- */
-export function carryPendingTicketsIntoLap(
-  ctx: AppCtx,
-  featureId: string,
-  from: number,
-  to: number,
-): void {
-  const moving = pendingTickets(ctx, featureId).filter((ticket) => ticket.lap === from)
-  if (moving.length === 0) return
-  ctx.db
-    .update(tickets)
-    .set({ lap: to })
-    .where(
-      inArray(
-        tickets.id,
-        moving.map((ticket) => ticket.id),
-      ),
-    )
-    .run()
 }
 
 export function getTicket(ctx: AppCtx, id: string): Ticket {

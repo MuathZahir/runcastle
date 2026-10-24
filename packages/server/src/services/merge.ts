@@ -6,7 +6,7 @@ import { retireShippedWorktree } from './feature-worktrees'
 import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
-import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from './repo'
+import { getFeatureRow, projectForFeature, setFeatureStatus } from './repo'
 
 /** What a merge click answers: landed, or the conflict and the files it stands on. */
 export interface MergeFlowResult {
@@ -50,7 +50,7 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
       })
     }
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
-    setPhase(ctx, featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
+    emit(ctx, featureId, { type: 'feature.shipped', message: `merged to ${res.target}` })
     setFeatureStatus(ctx, featureId, 'shipped')
     // Before the worktree goes: the design server runs inside it.
     await stopDesignServer(ctx, featureId, 'shipped')

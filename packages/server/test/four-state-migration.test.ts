@@ -42,9 +42,10 @@ describe('four-state migration', () => {
     runMigrations(db, DRIZZLE_DIR)
     const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
 
-    expect(Array.from({ length: 6 }, (_, index) => getFeatureRow(ctx, `feat_${index}`).phase)).toEqual([
-      'planning', 'planning', 'planning', 'building', 'review', 'shipped',
-    ])
+    // The phase itself is gone at head (0052); every legacy row still reads.
+    expect(Array.from({ length: 6 }, (_, index) => getFeatureRow(ctx, `feat_${index}`).status)).toEqual(
+      Array(6).fill('active'),
+    )
     expect(() => db.all(sql.raw('SELECT * FROM gate_overrides'))).toThrow()
   })
 })

@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import type {
   FindingSeverity,
-  Phase,
   RunStatus,
   SessionStatus,
   TestNoteAuthor,
@@ -14,7 +13,6 @@ import {
   IconCheck,
   IconShield,
   IconSparkle,
-  PHASE_NAME,
   PhaseIcon,
 } from '../icons'
 import type { PhaseIconPhase } from '../icons'
@@ -145,27 +143,6 @@ export function StatusLabel({
 /* ---- the domain chips, now status labels (props unchanged) ---- */
 
 /**
- * A feature's phase: its {@link PhaseIcon} and its sentence-case name. Accepts
- * the app's `Phase` and the finer design-system steps (and `draft`).
- */
-export function PhaseTag({
-  phase,
-  size = 'sm',
-  className,
-}: {
-  phase: Phase | PhaseIconPhase
-  size?: 'xs' | 'sm'
-  className?: string
-}) {
-  return (
-    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap text-text-secondary', LABEL_SIZE[size].text, className)}>
-      <PhaseIcon phase={phase} size={size === 'xs' ? 14 : 16} label="" />
-      {PHASE_NAME[phase]}
-    </span>
-  )
-}
-
-/**
  * A small `accent-subtle` tag with an `accent-text` word — the one boxed mark,
  * kept for a property the thing *is* rather than a state it is in: a setting
  * marked experimental, a feature the orchestrator owns.
@@ -186,14 +163,6 @@ export function Tag({ className, children }: { className?: string; children: Rea
 /** The Orchestrated tag, beside a feature's title — nothing for a feature the orchestrator does not own. */
 export function OrchestratedTag({ orchestrated, className }: { orchestrated: boolean; className?: string }) {
   return orchestrated ? <Tag className={className}>Orchestrated</Tag> : null
-}
-
-/**
- * A feature's phase where a row has no room to name it: the phase glyph alone
- * at 14px (labelled for screen readers). Shape, not a coloured dot.
- */
-export function PhaseDot({ phase, className }: { phase: Phase | PhaseIconPhase; className?: string }) {
-  return <PhaseIcon phase={phase} size={14} className={className} />
 }
 
 /** A ticket's status. `burning` spins; `cancelled` is struck through. */

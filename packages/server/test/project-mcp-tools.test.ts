@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { projectNotes, runs, tickets } from '../src/db/schema'
+import { projectNotes, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -255,9 +255,8 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'promotion-at-merge',
       branch: 'feature/promotion-at-merge',
-      phase: 'planning',
+      status: 'active',
     })
-    expect(getFeatureRow(ctx, out.id).phase).toBe('planning')
     expect(listByFeature(ctx, out.id)).toHaveLength(0)
 
     // On the FEATURE branch, which is what the grill worktree is cut from — the
@@ -324,7 +323,7 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'fork-door',
       branch: 'feature/fork-door',
-      phase: 'planning',
+      status: 'draft',
     })
     const row = getFeatureRow(ctx, out.id)
     expect(row.status).toBe('draft')
@@ -447,10 +446,10 @@ describe('project-session MCP tools', () => {
     )
 
     // Every line is `slug — title [state]`: the in-flight state carries what the
-    // portfolio lookup is asked for (phase, lap, ticket counts), and no line
+    // portfolio lookup is asked for (whether a round runs, ticket counts), and no line
     // carries a one-liner or a docs path — one note says where shipped docs live.
     expect(out.featureIndex).toEqual([
-      'promotion-at-merge — Promotion at merge [in flight: planning, lap 1, 2 pending]',
+      'promotion-at-merge — Promotion at merge [in flight, 2 pending]',
       'laps — Laps [shipped]',
     ])
     expect(out.featureIndex.join('\n')).not.toContain('must not appear')
@@ -479,7 +478,7 @@ describe('project-session MCP tools', () => {
     setFeatureStatus(ctx, newerShip.id, 'shipped')
     const neverMarked = seedFeature(ctx, projectId, { slug: 'no-ship-event', title: 'No event' })
     setFeatureStatus(ctx, neverMarked.id, 'shipped')
-    seedFeature(ctx, projectId, { slug: 'burning', title: 'Burning', phase: 'building' })
+    seedFeature(ctx, projectId, { slug: 'burning', title: 'Burning' })
     seedFeature(ctx, projectId, { slug: 'shelved', title: 'Shelved', status: 'archived' })
     // Ship order is the timeline's, not the feature rows' creation order.
     emit(ctx, newerShip.id, { type: 'feature.shipped', message: 'merged' })
@@ -489,7 +488,7 @@ describe('project-session MCP tools', () => {
     const out = await toolGetProjectContext(ctx, session)
 
     expect(out.featureIndex).toEqual([
-      'burning — Burning [in flight: building, lap 1]',
+      'burning — Burning [in flight]',
       'parked — Parked [draft]',
       'older-ship — Older ship [shipped]',
       'newer-ship — Newer ship [shipped]',
@@ -544,8 +543,6 @@ describe('project-session MCP tools', () => {
       title: 'Laps',
       oneLiner: 'one trip round the pipeline',
       status: 'shipped',
-      phase: 'planning',
-      lap: 1,
       brief: '# Laps\n\nThe brief as it merged.\n',
     })
   })
@@ -827,7 +824,7 @@ describe('project-session MCP tools', () => {
     expect(body.result?.content?.[0]?.text).toContain('seq only together with its featureSlug')
   })
 
-  it('moves the oldest lap’s digests out whole when the slug form would cross the ceiling', () => {
+  it('moves the oldest tickets’ digests out whole when the slug form would cross the ceiling', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
     const digestChars = 8_000
     const stored = storeTickets(
@@ -845,14 +842,6 @@ describe('project-session MCP tools', () => {
     for (const t of stored) {
       updateTicket(ctx, t.id, { status: 'done', digest: `#${t.seq} `.padEnd(digestChars, 'x') })
     }
-    // Put #6-#10 on the OLDER lap, so lap order and seq order disagree.
-    for (const t of stored) {
-      ctx.db
-        .update(tickets)
-        .set({ lap: t.seq > 5 ? 1 : 2 })
-        .where(eq(tickets.id, t.id))
-        .run()
-    }
 
     // Ten 8K digests are 80K; three moved out leaves ~57K with the rows.
     const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
@@ -861,8 +850,8 @@ describe('project-session MCP tools', () => {
     const rows = out.features[0]?.tickets ?? []
     const moved = rows.filter((t) => t.digestNotInlined).map((t) => t.seq)
     const kept = rows.filter((t) => t.digest !== undefined).map((t) => t.seq)
-    expect(moved).toEqual([6, 7, 8])
-    expect(kept).toEqual([1, 2, 3, 4, 5, 9, 10])
+    expect(moved).toEqual([1, 2, 3])
+    expect(kept).toEqual([4, 5, 6, 7, 8, 9, 10])
     for (const t of rows) {
       if (t.digestNotInlined) expect(t).not.toHaveProperty('digest')
       else expect(t.digest).toHaveLength(digestChars)

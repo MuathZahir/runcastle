@@ -68,24 +68,22 @@ describe('run history', () => {
     feature = seedFeature(ctx, project.id, { phase: 'building' })
   })
 
-  it('lists a feature runs newest first, with the lap and the tickets each burned', async () => {
+  it('lists a feature runs newest first, with the tickets each burned', async () => {
     const [first, second] = storeTickets(ctx, feature.id, [
       ticketInput('the first'),
       ticketInput('the second'),
     ])
 
-    const lapOne = seedRun(ctx, feature.id, { startedAt: 1_000 })
-    emit(ctx, feature.id, { type: 'ticket.burning', message: 'burning', runId: lapOne, ticketId: first.id })
+    const earlier = seedRun(ctx, feature.id, { startedAt: 1_000 })
+    emit(ctx, feature.id, { type: 'ticket.burning', message: 'burning', runId: earlier, ticketId: first.id })
 
-    ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
-    const lapTwo = seedRun(ctx, feature.id, { startedAt: 2_000 })
-    emit(ctx, feature.id, { type: 'ticket.burning', message: 'burning', runId: lapTwo, ticketId: second.id })
+    const later = seedRun(ctx, feature.id, { startedAt: 2_000 })
+    emit(ctx, feature.id, { type: 'ticket.burning', message: 'burning', runId: later, ticketId: second.id })
 
     const list = await caller.run.listByFeature({ featureId: feature.id })
-    expect(list.map((r) => r.id)).toEqual([lapTwo, lapOne])
-    expect(list[0].lap).toBe(2)
+    expect(list.map((r) => r.id)).toEqual([later, earlier])
+    expect(list[0]).not.toHaveProperty('lap')
     expect(list[0].ticketIds).toEqual([second.id])
-    expect(list[1].lap).toBe(1)
     expect(list[1].ticketIds).toEqual([first.id])
   })
 

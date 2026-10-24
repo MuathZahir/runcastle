@@ -1,10 +1,10 @@
 import type { WorkflowCtx, WorkflowDef } from '@runcastle/core'
 import { newId } from '@runcastle/core'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { runs } from '../src/db/schema'
 import { listAfter } from '../src/services/events'
-import { burn } from '../src/services/features'
+import { dispatchRound } from '../src/services/features'
 import { getRunRow } from '../src/services/repo'
 import { cancelTicket, getTicket, listByFeature, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
@@ -91,13 +91,13 @@ describe('orphaned burning tickets', () => {
     expect(allTerminal(featureId)).toBe(false)
   })
 
-  it('feature.burn heals the stuck lane instead of failing instantly', async () => {
+  it('a round naming the stuck lane heals it instead of failing instantly', async () => {
     const { featureId, stuckId } = seedWedged()
 
-    await burn(ctx, featureId)
+    await dispatchRound(ctx, featureId, [getTicket(ctx, stuckId).seq])
 
     // Swept to failed, reset to pending, then burned by the run — not skipped.
-    expect(getTicket(ctx, stuckId).status).toBe('done')
+    await vi.waitFor(() => expect(getTicket(ctx, stuckId).status).toBe('done'))
     expect(listByFeature(ctx, featureId).every((t) => t.status === 'done')).toBe(true)
 
     const failed = listAfter(ctx, featureId, 0).filter((e) => e.type === 'ticket.failed')

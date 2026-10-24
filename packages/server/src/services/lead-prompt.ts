@@ -42,18 +42,6 @@ export function leadWakeKickoff(runtime: AgentRuntime, message: string, resumed:
 }
 
 /**
- * The wake Go sends the feature's chat: the human approved the plan, so the
- * chat may start round 1. Names the feature skill the way the fresh-launch
- * kickoff does — spelled for the chat's `runtime`.
- */
-export function goWakeText(runtime: AgentRuntime): string {
-  return (
-    `Go given — the human approved the plan. Carry on by ${skillRef(runtime, FEATURE_SKILL)}: ` +
-    'dispatch round 1 with dispatch_round({ seqs }), or do it yourself if it is small.'
-  )
-}
-
-/**
  * A line the live waiter hands back: Claude Code's asyncRewake delivers a hook's
  * output wrapped as hook feedback — `<task-notification>…</task-notification>
  * <system-reminder>Stop hook blocking error from command "Stop": [runcastle] …`

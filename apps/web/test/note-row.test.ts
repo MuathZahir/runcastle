@@ -15,7 +15,6 @@ import { NoteRow, type NoteItem } from '../src/components/review/NoteRow'
 const NOTE: TestNote = {
   id: 'note_1',
   featureId: 'ftr_1',
-  lap: 2,
   text: 'the run chip goes grey while burning\nand stays grey after it lands',
   status: 'open',
   author: 'human',
@@ -29,7 +28,6 @@ const NOTE: TestNote = {
 const DEFECT: ReviewFinding = {
   id: 'find_1',
   featureId: 'ftr_1',
-  lap: 2,
   reviewTicketId: 'tkt_review_2',
   kind: 'defect',
   severity: 'high',
@@ -42,7 +40,6 @@ const DEFECT: ReviewFinding = {
   openReason: 'over-cap',
   failureReason: null,
   fixTicketId: null,
-  carriedLap: null,
   resolvedBy: null,
   resolutionNote: null,
   createdAt: 1,
@@ -138,20 +135,6 @@ describe('NoteRow', () => {
     expect(html).not.toContain('being fixed in the running burn')
   })
 
-  it('says which lap parked a carried defect and which one it was parked into', () => {
-    const html = render({
-      kind: 'defect',
-      finding: {
-        ...DEFECT,
-        status: 'carried',
-        openReason: null,
-        carriedLap: 3,
-        resolutionNote: 'the merge rebuild in lap 3 covers this dialog',
-      },
-    })
-    expect(html).toContain('carried for later')
-    expect(html).toContain('the merge rebuild in lap 3 covers this dialog')
-  })
 
   /**
    * A session attestation and a landed fix ticket are the same `fixed` status

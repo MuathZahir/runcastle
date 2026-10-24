@@ -77,7 +77,6 @@ const fakeVideo = (videoWidth: number, videoHeight: number): HTMLVideoElement =>
 const note = (id: string): TestNote => ({
   id,
   featureId: 'feat_1',
-  lap: 1,
   text: 'the header jumps on load',
   status: 'open',
   author: 'human',

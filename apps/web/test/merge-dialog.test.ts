@@ -18,9 +18,8 @@ const summary = (over: Partial<Parameters<typeof mergeSummary>[0]> = {}) =>
     branch: 'feature/greetings-pages',
     base: 'main',
     delta: { commits: 12, files: 9 },
-    tickets: [{ kind: 'implementation', status: 'done', lap: 1 }],
-    lap: 1,
-    driveLap: 1,
+    tickets: [{ kind: 'implementation', status: 'done' }],
+    drivenAt: 1,
     freshness: FRESH,
     ...over,
   })
@@ -66,7 +65,7 @@ describe('MergeFeatureDialog', () => {
     })
 
     it('enumerates the warnings box when there is something to ship over', () => {
-      const html = render({ summary: summary({ openNotes: 2, driveLap: null }) })
+      const html = render({ summary: summary({ openNotes: 2, drivenAt: null }) })
       expect(html).toContain('2 open test-drive notes.')
       expect(html).toContain('Not run')
     })

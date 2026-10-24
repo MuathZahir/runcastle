@@ -143,7 +143,6 @@ describe('feature.sessions', () => {
     const scenario = createSessionRow(ctx, {
       featureId: f.id,
       kind: 'scenario',
-      lap: 1,
       worktreePath: scratch,
     })
 

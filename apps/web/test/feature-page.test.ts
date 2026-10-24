@@ -66,7 +66,6 @@ const ticket = (seq: number, over: Partial<Ticket> = {}): Ticket =>
     id: `t${seq}`,
     featureId: 'f1',
     seq,
-    lap: 1,
     title: `Ticket ${seq}`,
     goal: '',
     context: '',

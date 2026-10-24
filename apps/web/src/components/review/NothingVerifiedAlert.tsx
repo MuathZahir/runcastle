@@ -1,5 +1,5 @@
 import { Notice } from './Notice'
-import type { UnverifiedLap } from '../../lib/feature-ui'
+import type { UnverifiedReview } from '../../lib/feature-ui'
 
 /**
  * "Nothing verified" — the page's top line when the latest review pass ran
@@ -17,7 +17,7 @@ import type { UnverifiedLap } from '../../lib/feature-ui'
  * button: another review is the agent's to run, so the human asks in the chat
  * (tickets-and-review-are-tools-not-phases decision 12).
  */
-export function NothingVerifiedAlert({ outcome }: { outcome: UnverifiedLap }) {
+export function NothingVerifiedAlert({ outcome }: { outcome: UnverifiedReview }) {
   return (
     <Notice tone="accent" title="Nothing verified">
       <p className="m-0">

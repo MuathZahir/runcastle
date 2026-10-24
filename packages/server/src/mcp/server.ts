@@ -8,7 +8,6 @@ import type {
   DriveCallResult,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
-  Phase as PhaseT,
   PreparedKey as PreparedKeyT,
   Project,
   ReadyDeclaration,
@@ -30,12 +29,12 @@ import {
   ReviewFindingInput,
   TicketInput,
   TicketStatus,
+  WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
   isAgentDigestDoc,
   isProjectSessionKind,
-  withheldFeatureDocs,
 } from '@runcastle/core'
-import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
+import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -55,12 +54,6 @@ import {
 } from '../services/features'
 import { landChatCommits } from '../services/chat-branch'
 import {
-  type CarriedDefect,
-  type ReviewEvidence,
-  carriedWork,
-  currentLapReviewEvidence,
-} from '../services/carried-work'
-import {
   blocksOf,
   dependsOnOf,
   setDependencies,
@@ -71,10 +64,11 @@ import { emit, emitForSession, emitProject, latestEventTs } from '../services/ev
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
-  carryFinding,
   closeAsAddressed,
+  dismissAsAgent,
   linkFixTicket,
   listByFeature as listReviewFindings,
+  openDefects as openDefectsOf,
   reportFinding,
   requireLinkableFindings,
 } from '../services/review-findings'
@@ -279,9 +273,8 @@ export interface FeatureDocRef {
   bytes: number
   /**
    * Why it was left out, for the docs the contract withholds by name
-   * (`withheldFeatureDocs`). Absent for an ordinary uncanonical doc — those are
-   * simply not part of the digest, which is not the same as discouraged — and
-   * absent for `test-notes.md` while carried work makes its reason untrue.
+   * (`WITHHELD_FEATURE_DOCS`). Absent for an ordinary uncanonical doc — those
+   * are simply not part of the digest, which is not the same as discouraged.
    */
   withheld?: string
 }
@@ -298,17 +291,49 @@ export interface FeatureDocRef {
  */
 export type FeatureContextTicketRow = Pick<
   Ticket,
-  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error'
+  'id' | 'seq' | 'title' | 'status' | 'kind' | 'blockedBy' | 'model' | 'seams' | 'error'
 > & {
   /** Absent only when moved out whole to fit the ceiling — then `goalNotInlined` says so. */
   goal?: string
   goalNotInlined?: true
 }
 
-/** An earlier lap whose ticket rows did not fit the ceiling, moved out whole. */
-export interface LapNotInlined {
-  lap: number
-  seqs: number[]
+/**
+ * A defect in the fields a session needs to act on it — the same four
+ * `buildFixTicket` serialises onto a fix ticket, minus the citation, which
+ * points at the criterion the review argued from rather than at the problem,
+ * plus the id every disposition verb names it by.
+ */
+export interface OpenDefect {
+  /** What a ticket's `originFindingId` and `resolve_finding`'s `findingId` take. */
+  id: string
+  title: string
+  location: string
+  detail: string
+  reproStep: string
+}
+
+/**
+ * One review pass's evidence, as PATHS rather than content. A review agent
+ * works in host scratch space outside the repo ({@link reviewDir}), and
+ * `get_feature_context` strips every ticket's `digest` out of its payload, so a
+ * session that is not handed these paths has no channel to the review at all.
+ * Nothing here is stat'ed: the paths are stated and the session reads what is there.
+ */
+export interface ReviewEvidence {
+  /** The review ticket whose pass produced it — {@link reviewDir} is keyed by this. */
+  ticketId: string
+  /** The ticket's seq, which is how the human and the cards refer to it. */
+  seq: number
+  /** How the pass itself ended — the review OUTCOME, `done` or `failed`. */
+  status: TicketStatusT
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
+  /** `~/.runcastle/reviews/<ticketId>/` — screenshots and `walkthrough.webm`. */
+  dir: string
+  /** `<dir>/DIGEST.md` — the review agent's own account of what it found. */
+  digestPath: string
 }
 
 /** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
@@ -328,12 +353,6 @@ export interface NotInlinedDoc {
  */
 export interface FeatureContext {
   feature: ReturnType<typeof getFeatureRow>
-  phase: PhaseT
-  /**
-   * The lap the feature is on (SPEC §15.3). `tickets` below is the full history
-   * across every lap — the `lap` on each row is what distinguishes them.
-   */
-  lap: number
   /**
    * The merge-order edges (ADR-0013): what this feature waits on — or, once
    * started, waited on — each with whether it has shipped, and the drafts still
@@ -357,32 +376,18 @@ export interface FeatureContext {
   /** Says, in the payload itself, that `moreDocs` and `notInlined` are fetchable rather than gone. */
   docsNote: string
   /**
-   * The defects this feature's review left open, each with the fields a session
-   * needs to act on it. They live only in the `review_findings` table — no doc
-   * renders them — so before this they reached a new lap through no channel at
-   * all, and a lap launched BECAUSE of them opened unable to name one.
-   *
-   * Empty for a feature with nothing open, which is every feature outside a
-   * review iteration.
+   * The defects the feature's reviews reported that nothing has resolved yet,
+   * each with the fields a session needs to act on it. They live only in the
+   * `review_findings` table — no doc renders them — and each stays open until
+   * its fix ticket lands or the agent marks it addressed or dismissed.
    */
-  openDefects: CarriedDefect[]
+  openDefects: OpenDefect[]
   /**
-   * The defects an earlier lap parked rather than answered (decisions #5). This
-   * lap's AGENDA, not its obligation: `resolve_finding` will link or close one,
-   * and the tickets gate never demands a carried defect be carried again — the
-   * same sticky semantics a carried test note has.
+   * Where the latest review pass left its evidence on disk — the `DIGEST.md`
+   * the review agent wrote, the screenshots and walkthrough beside it, and how
+   * that pass ended. Null until a review pass has burned.
    */
-  carriedDefects: CarriedDefect[]
-  /**
-   * Where the PREVIOUS lap's review passes left their evidence on disk — the
-   * `DIGEST.md` the review agent wrote, the screenshots and walkthrough beside
-   * it, and how that pass ended. Paths rather than content, and the third thing
-   * with no other channel: the directory is host scratch space outside the repo,
-   * and `tickets` below are rows, without the digest a session would otherwise read.
-   *
-   * Empty outside a lap (lap 1, or a previous lap whose review never burned).
-   */
-  reviewEvidence: ReviewEvidence[]
+  reviewEvidence: ReviewEvidence | null
   /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
@@ -398,36 +403,20 @@ export interface FeatureContext {
     errorHeadlines: string[]
   }
   /**
-   * What THIS lap's review passes did and where each one left its evidence —
-   * the same shape and the same paths-not-content contract as
-   * {@link reviewEvidence} above, which speaks for the previous lap. Empty until
-   * a review pass of this lap has burned.
-   */
-  currentLapReview: ReviewEvidence[]
-  /**
-   * Every finding this lap's review reported, resolved ones included — the
-   * record of the pass, where `openDefects` and `carriedDefects` are the work it
-   * left. A defect already stated there is not repeated here: with reviews no
-   * longer minting fix tickets every defect starts open, and stating each one
-   * twice would push the lead's to-do past the ceiling. Empty when this lap's
-   * review reported nothing.
+   * Every finding the latest review pass reported, resolved ones included — the
+   * record of the pass, where `openDefects` is the work left. A defect already
+   * stated there is not repeated here: stating each one twice would push the
+   * lead's to-do past the ceiling. Empty when that pass reported nothing.
    */
   findings: ReviewFinding[]
-  /**
-   * The test-drive notes that still stand: this lap's, plus anything an earlier
-   * lap carried rather than answered. Keyed on status rather than on the lap
-   * number alone for the reason `carriedWork` documents — a note carried forward
-   * keeps the lap that captured it, and asking only for this lap's would lose it.
-   */
-  testNotes: TestNote[]
   tickets: FeatureContextTicketRow[]
   /**
-   * Earlier laps whose rows were moved out whole because even goal-less rows
-   * would not fit (oldest lap first). Absent when every row fit. The current
-   * lap's rows are never moved out.
+   * The seqs of settled (done or cancelled) tickets whose rows were moved out
+   * whole because even goal-less rows would not fit, lowest seq first. Absent
+   * when every row fit. A ticket still to run is never moved out.
    */
-  ticketsNotInlined?: LapNotInlined[]
-  /** Present whenever a goal or a lap's rows were moved out: how to fetch them. */
+  ticketsNotInlined?: number[]
+  /** Present whenever a goal or a row was moved out: how to fetch them. */
   ticketsNote?: string
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -504,8 +493,8 @@ const DOCS_NOTE =
 const TICKETS_NOTE =
   'Some ticket detail did not fit this reply and was moved out whole, never truncated. A row ' +
   'marked goalNotInlined: true has its goal in get_ticket({ seq }). ticketsNotInlined[] names ' +
-  'earlier laps whose rows were moved out: list_tickets indexes them and get_ticket({ seq }) ' +
-  'reads one. Fetch before acting on any of those tickets.'
+  'the seqs of settled tickets whose rows were moved out: list_tickets indexes them and ' +
+  'get_ticket({ seq }) reads one. Fetch before acting on any of those tickets.'
 
 function notInlinedReason(relPath: string): string {
   return (
@@ -560,9 +549,9 @@ function latestBurnSummary(
  * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
  * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
  * `notInlined`, a half-shown doc being worse than a plainly missing one. On a
- * feature whose rows and to-do alone cross the ceiling, goals and then earlier
- * laps' rows move out whole the same way, marked `goalNotInlined` and named in
- * `ticketsNotInlined`.
+ * feature whose rows and to-do alone cross the ceiling, goals and then settled
+ * tickets' rows move out whole the same way, marked `goalNotInlined` and named
+ * in `ticketsNotInlined`.
  */
 export function featureContext(
   ctx: AppCtx,
@@ -571,19 +560,13 @@ export function featureContext(
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
-  const testNotes = listTestNotes(ctx, feature.id).filter(
-    (note) => note.lap === feature.lap || note.status === 'carried',
-  )
-
-  // The carry channel decides two things here: which defects the payload states
-  // outright, and whether `test-notes.md` may still claim to be already-triaged
-  // (it may not, once a note was carried rather than triaged).
-  const carried = carriedWork(ctx, feature.id)
-  const stated = new Set([...carried.openDefects, ...carried.carriedDefects].map((defect) => defect.id))
+  const openDefects = openDefectsOf(ctx, feature.id).map(toOpenDefect)
+  const latestReview = latestBurnedReview(allTickets)
+  const stated = new Set(openDefects.map((defect) => defect.id))
   const findings = listReviewFindings(ctx, feature.id).filter(
-    (finding) => finding.lap === feature.lap && !stated.has(finding.id),
+    (finding) => finding.reviewTicketId === latestReview?.id && !stated.has(finding.id),
   )
-  const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
+  const withheldDocs = WITHHELD_FEATURE_DOCS
 
   const project = projectForFeature(ctx, feature)
   const docsDir = featureDocsDir(project, feature)
@@ -621,8 +604,6 @@ export function featureContext(
 
   const header = {
     feature,
-    phase: feature.phase,
-    lap: feature.lap,
     rounds: listRounds(ctx, feature.id),
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
@@ -634,23 +615,17 @@ export function featureContext(
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
-    reviewEvidence: carried.reviewEvidence,
-    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
+    reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
   }
-  const toDo = {
-    openDefects: carried.openDefects,
-    carriedDefects: carried.carriedDefects,
-    findings,
-    testNotes,
-  }
+  const toDo = { openDefects, findings }
   let rows = allTickets.map(ticketRow)
-  const lapsNotInlined: LapNotInlined[] = []
+  const rowsNotInlined: number[] = []
   // Built in priority order, and JSON keeps that order: the header the incident
   // hid at the tail of an 80K reply now opens it (decisions.md #6).
   const assemble = (docs: FeatureContext['docs'], notInlined: NotInlinedDoc[]): FeatureContext => ({
     ...header,
     tickets: rows,
-    ...(lapsNotInlined.length > 0 ? { ticketsNotInlined: lapsNotInlined } : {}),
+    ...(rowsNotInlined.length > 0 ? { ticketsNotInlined: rowsNotInlined } : {}),
     ...(rows.length < allTickets.length || rows.some((row) => row.goalNotInlined)
       ? { ticketsNote: TICKETS_NOTE }
       : {}),
@@ -666,21 +641,19 @@ export function featureContext(
   // Docs are moved out first, because they are the one part with a cheap,
   // well-known fetch — so they only claim room the rest leaves. When even the
   // rest does not fit with every doc out, ticket detail moves out whole next,
-  // each part behind `get_ticket`: goals, oldest lap first (lowest seq first
-  // within a lap), then earlier laps' rows, oldest first. The current lap's rows
-  // and the lap's to-do never move.
-  for (const row of [...rows].sort((a, b) => a.lap - b.lap || a.seq - b.seq)) {
+  // each part behind `get_ticket`: goals, lowest seq first, then the rows of
+  // settled tickets, lowest seq first. A ticket still to run and the to-do
+  // never move.
+  for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
     if (fits(assemble([], allDocsOut))) break
     delete row.goal
     row.goalNotInlined = true
   }
-  const earlierLaps = [...new Set(rows.map((row) => row.lap))]
-    .filter((lap) => lap < feature.lap)
-    .sort((a, b) => a - b)
-  for (const lap of earlierLaps) {
+  const settled = rows.filter((row) => SETTLED.includes(row.status)).sort((a, b) => a.seq - b.seq)
+  for (const row of settled) {
     if (fits(assemble([], allDocsOut))) break
-    lapsNotInlined.push({ lap, seqs: rows.filter((row) => row.lap === lap).map((row) => row.seq) })
-    rows = rows.filter((row) => row.lap !== lap)
+    rowsNotInlined.push(row.seq)
+    rows = rows.filter((kept) => kept !== row)
   }
 
   // Every canonical doc starts in `notInlined`, and each is inlined in fill
@@ -709,12 +682,51 @@ function ticketRow(ticket: Ticket): FeatureContextTicketRow {
     title: ticket.title,
     status: ticket.status,
     kind: ticket.kind,
-    lap: ticket.lap,
     blockedBy: ticket.blockedBy,
     ...(ticket.model !== undefined ? { model: ticket.model } : {}),
     seams: ticket.seams,
     ...(ticket.error !== undefined ? { error: ticket.error } : {}),
     goal: ticket.goal,
+  }
+}
+
+/** A ticket nothing will run again, so its row may move out to fit the ceiling. */
+const SETTLED: readonly TicketStatusT[] = ['done', 'cancelled']
+
+/** A review pass that got far enough to leave something behind. */
+const BURNED_REVIEW: readonly TicketStatusT[] = ['done', 'failed']
+
+/**
+ * The newest review pass that left evidence behind — a pass still `pending` or
+ * `burning` wrote no digest, and a `cancelled` one never ran.
+ */
+function latestBurnedReview(tickets: Ticket[]): Ticket | undefined {
+  return tickets
+    .filter((ticket) => ticket.kind === 'review' && BURNED_REVIEW.includes(ticket.status))
+    .sort((a, b) => b.seq - a.seq)[0]
+}
+
+function reviewEvidenceOf(ticket: Ticket): ReviewEvidence {
+  const dir = reviewDir(ticket.id)
+  return {
+    ticketId: ticket.id,
+    seq: ticket.seq,
+    status: ticket.status,
+    reviewMode: ticket.reviewMode ?? null,
+    reviewVerdict: ticket.reviewVerdict ?? null,
+    reviewVerdictReason: ticket.reviewVerdictReason ?? null,
+    dir,
+    digestPath: join(dir, 'DIGEST.md'),
+  }
+}
+
+function toOpenDefect(defect: ReviewFinding): OpenDefect {
+  return {
+    id: defect.id,
+    title: defect.title,
+    location: defect.location,
+    detail: defect.detail,
+    reproStep: defect.reproStep,
   }
 }
 
@@ -746,7 +758,6 @@ export interface TicketSummary {
   title: string
   status: TicketStatusT
   kind: Ticket['kind']
-  lap: number
   blockedBy: number[]
   seams: string[]
 }
@@ -774,7 +785,6 @@ export function toolListTickets(
       title: t.title,
       status: t.status,
       kind: t.kind,
-      lap: t.lap,
       blockedBy: t.blockedBy,
       seams: t.seams,
     })),
@@ -808,10 +818,8 @@ const REVIEW_TITLE = /^review[: ]/i
  * batch's review but not KINDED like one is the incident shape: the `kind` field
  * silently dropped, so the ticket defaults to `implementation`, is correctly
  * containerized, and reports BLOCKED from a sandbox that by design has no app,
- * database or browser. The Burn click warns about a lap that forgot its review
- * ticket, but it warns the human, often after the session has ended; this
- * catches the same omission while the session that wrote it can still fix and
- * re-emit.
+ * database or browser. This catches the omission while the session that wrote
+ * it can still fix and re-emit.
  *
  * Refusal, never coercion — the session stays the author of its own tickets, and
  * the retitle escape hatch covers the rare ticket that really is implementation
@@ -840,7 +848,7 @@ export function toolEmitTickets(
   // A session may only assign what `get_feature_context` offered it; the store
   // alone takes any roster id, which is the human's (tRPC) latitude, not this.
   requireAnnotatedModels(ctx, input.tickets.map((t) => t.model))
-  // The LINK disposition: a lap ticket that names the defect it answers. Vetted
+  // The LINK disposition: a ticket that names the defect it answers. Vetted
   // here rather than in `storeTickets`, which is also the internal mint used by
   // `reportFinding` and the burner's verification pass — those link findings the
   // guard would refuse (a defect the review has only just opened), and the
@@ -1047,31 +1055,33 @@ const ResolveFindingShape = {
   findingId: z
     .string()
     .min(1)
-    .describe('The finding id, from `get_feature_context`’s openDefects or carriedDefects.'),
-  disposition: z.enum(['carry', 'addressed']).describe(
-    '`carry` parks it for a later lap — out of the open count, still visible, and the human can ' +
-      'reopen it. `addressed` closes it because this lap’s work already answers it.',
+    .describe('The finding id, from `get_feature_context`’s openDefects.'),
+  disposition: z.enum(['addressed', 'dismissed']).describe(
+    '`addressed` closes it because work already answers it. `dismissed` closes it because it ' +
+      'is not worth fixing — not a defect, out of scope, or accepted as it is.',
   ),
   note: z
     .string()
     .optional()
     .describe(
-      'REQUIRED for `addressed`: what addressed it, e.g. "lap 2’s ticket 7 rewrote the endpoint". ' +
-        'Optional for `carry`, where it records why it was parked.',
+      'REQUIRED: what addressed it, e.g. "ticket 7 rewrote the endpoint", or why it was dismissed.',
     ),
 }
 
 /**
- * Cross-field, so it cannot live in the raw shape MCP publishes: an `addressed`
+ * Cross-field, so it cannot live in the raw shape MCP publishes: a closure
  * with no note is a closure with no evidence, which is the state this whole
  * feature exists to stop a finding drifting into.
  */
 const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, refinement) => {
-  if (input.disposition === 'addressed' && !input.note?.trim()) {
+  if (!input.note?.trim()) {
     refinement.addIssue({
       code: 'custom',
       path: ['note'],
-      message: 'closing a defect as addressed requires a note saying what addressed it',
+      message:
+        input.disposition === 'addressed'
+          ? 'closing a defect as addressed requires a note saying what addressed it'
+          : 'dismissing a defect requires a note saying why',
     })
   }
 })
@@ -1079,17 +1089,13 @@ const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, re
 export type ResolveFindingInputT = z.input<typeof ResolveFindingInput>
 
 /**
- * Disposition one earlier-lap defect: park it for a later lap, or close it
- * because this lap's work already answers it. The lap boundary triages open
- * findings the way it already triages test notes.
+ * Resolve one open defect: close it as addressed because work already answers
+ * it, or dismiss it. A finding stays open until one of these, or until its fix
+ * ticket lands.
  *
  * The refinement is applied HERE rather than at the registration, so this
- * function is the one place an `addressed` with no attestation is refused —
- * whether the caller is the MCP handler or a test at this seam.
- *
- * Reopening is deliberately absent: a session that carried a defect and then
- * un-carried it would be arguing with itself, and the human's review page holds
- * that verb.
+ * function is the one place a closure with no note is refused — whether the
+ * caller is the MCP handler or a test at this seam.
  */
 export function toolResolveFinding(
   ctx: AppCtx,
@@ -1099,9 +1105,9 @@ export function toolResolveFinding(
   const featureId = requireFeatureId(session)
   const { findingId, disposition, note } = ResolveFindingInput.parse(input)
   const finding =
-    disposition === 'carry'
-      ? carryFinding(ctx, featureId, findingId, note)
-      : closeAsAddressed(ctx, featureId, findingId, note ?? '')
+    disposition === 'addressed'
+      ? closeAsAddressed(ctx, featureId, findingId, note ?? '')
+      : dismissAsAgent(ctx, featureId, findingId, note ?? '')
   return { ok: true, finding }
 }
 
@@ -1732,7 +1738,7 @@ export interface CreateFeatureResult {
   id: string
   slug: string
   branch: string
-  phase: PhaseT
+  status: FeatureStatusT
   /** The slugs the new draft waits on — present only when `dependsOn` was passed. */
   dependsOn?: string[]
 }
@@ -1831,14 +1837,14 @@ export async function toolCreateFeature(
   // judges the feature ready.
   if (session.purpose === 'orchestrate') markOrchestrated(ctx, feature.id, 'created')
   if (dependencyIds.length === 0) {
-    return { id: feature.id, slug: feature.slug, branch: feature.branch, phase: feature.phase }
+    return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
   }
   const edges = setDependencies(ctx, feature.id, dependencyIds)
   return {
     id: feature.id,
     slug: feature.slug,
     branch: feature.branch,
-    phase: feature.phase,
+    status: feature.status,
     dependsOn: edges.map((d) => d.slug),
   }
 }
@@ -2098,7 +2104,7 @@ export function toolReadAdr(
  * paragraphs and were most of the payload, and `read_feature_brief` serves one
  * on request. The per-line docs path went with it; the index note says once
  * where shipped docs live. The in-flight state keeps what the portfolio lookup
- * is asked for — phase, lap and ticket counts, all true of the feature in
+ * is asked for — whether a round runs and ticket counts, all true of the feature in
  * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
  * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
  * trail the line as slugs and marks — edges and state only, so the session can
@@ -2114,7 +2120,7 @@ function featureIndexLine(feature: FeatureListItem): string {
     const waiting = feature.status === 'draft' && feature.dependsOn.some((d) => !d.satisfied)
     return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}${owner}`
   }
-  const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
+  const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
@@ -2127,8 +2133,6 @@ export interface FeatureBrief {
   title: string
   oneLiner: string
   status: FeatureStatusT
-  phase: PhaseT
-  lap: number
   /** Absent when neither the docs on disk nor the database recorded one. */
   brief?: string
   /** Present only when `brief` is absent, saying so. */
@@ -2161,8 +2165,6 @@ export function toolReadFeatureBrief(
     title: feature.title,
     oneLiner: feature.oneLiner,
     status: feature.status,
-    phase: feature.phase,
-    lap: feature.lap,
     ...(brief !== undefined
       ? { brief }
       : { note: 'No brief was recorded for this feature, on disk or in the database.' }),
@@ -2236,7 +2238,7 @@ export interface WorkRecord {
  *   what made it overflow.
  * - By slug: "what did X actually do?" — digests inline, except that when the
  *   reply would cross {@link MCP_READ_CEILING_CHARS} they are moved out whole,
- *   oldest lap first, each marked `digestNotInlined`. Never truncated.
+ *   lowest seq first, each marked `digestNotInlined`. Never truncated.
  * - By slug and seq: that one ticket, digest included — the drill-down.
  */
 export function toolGetWorkRecord(
@@ -2256,8 +2258,6 @@ export function toolGetWorkRecord(
   }
 
   const records: WorkRecordFeature[] = []
-  // The laps the slug form moves digests out by; rows never carry the lap.
-  const lapBySeq = new Map<number, number>()
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
@@ -2269,7 +2269,6 @@ export function toolGetWorkRecord(
       tickets = tickets.filter((t) => t.seq === seq)
       if (tickets.length === 0) throw new NotFoundError(`ticket #${seq} not found on ${slug}`)
     }
-    for (const t of tickets) lapBySeq.set(t.seq, t.lap)
     const shippedAt = latestEventTs(ctx, feature.id, 'feature.shipped')
     records.push({
       slug: feature.slug,
@@ -2304,7 +2303,7 @@ export function toolGetWorkRecord(
   const movable = records
     .flatMap((f) => f.tickets)
     .filter((t) => t.digest !== undefined)
-    .sort((a, b) => (lapBySeq.get(a.seq) ?? 0) - (lapBySeq.get(b.seq) ?? 0) || a.seq - b.seq)
+    .sort((a, b) => a.seq - b.seq)
   for (const ticket of movable) {
     if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
     delete ticket.digest
@@ -2315,7 +2314,7 @@ export function toolGetWorkRecord(
 }
 
 const WORK_RECORD_DIGESTS_NOTE =
-  'Some digests did not fit and were moved out whole, oldest lap first: each such ticket carries ' +
+  'Some digests did not fit and were moved out whole, lowest seq first: each such ticket carries ' +
   'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
 
 // --- MCP server assembly ----------------------------------------------------
@@ -2674,8 +2673,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Record one review finding on the feature you are reviewing. It lands in the same ' +
           'notes the human writes while test-driving — attributed to you — so it shows up in the ' +
-          'review panel, where they triage every open note at once into fix tickets or the next ' +
-          'lap. Findings are not failure: report what you saw and let the human decide. Refused ' +
+          'review panel. Findings are not failure: report what you saw and let the human decide. Refused ' +
           'unless your call carries a live run identity.',
         inputSchema: {
           text: z
@@ -2889,7 +2887,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           '`selectable` base, and the `detectedMain` line to suggest then; the charter ' +
           '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
           'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
-          'lines: every in-flight feature (phase, lap, ticket counts), then every draft, then the ' +
+          'lines: every in-flight feature (whether a round runs, ticket counts), then every draft, then the ' +
           `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped; a line ending ` +
           '`· waits on: …` names the features it must wait to merge. Older shipped and archived ' +
           'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
@@ -3020,7 +3018,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Read a feature brief',
         description:
-          'Any feature of the project, by slug: { slug, title, oneLiner, status, phase, lap, ' +
+          'Any feature of the project, by slug: { slug, title, oneLiner, status, ' +
           'brief } — what it is for, behind the one line `get_project_context` indexes it by. A ' +
           'shipped feature’s brief is its docs/features/<slug>/brief.md in this worktree; an ' +
           'in-flight or draft feature’s comes from the database, because its docs live on an ' +
@@ -3050,7 +3048,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
           '`featureSlug` each ticket also carries its `digest`: the burner’s own account, written ' +
           'after the work — what it did, what surprised it, what it left undone. If they would not ' +
-          'all fit, the oldest laps’ digests are moved out whole and those tickets say ' +
+          'all fit, the oldest tickets’ digests are moved out whole and those tickets say ' +
           '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
           'a `featureSlug` to get that one ticket with its digest. Never a ticket’s goal or ' +
           'acceptance criteria — those are intent from before the code existed. Send a ' +
@@ -3102,7 +3100,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       title: 'Get feature context',
       description:
         'Everything true of the current feature, as a summary that never grows past what you ' +
-        'can see. It opens with a header: the feature row, phase, lap, `rounds` (every round so ' +
+        'can see. It opens with a header: the feature row, `rounds` (every round so ' +
         'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
         '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
         'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
@@ -3117,14 +3115,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), ' +
-        '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
-        'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
+        '`reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
+        'walkthrough — read them before planning more work; null until a review has run). Then ' +
+        'every ticket as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
         '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
-        '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
+        '`goalNotInlined` and the settled tickets named in `ticketsNotInlined` were moved out ' +
         'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
-        'Then this lap’s to-do in full: `openDefects`, ' +
-        '`carriedDefects`, `findings`, and `testNotes`. Last, ' +
+        'Then the to-do in full: `openDefects` (every defect no fix or resolution has closed) ' +
+        'and `findings` (the rest of what the latest review reported). Last, ' +
         'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
         '`notInlined` was too large to include and MUST be read before acting ' +
         '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
@@ -3203,13 +3202,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'List tickets',
       description:
-        'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
+        'This feature’s tickets as an index — { id, seq, title, status, kind, blockedBy, ' +
         'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
         'from; use it instead of `get_feature_context` when you only need to find or name a ' +
         'ticket. A ticket’s full body is `get_ticket({ seq })`.',
     }
     const status = TicketStatus.optional().describe(
-      'Return only tickets in this state. Omit for all of them, across every lap.',
+      'Return only tickets in this state. Omit for all of them.',
     )
     if (projectReads) {
       server.registerTool(
@@ -3385,12 +3384,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Resolve a review finding',
         description:
-          'Say what this lap did about a defect an earlier lap’s review left open: `carry` it into ' +
-          'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
-          'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
-          'then closes the finding itself when that ticket lands. An earlier-lap open defect you ' +
-          'leave un-dispositioned is not refused — it comes back as a warning at the human’s Burn ' +
-          'click, so disposition each one before you hand over.',
+          'Close an open defect a review reported: `addressed` because work already answers it, ' +
+          'or `dismissed` because it is not worth fixing — with a note saying what addressed it ' +
+          'or why. To fix it through a ticket instead, emit that ticket with `originFindingId` ' +
+          'set — the burn then closes the finding itself when that ticket lands. A defect stays ' +
+          'open until one of these happens.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {

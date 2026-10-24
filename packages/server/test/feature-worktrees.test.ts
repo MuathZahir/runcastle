@@ -127,7 +127,6 @@ describe('ship', () => {
 
       expect(res.ok).toBe(true)
       const row = getFeatureRow(ctx, feature.id)
-      expect(row.phase).toBe('shipped')
       expect(row.status).toBe('shipped')
       expect(existsSync(worktree)).toBe(true)
       expect(eventOf(feature, 'feature.worktree_remove_failed')?.data).toEqual({ path: worktree })

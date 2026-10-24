@@ -435,14 +435,13 @@ export function resolveReviewDeclaration(
  * line is that nothing here is being claimed on the agent's behalf.
  */
 export function composeReviewDigest(
-  lap: number,
   resolution: ReviewResolution,
   agentDigest: string | undefined,
 ): string | undefined {
   if (resolution.reviewVerdict !== 'unverified') return agentDigest
   const mode = resolution.reviewMode
   const headline =
-    `Lap ${lap} · ${mode ? `${mode} mode` : 'mode unrecorded'} · ` +
+    `${mode ? `${mode} mode` : 'mode unrecorded'} · ` +
     `${mode ? `${mode.toUpperCase()} FAILED` : 'NO DECLARATION'} · nothing verified` +
     (resolution.reason ? ` — ${resolution.reason}` : '')
   return agentDigest ? `${headline}\n\n${agentDigest}` : headline
@@ -1039,7 +1038,7 @@ async function reviewTicketOutcome(
     offeredMode,
     ...(withheldReason ? { driveWithheldReason: withheldReason } : {}),
   })
-  const composedDigest = composeReviewDigest(ticket.lap, resolution, digest)
+  const composedDigest = composeReviewDigest(resolution, digest)
   const storedDigest = recorderConfirmed
     ? composedDigest
     : composedDigest

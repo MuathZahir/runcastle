@@ -1670,11 +1670,10 @@ export function handlePtyExit(
     }
   }
   if (session.purpose === 'self-plan' && feature) {
-    // The plan is complete when its run reached the last planning step for this
-    // lap; anything short of that is a run that stopped early. Re-read, because
-    // the run completed its steps after `feature` was captured at spawn.
-    const current = getFeatureRow(ctx, feature.id)
-    const complete = current.ticketsReadyLap === current.lap
+    // The plan is complete when its run ended by asking the human for the yes
+    // (`wait_for_you`); anything short of that is a run that stopped early.
+    // Re-read, because the run asked after `feature` was captured at spawn.
+    const complete = getFeatureRow(ctx, feature.id).waitingReason !== null
     emitForSession(ctx, session, {
       type: 'session.self_plan_ended',
       message: complete ? 'planning finished' : 'planning stopped before the plan was complete',

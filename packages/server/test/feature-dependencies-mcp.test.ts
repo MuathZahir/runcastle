@@ -51,7 +51,7 @@ describe('feature dependencies over MCP', () => {
   const draft = (slug: string): Feature =>
     seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null })
   const shipped = (slug: string): Feature =>
-    seedFeature(ctx, projectId, { slug, status: 'shipped', phase: 'shipped' })
+    seedFeature(ctx, projectId, { slug, status: 'shipped' })
   const rowCount = (): number => ctx.db.select().from(features).all().length
 
   beforeEach(async () => {
@@ -70,7 +70,7 @@ describe('feature dependencies over MCP', () => {
   // --- create_feature dependsOn ---------------------------------------------
 
   it('create_feature with draft: true and dependsOn parks a draft that waits on them', async () => {
-    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework', phase: 'building' })
+    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework' })
 
     const out = await toolCreateFeature(ctx, session, {
       title: 'Billing',
@@ -210,7 +210,7 @@ describe('feature dependencies over MCP', () => {
     // Once the dependency ships, the edge stays on the line, marked.
     ctx.db
       .update(features)
-      .set({ status: 'shipped', phase: 'shipped' })
+      .set({ status: 'shipped' })
       .where(eq(features.id, ledger.id))
       .run()
 
@@ -220,7 +220,7 @@ describe('feature dependencies over MCP', () => {
       'billing — Demo feature [draft, waiting] · waits on: auth-rework',
     )
     expect(out.featureIndex).toContain('reports — Demo feature [draft] · waits on: ledger ✓')
-    expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight: planning, lap 1]')
+    expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight]')
     expect(out.featureIndexNote).toContain('waits on')
     expect(out.featureIndexNote).toContain('✓')
     expect(out.featureIndexNote).toContain('waiting')

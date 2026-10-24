@@ -1,6 +1,5 @@
 import { useId } from 'react'
 import type { SVGProps } from 'react'
-import type { Phase } from '@runcastle/core'
 
 /**
  * The runcastle icon set — 16×16 viewBox, 1.5px round stroke, `currentColor`
@@ -621,13 +620,20 @@ export function IconSelectArea(p: IconProps) {
    ========================================================================== */
 
 /**
- * Every phase a glyph exists for: the app's own four (`Phase` in
- * @runcastle/core — planning, building, review, shipped), `draft` (a parked
- * feature, which is a status rather than a phase), and the design system's
- * finer steps (ideation, spec, tickets, implementation) for surfaces that know
- * where inside planning/building a feature is.
+ * Every stage a glyph exists for — the design system's progress vocabulary
+ * (the first-run intro, the wizard rail, the notice hues). No feature stores a
+ * phase; a feature's own glyph is {@link ProgressIcon}.
  */
-export type PhaseIconPhase = Phase | 'draft' | 'ideation' | 'spec' | 'tickets' | 'implementation'
+export type PhaseIconPhase =
+  | 'draft'
+  | 'ideation'
+  | 'spec'
+  | 'planning'
+  | 'tickets'
+  | 'implementation'
+  | 'building'
+  | 'review'
+  | 'shipped'
 
 /** The glyph's hue: a whole class per phase so Tailwind can see it. */
 export const PHASE_TEXT: Record<PhaseIconPhase, string> = {
@@ -768,7 +774,7 @@ export function PhaseIcon({
 /* ============================================================================
    PROGRESS ICON — what replaces the phase glyph once a feature has no phase
    (tickets-and-review-are-tools-not-phases): the same ring and pie, the pie
-   now the share of this lap's tickets that landed. draft dashed ring · active
+   now the share of the feature's tickets that landed. draft dashed ring · active
    ring + pie · shipped filled check.
    ========================================================================== */
 
@@ -781,7 +787,7 @@ const PROGRESS_TEXT: Record<ProgressIconState, string> = {
 }
 
 /**
- * A feature as a 16px glyph: its lap's landed share of tickets as the pie
+ * A feature as a 16px glyph: its landed share of tickets as the pie
  * (`progress`, 0..1), a dashed ring while it is a draft, the filled check once
  * shipped. The pie sweeps when `progress` changes on a mounted glyph. `label`
  * as PhaseIcon's: `''` makes it decorative.

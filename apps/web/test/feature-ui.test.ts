@@ -7,7 +7,6 @@ import {
   burnInterruption,
   defaultBaseBranch,
   deferredScope,
-  DRAFT_GLYPH,
   driveFailure,
   duplicateTitleWarning,
   findingCountsLine,
@@ -15,14 +14,13 @@ import {
   headline,
   roundAccount,
   landingFeature,
-  lastTestDriveLap,
+  lastTestDriveAt,
   mergeConflictKickoff,
   needsMe,
   nextStep,
   openApp,
   openAppWaitingLabel,
   PHASE_ORDER,
-  phaseGlyph,
   progressState,
   reviewOutcome,
   reviewWalkthroughUrl,
@@ -33,7 +31,6 @@ import {
   shippedAt,
   shippedChatSessions,
   sortForSidebar,
-  startOpensChat,
   testDriveFigure,
   ticketConflictKickoff,
   ticketDurations,
@@ -65,16 +62,6 @@ describe('run headline review verdict', () => {
  * currently checked out on, falling back to main when runcastle's own internal
  * branch is the checkout. Tested at the pure derivation, no DOM.
  */
-describe('startOpensChat', () => {
-  it('chains the grill chat after starting an ordinary draft', () => {
-    expect(startOpensChat({ ticketsReadyLap: null })).toBe(true)
-  })
-
-  it('opens no session for a parked quick change, born with its tickets ready', () => {
-    expect(startOpensChat({ ticketsReadyLap: 1 })).toBe(false)
-  })
-})
-
 describe('defaultBaseBranch', () => {
   it('defaults to the current checkout when it is a selectable base', () => {
     expect(defaultBaseBranch({ current: 'develop', detected: 'main', branches: ['main', 'develop'] })).toBe('develop')
@@ -430,51 +417,40 @@ describe('unresolvedMergeConflict', () => {
 })
 
 /**
- * simplify-the-pages decision 8a — "test-driven on lap N (the latest that
- * was)", the one formula the status row and the merge dialog share.
+ * simplify-the-pages decision 8a — whether the build was driven, and whether
+ * that drive still describes it: the one formula the status row and the merge
+ * dialog share.
  */
 describe('testDriveFigure', () => {
   const ev = (id: number, type: string): EventRow =>
-    ({ id, projectId: 'p', ts: id, type, message: type }) as EventRow
+    ({ id, projectId: 'p', ts: id * 10, type, message: type }) as EventRow
+  const landed = (completedAt: number) => ({ kind: 'implementation' as const, status: 'done', completedAt })
 
   it('says "Not run" for a feature that was never driven', () => {
-    expect(testDriveFigure(null, 1)).toEqual({ value: 'Not run', tone: 'idle' })
+    expect(testDriveFigure(null, [landed(5)])).toEqual({ value: 'Not run', tone: 'idle' })
   })
 
-  it('says it was taken, green when it drove the current build', () => {
-    expect(testDriveFigure(2, 2)).toEqual({ value: 'Taken', tone: 'ok' })
+  it('says it was taken, green when nothing landed after it', () => {
+    expect(testDriveFigure(20, [landed(5)])).toEqual({ value: 'Taken', tone: 'ok' })
   })
 
-  it('reads "Taken · not since" in amber after an undriven later lap', () => {
-    const feed = [ev(1, 'testdrive.started'), ev(2, 'lap.started')]
-    expect(testDriveFigure(lastTestDriveLap(feed), 2)).toEqual({ value: 'Taken', sub: 'not since', tone: 'warn' })
+  it('reads "Taken · not since" in amber once work landed after the drive', () => {
+    expect(testDriveFigure(20, [landed(5), landed(30)])).toEqual({ value: 'Taken', sub: 'not since', tone: 'warn' })
   })
 
-  /**
-   * Ticket 11 / decision 33a — the shipped record states the drive that WAS
-   * taken, and a drive filed under the wrong lap is not a record.
-   */
-  describe('lastTestDriveLap', () => {
+  it('never counts a review pass landing after the drive as moved work', () => {
+    expect(testDriveFigure(20, [{ kind: 'review', status: 'done', completedAt: 30 }])).toEqual({ value: 'Taken', tone: 'ok' })
+  })
+
+  /** Decision 33a — the shipped record states the drive that WAS taken. */
+  describe('lastTestDriveAt', () => {
     it('is null for a feature that was never driven', () => {
-      expect(lastTestDriveLap([ev(1, 'burn.started')])).toBeNull()
+      expect(lastTestDriveAt([ev(1, 'burn.started')])).toBeNull()
     })
 
-    it('is lap 1 for a feature that never iterated', () => {
-      expect(lastTestDriveLap([ev(1, 'testdrive.started')])).toBe(1)
-    })
-
-    it('counts the laps that started before the drive, not the ones after', () => {
-      const feed = [ev(1, 'lap.started'), ev(2, 'testdrive.started'), ev(3, 'lap.started')]
-      expect(lastTestDriveLap(feed)).toBe(2)
-    })
-
-    it('reports the LAST drive when a feature was driven in several laps', () => {
-      const feed = [
-        ev(1, 'testdrive.started'),
-        ev(2, 'lap.started'),
-        ev(3, 'testdrive.started'),
-      ]
-      expect(lastTestDriveLap(feed)).toBe(2)
+    it('reports when the LAST drive started', () => {
+      const feed = [ev(1, 'testdrive.started'), ev(2, 'burn.started'), ev(3, 'testdrive.started')]
+      expect(lastTestDriveAt(feed)).toBe(30)
     })
   })
 })
@@ -948,12 +924,12 @@ describe('archive derivations', () => {
   })
 
   it('needsMe is null for archived features', () => {
-    expect(needsMe(listItem({ status: 'archived', phase: 'planning' }))).toBeNull()
+    expect(needsMe(listItem({ status: 'archived' }))).toBeNull()
   })
 
   it('excludes archived features from the default lanes', () => {
     const groups = triage([
-      listItem({ id: 'a', status: 'active', phase: 'planning' }),
+      listItem({ id: 'a', status: 'active' }),
       listItem({ id: 'b', status: 'archived' }),
     ])
     expect(groups.some((g) => g.key === 'archived')).toBe(false)
@@ -965,7 +941,7 @@ describe('archive derivations', () => {
   it('surfaces archived features in a trailing lane when showArchived is on', () => {
     const groups = triage(
       [
-        listItem({ id: 'a', status: 'active', phase: 'planning' }),
+        listItem({ id: 'a', status: 'active' }),
         listItem({ id: 'b', status: 'archived' }),
       ],
       { showArchived: true },
@@ -976,7 +952,7 @@ describe('archive derivations', () => {
   })
 
   it('nextStep offers only Unarchive for an archived feature (no pipeline action)', () => {
-    const ns = nextStep(full({ status: 'archived', phase: 'review' }), {})
+    const ns = nextStep(full({ status: 'archived' }), {})
     expect(ns.primary?.kind).toBe('unarchive')
     expect(ns.secondary).toEqual([])
   })
@@ -992,11 +968,11 @@ describe('archive derivations', () => {
 describe.skip('draft derivations', () => {
   const NOW = 1_000_000_000_000
   const draft = (over: Partial<FeatureListItem> = {}) =>
-    listItem({ status: 'draft', phase: 'planning', ...over })
+    listItem({ status: 'draft', ...over })
 
   it('needsMe is null for a draft, whatever its phase would claim', () => {
     expect(needsMe(draft())).toBeNull()
-    expect(needsMe(listItem({ phase: 'planning' }))?.kind).toBe('grill')
+    expect(needsMe(listItem({}))?.kind).toBe('grill')
   })
 
   it('chips a draft as "In the backlog" instead of its age', () => {
@@ -1005,17 +981,12 @@ describe.skip('draft derivations', () => {
     expect(chip.text).toBe('In the backlog')
   })
 
-  it('wears the ◌ glyph rather than a phase glyph', () => {
-    expect(DRAFT_GLYPH).toBe('◌')
-    expect(DRAFT_GLYPH).not.toBe(phaseGlyph('planning'))
-  })
-
   it('sorts drafts below active work and above shipped', () => {
     const sorted = sortForSidebar([
-      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      listItem({ id: 'shipped', status: 'shipped' }),
       draft({ id: 'draft' }),
-      listItem({ id: 'active', phase: 'planning' }),
-      listItem({ id: 'needsMe', phase: 'planning' }),
+      listItem({ id: 'active' }),
+      listItem({ id: 'needsMe' }),
     ])
     expect(sorted.map((f) => f.id)).toEqual(['needsMe', 'active', 'draft', 'shipped'])
   })
@@ -1023,22 +994,22 @@ describe.skip('draft derivations', () => {
   it('gives drafts their own rail band between In progress and Shipped', () => {
     expect(triageOf(draft())).toBe('drafts')
     const groups = triage([
-      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      listItem({ id: 'shipped', status: 'shipped' }),
       draft({ id: 'draft' }),
-      listItem({ id: 'active', phase: 'planning' }),
+      listItem({ id: 'active' }),
     ])
     expect(groups.map((g) => g.key)).toEqual(['inProgress', 'drafts', 'shipped'])
     expect(groups.find((g) => g.key === 'drafts')?.label).toBe('Backlog')
   })
 
   it('nextStep offers Start as a draft’s one action', () => {
-    const ns = nextStep(full({ status: 'draft', phase: 'planning' }), {})
+    const ns = nextStep(full({ status: 'draft' }), {})
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
     expect(ns.secondary).toEqual([])
   })
 
   it('disables Start until the branch list resolves the base it would send', () => {
-    const ns = nextStep(full({ status: 'draft', phase: 'planning' }), {
+    const ns = nextStep(full({ status: 'draft' }), {
       draftBaseMissing: 'loading',
     })
     expect(ns.primary?.kind).toBe('startDraft')
@@ -1049,7 +1020,7 @@ describe.skip('draft derivations', () => {
   // there is nothing left to wait for — the block is a question for the human,
   // and "Loading…" over a loaded list would send them nowhere.
   it('sends the human to the picker when the checkout offers no base at all', () => {
-    const ns = nextStep(full({ status: 'draft', phase: 'planning' }), {
+    const ns = nextStep(full({ status: 'draft' }), {
       draftBaseMissing: 'unpicked',
     })
     expect(ns.primary?.disabled).toBe('pick a branch first')
@@ -1227,18 +1198,18 @@ describe('turn-aware feature states', () => {
   })
 
   it('puts a feature with a waiting reason in Needs you with that reason, whatever its stored phase', () => {
-    const f = listItem({ phase: 'building', waitingReason: 'ready to test' })
+    const f = listItem({ waitingReason: 'ready to test' })
     expect(needsMe(f)).toEqual({ kind: 'waiting', label: 'ready to test' })
     expect(triageOf(f)).toBe('needsYou')
-    expect(needsMe(listItem({ phase: 'planning', waitingReason: 'stopped' }))?.label).toBe('stopped')
+    expect(needsMe(listItem({ waitingReason: 'stopped' }))?.label).toBe('stopped')
   })
 
   it('leaves a feature with pending tickets and nothing running or asked in progress, whatever its phase', () => {
     const counts = { total: 2, pending: 2, burning: 0, done: 0, failed: 0, cancelled: 0 }
-    const f = listItem({ phase: 'planning', ticketCounts: counts })
+    const f = listItem({ ticketCounts: counts })
     expect(needsMe(f)).toBeNull()
     expect(triageOf(f)).toBe('inProgress')
-    expect(needsMe(listItem({ phase: 'review' }))).toBeNull()
+    expect(needsMe(listItem({}))).toBeNull()
   })
 
   it('does not ask for attention over a failed ticket — the agent handles it after the round', () => {
@@ -1331,10 +1302,10 @@ describe('landedShare', () => {
  */
 describe.skip('landingFeature', () => {
   const working = listItem({ id: 'working', activeRun: true })
-  const needsYou = listItem({ id: 'needs', phase: 'planning' })
-  const inProgress = listItem({ id: 'planning', phase: 'planning' })
+  const needsYou = listItem({ id: 'needs' })
+  const inProgress = listItem({ id: 'planning' })
   const draft = listItem({ id: 'draft', status: 'draft' })
-  const shipped = listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' })
+  const shipped = listItem({ id: 'shipped', status: 'shipped' })
   const archived = listItem({ id: 'archived', status: 'archived' })
 
   it('prefers the top Needs-you row over everything below it', () => {
@@ -1350,8 +1321,8 @@ describe.skip('landingFeature', () => {
   })
 
   it('keeps the incoming order within a lane', () => {
-    const first = listItem({ id: 'first', phase: 'planning' })
-    const second = listItem({ id: 'second', phase: 'planning' })
+    const first = listItem({ id: 'first' })
+    const second = listItem({ id: 'second' })
     expect(landingFeature([first, second])?.id).toBe('first')
   })
 

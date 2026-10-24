@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/sql-js'
 import { simpleGit } from 'simple-git'
 import initSqlJs from 'sql.js'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { features, schema, tickets } from '../src/db/schema'
+import { features, readyDeclarations, schema, tickets } from '../src/db/schema'
 import { runMigrations } from '../src/db/migrate'
 import type { AppCtx, Db } from '../src/db/types'
 import { openProject } from '../src/services/projects'
@@ -94,7 +94,7 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
 
   afterEach(() => rmTemp(root))
 
-  it('seeds a feature at review with its tickets done and prints its page', async () => {
+  it('seeds a feature declared ready, with its tickets done, and prints its page', async () => {
     const out = runScenario({
       RUNCASTLE_DATA_DIR: dataDir,
       RUNCASTLE_SCENARIO_RUN: 'abc123',
@@ -107,10 +107,12 @@ describe.skipIf(!BUN)('dogfood scenario: Feature at review', () => {
 
     const { ctx } = await openDbFile(join(dataDir, 'runcastle.db'))
     const feature = ctx.db.select().from(features).where(eq(features.slug, 'scenario-feature-abc123')).get()
-    expect(feature).toMatchObject({ projectId, phase: 'review', status: 'active' })
+    expect(feature).toMatchObject({ projectId, status: 'active', waitingReason: 'ready to test' })
     const rows = ctx.db.select().from(tickets).where(eq(tickets.featureId, feature!.id)).all()
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.every((t) => t.status === 'done')).toBe(true)
+    const declared = ctx.db.select().from(readyDeclarations).where(eq(readyDeclarations.featureId, feature!.id)).all()
+    expect(declared).toEqual([expect.objectContaining({ scenario: 'review/feature-at-review.ts' })])
 
     const branches = await simpleGit(repoPath).branchLocal()
     expect(branches.all).toContain('feature/scenario-feature-abc123')

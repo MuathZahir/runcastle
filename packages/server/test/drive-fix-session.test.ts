@@ -296,7 +296,6 @@ describe('the drive-fix brief', () => {
       slug: 'add-billing',
       title: 'Add billing',
       oneLiner: 'bill people',
-      lap: 1,
       phase: 'review' as const,
       branch: 'feature/add-billing',
       status: 'active' as const,

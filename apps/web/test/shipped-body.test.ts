@@ -38,7 +38,6 @@ const RECORDINGS: ReviewArtifacts[] = [
   {
     ticketId: 'tkt_review_1',
     seq: 3,
-    lap: 1,
     passKind: 'review',
     reviewMode: null,
     reviewVerdict: null,
@@ -52,7 +51,6 @@ const RECORDINGS: ReviewArtifacts[] = [
   {
     ticketId: 'tkt_review_2',
     seq: 9,
-    lap: 2,
     passKind: 'verification',
     reviewMode: null,
     reviewVerdict: null,
@@ -121,7 +119,6 @@ const full = (over: Partial<FeatureFull> = {}): FeatureFull =>
       slug: 'greetings-pages',
       title: 'Greetings pages',
       oneLiner: 'pages that greet',
-      lap: 2,
       phase: 'shipped',
       branch: 'feature/greetings-pages',
       status: 'shipped',

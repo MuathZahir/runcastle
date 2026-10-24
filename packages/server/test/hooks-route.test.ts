@@ -10,7 +10,6 @@ import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launch
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
-import { setPhase } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -38,7 +37,7 @@ describe('hooks route', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode' })
     featureId = feature.id
     const session = createSessionRow(ctx, {
       featureId,
@@ -393,7 +392,6 @@ describe('hooks route', () => {
           permissionDecision: 'allow',
         })
       }
-      setPhase(ctx, featureId, 'building')
       expect((await preTool(chat, 'Edit', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
         'allow',
       )
@@ -452,7 +450,7 @@ describe('hooks route', () => {
     beforeEach(() => {
       const project = seedProject(ctx)
       repoPath = project.repoPath
-      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead', phase: 'planning' }).id
+      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead' }).id
       leadPath = worktreeDir(project.id, 'lead')
     })
 
@@ -473,20 +471,16 @@ describe('hooks route', () => {
       expect((await shell(lead, 'bun run test', 'PowerShell')).hookSpecificOutput.permissionDecision).toBe('allow')
     })
 
-    it('denies the three named acts with a reason, before Go and after', async () => {
+    it('denies the three named acts with a reason', async () => {
       const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
-      for (const phase of ['planning', 'building'] as const) {
-        setPhase(ctx, leadFeatureId, phase)
-        for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
-          const json = await shell(lead, cmd)
-          expect(json.hookSpecificOutput.permissionDecision, `${phase}: ${cmd}`).toBe('deny')
-          expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
-        }
+      for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
+        const json = await shell(lead, cmd)
+        expect(json.hookSpecificOutput.permissionDecision, cmd).toBe('deny')
+        expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
       }
     })
 
     it('leaves a Codex lead with no opinion on what it allows — Codex never asks', async () => {
-      setPhase(ctx, leadFeatureId, 'building')
       const lead = createSessionRow(ctx, {
         featureId: leadFeatureId,
         kind: 'chat',

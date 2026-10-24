@@ -19,18 +19,17 @@ export function isWaiting(f: Pick<FeatureListItem, 'status' | 'dependsOn'>): boo
 
 /**
  * The one word a dependency's chip states: merged once it shipped (the chip
- * draws the ✓), else what it is doing now — `archived` and `draft` over its
- * phase, because an archived or parked feature's phase says nothing about when
- * it will merge.
+ * draws the ✓), else its status — `archived`, `draft`, or `in progress` while it
+ * is being worked on and has not merged.
  */
 export function dependencyState(d: DependencyRef): string {
   if (d.satisfied) return 'merged'
   if (d.status === 'archived') return 'archived'
   if (d.status === 'draft') return 'draft'
-  return d.phase
+  return 'in progress'
 }
 
-/** "a (building), b (archived)" — each blocker with its state, for a tooltip. */
+/** "a (in progress), b (archived)" — each blocker with its state, for a tooltip. */
 export function blockerList(deps: DependencyRef[]): string {
   return blockers(deps)
     .map((d) => `${d.slug} (${dependencyState(d)})`)

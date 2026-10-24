@@ -1,4 +1,4 @@
-import type { FeatureStatus, Phase } from '@runcastle/core'
+import type { FeatureStatus } from '@runcastle/core'
 import { Feature, Project, Run, SessionRow } from '@runcastle/core'
 import { and, desc, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
@@ -7,14 +7,14 @@ import { NotFoundError } from '../errors'
 import { emit } from './events'
 
 /**
- * Data-access layer: row→wire mappers, basic getters, and the low-level phase /
- * status mutations shared by `features`, `gates` and the workflow runner.
+ * Data-access layer: row→wire mappers, basic getters, and the low-level status
+ * mutations shared by `features`, `gates` and the workflow runner.
  * Keeping these here (rather than in `features.ts`) breaks the would-be import
  * cycle between `features` and `gates` — both depend on `repo`, neither on the
  * other.
  *
  * Every mapper returns `Schema.parse(...)`, so the row→wire seam is where a row
- * that violates the domain contract stops. Drizzle's `$type<Phase>()` is a
+ * that violates the domain contract stops. Drizzle's `$type<FeatureStatus>()` is a
  * compile-time cast with no runtime constraint, which means a value no build
  * recognises — a newer server's enum member, a hand-edited column, a bad import
  * — reads back as a well-typed lie and falls through every exhaustive switch
@@ -35,9 +35,6 @@ export function rowToFeature(row: FeatureSelect): Feature {
     title: row.title,
     oneLiner: row.oneLiner,
     brief: row.brief ?? undefined,
-    lap: row.lap,
-    ticketsReadyLap: row.ticketsReadyLap,
-    phase: row.phase,
     branch: row.branch,
     baseBranch: row.baseBranch ?? undefined,
     status: row.status,
@@ -92,7 +89,6 @@ export function rowToSession(row: SessionSelect): SessionRow {
     id: row.id,
     featureId: row.featureId ?? undefined,
     projectId: row.projectId ?? undefined,
-    lap: row.lap,
     kind: row.kind,
     purpose: row.purpose ?? undefined,
     purposeData: row.purposeData ?? undefined,
@@ -210,25 +206,7 @@ export function hasActiveRun(ctx: AppCtx, featureId: string): boolean {
   return !!row
 }
 
-// --- phase / status mutations (each emits an event) -------------------------
-
-/** Low-level phase setter used by Burn and the runner's auto-advance. */
-export function setPhase(
-  ctx: AppCtx,
-  featureId: string,
-  toPhase: Phase,
-  eventType = 'phase.changed',
-  message?: string,
-): Feature {
-  const current = getFeatureRow(ctx, featureId)
-  ctx.db.update(features).set({ phase: toPhase }).where(eq(features.id, featureId)).run()
-  emit(ctx, featureId, {
-    type: eventType,
-    message: message ?? `phase ${current.phase} → ${toPhase}`,
-    data: { from: current.phase, to: toPhase },
-  })
-  return { ...current, phase: toPhase }
-}
+// --- status mutations (each emits an event) ---------------------------------
 
 /**
  * Hand a feature to the orchestrator (`whole-cuts-plan-themselves` decision 9):

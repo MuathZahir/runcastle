@@ -39,7 +39,7 @@ document.addEventListener(
 
 const noop = () => {}
 
-/** The glyph left of the title: the lap's landed share of its tickets (decision 9). */
+/** The glyph left of the title: the landed share of the feature's tickets (decision 9). */
 function TitleGlyph({ moment }: { moment: MomentSample }) {
   return (
     <ProgressIcon

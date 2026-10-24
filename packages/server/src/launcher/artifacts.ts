@@ -646,7 +646,7 @@ export function renderDriveFixPrompt(brief: DriveFixBrief): string {
     '## The feature',
     `- \`${docs}/\` — this feature's own docs (brief, spec, decisions, tickets).`,
     `- branch \`${delta.branch}\`, based on \`${delta.base}\`.`,
-    '- `get_feature_context` gives you the row, the phase, the ticket rows and the docs in one',
+    '- `get_feature_context` gives you the row, the rounds, the ticket rows and the docs in one',
     '  call — a doc it lists in `notInlined` must be read before you act; `get_ticket({ seq })`',
     "  holds a ticket's context, acceptance criteria and digest.",
     '',

@@ -120,11 +120,11 @@ function quoteScope(scope: string): string {
   return flat.length > SCOPE_QUOTE_MAX ? `${flat.slice(0, SCOPE_QUOTE_MAX).trimEnd()}…` : flat
 }
 
-/** A ticket as the merge confirmation reads it: whose lap, and how it ended. */
+/** A ticket as the merge confirmation reads it: how it ended, and when. */
 interface MergeTicketFigure {
   kind?: TicketKind
   status: string
-  lap: number
+  completedAt?: number | null
 }
 
 /**
@@ -165,19 +165,6 @@ function landedRow(tickets: readonly MergeTicketFigure[]): CheckRow {
     value: parts.join(' · '),
     tone: done === implementation.length ? 'ok' : 'warn',
   }
-}
-
-/** The unburned fix tickets earlier laps left standing, newest lap first. */
-function standingFixTickets(
-  tickets: readonly MergeTicketFigure[],
-  lap: number,
-): { lap: number; count: number }[] {
-  const pending = tickets.filter(
-    (ticket) => ticket.kind !== 'review' && ticket.status === 'pending' && ticket.lap < lap,
-  )
-  return [...new Set(pending.map((ticket) => ticket.lap))]
-    .sort((a, b) => b - a)
-    .map((earlier) => ({ lap: earlier, count: pending.filter((t) => t.lap === earlier).length }))
 }
 
 /**
@@ -222,10 +209,8 @@ export function mergeSummary(input: {
   delta?: { commits?: number; files?: number }
   /** The feature's tickets — what landed, what was waived, what still stands. */
   tickets?: readonly MergeTicketFigure[]
-  /** The lap the feature is on; earlier laps' pending tickets are the debt. */
-  lap?: number
-  /** The lap the branch was last test-driven in, null when it never was. */
-  driveLap: number | null
+  /** When the branch was last test-driven ({@link lastTestDriveAt}), null when it never was. */
+  drivenAt: number | null
   /** Notes captured during the test drive that were never ticked off. */
   openNotes?: number
   /**
@@ -246,7 +231,7 @@ export function mergeSummary(input: {
   const tickets = input.tickets ?? []
   // The status row's own formula (decision 8a), so the two cannot disagree. A
   // branch never driven is amber here rather than quiet: this is the last door.
-  const driven = testDriveFigure(input.driveLap, input.lap ?? 1)
+  const driven = testDriveFigure(input.drivenAt, tickets)
   const drive: CheckRow = {
     key: 'test drive',
     value: driven.sub ? `${driven.value} · ${driven.sub}` : driven.value,
@@ -283,10 +268,9 @@ export function mergeSummary(input: {
   if (waived > 0) {
     warnings.push(`${noun(waived, 'ticket')} waived — set aside unfinished, not delivered.`)
   }
-  // The debt decision 26(d) surfaces at triage, surfaced again at the last door:
-  // these tickets exist, have never burned, and merging leaves them behind.
-  const unburned = standingFixTickets(tickets, input.lap ?? 1).reduce((sum, debt) => sum + debt.count, 0)
-  if (unburned > 0) warnings.push(`${noun(unburned, 'unburned fix ticket')} — merging leaves them behind.`)
+  // These tickets exist, have never burned, and merging leaves them behind.
+  const unburned = tickets.filter((t) => t.kind !== 'review' && t.status === 'pending').length
+  if (unburned > 0) warnings.push(`${noun(unburned, 'unburned ticket')} — merging leaves them behind.`)
   const stale = staleEvidenceWarning(input.freshness)
   if (stale) warnings.push(stale)
   // The last catch (decisions #7). The bar has already stopped recommending this

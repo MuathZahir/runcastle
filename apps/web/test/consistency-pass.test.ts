@@ -1,9 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { phaseFacts, phaseSummary, ticketCount, ticketCountText } from '../src/lib/feature-ui'
-import type { FeatureFull } from '../src/lib/api'
-import { full } from './fixtures'
+import { ticketCount, ticketCountText } from '../src/lib/feature-ui'
 import { SidebarFootChrome } from '../src/components/Sidebar'
 import * as ui from '../src/ui'
 
@@ -13,10 +11,9 @@ import * as ui from '../src/ui'
  */
 
 describe('the one ticket count', () => {
-  const t = (over: Partial<{ kind: 'implementation' | 'review'; status: string; lap: number; landedLap: number }>) => ({
+  const t = (over: Partial<{ kind: 'implementation' | 'review'; status: string }>) => ({
     kind: 'implementation' as const,
     status: 'pending',
-    lap: 1,
     ...over,
   })
 
@@ -26,7 +23,7 @@ describe('the one ticket count', () => {
       t({ status: 'pending' }),
       t({ kind: 'review', status: 'done' }),
       t({ status: 'cancelled' }),
-      t({ status: 'done', lap: 2 }),
+      t({ status: 'done' }),
     ]
     expect(ticketCount(tickets)).toEqual({ done: 2, total: 3 })
   })
@@ -34,18 +31,6 @@ describe('the one ticket count', () => {
   it('pluralises on the total', () => {
     expect(ticketCountText({ done: 1, total: 1 })).toBe('1 of 1 ticket done')
     expect(ticketCountText({ done: 0, total: 3 })).toBe('0 of 3 tickets done')
-  })
-
-  // The stepper tooltip and the pinned-planning banner read the same count.
-  it('is the count the planning phase summary states', () => {
-    const base = full({ phase: 'review' })
-    const record = {
-      ...base,
-      feature: { ...base.feature, lap: 2 },
-      tickets: [t({ status: 'done' }), t({ lap: 2 }), t({ lap: 2, kind: 'review' }), t({ lap: 2, status: 'cancelled' })],
-    } as unknown as FeatureFull
-    expect(phaseFacts({ phase: 'planning', full: record, events: [] })).toBe('2 tickets')
-    expect(phaseSummary({ phase: 'planning', full: record, events: [] })).toBe('Planning · 2 tickets')
   })
 })
 

@@ -56,7 +56,6 @@ describe('finding carry and provenance columns migration (0037)', () => {
       expect.objectContaining({
         id: 'find_1',
         status: 'open',
-        carriedLap: null,
         resolvedBy: null,
         resolutionNote: null,
       }),

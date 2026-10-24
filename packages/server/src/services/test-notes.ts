@@ -34,13 +34,11 @@ function rowToNote(row: TestNoteSelect): TestNote {
   return TestNote.parse({
     id: row.id,
     featureId: row.featureId,
-    lap: row.lap,
     text: row.text,
     status: row.status,
     author: row.author,
     ticketId: row.ticketId ?? undefined,
     reviewTicketId: row.reviewTicketId ?? undefined,
-    carriedLap: row.carriedLap ?? undefined,
     videoTimestamp: row.videoTimestamp ?? undefined,
     screenshotUrl: existsSync(annotationPath(row.id)) ? noteScreenshotUrl(row.id) : undefined,
     sentAt: row.sentAt ?? undefined,
@@ -73,11 +71,9 @@ export function listByFeature(ctx: AppCtx, featureId: string): TestNote[] {
 }
 
 /**
- * Capture a note. Stamped with the feature's CURRENT lap (ADR-0010 / SPEC
- * §15.1) — the caller never chooses it, mirroring how `storeTickets` stamps
- * tickets — because the lap is what groups the rendered file.
+ * Capture a note on an existing feature.
  *
- * `author` is the one thing the caller does choose: the review panel leaves it
+ * `author` is the one thing the caller chooses: the review panel leaves it
  * at `human`, and the `add_test_note` MCP wire passes `agent` so a review
  * ticket's findings arrive attributed. Nothing else about the note differs.
  *
@@ -95,7 +91,7 @@ export function addNote(
   reviewTicketId?: string,
 ): TestNote {
   const body = cleanText(text)
-  const feature = getFeatureRow(ctx, featureId)
+  getFeatureRow(ctx, featureId)
   if (reviewTicketId) {
     const ticket = getTicket(ctx, reviewTicketId)
     if (ticket.featureId !== featureId || ticket.kind !== 'review')
@@ -108,14 +104,12 @@ export function addNote(
     .values({
       id: newId('note'),
       featureId,
-      lap: feature.lap,
       text: body,
       status: 'open' as const,
       author,
       ticketId: null,
       videoTimestamp: videoTimestamp ?? null,
       reviewTicketId: reviewTicketId ?? null,
-      carriedLap: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -129,7 +123,7 @@ export function addNote(
       note.author === 'agent'
         ? 'review agent captured a note'
         : 'note captured',
-    data: { noteId: note.id, lap: note.lap, author: note.author },
+    data: { noteId: note.id, author: note.author },
   })
   return note
 }

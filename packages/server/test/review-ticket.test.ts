@@ -1371,13 +1371,13 @@ describe('review declaration resolution', () => {
 
   it('puts the server-owned unverified headline above the agent prose', () => {
     expect(
-      composeReviewDigest(3, {
+      composeReviewDigest({
         reviewMode: 'drive',
         reviewVerdict: 'unverified',
         reason: 'The browser could not attach.',
       }, 'Agent prose that used to become the headline.'),
     ).toBe(
-      'Lap 3 · drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
+      'drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
       'Agent prose that used to become the headline.',
     )
   })
@@ -1387,12 +1387,11 @@ describe('review declaration resolution', () => {
   it('names no mode in the headline when the pass declared none', () => {
     expect(
       composeReviewDigest(
-        2,
         { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' },
         undefined,
       ),
     ).toBe(
-      'Lap 2 · mode unrecorded · NO DECLARATION · nothing verified — ' +
+      'mode unrecorded · NO DECLARATION · nothing verified — ' +
       'Review declaration missing or unparseable.',
     )
   })
@@ -1400,7 +1399,6 @@ describe('review declaration resolution', () => {
   it('leaves a verified pass’s digest exactly as the agent wrote it', () => {
     expect(
       composeReviewDigest(
-        1,
         { reviewMode: 'gates', reviewVerdict: 'verified', reason: '' },
         'Every gate ran green.',
       ),
@@ -2038,7 +2036,6 @@ describe('a run containing a review ticket still lands the feature in review', (
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
     // A review ticket lands `done` with no commits — its deliverable is notes.
     const reviewTicket = listByFeature(ctx, featureId).find((t) => t.kind === 'review')
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
@@ -2146,7 +2143,6 @@ describe('the burner mints its verification pass into a lap that already has a r
       kind: 'review',
       passKind: 'verification',
       // The feature's own lap: a burn from planning runs the lap it is on.
-      lap: 2,
       status: 'done',
       title: 'Verify the fixes that landed',
     })

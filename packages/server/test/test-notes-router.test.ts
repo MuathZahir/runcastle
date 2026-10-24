@@ -28,7 +28,7 @@ describe('notes router', () => {
 
   it('captures, lists, edits and deletes a note', async () => {
     const note = await caller.notes.add({ featureId: feature.id, text: 'header wraps at 400px' })
-    expect(note).toMatchObject({ text: 'header wraps at 400px', status: 'open', lap: 1 })
+    expect(note).toMatchObject({ text: 'header wraps at 400px', status: 'open' })
     expect(await caller.notes.list({ featureId: feature.id })).toEqual([note])
 
     const edited = await caller.notes.edit({ noteId: note.id, text: 'header wraps under 400px' })

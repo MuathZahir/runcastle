@@ -19,7 +19,6 @@ const ticket = (over: Partial<Ticket>): Ticket =>
   ({
     id: `t${over.seq}`,
     featureId: 'feat_pdf',
-    lap: 1,
     goal: '',
     context: '',
     acceptanceCriteria: [],
@@ -72,7 +71,7 @@ export interface MomentSample {
   /** The header's one button, if any. */
   action?: { label: string; danger?: boolean; secondary?: boolean }
   ledger?: 'pending' | 'burning' | 'done'
-  /** How far this lap has landed, for the progress glyph. */
+  /** How far the feature's tickets have landed, for the progress glyph. */
   progress: number
 }
 

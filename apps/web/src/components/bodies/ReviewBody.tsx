@@ -14,7 +14,7 @@ import {
   roundAccount,
   slotHeldReason,
   specDocPath,
-  unverifiedLap,
+  unverifiedReview,
   type MergeConflictState,
 } from '../../lib/feature-ui'
 import { useEventLog } from '../../lib/events'
@@ -257,7 +257,7 @@ export function ReviewBody({
   // The latest review ran and verified nothing (decision 5) — the page's top
   // line, in runcastle's own words. A history view states nothing and offers
   // nothing (decision 33a), so the banner is the live page's alone.
-  const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
+  const unverified = readonly ? null : unverifiedReview({ passes: rows, tickets })
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({

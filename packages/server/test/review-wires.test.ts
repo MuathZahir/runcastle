@@ -427,7 +427,6 @@ describe('the review agent wires', () => {
     expect(note).toMatchObject({
       author: 'agent',
       status: 'open',
-      lap: 1,
       text: 'the empty state renders twice',
     })
     expect(listNotes(ctx, feature.id)).toEqual([note])

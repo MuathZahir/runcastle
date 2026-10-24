@@ -1,7 +1,7 @@
 import type { TallyTicket } from '@runcastle/core'
 import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
 import { IconCube, IconPlay, IconUndo } from '../../icons'
-import type { CheckTone, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
+import type { CheckTone, DriveTicketFigure, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
 import { statusProperties, type StatusBuilding, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
 
@@ -51,12 +51,11 @@ function toItem(p: StatusProperty): PropertyItem {
 export function StatusStrip({
   artifact,
   outcome,
-  currentLap,
   landedSince,
   tickets,
   runState,
   verification,
-  driveLap,
+  drivenAt,
   unverifiedKeys,
   testDrive,
   shipped = false,
@@ -65,17 +64,16 @@ export function StatusStrip({
   building,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
-  artifact: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
+  artifact: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
   /** What that pass amounted to — the Review row's verdict ({@link stampedOutcome}). */
   outcome?: TrailOutcome
-  currentLap: number
   /** Implementation tickets that landed after that pass — decision 19's stamp. */
   landedSince: number
-  tickets: readonly TallyTicket[]
+  tickets: readonly (TallyTicket & DriveTicketFigure)[]
   runState: string
   verification?: { state: 'running' | 'failed'; reason?: string }
-  /** The lap the branch was last driven in; omit where the strip is not to say. */
-  driveLap?: number | null
+  /** When the branch was last driven (null: never); omit where the strip is not to say. */
+  drivenAt?: number | null
   /** Drive-loop keys no dry run has ever proven — the Test drive row's caveat. */
   unverifiedKeys?: readonly string[]
   /**
@@ -104,12 +102,11 @@ export function StatusStrip({
   const properties = statusProperties({
     artifact,
     ...(outcome ? { outcome } : {}),
-    currentLap,
     landedSince,
     tickets,
     ...(shipped ? {} : { runState }),
     ...(verification ? { verification } : {}),
-    ...(driveLap === undefined ? {} : { driveLap }),
+    ...(drivenAt === undefined ? {} : { drivenAt }),
     ...(driving === undefined ? {} : { driving }),
     ...(noWalkthrough ? { noWalkthrough } : {}),
     ...(unverifiedKeys ? { unverifiedKeys } : {}),

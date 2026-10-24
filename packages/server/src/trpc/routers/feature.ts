@@ -7,7 +7,6 @@ import {
   launchSession,
   launchSideSession,
 } from '../../launcher/launcher'
-import { goWarnings } from '../../services/burn-warnings'
 import { listFeatureSessions } from '../../services/conversations'
 import { setDependencies } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
@@ -57,16 +56,12 @@ export const featureRouter = router({
   get: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
-      // Reading review is when a stale conflict card would be seen, so a merge
-      // committed outside any hook (by hand, or in a chat still live) retires it
-      // here. Only at review, where a merge conflict can stand.
+      // Reading the feature is when a stale conflict card would be seen, so a
+      // merge committed outside any hook (by hand, or in a chat still live)
+      // retires it here. Only on an active feature, where a conflict can stand.
       const feature = tryGetFeature(ctx, input.id)
-      if (feature?.phase === 'review') await reconcileStandingConflict(ctx, feature)
-      const full = features.getFeatureFull(ctx, input.id)
-      // Git IO, so it joins the sync read here; only a planning feature gates Go on it.
-      const uncommittedDesign =
-        full.feature.phase === 'planning' && (await features.hasUncommittedDesign(full.feature))
-      return { ...full, uncommittedDesign }
+      if (feature?.status === 'active') await reconcileStandingConflict(ctx, feature)
+      return features.getFeatureFull(ctx, input.id)
     }),
 
   // B1 behavior — the stub throws NotImplementedError('B1').
@@ -122,7 +117,7 @@ export const featureRouter = router({
     .input(z.object({ sessionId: z.string() }))
     .mutation(({ ctx, input }) => endSession(ctx, input.sessionId)),
 
-  // Archive a feature from any phase (decision #8): ends any live session, hides
+  // Archive a started feature (decision #8): ends any live session, hides
   // it behind the sidebar's show-archived filter, keeps all data. Reversible via
   // `unarchive`. Mirrors the `project.close` precedent (a reversible hide).
   archive: publicProcedure
@@ -142,16 +137,6 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string() }))
     .mutation(({ ctx, input }) => features.deleteFeature(ctx, input.featureId)),
 
-  // Go (`the-feature-lead-runs-rounds` decision 8): approve the plan, move
-  // planning → building and hand the feature to its lead. Starts no run — the
-  // lead dispatches every round. Replaces the human's Burn. Before the plan is
-  // finished Go is a gate: `overrideReason` is the one line that crosses it.
-  go: publicProcedure
-    .input(z.object({ featureId: z.string(), overrideReason: z.string().optional() }))
-    .mutation(({ ctx, input }) =>
-      features.go(ctx, input.featureId, input.overrideReason ? { overrideReason: input.overrideReason } : {}),
-    ),
-
   // Stop (decision 23): cancel the running round, mark the feature stopped so
   // nothing dispatches until the human replies, tell the lead.
   stop: publicProcedure
@@ -166,18 +151,6 @@ export const featureRouter = router({
   readyDeclarations: publicProcedure
     .input(z.object({ featureId: z.string() }))
     .query(({ ctx, input }) => features.listReadyDeclarations(ctx, input.featureId)),
-
-  agenticReview: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .mutation(({ ctx, input }) => features.agenticReview(ctx, input.featureId)),
-
-  // What the Go confirm dialog prints in its warn box, in the `mergeDelta`
-  // pattern: computed server-side so the UI never re-derives policy, and never
-  // a refusal — the primary button stays enabled. Empty is the common answer
-  // and means the dialog shows no box at all.
-  goWarnings: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => goWarnings(ctx, input.featureId)),
 
   // B2 behavior — the git stub throws NotImplementedError('B2').
   testDrive: publicProcedure

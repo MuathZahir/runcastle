@@ -311,7 +311,7 @@ describe('the orchestrator’s acting tools', () => {
 
     const res = await toolMergeFeature(ctx, session, { slug: 'landing' })
     expect(res).toMatchObject({ ok: true, base: 'main', files: [] })
-    expect(getFeatureRow(ctx, f.id)).toMatchObject({ phase: 'shipped', status: 'shipped' })
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ status: 'shipped' })
     expect(await g.raw(['show', 'main:docs/features/landing/outcome.md'])).toContain('# Outcome')
   })
 

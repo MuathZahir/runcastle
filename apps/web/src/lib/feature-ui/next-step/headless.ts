@@ -28,9 +28,9 @@ export function resolveHeadlessRun(input: ResolverInput): NextStep | null {
     }
   }
 
-  const { feature, sessions } = full
+  const { sessions } = full
   if (live) return null
-  const latest = sessions.filter((s) => s.kind === 'chat' && s.lap === feature.lap).at(-1)
+  const latest = sessions.filter((s) => s.kind === 'chat').at(-1)
   if (
     !latest ||
     latest.status !== 'ended' ||

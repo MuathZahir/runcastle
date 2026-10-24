@@ -95,7 +95,6 @@ const { ReviewBody } = await import('../src/components/bodies/ReviewBody')
 const pass = (over: Partial<ReviewArtifacts>): ReviewArtifacts => ({
   ticketId: 'tkt_1',
   seq: 4,
-  lap: 1,
   passKind: 'review',
   reviewMode: 'drive',
   reviewVerdict: 'verified',
@@ -112,7 +111,6 @@ const ticket = (over: Partial<FeatureFull['tickets'][number]>) =>
   ({
     id: 'tkt_1',
     seq: 4,
-    lap: 1,
     title: 'review the lap',
     kind: 'review',
     status: 'done',
@@ -120,7 +118,7 @@ const ticket = (over: Partial<FeatureFull['tickets'][number]>) =>
   }) as unknown as FeatureFull['tickets'][number]
 
 const LAP_1 = pass({})
-const LAP_2 = pass({ ticketId: 'tkt_2', seq: 9, lap: 2, completedAt: 5000, videoUrl: '/lap-2.webm' })
+const LAP_2 = pass({ ticketId: 'tkt_2', seq: 9, completedAt: 5000, videoUrl: '/lap-2.webm' })
 
 beforeEach(() => {
   state.recordings = [LAP_1, LAP_2]
@@ -138,14 +136,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function page(lap = 2): void {
-  const feature = full({ id: 'feat_1', phase: 'review' })
+function page(): void {
+  const feature = full({ id: 'feat_1' })
   render(
     <ReviewBody
       full={{
         ...feature,
-        feature: { ...feature.feature, lap },
-        tickets: [ticket({}), ticket({ id: 'tkt_2', seq: 9, lap: 2 })],
+        tickets: [ticket({}), ticket({ id: 'tkt_2', seq: 9 })],
       }}
       driving={null}
       conflict={null}
@@ -171,7 +168,7 @@ describe('picking a recording off the round trail', () => {
   /** Decision 4: the stage is never round-scoped — the latest recording stays up. */
   it('keeps the latest recording on the stage when the latest round recorded none', () => {
     state.recordings = [LAP_1]
-    page(3)
+    page()
     expect(video().getAttribute('src')).toBe('/lap-1.webm')
   })
 })

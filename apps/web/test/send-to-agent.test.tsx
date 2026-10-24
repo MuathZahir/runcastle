@@ -43,7 +43,6 @@ const NOW = 1_800_000_000_000
 const note = (over: Partial<TestNote>): TestNote => ({
   id: 'note_1',
   featureId: 'feat_1',
-  lap: 1,
   text: 'two codes stack',
   status: 'open',
   author: 'human',

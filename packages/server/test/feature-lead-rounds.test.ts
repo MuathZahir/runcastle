@@ -17,7 +17,6 @@ import { annotationPath } from '@runcastle/core/paths'
 import {
   declareReady,
   dispatchRound,
-  go,
   listReadyDeclarations,
   markHumanMessage,
   setWaiting,
@@ -114,61 +113,11 @@ describe('the feature lead runs rounds', () => {
     else workflowRegistry.delete('ticket-burner')
   })
 
-  describe('Go', () => {
-    it('moves a finished plan with no tickets to building, starts no run, warns and tells the lead', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
-
-      const { warnings } = await go(ctx, featureId)
-
-      expect(getFeatureRow(ctx, featureId).phase).toBe('building')
-      expect(ctx.db.select().from(runs).all()).toHaveLength(0)
-      expect(warnings).toEqual([expect.stringMatching(/no spec\.md/)])
-      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(1)
-      expect(eventsOf(ctx, featureId, 'gate.overridden')).toHaveLength(0)
-      expect(leadMessages(ctx, featureId)).toEqual([expect.stringMatching(/Go given/)])
-    })
-
-    it('refuses while the feature plans itself, naming the run, even with an override reason', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
-      const run = createSessionRow(ctx, { featureId, kind: 'chat', purpose: 'self-plan', headless: true, worktreePath: '/wt' })
-      markSessionLive(ctx, run.id, { ccSessionId: `cc-${run.id}` })
-
-      await expect(go(ctx, featureId, { overrideReason: 'ship it' })).rejects.toThrow(GateError)
-      await expect(go(ctx, featureId)).rejects.toThrow(new RegExp(`planning itself \\(run ${run.id}\\)`))
-      expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(0)
-    })
-
-    it('gates an unfinished plan: refused without a reason, crossed with one that history records', async () => {
-      const featureId = seedFeature(ctx, projectId, { lap: 2, ticketsReadyLap: 1 }).id
-
-      await expect(go(ctx, featureId)).rejects.toThrow(GateError)
-      await expect(go(ctx, featureId, { overrideReason: '   ' })).rejects.toThrow(/the plan is not finished/)
-      expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-
-      await go(ctx, featureId, { overrideReason: 'the spec is in my head, build it' })
-
-      expect(getFeatureRow(ctx, featureId).phase).toBe('building')
-      expect(eventsOf(ctx, featureId, 'gate.overridden').map((e) => e.data)).toEqual([
-        { gate: 'go', reason: 'the spec is in my head, build it' },
-      ])
-      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(1)
-    })
-
-    it('refuses a draft and a feature already past planning', async () => {
-      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', baseBranch: null })
-      const building = seedFeature(ctx, projectId, { slug: 'built', phase: 'building' })
-
-      await expect(go(ctx, draft.id)).rejects.toThrow(/backlog/)
-      await expect(go(ctx, building.id)).rejects.toThrow(/past planning/)
-    })
-  })
 
   describe('dispatching a round', () => {
     it('starts a run over exactly the named pending tickets, leaving the rest for later', async () => {
       const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b, c] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b'), ticketInput('c')])
-      await go(ctx, featureId)
       setWaiting(ctx, featureId, 'round proposed')
 
       const { runId } = await dispatchRound(ctx, featureId, [a.seq, c.seq])
@@ -182,14 +131,13 @@ describe('the feature lead runs rounds', () => {
       expect(listByFeature(ctx, featureId).find((t) => t.id === b.id)?.status).toBe('pending')
     })
 
-    it('starts a round on a feature that never had Go, and leaves the phase alone', async () => {
+    it('starts a round on a fresh feature, with nothing to approve first', async () => {
       const featureId = seedFeature(ctx, projectId).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
 
       const { runId } = await dispatchRound(ctx, featureId, [t.seq])
 
       expect(eventsOf(ctx, featureId, 'round.dispatched').map((e) => e.runId)).toEqual([runId])
-      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(0)
       await waitFor(() => getRunRow(ctx, runId).status !== 'running')
     })
 
@@ -353,7 +301,6 @@ describe('the feature lead runs rounds', () => {
     it('dispatches round after round with no human message in between', async () => {
       const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-      await go(ctx, featureId)
 
       const { runId } = await dispatchRound(ctx, featureId, [a.seq])
       await waitFor(() => getRunRow(ctx, runId).status !== 'running')
@@ -363,7 +310,6 @@ describe('the feature lead runs rounds', () => {
     it('after Stop refuses until a human message arrives, which clears the stopped mark', async () => {
       const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
       const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-      await go(ctx, featureId)
       await stopFeature(ctx, featureId)
 
       await expect(dispatchRound(ctx, featureId, [a.seq])).rejects.toThrow(
@@ -400,7 +346,6 @@ describe('the feature lead runs rounds', () => {
       })
       await done
 
-      expect(getFeatureRow(ctx, featureId).phase).toBe('building')
       const [round] = listRounds(ctx, featureId)
       expect(round).toMatchObject({
         round: 1,
@@ -442,17 +387,17 @@ describe('the feature lead runs rounds', () => {
   })
 
   describe('declaring ready', () => {
-    it('works with no Go, records each declaration and waits on the human, never moving the phase', async () => {
+    it('records each declaration and waits on the human, which their next message clears', async () => {
       const featureId = seedFeature(ctx, projectId).id
 
       declareReady(ctx, featureId, { scenario: 'Checkout' })
-      expect(getFeatureRow(ctx, featureId)).toMatchObject({ phase: 'planning', waitingReason: 'ready to test' })
+      expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active', waitingReason: 'ready to test' })
       markHumanMessage(ctx, featureId)
       expect(getFeatureRow(ctx, featureId).waitingReason).toBeNull()
       declareReady(ctx, featureId, { scenario: 'Refund' })
 
-      expect(getFeatureRow(ctx, featureId)).toMatchObject({ phase: 'planning', waitingReason: 'ready to test' })
-      expect(eventsOf(ctx, featureId, 'phase.advanced')).toHaveLength(0)
+      expect(getFeatureRow(ctx, featureId)).toMatchObject({ waitingReason: 'ready to test' })
+      expect(listReadyDeclarations(ctx, featureId)[0]).not.toHaveProperty('whatToTest')
       expect(listReadyDeclarations(ctx, featureId).map((d) => d.scenario)).toEqual(['Checkout', 'Refund'])
     })
 
@@ -586,9 +531,12 @@ describe('the rounds over tRPC', () => {
     rmTemp(home)
   })
 
-  it('go, rounds, readyDeclarations and stop', async () => {
+  it('rounds, readyDeclarations and stop — and no go', async () => {
     const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
-    await expect(caller.feature.go({ featureId })).resolves.toEqual({ warnings: [expect.stringMatching(/no spec/)] })
+    expect(caller.feature).not.toHaveProperty('go')
+    expect(caller.feature).not.toHaveProperty('goWarnings')
+    expect(caller.feature).not.toHaveProperty('burn')
+    expect(caller.feature).not.toHaveProperty('agenticReview')
     const { runId, done } = await startRun(ctx, featureId, 'ticket-burner', { ticketIds: [t.id] })
     await done
 

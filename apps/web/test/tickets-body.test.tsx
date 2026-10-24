@@ -5,9 +5,9 @@ import type { Ticket } from '@runcastle/core'
 
 const server = vi.hoisted(() => ({ edits: [] as Record<string, unknown>[], directEdits: [] as Record<string, unknown>[], cancels: [] as Record<string, unknown>[], toasts: [] as string[], sessions: [] as Record<string, unknown>[], tickets: [] as unknown[] }))
 const rows = [
-  { id: 'current', featureId: 'f1', seq: 1, lap: 2, title: 'Current pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
-  { id: 'failed', featureId: 'f1', seq: 2, lap: 2, title: 'Current failed', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'failed', commits: [] },
-  { id: 'previous', featureId: 'f1', seq: 3, lap: 1, title: 'Previous pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
+  { id: 'current', featureId: 'f1', seq: 1, title: 'Current pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
+  { id: 'failed', featureId: 'f1', seq: 2, title: 'Current failed', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'failed', commits: [] },
+  { id: 'previous', featureId: 'f1', seq: 3, title: 'Previous pending', goal: 'Goal', context: '', acceptanceCriteria: ['Works'], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] },
 ] as Ticket[]
 
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: (message: string) => server.toasts.push(message) }) }))
@@ -19,7 +19,7 @@ vi.mock('../src/trpc', () => ({ trpc: {
   }),
   feature: {
     rounds: { useQuery: () => ({ data: [] }) },
-    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1', lap: 2 }, tickets: server.tickets, sessions: server.sessions, docs: [] }, isLoading: false, error: null }) },
+    get: { useQuery: () => ({ data: { feature: { id: 'f1', projectId: 'p1' }, tickets: server.tickets, sessions: server.sessions, docs: [] }, isLoading: false, error: null }) },
     endSession: { useMutation: () => ({ isPending: false, mutate: vi.fn() }) },
   },
   settings: { get: { useQuery: () => ({ data: { fields: [] }, isLoading: false, error: null }) } },
@@ -54,7 +54,7 @@ describe('TicketsBody wire actions', () => {
   /** one-chat-layout-everywhere decision 1: every session lives on the Chat tab. */
   it('holds no terminal and no session strip, live or ended — the ledger owns the body', () => {
     for (const status of ['live', 'ended']) {
-      server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', lap: 2, status, createdAt: Date.now() }]
+      server.sessions = [{ id: 's1', featureId: 'f1', kind: 'chat', status, createdAt: Date.now() }]
       const { container, unmount } = render(<TicketsBody featureId="f1" />)
       expect(screen.queryByText(/Chat session/)).toBeNull()
       expect(screen.queryByRole('button', { name: /Show terminal|Hide terminal|End session/ })).toBeNull()

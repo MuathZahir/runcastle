@@ -4,7 +4,7 @@ import type { FeatureFull } from '../../lib/api'
 import { useEventLog } from '../../lib/events'
 import {
   deferredScope,
-  lastTestDriveLap,
+  lastTestDriveAt,
   latestRoundTickets,
   latestRun,
   outcomeDocPath,
@@ -85,12 +85,11 @@ export function ShippedBody({ full }: { full: FeatureFull }) {
         <StatusStrip
           artifact={stamped}
           outcome={stampedOutcome({ passes: rows, tickets })}
-          currentLap={feature.lap}
           landedSince={stamped?.landedSince ?? 0}
           tickets={tickets}
           runState={run?.status ?? 'no run recorded'}
           shipped
-          driveLap={lastTestDriveLap(events)}
+          drivenAt={lastTestDriveAt(events)}
           noWalkthrough={recordings.length === 0}
         />
       </div>

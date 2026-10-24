@@ -12,7 +12,7 @@ const roster: ModelEntry[] = [
   { id: 'gpt-5.6-sol', runtime: 'codex', note: 'backend' },
 ]
 const ticket = (over: Partial<Ticket> = {}): Ticket => ({
-  id: 't1', featureId: 'f1', seq: 1, lap: 2, title: 'Build it', goal: 'Goal', context: 'Context', acceptanceCriteria: ['Works'], seams: ['UI'], blockedBy: [], kind: 'implementation', status: 'pending', commits: [], ...over,
+  id: 't1', featureId: 'f1', seq: 1, title: 'Build it', goal: 'Goal', context: 'Context', acceptanceCriteria: ['Works'], seams: ['UI'], blockedBy: [], kind: 'implementation', status: 'pending', commits: [], ...over,
 }) as Ticket
 const saveStub = () => vi.fn(async () => undefined)
 
@@ -96,7 +96,7 @@ describe('TicketRow', () => {
 
 describe('TicketLedger', () => {
   it('counts only non-cancelled implementation tickets, with no lap in it', () => {
-    expect(ticketLedgerMeta([ticket({ lap: 1, status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })])).toBe('1 of 2 tickets done')
+    expect(ticketLedgerMeta([ticket({ status: 'done' }), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'cancelled' })])).toBe('1 of 2 tickets done')
   })
 
   it('leaves the review ticket out of its failed and burning figures', () => {
@@ -110,7 +110,7 @@ describe('TicketLedger', () => {
 
   it('offers one bulk model control when pending tickets exist', () => {
     const bulk = vi.fn()
-    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2, lap: 1 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
+    render(<TicketLedger tickets={[ticket(), ticket({ id: 't2', seq: 2 }), ticket({ id: 't3', seq: 3, status: 'failed' })]} roster={roster} readonly={false} docs={[]} sandbox="docker" defaultModel="opus" onDoc={vi.fn()} onEdit={saveStub()} onModel={vi.fn()} onBulkModel={bulk} onCancel={vi.fn()} onCopySha={vi.fn()} />)
     fireEvent.click(screen.getByRole('combobox', { name: 'Model for all pending' }))
     fireEvent.click(screen.getAllByRole('option', { name: /gpt-5.6-sol/ })[0]!)
     expect(bulk).toHaveBeenCalledWith('gpt-5.6-sol')

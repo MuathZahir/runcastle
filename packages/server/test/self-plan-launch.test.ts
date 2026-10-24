@@ -18,6 +18,7 @@ import {
   markSessionLive,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
+import { setWaiting } from '../src/services/lead-status'
 import { featureDocPath } from '../src/services/feature-docs'
 import { createFeatureBranch } from '../src/services/git'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
@@ -214,10 +215,10 @@ describe('a self-planning run', () => {
       return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.self_plan_ended')
     }
 
-    it('says the plan is complete when the tickets step is done for the lap', async () => {
+    it('says the plan is complete when the run ended by asking the human for the yes', async () => {
       const f = await feature('done')
       const run = await launch(f.id, 'self-plan')
-      ctx.db.update(features).set({ ticketsReadyLap: 1 }).where(eq(features.id, f.id)).run()
+      setWaiting(ctx, f.id, 'Start round 1?')
 
       handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
 
@@ -227,7 +228,7 @@ describe('a self-planning run', () => {
     })
 
     it('says planning stopped short otherwise', async () => {
-      const f = await feature('short', { lap: 2, ticketsReadyLap: 1 })
+      const f = await feature('short')
       const run = await launch(f.id, 'self-plan')
 
       handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, run)!, {}, 1)

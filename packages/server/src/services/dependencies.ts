@@ -10,7 +10,7 @@ import { getFeatureRow, rowToFeature } from './repo'
 /**
  * Merge-order dependencies (ADR-0013) — the single writer and reader of
  * `feature_dependencies`. A draft (the dependent) waits on other features in its
- * project until each one's phase is `shipped`; satisfaction is derived here at
+ * project until each one's status is `shipped`; satisfaction is derived here at
  * read time and never stored. The only thing a dependency gates is the draft's
  * Start (`startDraft`); there is no override — editing the set is the lever.
  */
@@ -20,7 +20,6 @@ function toDependencyRef(f: Feature): DependencyRef {
     featureId: f.id,
     slug: f.slug,
     title: f.title,
-    phase: f.phase,
     status: f.status,
     satisfied: isDependencySatisfied(f),
   }
@@ -214,13 +213,13 @@ export function dependentsOf(ctx: AppCtx, featureId: string): Feature[] {
 }
 
 /**
- * How a blocker reads in a refusal: its phase while live, `draft` while parked,
- * and for an archived one the only way out (there is no override).
+ * How a blocker reads in a refusal: not merged while live, `draft` while
+ * parked, and for an archived one the only way out (there is no override).
  */
 export function describeBlocker(d: DependencyRef): string {
   if (d.status === 'archived') return `\`${d.slug}\` (archived — remove it to start)`
   if (d.status === 'draft') return `\`${d.slug}\` (draft)`
-  return `\`${d.slug}\` (${d.phase})`
+  return `\`${d.slug}\` (not merged yet)`
 }
 
 function slugList(fs: Feature[]): string {

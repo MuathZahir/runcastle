@@ -205,7 +205,7 @@ async function main(): Promise<void> {
     oneLiner: 'add a HEALTH.md file to prove the pipeline works end to end',
   })
   assert(feature.slug === 'health-check-file', `slug is health-check-file (got ${feature.slug})`)
-  assert(feature.phase === 'planning', 'phase planning')
+  assert(feature.status === 'active', 'status active')
   assert(feature.branch === 'feature/health-check-file', 'branch feature/health-check-file')
   const branches = git(TARGET, 'branch', '--list', 'feature/health-check-file')
   assert(branches.includes('feature/health-check-file'), 'real feature branch created')
@@ -392,17 +392,17 @@ async function main(): Promise<void> {
   record('feature.testDrive', 'start switched to feature branch, stop restored main')
 
   // (9) merge ------------------------------------------------------------------
-  banner('STEP 9 — tRPC feature.merge → phase shipped + HEALTH.md on main')
+  banner('STEP 9 — tRPC feature.merge → status shipped + HEALTH.md on main')
   const merge = await trpc.feature.merge({ featureId })
   assert(merge.ok === true, `merge ok (conflict=${merge.conflict})`)
   assert(!merge.conflict, 'no conflict')
   const shipped = await trpc.feature.get({ id: featureId })
-  assert(shipped.feature.phase === 'shipped', `feature phase shipped (got ${shipped.feature.phase})`)
+  assert(shipped.feature.status === 'shipped', `feature status shipped (got ${shipped.feature.status})`)
   assert(git(TARGET, 'rev-parse', '--abbrev-ref', 'HEAD') === 'main', 'still on main after merge')
   const healthOnMain = git(TARGET, 'show', 'main:HEALTH.md')
   assert(/\bok\b/.test(healthOnMain) && /\bchecked\b/.test(healthOnMain), 'HEALTH.md on main contains ok + checked')
   assert(existsSync(join(TARGET, 'HEALTH.md')), 'HEALTH.md present in main working tree after merge')
-  record('feature.merge', `phase shipped; HEALTH.md on main = ${JSON.stringify(healthOnMain)}`)
+  record('feature.merge', `status shipped; HEALTH.md on main = ${JSON.stringify(healthOnMain)}`)
 }
 
 // --- summary table ------------------------------------------------------------

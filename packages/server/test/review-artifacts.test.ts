@@ -104,7 +104,6 @@ describe('review artifacts over HTTP', () => {
         {
           ticketId: reviewId,
           seq: 2,
-          lap: 1,
           passKind: 'review',
           reviewMode: 'drive',
           reviewVerdict: 'unverified',
@@ -118,7 +117,7 @@ describe('review artifacts over HTTP', () => {
         },
         // Nothing was recorded for this one — a normal state, not an error.
         {
-          ticketId: secondReviewId, seq: 3, lap: 1, passKind: 'review',
+          ticketId: secondReviewId, seq: 3, passKind: 'review',
           reviewMode: null, reviewVerdict: null, reviewVerdictReason: null,
           reviewedCommit: null, completedAt: null, landedSince: 0,
           hasVideo: false, videoUrl: null, gateRun: null,

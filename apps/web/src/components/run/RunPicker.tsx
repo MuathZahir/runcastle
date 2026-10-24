@@ -10,7 +10,6 @@ export interface RunOption {
   status: RunStatus
   startedAt: number
   endedAt?: number
-  lap: number
   /** The round this run is (decision 16), when it is one. */
   round?: number
   ticketIds: string[]

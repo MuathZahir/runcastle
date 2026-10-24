@@ -122,7 +122,6 @@ describe('the lead’s MCP tools', () => {
 
   it('dispatch_round starts a round over the named tickets with no Go, which the context then reports', async () => {
     const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
 
     const out = await call('dispatch_round', { seqs: [a.seq] })
     expect(out.isError).toBe(false)
@@ -148,7 +147,7 @@ describe('the lead’s MCP tools', () => {
     const out = await call('declare_ready', { scenario: 'Checkout' })
     expect(out.isError).toBe(false)
     expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'ready to test', warnings: [] })
-    expect(getFeatureRow(ctx, featureId)).toMatchObject({ phase: 'planning', waitingReason: 'ready to test' })
+    expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active', waitingReason: 'ready to test' })
     expect(featureContext(ctx, { featureId }).latestReady).toMatchObject({ scenario: 'Checkout' })
   })
 

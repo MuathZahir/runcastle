@@ -57,7 +57,6 @@ const { WorkList, partitionWork } = await import('../src/components/review/WorkL
 const RECORDING: ReviewArtifacts = {
   ticketId: 'tkt_1',
   seq: 4,
-  lap: 2,
   passKind: 'review',
   reviewMode: null,
   reviewVerdict: null,
@@ -72,7 +71,6 @@ const RECORDING: ReviewArtifacts = {
 const NOTE: TestNote = {
   id: 'note_1',
   featureId: 'ftr_1',
-  lap: 2,
   text: 'the run chip goes grey while burning',
   status: 'open',
   author: 'human',
@@ -85,7 +83,6 @@ const NOTE: TestNote = {
 const DEFECT = {
   id: 'find_1',
   featureId: 'ftr_1',
-  lap: 2,
   reviewTicketId: 'tkt_1',
   kind: 'defect',
   severity: 'high',
@@ -133,8 +130,7 @@ function bands(readonly: boolean): ReactNode[] {
     }),
     createElement(StatusStrip, {
       key: 'strip',
-      artifact: { lap: 2 },
-      currentLap: 2,
+      artifact: { ticketId: 't1' },
       landedSince: 0,
       tickets: [],
       runState: 'succeeded',

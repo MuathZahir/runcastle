@@ -8,7 +8,6 @@ import { endSession } from '../src/pty/end-session'
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
-import { go } from '../src/services/features'
 import {
   deliverToLead,
   leadDeliveryFor,
@@ -56,7 +55,7 @@ afterEach(() => {
 })
 
 function feature(overrides: Partial<Feature> = {}): Feature {
-  return seedFeature(ctx, projectId, { slug: `lead-${++n}`, phase: 'building', ...overrides })
+  return seedFeature(ctx, projectId, { slug: `lead-${++n}`, ...overrides })
 }
 
 /** A chat session on the feature, live unless said otherwise. */
@@ -170,29 +169,6 @@ describe('deliverToLead', () => {
     expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toBeGreaterThan(0)
     expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(true)
     takeOrchestratorLines(leadMessageKey(f.id))
-  })
-})
-
-describe('Go, to a chat that planned live', () => {
-  // Go's wake names the feature skill, spelled for the chat's runtime.
-  it('tells a live Claude Code chat to carry on by /runcastle:feature', async () => {
-    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
-    chat(f.id)
-
-    await go(ctx, f.id)
-
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([
-      expect.stringMatching(/^\[runcastle\] Go given.*Carry on by \/runcastle:feature:/),
-    ])
-  })
-
-  it('spells it $feature for a live Codex chat', async () => {
-    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
-    chat(f.id, { runtime: 'codex', live: false })
-
-    await go(ctx, f.id)
-
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([expect.stringMatching(/Carry on by \$feature:/)])
   })
 })
 

@@ -2,7 +2,6 @@ import { copyFileSync, mkdtempSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { nextPhase } from '@runcastle/core'
 import { eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/sql-js'
 import initSqlJs from 'sql.js'
@@ -18,8 +17,8 @@ import type { Db } from '../src/db/types'
  * `size = 'collapsed'` must survive the drop and load cleanly.
  *
  * The row is inserted at `ideation`, so running the migrations to HEAD also
- * carries it through the four-state collapse — the oldest row shape this repo
- * has ever written, arriving at `planning` with a working `nextPhase`.
+ * carries it through every later reshaping of the row, down to the phase
+ * column's drop — the oldest row shape this repo has ever written, still loading.
  */
 
 const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
@@ -39,7 +38,7 @@ async function freshDb(): Promise<Db> {
 }
 
 describe('feature size column drop (0008)', () => {
-  it('a legacy size=collapsed row loads, and lands at planning after the collapse', async () => {
+  it('a legacy size=collapsed row loads at head', async () => {
     const db = await freshDb()
 
     // Bring the schema up to just before 0008 — the `size` column still exists.
@@ -62,9 +61,6 @@ describe('feature size column drop (0008)', () => {
 
     const row = db.select().from(features).where(eq(features.id, 'feat_1')).get()
     expect(row).toBeTruthy()
-    const feature = rowToFeature(row!)
-    expect(feature.phase).toBe('planning')
-    // No collapsed skip: planning leads to building for every feature.
-    expect(nextPhase(feature)).toBe('building')
+    expect(rowToFeature(row!)).toMatchObject({ slug: 'legacy', status: 'active' })
   })
 })
