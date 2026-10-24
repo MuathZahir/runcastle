@@ -47,7 +47,7 @@ import {
   describeBlocker,
   waitingOn,
 } from './dependencies'
-import { emit, emitProject, latestEventTs, latestTsByFeature } from './events'
+import { emit, emitProject, latestEventTs, latestTsByFeature, upNextProblems } from './events'
 import { retireArchivedWorktree } from './feature-worktrees'
 import * as git from './git'
 import { listDocs, previewSummary, scaffoldDocs } from './knowledge'
@@ -131,6 +131,8 @@ export interface FeatureListItem extends Feature {
   dependsOn: DependencyRef[]
   /** The drafts this feature is still holding up — empty once it has merged. */
   blocks: BlockRef[]
+  /** Why an up-next draft did not start by itself (newest since the mark was set), else null. */
+  upNextProblem: string | null
 }
 
 export interface FeatureFull {
@@ -143,6 +145,8 @@ export interface FeatureFull {
   preview: PreviewSummary | null
   dependsOn: DependencyRef[]
   blocks: BlockRef[]
+  /** See {@link FeatureListItem.upNextProblem}. */
+  upNextProblem: string | null
   /** The talk worktree holds uncommitted work outside the docs; Go is refused until it is committed. */
   uncommittedDesign: boolean
 }
@@ -289,7 +293,7 @@ export function requireNotDraft(feature: Feature): void {
 export async function startDraft(
   ctx: AppCtx,
   featureId: string,
-  opts: { baseBranch?: string } = {},
+  opts: { baseBranch?: string; autoStartedBy?: string } = {},
 ): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   if (feature.status !== 'draft') {
@@ -308,17 +312,24 @@ export async function startDraft(
 
   ctx.db
     .update(features)
-    .set({ status: 'active', baseBranch })
+    .set({ status: 'active', baseBranch, upNext: false })
     .where(eq(features.id, featureId))
     .run()
-  const started: Feature = { ...feature, status: 'active', baseBranch }
+  const started: Feature = { ...feature, status: 'active', baseBranch, upNext: false }
 
   emit(ctx, featureId, {
     type: 'feature.started',
-    message: branchReady
-      ? `feature ${feature.slug} started (${feature.branch} ← ${baseBranch})`
-      : `feature ${feature.slug} started (branch pending)`,
-    data: { branch: feature.branch, baseBranch, branchReady },
+    message: opts.autoStartedBy
+      ? `feature ${feature.slug} started by itself: \`${opts.autoStartedBy}\` shipped (${feature.branch} ← ${baseBranch})`
+      : branchReady
+        ? `feature ${feature.slug} started (${feature.branch} ← ${baseBranch})`
+        : `feature ${feature.slug} started (branch pending)`,
+    data: {
+      branch: feature.branch,
+      baseBranch,
+      branchReady,
+      ...(opts.autoStartedBy ? { autoStartedBy: opts.autoStartedBy } : {}),
+    },
   })
 
   // The brief parked in the column becomes the file, through the same verbatim
@@ -692,6 +703,9 @@ export function getFeatureFull(ctx: AppCtx, id: string): Omit<FeatureFull, 'unco
     preview: previewSummary(ctx, feature),
     dependsOn: dependsOnOf(ctx, id),
     blocks: blocksOf(ctx, id),
+    upNextProblem: feature.upNext && feature.status === 'draft'
+      ? (upNextProblems(ctx, feature.projectId).get(id) ?? null)
+      : null,
   }
 }
 
@@ -706,6 +720,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
   const lastActivity = latestTsByFeature(ctx, projectId)
   const projectFeatures = rows.map(rowToFeature)
   const deps = dependencyMaps(ctx, projectId, projectFeatures)
+  const problems = upNextProblems(ctx, projectId)
 
   return projectFeatures.map((feature) => {
     const tickets = listByFeature(ctx, feature.id)
@@ -726,6 +741,7 @@ export function list(ctx: AppCtx, projectId: string): FeatureListItem[] {
       lastActivityAt: lastActivity.get(feature.id) ?? feature.createdAt,
       dependsOn: deps.dependsOn.get(feature.id) ?? [],
       blocks: deps.blocks.get(feature.id) ?? [],
+      upNextProblem: feature.upNext && feature.status === 'draft' ? (problems.get(feature.id) ?? null) : null,
     }
   })
 }

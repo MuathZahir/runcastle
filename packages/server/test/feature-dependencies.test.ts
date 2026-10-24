@@ -185,7 +185,7 @@ describe('feature dependencies', () => {
       )
       expect(waitingOn(ctx, waiter.id)).toHaveLength(2)
       expect(blocksOf(ctx, building.id)).toEqual([
-        { featureId: waiter.id, slug: 'waiter', title: waiter.title },
+        { featureId: waiter.id, slug: 'waiter', title: waiter.title, upNext: false },
       ])
 
       // The dependency ships then gets archived: still satisfied, blocks nothing.
@@ -273,7 +273,7 @@ describe('feature dependencies', () => {
     const b = draft('b')
     const refs = await caller.feature.setDependencies({ featureId: b.id, dependsOn: [a.id] })
     expect(refs).toEqual([
-      { featureId: a.id, slug: 'a', title: a.title, phase: 'building', status: 'active', satisfied: false },
+      { featureId: a.id, slug: 'a', title: a.title, phase: 'building', status: 'active', satisfied: false, upNext: false },
     ])
     await expect(
       caller.feature.setDependencies({ featureId: b.id, dependsOn: [b.id] }),

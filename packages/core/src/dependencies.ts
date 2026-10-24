@@ -13,12 +13,50 @@ export type DependencyRef = {
   phase: Phase
   status: FeatureStatus
   satisfied: boolean
+  /** The dependency's own up-next mark. */
+  upNext: boolean
 }
 
 /** One dependent a feature is still holding up (it is still a draft). */
-export type BlockRef = { featureId: string; slug: string; title: string }
+export type BlockRef = { featureId: string; slug: string; title: string; upNext: boolean }
 
 export type DependencyEdge = { dependentId: string; dependencyId: string }
+
+/** Timeline event types of the up-next mark (`waiting-is-not-backlog`). */
+export const UPNEXT_CHANGED = 'feature.upnext.changed'
+export const AUTOSTART_SKIPPED = 'feature.autostart.skipped'
+export const AUTOSTART_FAILED = 'feature.autostart.failed'
+/** On the shipped dependency's timeline: it started a feature that was waiting. */
+export const UPNEXT_STARTED = 'feature.upnext.started'
+
+/** Where an unstarted feature sits, derived from its mark and dependencies. */
+export type UnstartedState = 'upNext' | 'stuck' | 'blocked' | 'readyToStart' | 'backlog'
+
+/** Classify a feature that has not started; null once it has. */
+export function unstartedState(
+  f: { status: FeatureStatus; upNext: boolean },
+  deps: DependencyRef[],
+): UnstartedState | null {
+  if (f.status !== 'draft') return null
+  const open = deps.filter((d) => !d.satisfied)
+  if (f.upNext) {
+    return open.length > 0 && open.every((d) => d.status !== 'archived') ? 'upNext' : 'stuck'
+  }
+  if (open.length > 0) return 'blocked'
+  return deps.length > 0 ? 'readyToStart' : 'backlog'
+}
+
+/** Why a marked feature is `stuck`, from its dependencies alone (UI text). */
+export function stuckReason(deps: DependencyRef[]): string {
+  const archived = deps.find((d) => !d.satisfied && d.status === 'archived')
+  if (archived) return `${archived.slug} was archived — remove it or move this to the backlog`
+  return 'nothing left to wait on — start it or move it to the backlog'
+}
+
+/** Unsatisfied dependencies that are in the backlog: nothing will move them by itself. */
+export function backlogDependencies(deps: DependencyRef[]): DependencyRef[] {
+  return deps.filter((d) => !d.satisfied && d.status === 'draft' && !d.upNext)
+}
 
 /**
  * A dependency is satisfied once it has merged — `phase === 'shipped'`. Phase,

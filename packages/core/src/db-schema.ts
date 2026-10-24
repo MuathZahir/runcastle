@@ -179,6 +179,13 @@ export const features = sqliteTable('features', {
    */
   orchestrated: integer('orchestrated', { mode: 'boolean' }).notNull().default(false),
   /**
+   * The up-next mark (`waiting-is-not-backlog` decision 1): "start by itself when
+   * what I wait on ships". Meaningful only while `status = 'draft'`; starting
+   * clears it. Not `waitingReason`, which is the lead waiting on the human.
+   * Every feature created before the column stays in the backlog (decision 9).
+   */
+  upNext: integer('up_next', { mode: 'boolean' }).notNull().default(false),
+  /**
    * When the human pressed Stop (`the-feature-lead-runs-rounds` decision 23);
    * null when not stopped. Dispatch is refused while it is set and no human
    * message has arrived since; that message clears it.

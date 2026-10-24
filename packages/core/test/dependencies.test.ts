@@ -1,7 +1,78 @@
 import { describe, expect, it } from 'vitest'
-import { findDependencyCycle, isDependencySatisfied } from '../src/dependencies'
+import {
+  backlogDependencies,
+  findDependencyCycle,
+  isDependencySatisfied,
+  stuckReason,
+  unstartedState,
+  type DependencyRef,
+} from '../src/dependencies'
 
 const edge = (dependentId: string, dependencyId: string) => ({ dependentId, dependencyId })
+
+const dep = (over: Partial<DependencyRef> = {}): DependencyRef => ({
+  featureId: 'f1',
+  slug: 'x',
+  title: 'X',
+  phase: 'planning',
+  status: 'active',
+  satisfied: false,
+  upNext: false,
+  ...over,
+})
+const shipped = dep({ phase: 'shipped', satisfied: true })
+
+describe('unstartedState', () => {
+  const draft = { status: 'draft', upNext: false } as const
+  const marked = { status: 'draft', upNext: true } as const
+
+  it('is null for a started feature', () => {
+    expect(unstartedState({ status: 'active', upNext: true }, [dep()])).toBeNull()
+  })
+  it('marked with an open dependency is upNext', () => {
+    expect(unstartedState(marked, [dep(), shipped])).toBe('upNext')
+  })
+  it('marked with an archived open dependency is stuck', () => {
+    expect(unstartedState(marked, [dep(), dep({ status: 'archived' })])).toBe('stuck')
+  })
+  it('marked with nothing open is stuck', () => {
+    expect(unstartedState(marked, [shipped])).toBe('stuck')
+    expect(unstartedState(marked, [])).toBe('stuck')
+  })
+  it('unmarked with an open dependency is blocked', () => {
+    expect(unstartedState(draft, [dep()])).toBe('blocked')
+  })
+  it('unmarked with every dependency shipped is readyToStart', () => {
+    expect(unstartedState(draft, [shipped])).toBe('readyToStart')
+  })
+  it('unmarked with no dependencies is backlog', () => {
+    expect(unstartedState(draft, [])).toBe('backlog')
+  })
+})
+
+describe('stuckReason', () => {
+  it('names an archived open dependency', () => {
+    expect(stuckReason([dep({ slug: 'old', status: 'archived' })])).toBe(
+      'old was archived — remove it or move this to the backlog',
+    )
+  })
+  it('says nothing is left to wait on otherwise', () => {
+    expect(stuckReason([shipped])).toBe('nothing left to wait on — start it or move it to the backlog')
+  })
+})
+
+describe('backlogDependencies', () => {
+  it('keeps only unshipped drafts without the mark', () => {
+    const parked = dep({ slug: 'p', status: 'draft' })
+    const list = [
+      parked,
+      dep({ slug: 'marked', status: 'draft', upNext: true }),
+      dep({ slug: 'live' }),
+      dep({ slug: 'done', status: 'draft', satisfied: true, phase: 'shipped' }),
+    ]
+    expect(backlogDependencies(list)).toEqual([parked])
+  })
+})
 
 describe('isDependencySatisfied', () => {
   it('is satisfied once the dependency has shipped', () => {

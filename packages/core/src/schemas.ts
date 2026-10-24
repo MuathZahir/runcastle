@@ -633,6 +633,8 @@ export const Feature = z.object({
   createdAt: z.number(),
   /** The orchestrator owns this feature — see the db schema. */
   orchestrated: z.boolean().default(false),
+  /** The up-next mark — see the db schema. Only meaningful on a draft. */
+  upNext: z.boolean().default(false),
   /**
    * When the human pressed Stop (ms); null when the feature is not stopped. No
    * round dispatches while it is set, and the next human message clears it.

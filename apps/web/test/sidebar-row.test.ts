@@ -28,6 +28,7 @@ const blocker = (slug: string) => ({
   title: slug,
   phase: 'building' as const,
   status: 'active' as const,
+  upNext: false,
   satisfied: false,
 })
 
@@ -66,7 +67,14 @@ describe('featureStateWords', () => {
 
   it('puts a parked idea in the backlog, or says what it waits on', () => {
     expect(featureStateWords(listItem({ status: 'draft' }))).toBe('In the backlog')
-    expect(featureStateWords(listItem({ status: 'draft', dependsOn: [blocker('auth')] }))).toBe('Waits on auth')
+    expect(featureStateWords(listItem({ status: 'draft', dependsOn: [blocker('auth')] }))).toBe('Blocked by auth')
+  })
+
+  it('says what an Up next feature starts after, and when one cannot start by itself', () => {
+    expect(featureStateWords(listItem({ status: 'draft', upNext: true, dependsOn: [blocker('auth')] }))).toBe(
+      'After auth',
+    )
+    expect(featureStateWords(listItem({ status: 'draft', upNext: true }))).toBe("Won't start by itself")
   })
 
   it('says shipped and archived plainly', () => {
@@ -99,6 +107,12 @@ describe('the sidebar feature row', () => {
 
   it('wears the draft ring on a parked idea', () => {
     expect(row(listItem({ status: 'draft' }))).toContain('data-phase="draft"')
+  })
+
+  it('says on hover that an Up next feature starts by itself', () => {
+    expect(row(listItem({ status: 'draft', upNext: true, dependsOn: [blocker('auth')] }))).toContain(
+      'title="Flow redesign: project shell — starts by itself when auth ships"',
+    )
   })
 
   it('dots amber when it waits on you, red with red words when a run failed, grey when stopped', () => {
