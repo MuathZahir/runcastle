@@ -23,7 +23,6 @@ import mcpApp, {
   resolveFeatureReader,
   resolveSession,
   toolCancelTicket,
-  toolCompletePhase,
   toolEmitTickets,
   toolGetFeatureContext,
   toolGetTicket,
@@ -603,24 +602,6 @@ describe('mcp tools', () => {
     expect(ev?.message).toBe('chose sqlite')
   })
 
-  it.each(['ideation', 'spec'] as const)('complete_phase(%s) records progress without moving state', (phase) => {
-    // Nothing on disk in this fixture, so the derived hint points at the first
-    // artifact still missing.
-    expect(toolCompletePhase(ctx, session, { phase })).toEqual({
-      ok: true,
-      nextPhase: 'planning',
-      nextStep: 'ideation',
-    })
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-  })
-
-  it('complete_phase(tickets) remains wire-compatible and waits for Burn', () => {
-    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
-    expect(out.ok).toBe(true)
-    expect(out.nextPhase).toBe('planning')
-    expect(out.waitingOn).toBe('human burn')
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-  })
 })
 
 /**
@@ -774,11 +755,19 @@ describe('mcp run-scoped feature reads', () => {
  * DEFINITION is re-sent on every turn, so the same argument does not carry.
  */
 describe('mcp tool registration by audience', () => {
+  it('registers neither complete_phase nor go_feature for any session kind', () => {
+    for (const audience of [...SessionKind.options, 'run' as const, undefined]) {
+      const tools = toolsForAudience(audience)
+      expect(tools, String(audience)).not.toContain('complete_phase')
+      expect(tools, String(audience)).not.toContain('go_feature')
+    }
+  })
+
   it('offers each kind only the tools its own runtime gates can let through', () => {
     const chat = toolsForAudience('chat')
     expect(chat).toContain('get_feature_context')
     expect(chat).toContain('list_tickets')
-    for (const write of ['emit_tickets', 'complete_phase', 'update_ticket', 'cancel_ticket']) {
+    for (const write of ['emit_tickets', 'update_ticket', 'cancel_ticket']) {
       expect(chat, write).toContain(write)
     }
 

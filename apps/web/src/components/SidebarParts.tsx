@@ -3,7 +3,15 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { cx, IconButton, StatusDot, Tooltip } from '../ui'
 import type { StatusTone } from '../ui'
 import type { FeatureListItem } from '../lib/api'
-import { needsMe, rowChip, ticketProgress, triageOf } from '../lib/feature-ui'
+import {
+  needsMe,
+  progressState,
+  READY_TO_TEST,
+  rowChip,
+  ticketProgress,
+  ticketShare,
+  triageOf,
+} from '../lib/feature-ui'
 import { relTime } from '../lib/format'
 import type { NotifyState } from '../lib/notifications'
 import {
@@ -20,9 +28,8 @@ import {
   IconShield,
   IconStop,
   IconSun,
-  PhaseIcon,
+  ProgressIcon,
 } from '../icons'
-import type { PhaseIconPhase } from '../icons'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
 
 /**
@@ -47,24 +54,26 @@ const HOVER = 'hover:bg-[color-mix(in_oklab,var(--color-text)_3.5%,transparent)]
 export const SIDEBAR_CARD =
   'rounded-lg bg-[color-mix(in_oklab,var(--color-text)_2.5%,transparent)] ring-1 ring-inset ring-border-subtle'
 
-/** The glyph a row wears: its phase, or the draft ring for a parked idea. */
-function rowPhase(f: FeatureListItem): PhaseIconPhase {
-  return f.status === 'draft' ? 'draft' : f.phase
+/** The glyph a row wears: the feature's landed share of tickets (decision 9). */
+export function FeatureProgressIcon({ f, size, label }: { f: FeatureListItem; size?: number; label?: string }) {
+  return <ProgressIcon state={progressState(f)} progress={ticketShare(f)} size={size} label={label} />
+}
+
+/** A waiting reason as row words: its first letter capitalised ("Stopped"). */
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 /**
  * A row's second line: where the feature is, in words. A started feature with
- * no agent at work and nothing asked of you has stopped — it sits with what
- * needs you, because someone has to start it again.
+ * no agent at work and nothing asked of you is simply in progress.
  */
 export function featureStateWords(f: FeatureListItem): string {
   const lane = triageOf(f)
   const progress = ticketProgress(f)
   if (lane === 'needsYou') {
     const nm = needsMe(f)
-    if (nm?.kind === 'attention') return 'Run failed'
-    if (nm?.kind === 'ship') return 'Ready to test'
-    if (nm?.kind === 'burn') return 'Tickets ready'
+    if (nm?.kind === 'waiting') return nm.label === READY_TO_TEST ? 'Ready to test' : capitalise(nm.label)
     return 'Waiting on you'
   }
   if (lane === 'agentWorking') return f.activeRun ? `Building${progress ? ` · ${progress}` : ''}` : 'Agent working'
@@ -72,15 +81,12 @@ export function featureStateWords(f: FeatureListItem): string {
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Shipped'
   if (f.status === 'archived') return 'Archived'
-  return progress ? `Stopped · ${progress}` : 'Stopped'
+  return 'In progress'
 }
 
-/** The one trailing dot: amber waiting on you, red a failure, grey stopped; none otherwise. */
+/** The one trailing dot: amber when it needs you; none otherwise. */
 function rowDot(f: FeatureListItem): StatusTone | undefined {
-  const lane = triageOf(f)
-  if (lane === 'needsYou') return needsMe(f)?.kind === 'attention' ? 'danger' : 'warning'
-  if (lane === 'inProgress') return 'neutral'
-  return undefined
+  return triageOf(f) === 'needsYou' ? 'warning' : undefined
 }
 
 /**
@@ -174,8 +180,8 @@ function TwoLineRow({
 }
 
 /**
- * One feature: its title, then its phase glyph, where it is in words and how
- * long ago it last moved. Working rows' words shimmer; a failed run's go red.
+ * One feature: its title, then its progress glyph, where it is in words and how
+ * long ago it last moved. Working rows' words shimmer.
  */
 export function SidebarFeatureRow({
   f,
@@ -197,12 +203,9 @@ export function SidebarFeatureRow({
     <TwoLineRow
       title={f.title}
       tooltip={nm ? `${f.title} — ${nm.label}` : f.title}
-      glyph={<PhaseIcon phase={rowPhase(f)} size={12} />}
+      glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
-      wordsClassName={cx(
-        lane === 'agentWorking' && 'text-shimmer',
-        nm && (nm.kind === 'attention' ? 'text-danger' : 'text-text-secondary'),
-      )}
+      wordsClassName={cx(lane === 'agentWorking' && 'text-shimmer', nm && 'text-text-secondary')}
       aside={relTime(f.lastActivityAt)}
       dot={rowDot(f)}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}

@@ -3,16 +3,14 @@ import type { AppCtx } from '../db/types'
 import { hasPlanningDoc } from './planning'
 import { getFeatureRow } from './repo'
 import { undispositionedDefects } from './review-findings'
-import { pendingTickets } from './tickets'
 
 /**
- * What the human reads before clicking Burn — and what the ticket-writing
- * session hears from `complete_phase("tickets")` while it is still alive to act
- * on it (decisions §5).
+ * What the human reads before clicking Burn (decisions §5). A batch without a
+ * review ticket is not among them: review is the agent's call.
  *
- * Every line here was a REFUSAL before the four-state collapse: the G3
- * review-ticket rule, the un-dispositioned earlier-lap defects rule, and the G2
- * spec file check. They are warnings now, computed server-side so the Burn
+ * Every line here was a REFUSAL before the four-state collapse: the
+ * un-dispositioned earlier-lap defects rule, and the G2 spec file check. They
+ * are warnings now, computed server-side so the Burn
  * dialog never re-derives policy, and the button behind them stays enabled —
  * the friction is reading, never a locked door. The only two things that still
  * refuse a burn are physics: a run already burning this feature, and git safety.
@@ -24,16 +22,6 @@ import { pendingTickets } from './tickets'
 export function burnWarnings(ctx: AppCtx, featureId: string): string[] {
   const feature = getFeatureRow(ctx, featureId)
   const warnings: string[] = []
-
-  // The one-review-ticket rule (CONTEXT.md decision #8), as a warning. A batch
-  // that ships without one reaches review with nobody having looked at it —
-  // silently, which is what makes it worth saying out loud.
-  if (!pendingTickets(ctx, featureId).some((ticket) => ticket.kind === 'review')) {
-    warnings.push(
-      'no review ticket in this batch (kind: "review") — without one, the work reaches the ' +
-        'human with nobody having reviewed it.',
-    )
-  }
 
   // The lap boundary's own seatbelt, downgraded from the refusal it was: lap
   // N+1 fixing a defect without telling the finding row is how the human ends

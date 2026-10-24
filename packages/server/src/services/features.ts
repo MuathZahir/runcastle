@@ -9,7 +9,6 @@ import type {
   SessionRow,
   SessionStatus,
   Ticket,
-  TicketInput,
 } from '@runcastle/core'
 import {
   DEFAULT_RUNTIME,
@@ -18,9 +17,6 @@ import {
   PLAN_UNFINISHED,
   UNCOMMITTED_DESIGN,
   planFinished,
-  shapeCheckedTickets,
-  ticketShapeWarningLine,
-  ticketShapeWarnings,
   ticketTally,
 } from '@runcastle/core'
 import type { TicketTally } from '@runcastle/core'
@@ -328,244 +324,6 @@ export async function startDraft(
   return started
 }
 
-export interface QuickChangeInput {
-  projectId: string
-  /** Card title — the rail entry, the docs dir's slug. */
-  title: string
-  /**
-   * One sentence per ticket, in the order the human typed them (decisions.md
-   * #4 — real quick work is often several small tickets, not one blob). Each
-   * becomes a ticket whose goal AND sole acceptance criterion are that prose.
-   * Blank entries are dropped; at least one has to survive.
-   */
-  tickets: string[]
-  /** Same semantics as `CreateFeatureInput.baseBranch`. */
-  baseBranch?: string
-  /**
-   * Same semantics as `CreateFeatureInput.draft`: park instead of start. The
-   * tickets are still stored — they are DB rows, needing no branch — and the
-   * brief parks in the column, so Start lands the same ready-to-Burn feature a
-   * started quick change is born as.
-   */
-  draft?: boolean
-}
-
-/** How wide a derived ticket title may run before it is cut. */
-const TICKET_TITLE_MAX = 72
-
-/**
- * A quick-change ticket's title, derived from its own prose. The ledger lists
- * tickets by title, so N of them all wearing the feature's title would say
- * nothing about which is which. The first line, cut at a word boundary when it
- * runs long — the whole prose survives verbatim as the goal and the criterion.
- */
-function quickTicketTitle(prose: string): string {
-  const line = prose.split('\n')[0].trim()
-  if (line.length <= TICKET_TITLE_MAX) return line
-  const cut = line.slice(0, TICKET_TITLE_MAX)
-  const space = cut.lastIndexOf(' ')
-  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`
-}
-
-/**
- * `brief.md` for a quick change — the prose verbatim, which is what the burner
- * reads as `{{FEATURE_BRIEF}}`. Several tickets get a heading each, numbered to
- * match the seqs they are stored under; a lone ticket stays one paragraph.
- */
-function quickBrief(title: string, proses: string[]): string {
-  const body =
-    proses.length === 1
-      ? proses[0]
-      : proses.map((p, i) => `## Ticket ${i + 1}\n\n${p}`).join('\n\n')
-  return `# ${title}\n\n${body}\n`
-}
-
-/**
- * The review ticket a quick-change batch closes with (decisions.md #9 — "a
- * review always runs", every lap, unconditionally).
- *
- * The tickets skill states that mandate for the sessions that emit batches, but
- * the quick door has no emitting agent to obey it: nobody writes tickets here,
- * the human types sentences and this service turns them into rows. So on this
- * path the invariant has to be code, or it is not enforced at all — which is
- * exactly the hole a quick change fell through, reaching review having never
- * been reviewed.
- *
- * `blockedBy` names every typed ticket by its 1-based batch position — the
- * space `storeTickets` resolves — so it burns last, against the integrated
- * branch. Its prose says what the skill says a hand-written one must: the review
- * runs in exactly one mode, the drive is what varies, and the digest is the
- * lap's summary.
- */
-function quickReviewTicket(proses: string[]): TicketInput {
-  return {
-    title: 'Review the integrated change',
-    goal:
-      'Review the integrated feature branch and report what you find, in exactly one mode: ' +
-      'drive the app in a browser against the criteria below when this change touched something ' +
-      'a human can operate and a drive is available, and otherwise run the verify gates and ' +
-      "code-review the branch's diff against its base. Write one note per finding; finding bugs " +
-      'is a successful review, and the notes are the deliverable.',
-    context:
-      'This feature came through the quick-change door, so there was no grill session and there ' +
-      'is no spec.md or decisions.md to review it against: the whole statement of intent is the ' +
-      `${proses.length === 1 ? 'sentence' : `${proses.length} sentences`} the human typed, which ` +
-      'are the other tickets in this batch and are reproduced verbatim in brief.md. Nobody ' +
-      'prescribed a walkthrough for you either — judge from the diff whether there is anything ' +
-      'drivable, and if there is not, take the gates-and-diff mode. Your digest is ' +
-      "the lap's prose summary of what landed, and its first line names the mode you ran; the " +
-      'review page leads with it.',
-    acceptanceCriteria: [
-      'Reviewed in one mode — either walked in a browser, or put through the verify gates and ' +
-        "code-reviewed on both axes (the repo's own standards, and the change against what was " +
-        'asked for).',
-      ...proses.map((prose) => `Landed and does what it says: ${prose}`),
-    ],
-    // Nothing to name: the review agent edits no code, and nobody read the
-    // codebase on this path to say which surfaces it touches.
-    seams: [],
-    blockedBy: proses.map((_, i) => i + 1),
-    kind: 'review',
-  }
-}
-
-/**
- * The quick-change door (decision 21) — work too small to deserve a grill.
- *
- * An ORDINARY feature, born at `planning` with its tickets already emitted,
- * carrying one ticket per sentence the human typed — each ticket's goal, and
- * its sole acceptance criterion, is that sentence — plus the review ticket
- * every batch closes with (see {@link quickReviewTicket}), blocked by all of
- * them. From here it is the lifecycle's far side: review the cards, click Burn,
- * test-drive, click Merge — zero terminals.
- *
- * Nothing on the row marks it (ADR-0010 §7 forbids pipeline-shape settings), so
- * a quick change is indistinguishable from any other planning feature whose
- * tickets are ready to burn — the planning sub-steps it skipped are derived
- * from artifacts, never stored, so skipping them costs it nothing.
- *
- * No `spec.md` and no `decisions.md` are written — there was no conversation to
- * record. `brief.md` carries the prose verbatim, which is what the burner reads
- * as `{{FEATURE_BRIEF}}`.
- */
-export async function quickChange(ctx: AppCtx, input: QuickChangeInput): Promise<Feature> {
-  const project = requireProjectById(ctx, input.projectId)
-  const title = input.title.trim()
-  // A blank row is one the human added and left empty, not a ticket — the
-  // overlay's list can stay loose because the rule lives here.
-  const proses = input.tickets.map((t) => t.trim()).filter((t) => t !== '')
-  if (!title) throw new InvalidInputError('a quick change needs a title')
-  if (proses.length === 0)
-    throw new InvalidInputError('a quick change needs a sentence describing the change')
-
-  const slug = uniqueSlug(ctx, project.id, title)
-  const branch = `feature/${slug}`
-  const brief = quickBrief(title, proses)
-  // A draft's brief is parked in the column below; Start scaffolds it.
-  const { cut, baseBranch, status } = await parkOrCut(ctx, project, slug, input)
-
-  const inserted = ctx.db
-    .insert(features)
-    .values({
-      id: newId('feat'),
-      projectId: project.id,
-      slug,
-      title,
-      // The first ticket's prose IS the one-liner — a quick change never had a
-      // separate summary to give, and inventing one (or a count of the tickets)
-      // would be a second source of truth for it. Only its first line, though:
-      // `oneLiner` is single-line by name and by every consumer (the hook's
-      // status line, the burner's brief header). Every sentence survives
-      // verbatim where it belongs — brief.md and the tickets.
-      oneLiner: proses[0].split('\n')[0].trim(),
-      brief: cut ? null : brief,
-      lap: 1,
-      // Ready at birth: the tickets below are complete and no session is
-      // enriching them. Nothing else would ever say so — only
-      // `complete_phase("tickets")` stamps this column, and this path has no
-      // session to run it — so it would stay null forever and the planning bar
-      // would read every later chat as still finishing these tickets, hiding
-      // Burn for as long as its terminal is open. Stamped in the insert rather
-      // than via `markTicketsReady`, whose `tickets.awaiting_burn` milestone
-      // nothing consumes and whose news `feature.quick_change` already carries.
-      // Still a readiness fact and not a marker of the door (ADR-0010 §7).
-      ticketsReadyLap: 1,
-      phase: 'planning' as const,
-      branch,
-      baseBranch,
-      status,
-      createdAt: Date.now(),
-    })
-    .returning()
-    .get()
-  const feature = rowToFeature(inserted)
-
-  emitFeatureCreated(ctx, feature, cut)
-
-  if (cut) await scaffoldDocsOnFeatureBranch(ctx, project, feature, { brief })
-
-  // One batch, not two: the review ticket's `blockedBy` names batch positions,
-  // which only resolve against the typed tickets it is stored alongside.
-  const stored = storeTickets(ctx, feature.id, [
-    ...proses.map((prose) => ({
-      title: quickTicketTitle(prose),
-      goal: prose,
-      context: prose,
-      acceptanceCriteria: [prose],
-      // No invented seams: nobody read the codebase to name them.
-      seams: [],
-      blockedBy: [],
-    })),
-    quickReviewTicket(proses),
-  ])
-  const typed = stored.slice(0, proses.length)
-  const review = stored[stored.length - 1]
-
-  // The one event that makes the fast path legible in the timeline — the row
-  // itself carries no marker, so without this the feature simply appears at
-  // `planning` with its tickets already written and no account of where they
-  // came from. Feature-scoped on purpose: it is the birth of the whole card,
-  // not of any one of the tickets it arrived with — `tickets.stored` above
-  // already speaks for those. The tally counts what the human typed; the review
-  // ticket is named apart from it, because it is the machinery's doing and not
-  // theirs.
-  const tally = typed.length === 1 ? 'one ticket' : `${typed.length} tickets`
-  emit(ctx, feature.id, {
-    type: 'feature.quick_change',
-    message: `quick change — born at planning on lap 1 with ${tally} (${typed.map((t) => `#${t.seq}`).join(', ')}) plus a review ticket (#${review.seq}); no grill session, no spec.md`,
-    data: { slug, ticketSeqs: stored.map((t) => t.seq), phase: 'planning' },
-  })
-
-  emitTicketShapeWarnings(ctx, feature.id, stored)
-
-  return feature
-}
-
-/**
- * What the quick door just let through, on the feature's timeline — the door
- * the 14-ticket degenerate import came through, which had no validation at all.
- *
- * A warning, never a refusal (see `ticket-shape.ts`): the human typed these
- * sentences and may burn them exactly as they are, so nothing here stops the
- * feature being created or the Burn button working. The Burn card renders the
- * same warnings from the same function, so the sentence the human reads here is
- * the sentence they read again at the moment they decide.
- *
- * It is handed the WHOLE batch, review ticket and all, and `shapeCheckedTickets`
- * drops what nobody typed — the card passes its whole batch too, so the one rule
- * about which tickets get read lives in core with the rules about their shape.
- */
-function emitTicketShapeWarnings(ctx: AppCtx, featureId: string, stored: Ticket[]): void {
-  const checked = shapeCheckedTickets(stored)
-  const warnings = ticketShapeWarnings(checked)
-  if (warnings.length === 0) return
-  emit(ctx, featureId, {
-    type: 'tickets.shape_warning',
-    message: `${warnings.length} shape warning${warnings.length === 1 ? '' : 's'} — the burn is not blocked, but a coder reads what is here: ${ticketShapeWarningLine(warnings)}`,
-    data: { warnings, seqs: checked.map((t) => t.seq) },
-  })
-}
-
 /**
  * The base a feature is cut from: what the caller named, else the branch the
  * project checkout is standing on (decision 2). Never a stored project default —
@@ -619,7 +377,7 @@ async function ensureFeatureBranch(
 
 /**
  * Scaffold the feature's docs and commit them onto the FEATURE branch — the one
- * step every creation door shares (create, Start a draft, quick change).
+ * step every creation door shares (create, Start a draft).
  *
  * The work happens inside the feature's talk worktree, which is git's own
  * checkout of `feature/<slug>`, and never in the human's checkout. Committing at
@@ -939,8 +697,8 @@ export async function go(
  * tickets; every other pending ticket waits for a later round. The engine
  * underneath is the burn's, unchanged.
  *
- * The only hard refusals, each saying why: the feature is still in planning (no
- * Go yet), a round is already running, a drive of this feature holds the drive
+ * The only hard refusals, each saying why: the feature is a draft or has
+ * shipped, a round is already running, a drive of this feature holds the drive
  * slot (decision 19), the human pressed Stop and has not replied since
  * (decision 23), a seq that is unknown or has nothing left to burn, or a named
  * ticket blocked by one outside the round that is not `done`/`cancelled` (or
@@ -954,10 +712,7 @@ export async function dispatchRound(
 ): Promise<{ runId: string }> {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  if (feature.phase === 'planning') {
-    throw new GateError('the plan has no Go yet — the human approves it before any round is dispatched')
-  }
-  if (feature.phase === 'shipped') throw new GateError(`\`${feature.slug}\` has shipped — there is nothing left to dispatch`)
+  if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has shipped — there is nothing left to dispatch`)
   if (hasActiveRun(ctx, featureId)) {
     throw new GateError('a round is already running — wait for it to return, or stop it with stop_round')
   }
@@ -1085,24 +840,23 @@ export function listReadyDeclarations(ctx: AppCtx, featureId: string): ReadyDecl
 }
 
 /**
- * The lead declares the feature ready for the human (decision 9): the record
- * goes on the trail, and the first declaration moves building → review — later
- * ones leave review as it is, since states only move forward. A declaration,
- * never a gate: what the human should hear about comes back as warnings the
- * lead must relay.
+ * The lead declares the feature ready for the human: the record goes on the
+ * trail and the feature waits on the human ("ready to test"), which clears like
+ * any waiting reason — on their next message or the next round. What to test
+ * and how the work was checked the lead says in chat; the declaration carries
+ * only the scenario the Test drive button starts. A declaration, never a gate:
+ * what the human should hear about comes back as warnings the lead must relay.
  */
 export function declareReady(
   ctx: AppCtx,
   featureId: string,
-  input: { scenario: string; whatToTest: string },
+  input: { scenario: string },
 ): { declaration: ReadyDeclaration; warnings: string[] } {
   const feature = getFeatureRow(ctx, featureId)
   requireNotDraft(feature)
-  if (feature.phase === 'planning') throw new GateError('the plan has no Go yet — there is nothing to drive')
-  if (feature.phase === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
+  if (feature.status === 'shipped') throw new GateError(`\`${feature.slug}\` has already shipped`)
   const scenario = input.scenario.trim()
-  const whatToTest = input.whatToTest.trim()
-  if (!scenario || !whatToTest) throw new InvalidInputError('a ready declaration needs a scenario and what to test')
+  if (!scenario) throw new InvalidInputError('a ready declaration needs a scenario')
 
   const lastRound = latestBurn(ctx, featureId)
   const declaration = ctx.db
@@ -1112,17 +866,16 @@ export function declareReady(
       featureId,
       runId: lastRound?.id ?? null,
       scenario,
-      whatToTest,
+      // NOT NULL until the column is dropped; what to test is said in chat now.
+      whatToTest: '',
       createdAt: Date.now(),
     })
     .returning()
     .get()
-  if (feature.phase === 'building') {
-    setPhase(ctx, featureId, 'review', 'phase.advanced', 'the agent declared it ready for you')
-  }
-  ctx.db.update(features).set({ waitingReason: null }).where(eq(features.id, featureId)).run()
+  // Under Needs you until the human replies or a round runs; the event below speaks for it.
+  ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
 
-  const warnings = readyWarnings(ctx, featureId, lastRound)
+  const warnings = readyWarnings(ctx, lastRound)
   emit(ctx, featureId, {
     type: 'feature.ready_declared',
     message: `ready for you · test drive ▸ ${scenario}`,
@@ -1133,31 +886,16 @@ export function declareReady(
 
 /**
  * What the lead must tell the human alongside "Ready for you": a last round
- * that did not come back clean, and work no review has looked at since it
- * landed (decision 10 — the review is the lead's tool, so its absence is said
- * out loud rather than refused).
+ * that did not come back clean. Whether a review ran is the lead's call, and it
+ * says how the work was checked in chat, so its absence is not a warning.
  */
-function readyWarnings(ctx: AppCtx, featureId: string, lastRound: Run | undefined): string[] {
-  const warnings: string[] = []
-  const tickets = listByFeature(ctx, featureId)
-  if (lastRound) {
-    const held = new Set(runClaimedTicketIds(ctx, lastRound.id))
-    if (lastRound.status !== 'succeeded' || tickets.some((t) => held.has(t.id) && t.status === 'failed')) {
-      warnings.push('the last round had failures — tell the human what failed before they drive it.')
-    }
-  }
-  const lastChange = Math.max(
-    0,
-    ...tickets.filter((t) => t.kind === 'implementation' && t.status === 'done').map((t) => t.completedAt ?? 0),
-  )
-  const lastReview = Math.max(
-    0,
-    ...tickets.filter((t) => t.kind === 'review' && t.status === 'done').map((t) => t.completedAt ?? 0),
-  )
-  if (lastChange > 0 && lastReview < lastChange) {
-    warnings.push('nothing has reviewed the work since the last change — say so, or run a round with a review ticket first.')
-  }
-  return warnings
+function readyWarnings(ctx: AppCtx, lastRound: Run | undefined): string[] {
+  if (!lastRound) return []
+  const held = new Set(runClaimedTicketIds(ctx, lastRound.id))
+  const failed =
+    lastRound.status !== 'succeeded' ||
+    listByFeature(ctx, lastRound.featureId).some((t) => held.has(t.id) && t.status === 'failed')
+  return failed ? ['the last round had failures — tell the human what failed before they drive it.'] : []
 }
 
 /**

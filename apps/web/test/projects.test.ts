@@ -303,8 +303,9 @@ describe('projectStats', () => {
 
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
-      feat({ id: 'a', phase: 'planning' }), // needs grilling
-      feat({ id: 'b', phase: 'building', activeRun: true }),
+      feat({ id: 'a', waitingReason: 'ready to test' }),
+      feat({ id: 'b', activeRun: true }),
+      feat({ id: 'c', phase: 'planning' }), // nothing asked: in progress, not needs-you
     ])
     expect(s.needsYou).toBe(1)
     expect(s.activeRuns).toBe(1)

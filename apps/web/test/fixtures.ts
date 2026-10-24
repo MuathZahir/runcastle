@@ -31,6 +31,7 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     lapTally: over.lapTally ?? { landed: 0, total: 0, waived: 0 },
     activeRun: over.activeRun ?? false,
     liveSession: over.liveSession ?? null,
+    waitingReason: over.waitingReason ?? null,
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],
     blocks: over.blocks ?? [],

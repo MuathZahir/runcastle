@@ -170,15 +170,14 @@ describe('the Orchestrator card', () => {
 })
 
 describe('what needs you', () => {
-  it('lists preparation, then the waiting features, then the stopped ones — unheaded', () => {
+  it('lists preparation, then the waiting features, then the ones in progress — unheaded', () => {
     data.prep = { prepared: false, pendingKeys: ['a', 'b'], findings: [] }
     data.features = [
-      titled('Order history', { phase: 'building' }),
-      titled('Coupons', { phase: 'review' }),
-      titled('Checkout', {
-        phase: 'building',
+      titled('Order history', {
         ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
       }),
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Checkout', { waitingReason: 'stopped' }),
     ]
     rail()
     const needs = screen.getByRole('region', { name: 'Needs you' })
@@ -187,13 +186,17 @@ describe('what needs you', () => {
     expect(needs.textContent!.indexOf('Prepare this project')).toBeLessThan(needs.textContent!.indexOf('Coupons'))
     expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
     expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
-    expect(within(needs).getByText('Run failed')).toBeTruthy()
+    expect(within(needs).getByText('Ready to test')).toBeTruthy()
     expect(within(needs).getByText('Stopped')).toBeTruthy()
+    expect(within(needs).getByText('In progress')).toBeTruthy()
     expect(within(needs).queryByRole('heading')).toBeNull()
   })
 
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
-    data.features = [titled('Coupons', { phase: 'review' }), titled('Order history', { phase: 'building' })]
+    data.features = [
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Order history', { waitingReason: 'stopped' }),
+    ]
     rail()
     for (const gone of ['Inbox', 'In progress', 'Agent working', 'Drafts', 'Show archived'])
       expect(screen.queryByText(gone)).toBeNull()
@@ -205,8 +208,11 @@ describe('what needs you', () => {
 describe('the Working shelf', () => {
   it('holds the features with an agent at work, open in the bay', () => {
     data.features = [
-      titled('Coupons', { phase: 'review' }),
-      titled('Search', { phase: 'building', activeRun: true, lapTally: { landed: 3, total: 7, waived: 0 } }),
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Search', {
+        activeRun: true,
+        ticketCounts: { total: 7, pending: 4, burning: 0, done: 3, failed: 0, cancelled: 0 },
+      }),
     ]
     rail()
     const working = screen.getByRole('region', { name: 'Working' })

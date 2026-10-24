@@ -100,22 +100,17 @@ describe('feature dependencies over MCP', () => {
     expect(dependsOnOf(ctx, out.id).map((d) => d.slug)).toEqual(['dark-mode'])
   })
 
-  it('refuses dependsOn on a started feature or a quick change', async () => {
+  it('refuses dependsOn on a started feature', async () => {
     seedFeature(ctx, projectId, { slug: 'auth-rework' })
     const before = rowCount()
 
-    const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
-      ['full create', { title: 'Billing', oneLiner: 'o', dependsOn: ['auth-rework'] }],
-      [
-        'quick change',
-        { title: 'Billing', draft: true, tickets: ['charge'], dependsOn: ['auth-rework'] },
-      ],
-    ]
-    for (const [name, input] of cases) {
-      const thrown = await toolCreateFeature(ctx, session, input).catch((e: unknown) => e)
-      expect(thrown, name).toBeInstanceOf(InvalidInputError)
-      expect((thrown as Error).message, name).toMatch(/only for drafts/)
-    }
+    const thrown = await toolCreateFeature(ctx, session, {
+      title: 'Billing',
+      oneLiner: 'o',
+      dependsOn: ['auth-rework'],
+    }).catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(InvalidInputError)
+    expect((thrown as Error).message).toMatch(/only for drafts/)
     expect(rowCount()).toBe(before)
   })
 

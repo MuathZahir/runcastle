@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { features } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
-import { toolCompletePhase } from '../src/mcp/server'
 import { burnWarnings, goWarnings } from '../src/services/burn-warnings'
 import { markFixProgress } from '../src/services/review-findings'
 import { storeTickets, updateTicket } from '../src/services/tickets'
@@ -20,12 +18,10 @@ import { rmTemp, seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 /**
  * The warnings that used to be refusals (decisions §5).
  *
- * Each line here was a gate: G3's one-review-ticket rule, the
- * un-dispositioned-earlier-lap-defects rule, and G2's spec file check. What has
- * to be right now is that each one fires exactly on its own condition and
- * nothing else, and that the same list reaches BOTH audiences — the human at the
- * Burn click, through the tRPC query, and the ticket-writing session, through
- * `complete_phase("tickets")`, which no longer refuses on any of them.
+ * Each line here was a gate: the un-dispositioned-earlier-lap-defects rule, and
+ * G2's spec file check. What has to be right now is that each one fires exactly
+ * on its own condition and nothing else. A batch with no review ticket is not
+ * warned about: review is the agent's call.
  */
 describe('burn warnings', () => {
   let ctx: AppCtx
@@ -33,7 +29,6 @@ describe('burn warnings', () => {
   let project: Project
   let feature: Feature
   let caller: ReturnType<ReturnType<typeof createCallerFactory<typeof appRouter>>>
-  let session: ReturnType<typeof createSessionRow>
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
@@ -41,12 +36,6 @@ describe('burn warnings', () => {
     project = seedProject(ctx, repoPath)
     feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     caller = createCallerFactory(appRouter)(ctx)
-    session = createSessionRow(ctx, {
-      featureId: feature.id,
-      kind: 'chat',
-      worktreePath: repoPath,
-    })
-    markSessionLive(ctx, session.id)
     setRuntimeCtx(ctx)
   })
 
@@ -123,18 +112,10 @@ describe('burn warnings', () => {
     expect(burnWarnings(ctx, feature.id)).toEqual([])
   })
 
-  it('warns when no pending ticket carries kind "review"', () => {
+  it('says nothing about a batch with no review ticket — review is the agent’s call', () => {
     storeTickets(ctx, feature.id, [ticketInput('Add the thing')])
     writeSpec()
-    expect(burnWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no review ticket')])
-  })
-
-  it('counts only PENDING review tickets — an earlier lap’s finished one is not this batch’s', () => {
-    const [done] = storeTickets(ctx, feature.id, [{ ...ticketInput('Lap 1 review'), kind: 'review' }])
-    updateTicket(ctx, done.id, { status: 'done' })
-    storeTickets(ctx, feature.id, [ticketInput('Lap 2 work')])
-    writeSpec()
-    expect(burnWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no review ticket')])
+    expect(burnWarnings(ctx, feature.id)).toEqual([])
   })
 
   // The lap the defect was stamped on and the lap the feature reads are the SAME
@@ -163,12 +144,11 @@ describe('burn warnings', () => {
     expect(burnWarnings(ctx, feature.id)).toEqual([expect.stringContaining('no spec.md')])
   })
 
-  it('stacks all three when all three hold — none of them shadows another', () => {
+  it('stacks both when both hold — neither shadows the other', () => {
     openDefectFromLapOne()
     storeTickets(ctx, feature.id, [ticketInput('Lap 2 work')])
 
     expect(burnWarnings(ctx, feature.id)).toEqual([
-      expect.stringContaining('no review ticket'),
       expect.stringContaining('Deletes are never retried'),
       expect.stringContaining('no spec.md'),
     ])
@@ -183,28 +163,5 @@ describe('burn warnings', () => {
     )
     writeSpec()
     expect(goWarnings(ctx, feature.id)).toEqual([])
-  })
-
-  describe('complete_phase("tickets") hears the same list', () => {
-    it('returns ok with the warning instead of the refusal G3 used to be', () => {
-      storeTickets(ctx, feature.id, [ticketInput('Add the thing')])
-      writeSpec()
-
-      const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
-
-      expect(out.ok).toBe(true)
-      expect(out.warnings).toEqual([expect.stringContaining('no review ticket')])
-      // Warned, not parked: the tickets are still armed for the human's click.
-      expect(out.waitingOn).toBe('human burn')
-    })
-
-    it('returns no warnings once the batch carries its review ticket', () => {
-      healthyBatch()
-      writeSpec()
-      expect(toolCompletePhase(ctx, session, { phase: 'tickets' })).toMatchObject({
-        ok: true,
-        warnings: [],
-      })
-    })
   })
 })

@@ -231,31 +231,6 @@ export function setPhase(
 }
 
 /**
- * Record that the talk session has finished this lap's tickets — the moment the
- * lap stops changing under the human's Burn click. Stamps the feature's CURRENT
- * lap, so lap N+1 starts unready with nothing to clear, and emits the
- * `tickets.awaiting_burn` milestone the readiness flip now coincides with.
- *
- * `nextPhase` is the state the burn will cross into, carried on the event for
- * the session that is being told what it is waiting for; nothing here moves the
- * feature — Burn is the human's click to make.
- */
-export function markTicketsReady(ctx: AppCtx, featureId: string, nextPhase: Phase): Feature {
-  const current = getFeatureRow(ctx, featureId)
-  ctx.db
-    .update(features)
-    .set({ ticketsReadyLap: current.lap })
-    .where(eq(features.id, featureId))
-    .run()
-  emit(ctx, featureId, {
-    type: 'tickets.awaiting_burn',
-    message: 'tickets complete — waiting on the human Burn click',
-    data: { phase: current.phase, nextPhase, waitingOn: 'human burn' },
-  })
-  return { ...current, ticketsReadyLap: current.lap }
-}
-
-/**
  * Hand a feature to the orchestrator (`whole-cuts-plan-themselves` decision 9):
  * it created it from an `orchestrate` session, or the human handed it over.
  * `how` says which, on the event.

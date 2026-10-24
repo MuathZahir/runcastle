@@ -18,9 +18,8 @@ import {
   IconSettings,
   IconShield,
   IconSun,
-  PHASE_NAME,
-  PhaseIcon,
 } from '../icons'
+import { FeatureProgressIcon, featureStateWords } from './SidebarParts'
 
 /**
  * ⌘K command palette (decision 12). Three labeled groups — Features, Projects,
@@ -362,12 +361,12 @@ export function CommandPalette(props: CommandPaletteProps) {
             item(
               i,
               f.id,
-              <PhaseIcon phase={f.status === 'draft' ? 'draft' : f.phase} label="" />,
+              <FeatureProgressIcon f={f} label="" />,
               f.title,
               <span className="flex shrink-0 items-center gap-2 text-xs text-text-tertiary">
-                {/* Being open is its own fact, apart from the phase (findings F10.8). */}
+                {/* Being open is its own fact, apart from its state (findings F10.8). */}
                 {f.id === selectedFeatureId && <span className="text-text-secondary">Current</span>}
-                <span>{f.status === 'draft' ? PHASE_NAME.draft : PHASE_NAME[f.phase]}</span>
+                <span>{featureStateWords(f)}</span>
               </span>,
               f.title,
             ),
