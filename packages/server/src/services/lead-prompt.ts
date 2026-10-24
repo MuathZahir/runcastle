@@ -11,7 +11,7 @@
  */
 
 import type { AgentRuntime } from '@runcastle/core'
-import { skillRef } from '../launcher/runtimes/skills'
+import { FEATURE_SKILL, skillRef } from '../launcher/runtimes/skills'
 
 /** The leading marker on every prompt runcastle delivers. */
 export const RUNCASTLE_PROMPT_TAG = '[runcastle]'
@@ -29,29 +29,27 @@ export function tagRuncastlePrompt(text: string): string {
  * conversation of it was on record the run is a fresh one, and says so rather
  * than claiming context it does not have.
  */
-export function leadWakeKickoff(message: string, resumed: boolean): string {
+export function leadWakeKickoff(runtime: AgentRuntime, message: string, resumed: boolean): string {
   const how = resumed
     ? 'No terminal of yours was open, so runcastle resumed this conversation headless'
     : 'No terminal of yours was open and no earlier conversation of this feature could be ' +
       'resumed, so runcastle started this conversation headless from the feature docs'
   return (
     `${RUNCASTLE_PROMPT_TAG} ${how} to deliver what follows. Nobody is watching this run: act on it ` +
-    'as the lead — fix, dispatch a round, declare ready, or call wait_for_you to ask the ' +
-    `human — then end your turn.\n\n${message}\n\n`
+    `as the lead, by ${skillRef(runtime, FEATURE_SKILL)} — fix, dispatch a round, declare ready, or ` +
+    `call wait_for_you to ask the human — then end your turn.\n\n${message}\n\n`
   )
 }
 
 /**
- * The wake Go sends the feature's chat. A chat that was live through planning
- * opened on `ideate` or `revisit` and never saw the lead brief (only a launch
- * past Go renders it), so this names the lead skill the way the fresh-launch
+ * The wake Go sends the feature's chat: the human approved the plan, so the
+ * chat may start round 1. Names the feature skill the way the fresh-launch
  * kickoff does — spelled for the chat's `runtime`.
  */
 export function goWakeText(runtime: AgentRuntime): string {
   return (
-    `Go given — the human approved the plan. You are now this feature's lead: invoke ` +
-    `${skillRef(runtime, 'lead')} first, then dispatch round 1 with dispatch_round({ seqs }), ` +
-    'or do it yourself if it is small.'
+    `Go given — the human approved the plan. Carry on by ${skillRef(runtime, FEATURE_SKILL)}: ` +
+    'dispatch round 1 with dispatch_round({ seqs }), or do it yourself if it is small.'
   )
 }
 

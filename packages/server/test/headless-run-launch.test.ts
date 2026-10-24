@@ -146,7 +146,7 @@ describe('a headless run on a feature', () => {
       expect(command).toContain(
         'codex exec resume --dangerously-bypass-hook-trust thread-plan [runcastle] Proceed with your task: no human is present',
       )
-      expect(command).toContain('$revisit')
+      expect(command).toContain('$feature')
     })
 
     it('launches fresh when there is nothing to resume', async () => {
@@ -176,13 +176,13 @@ describe('a headless run on a feature', () => {
         expect(command).toContain('Proceed with your task: no human is present')
         expect(command).toContain("is from the project's orchestrator, not the human")
         expect(command).toContain('**Changed by the orchestrator:** <why>')
-        expect(command).toContain(runtime === 'codex' ? '$revisit' : '/runcastle:revisit')
+        expect(command).toContain(runtime === 'codex' ? '$feature' : '/runcastle:feature')
 
         const prompt = injectedPrompt(f.id, sessionId)
         expect(prompt).toContain('## No human is present')
         expect(prompt).toContain('This is a relay run')
-        expect(prompt).toContain('`**Changed by the orchestrator:** <why>`')
-        expect(prompt).toContain(runtime === 'codex' ? '`$revisit`' : '`/runcastle:revisit`')
+        expect(prompt).toContain("marking any decision it changes as the orchestrator's")
+        expect(prompt).toContain(runtime === 'codex' ? '`$feature`' : '`/runcastle:feature`')
       })
     }
 
@@ -231,7 +231,7 @@ describe('a headless run on a feature', () => {
       expect(command).toMatch(/ claude -p --resume cc-lead --settings /)
       expect(command).toContain('[runcastle] No terminal of yours was open')
       expect(command).toContain('[runcastle] Round 1 returned: succeeded')
-      expect(injectedPrompt(f.id, sessionId)).toContain('## No terminal is open')
+      expect(injectedPrompt(f.id, sessionId)).toContain('## No human is present')
       expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.woken_headless')?.data).toMatchObject({
         resumed: true,
       })
@@ -333,7 +333,7 @@ describe('a headless run on a feature', () => {
       })
     })
 
-    it('launches the lead past Go with bypassPermissions on Claude Code, headless and interactive', async () => {
+    it('launches the lead with bypassPermissions on Claude Code, headless and interactive', async () => {
       const f = await feature('lead-bypass', { phase: 'building' })
       await earlierChat(f.id, 'cc-lead')
       const headless = await wake(f.id, 'Round 1 returned')
@@ -344,9 +344,9 @@ describe('a headless run on a feature', () => {
       expect(launchedCommand(f.id, interactive)).toContain('--permission-mode bypassPermissions')
     })
 
-    it('keeps a planning chat on acceptEdits, and leaves Codex its own posture', async () => {
-      const planning = await feature('lead-planning')
-      expect(launchedCommand(planning.id, await launch(planning.id))).toContain('--permission-mode acceptEdits')
+    it('launches every feature chat with bypassPermissions, and leaves Codex its own posture', async () => {
+      const fresh = await feature('lead-fresh')
+      expect(launchedCommand(fresh.id, await launch(fresh.id))).toContain('--permission-mode bypassPermissions')
 
       useRuntime('codex')
       const f = await feature('lead-codex-posture', { phase: 'building' })

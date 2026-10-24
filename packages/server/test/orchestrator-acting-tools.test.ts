@@ -219,10 +219,10 @@ describe('the orchestrator’s acting tools', () => {
 
   it('plan_feature passes the self-plan launch’s own refusal through', async () => {
     const session = orchestrator()
-    await owned('built', { phase: 'building' })
+    await owned('built', { status: 'shipped' })
     expect(
       await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
-    ).toMatch(/past planning/)
+    ).toMatch(/is shipped/)
   })
 
   it('a lead message while it plans itself, then stop_feature_run: the woken lead is never ended', async () => {

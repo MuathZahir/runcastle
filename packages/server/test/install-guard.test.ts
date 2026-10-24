@@ -13,7 +13,7 @@ describe('install guard', () => {
     over: { kind?: SessionKind; toolName?: string; worktreePath?: string; talkWorktreePath?: string } = {},
   ) =>
     evaluateInstallGuard({
-      kind: 'chat',
+      kind: 'scenario',
       toolName: 'Bash',
       command,
       worktreePath: talk,
@@ -129,9 +129,9 @@ describe('install guard', () => {
     expect(denied("cat <<'EOF' && bun install\nbody\nEOF")).toBe(true)
   })
 
-  it('denies every feature-worktree kind', () => {
-    for (const kind of ['chat'] as const) {
-      expect(denied('bun install', { kind }), kind).toBe(true)
+  it("lets a feature's chat and side sessions install: every feature chat is the lead", () => {
+    for (const kind of ['chat', 'side'] as const) {
+      expect(denied('bun install', { kind }), kind).toBe(false)
     }
   })
 
@@ -159,7 +159,7 @@ describe('install guard', () => {
 
   it('names docs-only and where verification happens instead', () => {
     const denial = evaluateInstallGuard({
-      kind: 'chat',
+      kind: 'scenario',
       toolName: 'Bash',
       command: 'bun install',
       worktreePath: talk,

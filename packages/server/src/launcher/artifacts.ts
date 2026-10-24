@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import type {
   AgentRuntime,
   Feature,
-  PlanningArtifactFacts,
   Project,
   RuncastleConfig,
   ScenarioFailure,
@@ -12,7 +11,7 @@ import type {
   SessionPurpose,
   SessionRow,
 } from '@runcastle/core'
-import { completedPlanningSteps, DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
+import { DEFAULT_RUNTIME, DRIVE_LOOP_KEYS } from '@runcastle/core'
 import { designCropsDir, featureDocsRel, sessionDir } from '@runcastle/core/paths'
 import type { DriveHookFailure } from '../services/drive-hooks'
 import type { BranchDelta } from '../services/git'
@@ -22,10 +21,10 @@ import { WAIT_MESSAGES_MODE } from './hook-client'
 import { PRE_TOOL_MATCHER } from './install-guard'
 import { resolvePluginDir } from './skills-root'
 import {
-  type ChatOpening,
   ENTRY_SKILLS,
+  FEATURE_SKILL,
   ORCHESTRATING,
-  PLANNING_WITHOUT_A_HUMAN,
+  PLANNING_ALONE,
   entrySkillsFor,
   skillRef,
 } from './runtimes/skills'
@@ -65,22 +64,14 @@ export interface WriteArtifactsInput {
    */
   scenario?: ScenarioBrief
   /**
-   * Why the session was launched, when that changes its briefing — today only
-   * the conflict-resolution revisit, which is told to resolve the merge rather
-   * than that it may not write code.
+   * Why the session was launched, when that changes its briefing — a relay, a
+   * merge conflict to resolve or a self-planning run each add one sentence.
    */
   purpose?: SessionPurpose
   /**
-   * What this feature has produced inside Planning, read off disk by the
-   * launcher. It decides which of its chat's openings the briefing renders
-   * (see {@link chatOpening}); absent means "no artifact facts to go on", which
-   * reads as a feature with a record to revisit.
-   */
-  planning?: PlanningArtifactFacts
-  /**
    * The runtime this session's agent runs on, which decides how the briefing
    * spells a skill invocation (see {@link skillRef}) — a Codex session told to
-   * invoke `/runcastle:ideate` simply does nothing. Optional: a caller that does
+   * invoke `/runcastle:feature` simply does nothing. Optional: a caller that does
    * not say gets {@link DEFAULT_RUNTIME}, the runtime every session ran on
    * before there was a second one.
    */
@@ -105,115 +96,92 @@ export function serverUrlFor(config: RuncastleConfig): string {
 // --- renderers (pure) -------------------------------------------------------
 
 /**
- * The rule that keeps a talk session a conversation (F2). Every HITL feature
- * session — grill, qa, revisit, lap — runs in a FULL checkout of the feature
- * branch with `--permission-mode acceptEdits`, so nothing about the environment
- * stops an agent from simply implementing what it was asked to discuss. One did:
- * a lap whose briefing was swallowed read the docs, decided the work was small,
- * and started editing source instead of grilling — no spec, no tickets, no way
- * for the feature to reach review.
- *
- * Stated here AND enforced by the PreToolUse deny hook (`renderSettings`), for
- * the reason the burn guard gives: a prompt rule is advisory, a deny is not.
+ * What every feature chat may do in its checkout (`the-feature-lead-runs-rounds`
+ * decisions 5 and 7; tickets-and-review-are-tools-not-phases decision 13). The
+ * edit and install guards lift for every chat and side session
+ * (`isUnguardedLead`), so the brief says what the lead may do rather than what
+ * it may not, and how its commits travel.
  */
-export function noCodeRule(docs: string): string {
+export function leadCodeRule(): string {
   return (
-    `- **Talk sessions do not write code.** You may write this feature's docs under \`${docs}/\` ` +
-    'and nothing else in this checkout. Every code change rides a ticket, burned by an ' +
-    'implementation agent in its own sandbox — even the one-line fix that is obviously faster ' +
-    'to just do. This is enforced by a hook, not left to your judgement: edits outside the docs ' +
-    'are denied.\n' +
-    '- **Package installs are blocked in this worktree** (`bun install`, `npm ci`, `pnpm add`, ' +
-    '`yarn` …): it is docs-only, so it carries no dependencies. Verification that needs them ' +
-    'happens in the burn sandbox, the review lap, or a test drive of the branch.'
+    '- **You may change code yourself.** A change small enough not to need a ticket is yours ' +
+    'to make in this checkout, and you may install dependencies here to typecheck and test it. ' +
+    "Verify with the project's own checks before you commit.\n" +
+    '- **Your commits land through the feature\'s landing queue**, between ticket landings ' +
+    'during a round, and they wait while the human is driving the feature. Use a conventional ' +
+    '`feat(scope): …` subject; never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
   )
 }
 
 /**
- * The rule that REPLACES {@link noCodeRule} for a human-attended planning chat
- * (design mode, decisions 2 and 6). The chat may write UI so the human can see
- * and approve it; everything else still rides a ticket. The edit and install
- * guards lift for it (`isUnguardedChat`), so this is the only fence before Go.
+ * The one extra sentence a launch's errand adds to the feature brief. Every
+ * errand is a situation the same lead handles (decision 4), so it changes the
+ * brief by a line, not by a different brief.
  */
-export function designRule(docs: string): string {
-  return (
-    '- **You may write UI for design.** Besides this feature\'s docs under ' +
-    `\`${docs}/\`, you may edit components, their preview pages and sample data, following the ` +
-    '`runcastle:design` skill. Data loading, API calls and behaviour are not design: they ride ' +
-    'tickets, burned by an implementation agent in its own sandbox.\n' +
-    '- **You may install dependencies** with the project\'s own install, when design needs them.\n' +
-    '- **Commit an approved design** to this branch as `design: <what>`. Work the human has not ' +
-    'approved stays uncommitted. Go waits until no design work is left uncommitted, so ask the ' +
-    'human to approve, then commit it or drop it.'
-  )
+function purposeLine(purpose: SessionPurpose | undefined, runtime: AgentRuntime): string | undefined {
+  switch (purpose) {
+    case 'self-plan':
+      return (
+        "This is a self-planning run: plan this feature by yourself and do not build it, by the " +
+        `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on a request for the human's yes.`
+      )
+    case 'relay':
+      return (
+        "This is a relay run: the project's orchestrator, not the human, sent this conversation a " +
+        "message — apply it by the skill's change-handling rules, marking any decision it changes as the orchestrator's."
+      )
+    case 'resolve-conflict':
+      return (
+        'This session resolves a merge conflict: merge the base branch in, resolve the conflicts ' +
+        "from the feature docs' intent, verify the merge with the project's own checks, and commit it."
+      )
+    default:
+      return undefined
+  }
 }
 
 /**
- * The rule that REPLACES {@link noCodeRule} for the resolve-conflict session
- * (ADR-0007 §6). Its whole job is to merge the base branch in and resolve the
- * conflicts, which is code — and the blanket ban is why it could not: told to
- * resolve and then told edits are denied, the agent believed the rule, aborted
- * the merge and emitted a ticket to carry it instead (E2E F18). The guard now
- * allows these writes while the merge is in progress; this is the same truth
- * in the briefing.
+ * The section a headless run of the feature's chat adds to its brief — a
+ * self-planning run, a relay, or a lead woken because no terminal of it was
+ * open (`the-feature-lead-runs-rounds` decision 12). Nobody is watching: a
+ * question ends the turn and with it the process, and a tool it is refused will
+ * never be approved, so both are stated as things to decide past rather than
+ * wait on. Whether the run resumed its conversation is the kickoff's to say.
  */
-export function conflictResolutionRule(): string {
-  return (
-    '- **This session resolves a merge conflict, so it DOES write code here.** Edit the ' +
-    'conflicted files in this checkout, resolving them from the feature docs’ intent, and ' +
-    'commit the merge. That is the exception and its whole extent: the edit guard exempts ' +
-    'writes only while the merge is in progress, so work the merge revealed but did not ' +
-    'cause still rides a ticket.\n' +
-    '- **Verify the merge without dependencies — package installs are blocked in this ' +
-    'worktree, merge or no merge.** Run `git diff --check` and grep for leftover conflict ' +
-    'markers, re-read each resolved hunk against both sides, and confirm every import and symbol ' +
-    'the merged code uses exists on the merged side. A real run is the test drive’s: tell the ' +
-    'human they can test-drive the branch before retrying.'
-  )
+function headlessRule(): string {
+  return [
+    '## No human is present',
+    'Runcastle runs this conversation headless: nobody is watching this run.',
+    '- Act on your opening prompt in this one run.',
+    '- Never end your turn waiting on an answer — ending the turn ends the run. To ask the human',
+    '  anything, call `wait_for_you` with why, then end your turn: their reply reaches you later',
+    '  in this same conversation.',
+    '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
+    '  know and treat that decision as a candidate to check first.',
+    OUTRANKS_TALKING_TO_THE_HUMAN,
+  ].join('\n')
 }
 
 /**
- * Which opening move the feature's one chat is briefed with (decision 3: one
- * kind, per-state rules at call time).
- *
- * The chat covers the whole feature, so its first move cannot be the same in
- * every state. A feature still in Planning that has produced NOTHING — no
- * decisions, no spec, no tickets — has its first conversation ahead of it, and
- * the ideation brief is the one that produces those three; anything else has a
- * record on disk, which is what a revisit amends. Sending the front of the
- * pipeline to `revisit` left it with no instructed path to its own first spec and
- * tickets, and a briefing that flatly bans `complete_phase`.
- *
- * Read off the ARTIFACTS rather than off the phase alone, the same way Planning's
- * own progress is (`completedPlanningSteps`): a planning feature that has already
- * been grilled is a revisit, not a second ideation.
- *
- * Once Go is given (building or review) the chat is the feature's LEAD
- * (`the-feature-lead-runs-rounds`): it runs rounds of workers rather than
- * amending a record. Two errands keep the revisit brief whatever the state: a
- * merge to resolve, and the orchestrator's relayed message — both amend what
- * exists rather than run the feature.
+ * The line the headless rule ends on. {@link renderSessionPrompt} appends
+ * {@link talkingToTheHumanSection} after every brief, so it lands BELOW a
+ * headless rule — and an agent that follows the last instruction it read would
+ * end its run on a framed decision for nobody. Its writing rules still serve the
+ * human who reads the `**Assumed.**` decisions later, so it is kept but outranked.
  */
-export function chatOpening(
-  feature: Feature,
-  planning?: PlanningArtifactFacts,
-  purpose?: SessionPurpose,
-): ChatOpening {
-  if (purpose === 'resolve-conflict' || purpose === 'relay') return 'revisit'
-  if (feature.phase === 'building' || feature.phase === 'review') return 'lead'
-  if (feature.phase !== 'planning' || !planning) return 'revisit'
-  return completedPlanningSteps(planning).length === 0 ? 'ideate' : 'revisit'
-}
+const OUTRANKS_TALKING_TO_THE_HUMAN = [
+  '- This section outranks "How to talk to the human" at the end of this brief: follow its',
+  '  writing rules in what you leave behind for the human to read later, but put a question',
+  '  to them only through `wait_for_you`.',
+].join('\n')
 
 /**
- * The injected system prompt (feature brief). Directs the session to the pack's
- * entry skill and lists the on-disk knowledge paths.
- *
- * `chat` splits on {@link chatOpening}: a feature whose planning artifacts do
- * not exist yet gets the ideation brief (the generic feature brief at the end of
- * this function), a feature past Go gets the lead brief, and every other state
- * gets the revisit brief. `chatKickoffHeader` picks its opening line from the
- * same predicate, so the two cannot disagree.
+ * The injected system prompt (feature brief). One brief for every feature
+ * `chat` — attended, headless wake, self-plan, relay, resolve-conflict — in any
+ * state of the feature (tickets-and-review-are-tools-not-phases decision 4):
+ * the chat is the feature's lead from its first message, and the feature skill
+ * carries the whole loop. An errand adds one sentence ({@link purposeLine}), a
+ * headless run the rules for nobody watching ({@link headlessRule}).
  *
  * Deliberately NO MCP tool cheat-sheet in any renderer. Every tool a session can
  * call is already in its tool list with a longer, schema-backed description, and
@@ -226,87 +194,52 @@ export function renderSystemPrompt(
   kind: SessionKind,
   purpose?: SessionPurpose,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
-  planning?: PlanningArtifactFacts,
   headless = false,
 ): string {
-  const selfPlan = purpose === 'self-plan'
   if (kind === 'side') return renderSidePrompt(feature)
-  if (kind === 'chat' && !selfPlan) {
-    const opening = chatOpening(feature, planning, purpose)
-    if (opening === 'lead') return renderLeadPrompt(feature, runtime, headless)
-    if (opening === 'revisit') return renderRevisitPrompt(feature, purpose, runtime, headless)
-  }
-
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
+  const errand = purposeLine(purpose, runtime)
+  // A self-planning run has nobody to answer it by definition, however it was launched.
+  const unattended = headless || purpose === 'self-plan'
 
   return [
     `# runcastle — ${feature.title}`,
     '',
     feature.oneLiner,
     '',
+    "You are this feature's **lead**, from your first message until the human merges it. You",
+    'talk with the human, decide and record what the feature is, build it yourself or in rounds',
+    'of sandboxed workers, check it, and hand it to the human to test-drive. Where possible this',
+    "terminal RESUMES the feature's conversation, so you may already have its context above.",
+    '',
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
-    '',
-    '## Lifecycle',
-    'A feature is in one of four states: planning → building → review → shipped,',
-    'and it only ever moves forward. Ideation, spec and tickets are steps INSIDE',
-    'planning: you report each one with the `complete_phase` MCP tool, which',
-    'records the milestone on the timeline and never moves the feature. Two human',
-    'clicks move it — Go (planning → building) and Merge (→ shipped).',
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\`:`,
-    `- \`${docs}/brief.md\` — the seed brief (title + one-liner).`,
-    `- \`${docs}/decisions.md\` — decisions you capture while grilling (its existence is what marks ideation done).`,
-    `- \`${docs}/spec.md\` — the spec (its existence is what marks the spec step done).`,
-    'Write these files in THIS working directory (the feature\'s talk worktree);',
-    'they are committed to the feature branch automatically at phase boundaries.',
+    `- \`${docs}/brief.md\` — the brief the feature was created with.`,
+    `- \`${docs}/decisions.md\` — decisions, recorded as they settle.`,
+    `- \`${docs}/spec.md\` — the spec, written once the feature is concrete.`,
+    'Write them in THIS working directory and commit them like any other change. Workers read',
+    'them; keep them true when a round changes what was decided.',
     '',
     '## Rules',
-    selfPlan ? noCodeRule(docs) : designRule(docs),
+    '- The human owns Merge and the drive; you never merge, and you never start a draft.',
+    '- One round at a time. A dispatch is refused while a round runs, while the human is',
+    '  driving this feature, and after Stop until the human replies.',
+    leadCodeRule(),
     otherEntrySkillsRule(),
     '',
-    ...(selfPlan ? [selfPlanRule(), ''] : []),
+    ...(unattended ? [headlessRule(), ''] : []),
     '## Your task',
-    `Begin by invoking the \`${skillRef(runtime, 'ideate')}\` skill and drive the ideation session to completion.`,
+    ...(errand ? [errand] : []),
+    unattended
+      ? `Invoke the \`${skillRef(runtime, FEATURE_SKILL)}\` skill and do what your opening prompt asks, in this one run.`
+      : `Invoke the \`${skillRef(runtime, FEATURE_SKILL)}\` skill and continue this feature.`,
     '',
   ].join('\n')
 }
-
-/**
- * The section a self-planning run's brief adds to the ideation brief
- * (`features-plan-themselves` decision 9). The run is headless: a question ends
- * the turn and with it the process, and a tool it is refused will never be
- * approved, so both are stated as things to decide past rather than wait on.
- */
-function selfPlanRule(): string {
-  return [
-    '## No human is present',
-    'This is a self-planning run: nobody is watching and nobody will reply.',
-    '- Never end your turn to ask a question — ending the turn ends the run. Ask your design',
-    '  questions of yourself, as the skill describes, and answer them.',
-    '- A refused tool is not a wait: do not retry it or wait for approval. Decide on what you',
-    '  know and treat that decision as a candidate to check first.',
-    `- Follow the ideation skill's "${PLANNING_WITHOUT_A_HUMAN}" section through the preview, the`,
-    '  spec and the tickets, in this one run.',
-    OUTRANKS_TALKING_TO_THE_HUMAN,
-  ].join('\n')
-}
-
-/**
- * The line both headless rules end on. {@link renderSessionPrompt} appends
- * {@link talkingToTheHumanSection} after every brief, so it lands BELOW a
- * headless rule — and an agent that follows the last instruction it read would
- * end its run on a framed decision for nobody. Its writing rules still serve the
- * human who reads the `**Assumed.**` decisions later, so it is kept but outranked.
- */
-const OUTRANKS_TALKING_TO_THE_HUMAN = [
-  '- This section outranks "How to talk to the human" at the end of this brief: follow its',
-  '  writing rules in what you leave behind for the human to read later, but never end your',
-  '  turn on a decision for them.',
-].join('\n')
 
 /**
  * The kind=qa system prompt. A Q&A session is READ-ONLY — it answers questions
@@ -338,7 +271,6 @@ export function renderQaPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
     '',
     '## What you read',
     `This feature's docs are at \`${docs}/\` — brief, decisions, spec, map — and they are`,
@@ -352,219 +284,44 @@ export function renderQaPrompt(feature: Feature, runtime: AgentRuntime = DEFAULT
 }
 
 /**
- * The kind=revisit system prompt. A revisit reopens a finished conversation
- * (usually the grilling) because the human remembered something or changed
- * their mind. The session amends the docs to match the new reality, then does
- * ticket surgery — `update_ticket` for stale tickets, `cancel_ticket` for
- * obsolete ones, `emit_tickets` for new work. It NEVER advances phases: the
- * pipeline position stays wherever it is, and downstream phases pick up the
- * amended docs/tickets on their own.
- *
- * Past Go the chat is the lead instead ({@link renderLeadPrompt}); this brief
- * still serves a planning feature with a record, a shipped one, and the two
- * errands {@link chatOpening} keeps on it in any state — a merge conflict to
- * resolve and the orchestrator's relayed message.
- */
-export function renderRevisitPrompt(
-  feature: Feature,
-  purpose?: SessionPurpose,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-  headless = false,
-): string {
-  const docs = featureDocsRel(feature.slug)
-  return [
-    `# runcastle — ${feature.title} (revisit session)`,
-    '',
-    feature.oneLiner,
-    '',
-    'This is a **revisit session**: the human came back to a feature whose',
-    'earlier sessions are finished — they remembered something, or a decision',
-    'changed. Where possible this terminal RESUMES the previous conversation, so',
-    'you may already have its context above. Your job: fold the new information',
-    'into the record, then reconcile the tickets with it. The docs are the',
-    'artifact — later phases read them, never the transcripts.',
-    '',
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
-    '',
-    '## Knowledge (versioned in the target repo)',
-    `Feature docs live at \`${docs}/\`:`,
-    `- \`${docs}/decisions.md\` — append the new/changed decisions with a dated "revisited" note.`,
-    `- \`${docs}/spec.md\` — if it exists, amend the affected sections in place.`,
-    '',
-    '## Rules',
-    '- Do NOT call `complete_phase` — a revisit never moves the pipeline.',
-    '- Do NOT touch `done`/`burning` tickets; if done work is now wrong, emit a new ticket that fixes it.',
-    '- Docs first, tickets second: capture the decision prose before any ticket surgery.',
-    // The conflict-resolution revisit is briefed to resolve the merge, so the
-    // blanket ban would contradict the very kickoff it was opened with (F18).
-    purpose === 'resolve-conflict' ? conflictResolutionRule() : designRule(docs),
-    otherEntrySkillsRule(),
-    '',
-    ...(headless ? [headlessRelayRule(), ''] : []),
-    '## Your task',
-    headless
-      ? `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and do what your opening prompt asks, in this one run.`
-      : `Invoke the \`${skillRef(runtime, 'revisit')}\` skill and work through what the human brings up.`,
-    '',
-  ].join('\n')
-}
-
-/**
- * The section a headless revisit — a `relay` of the orchestrator's message —
- * adds to its brief (`whole-cuts-plan-themselves` decision 16). Like
- * {@link selfPlanRule}, it states that a question or a wait ends the run, and it
- * overrides whatever the brief says about the human — including the closing
- * section appended below it.
- */
-function headlessRelayRule(): string {
-  return [
-    '## No human is present',
-    "This is a relay run: the project's orchestrator sent this conversation a message.",
-    'Nobody is watching and nobody will reply.',
-    '- Apply the message by the change-handling rules: a decision it changes keeps or',
-    '  gains `**Assumed.**` and adds `**Changed by the orchestrator:** <why>`, unless the',
-    "  message relays the human's own answer, which removes both marks. Then redraw the",
-    '  preview and reconcile the spec and the tickets.',
-    '- Where this brief says to interview or tell the human, decide for yourself instead.',
-    '- Never end your turn to ask a question — ending the turn ends the run.',
-    '- A refused tool is not a wait: do not retry it or wait for approval.',
-    OUTRANKS_TALKING_TO_THE_HUMAN,
-  ].join('\n')
-}
-
-/**
- * The section a lead woken headless — a `lead-wake`, because no terminal of it
- * was open (`the-feature-lead-runs-rounds` decision 12) — adds to its brief.
- * Whether the run resumed its conversation is the kickoff's to say
- * (`leadWakeKickoff`); this holds either way.
- */
-function headlessLeadWakeRule(): string {
-  return [
-    '## No terminal is open',
-    'Runcastle runs this conversation headless to deliver messages, because no terminal of',
-    'it was open. Nobody is watching this run.',
-    '- Act on your opening prompt as the lead, in this one run.',
-    '- To ask the human anything, call `wait_for_you` with why, then end your turn — their',
-    '  reply reaches you later in this same conversation.',
-  ].join('\n')
-}
-
-/**
- * The rule that REPLACES {@link noCodeRule} for a feature's lead — its chat once
- * Go is given (`the-feature-lead-runs-rounds` decisions 5 and 7). The edit and
- * install guards lift for it from then on, so the brief says what the lead may
- * do rather than what it may not, and how its commits travel.
- */
-export function leadCodeRule(): string {
-  return (
-    '- **You may change code yourself.** Delegate to workers by default, but a change small ' +
-    'enough not to need a ticket is yours to make in this checkout, and you may install ' +
-    "dependencies here to typecheck and test it. Verify with the project's own checks before " +
-    'you commit.\n' +
-    '- **Your commits land through the feature\'s landing queue**, between ticket landings ' +
-    'during a round, and they wait while the human is driving the feature. Use a conventional ' +
-    '`feat(scope): …` subject; never reword a `ticket(<seq>): …` or `runcastle: …` commit.'
-  )
-}
-
-/**
- * The feature chat's brief once Go is given: the feature's LEAD
- * (`the-feature-lead-runs-rounds`). It names the lead skill, which carries the
- * whole loop — plan a round, dispatch it, wake when it returns, check, repeat,
- * declare ready — so this brief carries only the per-feature facts and the
- * rules the machine enforces.
- */
-export function renderLeadPrompt(
-  feature: Feature,
-  runtime: AgentRuntime = DEFAULT_RUNTIME,
-  headless = false,
-): string {
-  const docs = featureDocsRel(feature.slug)
-  return [
-    `# runcastle — ${feature.title} (feature lead)`,
-    '',
-    feature.oneLiner,
-    '',
-    "You are this feature's **lead**. The human approved its plan with Go, so the feature is",
-    'yours to build: you dispatch rounds of sandboxed workers over its tickets, you are woken',
-    'when a round returns, you check what came back and plan the next round, until it is',
-    'ready for the human to drive. Where possible this terminal RESUMES the conversation that',
-    'planned it, so you may already have its context above.',
-    '',
-    '## Feature',
-    `- Slug: \`${feature.slug}\``,
-    `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
-    '',
-    '## Knowledge (versioned in the target repo)',
-    `Feature docs live at \`${docs}/\` — brief, decisions, spec. Workers read them; keep them`,
-    'true when a round changes what was decided.',
-    '',
-    '## Rules',
-    '- The human owns Merge and the drive; you never merge, and you never start a draft.',
-    '- One round at a time. A dispatch is refused while a round runs, while the human is',
-    '  driving this feature, and in "Ask before each round" mode until the human replies.',
-    leadCodeRule(),
-    otherEntrySkillsRule(),
-    '',
-    ...(headless ? [headlessLeadWakeRule(), ''] : []),
-    '## Your task',
-    `Invoke the \`${skillRef(runtime, 'lead')}\` skill and run this feature in rounds until it is ready for the human.`,
-    '',
-  ].join('\n')
-}
-
-/**
  * A side session's brief (several-sessions-per-feature decisions 3, 5 and 15):
  * an extra conversation beside the main chat, in the same talk worktree, with
- * the main chat's write rules for the current state and every one of its tools
- * except the round loop. The role is stated here, in the kickoff
- * (`sideKickoffFor`) and in the per-turn hook label, so it holds even where one
- * of them is read weakly (decision 3's challenge).
+ * the main chat's write rules and every one of its tools except the round loop.
+ * The role is stated here, in the kickoff (`sideKickoffFor`) and in the per-turn
+ * hook label, so it holds even where one of them is read weakly (decision 3's
+ * challenge).
  */
 export function renderSidePrompt(feature: Feature): string {
   const docs = featureDocsRel(feature.slug)
-  const planning = feature.phase === 'planning'
   return [
     `# runcastle — ${feature.title} (side session)`,
     '',
     feature.oneLiner,
     '',
     `You are a **side session** of feature \`${feature.slug}\`, opened beside its main chat. The`,
-    "main chat plans the feature and, after Go, is its lead; you are not it and you do not carry",
-    'on its task. You started fresh: the feature state in your opening prompt, the docs and',
+    "main chat is the feature's lead; you are not it and you do not carry on its task. You",
+    'started fresh: the feature state in your opening prompt, the docs and',
     '`get_feature_context` are how you learn what is going on.',
     '',
     '## Feature',
     `- Slug: \`${feature.slug}\``,
     `- Branch: \`${feature.branch}\``,
-    `- Current phase: **${feature.phase}**`,
     '',
     '## Knowledge (versioned in the target repo)',
     `Feature docs live at \`${docs}/\` — brief, decisions, spec.`,
     '',
     '## Rules',
     '- **You may do anything the main chat does except run rounds.** Read, write the spec and',
-    '  decisions, emit and edit tickets, report planning steps, resolve findings, park drafts —',
-    '  but the main chat is the lead and alone dispatches, stops and declares ready.',
+    '  decisions, emit and edit tickets, resolve findings, park drafts — but the main chat',
+    '  alone dispatches, stops and declares ready.',
     '- **The folder is shared with the main chat.** Stage only your own files',
     '  (`git add <paths>`, never `git add -A` or `git add .`).',
-    ...(planning
-      ? // The main chat's planning rule (design mode, decision 2): a side session
-        // writes exactly what the main chat writes (several-sessions-per-feature
-        // decision 5), and the edit guard lifts for both (`isUnguardedChat`).
-        [`- A \`${docs}/decisions.md\` edit comes with a \`${docs}/preview.html\` redraw.`, designRule(docs)]
-      : [
-          '- **You may change code in this checkout**, and install dependencies here to typecheck',
-          "  and test it; verify with the project's own checks before you commit. Your commits",
-          "  land the way the main chat's do. Use a conventional `feat(scope): …` subject; never",
-          '  reword a `ticket(<seq>): …` or `runcastle: …` commit.',
-        ]),
+    '- **You may change code in this checkout**, and install dependencies here to typecheck',
+    "  and test it; verify with the project's own checks before you commit. Your commits",
+    "  land the way the main chat's do. Use a conventional `feat(scope): …` subject; never",
+    '  reword a `ticket(<seq>): …` or `runcastle: …` commit.',
     '- The runcastle skill pack\'s session-entry skills belong to other kinds of session and are',
-    '  denied to you by settings; the chained skills (spec, tickets) remain yours to reach.',
+    '  denied to you by settings; the code-review skill remains yours to reach.',
     '',
     '## Your task',
     "Wait for the human's ask, then do it. Do not act before they say what they want.",
@@ -1380,7 +1137,7 @@ export const HOST_SESSION_BASH_WRITE_RULES: readonly string[] = [
  * passed as `--plugin-dir`, which lives OUTSIDE the session's working directory.
  * Without it a skill's `./references/*` read is a permission prompt, and in a
  * self-planning run (`-p`) nobody is there to answer it: one was refused
- * `ideate/references/preview.md` and the starter page, and drew its preview by
+ * `feature/references/preview.md` and the starter page, and drew its preview by
  * hand. A prompt for runcastle's own files is wrong interactively too, so every
  * kind gets the rule — read-only and scoped to the pack, nothing wider.
  *
@@ -1670,12 +1427,11 @@ function renderBrief(input: WriteArtifactsInput): string {
     scenario,
     purpose,
     runtime,
-    planning,
   } = input
   if (driveFix) return renderDriveFixPrompt(driveFix)
   if (scenario) return renderScenarioPrompt(scenario)
   if (feature) {
-    return renderSystemPrompt(feature, session.kind, purpose, runtime, planning, session.headless)
+    return renderSystemPrompt(feature, session.kind, purpose, runtime, session.headless)
   }
   if (prepare) return renderPreparePrompt(prepare)
   if (projectBrief) return renderProjectPrompt(projectBrief, runtime)

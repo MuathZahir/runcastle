@@ -402,7 +402,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     const command = commandFor(f.id, sessionId)
     expect(command).toContain('resume codex-prior')
     expect(command).toContain('Start this explicit task.')
-    expect(command).toContain('Feature state:')
+    expect(command).toContain('Feature status:')
     const eventTypes = listAfter(ctx, f.id, 0).map((e) => e.type)
     expect(eventTypes).not.toContain('session.resume_skipped')
     expect(eventTypes).not.toContain('session.resume_unavailable')
@@ -445,7 +445,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
-    expect(command).toContain('Feature state:')
+    expect(command).toContain('Feature status:')
   })
 })
 

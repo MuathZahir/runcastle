@@ -15,6 +15,7 @@ import {
 } from '../launcher/sessions'
 import { emit, emitForSession } from '../services/events'
 import { mergeInProgressAt } from '../services/git'
+import { featureStateLine } from '../services/feature-state'
 import { isLiveLeadSession, leadDeliveryFor } from '../services/lead-delivery'
 import { isRuncastlePrompt } from '../services/lead-prompt'
 import { markHumanMessage } from '../services/lead-status'
@@ -399,7 +400,7 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
   return {
     hookSpecificOutput: {
       hookEventName: 'UserPromptSubmit',
-      additionalContext: `[runcastle] feature=${feature.slug} phase=${feature.phase} tickets=${tickets}${role}`,
+      additionalContext: `[runcastle] feature=${feature.slug} status=${featureStateLine(ctx, feature)} tickets=${tickets}${role}`,
     },
   }
 }
@@ -466,15 +467,15 @@ function emitConversationEnded(
 /**
  * `PreToolUse` for the file-write and shell tools — the talk-session edit guard
  * (F2), the talk-worktree install guard ({@link evaluateInstallGuard}) and, for
- * a feature's chat or side session in every phase, the lead's line guard
+ * a feature's chat or side session, the lead's line guard
  * ({@link evaluateLeadGuard}). A deny is returned as the verified hook shape.
  * Registered only for the kinds that may not write code (see `renderSettings` /
  * {@link evaluateEditGuard}).
  *
- * Anything allowed answers `{}`, "no opinion" — except for the feature's lead
- * past Go on Claude Code, which is answered `allow` (`the-feature-lead-runs-rounds`
- * decision 27): a chat opened in planning keeps the permission mode it launched
- * with, and a prompt is a stall when the lead works while the human is away.
+ * Anything allowed answers `{}`, "no opinion" — except for a feature's chat or
+ * side session on Claude Code, which is answered `allow` (`the-feature-lead-runs-rounds`
+ * decision 27; tickets-and-review-are-tools-not-phases decision 13): every feature
+ * chat is the lead, and a prompt is a stall when the lead works while the human is away.
  * Codex never asks inside its sandbox, so its hook keeps answering `{}`.
  *
  * This is where the guard's one live input comes from: a `resolve-conflict`
@@ -505,7 +506,6 @@ async function handlePreToolUse(
   const denial =
     evaluateEditGuard({
       kind: session.kind,
-      featurePhase: feature?.phase,
       purpose: session.purpose,
       mergeInProgress,
       worktreePath: session.worktreePath,
@@ -515,8 +515,6 @@ async function handlePreToolUse(
     }) ??
     evaluateInstallGuard({
       kind: session.kind,
-      featurePhase: feature?.phase,
-      purpose: session.purpose,
       worktreePath: session.worktreePath,
       toolName,
       command: typeof toolInput.command === 'string' ? toolInput.command : undefined,
@@ -527,7 +525,7 @@ async function handlePreToolUse(
     }) ??
     (feature && (session.kind === 'chat' || session.kind === 'side') ? leadGuardDenial(ctx, session, feature, toolName, toolInput) : null)
   if (denial) return editDenyResponse(denial)
-  return feature && isUnguardedLead(session.kind, feature.phase) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
+  return feature && isUnguardedLead(session.kind) && (session.runtime ?? DEFAULT_RUNTIME) === 'claude-code'
     ? LEAD_ALLOW_RESPONSE
     : {}
 }
@@ -558,7 +556,7 @@ function leadGuardDenial(
   })
 }
 
-/** The SessionStart context digest: brief + phase + tickets + pointer to MCP. */
+/** The SessionStart context digest: brief + status + tickets + pointer to MCP. */
 function sessionStartContext(ctx: AppCtx, feature: Feature): string {
   const tickets = listByFeature(ctx, feature.id)
   const byStatus = tickets.reduce<Record<string, number>>((acc, t) => {
@@ -574,9 +572,7 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
-    // No lap: the column no longer moves, and a session told "lap 1" repeats the
-    // retired word to the human (decision 16).
-    `phase: ${feature.phase}; branch: ${feature.branch}`,
+    `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',
