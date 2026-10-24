@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { BlocksLine, DependenciesRow } from '../src/components/workspace/FeatureDependencies'
 import {
   dependencyCandidates,
+  landingFeature,
   needsMe,
   nextStep,
   rowChip,
@@ -37,55 +38,141 @@ const ARCHIVED = dep('old', { phase: 'planning', status: 'archived' })
 const draft = (id: string, dependsOn: DependencyRef[] = []) =>
   listItem({ id, status: 'draft', phase: 'planning', dependsOn })
 
-describe('the rail chip of a draft', () => {
-  it('names the one dependency a draft waits on', () => {
+const upNext = (id: string, dependsOn: DependencyRef[] = [], upNextProblem: string | null = null) =>
+  listItem({ id, status: 'draft', phase: 'planning', dependsOn, upNext: true, upNextProblem })
+
+describe('the rail chip of a backlog draft', () => {
+  it('names the one dependency a draft is blocked by', () => {
     expect(rowChip(draft('d', [dep('auth')]))).toEqual({
       kind: 'draft',
-      text: 'Waits on auth',
-      title: 'waits on auth (building)',
+      text: 'Blocked by auth',
+      title: 'blocked by auth (building)',
     })
   })
 
   it('counts several, and lists them with their state in the tooltip', () => {
     const chip = rowChip(draft('d', [dep('auth'), ARCHIVED, MERGED]))
-    expect(chip.text).toBe('Waits on 2')
-    expect(chip.title).toBe('waits on auth (building), old (archived)')
+    expect(chip.text).toBe('Blocked by 2')
+    expect(chip.title).toBe('blocked by auth (building), old (archived)')
   })
 
-  it('stays In the backlog when every dependency merged, or there are none', () => {
-    expect(rowChip(draft('d', [MERGED])).text).toBe('In the backlog')
+  it('says Ready to start once every dependency it had shipped', () => {
+    expect(rowChip(draft('d', [MERGED])).text).toBe('Ready to start')
+  })
+
+  it('stays In the backlog when it never had a dependency', () => {
     expect(rowChip(draft('d')).text).toBe('In the backlog')
   })
 
-  it('changes nothing about triage or needs-me', () => {
-    const waiting = draft('d', [dep('auth')])
-    expect(triageOf(waiting)).toBe('drafts')
-    expect(needsMe(waiting)).toBeNull()
-    expect(triageOf(draft('r', [MERGED]))).toBe('drafts')
-    expect(needsMe(draft('r', [MERGED]))).toBeNull()
+  it('keeps every backlog draft in Backlog, never in Needs you', () => {
+    for (const d of [draft('b', [dep('auth')]), draft('r', [MERGED]), draft('p'), draft('a', [ARCHIVED])]) {
+      expect(triageOf(d)).toBe('drafts')
+      expect(needsMe(d)).toBeNull()
+    }
   })
 })
 
-describe('the drafts lane order', () => {
+describe('an Up next feature in the rail', () => {
+  it('sits in its own lane and asks for nothing', () => {
+    const f = upNext('u', [dep('auth')])
+    expect(triageOf(f)).toBe('upNext')
+    expect(needsMe(f)).toBeNull()
+  })
+
+  it('chips the one dependency it starts after, and says it starts by itself', () => {
+    expect(rowChip(upNext('u', [dep('auth'), MERGED]))).toEqual({
+      kind: 'draft',
+      text: 'After auth',
+      title: 'starts by itself when auth ships',
+    })
+  })
+
+  it('counts several, listing them on hover', () => {
+    const chip = rowChip(upNext('u', [dep('auth'), dep('chat')]))
+    expect(chip.text).toBe('After 2')
+    expect(chip.title).toBe('starts by itself when these ship: auth, chat')
+  })
+
+  it("warns that a dependency in the backlog won't move by itself", () => {
+    const chip = rowChip(upNext('u', [dep('auth'), dep('idea', { status: 'draft' })]))
+    expect(chip.title).toBe("starts by itself when these ship: auth, idea — won't start until you start idea")
+  })
+
+  it('does not warn about a dependency that is itself up next — it moves one step at a time', () => {
+    const chip = rowChip(upNext('u', [dep('next', { status: 'draft', upNext: true })]))
+    expect(chip.title).toBe('starts by itself when next ships')
+  })
+})
+
+describe('a stuck Up next feature', () => {
+  it('needs you when nothing is left to wait on', () => {
+    const f = upNext('s', [MERGED])
+    expect(triageOf(f)).toBe('needsYou')
+    expect(needsMe(f)).toEqual({
+      kind: 'attention',
+      label: 'nothing left to wait on — start it or move it to the backlog',
+    })
+    expect(rowChip(f).text).toBe('Needs you')
+  })
+
+  it('needs you when a dependency it waits on was archived', () => {
+    const f = upNext('s', [dep('auth'), ARCHIVED])
+    expect(triageOf(f)).toBe('needsYou')
+    expect(needsMe(f)?.label).toBe('old was archived — remove it or move this to the backlog')
+  })
+
+  it("says why its automatic start didn't happen when the server recorded it", () => {
+    const problem = "couldn't start by itself: its dependencies merged into different branches (main, develop)"
+    expect(needsMe(upNext('s', [MERGED], problem))).toEqual({ kind: 'attention', label: problem })
+  })
+})
+
+describe('the lanes and order around Up next', () => {
   const list = [
-    draft('w1', [dep('auth')]),
-    draft('r1'),
-    draft('w2', [ARCHIVED]),
-    draft('r2', [MERGED]),
+    draft('b1', [dep('auth')]),
+    draft('p1'),
+    upNext('u1', [dep('auth')]),
+    draft('b2', [ARCHIVED]),
+    draft('r1', [MERGED]),
   ]
 
-  it('puts ready drafts above waiting ones, otherwise keeping the incoming order', () => {
+  it('orders Backlog ready-to-start, then parked, then blocked, otherwise keeping the incoming order', () => {
     const lane = triage(list).find((g) => g.key === 'drafts')
-    expect(lane?.features.map((f) => f.id)).toEqual(['r1', 'r2', 'w1', 'w2'])
+    expect(lane?.features.map((f) => f.id)).toEqual(['r1', 'p1', 'b1', 'b2'])
+  })
+
+  it('places Up next after the live-work lanes and before Backlog', () => {
+    const groups = triage([
+      ...list,
+      upNext('stuck', [MERGED]),
+      listItem({ id: 'working', phase: 'building', activeRun: true }),
+      listItem({ id: 'stopped', phase: 'building' }),
+      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+    ])
+    expect(groups.map((g) => [g.key, g.label])).toEqual([
+      ['needsYou', 'Needs you'],
+      ['agentWorking', 'Agent working'],
+      ['inProgress', 'In progress'],
+      ['upNext', 'Up next'],
+      ['drafts', 'Backlog'],
+      ['shipped', 'Shipped'],
+    ])
+    expect(groups[0]!.features.map((f) => f.id)).toEqual(['stuck'])
+    expect(groups[3]!.features.map((f) => f.id)).toEqual(['u1'])
   })
 
   it('sorts the same way in the flat sidebar order, still between active and shipped', () => {
     const sorted = sortForSidebar([
       listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
       ...list,
+      upNext('stuck', [MERGED]),
       listItem({ id: 'active', phase: 'building' }),
     ])
-    expect(sorted.map((f) => f.id)).toEqual(['active', 'r1', 'r2', 'w1', 'w2', 'shipped'])
+    expect(sorted.map((f) => f.id)).toEqual(['stuck', 'active', 'u1', 'r1', 'p1', 'b1', 'b2', 'shipped'])
+  })
+
+  it('never lands you on an Up next feature when entering a project', () => {
+    expect(landingFeature([upNext('u1', [dep('auth')]), draft('p1')])).toBeNull()
   })
 })
 
