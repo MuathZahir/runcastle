@@ -19,7 +19,7 @@ The human moves a feature between the two on its own page. A backlog feature wit
 
 ### Shape
 
-**Storage (decision 1).** One new boolean column on `features`, the waiting mark: "start by itself when what I wait on ships". It is meaningful only while `status = 'draft'`, and starting a feature (by click or by itself) clears it. No new `FeatureStatus` value: everything that reads `status === 'draft'` as "no branch exists yet" stays correct for a waiting feature. A migration adds the column defaulting to false, so every existing draft stays in the backlog (decision 9). `feature_dependencies` is unchanged and still has no `kind` column.
+**Storage (decision 1).** One new boolean column on `features`, the waiting mark, named `upNext` (column `up_next`): "start by itself when what I wait on ships". It is deliberately not called `waiting`, because the feature row already has `waitingReason`, which means "the lead is waiting on the human" and is unrelated. It is meaningful only while `status = 'draft'`, and starting a feature (by click or by itself) clears it. No new `FeatureStatus` value: everything that reads `status === 'draft'` as "no branch exists yet" stays correct for a waiting feature. A migration adds the column defaulting to false, so every existing draft stays in the backlog (decision 9). `feature_dependencies` is unchanged and still has no `kind` column.
 
 **Derived states (core, IO-free, next to the existing dependency rules).** For an unstarted feature with its dependencies (the `DependencyRef` list, each with `satisfied`, `status`, `phase`):
 
@@ -31,12 +31,12 @@ The human moves a feature between the two on its own page. A backlog feature wit
 | `readyToStart` | no mark, ≥1 dependency, all shipped | Backlog, chip `Ready to start`, sorts first |
 | `backlog` | no mark, no dependencies | Backlog, chip `In the backlog` |
 
-Satisfaction stays derived at read time (ADR-0013 point 4: satisfied means `phase === 'shipped'`). The stuck reason comes from the state itself, except "the automatic start failed" and "dependencies merged into different branches", which come from the newest auto-start event on the feature's timeline (see below). The web and the server both use these helpers; the web never recomputes `satisfied`.
+Satisfaction stays derived at read time (ADR-0013 point 4: satisfied means `phase === 'shipped'`). The stuck reason comes from the state itself, except "the automatic start failed" and "dependencies merged into different branches", which come from the newest auto-start event on the feature's timeline (see below); the feature list carries that message for an up-next draft so the sidebar can show it without a second query per row. The web and the server both use these helpers; the web never recomputes `satisfied`.
 
-**Setting the mark (decisions 2, 8, 10).** One service function sets or clears the mark on an unstarted feature. Setting it is refused unless the feature is a draft with at least one unshipped dependency ("start when X ships" with no X is just Start). Clearing is always allowed on a draft. It emits `feature.waiting.changed`. It is reached from:
-- a new tRPC procedure on the feature router (the page's two buttons);
-- MCP `create_feature`: a new `waiting: true`, accepted only with `draft: true` and a non-empty `dependsOn`, and only from project-scoped sessions (the project session and the orchestrator). A feature session's `create_feature` passing `waiting` is refused with a message saying parked scope goes to the backlog and the human can mark it waiting on its page;
-- MCP `set_feature_dependencies`: a new optional `waiting` (omitted = unchanged), project-scoped as today. It applies after the new set is written, so `{ dependsOn: ['a'], waiting: true }` works in one call.
+**Setting the mark (decisions 2, 8, 10).** One service function sets or clears the mark on an unstarted feature. Setting it is refused unless the feature is a draft with at least one unshipped dependency ("start when X ships" with no X is just Start). Clearing is always allowed on a draft. It emits `feature.upnext.changed`. It is reached from:
+- a new tRPC procedure on the feature router, `setUpNext({ featureId, upNext })` (the page's two buttons);
+- MCP `create_feature`: a new `upNext: true`, accepted only with `draft: true` and a non-empty `dependsOn`, and only from project-scoped sessions (the project session and the orchestrator). A feature session's `create_feature` passing `upNext` is refused with a message saying parked scope goes to the backlog and the human can mark it up next on its page;
+- MCP `set_feature_dependencies`: a new optional `upNext` (omitted = unchanged), project-scoped as today. It applies after the new set is written, so `{ dependsOn: ['a'], upNext: true }` works in one call.
 
 Editing dependencies on a waiting feature is allowed, as today. Removing its last open dependency does not clear the mark; the feature becomes `stuck` and shows in Needs you (decision 5).
 
@@ -56,14 +56,14 @@ Archived dependencies keep blocking, as in ADR-0013, and make the waiting featur
 **Feature page (decisions 8, 13, 15).** The unstarted feature's next-step bar:
 - `blocked`: Start and Plan it yourself stay disabled with today's reason; a new **Start when ready** action marks it waiting. Its caption says it starts by itself when `<x>` ships and that this cannot be undone.
 - `upNext`: the bar reads "Starts by itself when `<x>` ships" (or "won't start until you start `<b>`"), with **Move to backlog**.
-- `stuck`: Start and Plan it yourself are enabled (as for any startable draft), with the stuck reason as the description, plus **Move to backlog**. When the reason is "different branches", the base picker is not preselected.
+- `stuck`: the stuck reason is the description, plus **Move to backlog**. When nothing unshipped is left, Start and Plan it yourself are enabled, as for any startable draft; when the reason is "different branches", the base picker is not preselected. When a dependency was archived, Start stays disabled with today's reason ("archived — remove it to start"), because ADR-0013's Start gate still holds.
 - `readyToStart` / `backlog`: unchanged (Start, Plan it yourself).
 
 The dependency's page splits ADR-0013's read-only **Blocks:** line into **Starts when this ships:** (its waiting dependents; one that still waits on something else after this says so, e.g. "`y` (also waits on `z`)") and **Blocks:** (its backlog dependents). Both stay read-only.
 
-**Agent reads (decision 11).** `FeatureListItem` and `FeatureFull` carry the mark. The portfolio index line marks unstarted features `[draft, waiting]` or `[draft, blocked]` (and `[draft, waiting, stuck]` for stuck ones); `get_feature_context`'s header carries the mark as `waiting`. `blocks` on `get_feature_context` keeps listing unmerged dependents, now with each one's mark.
+**Agent reads (decision 11).** `FeatureListItem` and `FeatureFull` carry the mark. The portfolio index line marks unstarted features `[draft, up next]` or `[draft, blocked]` (and `[draft, up next, stuck]` for stuck ones), replacing today's `[draft, waiting]`; `get_feature_context`'s header carries the mark as `upNext`. `blocks` (the unmerged dependents) carries each one's mark too.
 
-**Skill text (decision 11).** The project skill's create step asks per feature: start now, up next after X, or backlog. Order is stated with `dependsOn`, and `waiting: true` marks the up-next ones. Its orchestrator part says waiting features start themselves when their dependencies merge, and backlog features stay its call. The ideate skill's parking step stays "park in the backlog", adding one line that the human can mark it waiting on its page. Tool descriptions for `create_feature` and `set_feature_dependencies` describe `waiting`.
+**Skill text (decision 11).** The project skill's create step asks per feature: start now, up next after X, or backlog. Order is stated with `dependsOn`, and `upNext: true` marks the up-next ones. Its orchestrator part says waiting features start themselves when their dependencies merge, and backlog features stay its call. The ideate skill's parking step stays "park in the backlog", adding one line that the human can mark it waiting on its page. Tool descriptions for `create_feature` and `set_feature_dependencies` describe `upNext`.
 
 **ADR.** This amends ADR-0013 ("only drafts wait, and the dependency gates only Start"): a draft may now carry the waiting mark, and a dependency's merge starts its waiting dependents. The project session writes that ADR when this ships, from `decisions.md`. Not part of the tickets.
 
@@ -72,7 +72,7 @@ The dependency's page splits ADR-0013's read-only **Blocks:** line into **Starts
 - **Core dependency rules (existing module, new functions).** The pure helpers that classify an unstarted feature into `upNext` / `stuck` / `blocked` / `readyToStart` / `backlog` and give the reason. Observe: the state for every combination of mark, satisfied, archived, draft dependency. Unit-tested with no IO.
 - **Dependencies service (existing).** Setting and clearing the mark, with its refusals and its event. Observe through the service against a test database, as the existing feature-dependency tests do.
 - **Merge flow (existing seam: `mergeFeatureFlow`).** The automatic start. Observe: after merging a dependency in a test repo, the waiting dependent is `active` with its branch cut from the dependency's base and its mark cleared; mixed bases and a start that throws leave it a draft with the right event; the merge itself always succeeds. This is the one seam the core behaviour is proven at.
-- **MCP tools (existing: `toolCreateFeature`, `toolSetFeatureDependencies`, the feature index line, `get_feature_context`).** Observe: `waiting` accepted and refused by session kind and shape; the index marks.
+- **MCP tools (existing: `toolCreateFeature`, `toolSetFeatureDependencies`, the feature index line, `get_feature_context`).** Observe: `upNext` accepted and refused by session kind and shape; the index marks.
 - **tRPC feature router (existing router, new procedure).** The page's two buttons.
 - **Web sidebar derivations (existing pure module).** `triage`, `rowChip`, `needsMe`, `sortForSidebar` over wire data. Observe: lanes, chips and order for each state; tested like the existing sidebar tests.
 - **Web next-step resolver for drafts (existing pure module).** Observe: the bar for each state.

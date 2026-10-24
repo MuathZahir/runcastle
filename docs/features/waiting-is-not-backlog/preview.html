@@ -334,9 +334,9 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     <p class="hint">Only the project session and the orchestrator can make a feature wait. <a class="pin" data-d="10">10</a> Its create step asks "start now, up next after X, or backlog?" <a class="pin" data-d="11">11</a></p>
     <div class="screen" style="padding:12px 14px;max-width:640px">
       <div class="mono" style="color:var(--color-text-secondary)">
-        create_feature({ title, oneLiner, brief, draft: true, dependsOn: ["tickets-and-review"], <span style="color:var(--color-accent-text)">waiting: true</span> })<br>
-        set_feature_dependencies({ slug, dependsOn, <span style="color:var(--color-accent-text)">waiting?</span> })<br><br>
-        designs-wait-for-you — Designs wait for you [draft, waiting] · waits on: tickets-and-review<br>
+        create_feature({ title, oneLiner, brief, draft: true, dependsOn: ["tickets-and-review"], <span style="color:var(--color-accent-text)">upNext: true</span> })<br>
+        set_feature_dependencies({ slug, dependsOn, <span style="color:var(--color-accent-text)">upNext?</span> })<br><br>
+        designs-wait-for-you — Designs wait for you [draft, up next] · waits on: tickets-and-review<br>
         stale-branch-cleanup — Stale branch cleanup [draft, blocked] · waits on: tickets-and-review
       </div>
     </div>
@@ -373,10 +373,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   <details class="hood" id="hood">
     <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
     <div class="sub hood-grid">
-      <p><b>Storage.</b> One new boolean column on <code>features</code>, meaningful only while <code>status = 'draft'</code>; cleared when the feature starts. No new status, no change to <code>feature_dependencies</code>.</p>
+      <p><b>Storage.</b> One new boolean column on <code>features</code>, <code>upNext</code> (not "waiting": <code>waitingReason</code> already means "waiting on you"), meaningful only while <code>status = 'draft'</code>; cleared when the feature starts. No new status, no change to <code>feature_dependencies</code>.</p>
       <p><b>Rules (core, IO-free).</b> "Up next" = draft + waiting mark + at least one unshipped dependency, none archived. "Stuck" = draft + waiting mark + (nothing unshipped, or an archived dependency). Both derived at read time; nothing about satisfaction is stored.</p>
       <p><b>Auto-start.</b> In <code>mergeFeatureFlow</code>, after the feature ships: for each waiting dependent with nothing unshipped left, check its dependencies' bases agree, then call the same start path as the Start click with that base. Wrapped so it never fails the merge; a failure records an event whose reason the Needs you row shows.</p>
-      <p><b>Wire.</b> <code>FeatureListItem</code> and <code>FeatureFull</code> carry the mark; a <code>feature.setWaiting</code> tRPC procedure backs the two buttons; MCP <code>create_feature</code> and <code>set_feature_dependencies</code> gain <code>waiting</code>.</p>
+      <p><b>Wire.</b> <code>FeatureListItem</code> and <code>FeatureFull</code> carry the mark; a <code>feature.setUpNext</code> tRPC procedure backs the two buttons; MCP <code>create_feature</code> and <code>set_feature_dependencies</code> gain <code>upNext</code>.</p>
       <p><b>Web.</b> <code>sidebar.ts</code> gains an <code>upNext</code> triage key and lane, new chips, and the stuck case in <code>needsMe</code>; the draft next-step resolver gains the two actions; the dependency page's Blocks line splits.</p>
     </div>
   </details>

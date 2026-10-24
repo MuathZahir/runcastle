@@ -55,13 +55,13 @@ Terms used throughout:
 **Assumed.** Alternative: convert every unstarted feature with an unshipped dependency to waiting in the migration.
 
 ## 10. Only the project session and the orchestrator can make a feature waiting
-**Decision:** `create_feature` gains `waiting: true`, accepted only with `draft: true` and a non-empty `dependsOn`. `set_feature_dependencies` gains an optional `waiting` to move a feature either way. Both are open to project-scoped sessions (the project session and the orchestrator) only. A feature's own sessions still park scope creep in the backlog, exactly as today.
+**Decision:** `create_feature` gains `upNext: true`, accepted only with `draft: true` and a non-empty `dependsOn`. `set_feature_dependencies` gains an optional `upNext` to move a feature either way. Both are open to project-scoped sessions (the project session and the orchestrator) only. A feature's own sessions still park scope creep in the backlog, exactly as today.
 **Why:** Waiting starts a feature without a click, so it should only come from a conversation where the human agreed an order of work, which is the project session's cut. Scope creep parked mid-grill is "not now" by definition; the human can still mark it waiting in one click.
 **Assumed.** Alternative: let a feature chat mark parked scope as waiting when the human says so in that chat.
 **Challenged:** what makes an automatic start safe is the human's consent, not which session heard it. "Do this right after this feature ships" is natural to say mid-grill, and under this decision it lands in the backlog anyway, which brings the original complaint back through another door. Keep backlog as the ideate default, with waiting only on an explicit "after this".
 
 ## 11. The agents' instructions and reads learn the difference
-**Decision:** The project skill's create step asks, per feature, "start now, up next after X, or backlog?", and states order with `dependsOn` plus `waiting: true` for the up-next ones. Its orchestrator part says waiting features start themselves and backlog features stay its call. The portfolio index marks unstarted features `[draft, waiting]` (up next) or `[draft, blocked]` (backlog with an open dependency), and `get_feature_context` carries the mark. The ideate skill's parking step is unchanged: parked scope goes to the backlog.
+**Decision:** The project skill's create step asks, per feature, "start now, up next after X, or backlog?", and states order with `dependsOn` plus `upNext: true` for the up-next ones. Its orchestrator part says waiting features start themselves and backlog features stay its call. The portfolio index marks unstarted features `[draft, up next]` or `[draft, blocked]` (backlog with an open dependency), and `get_feature_context` carries the mark. The ideate skill's parking step is unchanged: parked scope goes to the backlog.
 **Why:** Without this, the project session keeps putting everything ordered into the backlog, and the human's complaint comes straight back.
 **Assumed.** Alternative: leave the skill text alone and rely on the tool descriptions.
 
