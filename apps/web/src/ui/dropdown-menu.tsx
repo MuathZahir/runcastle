@@ -83,7 +83,7 @@ type ItemTone = 'default' | 'danger'
 /**
  * One action: 30px, optional leading `icon` (16px, `text-icon`), the label,
  * and an optional trailing `kbd` hint. `tone="danger"` is the destructive row
- * (Delete, Remove) — label and icon in `danger`.
+ * (Delete, Remove) — the label in `danger-text`, the icon in `danger`.
  *
  * Highlight, not hover: Radix marks the item the keyboard *or* the pointer is
  * on with `data-highlighted`, so arrowing down and moving the mouse light the

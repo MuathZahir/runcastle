@@ -208,7 +208,7 @@ function DiscoveryStatus({ view }: { view: SettingsView }) {
           key={line.runtime}
           className={cx(
             'inline-flex items-center gap-1.5',
-            line.failed ? 'text-warning' : 'text-text-tertiary',
+            line.failed ? 'text-warning-text' : 'text-text-tertiary',
           )}
         >
           <RuntimeIcon runtime={line.runtime} />
@@ -231,7 +231,7 @@ function RefreshModels() {
   return (
     <>
       {refresh.error && (
-        <span role="alert" className="text-xs text-danger">
+        <span role="alert" className="text-xs text-danger-text">
           Refresh failed: {refresh.error.message}
         </span>
       )}

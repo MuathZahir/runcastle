@@ -203,7 +203,7 @@ export function SidebarFeatureRow({
       words={words}
       wordsClassName={cx(
         lane === 'agentWorking' && 'text-shimmer',
-        nm && (nm.kind === 'attention' ? 'text-danger' : 'text-text-secondary'),
+        nm && (nm.kind === 'attention' ? 'text-danger-text' : 'text-text-secondary'),
       )}
       aside={relTime(f.lastActivityAt)}
       dot={rowDot(f)}

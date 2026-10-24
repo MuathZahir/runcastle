@@ -519,7 +519,7 @@ function FindingRow({
       }
     >
       <div className="flex flex-col gap-2">
-        <div className={cx('text-xs', stale ? 'text-warning' : 'text-text-tertiary')}>
+        <div className={cx('text-xs', stale ? 'text-warning-text' : 'text-text-tertiary')}>
           {describeFinding(f)}
         </div>
         {f.evidence && (

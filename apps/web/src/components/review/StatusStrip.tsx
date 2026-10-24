@@ -40,7 +40,7 @@ function toItem(p: StatusProperty): PropertyItem {
       {p.value}
     </span>
   )
-  const sub = p.sub && p.detail ? <span className="text-warning" title={p.detail}>{p.sub}</span> : p.sub
+  const sub = p.sub && p.detail ? <span className="text-warning-text" title={p.detail}>{p.sub}</span> : p.sub
   const leading = p.key === 'tickets' ? <IconCube /> : undefined
   return {
     label: p.label,

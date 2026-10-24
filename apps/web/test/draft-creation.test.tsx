@@ -65,9 +65,9 @@ describe('draft creation surfaces', () => {
 
     expect(html).toContain('from …')
     // The picker and the caption beneath the dead Start both say it in warning.
-    expect(html).toContain('border-transparent text-warning')
+    expect(html).toContain('border-transparent text-warning-text')
     expect(html).toContain('title="pick a branch first"')
-    expect(html).toMatch(/text-warning"><span>pick a branch first<\/span>/)
+    expect(html).toMatch(/text-warning-text"><span>pick a branch first<\/span>/)
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-variant="primary"[^>]*>.*Start<\/button>/)
   })
 

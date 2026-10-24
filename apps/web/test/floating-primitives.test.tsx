@@ -91,7 +91,7 @@ describe('DropdownMenu', () => {
     render(<Harness />)
     openMenu(screen.getByRole('button', { name: 'Actions' }))
 
-    expect(screen.getByRole('menuitem', { name: 'Delete…' }).className).toContain('text-danger')
+    expect(screen.getByRole('menuitem', { name: 'Delete…' }).className).toContain('text-danger-text')
   })
 
   it('closes when a pointer lands outside it', async () => {

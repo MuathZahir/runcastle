@@ -176,7 +176,7 @@ export function TerminalView({ sessionId, wsBase, onEnded }: TerminalViewProps) 
           className={cx(
             'pointer-events-none absolute inset-x-0 top-0 px-2.5 py-1 text-xs animate-fade-in',
             strip.tone === 'down'
-              ? 'bg-danger-subtle text-danger'
+              ? 'bg-danger-subtle text-danger-text'
               : 'border-b border-border-subtle bg-surface-inset text-text-tertiary',
           )}
         >

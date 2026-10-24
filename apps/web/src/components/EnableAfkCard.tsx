@@ -598,7 +598,7 @@ export function ImageBuildAction({
         {label}
       </Button>
       {target.kind === 'error' && (
-        <span className="basis-full text-right text-xs text-warning">{target.message}</span>
+        <span className="basis-full text-right text-xs text-warning-text">{target.message}</span>
       )}
     </>
   )
@@ -642,7 +642,7 @@ export function BurnCacheRow({
       <Button variant="ghost" size="sm" icon={<IconTrash />} disabled={pending} onClick={onClear}>
         {pending ? 'Clearing…' : 'Clear'}
       </Button>
-      {refusal && <span className="basis-full text-right text-xs text-warning">{refusal}</span>}
+      {refusal && <span className="basis-full text-right text-xs text-warning-text">{refusal}</span>}
     </ChecklistRow>
   )
 }

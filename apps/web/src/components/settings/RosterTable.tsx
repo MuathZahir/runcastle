@@ -247,7 +247,7 @@ function ModelRow({
 function ProviderNotice({ row }: { row: RosterRow }) {
   if (!row.noLongerOffered && !row.retirement) return null
   return (
-    <p className="m-0 flex flex-wrap gap-x-4 pr-2 pb-2.5 pl-8 text-xs text-warning">
+    <p className="m-0 flex flex-wrap gap-x-4 pr-2 pb-2.5 pl-8 text-xs text-warning-text">
       {row.noLongerOffered && (
         <span>no longer offered by {DISCOVERY_SOURCE_LABEL[row.noLongerOffered]}</span>
       )}
@@ -380,7 +380,7 @@ export function Refusal({
 }) {
   if (writes.error?.cell !== cell) return null
   return (
-    <p role="alert" className={cx('m-0 text-xs text-danger', className)}>
+    <p role="alert" className={cx('m-0 text-xs text-danger-text', className)}>
       {writes.error.message}
     </p>
   )

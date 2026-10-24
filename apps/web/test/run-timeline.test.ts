@@ -55,7 +55,7 @@ describe('RunTimeline', () => {
     const warned = messageClass(markup, 'docs digest: 97000 bytes')
     expect(warned).not.toContain('truncate')
     expect(warned).toContain('break-words')
-    expect(warned).toContain('text-warning')
+    expect(warned).toContain('text-warning-text')
     // The row beside it is untouched — only the warning costs the density.
     expect(messageClass(markup, 'docs digest: 2400 bytes')).toContain('truncate')
   })

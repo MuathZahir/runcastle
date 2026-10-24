@@ -91,11 +91,11 @@ const BUTTON_VARIANT: Record<CanonicalVariant, string> = {
     'aria-pressed:bg-surface-selected aria-pressed:text-text aria-expanded:bg-surface-selected aria-expanded:text-text ' +
     'disabled:text-text-disabled',
   danger:
-    'border-border bg-transparent text-danger enabled:hover:border-danger-subtle enabled:hover:bg-danger-subtle ' +
-    'disabled:border-border-subtle disabled:text-text-disabled',
+    'border-border bg-transparent text-danger-text [&_svg]:text-danger enabled:hover:border-danger-subtle enabled:hover:bg-danger-subtle ' +
+    'disabled:border-border-subtle disabled:text-text-disabled disabled:[&_svg]:text-text-disabled',
   'danger-ghost':
-    'border-transparent bg-transparent text-danger enabled:hover:bg-danger-subtle ' +
-    'aria-expanded:bg-danger-subtle disabled:text-text-disabled',
+    'border-transparent bg-transparent text-danger-text [&_svg]:text-danger enabled:hover:bg-danger-subtle ' +
+    'aria-expanded:bg-danger-subtle disabled:text-text-disabled disabled:[&_svg]:text-text-disabled',
 }
 
 /** Icons sit at 14px in a small button and 16px otherwise, in the label's colour. */

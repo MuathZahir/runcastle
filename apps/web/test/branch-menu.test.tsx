@@ -176,6 +176,6 @@ describe('BranchMenu', () => {
       <BranchMenu prefix="landing on" value="gone" branches={BRANCHES} onPick={() => {}} missing />,
     )
 
-    expect(screen.getByRole('button').className).toContain('text-warning')
+    expect(screen.getByRole('button').className).toContain('text-warning-text')
   })
 })
