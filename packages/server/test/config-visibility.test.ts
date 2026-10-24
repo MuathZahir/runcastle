@@ -57,7 +57,6 @@ describe('config visibility (roster notes reach the agent)', () => {
     repoPath = tmpRepo()
     const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, {
       slug: 'roster-notes',
-      phase: 'planning',
     })
     const session = createSessionRow(ctx, {
       featureId: feature.id,

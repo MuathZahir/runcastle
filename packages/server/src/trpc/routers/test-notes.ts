@@ -4,13 +4,7 @@ import {
   deleteNote,
   editNote,
   listByFeature,
-  promoteMany,
-  promoteNote,
-  reopenNote,
   sendNotes,
-  triageNotes,
-  triagePreview,
-  toggleNote,
 } from '../../services/test-notes'
 import { leadDeliveryState } from '../../services/lead-delivery'
 import { publicProcedure, router } from '../context'
@@ -19,8 +13,7 @@ import { InvalidInputError } from '../../errors'
 /**
  * Test-drive notes (SPEC test-drive-improvements): what the human observed while
  * clicking through the feature branch. Thin pass-throughs — the service owns the
- * lifecycle (open ⇄ done, promoted frozen), the events, and the regenerated
- * `test-notes.md`; refusals come back from it as domain errors the context
+ * events; refusals come back from it as domain errors the context
  * middleware maps.
  *
  * `remove` rather than `delete` because `delete` is a reserved word, and the
@@ -58,36 +51,6 @@ export const testNotesRouter = router({
   remove: publicProcedure
     .input(z.object({ noteId: z.string() }))
     .mutation(({ ctx, input }) => deleteNote(ctx, input.noteId)),
-
-  toggle: publicProcedure
-    .input(z.object({ noteId: z.string() }))
-    .mutation(({ ctx, input }) => toggleNote(ctx, input.noteId)),
-
-  // Returns the frozen note AND its new ticket: the UI needs the ticket to show
-  // the reference without waiting for the feature refetch. Kept for the MCP wire
-  // and back-compat — the review panel promotes in batches (decisions.md #11).
-  promote: publicProcedure
-    .input(z.object({ noteId: z.string() }))
-    .mutation(({ ctx, input }) => promoteNote(ctx, input.noteId)),
-
-  // The Address-notes triage: one mutation for the whole selection, because the
-  // panel disables every row while any note mutation is in flight — a promotion
-  // per checked note would freeze the list for the length of the batch.
-  promoteMany: publicProcedure
-    .input(z.object({ noteIds: z.array(z.string()).min(1) }))
-    .mutation(({ ctx, input }) => promoteMany(ctx, input.noteIds)),
-
-  reopen: publicProcedure
-    .input(z.object({ noteId: z.string() }))
-    .mutation(({ ctx, input }) => reopenNote(ctx, input.noteId)),
-
-  triage: publicProcedure
-    .input(z.object({ featureId: z.string(), quickFixIds: z.array(z.string()), quickFixFindingIds: z.array(z.string()), dismissIds: z.array(z.string()), carry: z.boolean() }))
-    .mutation(({ ctx, input }) => triageNotes(ctx, input.featureId, input)),
-
-  triagePreview: publicProcedure
-    .input(z.object({ featureId: z.string() }))
-    .query(({ ctx, input }) => triagePreview(ctx, input.featureId)),
 
   // Send to agent (decision 18): every unsent note, as one human message to the
   // feature's lead; an empty send says the drive went fine.

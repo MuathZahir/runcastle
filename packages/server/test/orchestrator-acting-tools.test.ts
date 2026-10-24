@@ -18,7 +18,6 @@ import {
 } from '../src/launcher/sessions'
 import {
   toolAddToBrief,
-  toolGoFeature,
   toolDrive,
   toolMergeFeature,
   toolPlanFeature,
@@ -156,7 +155,6 @@ describe('the orchestrator’s acting tools', () => {
       start_feature: (c, s, slug) => toolStartFeature(c, s, { slug }),
       plan_feature: (c, s, slug) => toolPlanFeature(c, s, { slug }, { spawn: false }),
       stop_feature_run: (c, s, slug) => toolStopFeatureRun(c, s, { slug }),
-      go_feature: (c, s, slug) => toolGoFeature(c, s, { slug }),
       drive: (c, s, slug) => toolDrive(c, s, { slug, action: 'start' }),
       record_test_note: (c, s, slug) =>
         toolRecordTestNote(c, s, { slug, text: 'x', observedBy: 'orchestrator' }),
@@ -221,10 +219,10 @@ describe('the orchestrator’s acting tools', () => {
 
   it('plan_feature passes the self-plan launch’s own refusal through', async () => {
     const session = orchestrator()
-    await owned('built', { phase: 'building' })
+    await owned('built', { status: 'shipped' })
     expect(
       await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
-    ).toMatch(/past planning/)
+    ).toMatch(/is shipped/)
   })
 
   it('a lead message while it plans itself, then stop_feature_run: the woken lead is never ended', async () => {
@@ -268,28 +266,6 @@ describe('the orchestrator’s acting tools', () => {
     expect(getSessionRow(ctx, chat.id)?.status).toBe('live')
   })
 
-  /**
-   * The orchestrator gives Go as the human does (`the-feature-lead-runs-rounds`
-   * decision 11): the feature moves to building and its lead dispatches — the
-   * orchestrator starts no run itself.
-   */
-  it('go_feature gives an owned feature Go, starting no run, and passes Go’s refusals through', async () => {
-    const session = orchestrator()
-    const f = await owned('approvable', { ticketsReadyLap: 1 })
-    storeTickets(ctx, f.id, [ticketInput('Do the work'), ticketInput('Review it', 'review')])
-    const result = await toolGoFeature(ctx, session, { slug: 'approvable' })
-    expect(result.warnings).toEqual(expect.any(Array))
-    expect(getFeatureRow(ctx, f.id).phase).toBe('building')
-    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).toContain('feature.go')
-    expect(listAfter(ctx, f.id, 0).map((e) => e.type)).not.toContain('burn.started')
-
-    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'approvable' }))).toMatch(
-      /already past planning/,
-    )
-    seedFeature(ctx, projectId, { slug: 'drafty', status: 'draft', orchestrated: true })
-    expect(await refusal(() => toolGoFeature(ctx, session, { slug: 'drafty' }))).toMatch(/is in the backlog/)
-  })
-
   it('drive starts and stops a feature drive, and the project drive is refused while it holds the slot', async () => {
     const session = orchestrator()
     const f = await owned('drivable')
@@ -326,7 +302,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('merge_feature ships a clean feature with its outcome doc', async () => {
     const session = orchestrator()
-    const f = await owned('landing', { phase: 'review' })
+    const f = await owned('landing', {})
     await g.checkout('feature/landing')
     writeFileSync(join(repoPath, 'landing.txt'), 'work\n')
     await g.add(['landing.txt'])
@@ -335,13 +311,13 @@ describe('the orchestrator’s acting tools', () => {
 
     const res = await toolMergeFeature(ctx, session, { slug: 'landing' })
     expect(res).toMatchObject({ ok: true, base: 'main', files: [] })
-    expect(getFeatureRow(ctx, f.id)).toMatchObject({ phase: 'shipped', status: 'shipped' })
+    expect(getFeatureRow(ctx, f.id)).toMatchObject({ status: 'shipped' })
     expect(await g.raw(['show', 'main:docs/features/landing/outcome.md'])).toContain('# Outcome')
   })
 
   it('merge_feature returns a conflict’s files and records merge.conflict', async () => {
     const session = orchestrator()
-    const f = await owned('clash', { phase: 'review' })
+    const f = await owned('clash', {})
     await g.checkout('feature/clash')
     writeFileSync(join(repoPath, 'README.md'), 'feature-line\n')
     await g.add(['README.md'])

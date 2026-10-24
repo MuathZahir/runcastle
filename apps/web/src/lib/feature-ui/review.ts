@@ -1,8 +1,8 @@
-import { lapWorkTickets, ticketTally } from '@runcastle/core'
+import { ticketTally, workTickets } from '@runcastle/core'
 import type { FindingResolvedBy, FindingStatus, TallyTicket, TicketKind } from '@runcastle/core'
 import type { ReviewGateRunWire } from '../reviews'
 import { gateCheckLines } from './checks'
-import { testDriveFigure } from './gates'
+import { type DriveTicketFigure, testDriveFigure } from './gates'
 import { unverifiedWarning } from './internal'
 
 export type CheckTone = 'ok' | 'warn' | 'danger' | 'idle'
@@ -81,9 +81,9 @@ export type ReviewOutcome =
  * than as 0: a clean bill of health is a claim, not a default, and this row used
  * to make that claim off a notes list the review no longer writes to.
  *
- * Lap 1 emits at most one review ticket per feature (spec, "Later laps"), so
- * the last review ticket in the batch is *the* review. If multiplicity ever
- * lands, this is the seam that has to aggregate instead of pick.
+ * The last review ticket is *the* review: a later pass supersedes an earlier
+ * one. If several ever need showing at once, this is the seam that has to
+ * aggregate instead of pick.
  */
 export function reviewOutcome(input: {
   tickets?: readonly ReviewTicketFigure[]
@@ -121,9 +121,9 @@ interface WalkthroughFigure {
  * signal to render no video UI at all rather than an empty frame.
  *
  * Picks the LAST review with a recording, for exactly the reason
- * {@link reviewOutcome} picks the last review ticket: lap 1 emits one review per
- * feature, so the last one is *the* review. If multiplicity ever lands, this is
- * the seam that has to show several instead of one.
+ * {@link reviewOutcome} picks the last review ticket: the last one is *the*
+ * review. If several ever need showing, this is the seam that has to show
+ * several instead of one.
  */
 export function reviewWalkthroughUrl(artifacts?: readonly WalkthroughFigure[]): string | null {
   const rows = (artifacts ?? []).filter((a) => a.hasVideo)
@@ -133,7 +133,6 @@ export function reviewWalkthroughUrl(artifacts?: readonly WalkthroughFigure[]): 
 export interface ReviewArtifactFigure {
   ticketId: string
   seq: number
-  lap: number
   passKind: 'review' | 'verification'
   reviewedCommit: string | null
   completedAt: number | null
@@ -147,8 +146,8 @@ export interface ReviewArtifactFigure {
 export type Freshness = { tone: 'fresh' | 'stale' | 'none' | 'verifying' | 'failed'; text: string }
 
 export function freshness(
-  artifact: Pick<ReviewArtifactFigure, 'lap'> | null | undefined,
-  branch: { landedSince: number; lap?: number },
+  artifact: object | null | undefined,
+  branch: { landedSince: number },
   verification?: { state: 'running' | 'failed'; reason?: string },
 ): Freshness {
   if (verification?.state === 'running') return { tone: 'verifying', text: 'Verification running — evidence below predates it' }
@@ -189,69 +188,6 @@ export function verificationState(
   return { state: 'running' }
 }
 
-export interface StatusChip {
-  key: 'review' | 'checks' | 'unverified' | 'lap' | 'drive' | 'run'
-  label: string
-  tone: CheckTone
-  /** What the chip opens on, where the whole caveat does not fit on one. */
-  detail?: string
-}
-export function statusChips(input: {
-  artifact?: Pick<ReviewArtifactFigure, 'lap'> | null
-  currentLap: number
-  landedSince: number
-  tickets: readonly { kind?: TicketKind; status: string; lap?: number; landedLap?: number }[]
-  checks: { passed: number; total: number }
-  runState: string
-  verification?: { state: 'running' | 'failed'; reason?: string }
-  /**
-   * The lap the branch was last test-driven in, null when it never was, and
-   * undefined where the drive is not this strip's to report — the review page
-   * has the stage for that, the shipped record has only this (decision 33a).
-   */
-  driveLap?: number | null
-  /**
-   * The drive-loop keys a test drive is about to depend on that no dry run has
-   * ever proven (decision 8) — the caveat rides beside the Test drive control
-   * it is about, as a chip, and only when there is one.
-   */
-  unverifiedKeys?: readonly string[]
-  /** The feature has shipped: the lap chip is a record, not a position. */
-  shipped?: boolean
-}): StatusChip[] {
-  const stamp = freshness(input.artifact, { landedSince: input.landedSince, lap: input.currentLap }, input.verification)
-  const unverified = input.unverifiedKeys ?? []
-  const implementation = input.tickets.filter((t) => t.kind !== 'review' && (t.landedLap ?? t.lap) === input.currentLap)
-  const landed = implementation.filter((t) => t.status === 'done').length
-  const waived = implementation.filter((t) => t.status === 'cancelled').length
-  const lapLabel = input.shipped
-    ? `Shipped · ${landed} of ${implementation.length} tickets landed`
-    : `${landed} of ${implementation.length} tickets landed · ${waived} waived`
-  return [
-    { key: 'review', label: stamp.text, tone: stamp.tone === 'fresh' ? 'ok' : stamp.tone === 'none' ? 'idle' : 'warn' },
-    { key: 'checks', label: `${input.checks.passed}/${input.checks.total} checks passed`, tone: input.checks.total > 0 && input.checks.passed === input.checks.total ? 'ok' : 'warn' },
-    ...(unverified.length === 0
-      ? []
-      : [
-          {
-            key: 'unverified' as const,
-            label: `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`,
-            tone: 'warn' as const,
-            detail: unverifiedWarning([...unverified]),
-          },
-        ]),
-    { key: 'lap', label: lapLabel, tone: waived ? 'warn' : 'idle' },
-    ...(input.driveLap === undefined
-      ? []
-      : [
-          input.driveLap === null
-            ? { key: 'drive' as const, label: 'never test-driven', tone: 'warn' as const }
-            : { key: 'drive' as const, label: 'test drive taken', tone: 'ok' as const },
-        ]),
-    { key: 'run', label: input.runState, tone: input.runState === 'succeeded' ? 'ok' : input.runState === 'failed' ? 'danger' : 'warn' },
-  ]
-}
-
 /**
  * One fact of the review/shipped status, as a property row (DESIGN.md: facts
  * are text, not boxes). `value` is the word, `sub` the quiet note after it, and
@@ -269,7 +205,7 @@ export interface StatusProperty {
 
 /**
  * The Review row: the stamped pass's verdict and its freshness, said together
- * (decision 3). Freshness alone is how an unverified lap used to read
+ * (decision 3). Freshness alone is how an unverified pass used to read
  * "Reviewed · this build" while the trail below it said "Unverified".
  *
  * The stamped pass's Checks ride on the sub-note (gates-mode decision 6): only
@@ -277,9 +213,8 @@ export interface StatusProperty {
  * the latest one fixed is history, and the trail's to tell.
  */
 function reviewProperty(input: {
-  artifact?: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
+  artifact?: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
   outcome?: TrailOutcome
-  currentLap: number
   landedSince: number
   verification?: { state: 'running' | 'failed'; reason?: string }
   building?: StatusBuilding
@@ -319,8 +254,6 @@ function reviewProperty(input: {
 export interface StatusBuilding {
   /** How long the burn has run, or ran — said beside its status. */
   elapsed?: string
-  /** The lap the burn on screen belongs to, when a past run's record is up. */
-  lap?: number
 }
 
 /**
@@ -332,17 +265,19 @@ export interface StatusBuilding {
  */
 export function statusProperties(input: {
   /** The stamped pass ({@link stampedReview}) — its Checks are the headline's. */
-  artifact?: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
+  artifact?: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
   /** What the stamped pass amounted to ({@link stampedOutcome}). */
   outcome?: TrailOutcome
-  currentLap: number
   landedSince: number
-  tickets: readonly TallyTicket[]
+  tickets: readonly (TallyTicket & DriveTicketFigure)[]
   /** The burn's status; omitted on the shipped record, where it is history. */
   runState?: string
   verification?: { state: 'running' | 'failed'; reason?: string }
-  /** The lap the branch was last test-driven in (null: never). */
-  driveLap?: number | null
+  /**
+   * When the branch was last test-driven (null: never), and undefined where
+   * the drive is not this list's to report.
+   */
+  drivenAt?: number | null
   /** A drive of this feature is up right now (the live page). */
   driving?: boolean
   /** No recording exists — the shipped record's "not run" says why. */
@@ -352,7 +287,7 @@ export function statusProperties(input: {
   building?: StatusBuilding
 }): StatusProperty[] {
   const review = reviewProperty(input)
-  const tickets = ticketsProperty(input.tickets, input.building?.lap ?? input.currentLap)
+  const tickets = ticketsProperty(input.tickets)
   const burn =
     input.shipped || input.runState === undefined ? [] : [burnProperty(input.runState, input.building?.elapsed)]
   // While building the burn is the page, so it leads, and no drive is due yet.
@@ -361,12 +296,12 @@ export function statusProperties(input: {
 }
 
 /**
- * The Tickets row: the one ticket count (decision 2) — this lap's work tickets,
- * the waived ones out of the total and said on their own.
+ * The Tickets row: the one ticket count (decision 2) — the feature's work
+ * tickets, the waived ones out of the total and said on their own.
  */
-function ticketsProperty(tickets: readonly TallyTicket[], lap: number): StatusProperty {
-  const tally = ticketTally(tickets, lap)
-  const work = lapWorkTickets(tickets, lap)
+function ticketsProperty(tickets: readonly TallyTicket[]): StatusProperty {
+  const tally = ticketTally(tickets)
+  const work = workTickets(tickets)
   const failed = work.filter((t) => t.status === 'failed').length
   const burning = work.filter((t) => t.status === 'burning').length
   const notes = [
@@ -385,17 +320,17 @@ function ticketsProperty(tickets: readonly TallyTicket[], lap: number): StatusPr
 
 /** The Test drive row, or none where the drive is not this list's to report. */
 function driveProperty(input: {
-  currentLap: number
-  driveLap?: number | null
+  tickets: readonly DriveTicketFigure[]
+  drivenAt?: number | null
   driving?: boolean
   noWalkthrough?: boolean
   unverifiedKeys?: readonly string[]
 }): StatusProperty[] {
   if (input.driving) return [{ key: 'drive', label: 'Test drive', value: 'Running', tone: 'ok' }]
-  if (input.driveLap === undefined) return []
+  if (input.drivenAt === undefined) return []
   const unverified = input.unverifiedKeys ?? []
-  const driven = testDriveFigure(input.driveLap, input.currentLap)
-  const why = input.driveLap === null && input.noWalkthrough ? 'the review reported without driving' : undefined
+  const driven = testDriveFigure(input.drivenAt, input.tickets)
+  const why = input.drivenAt === null && input.noWalkthrough ? 'the review reported without driving' : undefined
   const caveat = unverified.length > 0
     ? `${unverified.length} check${unverified.length === 1 ? '' : 's'} unverified in drive`
     : undefined
@@ -484,9 +419,7 @@ export function findingOpenReason(finding: OpenFindingFigure): string | null {
 
 /** A finding as its standing line reads it — where it went, and on whose word. */
 interface FindingStandingFigure {
-  lap: number
   status: FindingStatus
-  carriedLap: number | null
   resolvedBy: FindingResolvedBy | null
   resolutionNote: string | null
 }
@@ -495,17 +428,17 @@ export interface FindingStanding {
   /** What became of the defect, in the row's own vocabulary. */
   text: string
   /**
-   * What the claim rests on — a lap parked it, a session attested it was
-   * addressed, or a fix ticket landed and proved it.
+   * What the claim rests on — a session attested it was addressed, or a fix
+   * ticket landed and proved it.
    */
-  evidence: 'carried' | 'attested' | 'verified'
-  /** The carry's rationale or the attestation's evidence, when there is one. */
+  evidence: 'attested' | 'verified'
+  /** The attestation's evidence, when there is one. */
   note?: string
 }
 
 /**
  * Where a defect that is no longer open ended up, as a statement rather than a
- * control — the finding's half of the line a carried note gets.
+ * control.
  *
  * A session attestation and a landed fix ticket are the SAME status (`fixed`,
  * decisions #2: addressed is fixed), so the row is the only place the difference
@@ -515,13 +448,6 @@ export interface FindingStanding {
  */
 export function findingStanding(finding: FindingStandingFigure): FindingStanding | null {
   const note = finding.resolutionNote?.trim() || undefined
-  if (finding.status === 'carried') {
-    return {
-      text: 'carried for later',
-      evidence: 'carried',
-      ...(note ? { note } : {}),
-    }
-  }
   if (finding.status !== 'fixed') return null
   if (finding.resolvedBy === 'session') {
     return {
@@ -542,7 +468,6 @@ export function findingStanding(finding: FindingStandingFigure): FindingStanding
 export interface ReviewPassFigure {
   ticketId: string
   seq: number
-  lap: number
   passKind: 'review' | 'verification'
   /** What the pass actually ran; null on a pass that recorded no declaration. */
   reviewMode: 'drive' | 'gates' | null
@@ -557,18 +482,17 @@ export interface ReviewPassFigure {
 /** A ticket as the trail reads it — what the feed cannot say about a pass. */
 interface TrailTicketFigure {
   id: string
-  lap: number
   kind?: TicketKind
   status: string
   digest?: string
 }
 
 /**
- * What a lap's review amounted to, as its trail entry's chip states it.
+ * What a review amounted to, as its trail entry's chip states it.
  *
- * Read off the LATEST COMPLETED pass of the lap, for the same reason every
- * other evidence surface is ({@link stampedReview}): a pass still burning
- * vouches for nothing. `none` covers both a lap no pass has finished in and a
+ * Read off the LATEST COMPLETED pass, for the same reason every other
+ * evidence surface is ({@link stampedReview}): a pass still burning vouches
+ * for nothing. `none` covers both a feature no pass has finished on and a
  * pass that predates the verdict columns — neither has a verdict to show, and
  * inventing one is the green lie this feature exists to stop.
  */
@@ -611,30 +535,27 @@ function passOutcome(
 }
 
 /** The unverified half of {@link TrailOutcome}, as the arrival banner reads it. */
-export type UnverifiedLap = Extract<TrailOutcome, { kind: 'unverified' }>
+export type UnverifiedReview = Extract<TrailOutcome, { kind: 'unverified' }>
 
 /**
- * The CURRENT lap's review verified nothing (decisions 3, 5) — what makes the
- * page arrive loudly and what keeps Merge from being the primary action.
+ * The latest review verified nothing (decisions 3, 5) — what makes the page
+ * arrive loudly and what keeps Merge from being the primary action.
  *
  * Null for every other outcome, including a pass that could not run at all:
  * `couldNotReview` is a pass that never happened, which the page already says
  * elsewhere, and this line is about one that ran and verified nothing.
  */
-export function unverifiedLap(input: {
+export function unverifiedReview(input: {
   passes?: readonly ReviewPassFigure[]
   tickets?: readonly TrailTicketFigure[]
-  currentLap: number
-}): UnverifiedLap | null {
-  const lapPasses = (input.passes ?? []).filter((p) => p.lap === input.currentLap)
-  const tickets = input.tickets ?? []
-  const outcome = passOutcome(stampedReview(lapPasses, tickets), tickets)
+}): UnverifiedReview | null {
+  const outcome = stampedOutcome(input)
   return outcome.kind === 'unverified' ? outcome : null
 }
 
 /**
  * What the pass the page is stamped against amounted to — the latest completed
- * one of any lap, the same pass {@link freshness} ages. The Review row states
+ * one, the same pass {@link freshness} ages. The Review row states
  * it beside that age, so the verdict and the freshness describe ONE pass.
  */
 export function stampedOutcome(input: {

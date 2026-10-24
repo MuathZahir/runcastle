@@ -988,7 +988,7 @@ describe('testDrive', () => {
 
     expect(start.ok).toBe(true)
     expect(await currentBranch(simpleGit(project.repoPath))).toBe('feature/drive')
-    expect(start.hookFailure).toMatchObject({ phase: 'setup', command: 'exit 4', exitCode: 4 })
+    expect(start.hookFailure).toMatchObject({ command: 'exit 4', exitCode: 4 })
     expect(listAfter(ctx, feature.id, 0).map((e) => e.type)).toContain('testdrive.setup_failed')
 
     await testDrive(ctx, withHook, feature, 'stop')
@@ -1001,7 +1001,7 @@ describe('testDrive', () => {
 
     expect(stop.ok).toBe(true)
     expect(await currentBranch(simpleGit(project.repoPath))).toBe('main')
-    expect(stop.hookFailure).toMatchObject({ phase: 'teardown', exitCode: 5 })
+    expect(stop.hookFailure).toMatchObject({ exitCode: 5 })
   })
 
   // Teardown describes the environment the FEATURE branch built, and the files

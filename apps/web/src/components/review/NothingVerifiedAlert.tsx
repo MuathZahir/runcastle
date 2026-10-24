@@ -1,7 +1,5 @@
-import { Button } from '../../ui'
-import { IconShield } from '../../icons'
 import { Notice } from './Notice'
-import type { UnverifiedLap } from '../../lib/feature-ui'
+import type { UnverifiedReview } from '../../lib/feature-ui'
 
 /**
  * "Nothing verified" — the page's top line when the latest review pass ran
@@ -11,46 +9,20 @@ import type { UnverifiedLap } from '../../lib/feature-ui'
  * browser used to land as a clean bill of health, and the human planned the
  * next round off an empty defects list. So it arrives loudly — an alert band,
  * above the stage, before anything else on the page — and blocks nothing:
- * auto-advance already happened, the findings are stored, and Merge is still
- * one click away in the bar. What it changes is which click is the obvious one.
+ * the findings are stored, and Merge is still one click away.
  *
  * The words are runcastle's own: the templated line the harvester composed into
  * the pass's digest, and the reason the pass declared. The agent's prose is in
- * the Full account, where a report that verified nothing belongs.
- *
- * The action slot favours Agentic review (decision 5) — the one thing that
- * turns "nothing verified" into evidence — and says why it cannot fire when a
- * burn is already holding the feature, exactly as the strip's control does.
+ * the Full account, where a report that verified nothing belongs. It offers no
+ * button: another review is the agent's to run, so the human asks in the chat
+ * (tickets-and-review-are-tools-not-phases decision 12).
  */
-export function NothingVerifiedAlert({
-  outcome,
-  agenticReview,
-}: {
-  outcome: UnverifiedLap
-  /** Mint another review pass, or null where nothing on the page acts. */
-  agenticReview: { onStart: () => void; blocked?: string } | null
-}) {
+export function NothingVerifiedAlert({ outcome }: { outcome: UnverifiedReview }) {
   return (
-    <Notice
-      tone="accent"
-      title="Nothing verified"
-      actions={
-        agenticReview && (
-          <Button
-            size="sm"
-            icon={<IconShield />}
-            disabled={!!agenticReview.blocked}
-            {...(agenticReview.blocked ? { title: agenticReview.blocked } : {})}
-            onClick={agenticReview.onStart}
-          >
-            Agentic review
-          </Button>
-        )
-      }
-    >
+    <Notice tone="accent" title="Nothing verified">
       <p className="m-0">
         The review pass ran and produced no evidence, so nothing on this branch has been checked.
-        Nothing is blocked — run another review, or drive it yourself, before you ship.
+        Nothing is blocked — ask the agent for another review, or drive it yourself, before you ship.
       </p>
       {outcome.line && <p className="m-0 mt-1.5 break-words text-text">{outcome.line}</p>}
       {outcome.reason && (

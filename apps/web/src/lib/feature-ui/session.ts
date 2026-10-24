@@ -57,7 +57,7 @@ export function unfinishedRuns(events: readonly Pick<EventRow, 'type' | 'data'>[
  * The switcher's name for whichever session holds the feature chat's slot
  * (decision 9): "Feature chat", "Drive fix".
  */
-export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>): string {
+export function chatContextLine(session: Pick<FeatureFull['sessions'][number], 'kind'>): string {
   return session.kind === 'chat' ? 'Feature chat' : sessionKindName(session)
 }
 
@@ -125,7 +125,7 @@ export function liveSessionLine(sessions: FeatureFull['sessions']): LiveSessionL
  * repeats it, so it lives here rather than in either of them.
  */
 export function sessionKindName(
-  session: Pick<FeatureFull['sessions'][number], 'kind' | 'lap'>,
+  session: Pick<FeatureFull['sessions'][number], 'kind'>,
 ): string {
   switch (session.kind) {
     case 'chat':

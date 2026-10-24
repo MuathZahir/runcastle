@@ -32,7 +32,7 @@ beforeEach(async () => {
   restoreDataDir = useDataDir(home)
   ctx = await makeTestCtx()
   const project = seedProject(ctx)
-  feature = seedFeature(ctx, project.id, { slug: 'invites', phase: 'planning' })
+  feature = seedFeature(ctx, project.id, { slug: 'invites' })
 })
 
 afterEach(() => {

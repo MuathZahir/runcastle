@@ -28,7 +28,7 @@ import {
   resolveSessionBranch,
   type ProjectLandResult,
 } from '../services/git'
-import { getFeatureRow, getProjectById, rowToSession } from '../services/repo'
+import { getProjectById, rowToSession } from '../services/repo'
 import { runtimeAdapterFor } from './runtimes'
 import { prepareConfirmKickoffFor } from './runtimes/skills'
 
@@ -73,9 +73,6 @@ export function createSessionRow(ctx: AppCtx, input: CreateSessionInput): Sessio
       id: newId('sess'),
       featureId: input.featureId ?? null,
       projectId: input.projectId ?? null,
-      // A feature session belongs to the lap its feature is on; a project-scoped
-      // `prepare` session has no feature to take one from (ADR-0010 §7).
-      lap: input.featureId ? getFeatureRow(ctx, input.featureId).lap : 1,
       kind: input.kind,
       purpose: input.purpose ?? null,
       purposeData: input.purposeData ?? null,

@@ -28,8 +28,6 @@ vi.mock('../src/trpc', () => {
         delivery: { useQuery: () => ({ data: undefined }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
-        toggle: { useMutation: mutation },
-        reopen: { useMutation: mutation },
       },
       findings: { dismiss: { useMutation: mutation }, reopen: { useMutation: mutation } },
     },
@@ -42,7 +40,6 @@ const { WorkList, partitionWork } = await import('../src/components/review/WorkL
 
 const note = (over: Partial<TestNote> & { id: string }): TestNote => ({
   featureId: 'ftr_1',
-  lap: 2,
   text: 'the run chip goes grey while burning',
   status: 'open',
   author: 'human',
@@ -53,7 +50,6 @@ const note = (over: Partial<TestNote> & { id: string }): TestNote => ({
 
 const finding = (over: Partial<ReviewFinding> & { id: string }): ReviewFinding => ({
   featureId: 'ftr_1',
-  lap: 2,
   reviewTicketId: 'tkt_review',
   kind: 'defect',
   severity: 'high',
@@ -66,7 +62,6 @@ const finding = (over: Partial<ReviewFinding> & { id: string }): ReviewFinding =
   openReason: null,
   failureReason: null,
   fixTicketId: null,
-  carriedLap: null,
   resolvedBy: null,
   resolutionNote: null,
   createdAt: 20,
@@ -79,7 +74,6 @@ const ticket = (over: { id: string; seq: number; status: string; title?: string 
     seq: over.seq,
     status: over.status,
     title: over.title ?? 'fix the save',
-    lap: 2,
   }) as unknown as FeatureFull['tickets'][number]
 
 /** What the page reads before it splits the rows in two. */
@@ -176,10 +170,10 @@ describe('OpenWork', () => {
     expect(renderSettled(work)).toContain('the save drops the edited value')
   })
 
-  it('files carried, quick-fixed and handled notes into the settled half, reopenable', () => {
+  it('files carried, quick-fixed and handled notes from earlier data into the settled half', () => {
     const work = {
       notes: [
-        note({ id: 'n1', status: 'carried', carriedLap: 3, text: 'carried one' }),
+        note({ id: 'n1', status: 'carried', text: 'carried one' }),
         note({ id: 'n2', status: 'promoted', ticketId: 'tkt_9', text: 'ticketed one' }),
         note({ id: 'n3', status: 'done', text: 'handled one' }),
       ],
@@ -187,50 +181,15 @@ describe('OpenWork', () => {
     }
     const settled = renderSettled(work)
     expect(settled).not.toContain('carried into lap')
-    expect(settled).toContain('>Reopen<')
     expect(settled).toContain('#9 fix the chip')
-    // A handled note is struck through and keeps its toggle back to open.
     expect(settled).toContain('line-through')
     // None of them is still asking for attention.
     expect(render(work)).toContain('Nothing needs attention')
   })
 
-  /**
-   * A parked defect is settled work now that the carried band is gone
-   * (decision 16): behind the disclosure with its Reopen, out of the open half
-   * and the tally it is deliberately outside of.
-   */
-  it('files a carried defect with the settled half, never the open one', () => {
-    const work = {
-      findings: [finding({ id: 'd1', status: 'carried', carriedLap: 3 })],
-      openDefects: [],
-    }
-    expect(render(work)).toContain('Nothing needs attention')
-    expect(renderSettled(work)).toContain('the save drops the edited value')
-    expect(renderSettled(work)).toContain('carried for later')
-  })
-
-  /**
-   * The lap scoping's own trap: the server counts open defects for the CURRENT
-   * lap only, so an earlier lap's leftover appears in no `openDefects` list at
-   * all — and it used to fall through to "being fixed", which hid the human's
-   * Dismiss behind a burn that was never running.
-   */
-  it('still calls an earlier lap’s leftover open, with the human’s Dismiss on it', () => {
+  it('lists the open rows flat, with no lap headers', () => {
     const html = render({
-      lap: 2,
-      findings: [finding({ id: 'd1', lap: 1 })],
-      openDefects: [],
-    })
-    expect(html).toContain('the save drops the edited value')
-    expect(html).toContain('>Dismiss<')
-    expect(html).not.toContain('being fixed')
-  })
-
-  it('lists the open rows flat, with no lap headers, whatever lap they were taken in', () => {
-    const html = render({
-      lap: 2,
-      notes: [note({ id: 'n1', lap: 1, text: 'from lap one' }), note({ id: 'n2', lap: 2 })],
+      notes: [note({ id: 'n1', text: 'from lap one' }), note({ id: 'n2' })],
     })
     expect(html).toContain('from lap one')
     expect(html).not.toMatch(/\bLap \d/)

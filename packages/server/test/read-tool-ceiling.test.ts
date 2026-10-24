@@ -99,9 +99,9 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       const reader = { featureId: seeded.feature.id }
       const all = toolListTickets(ctx, reader, {}).tickets
 
-      // Goals leave oldest lap first, lowest seq first: the moved ones are a
-      // prefix of that order, and each is marked rather than silently gone.
-      const byAge = [...context.tickets].sort((a, b) => a.lap - b.lap || a.seq - b.seq)
+      // Goals leave lowest seq first: the moved ones are a prefix of that
+      // order, and each is marked rather than silently gone.
+      const byAge = [...context.tickets].sort((a, b) => a.seq - b.seq)
       const firstKept = byAge.findIndex((row) => row.goal !== undefined)
       const moved = firstKept === -1 ? byAge : byAge.slice(0, firstKept)
       expect(moved.length).toBeGreaterThan(0)
@@ -112,19 +112,15 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       }
       expect(context.ticketsNote).toContain('get_ticket')
 
-      // Every ticket is a row or named in a moved-out lap, and the current
-      // lap's rows never leave.
-      const movedLaps = context.ticketsNotInlined ?? []
-      expect([...context.tickets.map((r) => r.seq), ...movedLaps.flatMap((l) => l.seqs)].sort(
-        (a, b) => a - b,
-      )).toEqual(all.map((t) => t.seq).sort((a, b) => a - b))
-      for (const { lap } of movedLaps) expect(lap).toBeLessThan(context.lap)
-      expect(context.tickets.filter((r) => r.lap === context.lap).length).toBe(
-        all.filter((t) => t.lap === context.lap).length,
+      // Every ticket is a row or named as moved out, and only settled tickets
+      // ever leave — lowest seq first, with no gap.
+      const movedRows = context.ticketsNotInlined ?? []
+      expect([...context.tickets.map((r) => r.seq), ...movedRows].sort((a, b) => a - b)).toEqual(
+        all.map((t) => t.seq).sort((a, b) => a - b),
       )
-      // Oldest lap first: the moved laps run 1, 2, … with no gap.
-      expect(movedLaps.map((l) => l.lap)).toEqual(movedLaps.map((_, i) => i + 1))
-      if (backlogged) expect(movedLaps.length).toBeGreaterThan(0)
+      const settled = all.filter((t) => t.status === 'done' || t.status === 'cancelled').map((t) => t.seq)
+      expect(movedRows).toEqual(settled.slice(0, movedRows.length))
+      if (backlogged) expect(movedRows.length).toBeGreaterThan(0)
     })
 
     it('opens with the decision-critical header', () => {
@@ -134,12 +130,10 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
       expect(text.indexOf('"annotatedModels"')).toBeLessThan(2_000)
       expect(text.indexOf('"burnConcurrency"')).toBeGreaterThan(-1)
       expect(text.indexOf('"burnConcurrency"')).toBeLessThan(2_000)
-      // Header, then rows, then the lap's to-do, then docs (the fixture never
+      // Header, then rows, then the to-do, then docs (the fixture never
       // burned, so `latestRun` is absent).
       expect(Object.keys(context)).toEqual([
         'feature',
-        'phase',
-        'lap',
         'rounds',
         'latestReady',
         'driveActive',
@@ -151,14 +145,11 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'annotatedModels',
         'burnConcurrency',
         'reviewEvidence',
-        'currentLapReview',
         'tickets',
         ...(backlogged ? ['ticketsNotInlined'] : []),
         'ticketsNote',
         'openDefects',
-        'carriedDefects',
         'findings',
-        'testNotes',
         'docs',
         'notInlined',
         'moreDocs',

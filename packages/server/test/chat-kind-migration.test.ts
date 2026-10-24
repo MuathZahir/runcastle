@@ -32,7 +32,7 @@ describe('chat session kind migration', () => {
     }
 
     runMigrations(db, DRIZZLE_DIR)
-    const rows = db.all(sql.raw('SELECT id, feature_id AS featureId, lap, kind, status, awaiting_input AS awaitingInput, worktree_path AS worktreePath, created_at AS createdAt FROM sessions'))
+    const rows = db.all(sql.raw('SELECT id, feature_id AS featureId, kind, status, awaiting_input AS awaitingInput, worktree_path AS worktreePath, created_at AS createdAt FROM sessions'))
     expect(rows.map((row) => SessionRow.parse({ ...row, awaitingInput: row.awaitingInput === 1 }).kind)).toEqual(['chat', 'chat', 'chat'])
   })
 })

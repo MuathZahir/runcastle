@@ -8,12 +8,11 @@ export * from './feature-ui/run'
 export {
   findingCountsLine,
   findingOpenReason,
-  unverifiedLap,
+  unverifiedReview,
   stampedOutcome,
   latestReview,
   stampedReview,
   freshness,
-  statusChips,
   reviewOutcome,
   reviewWalkthroughUrl,
   verificationState,
@@ -26,9 +25,8 @@ export type {
   ReviewArtifactFigure,
   ReviewPassFigure,
   TrailOutcome,
-  UnverifiedLap,
+  UnverifiedReview,
   Freshness,
-  StatusChip,
 } from './feature-ui/review'
 export * from './feature-ui/rounds'
 export * from './feature-ui/tickets'
@@ -36,5 +34,4 @@ export * from './feature-ui/checks'
 export * from './feature-ui/summary'
 export * from './feature-ui/session'
 export * from './feature-ui/dependencies'
-export * from './feature-ui/phase-summary'
 export * from './feature-ui/next-step'

@@ -6,60 +6,72 @@ import { blockerList, blockers, upNextHint } from './dependencies'
 /** Where an unstarted feature stands (decision 7 / spec "Derived states"); null once started. */
 const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState(f, f.dependsOn)
 
-export type NeedsMeKind = 'grill' | 'burn' | 'attention' | 'ship'
+/**
+ * Why a feature needs me: its chat stopped for my `input`, it is `waiting`
+ * with a reason — the agent's own words, 'stopped', or 'ready to test' — or it
+ * is an Up next draft that is `stuck` and cannot start by itself.
+ */
+export type NeedsMeKind = 'input' | 'waiting' | 'stuck'
 
 export interface NeedsMe {
   kind: NeedsMeKind
   label: string
 }
 
+/** The waiting reason `declare_ready` sets (tickets-and-review decision 7). */
+export const READY_TO_TEST = 'ready to test'
+
 /**
- * An open terminal whose agent is mid-turn — the HITL twin of `activeRun`, and
- * the thing the phase alone can never tell you (decisions §3). A terminal still
- * launching counts: nothing has stopped for anyone yet.
+ * An open terminal whose agent is mid-turn — the HITL twin of `activeRun`.
+ * A terminal still launching counts: nothing has stopped for anyone yet.
  */
 function agentMidTurn(f: FeatureListItem): boolean {
   return !!f.liveSession && !f.liveSession.awaitingInput
 }
 
 /**
- * Which features need me (UI-SPEC §2). Computed from `feature.list` data:
- * feature phase + ticket counts + active-run flag + the feature's live session.
- *
- * A live session outranks the phase in BOTH directions (decisions §3): while its
- * agent is mid-turn the feature wants nothing from me, and when the agent stops
- * for an answer that IS what needs me, whatever phase it is at. This supersedes
- * the accepted gap it replaces — `feature.list` used to omit sessions entirely,
- * so the grilling dot showed for every active ideation feature whether or not
- * anyone was mid-conversation with it, which is the rail lying about the one
- * thing it exists to say.
+ * Which features need me, from facts alone (tickets-and-review decision 7):
+ * a running round or an agent mid-turn wants nothing from me; a chat stopped
+ * for my answer does; so does a waiting reason — the agent asked, the human
+ * pressed Stop, the provider halted, or the agent declared ready. Neither the
+ * phase nor failed tickets count: failures are the agent's to handle after the
+ * round wakes it, and it asks when it can't.
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
-  // A parked draft is not in the pipeline at all (decision 9): it claims no
-  // attention until the human clicks Start, whatever its phase says. The one
-  // exception is an Up next feature that cannot start by itself any more
+  // A parked draft claims no attention until the human clicks Start (decision 9).
+  // The one exception is an Up next feature that cannot start by itself any more
   // (waiting-is-not-backlog decision 5) — the backlog itself never asks.
   if (f.status === 'draft') {
     return draftState(f) === 'stuck'
-      ? { kind: 'attention', label: f.upNextProblem ?? stuckReason(f.dependsOn) }
+      ? { kind: 'stuck', label: f.upNextProblem ?? stuckReason(f.dependsOn) }
       : null
   }
   if (f.status === 'shipped' || f.status === 'archived') return null
-  if (f.activeRun) return null // burning: shown as a spinner, not a needs-me dot
-  if (f.liveSession) {
-    // The amber `grill` dot: every talk session is a conversation, and a
-    // conversation that has stopped is waiting on my half of it.
-    return f.liveSession.awaitingInput
-      ? { kind: 'grill', label: 'the session is waiting on you' }
-      : null
-  }
-  if (f.ticketCounts.failed > 0)
-    return { kind: 'attention', label: 'run failed — needs attention' }
-  if (f.phase === 'planning') return f.ticketCounts.total > 0
-    ? { kind: 'burn', label: 'review & burn tickets' }
-    : { kind: 'grill', label: 'needs planning' }
-  if (f.phase === 'review') return { kind: 'ship', label: 'test & merge' }
+  if (f.activeRun) return null // a round running: shown as working, not a needs-me dot
+  // An agent mid-turn is working, whatever reason it left earlier.
+  if (f.liveSession && !f.liveSession.awaitingInput) return null
+  // The reason outranks the bare "chat is waiting": an agent that declared ready
+  // or asked a question ends its turn, so its chat is awaiting input too.
+  if (f.waitingReason) return { kind: 'waiting', label: f.waitingReason }
+  if (f.liveSession?.awaitingInput) return { kind: 'input', label: 'the chat is waiting on you' }
   return null
+}
+
+/**
+ * The feature's ticket progress as a share, 0..1: done over every ticket not
+ * cancelled — all of the feature's tickets, which simply accumulate. 0 with none.
+ */
+export function ticketShare(f: FeatureListItem): number {
+  const { total, done, cancelled } = f.ticketCounts
+  const counted = total - cancelled
+  return counted > 0 ? done / counted : 0
+}
+
+/** The state a feature's `ProgressIcon` wears: draft ring, shipped check, else the pie. */
+export function progressState(f: FeatureListItem): 'draft' | 'active' | 'shipped' {
+  if (f.status === 'draft') return 'draft'
+  if (f.status === 'shipped') return 'shipped'
+  return 'active'
 }
 
 export type RowChipKind = 'needsMe' | 'working' | 'shipped' | 'draft' | 'age'
@@ -111,15 +123,15 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
 }
 
 /**
- * A feature's ticket progress as the row's trailing meta ("3/7"), or null when
- * this lap has no tickets. It is this lap's `lapTally` — the same count the
- * feature page states — not an all-laps total; earlier laps' totals live in the
- * lap trail. A tight row writes counts as fractions (DESIGN.md §Content); null
+ * A feature's ticket progress as the row's words ("3/7"), or null when it has
+ * no tickets: done over every ticket not cancelled, the share the glyph's pie
+ * draws. A tight row writes counts as fractions (DESIGN.md §Content); null
  * rather than "0/0", because a figure about nothing is noise.
  */
 export function ticketProgress(f: FeatureListItem): string | null {
-  const { total, landed } = f.lapTally
-  return total > 0 ? `${landed}/${total}` : null
+  const { total, done, cancelled } = f.ticketCounts
+  const counted = total - cancelled
+  return counted > 0 ? `${done}/${counted}` : null
 }
 
 /** Stable sort by a rank, lowest first — ties keep their incoming order. */

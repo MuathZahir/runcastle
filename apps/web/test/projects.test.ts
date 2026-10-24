@@ -292,8 +292,8 @@ describe('projectStats', () => {
 
   it('counts active runs and marks health working when a run is in flight', () => {
     const s = projectStats([
-      feat({ id: 'a', phase: 'building', activeRun: true }),
-      feat({ id: 'b', phase: 'shipped', status: 'shipped' }),
+      feat({ id: 'a', activeRun: true }),
+      feat({ id: 'b', status: 'shipped' }),
     ])
     expect(s.activeRuns).toBe(1)
     expect(s.shipped).toBe(1)
@@ -303,8 +303,9 @@ describe('projectStats', () => {
 
   it('counts needs-you features and prefers attention over working', () => {
     const s = projectStats([
-      feat({ id: 'a', phase: 'planning' }), // needs grilling
-      feat({ id: 'b', phase: 'building', activeRun: true }),
+      feat({ id: 'a', waitingReason: 'ready to test' }),
+      feat({ id: 'b', activeRun: true }),
+      feat({ id: 'c' }), // nothing asked: in progress, not needs-you
     ])
     expect(s.needsYou).toBe(1)
     expect(s.activeRuns).toBe(1)
@@ -312,7 +313,7 @@ describe('projectStats', () => {
   })
 
   it('is steady when features exist but nothing needs you and no run is live', () => {
-    const s = projectStats([feat({ id: 'a', phase: 'shipped', status: 'shipped' })])
+    const s = projectStats([feat({ id: 'a', status: 'shipped' })])
     expect(s.health).toBe('steady')
   })
 })

@@ -6,7 +6,6 @@ import {
   reviewWalkthroughUrl,
   stampedOutcome,
   stampedReview,
-  statusChips,
   statusProperties,
   type ReviewArtifactFigure,
   type ReviewPassFigure,
@@ -94,17 +93,16 @@ describe('gateCheckLines', () => {
 /**
  * simplify-the-pages decisions 3, 4, 6a–b, 8a: the Status tier states each fact
  * once. Review owns the verdict and its freshness; there is no Checks, Laps or
- * Walkthrough row; Test drive is "test-driven on lap N".
+ * Walkthrough row; Test drive says whether the build was driven.
  */
 describe('statusProperties', () => {
-  const tickets = [{ kind: 'implementation' as const, status: 'done', lap: 2 }]
+  const tickets = [{ kind: 'implementation' as const, status: 'done', completedAt: 10 }]
   const base = {
-    artifact: { lap: 2 },
+    artifact: { ticketId: 't1' },
     outcome: { kind: 'verified', mode: 'gates' } as const,
-    currentLap: 2,
     landedSince: 0,
     tickets,
-    driveLap: null,
+    drivenAt: null,
   }
   const rowOf = (props: Parameters<typeof statusProperties>[0], key: string) =>
     statusProperties(props).find((p) => p.key === key)
@@ -119,7 +117,7 @@ describe('statusProperties', () => {
   })
 
   it('states Review, Tickets and Test drive on shipped — no Checks, Laps or Walkthrough', () => {
-    const props = { ...base, driveLap: 2, noWalkthrough: true, runState: 'succeeded', shipped: true }
+    const props = { ...base, drivenAt: 20, noWalkthrough: true, runState: 'succeeded', shipped: true }
     expect(statusProperties(props).map((p) => p.label)).toEqual(['Review', 'Tickets', 'Test drive'])
   })
 
@@ -128,21 +126,20 @@ describe('statusProperties', () => {
     const building = {
       artifact: null,
       outcome: { kind: 'none' } as const,
-      currentLap: 1,
       landedSince: 0,
       runState: 'running',
       building: { elapsed: '12m' },
       tickets: [
-        { kind: 'implementation' as const, status: 'done', lap: 1 },
-        { kind: 'implementation' as const, status: 'done', lap: 1 },
-        { kind: 'implementation' as const, status: 'burning', lap: 1 },
-        { kind: 'implementation' as const, status: 'pending', lap: 1 },
-        { kind: 'review' as const, status: 'pending', lap: 1 },
+        { kind: 'implementation' as const, status: 'done' },
+        { kind: 'implementation' as const, status: 'done' },
+        { kind: 'implementation' as const, status: 'burning' },
+        { kind: 'implementation' as const, status: 'pending' },
+        { kind: 'review' as const, status: 'pending' },
       ],
     }
 
     it('states Round, Tickets and Review — no Test drive', () => {
-      expect(statusProperties({ ...building, driveLap: null }).map((p) => p.label)).toEqual([
+      expect(statusProperties({ ...building, drivenAt: null }).map((p) => p.label)).toEqual([
         'Round',
         'Tickets',
         'Review',
@@ -154,14 +151,8 @@ describe('statusProperties', () => {
       expect(rowOf({ ...building, runState: 'failed' }, 'run')).toMatchObject({ value: 'Failed', tone: 'danger' })
     })
 
-    it('counts this lap’s work tickets, never the review pass', () => {
+    it('counts the feature’s work tickets, never the review pass', () => {
       expect(rowOf(building, 'tickets')).toMatchObject({ value: '2 of 4 landed', sub: '1 running' })
-    })
-
-    it('counts the lap a past run’s record belongs to', () => {
-      const tickets = [...building.tickets, { kind: 'implementation' as const, status: 'done', lap: 2 }]
-      const record = { ...building, tickets, currentLap: 2, building: { lap: 1 } }
-      expect(rowOf(record, 'tickets')?.value).toBe('2 of 4 landed')
     })
 
     it('reads a review still to come as quiet, not amber', () => {
@@ -170,7 +161,7 @@ describe('statusProperties', () => {
   })
 
   it('leaves waived tickets out of the total and says them on their own', () => {
-    const waived = [...tickets, { kind: 'implementation' as const, status: 'cancelled', lap: 2 }]
+    const waived = [...tickets, { kind: 'implementation' as const, status: 'cancelled' }]
     expect(rowOf({ ...base, tickets: waived }, 'tickets')).toMatchObject({
       value: '1 of 1 landed',
       sub: '1 waived',
@@ -188,8 +179,8 @@ describe('statusProperties', () => {
       expect(row).toMatchObject({ value: 'Unverified', sub: 'nothing verified', tone: 'warn' })
     })
 
-    it('ambers a verified pass later work has left behind, laps ago and what landed since', () => {
-      const row = rowOf({ ...base, artifact: { lap: 1 }, currentLap: 3, landedSince: 3 }, 'review')
+    it('ambers a verified pass later work has left behind, and what landed since', () => {
+      const row = rowOf({ ...base, landedSince: 3 }, 'review')
       expect(row).toMatchObject({ value: 'Verified earlier', sub: '3 landed since', tone: 'warn' })
     })
 
@@ -201,7 +192,6 @@ describe('statusProperties', () => {
       const pass = (over: Partial<ReviewPassFigure>): ReviewPassFigure => ({
         ticketId: 't1',
         seq: 1,
-        lap: 1,
         passKind: 'review',
         reviewMode: 'gates',
         reviewVerdict: 'verified',
@@ -210,15 +200,15 @@ describe('statusProperties', () => {
         videoUrl: null,
         ...over,
       })
-      const passes = [pass({}), pass({ ticketId: 't2', seq: 2, lap: 2, reviewVerdict: 'unverified', completedAt: 20 })]
+      const passes = [pass({}), pass({ ticketId: 't2', seq: 2, reviewVerdict: 'unverified', completedAt: 20 })]
       expect(stampedOutcome({ passes, tickets: [] }).kind).toBe('unverified')
       expect(stampedOutcome({ passes: [], tickets: [] }).kind).toBe('none')
     })
 
     /** The walked contradiction: a pass that finished before completion was stamped. */
     it('reads "Reviewed" over a finished pass that carries no completion stamp', () => {
-      const legacy = { ticketId: 't8', seq: 8, lap: 2, completedAt: null, landedSince: 0 }
-      const tickets = [{ id: 't8', lap: 2, kind: 'review' as const, status: 'done' }]
+      const legacy = { ticketId: 't8', seq: 8, completedAt: null, landedSince: 0 }
+      const tickets = [{ id: 't8', kind: 'review' as const, status: 'done' }]
       const artifact = stampedReview([legacy], tickets)
       expect(artifact?.seq).toBe(8)
       expect(rowOf({ ...base, artifact, outcome: { kind: 'none' } }, 'review')).toMatchObject({ value: 'Reviewed', tone: 'ok' })
@@ -239,29 +229,28 @@ describe('statusProperties', () => {
     })
 
     it("adds the stamped pass's checks to the sub-note, with the sha they ran on", () => {
-      const row = rowOf({ ...base, artifact: { lap: 2, gateRun: ran('abc1234def', 'passed') } }, 'review')
+      const row = rowOf({ ...base, artifact: { ticketId: 't1', gateRun: ran('abc1234def', 'passed') } }, 'review')
       expect(row).toMatchObject({ value: 'Verified', sub: 'gates mode · this build · checks 2/2 passed @abc1234', tone: 'ok' })
     })
 
     it("says when checks couldn't run or none are configured — never passed", () => {
       const couldnt: ReviewGateRunWire = { status: 'couldnt_run', commit: 'abc1234def', reason: 'install failed', outputUrl: null }
-      expect(rowOf({ ...base, artifact: { lap: 2, gateRun: couldnt } }, 'review')?.sub).toBe(
+      expect(rowOf({ ...base, artifact: { ticketId: 't1', gateRun: couldnt } }, 'review')?.sub).toBe(
         "gates mode · this build · checks couldn't run",
       )
-      expect(rowOf({ ...base, artifact: { lap: 2, gateRun: { status: 'none_configured' } } }, 'review')?.sub).toBe(
+      expect(rowOf({ ...base, artifact: { ticketId: 't1', gateRun: { status: 'none_configured' } } }, 'review')?.sub).toBe(
         'gates mode · this build · no checks configured',
       )
     })
 
     it('says nothing about checks for a pass with no gate run recorded', () => {
-      expect(rowOf({ ...base, artifact: { lap: 2, gateRun: null } }, 'review')?.sub).toBe('gates mode · this build')
+      expect(rowOf({ ...base, artifact: { ticketId: 't1', gateRun: null } }, 'review')?.sub).toBe('gates mode · this build')
     })
 
     it("leaves an earlier pass's failure the latest pass fixed out of the headline", () => {
       const row = (over: Partial<ReviewArtifactFigure>): ReviewArtifactFigure => ({
         ticketId: 't1',
         seq: 1,
-        lap: 2,
         passKind: 'review',
         reviewedCommit: null,
         completedAt: 10,
@@ -281,9 +270,9 @@ describe('statusProperties', () => {
     })
   })
 
-  it('reads the Test drive row as the lap it was taken in, amber when a later lap went undriven', () => {
-    expect(rowOf({ ...base, driveLap: 1 }, 'drive')).toMatchObject({ value: 'Taken', sub: 'not since', tone: 'warn' })
-    expect(rowOf({ ...base, driveLap: 2 }, 'drive')).toMatchObject({ value: 'Taken', tone: 'ok' })
+  it('reads the Test drive row as taken, amber when work landed after the drive', () => {
+    expect(rowOf({ ...base, drivenAt: 5 }, 'drive')).toMatchObject({ value: 'Taken', sub: 'not since', tone: 'warn' })
+    expect(rowOf({ ...base, drivenAt: 20 }, 'drive')).toMatchObject({ value: 'Taken', tone: 'ok' })
     expect(rowOf(base, 'drive')).toMatchObject({ value: 'Not run' })
   })
 })
@@ -301,40 +290,13 @@ describe('latest review evidence', () => {
 })
 
 describe('review freshness', () => {
-  const artifact = { lap: 1 }
+  const artifact = {}
   it.each([
     [undefined, { landedSince: 0 }, undefined, 'none', 'no review yet'],
-    [artifact, { landedSince: 0, lap: 1 }, undefined, 'fresh', 'Reviewed ✓ · this build'],
-    [artifact, { landedSince: 2, lap: 1 }, undefined, 'stale', 'Reviewed earlier · 2 tickets landed since — evidence may be outdated'],
-    [artifact, { landedSince: 5, lap: 3 }, undefined, 'stale', 'Reviewed earlier · 5 tickets landed since — evidence may be outdated'],
+    [artifact, { landedSince: 0 }, undefined, 'fresh', 'Reviewed ✓ · this build'],
+    [artifact, { landedSince: 2 }, undefined, 'stale', 'Reviewed earlier · 2 tickets landed since — evidence may be outdated'],
+    [artifact, { landedSince: 5 }, undefined, 'stale', 'Reviewed earlier · 5 tickets landed since — evidence may be outdated'],
     [artifact, { landedSince: 2 }, { state: 'running' as const }, 'verifying', 'Verification running — evidence below predates it'],
     [artifact, { landedSince: 2 }, { state: 'failed' as const, reason: 'recorder exited' }, 'failed', 'verification could not run: recorder exited'],
   ])('derives %s freshness', (a, branch, verification, tone, text) => expect(freshness(a, branch, verification)).toEqual({ tone, text }))
-})
-
-describe('status chips', () => {
-  it('orders chips and excludes review tickets while surfacing waived work', () => {
-    const chips = statusChips({ artifact: { lap: 2 }, currentLap: 2, landedSince: 0, checks: { passed: 2, total: 2 }, runState: 'succeeded', tickets: [{ kind: 'implementation', status: 'done', lap: 2 }, { kind: 'implementation', status: 'cancelled', lap: 2 }, { kind: 'review', status: 'done', lap: 2 }] })
-    expect(chips.map((chip) => chip.key)).toEqual(['review', 'checks', 'lap', 'run'])
-    expect(chips[2]?.label).toBe('1 of 2 tickets landed · 1 waived')
-  })
-
-  /**
-   * Decision 8: the unverified-drive caveat is a chip in the state line, beside
-   * the Test drive control it is about — and only when there is something to
-   * caveat. It was a paragraph on the next-step bar until ticket 2 stopped it.
-   */
-  it('folds the unverified-drive caveat in as one chip, only when it applies', () => {
-    const input = { currentLap: 1, landedSince: 0, checks: { passed: 1, total: 1 }, runState: 'succeeded', tickets: [] }
-    expect(statusChips(input).map((chip) => chip.key)).not.toContain('unverified')
-    expect(statusChips({ ...input, unverifiedKeys: [] }).map((chip) => chip.key)).not.toContain('unverified')
-
-    const chips = statusChips({ ...input, unverifiedKeys: ['driveSetupCommand', 'devCommand'] })
-    const chip = chips.find((c) => c.key === 'unverified')
-    expect(chips.map((c) => c.key)).toEqual(['review', 'checks', 'unverified', 'lap', 'run'])
-    expect(chip).toMatchObject({ label: '2 checks unverified in drive', tone: 'warn' })
-    // The whole sentence is what the chip opens on — the label only counts.
-    expect(chip?.detail).toContain('never proven by a dry run')
-    expect(statusChips({ ...input, unverifiedKeys: ['devCommand'] }).find((c) => c.key === 'unverified')?.label).toBe('1 check unverified in drive')
-  })
 })

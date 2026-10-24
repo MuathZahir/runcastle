@@ -197,8 +197,8 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
   // third breadcrumb level wants its title (decision 11).
   const selectedFeature = features?.find((f) => f.id === selectedFeatureId)
   const selectedSlug = selectedFeature?.slug ?? null
-  // A draft has no chat and no panel (decision 11): its body is the page.
-  const featureView = selectedFeature?.status === 'draft' ? 'body' : ws.featureView
+  // A draft has no chat and no panel (decision 11): its body is the page, at the bare address.
+  const featureView = selectedFeature?.status === 'draft' ? 'work' : ws.featureView
   const location: AppLocation | null =
     landed && !ws.creating
       ? locationFor({ projectId, preparing, projectSelected, featureSlug: selectedSlug, featureView })
@@ -214,7 +214,7 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
     else if (inside.kind === 'chat') selectProject()
     else if (inside.kind === 'prepare') startPreparation()
     else {
-      // The popped path says exactly which view — a bare one is the body, not
+      // The popped path says exactly which view — a bare one is Work, not
       // "whatever was remembered", or Back from a tab could never reach it.
       const named = features?.find((f) => f.slug === inside.featureSlug)
       if (named) select(named.id, featureViewOf(inside))
@@ -299,8 +299,6 @@ export function ProjectShell({ projectId, nav }: { projectId: string; nav: Proje
           featureId={selectedFeatureId}
           view={featureView}
           onViewChange={ws.selectView}
-          viewedPhase={ws.viewedPhase}
-          onViewPhase={ws.viewPhase}
           guidance={ws.guidance}
           driving={driving}
           onDriveChange={setDriving}

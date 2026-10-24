@@ -95,7 +95,6 @@ const { ReviewBody } = await import('../src/components/bodies/ReviewBody')
 const RECORDING: ReviewArtifacts = {
   ticketId: 'tkt_review',
   seq: 4,
-  lap: 1,
   passKind: 'review',
   reviewMode: null,
   reviewVerdict: null,
@@ -110,7 +109,6 @@ const RECORDING: ReviewArtifacts = {
 const NOTE = {
   id: 'note_1',
   featureId: 'feat_1',
-  lap: 1,
   text: 'the spilled-at column shows raw epoch millis',
   status: 'open',
   author: 'human',
@@ -122,7 +120,6 @@ const NOTE = {
 const CARRIED = {
   id: 'find_3',
   featureId: 'feat_1',
-  lap: 1,
   reviewTicketId: 'tkt_review',
   kind: 'defect',
   severity: 'high',
@@ -134,16 +131,14 @@ const CARRIED = {
   openReason: null,
   failureReason: null,
   fixTicketId: null,
-  status: 'carried',
-  carriedLap: 2,
-  resolutionNote: 'lap 2 rewrites the purge, which decides these rows',
+  status: 'dismissed',
+  resolutionNote: 'the purge rewrite decides these rows',
   createdAt: 20,
 } as ReviewFinding
 
 const REVIEW_TICKET = {
   id: 'tkt_review',
   seq: 4,
-  lap: 1,
   title: 'review the lap',
   kind: 'review',
   status: 'done',
@@ -176,13 +171,13 @@ afterEach(() => {
 })
 
 function page(): { root: { readonly className: string }; rerender: () => void } {
-  const feature = full({ id: 'feat_1', phase: 'review' })
+  const feature = full({ id: 'feat_1' })
   const body = (): React.ReactElement => (
     <ReviewBody
-      full={{ ...feature, feature: { ...feature.feature, lap: 1 }, tickets: [REVIEW_TICKET] }}
+      full={{ ...feature, feature: { ...feature.feature }, tickets: [REVIEW_TICKET] }}
       driving={null}
       conflict={null}
-      onViewPhase={() => undefined}
+      onOpenWork={() => undefined}
     />
   )
   const view = render(body())

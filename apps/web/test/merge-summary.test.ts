@@ -17,20 +17,19 @@ const STALE: Freshness = {
   text: 'Reviewed earlier · 5 tickets landed since — evidence may be outdated',
 }
 
-const ticket = (status: string, lap = 2, kind: 'implementation' | 'review' = 'implementation') => ({
+const ticket = (status: string, kind: 'implementation' | 'review' = 'implementation', completedAt = 10) => ({
   kind,
   status,
-  lap,
+  completedAt,
 })
 
-/** A clean merge: eight tickets landed, driven, reviewed against this build. */
+/** A clean merge: eight tickets landed, driven after them, reviewed against this build. */
 const clean = {
   branch: 'feature/greetings-pages',
   base: 'main',
   delta: { commits: 12, files: 9 },
   tickets: [...Array(8)].map(() => ticket('done')),
-  lap: 2,
-  driveLap: 2,
+  drivenAt: 20,
   freshness: FRESH,
 }
 
@@ -114,26 +113,26 @@ describe('mergeSummary', () => {
     it('never counts the review ticket as work the branch delivered', () => {
       const s = mergeSummary({
         ...clean,
-        tickets: [ticket('done'), ticket('done', 2, 'review')],
+        tickets: [ticket('done'), ticket('done', 'review')],
       })
       expect(row(s, 'run')?.value).toBe('1/1 tickets done')
     })
 
     it('ambers a branch that was never test-driven', () => {
-      expect(row(mergeSummary({ ...clean, driveLap: null }), 'test drive')).toEqual({
+      expect(row(mergeSummary({ ...clean, drivenAt: null }), 'test drive')).toEqual({
         key: 'test drive',
         value: 'Not run',
         tone: 'warn',
       })
     })
 
-    it('names the lap the drive was taken in, green when it is this lap', () => {
+    it('greens a drive taken after the last work landed', () => {
       expect(row(mergeSummary(clean), 'test drive')).toEqual({ key: 'test drive', value: 'Taken', tone: 'ok' })
     })
 
-    /** Decision 8a: "any lap" used to read "taken" after an undriven lap 2. */
-    it('ambers a drive an undriven later lap has left behind', () => {
-      expect(row(mergeSummary({ ...clean, lap: 2, driveLap: 1 }), 'test drive')).toEqual({
+    /** Decision 8a: a drive the build has moved past says so. */
+    it('ambers a drive that work landed after', () => {
+      expect(row(mergeSummary({ ...clean, drivenAt: 5 }), 'test drive')).toEqual({
         key: 'test drive',
         value: 'Taken · not since',
         tone: 'warn',
@@ -225,20 +224,16 @@ describe('mergeSummary', () => {
       expect(s.warnings).toEqual(['1 ticket waived — set aside unfinished, not delivered.'])
     })
 
-    /** Decision 26(d): the debt that rides along at triage, caught here too. */
-    it('names the unburned fix tickets earlier work left standing, in one line', () => {
+    it('names the tickets that never burned, in one line', () => {
       const s = mergeSummary({
         ...clean,
-        lap: 3,
-        tickets: [ticket('done', 3), ticket('pending', 1), ticket('pending', 1), ticket('pending', 2)],
+        tickets: [ticket('done'), ticket('pending'), ticket('pending'), ticket('pending')],
       })
-      expect(s.warnings).toEqual([
-        '3 unburned fix tickets — merging leaves them behind.',
-      ])
+      expect(s.warnings).toEqual(['3 unburned tickets — merging leaves them behind.'])
     })
 
-    it('never counts this lap’s own pending tickets as standing debt', () => {
-      const s = mergeSummary({ ...clean, lap: 2, tickets: [ticket('pending', 2)] })
+    it('never counts a pending review pass as unburned work', () => {
+      const s = mergeSummary({ ...clean, tickets: [ticket('done'), ticket('pending', 'review')] })
       expect(s.warnings).toEqual([])
     })
 
@@ -272,8 +267,7 @@ describe('mergeSummary', () => {
     it('enumerates every gap at once — the whole picture, not the first fault', () => {
       const s = mergeSummary({
         ...clean,
-        lap: 3,
-        tickets: [ticket('cancelled', 3), ticket('pending', 1)],
+        tickets: [ticket('cancelled'), ticket('pending')],
         openNotes: 2,
         freshness: STALE,
       })

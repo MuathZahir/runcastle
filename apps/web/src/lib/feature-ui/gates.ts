@@ -1,5 +1,5 @@
 import { unresolvedMergeConflict } from '@runcastle/core'
-import type { EventRow, MergeConflictState, SessionPurpose } from '@runcastle/core'
+import type { EventRow, MergeConflictState, SessionPurpose, TicketKind } from '@runcastle/core'
 export { unresolvedMergeConflict }
 export type { MergeConflictState }
 
@@ -9,8 +9,8 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
     `Proceed with your task: RESOLVE A MERGE CONFLICT. Merging ${base} into ${branch} conflicts ` +
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
     `Run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
-    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and ` +
-    `do NOT advance the phase (never call complete_phase). When the merge commit is in, tell me ` +
+    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
+    `When the merge commit is in, tell me ` +
     `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
   )
 }
@@ -61,9 +61,9 @@ export function ticketConflictKickoff(input: {
     `${input.featureBranch}. Run \`git merge ${input.branch}\`, read both sides before resolving ` +
     `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
     `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
-    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and do NOT advance the phase ` +
-    `(never call complete_phase). When the merge commit is in, tell me to click Retry on the ` +
-    `ticket so runcastle records it as landed — ${TEST_DRIVE_OFFER}`
+    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. When the merge commit is in, ` +
+    `retry the ticket with dispatch_round({ seqs: [${input.seq}] }) so runcastle records it as ` +
+    `landed, then tell me it is in — ${TEST_DRIVE_OFFER}`
   )
 }
 
@@ -164,26 +164,15 @@ export function conflictResolveEnded(
 }
 
 /**
- * Which lap the last test drive was taken in, or null when the branch was never
- * driven — what the shipped record states instead of an instruction to drive it
- * (decision 33a, "test drive taken · lap 2").
- *
- * Counted from `lap.started`, the one event a new lap emits, rather than from
- * `feature.lap`: on a shipped feature that is the LAST lap, and a drive taken in
- * lap 1 of a two-lap feature would be filed under the wrong one. `events` must
- * be in id order.
+ * When the last test drive of the branch started, or null when it was never
+ * driven — what the shipped record states instead of an instruction to drive
+ * it (decision 33a). `events` must be in id order.
  */
-export function lastTestDriveLap(events: EventRow[]): number | null {
-  let lap = 1
-  let driven: number | null = null
-  for (const event of events) {
-    if (event.type === 'lap.started') lap += 1
-    else if (event.type === 'testdrive.started') driven = lap
-  }
-  return driven
+export function lastTestDriveAt(events: EventRow[]): number | null {
+  return [...events].reverse().find((event) => event.type === 'testdrive.started')?.ts ?? null
 }
 
-/** The test drive as one fact: the lap it was taken in, and whether that is now. */
+/** The test drive as one fact: whether it was taken, and whether that is still the build. */
 export interface TestDriveFigure {
   /** "Taken", or "Not run" when the branch was never driven. */
   value: string
@@ -192,15 +181,28 @@ export interface TestDriveFigure {
   tone: 'ok' | 'warn' | 'idle'
 }
 
+/** A ticket as the drive's freshness reads it: work that landed, and when. */
+export interface DriveTicketFigure {
+  kind?: TicketKind
+  status: string
+  completedAt?: number | null
+}
+
 /**
- * "Test-driven on lap N" — the latest lap that was (decision 8a). One formula
- * for the status row and the merge dialog: the dialog used to read "any lap",
- * so after an undriven lap 2 it said "taken" beside a row saying "lap 1". A
- * drive older than the current lap is amber, since the build it drove has moved.
+ * Whether the branch was driven, and whether that drive still describes it
+ * (decision 8a). One formula for the status row and the merge dialog. A drive
+ * that work tickets have landed after is amber, since the build it drove has
+ * moved.
  */
-export function testDriveFigure(driveLap: number | null, currentLap: number): TestDriveFigure {
-  if (driveLap === null) return { value: 'Not run', tone: 'idle' }
-  if (driveLap < currentLap) return { value: 'Taken', sub: 'not since', tone: 'warn' }
+export function testDriveFigure(
+  drivenAt: number | null,
+  tickets: readonly DriveTicketFigure[],
+): TestDriveFigure {
+  if (drivenAt === null) return { value: 'Not run', tone: 'idle' }
+  const landedSince = tickets.some(
+    (t) => t.kind !== 'review' && t.status === 'done' && (t.completedAt ?? 0) > drivenAt,
+  )
+  if (landedSince) return { value: 'Taken', sub: 'not since', tone: 'warn' }
   return { value: 'Taken', tone: 'ok' }
 }
 

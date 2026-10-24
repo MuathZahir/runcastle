@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickets and review are tools, not phases preview</title>
+<style>
+/* ---- runcastle theme: dark is the default, light is a full peer.
+   The app sets data-theme on <html>; opened as a file, the OS setting decides.
+   Token names and values are the app's own (apps/web/src/theme.css): keep them in step. ---- */
+:root{
+  color-scheme:dark;
+  --color-canvas:#0a0c11;--color-surface:#10131a;--color-surface-raised:#161a24;--color-surface-hover:#1a1e29;--color-surface-selected:#212636;--color-surface-inset:#0c0e14;
+  --color-border:#222837;--color-border-subtle:rgb(200 215 255 / 0.06);--color-border-strong:#333a4d;
+  --color-text:#eceef4;--color-text-secondary:#a2a8b9;--color-text-tertiary:#8a91a5;--color-text-disabled:#4b5163;--color-icon:#8990a4;
+  --color-primary:#eceef4;--color-on-primary:#0a0c11;
+  --color-accent:#4f8ef7;--color-accent-text:#7aaafa;--color-accent-subtle:#16213a;
+  --color-success:#46b67a;--color-warning:#e2a53b;--color-danger:#f06363;--color-danger-subtle:#2a1515;
+  --color-phase-ideation:#ec7cb5;--color-phase-spec:#35c2b8;--color-phase-implementation:#f08a4b;
+  --color-phase-planning:var(--color-phase-spec);--color-phase-building:var(--color-phase-implementation);
+  --color-phase-review:var(--color-accent);--color-phase-shipped:var(--color-success);
+  --color-scrim:rgb(0 0 0 / 0.6);
+  --font-sans:"Geist Variable","Segoe UI Variable",system-ui,-apple-system,sans-serif;
+  --font-mono:"Geist Mono Variable","Cascadia Code",ui-monospace,Consolas,monospace;
+  --radius-sm:4px;--radius-md:6px;--radius-lg:10px;--ease-app:cubic-bezier(.22,.61,.24,1);
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+  --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+  --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+  --color-primary:#161a24;--color-on-primary:#ffffff;
+  --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+  --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+  --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+  --color-scrim:rgb(22 26 36 / 0.28);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    color-scheme:light;
+    --color-canvas:#f4f6f9;--color-surface:#ffffff;--color-surface-raised:#ffffff;--color-surface-hover:#eef1f6;--color-surface-selected:#e4e8f1;--color-surface-inset:#f4f6f9;
+    --color-border:#dfe3ec;--color-border-subtle:rgb(22 30 50 / 0.07);--color-border-strong:#cdd2de;
+    --color-text:#161a24;--color-text-secondary:#4c5366;--color-text-tertiary:#5c6377;--color-text-disabled:#a4aab9;--color-icon:#6a7185;
+    --color-primary:#161a24;--color-on-primary:#ffffff;
+    --color-accent:#2f6fe4;--color-accent-text:#2463d6;--color-accent-subtle:#ecf2fe;
+    --color-success:#1e8e53;--color-warning:#a86a06;--color-danger:#c42828;--color-danger-subtle:#fdeeee;
+    --color-phase-ideation:#c13d7e;--color-phase-spec:#0b7f78;--color-phase-implementation:#b44f0c;
+    --color-scrim:rgb(22 26 36 / 0.28);
+  }
+}
+
+/* ---- the fixed parts of every preview ---- */
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font:13px/20px var(--font-sans);-webkit-font-smoothing:antialiased}
+.page{max-width:1040px;margin:0 auto;padding:40px 32px 72px}
+h1{margin:0;font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.02em}
+h2{margin:0 0 4px;font-size:16px;line-height:24px;font-weight:600;letter-spacing:-.01em}
+h3{margin:0;font-size:13px;line-height:20px;font-weight:500}
+p{margin:0}
+.lede{margin-top:8px;max-width:620px;font-size:14px;line-height:22px;color:var(--color-text-secondary);text-wrap:pretty}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;line-height:16px;color:var(--color-text-tertiary)}
+.hint{color:var(--color-text-tertiary);font-size:12px;line-height:16px}
+.mono{font-family:var(--font-mono);font-size:12px}
+section{margin-top:44px}
+.sub{margin-top:28px}
+.sub > .hint{margin:2px 0 12px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px;border-radius:var(--radius-sm)}
+.jump{display:flex;flex-wrap:wrap;gap:2px;margin-top:20px;padding-bottom:12px;border-bottom:1px solid var(--color-border-subtle)}
+.jump a{padding:4px 10px;border-radius:var(--radius-md);color:var(--color-text-secondary);text-decoration:none;transition:background .12s var(--ease-app)}
+.jump a:hover{background:var(--color-surface-hover);color:var(--color-text)}
+.jump a b{font-weight:400;color:var(--color-text-tertiary);font-variant-numeric:tabular-nums}
+
+/* a decision's number, wherever that decision is visible: <a class="pin" data-d="3">3</a> */
+.pin{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:var(--radius-sm);
+  background:var(--color-accent-subtle);color:var(--color-accent-text);font:500 11px/1 var(--font-mono);text-decoration:none;vertical-align:1px;cursor:pointer}
+.pin:hover{background:var(--color-accent);color:#fff}
+
+/* a segmented toggle, for switching a figure between states */
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--color-surface-inset)}
+.seg button{height:24px;padding:0 10px;border-radius:var(--radius-sm);color:var(--color-text-secondary);transition:background .12s var(--ease-app)}
+.seg button:hover{color:var(--color-text)}
+.seg button[aria-pressed="true"]{background:var(--color-surface-selected);color:var(--color-text)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-text-disabled);flex:none}
+.dot.ok{background:var(--color-success)}.dot.no{background:var(--color-danger)}.dot.live{background:var(--color-accent)}
+
+/* the framed panel a mocked screen sits in; inside it, use the project's own styling */
+.screen{border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden;background:var(--color-surface);position:relative}
+
+/* a screen designed in design mode: a name, one line, and a button that opens it in the app's design panel */
+.designed{display:grid;gap:6px;justify-items:start;padding:12px 14px;border:1px solid var(--color-border);border-left:2px solid var(--color-accent);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.designed p{color:var(--color-text-secondary)}
+.designed button[data-open-design]{height:28px;padding:0 12px;border-radius:var(--radius-md);background:var(--color-accent-subtle);color:var(--color-accent-text);font-weight:500}
+.designed button[data-open-design]:hover{background:var(--color-accent);color:#fff}
+
+/* decided / left out / under the hood */
+.dlist{border-top:1px solid var(--color-border-subtle);margin-top:12px}
+.dlist details{border-bottom:1px solid var(--color-border-subtle)}
+.dlist summary{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 8px;cursor:pointer;list-style:none;border-radius:var(--radius-md)}
+.dlist summary::-webkit-details-marker{display:none}
+.dlist summary:hover{background:var(--color-surface-hover)}
+.dlist summary svg{margin-left:auto;color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.dlist details[open] summary svg{transform:rotate(90deg)}
+.dlist details p{padding:0 8px 12px 42px;color:var(--color-text-secondary);max-width:700px}
+.dlist details.flash summary{background:var(--color-accent-subtle)}
+.tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--radius-sm);background:var(--color-surface-inset);color:var(--color-text-tertiary);font-size:11px;flex:none}
+.dlist summary .tag{margin-left:auto}.dlist summary .tag + svg{margin-left:0}
+/* check first: built from the C list, absent when it is empty */
+.cf{margin-top:12px}
+.cf-item{border:1px solid var(--color-border);border-left:2px solid var(--color-warning);border-radius:var(--radius-md);padding:8px 10px;margin-top:8px;background:var(--color-surface-raised)}
+.cf-item .t{display:flex;align-items:center;gap:8px;font-weight:500}
+.cf-item dl{display:grid;grid-template-columns:86px 1fr;gap:2px 10px;margin:6px 0 0;color:var(--color-text-secondary)}
+.cf-item dt{color:var(--color-text-tertiary);font-size:12px}
+.cf-item dd{margin:0}
+.out2{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-top:12px}
+.out2 h3{margin-bottom:6px;color:var(--color-text-tertiary);font-weight:400;font-size:12px}
+.out2 li{display:flex;align-items:center;gap:10px;min-height:28px;color:var(--color-text-secondary)}
+.out2 ul{margin:0;padding:0;list-style:none}
+.hood > summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}
+.hood > summary::-webkit-details-marker{display:none}
+.hood > summary svg{color:var(--color-icon);transition:transform .18s var(--ease-app)}
+.hood[open] > summary svg{transform:rotate(90deg)}
+.hood > summary h2{margin:0}
+@media (max-width:760px){
+  .page{padding:28px 16px 56px}.out2{grid-template-columns:1fr}
+}
+
+/* ---- the show's own styles go below this line ---- */
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.step{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 10px;border-radius:var(--radius-md);background:var(--color-surface-raised);border:1px solid var(--color-border);color:var(--color-text-secondary)}
+.step.you{border-color:var(--color-accent);color:var(--color-accent-text);background:var(--color-accent-subtle)}
+.step.gone{text-decoration:line-through;color:var(--color-text-disabled);border-style:dashed}
+.arrow{color:var(--color-text-disabled)}
+.loop{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}
+.card{padding:12px 14px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.card p{margin-top:4px;color:var(--color-text-secondary)}
+.lanes{display:grid;gap:6px;margin-top:12px}
+.lane{display:grid;grid-template-columns:130px 1fr;gap:12px;align-items:baseline;padding:8px 10px;border-radius:var(--radius-md);background:var(--color-surface-raised)}
+.lane b{font-weight:500}
+.lane span{color:var(--color-text-secondary)}
+.views{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.view{min-width:150px;flex:1;padding:10px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.view p{color:var(--color-text-secondary);margin-top:2px}
+.view.temp{border-style:dashed}
+.gonegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 24px;margin-top:12px}
+.gonegrid li{color:var(--color-text-secondary);min-height:26px;display:flex;align-items:center;gap:8px}
+.gonegrid ul{margin:0;padding:0;list-style:none}
+@media (max-width:760px){.lane{grid-template-columns:1fr;gap:2px}}
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3.500 4.500 4.500L6 12.500"/></symbol>
+</svg>
+
+<div class="page">
+
+<!-- 1 · what this is -->
+<header id="what">
+  <h1>Tickets and review are tools, not phases</h1>
+  <p class="lede">A feature is one agent with tools, and the lead from its first message: it edits code, makes tickets, runs rounds and runs a review. There is no Go button. The agent asks in chat and starts once you say yes, and what you see is read off what is actually happening.</p>
+  <div class="meta"><span><span data-dcount></span> decisions</span><span class="mono">docs/features/tickets-and-review-are-tools-not-phases/preview.html</span></div>
+  <nav class="jump" aria-label="Parts of this preview">
+    <a href="#show">The show</a><a href="#decided">Decided <b data-dcount></b></a><a href="#left-out">Left out</a><a href="#hood">Under the hood</a>
+  </nav>
+</header>
+
+<!-- 2 · the show -->
+<section id="show">
+  <h2>The show</h2>
+  <div class="sub">
+    <h3>Before: stages you push a feature through</h3>
+    <div class="flow">
+      <span class="step">Planning chat</span><span class="arrow">&rarr;</span>
+      <span class="step gone">spec / tickets steps</span><span class="arrow">&rarr;</span>
+      <span class="step gone">Go</span><span class="arrow">&rarr;</span>
+      <span class="step gone">becomes the Lead</span><span class="arrow">&rarr;</span>
+      <span class="step">rounds</span><span class="arrow">&rarr;</span>
+      <span class="step gone">review ticket, always</span><span class="arrow">&rarr;</span>
+      <span class="step gone">Review phase</span><span class="arrow">&rarr;</span>
+      <span class="step gone">new lap</span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>After: one agent, one loop</h3>
+    <p class="hint">Blue is you. Everything else is the agent's judgement.</p>
+    <div class="flow">
+      <span class="step">Talk it through <a class="pin" data-d="4">4</a></span><span class="arrow">&rarr;</span>
+      <span class="step">decisions; spec once concrete <a class="pin" data-d="5">5</a></span><span class="arrow">&rarr;</span>
+      <span class="step">does it itself, or writes tickets</span><span class="arrow">&rarr;</span>
+      <span class="step you">&ldquo;Start round 1?&rdquo; &mdash; yes <a class="pin" data-d="3">3</a></span><span class="arrow">&rarr;</span>
+      <span class="step">rounds; a review if worth it <a class="pin" data-d="6">6</a></span><span class="arrow">&rarr;</span>
+      <span class="step">&ldquo;Ready: here's what to test, here's how I checked&rdquo;</span><span class="arrow">&rarr;</span>
+      <span class="step you">you drive, tell it what's wrong</span><span class="arrow">&rarr;</span>
+      <span class="step">it fixes, itself or with tickets <a class="pin" data-d="11">11</a></span><span class="arrow">&rarr;</span>
+      <span class="step you">Merge</span>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>What the feature says it is doing <a class="pin" data-d="7">7</a></h3>
+    <p class="hint">The sidebar lane and the status line beside the title, both read off facts. No phase is stored <a class="pin" data-d="2">2</a>.</p>
+    <div class="lanes">
+      <div class="lane"><b>Needs you</b><span>the chat waits for your input &middot; the agent asked (&ldquo;start round 1?&rdquo;) &middot; you pressed Stop &middot; the provider halted &middot; ready to test</span></div>
+      <div class="lane"><b>Agent working</b><span>a round is running, or the agent is mid-turn &mdash; &ldquo;Working &middot; Round 2&rdquo;</span></div>
+      <div class="lane"><b>In progress</b><span>nothing running, nothing asked &mdash; &ldquo;Talking with you&rdquo;</span></div>
+      <div class="lane"><b>Backlog &middot; Shipped</b><span>as today</span></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The panel beside the chat <a class="pin" data-d="8">8</a></h3>
+    <div class="views">
+      <div class="view"><h3>Plan</h3><p>this preview; decisions and spec inside it</p></div>
+      <div class="view"><h3>Work</h3><p>tickets by round, live; opens when the agent makes tickets</p></div>
+      <div class="view"><h3>Review</h3><p>ready, findings, evidence, what shipped</p></div>
+      <div class="view"><h3>Details</h3><p>timeline, docs, sessions</p></div>
+      <div class="view temp"><h3>Design &middot; Drive</h3><p>only while running</p></div>
+    </div>
+  </div>
+
+  <div class="sub">
+    <h3>The feature page, designed</h3>
+<!-- screen:feature-page -->
+<div class="designed">
+  <h3>Feature page: status line, panel views, progress glyph</h3>
+  <p>The real header, status line, panel picker (with icons) and ticket list; the feature and its tickets are sample data. The glyph left of the title is ticket progress (decision 9).</p>
+  <p class="mono">apps/web/preview/feature-page.tsx &middot; apps/web/src/components/workspace/FeaturePanel.tsx &middot; apps/web/src/lib/feature-ui/panel.ts &middot; ProgressIcon in apps/web/src/icons.tsx &middot; preview /preview/feature-page.html</p>
+  <button data-open-design="/preview/feature-page.html">Open in design</button>
+</div>
+<!-- /screen:feature-page -->
+  </div>
+
+  <div class="sub">
+    <h3>What goes</h3>
+    <div class="gonegrid">
+      <ul>
+        <li><i class="dot no"></i>Go, its locks and its override <a class="pin" data-d="12">12</a></li>
+        <li><i class="dot no"></i>Phases and the phase stepper <a class="pin" data-d="2">2</a></li>
+        <li><i class="dot no"></i>Laps <a class="pin" data-d="11">11</a></li>
+        <li><i class="dot no"></i>Quick changes <a class="pin" data-d="10">10</a></li>
+      </ul>
+      <ul>
+        <li><i class="dot no"></i>Separate ideate / lead / spec / tickets / revisit / design skills <a class="pin" data-d="4">4</a></li>
+        <li><i class="dot no"></i>The mandatory review ticket <a class="pin" data-d="6">6</a></li>
+        <li><i class="dot no"></i>The &ldquo;What to test&rdquo; notice <a class="pin" data-d="6">6</a></li>
+        <li><i class="dot no"></i>Permission prompts in feature chats <a class="pin" data-d="13">13</a></li>
+      </ul>
+      <ul>
+        <li><i class="dot no"></i>Burn and agentic-review buttons <a class="pin" data-d="12">12</a></li>
+        <li><i class="dot no"></i>Test-note filing (Send to agent stays) <a class="pin" data-d="12">12</a></li>
+        <li><i class="dot no"></i><span class="mono">complete_phase</span>, <span class="mono">go_feature</span> <a class="pin" data-d="12">12</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · what was decided (built from the list in the script below) -->
+<section id="decided">
+  <h2>What was decided</h2>
+  <p class="hint">Open one for the reason.</p>
+  <div class="dlist" id="dlist"></div>
+</section>
+
+<!-- 4 · what is left out -->
+<section id="left-out">
+  <h2>What is left out</h2>
+  <div class="out2">
+    <div><h3>Other features</h3><ul>
+      <li><i class="dot"></i>The Orchestrator setting and ownership marker &mdash; <i>One orchestrator, no mode</i></li>
+      <li><i class="dot"></i>Designs made while you are away &mdash; <i>Designs wait for you</i></li>
+      <li><i class="dot"></i>Review handing you its running drive &mdash; <i>Review hands you a running drive</i></li>
+    </ul></div>
+    <div><h3>Not here</h3><ul>
+      <li><i class="dot"></i>Rewriting the charter and the ADR &mdash; the project session, once this ships</li>
+      <li><i class="dot"></i>Migrating features already past Go: their status is read off facts</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- 5 · under the hood (collapsed by default) -->
+<section id="hood-s">
+  <details class="hood" id="hood">
+    <summary><svg class="i"><use href="#i-chev"/></svg><h2>Under the hood</h2></summary>
+    <div class="sub">
+      <div class="loop">
+        <div class="card"><h3>core</h3><p>The phase column, <span class="mono">PIPELINE</span>, the planning steps and the lap columns go. A status helper derives the lane from facts: rounds, the waiting reason, ready declarations, the live session.</p></div>
+        <div class="card"><h3>server</h3><p><span class="mono">go()</span>, the human burn, <span class="mono">agenticReview</span>, <span class="mono">quickChange</span>, <span class="mono">complete_phase</span> and <span class="mono">go_feature</span> go. <span class="mono">dispatch_round</span> and <span class="mono">declare_ready</span> stop checking the phase; <span class="mono">declare_ready</span> sets the waiting reason and keeps only the scenario. <span class="mono">emit_tickets</span> opens Work. One brief, one kickoff, no permission prompts.</p></div>
+        <div class="card"><h3>web</h3><p>The panel views Plan, Work, Review and Details replace the phase body. The next-step bar and the stepper go. The sidebar's Needs you reads the waiting reason. <span class="mono">ProgressIcon</span> replaces <span class="mono">PhaseIcon</span>.</p></div>
+        <div class="card"><h3>skills</h3><p>One feature-lead skill with reference files (tickets, rounds, planning alone, the preview, design). The separate ideate, lead, spec, tickets, revisit and design skills go; code-review stays for review agents.</p></div>
+      </div>
+    </div>
+  </details>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s) }
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)) }
+
+  // every decision in decisions.md, by number and title, in order: [title, reason, mark?]
+  // mark is 'assumed' for a decision made without the human; a grilled feature has none
+  var D = [
+    ['Specced and built whole', 'The parts depend on each other: removing Go without deriving status would leave every feature stuck at planning.'],
+    ['The stored phase goes away', 'A phase moved by actions would drift from the truth. Status is derived from facts, so nothing needs migrating.'],
+    ["The human's approval lives in the prompt, not the server", 'The agent needs your explicit yes in chat before the first round and before any round the plan did not settle. The server checks nothing.'],
+    ['The agent is always the lead, with one skill', 'No before and after Go, no role change. Ideate, lead, spec, tickets, revisit and design fold into one skill with reference files; code-review stays for review agents.'],
+    ['The spec follows concreteness, not delegation', 'The spec records what the feature is, whether or not workers build it.'],
+    ['Review is optional; the agent tells the human in chat how the work was checked', 'The agent always runs typecheck and tests before ready. What to test and how it was checked go in its chat message, not a separate UI.'],
+    ["Status is the sidebar's lanes, with \u201cNeeds you\u201d rebuilt on facts", 'Needs you reads the waiting reason: asked, Stop, provider halt, ready. \u201cPlanning with you\u201d becomes \u201cTalking with you\u201d.'],
+    ['The panel holds Plan, Work, Review and Details', 'Seven views were confusing, so related ones fold together; making tickets opens Work.'],
+    ['The feature glyph shows ticket progress', 'The status dot already shows status, so the glyph shows how much of the work has landed.'],
+    ['Quick changes are retired: there are only features', "Tickets are the agent's tool, written after it reads the code."],
+    ['Laps are removed', 'Build, drive, tell the agent, it fixes. Tickets accumulate; deferred scope becomes a backlog feature.'],
+    ['Leftover machinery is removed', 'Test-note filing, the Burn and agentic-review buttons, planning-step bookkeeping and its locks, and go_feature all go.'],
+    ['Every feature chat runs without permission prompts', 'One rule for every session, self-planning included; nothing is left to switch permissions on.']
+  ]
+  // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
+  // leave it empty for a grilled feature, and no group is drawn
+  var C = []
+  var list = $('#dlist')
+  D.forEach(function (d, i) {
+    var el = document.createElement('details')
+    el.id = 'd' + (i + 1)
+    el.innerHTML = '<summary><span class="pin">' + (i + 1) + '</span><span></span><svg class="i"><use href="#i-chev"/></svg></summary><p></p>'
+    $('summary span:nth-child(2)', el).textContent = d[0]
+    $('p', el).textContent = d[1]
+    if (d[2]) {
+      var mark = document.createElement('span')
+      mark.className = 'tag'
+      mark.textContent = d[2]
+      $('summary svg', el).before(mark)
+    }
+    list.appendChild(el)
+  })
+  if (C.length) {
+    var cf = document.createElement('div')
+    cf.className = 'cf'
+    cf.innerHTML = '<h3>Check first</h3><p class="hint">At most five. The ones most likely to be wrong for you.</p>'
+    C.forEach(function (c) {
+      var item = document.createElement('div')
+      item.className = 'cf-item'
+      item.innerHTML = '<div class="t"><a class="pin" data-d="' + c[0] + '">' + c[0] + '</a><span></span></div>' +
+        '<dl><dt>Alternative</dt><dd></dd><dt>Why unsure</dt><dd></dd></dl>'
+      $('.t span', item).textContent = D[c[0] - 1][0]
+      if (c[3]) {
+        var tag = document.createElement('span')
+        tag.className = 'tag'
+        tag.textContent = c[3]
+        $('.t', item).appendChild(tag)
+      }
+      var dd = $$('dd', item)
+      dd[0].textContent = c[1]
+      dd[1].textContent = c[2]
+      cf.appendChild(item)
+    })
+    list.before(cf)
+  }
+  $$('[data-dcount]').forEach(function (el) { el.textContent = String(D.length) })
+
+  // a pin opens its decision; in-page links scroll by script, because hash
+  // navigation is unreliable inside the app's sandboxed frame
+  function go(el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+  document.addEventListener('click', function (e) {
+    // Open in design: the app listens for exactly this message and opens the design panel
+    var od = e.target.closest('[data-open-design]')
+    if (od) {
+      parent.postMessage({ type: 'runcastle:open-design', path: od.dataset.openDesign }, '*')
+      return
+    }
+    var pin = e.target.closest('a.pin[data-d]')
+    if (pin) {
+      e.preventDefault()
+      var d = $('#d' + pin.dataset.d)
+      d.open = true; go(d); d.classList.add('flash')
+      setTimeout(function () { d.classList.remove('flash') }, 1400)
+      return
+    }
+    var a = e.target.closest('.jump a')
+    if (a) {
+      e.preventDefault()
+      var t = $(a.getAttribute('href'))
+      if (t.tagName === 'DETAILS') t.open = true
+      t.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+})()
+</script>
+</body>
+</html>

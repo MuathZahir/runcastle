@@ -105,19 +105,19 @@ describe('launchSession — briefings', () => {
    * purpose opens the chat as any plain open does — as the feature's lead.
    */
   it('opens a start-lap launch at review as a plain chat: the lead, no lap framing', async () => {
-    const { featureId } = await seedResumable('start-lap-retired', { phase: 'review', lap: 1 })
+    const { featureId } = await seedResumable('start-lap-retired', {})
     const plain = await launchAndRead(featureId, { kind: 'chat', purpose: 'start-lap' })
 
     expect(plain.command).toContain('--resume cc-prior')
-    expect(plain.command).toContain("Proceed as the feature's lead: invoke /runcastle:lead")
+    expect(plain.command).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
     expect(plain.command).not.toContain('FROM REVIEW')
-    expect(plain.prompt).toContain('(feature lead)')
+    expect(plain.prompt).toContain("You are this feature's **lead**")
     expect(plain.prompt).not.toContain('This is lap')
   })
 
   it('delivers a chat kickoff override into the resumed conversation', async () => {
     const briefing = 'Resolve the merge conflict on the feature branch.'
-    const { featureId } = await seedResumable('with-briefing', { phase: 'review', lap: 1 })
+    const { featureId } = await seedResumable('with-briefing', {})
     const { command } = await launchAndRead(featureId, {
       kind: 'chat',
       kickoffLine: briefing,
@@ -125,19 +125,19 @@ describe('launchSession — briefings', () => {
 
     expect(command).toContain('--resume cc-prior')
     expect(command).toContain(briefing)
-    expect(command).toContain('Feature state:')
+    expect(command).toContain('Feature status:')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
     expect(events.map((e) => e.type)).not.toContain('session.resume_skipped')
   })
 
   it('still resumes the last conversation for a launch with no briefing (unchanged)', async () => {
-    const { featureId } = await seedResumable('no-briefing', { phase: 'building' })
+    const { featureId } = await seedResumable('no-briefing', {})
     const { command } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(command).toContain('--resume cc-prior')
     // it carries the fresh state header (decision 13) and no lap briefing
-    expect(command).toContain('Feature state: building')
+    expect(command).toContain('Feature status: Talking with you;')
     expect(command).not.toContain('FROM REVIEW')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')
@@ -146,8 +146,8 @@ describe('launchSession — briefings', () => {
   it('a chat with no briefing keeps its own opening line', () => {
     expect(planKickoff({ kind: 'chat' }).line).toBeUndefined()
     // no lap briefing, so the table's state-unknown default stands: the chat's
-    // own opening skill, not a lap framing
-    expect(KICKOFF_LINES.chat).toContain('/runcastle:revisit')
+    // one opening skill, not a lap framing
+    expect(KICKOFF_LINES.chat).toContain('/runcastle:feature')
     expect(KICKOFF_LINES.chat).not.toContain('FROM REVIEW')
   })
 })

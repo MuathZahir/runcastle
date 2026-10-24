@@ -13,7 +13,6 @@ const run = (over: Partial<RunOption> & { id: string }): RunOption => ({
   status: 'succeeded',
   startedAt: Date.now() - 3_600_000,
   endedAt: Date.now() - 3_000_000,
-  lap: 1,
   ticketIds: ['t1', 't2'],
   ...over,
 })
@@ -26,7 +25,7 @@ describe('RunPicker rows', () => {
     render(
       <RunPicker
         runs={[
-          run({ id: 'r3', lap: 2, ticketIds: ['t9'] }),
+          run({ id: 'r3', ticketIds: ['t9'] }),
           run({ id: 'r2', status: 'failed' }),
           run({ id: 'r1', status: 'cancelled' }),
         ]}

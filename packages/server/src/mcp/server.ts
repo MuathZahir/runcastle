@@ -8,8 +8,6 @@ import type {
   DriveCallResult,
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
-  Phase as PhaseT,
-  PlanningStep,
   PreparedKey as PreparedKeyT,
   Project,
   ReadyDeclaration,
@@ -27,20 +25,17 @@ import type {
   TicketStatus as TicketStatusT,
 } from '@runcastle/core'
 import {
-  Phase,
   PreparedKey,
   ReviewFindingInput,
   TicketInput,
   TicketStatus,
+  WITHHELD_FEATURE_DOCS,
   agentDigestFillRank,
   isAgentDigestDoc,
-  isPastPhase,
   isProjectSessionKind,
-  nextPlanningStep,
   unstartedState,
-  withheldFeatureDocs,
 } from '@runcastle/core'
-import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
+import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
@@ -55,18 +50,10 @@ import {
   type FeatureListItem,
   list as listFeatures,
   listReadyDeclarations,
-  quickChange,
   setWaiting,
   stopRound,
 } from '../services/features'
-import { burnWarnings } from '../services/burn-warnings'
 import { landChatCommits } from '../services/chat-branch'
-import {
-  type CarriedDefect,
-  type ReviewEvidence,
-  carriedWork,
-  currentLapReviewEvidence,
-} from '../services/carried-work'
 import {
   blocksOf,
   dependsOnOf,
@@ -79,10 +66,11 @@ import { emit, emitForSession, emitProject, latestEventTs } from '../services/ev
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
-  carryFinding,
   closeAsAddressed,
+  dismissAsAgent,
   linkFixTicket,
   listByFeature as listReviewFindings,
+  openDefects as openDefectsOf,
   reportFinding,
   requireLinkableFindings,
 } from '../services/review-findings'
@@ -90,7 +78,6 @@ import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
 import { type SerialQueue, createSerialQueue } from '../services/landing-queue'
-import { PLANNING_STEP_EVENT, planningFacts, planningStepReported } from '../services/planning'
 import {
   editNote as editProjectNote,
   listNotes as listProjectNotes,
@@ -101,7 +88,6 @@ import {
   getProjectById,
   listRunsByFeature,
   markOrchestrated,
-  markTicketsReady,
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
@@ -114,7 +100,6 @@ import {
   editTicket,
   getTicket,
   listByFeature,
-  pendingTickets,
   requireAnnotatedModels,
   storeTickets,
   type TicketContentPatch,
@@ -290,9 +275,8 @@ export interface FeatureDocRef {
   bytes: number
   /**
    * Why it was left out, for the docs the contract withholds by name
-   * (`withheldFeatureDocs`). Absent for an ordinary uncanonical doc — those are
-   * simply not part of the digest, which is not the same as discouraged — and
-   * absent for `test-notes.md` while carried work makes its reason untrue.
+   * (`WITHHELD_FEATURE_DOCS`). Absent for an ordinary uncanonical doc — those
+   * are simply not part of the digest, which is not the same as discouraged.
    */
   withheld?: string
 }
@@ -309,17 +293,49 @@ export interface FeatureDocRef {
  */
 export type FeatureContextTicketRow = Pick<
   Ticket,
-  'id' | 'seq' | 'title' | 'status' | 'kind' | 'lap' | 'blockedBy' | 'model' | 'seams' | 'error'
+  'id' | 'seq' | 'title' | 'status' | 'kind' | 'blockedBy' | 'model' | 'seams' | 'error'
 > & {
   /** Absent only when moved out whole to fit the ceiling — then `goalNotInlined` says so. */
   goal?: string
   goalNotInlined?: true
 }
 
-/** An earlier lap whose ticket rows did not fit the ceiling, moved out whole. */
-export interface LapNotInlined {
-  lap: number
-  seqs: number[]
+/**
+ * A defect in the fields a session needs to act on it — the same four
+ * `buildFixTicket` serialises onto a fix ticket, minus the citation, which
+ * points at the criterion the review argued from rather than at the problem,
+ * plus the id every disposition verb names it by.
+ */
+export interface OpenDefect {
+  /** What a ticket's `originFindingId` and `resolve_finding`'s `findingId` take. */
+  id: string
+  title: string
+  location: string
+  detail: string
+  reproStep: string
+}
+
+/**
+ * One review pass's evidence, as PATHS rather than content. A review agent
+ * works in host scratch space outside the repo ({@link reviewDir}), and
+ * `get_feature_context` strips every ticket's `digest` out of its payload, so a
+ * session that is not handed these paths has no channel to the review at all.
+ * Nothing here is stat'ed: the paths are stated and the session reads what is there.
+ */
+export interface ReviewEvidence {
+  /** The review ticket whose pass produced it — {@link reviewDir} is keyed by this. */
+  ticketId: string
+  /** The ticket's seq, which is how the human and the cards refer to it. */
+  seq: number
+  /** How the pass itself ended — the review OUTCOME, `done` or `failed`. */
+  status: TicketStatusT
+  reviewMode: 'drive' | 'gates' | null
+  reviewVerdict: 'verified' | 'unverified' | null
+  reviewVerdictReason: string | null
+  /** `~/.runcastle/reviews/<ticketId>/` — screenshots and `walkthrough.webm`. */
+  dir: string
+  /** `<dir>/DIGEST.md` — the review agent's own account of what it found. */
+  digestPath: string
 }
 
 /** A canonical doc that did not fit under the never-hidden ceiling, and how to get it. */
@@ -339,12 +355,6 @@ export interface NotInlinedDoc {
  */
 export interface FeatureContext {
   feature: ReturnType<typeof getFeatureRow>
-  phase: PhaseT
-  /**
-   * The lap the feature is on (SPEC §15.3). `tickets` below is the full history
-   * across every lap — the `lap` on each row is what distinguishes them.
-   */
-  lap: number
   /**
    * The merge-order edges (ADR-0013): what this feature waits on — or, once
    * started, waited on — each with whether it has shipped, and the drafts still
@@ -370,32 +380,18 @@ export interface FeatureContext {
   /** Says, in the payload itself, that `moreDocs` and `notInlined` are fetchable rather than gone. */
   docsNote: string
   /**
-   * The defects this feature's review left open, each with the fields a session
-   * needs to act on it. They live only in the `review_findings` table — no doc
-   * renders them — so before this they reached a new lap through no channel at
-   * all, and a lap launched BECAUSE of them opened unable to name one.
-   *
-   * Empty for a feature with nothing open, which is every feature outside a
-   * review iteration.
+   * The defects the feature's reviews reported that nothing has resolved yet,
+   * each with the fields a session needs to act on it. They live only in the
+   * `review_findings` table — no doc renders them — and each stays open until
+   * its fix ticket lands or the agent marks it addressed or dismissed.
    */
-  openDefects: CarriedDefect[]
+  openDefects: OpenDefect[]
   /**
-   * The defects an earlier lap parked rather than answered (decisions #5). This
-   * lap's AGENDA, not its obligation: `resolve_finding` will link or close one,
-   * and the tickets gate never demands a carried defect be carried again — the
-   * same sticky semantics a carried test note has.
+   * Where the latest review pass left its evidence on disk — the `DIGEST.md`
+   * the review agent wrote, the screenshots and walkthrough beside it, and how
+   * that pass ended. Null until a review pass has burned.
    */
-  carriedDefects: CarriedDefect[]
-  /**
-   * Where the PREVIOUS lap's review passes left their evidence on disk — the
-   * `DIGEST.md` the review agent wrote, the screenshots and walkthrough beside
-   * it, and how that pass ended. Paths rather than content, and the third thing
-   * with no other channel: the directory is host scratch space outside the repo,
-   * and `tickets` below are rows, without the digest a session would otherwise read.
-   *
-   * Empty outside a lap (lap 1, or a previous lap whose review never burned).
-   */
-  reviewEvidence: ReviewEvidence[]
+  reviewEvidence: ReviewEvidence | null
   /**
    * The feature's newest burn, however it ended — the one piece of the current
    * state that lives on the `runs` table and reaches no session otherwise
@@ -411,36 +407,20 @@ export interface FeatureContext {
     errorHeadlines: string[]
   }
   /**
-   * What THIS lap's review passes did and where each one left its evidence —
-   * the same shape and the same paths-not-content contract as
-   * {@link reviewEvidence} above, which speaks for the previous lap. Empty until
-   * a review pass of this lap has burned.
-   */
-  currentLapReview: ReviewEvidence[]
-  /**
-   * Every finding this lap's review reported, resolved ones included — the
-   * record of the pass, where `openDefects` and `carriedDefects` are the work it
-   * left. A defect already stated there is not repeated here: with reviews no
-   * longer minting fix tickets every defect starts open, and stating each one
-   * twice would push the lead's to-do past the ceiling. Empty when this lap's
-   * review reported nothing.
+   * Every finding the latest review pass reported, resolved ones included — the
+   * record of the pass, where `openDefects` is the work left. A defect already
+   * stated there is not repeated here: stating each one twice would push the
+   * lead's to-do past the ceiling. Empty when that pass reported nothing.
    */
   findings: ReviewFinding[]
-  /**
-   * The test-drive notes that still stand: this lap's, plus anything an earlier
-   * lap carried rather than answered. Keyed on status rather than on the lap
-   * number alone for the reason `carriedWork` documents — a note carried forward
-   * keeps the lap that captured it, and asking only for this lap's would lose it.
-   */
-  testNotes: TestNote[]
   tickets: FeatureContextTicketRow[]
   /**
-   * Earlier laps whose rows were moved out whole because even goal-less rows
-   * would not fit (oldest lap first). Absent when every row fit. The current
-   * lap's rows are never moved out.
+   * The seqs of settled (done or cancelled) tickets whose rows were moved out
+   * whole because even goal-less rows would not fit, lowest seq first. Absent
+   * when every row fit. A ticket still to run is never moved out.
    */
-  ticketsNotInlined?: LapNotInlined[]
-  /** Present whenever a goal or a lap's rows were moved out: how to fetch them. */
+  ticketsNotInlined?: number[]
+  /** Present whenever a goal or a row was moved out: how to fetch them. */
   ticketsNote?: string
   /**
    * The models the operator annotated with a use-case note, and the only ones a
@@ -517,8 +497,8 @@ const DOCS_NOTE =
 const TICKETS_NOTE =
   'Some ticket detail did not fit this reply and was moved out whole, never truncated. A row ' +
   'marked goalNotInlined: true has its goal in get_ticket({ seq }). ticketsNotInlined[] names ' +
-  'earlier laps whose rows were moved out: list_tickets indexes them and get_ticket({ seq }) ' +
-  'reads one. Fetch before acting on any of those tickets.'
+  'the seqs of settled tickets whose rows were moved out: list_tickets indexes them and ' +
+  'get_ticket({ seq }) reads one. Fetch before acting on any of those tickets.'
 
 function notInlinedReason(relPath: string): string {
   return (
@@ -573,9 +553,9 @@ function latestBurnSummary(
  * Code hides it from the agent. Nothing is ever truncated: tickets are rows (the
  * rest is `get_ticket`), and a canonical doc that does not fit moves out whole to
  * `notInlined`, a half-shown doc being worse than a plainly missing one. On a
- * feature whose rows and to-do alone cross the ceiling, goals and then earlier
- * laps' rows move out whole the same way, marked `goalNotInlined` and named in
- * `ticketsNotInlined`.
+ * feature whose rows and to-do alone cross the ceiling, goals and then settled
+ * tickets' rows move out whole the same way, marked `goalNotInlined` and named
+ * in `ticketsNotInlined`.
  */
 export function featureContext(
   ctx: AppCtx,
@@ -584,19 +564,13 @@ export function featureContext(
 ): FeatureContext {
   const feature = getFeatureRow(ctx, reader.featureId)
   const allTickets = listByFeature(ctx, feature.id)
-  const testNotes = listTestNotes(ctx, feature.id).filter(
-    (note) => note.lap === feature.lap || note.status === 'carried',
-  )
-
-  // The carry channel decides two things here: which defects the payload states
-  // outright, and whether `test-notes.md` may still claim to be already-triaged
-  // (it may not, once a note was carried rather than triaged).
-  const carried = carriedWork(ctx, feature.id)
-  const stated = new Set([...carried.openDefects, ...carried.carriedDefects].map((defect) => defect.id))
+  const openDefects = openDefectsOf(ctx, feature.id).map(toOpenDefect)
+  const latestReview = latestBurnedReview(allTickets)
+  const stated = new Set(openDefects.map((defect) => defect.id))
   const findings = listReviewFindings(ctx, feature.id).filter(
-    (finding) => finding.lap === feature.lap && !stated.has(finding.id),
+    (finding) => finding.reviewTicketId === latestReview?.id && !stated.has(finding.id),
   )
-  const withheldDocs = withheldFeatureDocs({ carriedNotesOpen: carried.carriedNotes > 0 })
+  const withheldDocs = WITHHELD_FEATURE_DOCS
 
   const project = projectForFeature(ctx, feature)
   const docsDir = featureDocsDir(project, feature)
@@ -634,8 +608,6 @@ export function featureContext(
 
   const header = {
     feature,
-    phase: feature.phase,
-    lap: feature.lap,
     rounds: listRounds(ctx, feature.id),
     latestReady: listReadyDeclarations(ctx, feature.id).at(-1) ?? null,
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
@@ -648,23 +620,17 @@ export function featureContext(
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
     ...latestBurnSummary(ctx, feature.id, allTickets),
-    reviewEvidence: carried.reviewEvidence,
-    currentLapReview: currentLapReviewEvidence(ctx, feature.id),
+    reviewEvidence: latestReview ? reviewEvidenceOf(latestReview) : null,
   }
-  const toDo = {
-    openDefects: carried.openDefects,
-    carriedDefects: carried.carriedDefects,
-    findings,
-    testNotes,
-  }
+  const toDo = { openDefects, findings }
   let rows = allTickets.map(ticketRow)
-  const lapsNotInlined: LapNotInlined[] = []
+  const rowsNotInlined: number[] = []
   // Built in priority order, and JSON keeps that order: the header the incident
   // hid at the tail of an 80K reply now opens it (decisions.md #6).
   const assemble = (docs: FeatureContext['docs'], notInlined: NotInlinedDoc[]): FeatureContext => ({
     ...header,
     tickets: rows,
-    ...(lapsNotInlined.length > 0 ? { ticketsNotInlined: lapsNotInlined } : {}),
+    ...(rowsNotInlined.length > 0 ? { ticketsNotInlined: rowsNotInlined } : {}),
     ...(rows.length < allTickets.length || rows.some((row) => row.goalNotInlined)
       ? { ticketsNote: TICKETS_NOTE }
       : {}),
@@ -680,21 +646,19 @@ export function featureContext(
   // Docs are moved out first, because they are the one part with a cheap,
   // well-known fetch — so they only claim room the rest leaves. When even the
   // rest does not fit with every doc out, ticket detail moves out whole next,
-  // each part behind `get_ticket`: goals, oldest lap first (lowest seq first
-  // within a lap), then earlier laps' rows, oldest first. The current lap's rows
-  // and the lap's to-do never move.
-  for (const row of [...rows].sort((a, b) => a.lap - b.lap || a.seq - b.seq)) {
+  // each part behind `get_ticket`: goals, lowest seq first, then the rows of
+  // settled tickets, lowest seq first. A ticket still to run and the to-do
+  // never move.
+  for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
     if (fits(assemble([], allDocsOut))) break
     delete row.goal
     row.goalNotInlined = true
   }
-  const earlierLaps = [...new Set(rows.map((row) => row.lap))]
-    .filter((lap) => lap < feature.lap)
-    .sort((a, b) => a - b)
-  for (const lap of earlierLaps) {
+  const settled = rows.filter((row) => SETTLED.includes(row.status)).sort((a, b) => a.seq - b.seq)
+  for (const row of settled) {
     if (fits(assemble([], allDocsOut))) break
-    lapsNotInlined.push({ lap, seqs: rows.filter((row) => row.lap === lap).map((row) => row.seq) })
-    rows = rows.filter((row) => row.lap !== lap)
+    rowsNotInlined.push(row.seq)
+    rows = rows.filter((kept) => kept !== row)
   }
 
   // Every canonical doc starts in `notInlined`, and each is inlined in fill
@@ -723,12 +687,51 @@ function ticketRow(ticket: Ticket): FeatureContextTicketRow {
     title: ticket.title,
     status: ticket.status,
     kind: ticket.kind,
-    lap: ticket.lap,
     blockedBy: ticket.blockedBy,
     ...(ticket.model !== undefined ? { model: ticket.model } : {}),
     seams: ticket.seams,
     ...(ticket.error !== undefined ? { error: ticket.error } : {}),
     goal: ticket.goal,
+  }
+}
+
+/** A ticket nothing will run again, so its row may move out to fit the ceiling. */
+const SETTLED: readonly TicketStatusT[] = ['done', 'cancelled']
+
+/** A review pass that got far enough to leave something behind. */
+const BURNED_REVIEW: readonly TicketStatusT[] = ['done', 'failed']
+
+/**
+ * The newest review pass that left evidence behind — a pass still `pending` or
+ * `burning` wrote no digest, and a `cancelled` one never ran.
+ */
+function latestBurnedReview(tickets: Ticket[]): Ticket | undefined {
+  return tickets
+    .filter((ticket) => ticket.kind === 'review' && BURNED_REVIEW.includes(ticket.status))
+    .sort((a, b) => b.seq - a.seq)[0]
+}
+
+function reviewEvidenceOf(ticket: Ticket): ReviewEvidence {
+  const dir = reviewDir(ticket.id)
+  return {
+    ticketId: ticket.id,
+    seq: ticket.seq,
+    status: ticket.status,
+    reviewMode: ticket.reviewMode ?? null,
+    reviewVerdict: ticket.reviewVerdict ?? null,
+    reviewVerdictReason: ticket.reviewVerdictReason ?? null,
+    dir,
+    digestPath: join(dir, 'DIGEST.md'),
+  }
+}
+
+function toOpenDefect(defect: ReviewFinding): OpenDefect {
+  return {
+    id: defect.id,
+    title: defect.title,
+    location: defect.location,
+    detail: defect.detail,
+    reproStep: defect.reproStep,
   }
 }
 
@@ -760,7 +763,6 @@ export interface TicketSummary {
   title: string
   status: TicketStatusT
   kind: Ticket['kind']
-  lap: number
   blockedBy: number[]
   seams: string[]
 }
@@ -788,7 +790,6 @@ export function toolListTickets(
       title: t.title,
       status: t.status,
       kind: t.kind,
-      lap: t.lap,
       blockedBy: t.blockedBy,
       seams: t.seams,
     })),
@@ -822,10 +823,8 @@ const REVIEW_TITLE = /^review[: ]/i
  * batch's review but not KINDED like one is the incident shape: the `kind` field
  * silently dropped, so the ticket defaults to `implementation`, is correctly
  * containerized, and reports BLOCKED from a sandbox that by design has no app,
- * database or browser. The Burn click warns about a lap that forgot its review
- * ticket, but it warns the human, often after the session has ended; this
- * catches the same omission while the session that wrote it can still fix and
- * re-emit.
+ * database or browser. This catches the omission while the session that wrote
+ * it can still fix and re-emit.
  *
  * Refusal, never coercion — the session stays the author of its own tickets, and
  * the retitle escape hatch covers the rare ticket that really is implementation
@@ -854,7 +853,7 @@ export function toolEmitTickets(
   // A session may only assign what `get_feature_context` offered it; the store
   // alone takes any roster id, which is the human's (tRPC) latitude, not this.
   requireAnnotatedModels(ctx, input.tickets.map((t) => t.model))
-  // The LINK disposition: a lap ticket that names the defect it answers. Vetted
+  // The LINK disposition: a ticket that names the defect it answers. Vetted
   // here rather than in `storeTickets`, which is also the internal mint used by
   // `reportFinding` and the burner's verification pass — those link findings the
   // guard would refuse (a defect the review has only just opened), and the
@@ -868,6 +867,9 @@ export function toolEmitTickets(
   for (const ticket of stored) {
     if (ticket.originFindingId) linkFixTicket(ctx, feature.id, ticket.originFindingId, ticket.id)
   }
+  // The tickets the agent just wrote are what the human should see next, so the
+  // panel opens on Work as the agent's own act (decision 8).
+  emitPanelShow(ctx, feature.id, { view: 'work' })
   // `seq` is the number the batch's own `blockedBy` speaks in and the number the
   // UI shows, and it is assigned HERE, by the store. Returning bare ids meant
   // the emitting session could not name what it had just written back to the
@@ -966,11 +968,11 @@ export function toolStopRound(
 export function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
-  input: { scenario: string; whatToTest: string },
-): { ok: true; phase: PhaseT; warnings: string[] } {
+  input: { scenario: string },
+): { ok: true; waitingReason: string | null; warnings: string[] } {
   const featureId = requireLeadFeatureId(session)
   const { warnings } = declareReady(ctx, featureId, input)
-  return { ok: true, phase: getFeatureRow(ctx, featureId).phase, warnings }
+  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason, warnings }
 }
 
 export function toolWaitForYou(
@@ -1000,28 +1002,19 @@ export function toolStartDesignServer(
   return startDesignServer(ctx, requireChatFeatureId(session), input.command)
 }
 
-/** The views the human's panel can show (design-mode decision 5). */
-const PanelView = z.enum(['body', 'preview', 'design', 'drive', 'details'])
+/** The views the human's panel can show (decision 8). */
+const PanelView = z.enum(['plan', 'work', 'review', 'details', 'design', 'drive'])
+type PanelViewT = z.infer<typeof PanelView>
 
 /**
- * Open the human's panel on a view. `design` needs something to show: a server
- * running, or a recorded command the panel can start one from.
+ * The `panel.show` event the web opens a view on — always the agent's own act,
+ * whether it asked by name (`show_panel`) or by emitting tickets.
  */
-export function toolShowPanel(
+function emitPanelShow(
   ctx: AppCtx,
-  session: SessionRow,
-  input: { view: z.infer<typeof PanelView>; path?: string; width?: number },
-): { ok: true } {
-  const featureId = requireChatFeatureId(session)
-  if (input.view === 'design') {
-    const status = designServerStatus(ctx, featureId)
-    if (!status.running && !status.hasRecordedCommand) {
-      throw new GateError(
-        'no design server runs and none is recorded — call start_design_server with a command first',
-      )
-    }
-    if (input.path) rememberDesignPath(featureId, input.path)
-  }
+  featureId: string,
+  input: { view: PanelViewT; path?: string; width?: number },
+): void {
   const width = input.view === 'design' ? input.width : undefined
   const where = `${input.path ? ` at ${input.path}` : ''}${width !== undefined ? `, ${width}px wide` : ''}`
   emit(ctx, featureId, {
@@ -1033,6 +1026,28 @@ export function toolShowPanel(
       ...(width !== undefined ? { width } : {}),
     },
   })
+}
+
+/**
+ * Open the human's panel on a view. `design` needs something to show: a server
+ * running, or a recorded command the panel can start one from.
+ */
+export function toolShowPanel(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { view: PanelViewT; path?: string; width?: number },
+): { ok: true } {
+  const featureId = requireChatFeatureId(session)
+  if (input.view === 'design') {
+    const status = designServerStatus(ctx, featureId)
+    if (!status.running && !status.hasRecordedCommand) {
+      throw new GateError(
+        'no design server runs and none is recorded — call start_design_server with a command first',
+      )
+    }
+    if (input.path) rememberDesignPath(featureId, input.path)
+  }
+  emitPanelShow(ctx, featureId, input)
   return { ok: true }
 }
 
@@ -1045,31 +1060,33 @@ const ResolveFindingShape = {
   findingId: z
     .string()
     .min(1)
-    .describe('The finding id, from `get_feature_context`’s openDefects or carriedDefects.'),
-  disposition: z.enum(['carry', 'addressed']).describe(
-    '`carry` parks it for a later lap — out of the open count, still visible, and the human can ' +
-      'reopen it. `addressed` closes it because this lap’s work already answers it.',
+    .describe('The finding id, from `get_feature_context`’s openDefects.'),
+  disposition: z.enum(['addressed', 'dismissed']).describe(
+    '`addressed` closes it because work already answers it. `dismissed` closes it because it ' +
+      'is not worth fixing — not a defect, out of scope, or accepted as it is.',
   ),
   note: z
     .string()
     .optional()
     .describe(
-      'REQUIRED for `addressed`: what addressed it, e.g. "lap 2’s ticket 7 rewrote the endpoint". ' +
-        'Optional for `carry`, where it records why it was parked.',
+      'REQUIRED: what addressed it, e.g. "ticket 7 rewrote the endpoint", or why it was dismissed.',
     ),
 }
 
 /**
- * Cross-field, so it cannot live in the raw shape MCP publishes: an `addressed`
+ * Cross-field, so it cannot live in the raw shape MCP publishes: a closure
  * with no note is a closure with no evidence, which is the state this whole
  * feature exists to stop a finding drifting into.
  */
 const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, refinement) => {
-  if (input.disposition === 'addressed' && !input.note?.trim()) {
+  if (!input.note?.trim()) {
     refinement.addIssue({
       code: 'custom',
       path: ['note'],
-      message: 'closing a defect as addressed requires a note saying what addressed it',
+      message:
+        input.disposition === 'addressed'
+          ? 'closing a defect as addressed requires a note saying what addressed it'
+          : 'dismissing a defect requires a note saying why',
     })
   }
 })
@@ -1077,17 +1094,13 @@ const ResolveFindingInput = z.object(ResolveFindingShape).superRefine((input, re
 export type ResolveFindingInputT = z.input<typeof ResolveFindingInput>
 
 /**
- * Disposition one earlier-lap defect: park it for a later lap, or close it
- * because this lap's work already answers it. The lap boundary triages open
- * findings the way it already triages test notes.
+ * Resolve one open defect: close it as addressed because work already answers
+ * it, or dismiss it. A finding stays open until one of these, or until its fix
+ * ticket lands.
  *
  * The refinement is applied HERE rather than at the registration, so this
- * function is the one place an `addressed` with no attestation is refused —
- * whether the caller is the MCP handler or a test at this seam.
- *
- * Reopening is deliberately absent: a session that carried a defect and then
- * un-carried it would be arguing with itself, and the human's review page holds
- * that verb.
+ * function is the one place a closure with no note is refused — whether the
+ * caller is the MCP handler or a test at this seam.
  */
 export function toolResolveFinding(
   ctx: AppCtx,
@@ -1097,9 +1110,9 @@ export function toolResolveFinding(
   const featureId = requireFeatureId(session)
   const { findingId, disposition, note } = ResolveFindingInput.parse(input)
   const finding =
-    disposition === 'carry'
-      ? carryFinding(ctx, featureId, findingId, note)
-      : closeAsAddressed(ctx, featureId, findingId, note ?? '')
+    disposition === 'addressed'
+      ? closeAsAddressed(ctx, featureId, findingId, note ?? '')
+      : dismissAsAgent(ctx, featureId, findingId, note ?? '')
   return { ok: true, finding }
 }
 
@@ -1127,101 +1140,6 @@ export function toolRecordEvent(
     )
   }
   return { ok: true }
-}
-
-/** What a session hears back from a planning step it has just finished. */
-export interface CompletePhaseResult {
-  ok: true
-  /**
-   * The state the feature is STILL in. Ideation, spec and tickets are steps
-   * inside Planning, so this tool moves nothing — the field stays for wire
-   * compatibility with the skills that read it, and now answers honestly.
-   */
-  nextPhase: PhaseT
-  /**
-   * The next planning step still missing its artifact, derived rather than
-   * stored (decisions §2). Absent once all three are in — there is nothing left
-   * to do but burn.
-   */
-  nextStep?: PlanningStep
-  waitingOn?: string
-  warnings?: string[]
-  /**
-   * Why there was nothing left to do — set only when the step was already
-   * reported, or the feature has already left Planning, so a healthy late call
-   * reads as the success it is instead of a refusal.
-   */
-  note?: string
-}
-
-/**
- * Report a planning step complete (SPEC: the `complete_phase` seam).
- *
- * Wire-compatible on purpose: the name and the `ideation | spec | tickets`
- * argument are what `/runcastle:ideate`, `spec` and `tickets`
- * already call, and in-flight sessions must not have to relearn them. What
- * changed underneath is that there is no gate and no transition left — the three
- * steps live inside one Planning state, so this records the milestone on the
- * timeline and answers with what is next. It never refuses: the review-ticket
- * rule that used to park the tickets step comes back as a warning (decisions §5),
- * said here because this is the moment the session that wrote the tickets is
- * still alive to fix them.
- */
-export function toolCompletePhase(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { phase: PlanningStep },
-): CompletePhaseResult {
-  const feature = getFeatureRow(ctx, requireFeatureId(session))
-  // Read before the emit below, which would otherwise count as this call's own
-  // earlier report.
-  const repeated = planningStepReported(ctx, feature, input.phase)
-  emit(ctx, feature.id, {
-    type: PLANNING_STEP_EVENT,
-    message: `session marked planning step '${input.phase}' complete`,
-    data: { phase: input.phase, currentPhase: feature.phase },
-  })
-
-  // An iterate lap is the next lap being planned FROM Review. With `rethink`
-  // gone nothing moves a feature backwards, so the session that writes lap N+1's
-  // fix tickets does it while the feature stands at `review` — the same road
-  // `burn` already recognises (`iterating`, services/features.ts). Its briefing
-  // forbids this call — Burn from review is what starts the lap — but a stray one
-  // is not refused: it falls through to the full answer below, Burn warnings
-  // included, instead of being told there is nothing left to do.
-  const iterating = feature.phase === 'review' && pendingTickets(ctx, feature.id).length > 0
-
-  // The human clicked Burn while this session was still closing out: the work
-  // being reported IS complete — the feature moved on without it. Saying so is
-  // what keeps a healthy late call from reading as a failure and sending the
-  // session looking for something to fix.
-  if (isPastPhase(feature, 'planning') && !iterating) {
-    return {
-      ok: true,
-      nextPhase: feature.phase,
-      note: `planning is already closed out — the feature is ${feature.phase}; nothing left to complete`,
-    }
-  }
-
-  // The lap stops changing here: the session is done emitting and enriching, so
-  // the Burn click can no longer land mid-batch. A repeat would only re-emit the
-  // milestone the first call already stamped.
-  if (input.phase === 'tickets' && !repeated) markTicketsReady(ctx, feature.id, 'building')
-
-  const nextStep = nextPlanningStep(planningFacts(ctx, feature))
-  return {
-    ok: true,
-    nextPhase: feature.phase,
-    ...(nextStep ? { nextStep } : {}),
-    ...(input.phase === 'tickets'
-      ? { waitingOn: 'human burn', warnings: burnWarnings(ctx, feature.id) }
-      : {}),
-    ...(repeated
-      ? {
-          note: `the ${input.phase} step was already reported complete on lap ${feature.lap} — nothing further to do`,
-        }
-      : {}),
-  }
 }
 
 /**
@@ -1825,7 +1743,7 @@ export interface CreateFeatureResult {
   id: string
   slug: string
   branch: string
-  phase: PhaseT
+  status: FeatureStatusT
   /** The slugs the new draft waits on — present only when `dependsOn` was passed. */
   dependsOn?: string[]
   /** True when the draft was created up next. */
@@ -1850,7 +1768,7 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
 function createFeatureProject(
   ctx: AppCtx,
   session: SessionRow,
-  input: { draft?: boolean; tickets?: string[] },
+  input: { draft?: boolean },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
@@ -1859,12 +1777,11 @@ function createFeatureProject(
         'Tell the human what is worth capturing; the project session is where features are made.',
     )
   }
-  if (!input.draft || input.tickets) {
+  if (!input.draft) {
     throw new GateError(
       `a ${session.kind} session may only PARK a feature here: call create_feature with ` +
-        '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch — a full ' +
-        'create or the quick-change `tickets` shape — belongs to the project session; tell the ' +
-        'human to open it.',
+        '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch belongs to ' +
+        'the project session; tell the human to open it.',
     )
   }
   return projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
@@ -1874,15 +1791,13 @@ function createFeatureProject(
  * The point of the project session: intake and decomposition terminating in a
  * feature (decision 19).
  *
- * Three shapes, one call. Without `ticket` it is the ordinary door — an
- * ideation-phase feature whose `brief.md` is the prose the intake conversation
- * just produced, so the reasoning about why this feature exists and what it
- * must not swallow survives the terminal closing. With `draft` it parks that
- * same feature instead of starting it (draft-features decision 5): a row and a
- * stored brief, no branch, until the human clicks Start. With `tickets` it is
- * the quick-change door (decision 21): ONE feature born at `implementation`
- * carrying a ticket per prose, created atomically with them — which is why this
- * is NOT the feature-less `emit_tickets` the session is deliberately denied.
+ * Two shapes, one call. The ordinary door is a feature whose `brief.md` is the
+ * prose the intake conversation just produced, so the reasoning about why this
+ * feature exists and what it must not swallow survives the terminal closing.
+ * With `draft` it parks that same feature instead of starting it
+ * (draft-features decision 5): a row and a stored brief, no branch, until the
+ * human clicks Start. Never tickets: the feature's own agent reads the brief and
+ * judges the work (decision 10).
  *
  * It launches nothing. Spawning terminals from inside a terminal would make
  * this session an orchestrator, where runcastle's premise is that the human
@@ -1897,7 +1812,6 @@ export async function toolCreateFeature(
     baseBranch?: string
     brief?: string
     draft?: boolean
-    tickets?: string[]
     dependsOn?: string[]
     upNext?: boolean
   },
@@ -1911,57 +1825,41 @@ export async function toolCreateFeature(
           'backlog, and the human can mark it up next on its page.',
       )
     }
-    if (!input.draft || input.tickets || dependsOn.length === 0) {
+    if (!input.draft || dependsOn.length === 0) {
       throw new InvalidInputError(
-        '`upNext` needs `draft: true`, no `tickets`, and a non-empty `dependsOn` — up next means ' +
+        '`upNext` needs `draft: true` and a non-empty `dependsOn` — up next means ' +
           '"start by itself when those ship", so it needs something to wait on.',
       )
     }
   }
-  if (dependsOn.length > 0 && (!input.draft || input.tickets)) {
+  if (dependsOn.length > 0 && !input.draft) {
     throw new InvalidInputError(
-      'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` (and no ' +
-        '`tickets`) to park it waiting on those features.',
+      'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` to park ' +
+        'it waiting on those features.',
     )
   }
   // Validated BEFORE the row exists, so a bad slug, a merged dependency or a
   // foreign feature refuses the whole create instead of leaving a half-made draft.
   const dependencyIds = featureIdsBySlug(ctx, project.id, dependsOn)
   validateDependencies(ctx, project.id, null, dependencyIds)
-  // `oneLiner` is required by the ORDINARY door only. The quick-change door
-  // derives it from the first ticket's prose (`quickChange`) and ignores
-  // anything passed, so demanding it there made the schema lie about the call.
-  if (!input.tickets && !input.oneLiner?.trim()) {
-    throw new InvalidInputError(
-      'create_feature needs a oneLiner — one line saying what this feature is. Only the ' +
-        'quick-change shape (`tickets`) may omit it: there it comes from the first ticket.',
-    )
+  const oneLiner = input.oneLiner?.trim()
+  if (!oneLiner) {
+    throw new InvalidInputError('create_feature needs a oneLiner — one line saying what this feature is.')
   }
-  const feature = input.tickets
-    ? await quickChange(ctx, {
-        projectId: project.id,
-        title: input.title,
-        // Same list the overlay sends, through the same service function — so
-        // the review-ticket append and every other quick-change invariant hold
-        // identically on both doors.
-        tickets: input.tickets,
-        baseBranch: input.baseBranch,
-        draft: input.draft,
-      })
-    : await createFeature(ctx, {
-        projectId: project.id,
-        title: input.title,
-        oneLiner: input.oneLiner ?? '',
-        baseBranch: input.baseBranch,
-        brief: input.brief,
-        draft: input.draft,
-      })
+  const feature = await createFeature(ctx, {
+    projectId: project.id,
+    title: input.title,
+    oneLiner,
+    baseBranch: input.baseBranch,
+    brief: input.brief,
+    draft: input.draft,
+  })
   // What the orchestrator creates is its own (`whole-cuts-plan-themselves`
   // decision 9). It still launches nothing: it calls `plan_feature` when it
   // judges the feature ready.
   if (session.purpose === 'orchestrate') markOrchestrated(ctx, feature.id, 'created')
   if (dependencyIds.length === 0) {
-    return { id: feature.id, slug: feature.slug, branch: feature.branch, phase: feature.phase }
+    return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
   }
   const edges = setDependencies(ctx, feature.id, dependencyIds)
   if (input.upNext) setUpNext(ctx, feature.id, true)
@@ -1969,7 +1867,7 @@ export async function toolCreateFeature(
     id: feature.id,
     slug: feature.slug,
     branch: feature.branch,
-    phase: feature.phase,
+    status: feature.status,
     dependsOn: edges.map((d) => d.slug),
     ...(input.upNext ? { upNext: true } : {}),
   }
@@ -2237,7 +2135,7 @@ export function toolReadAdr(
  * paragraphs and were most of the payload, and `read_feature_brief` serves one
  * on request. The per-line docs path went with it; the index note says once
  * where shipped docs live. The in-flight state keeps what the portfolio lookup
- * is asked for — phase, lap and ticket counts, all true of the feature in
+ * is asked for — whether a round runs and ticket counts, all true of the feature in
  * SQLite rather than of an unmerged branch — and the SLUG `get_work_record`
  * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
  * trail the line as slugs and marks — edges and state only, so the session can
@@ -2262,7 +2160,7 @@ function featureIndexLine(feature: FeatureListItem): string {
     }[unstartedState(feature, feature.dependsOn) ?? 'backlog']
     return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}${owner}`
   }
-  const state = [`in flight: ${feature.phase}`, `lap ${feature.lap}`]
+  const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
@@ -2275,8 +2173,6 @@ export interface FeatureBrief {
   title: string
   oneLiner: string
   status: FeatureStatusT
-  phase: PhaseT
-  lap: number
   /** Absent when neither the docs on disk nor the database recorded one. */
   brief?: string
   /** Present only when `brief` is absent, saying so. */
@@ -2309,8 +2205,6 @@ export function toolReadFeatureBrief(
     title: feature.title,
     oneLiner: feature.oneLiner,
     status: feature.status,
-    phase: feature.phase,
-    lap: feature.lap,
     ...(brief !== undefined
       ? { brief }
       : { note: 'No brief was recorded for this feature, on disk or in the database.' }),
@@ -2384,7 +2278,7 @@ export interface WorkRecord {
  *   what made it overflow.
  * - By slug: "what did X actually do?" — digests inline, except that when the
  *   reply would cross {@link MCP_READ_CEILING_CHARS} they are moved out whole,
- *   oldest lap first, each marked `digestNotInlined`. Never truncated.
+ *   lowest seq first, each marked `digestNotInlined`. Never truncated.
  * - By slug and seq: that one ticket, digest included — the drill-down.
  */
 export function toolGetWorkRecord(
@@ -2404,8 +2298,6 @@ export function toolGetWorkRecord(
   }
 
   const records: WorkRecordFeature[] = []
-  // The laps the slug form moves digests out by; rows never carry the lap.
-  const lapBySeq = new Map<number, number>()
   for (const feature of listFeatures(ctx, project.id)) {
     if (slug && feature.slug !== slug) continue
     let tickets = listByFeature(ctx, feature.id)
@@ -2417,7 +2309,6 @@ export function toolGetWorkRecord(
       tickets = tickets.filter((t) => t.seq === seq)
       if (tickets.length === 0) throw new NotFoundError(`ticket #${seq} not found on ${slug}`)
     }
-    for (const t of tickets) lapBySeq.set(t.seq, t.lap)
     const shippedAt = latestEventTs(ctx, feature.id, 'feature.shipped')
     records.push({
       slug: feature.slug,
@@ -2452,7 +2343,7 @@ export function toolGetWorkRecord(
   const movable = records
     .flatMap((f) => f.tickets)
     .filter((t) => t.digest !== undefined)
-    .sort((a, b) => (lapBySeq.get(a.seq) ?? 0) - (lapBySeq.get(b.seq) ?? 0) || a.seq - b.seq)
+    .sort((a, b) => a.seq - b.seq)
   for (const ticket of movable) {
     if (serializedLength(record) <= MCP_READ_CEILING_CHARS) break
     delete ticket.digest
@@ -2463,7 +2354,7 @@ export function toolGetWorkRecord(
 }
 
 const WORK_RECORD_DIGESTS_NOTE =
-  'Some digests did not fit and were moved out whole, oldest lap first: each such ticket carries ' +
+  'Some digests did not fit and were moved out whole, lowest seq first: each such ticket carries ' +
   'digestNotInlined: true. Read one with get_work_record({ featureSlug, seq }).'
 
 // --- MCP server assembly ----------------------------------------------------
@@ -2585,7 +2476,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   emit_tickets: FEATURE_KINDS,
   update_ticket: FEATURE_KINDS,
   cancel_ticket: FEATURE_KINDS,
-  complete_phase: FEATURE_KINDS,
   // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
@@ -2634,7 +2524,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   plan_feature: ['project'],
   send_to_feature: ['project'],
   stop_feature_run: ['project'],
-  go_feature: ['project'],
   drive: ['project'],
   record_test_note: ['project'],
   merge_feature: ['project'],
@@ -2662,14 +2551,6 @@ export function toolsForAudience(audience: McpAudience | undefined): string[] {
     .filter((tool) => registeredFor(tool, audience))
     .sort()
 }
-
-/**
- * The phases a SESSION can complete. `shipped` is in `Phase` because features
- * reach it; it is excluded here because nothing reaches it by asking — a feature
- * ships when the human merges it, so offering it was offering a call that can
- * only be refused.
- */
-const CompletablePhase = z.enum(['ideation', 'spec', 'tickets'])
 
 /**
  * The shape of a timeline event tag: `subject.verb`, lowercase, dotted.
@@ -2832,8 +2713,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         description:
           'Record one review finding on the feature you are reviewing. It lands in the same ' +
           'notes the human writes while test-driving — attributed to you — so it shows up in the ' +
-          'review panel, where they triage every open note at once into fix tickets or the next ' +
-          'lap. Findings are not failure: report what you saw and let the human decide. Refused ' +
+          'review panel. Findings are not failure: report what you saw and let the human decide. Refused ' +
           'unless your call carries a live run identity.',
         inputSchema: {
           text: z
@@ -2951,8 +2831,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
 
   // A drafting TALK session may only park a draft (`createFeatureProject`), so
-  // it is offered only that shape — the quick-change and full-create arguments
-  // it would be refused are neither described to it nor accepted from it. Same
+  // it is offered only that shape — the full-create arguments it would be
+  // refused are neither described to it nor accepted from it. Same
   // guard at call time either way; this only stops charging a grill for the
   // project session's door. (Item 9: with the audience known, policy prose that
   // does not apply to the reader is simply not sent.)
@@ -2991,22 +2871,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Create a feature',
         description:
-          'Create a feature — the end of intake. Three shapes, one call: the ordinary door ' +
-          '(title + oneLiner + brief), the parked draft (`draft: true`), and the quick change ' +
-          '(`tickets`). It opens NO terminal on what it creates; the new card in the rail is the ' +
-          'feedback, and the human decides what to work on next. From a feature session ' +
-          '(ideation, revisit) only the draft shape is allowed — deflect ' +
-          'scope creep here and leave full creation to the project session.',
+          'Create a feature — the end of intake: a title, a oneLiner and a brief, started or ' +
+          'parked (`draft: true`). No tickets: the feature’s own agent reads the brief and ' +
+          'judges the work. It opens NO terminal on what it creates; the new card in the rail is ' +
+          'the feedback, and the human decides what to work on next. From a feature session ' +
+          'only the draft shape is allowed — deflect scope creep here and leave full creation to ' +
+          'the project session.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
-          oneLiner: z
-            .string()
-            .optional()
-            .describe(
-              'One line saying what this feature is. Required for every shape EXCEPT `tickets`, ' +
-                'where the first ticket’s prose becomes the one-liner and anything sent here is ' +
-                'ignored.',
-            ),
+          oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
           baseBranch: z
             .string()
             .optional()
@@ -3022,25 +2895,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .describe(
               'The reasoning you just worked out with the human — why this feature exists and ' +
                 'what it must NOT swallow. Becomes brief.md verbatim, and without it that ' +
-                'reasoning is lost. Unused by the `tickets` shape, whose brief IS the proses.',
+                'reasoning is lost.',
             ),
           draft: z
             .boolean()
             .optional()
             .describe(
               'PARK it instead of starting it: a row and its brief, no branch and no files, ' +
-                'until the human clicks Start. With `tickets`, the draft keeps them and Start lands ' +
-                'it ready to Burn. Ask them per feature whether to start or park.',
-            ),
-          tickets: z
-            .array(z.string().min(1))
-            .min(1)
-            .optional()
-            .describe(
-              'The quick-change shape: work too small to deserve a grill. Creates ONE feature at ' +
-                'the implementation phase carrying a ticket per prose (plus the review ticket ' +
-                'every batch closes with). Send every sentence of one quick change in a SINGLE ' +
-                'call — calling this once per ticket makes one feature per ticket.',
+                'until the human clicks Start. Ask them per feature whether to start or park.',
             ),
           dependsOn: DEPENDS_ON_SCHEMA,
           upNext: z
@@ -3074,7 +2936,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           '`selectable` base, and the `detectedMain` line to suggest then; the charter ' +
           '(CONTEXT.md) in full; an INDEX of every live ADR (superseded ones omitted) — read the ' +
           'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
-          'lines: every in-flight feature (phase, lap, ticket counts), then every draft, then the ' +
+          'lines: every in-flight feature (whether a round runs, ticket counts), then every draft, then the ' +
           `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped; a line ending ` +
           '`· waits on: …` names the features it must wait to merge; a draft is marked `up next` ' +
           '(starts by itself when they ship), `up next, stuck` (needs the human) or `blocked` ' +
@@ -3099,7 +2961,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'List project notes',
         description:
           'List this project’s open notes oldest first. Notes with a screenshot include its ' +
-          'absolute host path and a ready-made attachment sentence for quick-change tickets.',
+          'absolute host path and a ready-made attachment sentence for a feature’s brief.',
         inputSchema: {},
       },
       async (_args, extra) => {
@@ -3214,7 +3076,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Read a feature brief',
         description:
-          'Any feature of the project, by slug: { slug, title, oneLiner, status, phase, lap, ' +
+          'Any feature of the project, by slug: { slug, title, oneLiner, status, ' +
           'brief } — what it is for, behind the one line `get_project_context` indexes it by. A ' +
           'shipped feature’s brief is its docs/features/<slug>/brief.md in this worktree; an ' +
           'in-flight or draft feature’s comes from the database, because its docs live on an ' +
@@ -3244,7 +3106,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'summaries and tickets as { seq, title, status, seams, commits, error? }. By ' +
           '`featureSlug` each ticket also carries its `digest`: the burner’s own account, written ' +
           'after the work — what it did, what surprised it, what it left undone. If they would not ' +
-          'all fit, the oldest laps’ digests are moved out whole and those tickets say ' +
+          'all fit, the oldest tickets’ digests are moved out whole and those tickets say ' +
           '`digestNotInlined: true`. By `seam` the tickets are rows without digests. Add `seq` to ' +
           'a `featureSlug` to get that one ticket with its digest. Never a ticket’s goal or ' +
           'acceptance criteria — those are intent from before the code existed. Send a ' +
@@ -3296,7 +3158,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       title: 'Get feature context',
       description:
         'Everything true of the current feature, as a summary that never grows past what you ' +
-        'can see. It opens with a header: the feature row, phase, lap, `rounds` (every round so ' +
+        'can see. It opens with a header: the feature row, `rounds` (every round so ' +
         'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
         '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
         'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
@@ -3312,14 +3174,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'does a ticket ship a scenario for state the person driving would otherwise build by ' +
         'hand; plus `runnerConfigured`, the `scenarios` at this branch and the `_` `fixtures` ' +
         'to reuse), ' +
-        '`reviewEvidence` (where the PREVIOUS lap’s review agent left its DIGEST.md, screenshots and walkthrough — read them before ' +
-        'planning a lap) and `currentLapReview`. Then every ticket across all laps as a row ' +
+        '`reviewEvidence` (where the latest review pass left its DIGEST.md, screenshots and ' +
+        'walkthrough — read them before planning more work; null until a review has run). Then ' +
+        'every ticket as a row ' +
         'with its goal; a ticket’s context, acceptance criteria and the burner’s digest are in ' +
         '`get_ticket({ seq })`. On a feature too large for that, a row marked ' +
-        '`goalNotInlined` and the earlier laps named in `ticketsNotInlined` were moved out ' +
+        '`goalNotInlined` and the settled tickets named in `ticketsNotInlined` were moved out ' +
         'whole: fetch them (`get_ticket`, `list_tickets`) before acting on those tickets. ' +
-        'Then this lap’s to-do in full: `openDefects`, ' +
-        '`carriedDefects`, `findings`, and `testNotes`. Last, ' +
+        'Then the to-do in full: `openDefects` (every defect no fix or resolution has closed) ' +
+        'and `findings` (the rest of what the latest review reported). Last, ' +
         'the canonical docs (brief, decisions, spec) in full while they fit; any doc in ' +
         '`notInlined` was too large to include and MUST be read before acting ' +
         '(`read_feature_doc` or its absPath). `moreDocs` indexes every other doc in ' +
@@ -3398,13 +3261,13 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     const config = {
       title: 'List tickets',
       description:
-        'This feature’s tickets as an index — { id, seq, title, status, kind, lap, blockedBy, ' +
+        'This feature’s tickets as an index — { id, seq, title, status, kind, blockedBy, ' +
         'seams } and no prose. This is where ids for `update_ticket` and `cancel_ticket` come ' +
         'from; use it instead of `get_feature_context` when you only need to find or name a ' +
         'ticket. A ticket’s full body is `get_ticket({ seq })`.',
     }
     const status = TicketStatus.optional().describe(
-      'Return only tickets in this state. Omit for all of them, across every lap.',
+      'Return only tickets in this state. Omit for all of them.',
     )
     if (projectReads) {
       server.registerTool(
@@ -3485,7 +3348,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'speak in. Send the whole batch in one call: positions in `blockedBy` are positions ' +
           'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
           'annotatedModels whose note gives a reason to deviate — omit it otherwise and the burn ' +
-          'resolves the model the ordinary way.',
+          'resolves the model the ordinary way. Storing the batch opens the human’s panel on Work, ' +
+          'so they see the tickets you just wrote.',
         inputSchema: {
           tickets: z
             .array(TicketInput)
@@ -3579,12 +3443,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Resolve a review finding',
         description:
-          'Say what this lap did about a defect an earlier lap’s review left open: `carry` it into ' +
-          'a later lap, or close it as `addressed` because this lap’s work already answers it. To ' +
-          'link it instead, emit the ticket that fixes it with `originFindingId` set — the burn ' +
-          'then closes the finding itself when that ticket lands. An earlier-lap open defect you ' +
-          'leave un-dispositioned is not refused — it comes back as a warning at the human’s Burn ' +
-          'click, so disposition each one before you hand over.',
+          'Close an open defect a review reported: `addressed` because work already answers it, ' +
+          'or `dismissed` because it is not worth fixing — with a note saying what addressed it ' +
+          'or why. To fix it through a ticket instead, emit that ticket with `originFindingId` ' +
+          'set — the burn then closes the finding itself when that ticket lands. A defect stays ' +
+          'open until one of these happens.',
         inputSchema: ResolveFindingShape,
       },
       async (args, extra) => {
@@ -3622,42 +3485,6 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  if (wants('complete_phase')) {
-    server.registerTool(
-      'complete_phase',
-      {
-        title: 'Complete phase',
-        description:
-          'Mark the named planning step complete. Ideation, spec and tickets are steps INSIDE ' +
-          'the single Planning state, so this never moves the feature: it records the ' +
-          'milestone on the timeline and comes back { ok: true, nextPhase } naming the state ' +
-          'the feature is still in, plus { nextStep } — the planning step whose artifact is ' +
-          'still missing, read off disk rather than stored. It never refuses; a step you ' +
-          'report twice comes back ok with a note. Completing the tickets step additionally ' +
-          'returns { waitingOn: "human burn", warnings } — `warnings` carries what the human ' +
-          'will be told at the Burn click, so you can still act on it while you are alive. ' +
-          'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +
-          'rather than burning tickets you are still writing, so make it the last thing you do ' +
-          'in the tickets step.',
-        inputSchema: {
-          phase: CompletablePhase.describe(
-            'The phase you are finishing — normally the feature’s current one. `shipped` is not ' +
-              'completable by any session: a feature ships when the human merges it.',
-          ),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolCompletePhase(rs.ctx, rs.session, args)
-        if (result.ok) {
-          checkpointDocsAfterReply(rs.ctx, rs.session, `phase '${args.phase}' complete`)
-        }
-        return ok(result)
-      },
-    )
-  }
-
   if (wants('dispatch_round')) {
     server.registerTool(
       'dispatch_round',
@@ -3669,9 +3496,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'blockedBy edges order them inside the round. A blocker outside the round that landed ' +
           'or was cancelled counts as satisfied; one still pending or failed, or one that does ' +
           'not exist, refuses the round, naming each such edge. When the round returns you are woken ' +
-          'with its outcome, each ticket’s status and the verify-gate result. Refused, with the ' +
-          'reason, while a round is already running, while the human is test-driving this ' +
-          'feature, before Go, and after the human pressed Stop until they have replied.',
+          'with its outcome, each ticket’s status and the verify-gate result. Start a round only ' +
+          'once the human has said yes to it in chat. Refused, with the reason, while a round is ' +
+          'already running, while the human is test-driving this feature, once it has shipped, ' +
+          'and after the human pressed Stop until they have replied.',
         inputSchema: {
           seqs: z
             .array(z.number().int().min(1))
@@ -3712,19 +3540,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Declare the feature ready for the human',
         description:
           'Put a test drive in front of the human: "Ready for you · Test drive ▸ <scenario>". ' +
-          'The first declaration moves the feature to review; later ones (after the human’s ' +
-          'notes and more rounds) keep it there. A declaration, never refused for the work’s ' +
-          'state: it returns `warnings` — a last round with failures, work nothing has reviewed ' +
-          'since it changed — and you must relay each one to the human.',
+          'This puts the feature under Needs you ("ready to test") until the human replies or ' +
+          'the next round runs. Run the project’s checks first, and tell the human in chat what ' +
+          'to test and how you checked the work (e.g. "typecheck and tests green; no review ' +
+          'agent, since it’s a one-file style change"). A declaration, never refused for the ' +
+          'work’s state: it returns `warnings` — a last round with failures — and you must relay ' +
+          'each one to the human.',
         inputSchema: {
           scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
-          whatToTest: z
-            .string()
-            .min(1)
-            .describe(
-              'A short paragraph aimed at the drive: what changed, where to look, and what would ' +
-                'count as broken.',
-            ),
         },
       },
       async (args, extra) => {
@@ -3742,8 +3565,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why, in a few words — the feature ' +
-          'shows "Waiting for you · <why>". Use it when you need a decision the plan did not ' +
-          'settle, or when you are stuck. The human’s next message, or your next dispatch, clears it.',
+          'shows "Waiting for you · <why>" and sits under Needs you. Use it when you need the ' +
+          'human’s yes to start a round, a decision the plan did not settle, or when you are ' +
+          'stuck. The human’s next message, or your next dispatch, clears it.',
         inputSchema: {
           why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
         },
@@ -3799,9 +3623,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human a panel',
         description:
           'Open the panel beside the chat on the human’s screen, while you are talking about what ' +
-          'it shows: `design` (the live design server at `path`, e.g. `/preview/checkout-empty.html`), ' +
-          '`preview` (the plan preview), `body` (the phase’s tickets, runs or review), `drive` ' +
-          '(the test drive) or `details` (docs and timeline). `design` refuses until ' +
+          'it shows: `plan` (the plan preview, with the decisions and spec inside it), `work` (the ' +
+          'feature’s tickets by round, with live status), `review` (ready declarations, findings ' +
+          'and evidence), `details` (timeline, docs and sessions), `design` (the live design ' +
+          'server at `path`, e.g. `/preview/checkout-empty.html`) or `drive` (the test drive). ' +
+          '`design` refuses until ' +
           'start_design_server has run or a command is recorded. For `design`, `width` lays the page ' +
           'out at that screen width, scaled to fit the pane (e.g. `width: 390` for the mobile layout); ' +
           'without it the human’s own choice holds (Desktop 1440 by default).',

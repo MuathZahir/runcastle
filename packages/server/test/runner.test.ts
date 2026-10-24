@@ -37,7 +37,7 @@ describe('workflow runner', () => {
 
   beforeEach(async () => {
     ctx = await makeTestCtx()
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     workflowRegistry.set(successDef.id, successDef)
     workflowRegistry.set(throwDef.id, throwDef)
   })
@@ -264,7 +264,7 @@ describe('talk worktree at the burn boundary (one-chat-per-feature decision 9)',
     await g.commit('initial commit')
 
     project = seedProject(ctx, repo)
-    feature = seedFeature(ctx, project.id, { slug: 'runwt', phase: 'building' })
+    feature = seedFeature(ctx, project.id, { slug: 'runwt' })
     await createFeatureBranch(project, feature.slug, 'main')
     talkWt = await ensureTalkWorktree(project, feature)
   })

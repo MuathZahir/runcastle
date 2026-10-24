@@ -11,7 +11,18 @@ import { useRailWidth, type RailWidthSpec } from '../../lib/rail-width'
 import type { FeatureView } from '../../lib/routes'
 import { IconButton, cx } from '../../ui'
 import { SELECT_GHOST, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
-import { IconArrowLeft, IconChevronRight, IconEye, IconInfo, IconList, IconPanelRight, IconPen, IconPlay, IconX } from '../../icons'
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconChevronRight,
+  IconDoc,
+  IconInfo,
+  IconList,
+  IconPanelRight,
+  IconPen,
+  IconPlay,
+  IconX,
+} from '../../icons'
 
 /**
  * The feature page's one panel (design-mode decisions 4, 5): the split it
@@ -22,8 +33,9 @@ import { IconArrowLeft, IconChevronRight, IconEye, IconInfo, IconList, IconPanel
 
 /** Every view leads with an icon (DESIGN.md principle 7). */
 export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
-  body: <IconList />,
-  preview: <IconEye />,
+  plan: <IconDoc />,
+  work: <IconList />,
+  review: <IconCheck />,
   design: <IconPen />,
   drive: <IconPlay />,
   details: <IconInfo />,
@@ -228,7 +240,7 @@ export function FeaturePanel({
   return (
     <section aria-label={label(view)} className="flex min-h-0 min-w-0 flex-1 flex-col animate-fade-in">
       <div className="flex h-(--topbar-h) shrink-0 items-center gap-2 border-b border-border-subtle pr-2 pl-3">
-        <Select value={view} onValueChange={(next) => isPanelView(next) && onSwitch(next)}>
+        <Select value={view} onValueChange={(next) => isPanelView(next) && views.includes(next) && onSwitch(next)}>
           <SelectTrigger aria-label="Panel view" className={cx(SELECT_GHOST, 'text-sm text-text')}>
             <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[view]}</span>
             <SelectValue>{label(view)}</SelectValue>
@@ -236,7 +248,10 @@ export function FeaturePanel({
           <SelectContent align="start" aria-label="Panel view">
             {views.map((v) => (
               <SelectItem key={v} value={v}>
-                {label(v)}
+                <span className="flex items-center gap-2">
+                  <span className="shrink-0 text-icon">{PANEL_VIEW_ICON[v]}</span>
+                  {label(v)}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

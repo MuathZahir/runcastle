@@ -119,7 +119,6 @@ describe('the notes rail’s width', () => {
 const NOTE: TestNote = {
   id: 'note_1',
   featureId: 'ftr_1',
-  lap: 1,
   text: 'the gate chip wraps to two lines at the default rail width',
   status: 'open',
   author: 'human',

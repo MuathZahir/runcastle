@@ -116,7 +116,7 @@ const TALK_WORDS: Record<ProjectSessionState, string> = {
  *   Add to backlog · Jot a note) and the collapse button, over the film grain;
  * - the Orchestrator card — the project's own door, its chat;
  * - what needs you, unheaded: preparation while it is owed, the features
- *   waiting on you, then the stopped ones;
+ *   waiting on you, then the ones in progress (nothing running, nothing asked);
  * - the Working shelf, its rows in the bay;
  * - the shelves: Up next (open), then folded Backlog, Shipped (five, then
  *   "Show N more"), Archived;
@@ -167,7 +167,7 @@ export function Sidebar(props: SidebarProps) {
   const features = list.data ?? []
   const { inbox, lanes } = sidebarLanes(features)
   const lane = (key: string) => lanes.find((g) => g.key === key)?.features ?? []
-  const stopped = lane('inProgress')
+  const inProgress = lane('inProgress')
   const working = lane('agentWorking')
   // The Archived shelf counts its features while folded, so they are read
   // whether or not it is open — `sidebarLanes` leaves them out.
@@ -275,7 +275,7 @@ export function Sidebar(props: SidebarProps) {
       : []
 
   const owesPrep = prepRow?.variant === 'todo'
-  const nothingInMotion = features.length > 0 && !owesPrep && inbox.length + stopped.length + working.length === 0
+  const nothingInMotion = features.length > 0 && !owesPrep && inbox.length + inProgress.length + working.length === 0
 
   return (
     <nav aria-label="Project" className="relative isolate flex h-full min-h-0 flex-col p-2">
@@ -317,7 +317,7 @@ export function Sidebar(props: SidebarProps) {
       <div className="-mx-2 mt-4 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-px pb-2 [scrollbar-color:var(--color-border)_transparent] [scrollbar-width:thin]">
         {list.isLoading && <FeatureRowsSkeleton />}
         {nothingInMotion && <NavItem tone="quiet" label="Nothing in motion" />}
-        {(owesPrep || inbox.length + stopped.length > 0) && (
+        {(owesPrep || inbox.length + inProgress.length > 0) && (
           <section aria-label="Needs you" className="flex flex-col gap-1">
             {/* Preparation while it is owed is the first thing asked of you;
                 once done it moves into the Orchestrator's menu. */}
@@ -331,7 +331,7 @@ export function Sidebar(props: SidebarProps) {
               />
             )}
             {inbox.map((f) => row(f))}
-            {stopped.map((f) => row(f))}
+            {inProgress.map((f) => row(f))}
           </section>
         )}
         {/* Below what is asked of you: on a new project "Prepare this project"
@@ -410,7 +410,7 @@ export function CreateMenu({
         <CreateItem
           icon={<IconMessage />}
           label="New chat"
-          hint="Features and quick changes alike — a conversation that plans the work and runs it in rounds"
+          hint="A conversation with the feature's agent — it plans the work, builds it and runs rounds when you say yes"
           onSelect={onNewChat}
         />
         <CreateItem

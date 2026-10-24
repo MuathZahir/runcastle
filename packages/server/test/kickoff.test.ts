@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { KICKOFF_LINES } from '../src/launcher/runtimes/claude'
 import { KICKOFF_LINES as CODEX_KICKOFF_LINES } from '../src/launcher/runtimes/codex'
-import { chatKickoffFor, selfPlanKickoffFor } from '../src/launcher/runtimes/skills'
+import { chatKickoffFor, relayKickoffFor, selfPlanKickoffFor, sideKickoffFor } from '../src/launcher/runtimes/skills'
 import { kickoffLineFor } from '../src/launcher/sessions'
 import { promptMatchesKickoff } from '../src/services/conversations'
 
@@ -11,7 +11,7 @@ describe('kickoff registry + override', () => {
 
   it('maps every session kind to a non-empty kickoff line naming its opening skill', () => {
     const skillByKind: Record<SessionKind, string> = {
-      chat: '/runcastle:revisit',
+      chat: '/runcastle:feature',
       prepare: '/runcastle:prepare',
       project: '/runcastle:project',
       'drive-fix': 'retry_drive',
@@ -32,7 +32,7 @@ describe('kickoff registry + override', () => {
   /**
    * The kickoff a session opens with depends on the runtime its row records, not
    * on a table the launcher holds: the argv builder passes `session.runtime`
-   * through. A Codex session launched with `/runcastle:ideate` would sit there
+   * through. A Codex session launched with `/runcastle:feature` would sit there
    * doing nothing.
    */
   it('kickoffLineFor spells the line for the runtime the session runs on', () => {
@@ -40,7 +40,7 @@ describe('kickoff registry + override', () => {
       expect(kickoffLineFor(kind, undefined, 'codex')).toBe(CODEX_KICKOFF_LINES[kind])
       expect(kickoffLineFor(kind, undefined, 'claude-code')).toBe(KICKOFF_LINES[kind])
     }
-    expect(kickoffLineFor('chat', undefined, 'codex')).toContain('$revisit')
+    expect(kickoffLineFor('chat', undefined, 'codex')).toContain('$feature')
   })
 
   it('kickoffLineFor lets an explicit override replace the default', () => {
@@ -50,22 +50,34 @@ describe('kickoff registry + override', () => {
     expect(kickoffLineFor('chat', undefined)).toBe(KICKOFF_LINES.chat)
   })
 
-  it('opens a self-planning run saying no human is present, naming ideate per runtime', () => {
-    for (const [runtime, ideate] of [['claude-code', '/runcastle:ideate'], ['codex', '$ideate']] as const) {
+  it('opens a self-planning run saying no human is present, naming the feature skill and planning alone', () => {
+    for (const [runtime, feature] of [['claude-code', '/runcastle:feature'], ['codex', '$feature']] as const) {
       const line = selfPlanKickoffFor(runtime)
       expect(line).toContain('no human is present')
-      expect(line).toContain(ideate)
-      expect(line).toContain('"Planning without a human"')
+      expect(line).toContain(feature)
+      expect(line).toContain('`references/planning-alone.md`')
+      expect(line).toContain('do not build it')
       expect(line).not.toMatch(/[\r\n]/)
     }
   })
 
-  it("opens a chat past Go as the feature's lead, naming the lead skill per runtime", () => {
-    for (const [runtime, lead] of [['claude-code', '/runcastle:lead'], ['codex', '$lead']] as const) {
-      const line = chatKickoffFor(runtime, 'lead')
-      expect(line).toContain(`Proceed as the feature's lead: invoke ${lead}`)
-      expect(line).not.toMatch(/[\r\n]/)
+  it('opens every feature chat with one line naming the feature skill per runtime', () => {
+    for (const [runtime, feature] of [['claude-code', '/runcastle:feature'], ['codex', '$feature']] as const) {
+      expect(chatKickoffFor(runtime)).toBe(`Proceed with your task: invoke ${feature} and continue this feature.`)
     }
+  })
+
+  it('relays the orchestrator by the feature skill, saying it is not the human', () => {
+    const line = relayKickoffFor('claude-code', 'drop the CSV export')
+    expect(line).toContain('Invoke /runcastle:feature')
+    expect(line).toContain("is from the project's orchestrator, not the human")
+    expect(line).toContain("The orchestrator's message: drop the CSV export")
+  })
+
+  it('keeps a side session off rounds, with no word of Go', () => {
+    const line = sideKickoffFor()
+    expect(line).toContain('except run rounds')
+    expect(line).not.toMatch(/\bGo\b|lead/)
   })
 })
 

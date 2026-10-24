@@ -1,6 +1,5 @@
 import { useId } from 'react'
 import type { SVGProps } from 'react'
-import type { Phase } from '@runcastle/core'
 
 /**
  * The runcastle icon set — 16×16 viewBox, 1.5px round stroke, `currentColor`
@@ -621,13 +620,20 @@ export function IconSelectArea(p: IconProps) {
    ========================================================================== */
 
 /**
- * Every phase a glyph exists for: the app's own four (`Phase` in
- * @runcastle/core — planning, building, review, shipped), `draft` (a parked
- * feature, which is a status rather than a phase), and the design system's
- * finer steps (ideation, spec, tickets, implementation) for surfaces that know
- * where inside planning/building a feature is.
+ * Every stage a glyph exists for — the design system's progress vocabulary
+ * (the first-run intro, the wizard rail, the notice hues). No feature stores a
+ * phase; a feature's own glyph is {@link ProgressIcon}.
  */
-export type PhaseIconPhase = Phase | 'draft' | 'ideation' | 'spec' | 'tickets' | 'implementation'
+export type PhaseIconPhase =
+  | 'draft'
+  | 'ideation'
+  | 'spec'
+  | 'planning'
+  | 'tickets'
+  | 'implementation'
+  | 'building'
+  | 'review'
+  | 'shipped'
 
 /** The glyph's hue: a whole class per phase so Tailwind can see it. */
 export const PHASE_TEXT: Record<PhaseIconPhase, string> = {
@@ -759,6 +765,88 @@ export function PhaseIcon({
           fill="currentColor"
           stroke="none"
           style={{ opacity: phase === 'shipped' ? 1 : 0, transition: `opacity ${SWEEP}` }}
+        />
+      </g>
+    </svg>
+  )
+}
+
+/* ============================================================================
+   PROGRESS ICON — what replaces the phase glyph once a feature has no phase
+   (tickets-and-review-are-tools-not-phases): the same ring and pie, the pie
+   now the share of the feature's tickets that landed. draft dashed ring · active
+   ring + pie · shipped filled check.
+   ========================================================================== */
+
+export type ProgressIconState = 'draft' | 'active' | 'shipped'
+
+const PROGRESS_TEXT: Record<ProgressIconState, string> = {
+  draft: 'text-phase-draft',
+  active: 'text-text-tertiary',
+  shipped: 'text-phase-shipped',
+}
+
+/**
+ * A feature as a 16px glyph: its landed share of tickets as the pie
+ * (`progress`, 0..1), a dashed ring while it is a draft, the filled check once
+ * shipped. The pie sweeps when `progress` changes on a mounted glyph. `label`
+ * as PhaseIcon's: `''` makes it decorative.
+ */
+export function ProgressIcon({
+  state,
+  progress = 0,
+  size = 16,
+  label,
+  className,
+}: {
+  state: ProgressIconState
+  progress?: number
+  size?: number
+  label?: string
+  className?: string
+}) {
+  const maskId = `progress-check-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const fill = state === 'active' ? Math.round(Math.min(1, Math.max(0, progress)) * 100) : 0
+  const name = state === 'draft' ? 'Backlog' : state === 'shipped' ? 'Shipped' : `${fill}% landed`
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      role={label === '' ? undefined : 'img'}
+      aria-label={label === '' ? undefined : (label ?? name)}
+      aria-hidden={label === '' ? true : undefined}
+      className={['inline-block shrink-0 transition-colors duration-(--dur-3) ease-app', PROGRESS_TEXT[state], className]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <defs>
+        <mask id={maskId}>
+          <rect width="16" height="16" fill="white" />
+          <path d="M5.2 8.2 7 10l3.8-3.8" fill="none" stroke="black" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+        </mask>
+      </defs>
+      <g mask={state === 'shipped' ? 'url(#' + maskId + ')' : undefined}>
+        <circle cx="8" cy="8" r="6" strokeDasharray={state === 'draft' ? '2.2 2.2' : undefined} />
+        <circle
+          cx="8"
+          cy="8"
+          r="2"
+          strokeWidth={4}
+          pathLength={100}
+          transform="rotate(-90 8 8)"
+          style={{ strokeDasharray: `${fill} 100`, transition: `stroke-dasharray ${SWEEP}` }}
+        />
+        <circle
+          cx="8"
+          cy="8"
+          r="7"
+          fill="currentColor"
+          stroke="none"
+          style={{ opacity: state === 'shipped' ? 1 : 0, transition: `opacity ${SWEEP}` }}
         />
       </g>
     </svg>

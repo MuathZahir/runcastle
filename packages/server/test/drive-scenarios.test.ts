@@ -264,7 +264,7 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
     await testDrive(ctx, project, feature, 'stop')
 
     // A review agent's drive is not the human's to land on.
-    await reviewDrive(ctx, project, { ...feature, phase: 'review' }, 'start')
+    await reviewDrive(ctx, project, { ...feature }, 'start')
     expect(await runScenarioOnDrive(ctx, project.id, file)).toMatchObject({ ok: false })
   }, 30_000)
 
@@ -415,7 +415,7 @@ describe.skipIf(!RUNNER)('drive scenarios', () => {
       await testDrive(ctx, project, feature, 'stop')
 
       // A review agent's drive is admitted only when asked for.
-      await reviewDrive(ctx, project, { ...feature, phase: 'review' }, 'start')
+      await reviewDrive(ctx, project, { ...feature }, 'start')
       recordDriveUrl(ctx, project.id, feature.id, url)
       expect(await sendDriveCall(ctx, project.id, request)).toMatchObject({ ok: false })
       expect(await sendDriveCall(ctx, project.id, request, { allowReview: true })).toMatchObject({

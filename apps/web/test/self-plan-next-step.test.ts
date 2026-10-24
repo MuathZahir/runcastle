@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { FeatureFull } from '../src/lib/api'
-import { CHAT_ACTION, nextStep, SELF_PLAN_ACTION, type NextAction } from '../src/lib/feature-ui'
+import { nextStep, SELF_PLAN_ACTION } from '../src/lib/feature-ui'
 import { full } from './fixtures'
 
 /**
  * features-plan-themselves ticket 2 — the bar around a self-planning run
- * (decisions 5, 10, 11, 12): a second way in beside the grill, a working bar
- * with Stop and no chat, the ordinary bar once it finishes, and a stopped-short
- * bar whose way on is the chat.
+ * (decisions 5, 10, 11, 12): a second way in beside a draft's Start, a working
+ * bar with Stop and no chat, and a stopped-short bar whose way on is the chat.
+ * With no phase (tickets-and-review-are-tools-not-phases decision 12) every
+ * other started feature's step is plain: the status line picks the one primary.
  */
 
 type Session = FeatureFull['sessions'][number]
-
-const MERGE_ACTION: NextAction = { label: 'Merge & ship', kind: 'merge' }
 
 const session = (over: Partial<Session> = {}): Session =>
   ({
@@ -22,7 +21,6 @@ const session = (over: Partial<Session> = {}): Session =>
     status: 'ended',
     awaitingInput: false,
     worktreePath: '/tmp/talk',
-    lap: 1,
     createdAt: 0,
     ...over,
   }) as Session
@@ -30,43 +28,14 @@ const session = (over: Partial<Session> = {}): Session =>
 const selfPlan = (over: Partial<Session> = {}): Session =>
   session({ purpose: 'self-plan', ccSessionId: 'cc-1', ...over })
 
-const planning = (
-  opts: {
-    sessions?: Session[]
-    docs?: string[]
-    tickets?: unknown[]
-    ticketsReadyLap?: number | null
-    lap?: number
-  } = {},
-): FeatureFull => {
-  const base = full({ phase: 'planning' })
-  return {
-    ...base,
-    feature: { ...base.feature, lap: opts.lap ?? 1, ticketsReadyLap: opts.ticketsReadyLap ?? null },
-    sessions: opts.sessions ?? [],
-    docs: (opts.docs ?? []).map((relPath) => ({ relPath })),
-    tickets: opts.tickets ?? [],
-  } as unknown as FeatureFull
+const started = (sessions: Session[] = []): FeatureFull => {
+  const base = full({ status: 'active' })
+  return { ...base, feature: { ...base.feature, lap: 1 }, sessions } as unknown as FeatureFull
 }
 
-const pendingTicket = {
-  id: 't1',
-  seq: 1,
-  status: 'pending',
-  lap: 1,
-  kind: 'implementation',
-  goal: 'Put the shape warnings on the burn card.',
-  context:
-    'The bar lives in apps/web/src/lib/feature-ui/next-step and the ledger beneath it in ' +
-    'components/bodies/tickets. Follow the resolver that is already there rather than adding a ' +
-    'second one, and pin the copy in apps/web/test/feature-ui.test.ts as the neighbouring cases ' +
-    'do. The warnings themselves belong to core, beside the rules, so the card and the door that ' +
-    'stores the tickets cannot word the same problem two ways.',
-}
-
-describe('Plan it yourself beside the grill', () => {
+describe('Plan it yourself beside Start', () => {
   it('keeps Start as a draft’s primary and puts Plan it yourself beside it', () => {
-    const ns = nextStep(full({ status: 'draft', phase: 'planning' }), { driving: false })
+    const ns = nextStep(full({ status: 'draft' }), {})
 
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
     expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])
@@ -75,10 +44,7 @@ describe('Plan it yourself beside the grill', () => {
   })
 
   it('disables both with the same reason while the draft has no base branch', () => {
-    const ns = nextStep(full({ status: 'draft', phase: 'planning' }), {
-      driving: false,
-      draftBaseMissing: 'unpicked',
-    })
+    const ns = nextStep(full({ status: 'draft' }), { draftBaseMissing: 'unpicked' })
 
     expect(ns.primary?.disabled).toBe('pick a branch first')
     expect(ns.secondary[0]).toEqual({ ...SELF_PLAN_ACTION, disabled: 'pick a branch first' })
@@ -86,33 +52,34 @@ describe('Plan it yourself beside the grill', () => {
 
   it('disables both with the same reason while the draft waits on a dependency', () => {
     const waiting = {
-      ...full({ status: 'draft', phase: 'planning' }),
+      ...full({ status: 'draft' }),
       dependsOn: [{ id: 'f2', slug: 'other', title: 'Other', status: 'active', merged: false }],
     } as unknown as FeatureFull
-    const ns = nextStep(waiting, { driving: false })
+    const ns = nextStep(waiting, {})
 
     expect(ns.primary?.disabled).toBeTruthy()
     expect(ns.secondary[0]?.disabled).toBe(ns.primary?.disabled)
   })
+})
 
-  it('offers it beside Start session on a started feature with nothing planned', () => {
-    const ns = nextStep(planning(), { driving: false })
-
-    expect(ns.primary).toEqual({ label: 'Start session', kind: 'chat' })
-    expect(ns.secondary).toEqual([SELF_PLAN_ACTION, MERGE_ACTION])
+describe('a started feature’s step', () => {
+  it('is plain, with no per-phase action: no Go, no burn, no run cancel', () => {
+    for (const sessions of [[], [session({ ccSessionId: 'cc-1' })], [selfPlan()]]) {
+      const ns = nextStep(started(sessions), {})
+      expect(ns.primary).toBeUndefined()
+      expect(ns.secondary).toEqual([])
+      expect(ns.busy).toBe(false)
+    }
   })
 
-  it('does not offer it once there is a conversation to resume', () => {
-    const ns = nextStep(planning({ sessions: [session({ ccSessionId: 'cc-1' })] }), { driving: false })
-
-    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'chat' })
-    expect(ns.secondary).not.toContainEqual(SELF_PLAN_ACTION)
+  it('keeps the archived feature’s Unarchive', () => {
+    expect(nextStep(full({ status: 'archived' }), {}).primary).toEqual({ label: 'Unarchive', kind: 'unarchive' })
   })
 })
 
 describe('a self-planning run on the bar', () => {
   it('says the feature is planning itself, spins, and offers Stop with no chat', () => {
-    const ns = nextStep(planning({ sessions: [selfPlan({ status: 'live' })] }), { driving: false })
+    const ns = nextStep(started([selfPlan({ status: 'live' })]), {})
 
     expect(ns.kick).toBe('PLANNING ITSELF')
     expect(ns.title).toBe('Planning itself')
@@ -120,74 +87,6 @@ describe('a self-planning run on the bar', () => {
     expect(ns.busy).toBe(true)
     expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
     expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('chat')
-  })
-
-  it('keeps saying so while the run is finishing its tickets', () => {
-    const ns = nextStep(
-      planning({
-        sessions: [selfPlan({ status: 'live' })],
-        docs: ['decisions.md', 'spec.md'],
-        tickets: [pendingTicket],
-      }),
-      { driving: false },
-    )
-
-    expect(ns.title).toBe('Planning itself')
-  })
-
-  it('is the ordinary ready-to-burn bar once the run completed the tickets', () => {
-    const ns = nextStep(
-      planning({
-        sessions: [selfPlan()],
-        docs: ['decisions.md', 'spec.md'],
-        tickets: [pendingTicket],
-        ticketsReadyLap: 1,
-      }),
-      { driving: false },
-    )
-
-    expect(ns.title).toBe('Review the tickets, then burn')
-    expect(ns.primary?.kind).toBe('burn')
-  })
-
-  it('says planning stopped short, with the chat as the way on', () => {
-    const ns = nextStep(planning({ sessions: [selfPlan()], docs: ['decisions.md'] }), { driving: false })
-
-    expect(ns.kick).toBe('STOPPED')
-    expect(ns.title).toBe('Planning stopped before the plan was complete')
-    expect(ns.desc).toBe('Chat picks up what it had done.')
-    expect(ns.primary).toEqual({ label: 'Resume session', kind: 'chat' })
-    expect(ns.secondary).not.toContainEqual(CHAT_ACTION)
-  })
-
-  it('says it stopped short even with tickets on the ledger that were never completed', () => {
-    const ns = nextStep(
-      planning({ sessions: [selfPlan()], docs: ['decisions.md', 'spec.md'], tickets: [pendingTicket] }),
-      { driving: false },
-    )
-
-    expect(ns.title).toBe('Planning stopped before the plan was complete')
-  })
-
-  it('returns to the ordinary bars once a later chat exists', () => {
-    const ns = nextStep(
-      planning({
-        sessions: [selfPlan({ id: 's1' }), session({ id: 's2', ccSessionId: 'cc-1', createdAt: 1 })],
-        docs: ['decisions.md'],
-      }),
-      { driving: false },
-    )
-
-    expect(ns.title).toBe('Write the spec')
-  })
-
-  it('reads only this lap’s chats', () => {
-    const ns = nextStep(
-      planning({ lap: 2, sessions: [selfPlan({ lap: 1 })], docs: ['decisions.md'] }),
-      { driving: false },
-    )
-
-    expect(ns.title).not.toBe('Planning stopped before the plan was complete')
   })
 })
 
@@ -201,16 +100,9 @@ describe('the orchestrator’s headless runs on the bar', () => {
     session({ id: 'sess_relay', purpose: 'relay', headless: true, ccSessionId: 'cc-1', ...over })
   const lapRun = (over: Partial<Session> = {}): Session =>
     session({ id: 'sess_lap', purpose: 'start-lap', headless: true, ccSessionId: 'cc-1', ...over })
-  const review = (sessions: Session[]): FeatureFull => {
-    const base = full({ phase: 'review' })
-    return { ...base, feature: { ...base.feature, lap: 1 }, sessions } as unknown as FeatureFull
-  }
 
   it('says a relay is working on the orchestrator’s change, with Stop only', () => {
-    const ns = nextStep(
-      planning({ sessions: [relay({ status: 'live' })], docs: ['decisions.md', 'spec.md'] }),
-      { driving: false },
-    )
+    const ns = nextStep(started([relay({ status: 'live' })]), {})
 
     expect(ns.title).toBe('Working on a change the orchestrator sent back')
     expect(ns.busy).toBe(true)
@@ -218,51 +110,45 @@ describe('the orchestrator’s headless runs on the bar', () => {
     expect(ns.secondary).toEqual([])
   })
 
-  it('says a lap is planning itself at review, with Stop only', () => {
-    const ns = nextStep(review([lapRun({ status: 'launching' })]), { driving: false })
+  it('says more work is being planned, with Stop only', () => {
+    const ns = nextStep(started([lapRun({ status: 'launching' })]), {})
 
     expect(ns.title).toBe('Planning more work itself')
     expect(ns.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun' })
     expect(ns.secondary).toEqual([])
   })
 
-  it('offers no Stop for a lead woken headless — it is the lead taking Go, not a run to end', () => {
+  it('offers no Stop for a lead woken headless — the status row’s Stop halts the lead', () => {
     const wake = session({ id: 'sess_wake', status: 'live', purpose: 'lead-wake', headless: true })
-    const base = full({ phase: 'building' })
-    const ns = nextStep({ ...base, sessions: [wake] } as unknown as FeatureFull, { driving: false })
+    const ns = nextStep(started([wake]), {})
 
     expect(ns.title).not.toBe('Planning itself')
     expect([ns.primary, ...ns.secondary].map((a) => a?.kind)).not.toContain('stopHeadlessRun')
   })
 
-  it('leaves an interactive start-lap chat to the ordinary review bar', () => {
-    const ns = nextStep(review([lapRun({ status: 'live', headless: false })]), { driving: false })
+  it('leaves an interactive start-lap chat to the plain step', () => {
+    const ns = nextStep(started([lapRun({ status: 'live', headless: false })]), {})
 
     expect(ns.primary?.kind).not.toBe('stopHeadlessRun')
   })
 
   it('says a relay stopped short when the server said it did not finish', () => {
     const sessions = [relay()]
-    const docs = ['decisions.md', 'spec.md']
-    const stopped = nextStep(planning({ sessions, docs }), {
-      driving: false,
-      unfinishedRuns: ['sess_relay'],
-    })
+    const stopped = nextStep(started(sessions), { unfinishedRuns: ['sess_relay'] })
 
     expect(stopped.kick).toBe('STOPPED')
     expect(stopped.title).toBe('The orchestrator’s change stopped before it was finished')
     expect(stopped.primary).toEqual({ label: 'Resume session', kind: 'chat' })
 
-    const finished = nextStep(planning({ sessions, docs }), { driving: false, unfinishedRuns: [] })
+    const finished = nextStep(started(sessions), { unfinishedRuns: [] })
     expect(finished.kick).not.toBe('STOPPED')
   })
 
-  it('says a lap stopped short at review, until a newer chat of the lap exists', () => {
-    const stopped = nextStep(review([lapRun()]), { driving: false, unfinishedRuns: ['sess_lap'] })
+  it('says planning stopped short, until a newer chat of the lap exists', () => {
+    const stopped = nextStep(started([lapRun()]), { unfinishedRuns: ['sess_lap'] })
     expect(stopped.title).toBe('Planning stopped before its tickets were ready')
 
-    const later = nextStep(review([lapRun(), session({ id: 'sess_2', ccSessionId: 'cc-2' })]), {
-      driving: false,
+    const later = nextStep(started([lapRun(), session({ id: 'sess_2', ccSessionId: 'cc-2' })]), {
       unfinishedRuns: ['sess_lap'],
     })
     expect(later.kick).not.toBe('STOPPED')

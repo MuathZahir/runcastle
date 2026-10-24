@@ -32,8 +32,7 @@ export interface ScaffoldOptions {
   /**
    * Body written into `brief.md` verbatim, instead of the generated
    * title + oneLiner + created-date stub. Used by every creation path that
-   * already HAS the brief — the quick-change door (the human's own prose) and
-   * the project session's `create_feature` (the reasoning from the intake
+   * already HAS the brief — the project session's `create_feature` (the reasoning from the intake
    * conversation, which would otherwise evaporate). Blank/whitespace-only falls
    * back to the stub.
    */

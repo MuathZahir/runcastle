@@ -6,7 +6,6 @@ import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp, { featureContext, toolsForAudience } from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
-import { go } from '../src/services/features'
 import { getFeatureRow, getRunRow } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -52,7 +51,7 @@ describe('the lead’s MCP tools', () => {
     ctx = await makeTestCtx()
     const repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
-    featureId = seedFeature(ctx, project.id, { slug: 'coupons', ticketsReadyLap: 1 }).id
+    featureId = seedFeature(ctx, project.id, { slug: 'coupons' }).id
     sessionId = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath }).id
     markSessionLive(ctx, sessionId)
     setRuntimeCtx(ctx)
@@ -93,17 +92,27 @@ describe('the lead’s MCP tools', () => {
     }
   })
 
-  it('dispatch_round refuses before Go with the reason, as a tool error', async () => {
-    const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
-    const out = await call('dispatch_round', { seqs: [t.seq] })
-    expect(out.isError).toBe(true)
-    expect(out.text).toMatch(/no Go yet/)
-  })
+  /** The named tool's published input properties, from `tools/list`. */
+  async function inputProperties(name: string): Promise<string[]> {
+    const res = await app.request('/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'X-Runcastle-Session': sessionId,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    })
+    const envelope = (await res.json()) as {
+      result: { tools: { name: string; inputSchema: { properties?: Record<string, unknown> } }[] }
+    }
+    const tool = envelope.result.tools.find((t) => t.name === name)
+    return Object.keys(tool?.inputSchema.properties ?? {})
+  }
 
   it('dispatch_round refuses a pending blocker outside the round, as a tool error', async () => {
     const [a] = storeTickets(ctx, featureId, [ticketInput('a')])
     const [b] = storeTickets(ctx, featureId, [{ ...ticketInput('b'), blockedBy: [a.seq] }], { blockedByAreGlobal: true })
-    await go(ctx, featureId)
 
     const out = await call('dispatch_round', { seqs: [b.seq] })
 
@@ -111,9 +120,8 @@ describe('the lead’s MCP tools', () => {
     expect(out.text).toMatch(/not in this round/)
   })
 
-  it('dispatch_round starts a round over the named tickets, which the context then reports', async () => {
+  it('dispatch_round starts a round over the named tickets with no Go, which the context then reports', async () => {
     const [a, b] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('b')])
-    await go(ctx, featureId)
 
     const out = await call('dispatch_round', { seqs: [a.seq] })
     expect(out.isError).toBe(false)
@@ -134,12 +142,43 @@ describe('the lead’s MCP tools', () => {
     expect(JSON.stringify(context)).not.toMatch(/"tokens"/)
   })
 
-  it('declare_ready moves building → review and returns the warnings', async () => {
-    await go(ctx, featureId)
-    const out = await call('declare_ready', { scenario: 'Checkout', whatToTest: 'Apply a coupon at checkout.' })
+  it('declare_ready takes only a scenario, needs no Go, and puts the feature under Needs you', async () => {
+    expect(await inputProperties('declare_ready')).toEqual(['scenario'])
+    const out = await call('declare_ready', { scenario: 'Checkout' })
     expect(out.isError).toBe(false)
-    expect(JSON.parse(out.text)).toEqual({ ok: true, phase: 'review', warnings: [] })
+    expect(JSON.parse(out.text)).toEqual({ ok: true, waitingReason: 'ready to test', warnings: [] })
+    expect(getFeatureRow(ctx, featureId)).toMatchObject({ status: 'active', waitingReason: 'ready to test' })
     expect(featureContext(ctx, { featureId }).latestReady).toMatchObject({ scenario: 'Checkout' })
+  })
+
+  it('emit_tickets opens the human’s panel on Work after storing', async () => {
+    const out = await call('emit_tickets', { tickets: [ticketInput('a')] })
+    expect(out.isError).toBe(false)
+    const events = listAfter(ctx, featureId, 0)
+    const stored = events.findIndex((e) => e.type === 'tickets.stored')
+    const shown = events.findIndex((e) => e.type === 'panel.show')
+    expect(stored).toBeGreaterThanOrEqual(0)
+    expect(shown).toBeGreaterThan(stored)
+    expect(events[shown].data).toEqual({ view: 'work' })
+  })
+
+  it('show_panel accepts the six fixed views and rejects body and preview', async () => {
+    for (const view of ['plan', 'work', 'review', 'details', 'drive']) {
+      expect((await call('show_panel', { view })).isError, view).toBe(false)
+    }
+    // `design` is in the enum but refuses until a design server exists — with
+    // its own reason, not a schema error.
+    expect((await call('show_panel', { view: 'design' })).text).toMatch(/no design server runs/)
+    for (const view of ['body', 'preview']) {
+      const out = await call('show_panel', { view })
+      expect(out.isError, view).toBe(true)
+      expect(out.text, view).toMatch(/invalid/i)
+    }
+    expect(
+      listAfter(ctx, featureId, 0)
+        .filter((e) => e.type === 'panel.show')
+        .map((e) => (e.data as { view: string }).view),
+    ).toEqual(['plan', 'work', 'review', 'details', 'drive'])
   })
 
   it('wait_for_you sets the waiting reason the context shows', async () => {

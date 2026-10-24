@@ -51,7 +51,7 @@ describe('feature dependencies over MCP', () => {
   const draft = (slug: string): Feature =>
     seedFeature(ctx, projectId, { slug, status: 'draft', baseBranch: null })
   const shipped = (slug: string): Feature =>
-    seedFeature(ctx, projectId, { slug, status: 'shipped', phase: 'shipped' })
+    seedFeature(ctx, projectId, { slug, status: 'shipped' })
   const rowCount = (): number => ctx.db.select().from(features).all().length
 
   beforeEach(async () => {
@@ -70,7 +70,7 @@ describe('feature dependencies over MCP', () => {
   // --- create_feature dependsOn ---------------------------------------------
 
   it('create_feature with draft: true and dependsOn parks a draft that waits on them', async () => {
-    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework', phase: 'building' })
+    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework' })
 
     const out = await toolCreateFeature(ctx, session, {
       title: 'Billing',
@@ -100,22 +100,17 @@ describe('feature dependencies over MCP', () => {
     expect(dependsOnOf(ctx, out.id).map((d) => d.slug)).toEqual(['dark-mode'])
   })
 
-  it('refuses dependsOn on a started feature or a quick change', async () => {
+  it('refuses dependsOn on a started feature', async () => {
     seedFeature(ctx, projectId, { slug: 'auth-rework' })
     const before = rowCount()
 
-    const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
-      ['full create', { title: 'Billing', oneLiner: 'o', dependsOn: ['auth-rework'] }],
-      [
-        'quick change',
-        { title: 'Billing', draft: true, tickets: ['charge'], dependsOn: ['auth-rework'] },
-      ],
-    ]
-    for (const [name, input] of cases) {
-      const thrown = await toolCreateFeature(ctx, session, input).catch((e: unknown) => e)
-      expect(thrown, name).toBeInstanceOf(InvalidInputError)
-      expect((thrown as Error).message, name).toMatch(/only for drafts/)
-    }
+    const thrown = await toolCreateFeature(ctx, session, {
+      title: 'Billing',
+      oneLiner: 'o',
+      dependsOn: ['auth-rework'],
+    }).catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(InvalidInputError)
+    expect((thrown as Error).message).toMatch(/only for drafts/)
     expect(rowCount()).toBe(before)
   })
 
@@ -239,16 +234,12 @@ describe('feature dependencies over MCP', () => {
     expect(toolGetFeatureContext(ctx, billingSession).upNext).toBe(true)
   })
 
-  it('refuses upNext without a draft, without dependsOn, or with tickets', async () => {
+  it('refuses upNext without a draft or without dependsOn', async () => {
     seedFeature(ctx, projectId, { slug: 'auth-rework' })
     const before = rowCount()
     const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
       ['not a draft', { title: 'B', oneLiner: 'o', dependsOn: ['auth-rework'], upNext: true }],
       ['no dependsOn', { title: 'B', oneLiner: 'o', draft: true, upNext: true }],
-      [
-        'tickets',
-        { title: 'B', draft: true, tickets: ['t'], dependsOn: ['auth-rework'], upNext: true },
-      ],
     ]
     for (const [name, input] of cases) {
       const thrown = await toolCreateFeature(ctx, session, input).catch((e: unknown) => e)
@@ -315,7 +306,7 @@ describe('feature dependencies over MCP', () => {
     // Once the dependency ships, the edge stays on the line, marked.
     ctx.db
       .update(features)
-      .set({ status: 'shipped', phase: 'shipped' })
+      .set({ status: 'shipped' })
       .where(eq(features.id, ledger.id))
       .run()
 
@@ -325,7 +316,7 @@ describe('feature dependencies over MCP', () => {
       'billing — Demo feature [draft, blocked] · waits on: auth-rework',
     )
     expect(out.featureIndex).toContain('reports — Demo feature [draft] · waits on: ledger ✓')
-    expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight: planning, lap 1]')
+    expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight]')
     expect(out.featureIndexNote).toContain('waits on')
     expect(out.featureIndexNote).toContain('✓')
     expect(out.featureIndexNote).toContain('[draft, up next]')

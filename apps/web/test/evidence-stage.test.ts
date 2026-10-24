@@ -32,7 +32,6 @@ const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const recording = (over: Partial<ReviewArtifacts> = {}): ReviewArtifacts => ({
   ticketId: 'tkt_1',
   seq: 4,
-  lap: 1,
   passKind: 'review',
   reviewMode: null,
   reviewVerdict: null,
@@ -112,8 +111,8 @@ describe('EvidenceStage', () => {
   it('plays the recording the page picked, and lists no picker of its own', () => {
     const html = render({
       recordings: [
-        recording({ ticketId: 'tkt_1', seq: 4, lap: 1, completedAt: 1000, videoUrl: '/first.webm' }),
-        recording({ ticketId: 'tkt_2', seq: 9, lap: 2, completedAt: 5000, videoUrl: '/later.webm' }),
+        recording({ ticketId: 'tkt_1', seq: 4, completedAt: 1000, videoUrl: '/first.webm' }),
+        recording({ ticketId: 'tkt_2', seq: 9, completedAt: 5000, videoUrl: '/later.webm' }),
       ],
       picked: 'tkt_1',
     })
@@ -127,7 +126,7 @@ describe('EvidenceStage', () => {
    * the stage never blanks; it is named by what it is, never by a lap.
    */
   it('keeps a recording on the stage, named without a lap', () => {
-    const html = render({ recordings: [recording({ lap: 2, landedSince: 0 })] })
+    const html = render({ recordings: [recording({ landedSince: 0 })] })
     expect(html).toContain('<video')
     expect(html).toContain('>Walkthrough')
     expect(html).not.toMatch(/\bLap \d/)

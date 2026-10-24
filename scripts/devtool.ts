@@ -48,8 +48,8 @@ import type { FeatureRow } from '../packages/server/src/dev/state.ts'
 import { createDb } from '../packages/server/src/db/client.ts'
 import { runMigrations } from '../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../packages/server/src/db/types.ts'
-import { setFeatureStatus, setPhase } from '../packages/server/src/services/repo.ts'
-import type { FeatureStatus, Phase } from '../packages/core/src/schemas.ts'
+import { setFeatureStatus } from '../packages/server/src/services/repo.ts'
+import type { FeatureStatus } from '../packages/core/src/schemas.ts'
 
 const DEV_DIR = devDataDir()
 if (sameDataDir(DEV_DIR, prodDataDir())) {
@@ -121,8 +121,6 @@ async function run(ctx: AppCtx, cmd: DevCommand): Promise<number> {
       return prepReset(ctx, cmd.target)
     case 'feature-ls':
       return featureLs(ctx, cmd.project)
-    case 'feature-phase':
-      return featurePhase(ctx, cmd.feature, cmd.phase)
     case 'feature-status':
       return featureStatus(ctx, cmd.feature, cmd.status)
     case 'feature-rm':
@@ -217,7 +215,7 @@ function featureLs(ctx: AppCtx, projectTarget?: string): number {
     if (feats.length === 0) continue
     log(`${p.name} (${p.id})`)
     for (const f of feats) {
-      log(`  ${f.id}  ${f.slug.padEnd(28)} ${f.phase.padEnd(15)} ${f.status}`)
+      log(`  ${f.id}  ${f.slug.padEnd(28)} ${f.status}`)
       printed++
     }
   }
@@ -237,24 +235,6 @@ function oneFeature(ctx: AppCtx, target: string): FeatureRow | number {
     return 1
   }
   return found[0] as FeatureRow
-}
-
-function featurePhase(ctx: AppCtx, target: string, phase: Phase): number {
-  const feature = oneFeature(ctx, target)
-  if (typeof feature === 'number') return feature
-  // Through the service, so a forced move lands in the feature's timeline
-  // alongside real transitions instead of silently rewriting its history — the
-  // event stream is what the UI reads, and a phase that changed with no event is
-  // indistinguishable from a bug.
-  const after = setPhase(
-    ctx,
-    feature.id,
-    phase,
-    'phase.forced',
-    `phase ${feature.phase} → ${phase} (forced by the dev tool — gates not checked)`,
-  )
-  log(`${feature.slug}: ${feature.phase} → ${after.phase}`)
-  return 0
 }
 
 function featureStatus(ctx: AppCtx, target: string, next: FeatureStatus): number {

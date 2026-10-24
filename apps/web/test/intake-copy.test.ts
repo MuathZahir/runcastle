@@ -27,9 +27,10 @@ function createRows(): string[] {
 describe('the two intake doors', () => {
   afterEach(cleanup)
 
-  it('sends features and quick changes through the conversation', () => {
+  it('sends every feature through a conversation with its agent', () => {
     const [newChat] = createRows()
-    expect(newChat).toMatch(/^New chat.*quick changes.+runs it in rounds/)
+    expect(newChat).toMatch(/^New chat.*agent.+runs rounds when you say yes/)
+    expect(newChat).not.toMatch(/quick change/i)
   })
 
   it('offers the second door as a place to park an idea, not a shortcut past the chat', () => {
@@ -38,7 +39,6 @@ describe('the two intake doors', () => {
   })
 
   it('describes no door as Quick', () => {
-    // Lower-case "quick changes" is the kind of work New takes, not a door.
     for (const row of createRows()) expect.soft(row).not.toMatch(/\bQuick\b/)
   })
 })

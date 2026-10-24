@@ -57,7 +57,6 @@ function session(over: Partial<Session> = {}): Session {
     status: 'live',
     awaitingInput: false,
     worktreePath: '/tmp/talk',
-    lap: 1,
     createdAt: 0,
     ...over,
   } as Session
@@ -135,7 +134,7 @@ describe('ChatView', () => {
 /** The strip names whichever session kind the Chat tab is hosting (decision 9). */
 describe('chatContextLine', () => {
   it('names each kind of feature session', () => {
-    expect(chatContextLine(session({ kind: 'chat', lap: 2 }))).toBe('Feature chat')
+    expect(chatContextLine(session({ kind: 'chat' }))).toBe('Feature chat')
     expect(chatContextLine(session({ kind: 'drive-fix' }))).toBe('Drive fix')
     expect(chatContextLine(session({ kind: 'scenario' }))).toBe('Scenario')
   })
@@ -155,11 +154,11 @@ describe('featureChat', () => {
 
 /** The feature's Chat tab: whichever session is live, else the chat at rest. */
 describe('FeatureChat', () => {
-  const tab = (sessions: Session[], lap = 1) => {
+  const tab = (sessions: Session[]) => {
     const f = fixture()
     return html(
       createElement(FeatureChat, {
-        full: { ...f, feature: { ...f.feature, lap }, sessions },
+        full: { ...f, sessions },
         events: [],
         hidden: false,
         launching: false,
@@ -184,7 +183,7 @@ describe('FeatureChat', () => {
   })
 
   it('with nothing live, reads back the chat transcript over Resume', () => {
-    const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })], 2)
+    const out = tab([session({ status: 'ended', ccSessionId: 'cc-1' })])
     expect(out).toContain('Resume the conversation')
     expect(out).not.toContain('data-terminal')
   })
@@ -232,7 +231,7 @@ describe('the project chat', () => {
 /** design-mode decision 12: one panel toggle in the header, no button per view. */
 describe('PanelToggle', () => {
   const toggle = (props: Partial<Parameters<typeof PanelToggle>[0]> = {}) =>
-    html(createElement(PanelToggle, { open: false, views: ['body', 'design', 'details'], onToggle: () => undefined, ...props }))
+    html(createElement(PanelToggle, { open: false, views: ['work', 'design', 'details'], onToggle: () => undefined, ...props }))
 
   it('is one icon button, whatever views the state offers', () => {
     const out = toggle()
@@ -252,8 +251,8 @@ describe('PanelToggle', () => {
 
 /** One line on Overview, in every state, whenever a session is live (decision 7). */
 describe('the live-session line', () => {
-  it('names the live session and its lap', () => {
-    expect(liveSessionLine([session({ kind: 'drive-fix', lap: 3 })])).toEqual({
+  it('names the live session', () => {
+    expect(liveSessionLine([session({ kind: 'drive-fix' })])).toEqual({
       sessionId: 'sess_1',
       text: 'Drive fix live',
     })

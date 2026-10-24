@@ -6,21 +6,19 @@ import { InvalidInputError } from '../src/errors'
 import { listAfter } from '../src/services/events'
 import {
   buildFixTicket,
-  carryFinding,
   closeAsAddressed,
   dismiss,
+  dismissAsAgent,
   listByFeature,
   markFailed,
   markFixed,
   markFixing,
-  openDefectsAcrossLaps,
-  reopenFinding,
+  openDefects,
   reportFinding,
   viewByFeature,
 } from '../src/services/review-findings'
-import { triagePreview } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
-import { features, reviewFindings } from '../src/db/schema'
+import { reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
 import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -34,7 +32,7 @@ describe('review findings service', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { lap: 3 })
+    const feature = seedFeature(ctx, project.id)
     featureId = feature.id
     reviewTicket = storeTickets(ctx, featureId, [
       {
@@ -86,7 +84,8 @@ describe('review findings service', () => {
   it('reports a defect as an open finding for the lead, minting no fix ticket', () => {
     const result = reportFinding(ctx, { featureId, reviewTicket, input: defect() })
     expect(result).toMatchObject({ fixTicket: null, overCap: false })
-    expect(result.finding).toMatchObject({ lap: 3, status: 'open', openReason: null, fixTicketId: null })
+    expect(result.finding).toMatchObject({ status: 'open', openReason: null, fixTicketId: null })
+    expect(result.finding).not.toHaveProperty('lap')
     expect(listTickets(ctx, featureId)).toHaveLength(1)
     expect(listAfter(ctx, featureId).map((event) => event.type)).toContain('finding.reported')
   })
@@ -205,51 +204,51 @@ describe('review findings service', () => {
   })
 
   /**
-   * The lap boundary's half of the lifecycle: what a later lap does about a
-   * defect the review before it left open. Every case here starts from the one
-   * state that is genuinely the human's problem — a defect whose own fix ticket
-   * gave up — because that is precisely the set `viewByFeature` counts open.
+   * What the feature's agent does about a defect a review left open: close it
+   * as addressed or dismiss it, each with a note. Every case starts from the
+   * one state that is genuinely open — a defect whose own fix ticket gave up.
    */
-  describe('across a lap boundary', () => {
-    /** Move the feature on, as a Rethink does; the finding keeps its own lap. */
-    function nextLap(lap: number): void {
-      ctx.db.update(features).set({ lap }).where(eq(features.id, featureId)).run()
-    }
-
-    /** Report a defect on lap 3 and let its fix ticket fail, leaving it open. */
+  describe('resolving an open defect', () => {
+    /** Report a defect and let its fix ticket fail, leaving it open. */
     function abandonedDefect(title = 'Broken save'): string {
       const { finding, fixTicket } = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect(title) })
       updateTicket(ctx, fixTicket.id, { status: 'failed' })
       return finding.id
     }
 
-    it('carries a defect into the lap doing the carrying, out of the open count', () => {
+    it('closes a defect as addressed on the session\'s word, with the attestation kept', () => {
       const findingId = abandonedDefect()
-      nextLap(4)
 
-      const carried = carryFinding(ctx, featureId, findingId, '  lap 4 is rewriting the save path  ')
+      const closed = closeAsAddressed(ctx, featureId, findingId, 'addressed by ticket 7')
 
-      expect(carried).toMatchObject({
-        status: 'carried',
-        carriedLap: 4,
-        resolutionNote: 'lap 4 is rewriting the save path',
-        resolvedBy: null,
+      expect(closed).toMatchObject({
+        status: 'fixed',
+        resolvedBy: 'session',
+        resolutionNote: 'addressed by ticket 7',
+      })
+      expect(openDefects(ctx, featureId)).toEqual([])
+    })
+
+    it('dismisses a defect on the session\'s word, with the reason kept', () => {
+      const findingId = abandonedDefect()
+
+      expect(dismissAsAgent(ctx, featureId, findingId, '  out of scope  ')).toMatchObject({
+        status: 'dismissed',
+        resolvedBy: 'session',
+        resolutionNote: 'out of scope',
       })
       expect(listAfter(ctx, featureId).filter((event) => event.type === 'finding.updated')).toHaveLength(1)
-      // Its own pile, at any lap, and never the open one — the state `defectState`
-      // must not read as open however the dead fix ticket beside it looks.
-      const view = viewByFeature(ctx, featureId)
-      expect(view.carriedFindings.map((finding) => finding.id)).toEqual([findingId])
-      expect(view.openDefects).toEqual([])
-      expect(openDefectsAcrossLaps(ctx, featureId)).toEqual([])
+      expect(openDefects(ctx, featureId)).toEqual([])
     })
 
-    it('carries with no note at all', () => {
+    it('refuses to close or dismiss without a note', () => {
       const findingId = abandonedDefect()
-      expect(carryFinding(ctx, featureId, findingId)).toMatchObject({ carriedLap: 3, resolutionNote: null })
+      expect(() => closeAsAddressed(ctx, featureId, findingId, '   ')).toThrow(InvalidInputError)
+      expect(() => dismissAsAgent(ctx, featureId, findingId, '')).toThrow(InvalidInputError)
+      expect(listByFeature(ctx, featureId)[0].status).toBe('open')
     })
 
-    it('refuses to carry anything that is not this feature\'s open or carried defect', () => {
+    it('refuses anything that is not this feature\'s open defect', () => {
       const settled = reportWithFixTicket(ctx, { featureId, reviewTicket, input: defect('Being fixed') }).finding
       const observation = reportFinding(ctx, {
         featureId, reviewTicket,
@@ -271,41 +270,8 @@ describe('review findings service', () => {
       // A defect the run is still fixing, an observation, another feature's, one
       // the human already settled, and one that landed.
       for (const id of [settled.id, observation.id, foreign.id, dismissed, fixed]) {
-        expect(() => carryFinding(ctx, featureId, id)).toThrow(InvalidInputError)
+        expect(() => dismissAsAgent(ctx, featureId, id, 'no')).toThrow(InvalidInputError)
       }
-    })
-
-    it('closes a defect as addressed on the session\'s word, with the attestation kept', () => {
-      const findingId = abandonedDefect()
-      nextLap(4)
-
-      const closed = closeAsAddressed(ctx, featureId, findingId, 'addressed by lap 4 ticket 7')
-
-      expect(closed).toMatchObject({
-        status: 'fixed',
-        resolvedBy: 'session',
-        resolutionNote: 'addressed by lap 4 ticket 7',
-        carriedLap: null,
-      })
-      expect(openDefectsAcrossLaps(ctx, featureId)).toEqual([])
-    })
-
-    it('refuses to close as addressed without an attestation', () => {
-      const findingId = abandonedDefect()
-      expect(() => closeAsAddressed(ctx, featureId, findingId, '   ')).toThrow(InvalidInputError)
-      expect(listByFeature(ctx, featureId)[0].status).toBe('open')
-    })
-
-    it('lets a carried defect be closed later, and reopened by the human meanwhile', () => {
-      const findingId = abandonedDefect()
-      nextLap(4)
-      carryFinding(ctx, featureId, findingId)
-
-      // Carrying parks a defect, it does not freeze it.
-      expect(reopenFinding(ctx, findingId)).toMatchObject({ status: 'open', carriedLap: null })
-      expect(() => reopenFinding(ctx, findingId)).toThrow(InvalidInputError)
-      carryFinding(ctx, featureId, findingId)
-      expect(closeAsAddressed(ctx, featureId, findingId, 'lap 4 rewrote it').status).toBe('fixed')
     })
 
     it('stamps the burner\'s own fix with fix-ticket provenance, not the session\'s', () => {
@@ -313,29 +279,19 @@ describe('review findings service', () => {
       expect(markFixed(ctx, findingId)).toMatchObject({ resolvedBy: 'fix-ticket', resolutionNote: null })
     })
 
-    it('counts the summary from this lap alone, while the carry channel still sees the last one\'s', () => {
-      const stale = abandonedDefect('Lap 3 left this open')
+    it('counts every finding on the feature, whichever review reported it', () => {
+      const first = abandonedDefect('The first review left this open')
       reportFinding(ctx, {
         featureId, reviewTicket,
-        input: { ...defect('Lap 3 never verified mobile'), kind: 'observation', reproStep: undefined },
+        input: { ...defect('Never verified mobile'), kind: 'observation', reproStep: undefined },
       })
-      nextLap(4)
-      const fresh = abandonedDefect('Lap 4 found this')
+      const later = abandonedDefect('A later review found this')
 
       const view = viewByFeature(ctx, featureId)
-      expect(view.summary).toEqual({ found: 1, fixed: 0, open: 1, observations: 0 })
-      expect(view.openDefects.map((finding) => finding.id)).toEqual([fresh])
-      // Every finding is still listed; only the counts narrowed.
+      expect(view.summary).toEqual({ found: 2, fixed: 0, open: 2, observations: 1 })
+      expect(view.openDefects.map((finding) => finding.id)).toEqual([first, later])
       expect(view.findings).toHaveLength(3)
-      // The lap that has to answer for the stale one can still reach it.
-      expect(openDefectsAcrossLaps(ctx, featureId).map((finding) => finding.id)).toEqual([stale, fresh])
-    })
-
-    it('hands the boundary triage the same current-lap defect count', () => {
-      abandonedDefect('Lap 3 left this open')
-      expect(triagePreview(ctx, featureId).openDefects).toBe(1)
-      nextLap(4)
-      expect(triagePreview(ctx, featureId).openDefects).toBe(0)
+      expect(view).not.toHaveProperty('carriedFindings')
     })
   })
 })

@@ -1,40 +1,49 @@
+// @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { act, cleanup, render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { describe, expect, it, vi } from 'vitest'
-import type { Phase } from '@runcastle/core'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { EventRow } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 import type { FeatureView } from '../src/lib/routes'
 import { full as fixture } from './fixtures'
 
 /**
- * The chat-first feature page (design-mode decisions 4, 5, 12), tier 1: the
- * one header row and the chat in every phase, the panel beside
- * them, a draft's body as the page — and the two clicks runcastle answers by
- * opening a view.
+ * The chat-first feature page (design-mode decisions 4, 5, 12) once tickets and
+ * review are tools, not phases (decisions 2, 7, 8, 9): the one header row with
+ * no Go, the chat, the panel's fixed views beside them offered by the
+ * feature's facts, a draft's body as the page — and what opens a view.
  */
 
 const store = vi.hoisted(() => ({
   full: undefined as unknown,
+  /** What each query answers, by its tRPC path; anything unnamed answers nothing yet. */
+  queries: new Map<string, unknown>(),
   /** Every mutation's options, by its tRPC path — the page's handlers, to call. */
   mutations: new Map<string, { onSuccess?: (...args: unknown[]) => void }>(),
+  /** Every tRPC path a hook was asked for, to prove the page never reaches a retired one. */
+  touched: new Set<string>(),
 }))
 
-/** Every tRPC hook answers: `feature.get` the fixture, every other query nothing yet, mutations record their options. */
+/** Every tRPC hook answers: `feature.get` the fixture, other queries from `store.queries`, mutations record their options. */
 vi.mock('../src/trpc', () => {
   const node = (path: string[]): unknown =>
     new Proxy(() => Promise.resolve(), {
       get: (_, key) => {
+        const name = path.join('.')
         if (key === 'useQuery') {
+          store.touched.add(name)
           return () => ({
-            data: path.join('.') === 'feature.get' ? store.full : path.join('.') === 'events.list' ? [] : undefined,
+            data: name === 'feature.get' ? store.full : store.queries.get(name),
             isLoading: false,
             error: null,
           })
         }
         if (key === 'useMutation') {
+          store.touched.add(name)
           return (options: { onSuccess?: (...args: unknown[]) => void } = {}) => {
-            store.mutations.set(path.join('.'), options)
+            store.mutations.set(name, options)
             return { mutate: () => undefined, mutateAsync: async () => undefined, isPending: false }
           }
         }
@@ -49,128 +58,210 @@ vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined })
 
 const { Workspace } = await import('../src/components/Workspace')
 
-function page(
-  phase: Phase,
-  {
-    view = 'chat' as FeatureView,
-    status = 'active',
-    onViewChange = (_: FeatureView) => undefined,
-    preview = false,
-    feature = {} as Partial<FeatureFull['feature']>,
-  } = {},
-): string {
-  const base = fixture({ id: 'f1', phase, status: status as FeatureFull['feature']['status'] })
-  const f = { ...base, feature: { ...base.feature, ...feature } }
-  store.full = { ...f, ...(preview ? { preview: { relPath: 'preview.html', updatedAt: 1 } } : {}) }
+afterEach(cleanup)
+
+type Ticket = FeatureFull['tickets'][number]
+const ticket = (seq: number, over: Partial<Ticket> = {}): Ticket =>
+  ({
+    id: `t${seq}`,
+    featureId: 'f1',
+    seq,
+    title: `Ticket ${seq}`,
+    goal: '',
+    context: '',
+    acceptanceCriteria: [],
+    seams: [],
+    blockedBy: [],
+    kind: 'implementation',
+    status: 'pending',
+    commits: [],
+    ...over,
+  }) as Ticket
+
+const doc = (name: string) => ({ relPath: `docs/features/demo/${name}`, title: name })
+
+interface PageOptions {
+  view?: FeatureView
+  status?: FeatureFull['feature']['status']
+  onViewChange?: (view: FeatureView) => void
+  preview?: boolean
+  tickets?: Ticket[]
+  docs?: ReturnType<typeof doc>[]
+  runs?: FeatureFull['runs']
+  queries?: Record<string, unknown>
+}
+
+function setup({ status = 'active', preview = false, tickets = [], docs = [], runs = [], queries = {} }: PageOptions) {
+  const base = fixture({ id: 'f1', status })
+  store.full = {
+    ...base,
+    tickets,
+    docs,
+    runs,
+    ...(preview ? { preview: { relPath: 'docs/features/demo/preview.html', updatedAt: 1 } } : {}),
+  }
+  store.queries = new Map(Object.entries({ 'events.list': [], ...queries }))
   store.mutations.clear()
-  return renderToStaticMarkup(
-    createElement(
-      QueryClientProvider,
-      { client: new QueryClient() },
-      createElement(Workspace, {
-        featureId: 'f1',
-        view,
-        onViewChange,
-        viewedPhase: null,
-        onViewPhase: () => undefined,
-        guidance: false,
-        driving: null,
-        onDriveChange: () => undefined,
-      }),
-    ),
+  store.touched.clear()
+}
+
+function workspace({ view = 'chat', onViewChange = () => undefined }: PageOptions) {
+  return createElement(
+    QueryClientProvider,
+    { client: new QueryClient() },
+    createElement(Workspace, {
+      featureId: 'f1',
+      view,
+      onViewChange,
+      guidance: false,
+      driving: null,
+      onDriveChange: () => undefined,
+    }),
   )
 }
 
-const PHASES: Phase[] = ['planning', 'building', 'review', 'shipped']
+function page(options: PageOptions = {}): string {
+  setup(options)
+  return renderToStaticMarkup(workspace(options))
+}
+
 const at = (html: string, needle: string) => html.indexOf(needle)
 
 /** The one header row: everything from `<header` to its close. */
 const headerOf = (html: string) => html.slice(at(html, '<header'), at(html, '</header>'))
 
+/** The open panel: everything from its marker on. */
+const panelOf = (html: string) => html.slice(at(html, 'data-panel'))
+
+const READY = { 'feature.readyDeclarations': [{ id: 'r1', featureId: 'f1', runId: null, scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 5 }] }
+
 describe('the chat-first feature page', () => {
-  it.each(PHASES)('shows exactly one header row, then the chat, at %s — no strip, no chat header, no tabs', (phase) => {
-    const html = page(phase)
+  it('shows exactly one header row, then the chat — no strip, no chat header, no tabs', () => {
+    const html = page()
     expect(html).not.toContain('role="tab"')
     expect(html).not.toContain('Overview')
     expect(html).not.toContain('data-feature-strip')
-    // One header, and nothing that reads as a second row before the chat.
     expect(html.split('<header').length - 1).toBe(1)
     const chat = at(html, 'data-chat-view')
     expect(at(html, '</header>')).toBeLessThan(chat)
-    // The header holds the title, the status, the switcher, "⋯" and the panel toggle.
     const header = headerOf(html)
     expect(header).toContain('Demo')
     expect(header).toContain('role="status"')
     expect(header).toContain('aria-label="Chat session"')
     expect(header).toContain('aria-label="Feature actions"')
     expect(header).toContain('aria-label="Show the panel"')
-    // The chat column carries no header row of its own.
-    expect(html.slice(chat)).not.toContain('One transcript per feature')
-    expect(html.slice(chat)).not.toContain('End session')
-    // The chat alone: no panel is open by itself.
     expect(html).not.toContain('data-panel')
   })
 
-  it.each(PHASES)('carries at most one action button in the header at %s, and never Go', (phase) => {
-    const header = headerOf(page(phase))
-    // Every button in the row, by its accessible name or text.
+  it('reads Talking with you with nothing running and nothing asked, and carries no button, Go or otherwise', () => {
+    const header = headerOf(page({ tickets: [ticket(1)] }))
+    expect(header).toContain('Talking with you')
     const buttons = [...header.matchAll(/<button[^>]*>/g)].map((m) => m[0])
     const chrome = buttons.filter((b) => /aria-label="(Chat session|Feature actions|Show the panel|Hide the panel|Show sidebar)"/.test(b))
-    expect(buttons.length - chrome.length).toBeLessThanOrEqual(1)
+    expect(buttons.length - chrome.length).toBe(0)
     expect(header).not.toMatch(/>Go</)
-    expect(header).not.toContain('Go anyway')
+    expect(header).not.toContain('Merge &amp; ship')
   })
 
-  it('says the quiet status in planning, with Merge & ship as the one button since the resolver offers it', () => {
-    const header = headerOf(page('planning', { feature: { lap: 1, ticketsReadyLap: null } }))
-    expect(header).toContain('Planning with you')
-    expect(header).toContain('Merge &amp; ship')
+  it('offers Start test drive once the agent declared ready, with no What-to-test notice', () => {
+    const html = page({ queries: READY })
+    expect(headerOf(html)).toContain('Ready for you')
+    expect(headerOf(html)).toContain('Start test drive')
+    expect(html).not.toContain('What to test')
   })
 
-  it('has no button per panel view in the header: no Plan, Tickets, Preview or Design buttons', () => {
-    for (const html of [page('planning', { preview: true }), page('review')]) {
-      const header = headerOf(html)
-      expect(header).not.toMatch(/(Plan|Tickets|Preview|Design|Review|Details)<\/button>/)
-    }
+  it('shows the share of the non-cancelled tickets that landed in the title’s glyph', () => {
+    const tickets = [ticket(1, { status: 'done' }), ticket(2), ticket(3, { status: 'cancelled' })]
+    expect(headerOf(page({ tickets }))).toContain('stroke-dasharray:50 100')
+    expect(headerOf(page())).toContain('stroke-dasharray:0 100')
+  })
+
+  it('has no button per panel view in the header', () => {
+    const header = headerOf(page({ preview: true, tickets: [ticket(1)], queries: READY }))
+    expect(header).not.toMatch(/(Plan|Work|Tickets|Preview|Design|Review|Details)<\/button>/)
   })
 
   it('opens the panel beside the chat, and floats it over the chat below ~1100px', () => {
-    const html = page('planning', { view: 'details' })
+    const html = page({ view: 'details' })
     expect(html).toContain('data-panel')
     expect(html).toContain('@max-[1100px]:absolute')
     expect(html).toContain('aria-label="Resize the panel"')
     expect(at(html, 'data-panel')).toBeGreaterThan(at(html, 'data-chat-view'))
+    expect(headerOf(html)).toContain('aria-label="Hide the panel"')
   })
 
-  it('marks the panel toggle pressed while the panel is open', () => {
-    expect(headerOf(page('planning', { view: 'details' }))).toContain('aria-label="Hide the panel"')
-  })
-
-  it('never shows a view this state does not offer, whatever the address says', () => {
-    expect(page('planning', { view: 'drive' })).not.toContain('data-panel')
+  it('never shows a view the feature’s facts do not offer, whatever the address says', () => {
+    expect(page({ view: 'drive' })).not.toContain('data-panel')
+    expect(page({ view: 'work' })).not.toContain('data-panel')
+    expect(page({ view: 'review' })).not.toContain('data-panel')
+    expect(page({ view: 'plan' })).not.toContain('data-panel')
   })
 
   it("shows a draft's body as the page, with no chat and no panel", () => {
-    const html = page('planning', { status: 'draft', view: 'details' })
+    const html = page({ status: 'draft', view: 'details' })
     expect(html).not.toContain('data-chat-view')
-    expect(html).not.toContain('data-feature-strip')
     expect(html).not.toContain('data-panel')
     expect(html).not.toContain('Show the panel')
     expect(html).not.toContain('aria-label="Chat session"')
   })
+
+  it('makes no call to Go, its warnings, the human’s burn or the agentic review', () => {
+    page({ tickets: [ticket(1)], queries: READY, view: 'review' })
+    page({ tickets: [ticket(1)], view: 'work' })
+    for (const retired of ['feature.go', 'feature.goWarnings', 'feature.burn', 'feature.agenticReview']) {
+      expect(store.touched.has(retired)).toBe(false)
+    }
+  })
+})
+
+describe('the panel’s views', () => {
+  it('shows the plan preview in Plan, with decisions.md and spec.md one click away', () => {
+    const panel = panelOf(page({ view: 'plan', preview: true, docs: [doc('brief.md'), doc('decisions.md'), doc('spec.md')] }))
+    expect(panel).toContain('Preview')
+    expect(panel).toContain('decisions.md</span></button>')
+    expect(panel).toContain('spec.md</span></button>')
+    expect(panel).not.toContain('brief.md</span></button>')
+  })
+
+  it('shows the decisions in Plan before a preview exists, with the docs menu', () => {
+    const panel = panelOf(page({ view: 'plan', docs: [doc('decisions.md')] }))
+    expect(panel).toContain('Decisions so far')
+    expect(panel).toContain('aria-label="Docs — showing decisions.md"')
+  })
+
+  it('shows the ticket ledger in Work, with no Go above it', () => {
+    const panel = panelOf(page({ view: 'work', tickets: [ticket(1), ticket(2, { kind: 'review', passKind: 'review' })] }))
+    expect(panel).toContain('aria-label="Tickets"')
+    expect(panel).toContain('Ticket 1')
+    expect(panel).not.toMatch(/>Go</)
+    expect(panel).not.toContain('Go anyway')
+  })
+
+  it('puts the run’s lanes above the ledger in Work while a run exists', () => {
+    const runs = [{ id: 'run_1', featureId: 'f1', workflow: 'ticket-burner', status: 'running', startedAt: 1 }] as FeatureFull['runs']
+    const withRun = panelOf(page({ view: 'work', tickets: [ticket(1)], runs }))
+    const without = panelOf(page({ view: 'work', tickets: [ticket(1)] }))
+    expect(withRun.length).toBeGreaterThan(without.length)
+    expect(at(withRun, 'aria-label="Tickets"')).toBeGreaterThan(at(without, 'aria-label="Tickets"'))
+  })
+
+  it('shows the review in Review, with no Agentic review button', () => {
+    const panel = panelOf(page({ view: 'review', tickets: [ticket(1)], queries: READY }))
+    expect(panel).toContain('data-tier="work"')
+    expect(panel).not.toContain('Agentic review')
+  })
+
+  it('shows what shipped in Review once merged', () => {
+    const panel = panelOf(page({ view: 'review', status: 'shipped' }))
+    expect(panel).toContain('data-tier="status"')
+    expect(panel).not.toContain('Agentic review')
+  })
 })
 
 describe('what opens the panel', () => {
-  it('opens the run body after a successful Go', () => {
-    const onViewChange = vi.fn()
-    page('planning', { onViewChange })
-    store.mutations.get('feature.go')?.onSuccess?.({}, { featureId: 'f1' })
-    expect(onViewChange).toHaveBeenCalledWith('body')
-  })
-
   it('opens the drive after a test drive starts, and not after one stops or is denied', () => {
     const onViewChange = vi.fn()
-    page('review', { onViewChange })
+    page({ onViewChange, queries: READY })
     const testDrive = store.mutations.get('feature.testDrive')
     testDrive?.onSuccess?.({ ok: true, branch: 'b' }, { featureId: 'f1', action: 'stop' })
     testDrive?.onSuccess?.({ ok: false }, { featureId: 'f1', action: 'start' })
@@ -181,11 +272,22 @@ describe('what opens the panel', () => {
 
   it('opens nothing on any other mutation landing', () => {
     const onViewChange = vi.fn()
-    page('review', { onViewChange })
+    page({ onViewChange })
     for (const [path, options] of store.mutations) {
-      if (path === 'feature.go' || path === 'feature.testDrive') continue
+      if (path === 'feature.testDrive') continue
       options.onSuccess?.({ ok: true, files: [], confirmed: true }, { featureId: 'f1' })
     }
     expect(onViewChange).not.toHaveBeenCalled()
+  })
+
+  it('opens Work on the panel.show emit_tickets raises, even before the refetched feature has the tickets', () => {
+    const event = (id: number, type: string, data?: unknown): EventRow =>
+      ({ id, projectId: 'p1', featureId: 'f1', ts: id, type, message: type, data }) as EventRow
+    const onViewChange = vi.fn()
+    setup({ queries: { 'events.list': [event(1, 'session.started')] } })
+    const view = render(workspace({ onViewChange }))
+    store.queries.set('events.list', [event(1, 'session.started'), event(2, 'panel.show', { view: 'work' })])
+    act(() => view.rerender(workspace({ onViewChange })))
+    expect(onViewChange).toHaveBeenCalledWith('work')
   })
 })

@@ -9,7 +9,6 @@ import type {
   FindingStatus,
   FindingSource,
   MergeBranchPair,
-  Phase,
   RunStatus,
   SessionKind,
   SessionPurpose,
@@ -143,23 +142,6 @@ export const features = sqliteTable('features', {
    * it. Null for every feature not created as a draft.
    */
   brief: text('brief'),
-  /**
-   * The lap the feature is on (ADR-0010 / SPEC §15.1) — one trip round the
-   * pipeline. Rethink increments it; Fix does not. Every feature ever created
-   * before laps existed was, by definition, on lap 1, which is what the default
-   * backfills.
-   */
-  lap: integer('lap').notNull().default(1),
-  /**
-   * The lap whose tickets the talk session declared finished — set by
-   * `complete_phase({phase:"tickets"})`, read by the first burn out of the
-   * `tickets` phase so a Burn click cannot land mid-batch. Lap-scoped rather
-   * than a boolean so lap N+1 starts unready with nothing to clear, matching
-   * how the `tickets-approved` check already scopes. Null on every row that
-   * has never completed a tickets phase.
-   */
-  ticketsReadyLap: integer('tickets_ready_lap'),
-  phase: text('phase').notNull().$type<Phase>(),
   branch: text('branch').notNull(),
   /**
    * The branch `branch` was created from (issue: choosable base), and the only
@@ -204,21 +186,20 @@ export const features = sqliteTable('features', {
 
 /**
  * The lead's "Ready for you" declarations (decision 9): each one put a drive in
- * front of the human, with the scenario to drive and what to test. `runId` is
- * the round it follows, null when no round had run yet.
+ * front of the human, with the scenario to drive. `runId` is the round it
+ * follows, null when no round had run yet.
  */
 export const readyDeclarations = sqliteTable('ready_declarations', {
   id: text('id').primaryKey(),
   featureId: text('feature_id').notNull(),
   runId: text('run_id'),
   scenario: text('scenario').notNull(),
-  whatToTest: text('what_to_test').notNull(),
   createdAt: integer('created_at').notNull(),
 })
 
 /**
  * Merge-order dependencies between features (ADR-0013): the dependent (a draft)
- * cannot Start until every dependency's phase is `shipped`. Satisfaction is
+ * cannot Start until every dependency's status is `shipped`. Satisfaction is
  * derived at read time — nothing about it is stored. One edge type with one job,
  * so there is deliberately NO `kind` column: a second edge type needs a new ADR,
  * not an enum value.
@@ -272,13 +253,6 @@ export const sessions = sqliteTable('sessions', {
    * column, so the asymmetry buys a migration that cannot fail.
    */
   projectId: text('project_id'),
-  /**
-   * The feature's lap when this session was created (ADR-0010 / SPEC §15.1) — a
-   * tag, not state: nothing reads it to make a decision, the lap trail groups on
-   * it. A project-scoped `prepare` session has no feature to take a lap from and
-   * stores 1.
-   */
-  lap: integer('lap').notNull().default(1),
   kind: text('kind').notNull().$type<SessionKind>(),
   /**
    * The errand this session was opened on, when `kind` cannot express it — null
@@ -404,12 +378,6 @@ export const tickets = sqliteTable('tickets', {
    * default chain it burned on.
    */
   model: text('model'),
-  /**
-   * The feature's lap when this ticket was stored (ADR-0010 / SPEC §15.1).
-   * Stamped server-side by `storeTickets` — sessions never choose it. G3 scopes
-   * to the current lap's pending tickets; G4 stays cumulative.
-   */
-  lap: integer('lap').notNull().default(1),
   status: text('status').notNull().$type<TicketStatus>(),
   commits: text('commits', { mode: 'json' }).notNull().$type<string[]>(),
   error: text('error'),
@@ -432,7 +400,6 @@ export const tickets = sqliteTable('tickets', {
 export const reviewFindings = sqliteTable('review_findings', {
   id: text('id').primaryKey(),
   featureId: text('feature_id').notNull(),
-  lap: integer('lap').notNull(),
   reviewTicketId: text('review_ticket_id').notNull(),
   kind: text('kind').notNull().$type<FindingKind>(),
   severity: text('severity').notNull().$type<FindingSeverity>(),
@@ -445,8 +412,6 @@ export const reviewFindings = sqliteTable('review_findings', {
   openReason: text('open_reason').$type<FindingOpenReason>(),
   failureReason: text('failure_reason'),
   fixTicketId: text('fix_ticket_id'),
-  /** The lap a `carried` finding was parked into (mirrors `test_notes`). */
-  carriedLap: integer('carried_lap'),
   resolvedBy: text('resolved_by').$type<FindingResolvedBy>(),
   resolutionNote: text('resolution_note'),
   createdAt: integer('created_at').notNull(),
@@ -455,12 +420,6 @@ export const reviewFindings = sqliteTable('review_findings', {
 export const testNotes = sqliteTable('test_notes', {
   id: text('id').primaryKey(),
   featureId: text('feature_id').notNull(),
-  /**
-   * The feature's lap when the note was captured (ADR-0010 / SPEC §15.1).
-   * Stamped server-side by `addNote` — the human never chooses it — and it is
-   * what groups the rendered `test-notes.md` into its `## Lap N` sections.
-   */
-  lap: integer('lap').notNull(),
   text: text('text').notNull(),
   status: text('status').notNull().$type<TestNoteStatus>(),
   /**
@@ -471,7 +430,6 @@ export const testNotes = sqliteTable('test_notes', {
   /** The ticket a `promoted` note was turned into; null for every other status. */
   ticketId: text('ticket_id'),
   reviewTicketId: text('review_ticket_id'),
-  carriedLap: integer('carried_lap'),
   /**
    * Seconds into the review walkthrough the note was captured at, when it was
    * captured from the annotation player; null for every note typed into the
@@ -532,12 +490,6 @@ export const events = sqliteTable(
     featureId: text('feature_id'),
     runId: text('run_id'),
     ticketId: text('ticket_id'),
-    /**
-     * The feature's lap when the event was appended (ADR-0010 / SPEC §15.1), so
-     * the timeline can be grouped into laps without a join. Project-level events
-     * have no feature to take a lap from and store 1.
-     */
-    lap: integer('lap').notNull().default(1),
     ts: integer('ts').notNull(),
     type: text('type').notNull(),
     message: text('message').notNull(),

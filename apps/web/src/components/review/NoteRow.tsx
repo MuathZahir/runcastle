@@ -70,13 +70,12 @@ function FindingDetail({ finding }: { finding: ReviewFinding }) {
 }
 
 /**
- * What a defect's standing is worth, in colour: a parked one is quiet, a
- * session's attestation is amber because nothing verified it, and a landed fix
- * ticket is the only green one. Whole classes in a lookup map, never
- * interpolated — Tailwind's scanner cannot see a built class name (STYLE.md).
+ * What a defect's standing is worth, in colour: a session's attestation is
+ * amber because nothing verified it, and a landed fix ticket is the green one.
+ * Whole classes in a lookup map, never interpolated — Tailwind's scanner cannot
+ * see a built class name (STYLE.md).
  */
 const EVIDENCE_TONE: Record<FindingStanding['evidence'], string> = {
-  carried: 'text-text-tertiary',
   attested: 'text-warning-text',
   verified: 'text-success-text',
 }

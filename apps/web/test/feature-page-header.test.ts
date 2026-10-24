@@ -1,7 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { FeatureFull } from '../src/lib/api'
 import type { NextStep } from '../src/lib/feature-ui'
 import { featureStatus, headerActions } from '../src/lib/feature-ui/status-line'
 import { ToastProvider } from '../src/lib/toast'
@@ -22,7 +21,7 @@ import { full } from './fixtures'
  * the "Run until ready / Ask before each round" switch, "1.7M tokens" and an
  * "Agent" button beside the status, and this test failed on the stepper.
  */
-const review = { ...full().feature, phase: 'review' } as FeatureFull['feature']
+const review = full().feature
 
 /** The review resolver's row, with everything the lap-1 header used to show. */
 const ns: NextStep = {
@@ -31,7 +30,6 @@ const ns: NextStep = {
   primary: { label: 'Start test drive', kind: 'testDriveStart' },
   secondary: [
     { label: 'Chat', kind: 'chat' },
-    { label: 'Burn 1 ticket', kind: 'burn' },
     { label: 'Merge & ship', kind: 'merge' },
     { label: 'Resolve conflict', kind: 'resolveConflict' },
   ],
@@ -41,7 +39,7 @@ function header(over: { driving?: boolean; running?: boolean } = {}): string {
   const status = featureStatus({
     feature: review,
     rounds: [{ round: 1, status: over.running ? 'running' : 'succeeded', startedAt: 10 }],
-    declarations: [{ scenario: 'Checkout', whatToTest: 'Apply SAVE10 at checkout.', createdAt: 20 }],
+    declarations: [{ scenario: 'Checkout', createdAt: 20 }],
     agentWorking: false,
     driving: over.driving ?? false,
     selfPlanning: false,
@@ -100,7 +98,7 @@ describe('the feature page header', () => {
     expect(buttons(header({ running: true }))).toContain('Stop')
   })
 
-  it('keeps What to test out of the one-line header — it sits atop the chat', () => {
+  it('says nothing of what to test — the agent says it in the chat', () => {
     expect(header()).not.toContain('What to test')
   })
 })

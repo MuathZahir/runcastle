@@ -1,5 +1,7 @@
 /**
- * Scenario: a feature in runcastle-demo sitting at review with its tickets done.
+ * Scenario: a feature in runcastle-demo whose agent has declared it ready, with
+ * its tickets done — a ready declaration on the trail and the feature waiting on
+ * the human ("ready to test").
  *
  * Run by the project's scenario runner (`bun {file}`) inside a test drive of
  * runcastle, with the drive identity, the `.runcastle/drive.env` overlay and a
@@ -22,9 +24,8 @@ import { loadConfig } from '../../../packages/core/src/config-load.ts'
 import { createDb } from '../../../packages/server/src/db/client.ts'
 import { runMigrations } from '../../../packages/server/src/db/migrate.ts'
 import type { AppCtx } from '../../../packages/server/src/db/types.ts'
-import { createFeature } from '../../../packages/server/src/services/features.ts'
+import { createFeature, declareReady } from '../../../packages/server/src/services/features.ts'
 import { listProjects } from '../../../packages/server/src/services/projects.ts'
-import { setPhase } from '../../../packages/server/src/services/repo.ts'
 import { storeTickets, updateTicket } from '../../../packages/server/src/services/tickets.ts'
 import { DRIVE_PREFIX, isDriveDataDir } from '../../drive-dir.ts'
 
@@ -74,7 +75,9 @@ async function main(): Promise<void> {
     for (const ticket of storeTickets(ctx, feature.id, TICKETS)) {
       updateTicket(ctx, ticket.id, { status: 'done' })
     }
-    setPhase(ctx, feature.id, 'review')
+    // The agent's own last word before the human drives: the declaration sets
+    // the waiting reason to "ready to test", which is what puts it under Needs you.
+    declareReady(ctx, feature.id, { scenario: 'review/feature-at-review.ts' })
 
     console.log(`ENTRY_URL=/p/${encodeURIComponent(project.id)}/f/${encodeURIComponent(feature.slug)}`)
   } finally {

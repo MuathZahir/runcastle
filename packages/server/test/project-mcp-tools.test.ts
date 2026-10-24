@@ -6,15 +6,17 @@ import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { projectNotes, runs, tickets } from '../src/db/schema'
+import { projectNotes, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import mcpApp, {
   FEATURE_INDEX_SHIPPED_CAP,
+  buildMcpServer,
   toolCancelTicket,
-  toolCompletePhase,
   toolCreateFeature,
   toolEmitTickets,
   toolGetFeatureContext,
@@ -104,7 +106,6 @@ describe('project-session MCP tools', () => {
     const calls: [string, () => unknown][] = [
       ['get_feature_context', () => toolGetFeatureContext(ctx, session)],
       ['emit_tickets', () => toolEmitTickets(ctx, session, { tickets: [] })],
-      ['complete_phase', () => toolCompletePhase(ctx, session, { phase: 'tickets' })],
       ['update_ticket', () => toolUpdateTicket(ctx, session, { id: 'tick_x', title: 't' })],
       ['cancel_ticket', () => toolCancelTicket(ctx, session, { id: 'tick_x' })],
     ]
@@ -254,9 +255,8 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'promotion-at-merge',
       branch: 'feature/promotion-at-merge',
-      phase: 'planning',
+      status: 'active',
     })
-    expect(getFeatureRow(ctx, out.id).phase).toBe('planning')
     expect(listByFeature(ctx, out.id)).toHaveLength(0)
 
     // On the FEATURE branch, which is what the grill worktree is cut from — the
@@ -284,30 +284,24 @@ describe('project-session MCP tools', () => {
     expect(body).toContain('- Slug: fork-door')
   })
 
-  it('create_feature with tickets takes the quick-change door — ONE feature at implementation carrying all of them', async () => {
-    const proses = [
-      'Make the empty state darker — it washes out on the light theme.',
-      'The rail head’s Quick button has no tooltip.',
-      'Dates in the conversation list read “2026-08-18”; make them human.',
-    ]
-    const out = await toolCreateFeature(ctx, session, {
-      title: 'Darker empty state',
-      oneLiner: 'ignored — a quick change has no separate summary',
-      tickets: proses,
-    })
+  /**
+   * Quick changes are retired (decision 10): a feature is a title, a one-liner
+   * and a brief, and its own agent judges the work — so no shape of the door
+   * takes tickets, and a created feature has none.
+   */
+  it('create_feature has no tickets parameter for any audience, and creates a feature with no tickets', async () => {
+    for (const audience of ['project', 'chat'] as const) {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      const client = new Client({ name: 'create-feature-schema-test', version: '1' })
+      await Promise.all([buildMcpServer(audience).connect(serverTransport), client.connect(clientTransport)])
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'create_feature')
+      await client.close()
+      expect(Object.keys(tool?.inputSchema.properties ?? {}), audience).not.toContain('tickets')
+      expect(tool?.inputSchema.required, audience).toEqual(expect.arrayContaining(['title', 'oneLiner']))
+    }
 
-    expect(out.phase).toBe('planning')
-    const tickets = listByFeature(ctx, out.id)
-    // Three prose tickets and ONE feature — the chat no longer has to call this
-    // three times and get three features (decisions.md #4 + #2). Plus the review
-    // ticket every quick-change batch closes with: this door goes through
-    // `quickChange`, so decisions.md #9 holds here exactly as on the tRPC one.
-    expect(tickets).toHaveLength(4)
-    expect(tickets.slice(0, 3).map((t) => t.goal)).toEqual(proses)
-    expect(tickets[0].acceptanceCriteria).toEqual([proses[0]])
-    expect(tickets[0].lap).toBe(1)
-    expect(tickets[3].kind).toBe('review')
-    expect(tickets[3].blockedBy).toEqual([1, 2, 3])
+    const out = await toolCreateFeature(ctx, session, { title: 'Darker empty state', oneLiner: 'darker' })
+    expect(listByFeature(ctx, out.id)).toEqual([])
   })
 
   /**
@@ -329,7 +323,7 @@ describe('project-session MCP tools', () => {
       id: expect.any(String),
       slug: 'fork-door',
       branch: 'feature/fork-door',
-      phase: 'planning',
+      status: 'draft',
     })
     const row = getFeatureRow(ctx, out.id)
     expect(row.status).toBe('draft')
@@ -337,18 +331,6 @@ describe('project-session MCP tools', () => {
 
     expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/fork-door')
     expect(existsSync(join(repoPath, 'docs', 'features', 'fork-door'))).toBe(false)
-  })
-
-  it('create_feature with tickets and draft: true parks the quick change, tickets kept', async () => {
-    const out = await toolCreateFeature(ctx, session, {
-      title: 'Loading skeletons',
-      tickets: ['Show a skeleton for every loading state.'],
-      draft: true,
-    })
-
-    expect(getFeatureRow(ctx, out.id).status).toBe('draft')
-    expect(listByFeature(ctx, out.id).map((t) => t.kind)).toEqual(['implementation', 'review'])
-    expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/loading-skeletons')
   })
 
   it('create_feature parks a draft from a feature session, in that feature’s project', async () => {
@@ -382,20 +364,13 @@ describe('project-session MCP tools', () => {
       worktreePath: repoPath,
     })
 
-    const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
-      ['full create', { title: 'Theme editor', oneLiner: 'tune the palette' }],
-      [
-        'quick change',
-        { title: 'Darker empty state', oneLiner: 'o', draft: true, tickets: ['darker'] },
-      ],
-    ]
-
-    for (const [name, input] of cases) {
-      const thrown = await toolCreateFeature(ctx, grill, input).catch((e: unknown) => e)
-      expect(thrown, name).toBeInstanceOf(GateError)
-      expect((thrown as GateError).message, name).toMatch(/draft/i)
-      expect((thrown as GateError).message, name).toMatch(/project session/)
-    }
+    const thrown = await toolCreateFeature(ctx, grill, {
+      title: 'Theme editor',
+      oneLiner: 'tune the palette',
+    }).catch((e: unknown) => e)
+    expect(thrown).toBeInstanceOf(GateError)
+    expect((thrown as GateError).message).toMatch(/draft/i)
+    expect((thrown as GateError).message).toMatch(/project session/)
   })
 
   it('allows a chat session to park a draft', async () => {
@@ -471,10 +446,10 @@ describe('project-session MCP tools', () => {
     )
 
     // Every line is `slug — title [state]`: the in-flight state carries what the
-    // portfolio lookup is asked for (phase, lap, ticket counts), and no line
+    // portfolio lookup is asked for (whether a round runs, ticket counts), and no line
     // carries a one-liner or a docs path — one note says where shipped docs live.
     expect(out.featureIndex).toEqual([
-      'promotion-at-merge — Promotion at merge [in flight: planning, lap 1, 2 pending]',
+      'promotion-at-merge — Promotion at merge [in flight, 2 pending]',
       'laps — Laps [shipped]',
     ])
     expect(out.featureIndex.join('\n')).not.toContain('must not appear')
@@ -503,7 +478,7 @@ describe('project-session MCP tools', () => {
     setFeatureStatus(ctx, newerShip.id, 'shipped')
     const neverMarked = seedFeature(ctx, projectId, { slug: 'no-ship-event', title: 'No event' })
     setFeatureStatus(ctx, neverMarked.id, 'shipped')
-    seedFeature(ctx, projectId, { slug: 'burning', title: 'Burning', phase: 'building' })
+    seedFeature(ctx, projectId, { slug: 'burning', title: 'Burning' })
     seedFeature(ctx, projectId, { slug: 'shelved', title: 'Shelved', status: 'archived' })
     // Ship order is the timeline's, not the feature rows' creation order.
     emit(ctx, newerShip.id, { type: 'feature.shipped', message: 'merged' })
@@ -513,7 +488,7 @@ describe('project-session MCP tools', () => {
     const out = await toolGetProjectContext(ctx, session)
 
     expect(out.featureIndex).toEqual([
-      'burning — Burning [in flight: building, lap 1]',
+      'burning — Burning [in flight]',
       'parked — Parked [draft]',
       'older-ship — Older ship [shipped]',
       'newer-ship — Newer ship [shipped]',
@@ -568,8 +543,6 @@ describe('project-session MCP tools', () => {
       title: 'Laps',
       oneLiner: 'one trip round the pipeline',
       status: 'shipped',
-      phase: 'planning',
-      lap: 1,
       brief: '# Laps\n\nThe brief as it merged.\n',
     })
   })
@@ -851,7 +824,7 @@ describe('project-session MCP tools', () => {
     expect(body.result?.content?.[0]?.text).toContain('seq only together with its featureSlug')
   })
 
-  it('moves the oldest lap’s digests out whole when the slug form would cross the ceiling', () => {
+  it('moves the oldest tickets’ digests out whole when the slug form would cross the ceiling', () => {
     const feature = seedFeature(ctx, projectId, { slug: 'laps', title: 'Laps' })
     const digestChars = 8_000
     const stored = storeTickets(
@@ -869,14 +842,6 @@ describe('project-session MCP tools', () => {
     for (const t of stored) {
       updateTicket(ctx, t.id, { status: 'done', digest: `#${t.seq} `.padEnd(digestChars, 'x') })
     }
-    // Put #6-#10 on the OLDER lap, so lap order and seq order disagree.
-    for (const t of stored) {
-      ctx.db
-        .update(tickets)
-        .set({ lap: t.seq > 5 ? 1 : 2 })
-        .where(eq(tickets.id, t.id))
-        .run()
-    }
 
     // Ten 8K digests are 80K; three moved out leaves ~57K with the rows.
     const out = toolGetWorkRecord(ctx, session, { featureSlug: 'laps' })
@@ -885,8 +850,8 @@ describe('project-session MCP tools', () => {
     const rows = out.features[0]?.tickets ?? []
     const moved = rows.filter((t) => t.digestNotInlined).map((t) => t.seq)
     const kept = rows.filter((t) => t.digest !== undefined).map((t) => t.seq)
-    expect(moved).toEqual([6, 7, 8])
-    expect(kept).toEqual([1, 2, 3, 4, 5, 9, 10])
+    expect(moved).toEqual([1, 2, 3])
+    expect(kept).toEqual([4, 5, 6, 7, 8, 9, 10])
     for (const t of rows) {
       if (t.digestNotInlined) expect(t).not.toHaveProperty('digest')
       else expect(t.digest).toHaveLength(digestChars)

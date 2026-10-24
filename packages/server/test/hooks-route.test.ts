@@ -1,14 +1,15 @@
 import { Hono } from 'hono'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionKind } from '@runcastle/core'
 import { PROJECT_WORKTREE_SLUG, worktreeDir } from '@runcastle/core/paths'
+import { features, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
 import { type LiveSignal, subscribeLive } from '../src/services/bus'
 import { listAfter, listByProject } from '../src/services/events'
-import { setPhase } from '../src/services/repo'
 import { storeTickets } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
@@ -36,7 +37,7 @@ describe('hooks route', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     const project = seedProject(ctx)
-    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
+    const feature = seedFeature(ctx, project.id, { slug: 'dark-mode' })
     featureId = feature.id
     const session = createSessionRow(ctx, {
       featureId,
@@ -64,7 +65,7 @@ describe('hooks route', () => {
     // exact verified SessionStart shape (additionalContext nested in hookSpecificOutput)
     expect(json.hookSpecificOutput.hookEventName).toBe('SessionStart')
     expect(json.hookSpecificOutput.additionalContext).toContain('[runcastle] Demo feature')
-    expect(json.hookSpecificOutput.additionalContext).toContain('phase: planning')
+    expect(json.hookSpecificOutput.additionalContext).toContain('status: Talking with you')
     expect(json.hookSpecificOutput.additionalContext).toContain('get_feature_context')
 
     const session = getSessionRow(ctx, sessionId)
@@ -225,8 +226,62 @@ describe('hooks route', () => {
 
     expect(json.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
     expect(json.hookSpecificOutput.additionalContext).toBe(
-      '[runcastle] feature=dark-mode phase=planning tickets=2',
+      '[runcastle] feature=dark-mode status=Talking with you tickets=2',
     )
+  })
+
+  describe('the status words a chat is told, never a phase', () => {
+    async function promptContext(): Promise<string> {
+      // runcastle's own prompt: a human one would clear the waiting reason it reports
+      const { json } = await post(mount(), 'user-prompt', {
+        sessionId,
+        payload: { hook_event_name: 'UserPromptSubmit', prompt: '[runcastle] a round returned' },
+      })
+      return json.hookSpecificOutput.additionalContext
+    }
+
+    async function startContext(): Promise<string> {
+      const { json } = await post(mount(), 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-status', hook_event_name: 'SessionStart', source: 'startup' },
+      })
+      return json.hookSpecificOutput.additionalContext
+    }
+
+    async function expectStatus(words: string): Promise<void> {
+      const prompt = await promptContext()
+      const start = await startContext()
+      expect(prompt).toContain(`status=${words} tickets=`)
+      expect(start).toContain(`status: ${words}; branch:`)
+      for (const text of [prompt, start]) expect(text).not.toMatch(/phase/)
+    }
+
+    it('says "Talking with you" with nothing running and nothing asked', async () => {
+      await expectStatus('Talking with you')
+    })
+
+    it('says "Waiting for you · <why>" while a waiting reason is set', async () => {
+      ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
+      await expectStatus('Waiting for you · ready to test')
+    })
+
+    it('says "Working · Round N" while a round runs, numbered among the feature\'s rounds', async () => {
+      ctx.db
+        .insert(runs)
+        .values({ id: 'run_done', featureId, workflow: 'ticket-burner', status: 'succeeded', startedAt: 1 })
+        .run()
+      ctx.db
+        .insert(runs)
+        .values({ id: 'run_live', featureId, workflow: 'ticket-burner', status: 'running', startedAt: 2 })
+        .run()
+      ctx.db.update(features).set({ waitingReason: 'ready to test' }).where(eq(features.id, featureId)).run()
+      await expectStatus('Working · Round 2')
+    })
+
+    it('says "Merged" once the feature has shipped', async () => {
+      ctx.db.update(features).set({ status: 'shipped' }).where(eq(features.id, featureId)).run()
+      await expectStatus('Merged')
+    })
   })
 
   it('claude session-end marks the session ended and emits session.ended', async () => {
@@ -294,7 +349,7 @@ describe('hooks route', () => {
   })
 
   it('session-start never tells the session a lap (the agent would repeat it)', async () => {
-    const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper', lap: 3 })
+    const lapFeature = seedFeature(ctx, seedProject(ctx).id, { slug: 'lapper' })
     const s = createSessionRow(ctx, {
       featureId: lapFeature.id,
       kind: 'chat',
@@ -306,28 +361,17 @@ describe('hooks route', () => {
       payload: { session_id: 'cc-lap', hook_event_name: 'SessionStart', source: 'startup' },
     })
 
-    expect(json.hookSpecificOutput.additionalContext).toContain('phase: planning; branch:')
+    expect(json.hookSpecificOutput.additionalContext).toContain('status: Talking with you; branch:')
     expect(json.hookSpecificOutput.additionalContext).not.toMatch(/\blap\b/i)
   })
 
   /**
-   * The talk-session edit guard (F2): a grill that was never told what it was
-   * there for used to read the docs and start editing source. The prompt rule
-   * says so; this hook is what makes it true.
+   * The edit guard: every feature chat is the lead from its first message and
+   * writes code (tickets-and-review-are-tools-not-phases decisions 4 and 13),
+   * self-planning runs included, and on Claude Code it is answered `allow` so it
+   * never stalls on a prompt. The other kinds keep their own lines.
    */
-  describe('pre-tool — talk sessions do not write code', () => {
-    let talkSession: string
-
-    beforeEach(() => {
-      talkSession = createSessionRow(ctx, {
-        featureId,
-        kind: 'chat',
-        // The headless self-plan run is the planning chat the guards still bind.
-        purpose: 'self-plan',
-        worktreePath: '/wt/dark-mode',
-      }).id
-    })
-
+  describe('pre-tool — who writes code', () => {
     async function preTool(id: string, tool: string, filePath: string): Promise<any> {
       const { json } = await post(mount(), 'pre-tool', {
         sessionId: id,
@@ -340,41 +384,33 @@ describe('hooks route', () => {
       return json
     }
 
-    it('denies an edit to source, naming the ticket route back', async () => {
-      const json = await preTool(talkSession, 'Edit', '/wt/dark-mode/src/theme.ts')
-      expect(json.hookSpecificOutput).toMatchObject({
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-      })
-      expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
-      expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/ticket/i)
-    })
-
-    it('denies Write and NotebookEdit the same way, and a relative path too', async () => {
-      for (const tool of ['Write', 'NotebookEdit']) {
-        const json = await preTool(talkSession, tool, '/wt/dark-mode/src/theme.ts')
-        expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
+    it('auto-allows a feature chat to edit source, whatever the feature is doing', async () => {
+      const chat = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt/dark-mode' }).id
+      for (const tool of ['Edit', 'Write', 'NotebookEdit']) {
+        expect((await preTool(chat, tool, 'src/theme.ts')).hookSpecificOutput).toEqual({
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+        })
       }
-      const relative = await preTool(talkSession, 'Write', 'src/theme.ts')
-      expect(relative.hookSpecificOutput.permissionDecision).toBe('deny')
+      expect((await preTool(chat, 'Edit', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
+        'allow',
+      )
     })
 
-    it('allows the feature docs — writing them IS the session`s output', async () => {
-      for (const path of [
-        '/wt/dark-mode/docs/features/dark-mode/decisions.md',
-        'docs/features/dark-mode/spec.md',
-        'docs/features/dark-mode/test-notes.md',
-      ]) {
-        expect(await preTool(talkSession, 'Write', path)).toEqual({})
+    it('lets a self-planning run and a side session write too: purpose no longer guards it', async () => {
+      const selfPlan = createSessionRow(ctx, {
+        featureId,
+        kind: 'chat',
+        purpose: 'self-plan',
+        worktreePath: '/wt/dark-mode',
+      }).id
+      const side = createSessionRow(ctx, { featureId, kind: 'side', worktreePath: '/wt/dark-mode' }).id
+      for (const id of [selfPlan, side]) {
+        expect((await preTool(id, 'Write', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe('allow')
       }
     })
 
-    it('does not deny another feature`s docs dir by prefix accident', async () => {
-      const json = await preTool(talkSession, 'Write', 'docs/features/dark-mode-2/spec.md')
-      expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
-    })
-
-    it('leaves a project session alone — it is the one kind that writes code', async () => {
+    it('leaves a project session alone — it writes code too', async () => {
       const projectSession = createSessionRow(ctx, {
         projectId: seedProject(ctx).id,
         kind: 'project',
@@ -394,45 +430,7 @@ describe('hooks route', () => {
       expect(json.hookSpecificOutput.permissionDecisionReason).toContain('record_finding')
     })
 
-    it('fails open on a payload it cannot read', async () => {
-      const { json } = await post(mount(), 'pre-tool', {
-        sessionId: talkSession,
-        payload: { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } },
-      })
-      expect(json).toEqual({})
-      const noPath = await post(mount(), 'pre-tool', {
-        sessionId: talkSession,
-        payload: { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {} },
-      })
-      expect(noPath.json).toEqual({})
-    })
-
-    /**
-     * From Go on the feature's chat is its lead and may edit code (decision 7).
-     * The phase is read per call, so the same session — opened in planning —
-     * gains the permission the moment its feature leaves planning.
-     */
-    it('lifts for the feature chat once its feature has left planning, decided per call', async () => {
-      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
-        'deny',
-      )
-      setPhase(ctx, featureId, 'building')
-      expect((await preTool(talkSession, 'Edit', 'src/theme.ts')).hookSpecificOutput.permissionDecision).toBe(
-        'allow',
-      )
-      setPhase(ctx, featureId, 'review')
-      expect(
-        (await preTool(talkSession, 'Write', '/wt/dark-mode/src/theme.ts')).hookSpecificOutput.permissionDecision,
-      ).toBe('allow')
-    })
-
-    it('lets a human planning chat edit source, without auto-allowing it past the prompt', async () => {
-      const human = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt/dark-mode' }).id
-      expect(await preTool(human, 'Edit', 'src/theme.ts')).toEqual({})
-    })
-
-    it('keeps binding every other feature-scoped kind after Go', async () => {
-      setPhase(ctx, featureId, 'building')
+    it('keeps binding every other feature-scoped kind', async () => {
       const fix = createSessionRow(ctx, { featureId, kind: 'drive-fix', worktreePath: '/repo' }).id
       const json = await preTool(fix, 'Edit', '/repo/src/theme.ts')
       expect(json.hookSpecificOutput.permissionDecision).toBe('deny')
@@ -452,7 +450,7 @@ describe('hooks route', () => {
     beforeEach(() => {
       const project = seedProject(ctx)
       repoPath = project.repoPath
-      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead', phase: 'planning' }).id
+      leadFeatureId = seedFeature(ctx, project.id, { slug: 'lead' }).id
       leadPath = worktreeDir(project.id, 'lead')
     })
 
@@ -464,10 +462,8 @@ describe('hooks route', () => {
       return json
     }
 
-    it('answers allow for shell calls only once the feature has left planning', async () => {
+    it('answers allow for shell calls from the first message on', async () => {
       const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
-      expect(await shell(lead, 'git merge main')).toEqual({})
-      setPhase(ctx, leadFeatureId, 'building')
       expect((await shell(lead, 'git merge main')).hookSpecificOutput).toEqual({
         hookEventName: 'PreToolUse',
         permissionDecision: 'allow',
@@ -475,20 +471,16 @@ describe('hooks route', () => {
       expect((await shell(lead, 'bun run test', 'PowerShell')).hookSpecificOutput.permissionDecision).toBe('allow')
     })
 
-    it('denies the three named acts with a reason, before Go and after', async () => {
+    it('denies the three named acts with a reason', async () => {
       const lead = createSessionRow(ctx, { featureId: leadFeatureId, kind: 'chat', worktreePath: leadPath }).id
-      for (const phase of ['planning', 'building'] as const) {
-        setPhase(ctx, leadFeatureId, phase)
-        for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
-          const json = await shell(lead, cmd)
-          expect(json.hookSpecificOutput.permissionDecision, `${phase}: ${cmd}`).toBe('deny')
-          expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
-        }
+      for (const cmd of ['git push origin main', `git -C "${repoPath}" status`, 'git branch -D feature/lead']) {
+        const json = await shell(lead, cmd)
+        expect(json.hookSpecificOutput.permissionDecision, cmd).toBe('deny')
+        expect(json.hookSpecificOutput.permissionDecisionReason).toMatch(/human/)
       }
     })
 
     it('leaves a Codex lead with no opinion on what it allows — Codex never asks', async () => {
-      setPhase(ctx, leadFeatureId, 'building')
       const lead = createSessionRow(ctx, {
         featureId: leadFeatureId,
         kind: 'chat',
@@ -528,11 +520,10 @@ describe('hooks route', () => {
       return json
     }
 
-    it('denies an install from a talk session in its feature worktree, naming the alternative', async () => {
+    it('denies an install from another kind in a feature talk worktree, naming the alternative', async () => {
       const talk = createSessionRow(ctx, {
         featureId: talkFeatureId,
-        kind: 'chat',
-        purpose: 'self-plan',
+        kind: 'scenario',
         worktreePath: talkPath,
       }).id
       for (const tool of ['Bash', 'PowerShell']) {
@@ -552,7 +543,7 @@ describe('hooks route', () => {
     it('allows other shell commands in the same worktree', async () => {
       const talk = createSessionRow(ctx, {
         featureId: talkFeatureId,
-        kind: 'chat',
+        kind: 'scenario',
         worktreePath: talkPath,
       }).id
       const { json } = await post(mount(), 'pre-tool', {
@@ -592,31 +583,23 @@ describe('hooks route', () => {
     it('allows a non-project session whose cwd is the __project worktree', async () => {
       const chat = createSessionRow(ctx, {
         featureId: talkFeatureId,
-        kind: 'chat',
+        kind: 'scenario',
         worktreePath: worktreeDir(projectId, PROJECT_WORKTREE_SLUG),
       }).id
       expect(await install(chat)).toEqual({})
     })
 
-    it('allows the feature chat to install once its feature has left planning', async () => {
-      const lead = createSessionRow(ctx, {
-        featureId: talkFeatureId,
-        kind: 'chat',
-        purpose: 'self-plan',
-        worktreePath: talkPath,
-      }).id
-      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('deny')
-      setPhase(ctx, talkFeatureId, 'building')
-      expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
-    })
-
-    it('lets a human planning chat install, still asking permission as before Go', async () => {
-      const human = createSessionRow(ctx, {
-        featureId: talkFeatureId,
-        kind: 'chat',
-        worktreePath: talkPath,
-      }).id
-      expect(await install(human)).toEqual({})
+    it('lets the feature chat install, self-planning runs included, without a prompt', async () => {
+      for (const purpose of [undefined, 'self-plan'] as const) {
+        const lead = createSessionRow(ctx, {
+          featureId: talkFeatureId,
+          kind: 'chat',
+          ...(purpose ? { purpose } : {}),
+          worktreePath: talkPath,
+        }).id
+        expect((await install(lead)).hookSpecificOutput.permissionDecision).toBe('allow')
+        markSessionEnded(ctx, lead)
+      }
     })
   })
 
@@ -654,7 +637,7 @@ describe('hooks route', () => {
       expect(getSessionRow(ctx, codexSession)?.status).toBe('live')
     })
 
-    it('denies a Codex self-plan edit outside the feature docs, and allows one inside', async () => {
+    it('lets a Codex self-plan run patch source with no opinion: Codex never asks', async () => {
       const selfPlan = createSessionRow(ctx, {
         featureId,
         kind: 'chat',
@@ -662,7 +645,7 @@ describe('hooks route', () => {
         worktreePath: '/wt/dark-mode',
         model: { id: 'gpt-5.6-sol', runtime: 'codex' },
       }).id
-      const { json: denied } = await post(mount(), 'pre-tool', {
+      const { json } = await post(mount(), 'pre-tool', {
         sessionId: selfPlan,
         payload: {
           hook_event_name: 'PreToolUse',
@@ -670,21 +653,7 @@ describe('hooks route', () => {
           tool_input: { file_path: '/wt/dark-mode/src/theme.ts' },
         },
       })
-      expect(denied.hookSpecificOutput).toMatchObject({
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'deny',
-      })
-      expect(denied.hookSpecificOutput.permissionDecisionReason).toMatch(/do not write code/i)
-
-      const { json: allowed } = await post(mount(), 'pre-tool', {
-        sessionId: selfPlan,
-        payload: {
-          hook_event_name: 'PreToolUse',
-          tool_name: 'apply_patch',
-          tool_input: { file_path: 'docs/features/dark-mode/decisions.md' },
-        },
-      })
-      expect(allowed).toEqual({})
+      expect(json).toEqual({})
     })
   })
 

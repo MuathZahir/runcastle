@@ -21,7 +21,6 @@ const state = vi.hoisted(() => ({
   notes: [] as TestNote[],
   findings: [] as ReviewFinding[],
   openDefects: [] as ReviewFinding[],
-  carriedFindings: [] as ReviewFinding[],
   summary: undefined as { found: number; fixed: number; open: number; observations: number } | undefined,
   recordings: [] as ReviewArtifacts[],
   drive: undefined as { featureId: string; state: string; dryRun: boolean; holderLabel: string } | undefined,
@@ -29,7 +28,7 @@ const state = vi.hoisted(() => ({
   events: [] as EventRow[],
   driveMissing: [] as { piece: string; reason: string; notice: string }[],
   rounds: [] as RoundSummary[],
-  declarations: [] as { id: string; featureId: string; runId: string | null; scenario: string; whatToTest: string; createdAt: number }[],
+  declarations: [] as { id: string; featureId: string; runId: string | null; scenario: string; createdAt: number }[],
 }))
 
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false as const, useLiveStatus: () => 'live' }))
@@ -62,13 +61,11 @@ vi.mock('../src/trpc', () => {
       },
       findings: {
         dismiss: { useMutation: mutation },
-        reopen: { useMutation: mutation },
         listByFeature: {
           useQuery: () => ({
             data: {
               findings: state.findings,
               openDefects: state.openDefects,
-              carriedFindings: state.carriedFindings,
               summary: state.summary,
             },
           }),
@@ -103,7 +100,6 @@ const { ReviewBody } = await import('../src/components/bodies/ReviewBody')
 const RECORDING: ReviewArtifacts = {
   ticketId: 'tkt_review',
   seq: 4,
-  lap: 1,
   passKind: 'review',
   reviewMode: null,
   reviewVerdict: null,
@@ -118,7 +114,6 @@ const RECORDING: ReviewArtifacts = {
 const NOTE: TestNote = {
   id: 'note_1',
   featureId: 'feat_1',
-  lap: 1,
   text: 'the spilled-at column shows raw epoch millis',
   status: 'open',
   author: 'human',
@@ -129,7 +124,6 @@ const NOTE: TestNote = {
 const DEFECT = {
   id: 'find_1',
   featureId: 'feat_1',
-  lap: 1,
   reviewTicketId: 'tkt_review',
   kind: 'defect',
   severity: 'high',
@@ -153,14 +147,13 @@ const OBSERVATION = {
   detail: 'this repo’s suite runs inside a Docker maven image',
 } as ReviewFinding
 
-/** What lap 1 parked instead of answering, as the lap-2 page has it. */
-const CARRIED = {
+/** A defect the agent dismissed, settled rather than open. */
+const DISMISSED = {
   ...DEFECT,
   id: 'find_3',
   title: 'the husk rows keep their retired ids',
-  status: 'carried',
-  carriedLap: 2,
-  resolutionNote: 'lap 2 rewrites the purge, which decides these rows',
+  status: 'dismissed',
+  resolutionNote: 'the purge rewrite decides these rows',
 } as ReviewFinding
 
 const DIGEST =
@@ -170,7 +163,6 @@ const DIGEST =
 const REVIEW_TICKET = {
   id: 'tkt_review',
   seq: 4,
-  lap: 1,
   title: 'review the lap',
   kind: 'review',
   status: 'done',
@@ -180,7 +172,6 @@ const REVIEW_TICKET = {
 const LIVE_CHAT = {
   id: 'ses_1',
   featureId: 'feat_1',
-  lap: 1,
   kind: 'chat',
   status: 'live',
   createdAt: 1,
@@ -205,7 +196,6 @@ const buttonsOf = (html: string, variant: string): string[] =>
 /** The primary is the next-step bar's (DESIGN.md: one per view) — never a body band's. */
 const primaryButtons = (html: string): string[] => buttonsOf(html, 'primary')
 /** The hairline button a notice's action takes. */
-const secondaryButtons = (html: string): string[] => buttonsOf(html, 'secondary')
 
 /** The feature as each prototype state has it, plus what the queries answer. */
 function render(
@@ -214,7 +204,6 @@ function render(
     notes?: TestNote[]
     findings?: ReviewFinding[]
     openDefects?: ReviewFinding[]
-    carriedFindings?: ReviewFinding[]
     recordings?: ReviewArtifacts[]
     drive?: { featureId: string; state: string; dryRun: boolean; holderLabel: string }
     /** The server's own counts, where the point is that they are not the rows'. */
@@ -224,7 +213,6 @@ function render(
     driveInstructions?: string
     events?: EventRow[]
     runs?: FeatureFull['runs']
-    phase?: FeatureFull['feature']['phase']
     driveMissing?: { piece: string; reason: string; notice: string }[]
     /** The agent has declared the feature ready — what opens the drive notes. Default: it has. */
     declared?: boolean
@@ -248,23 +236,22 @@ function render(
   state.declarations =
     over.declared === false
       ? []
-      : [{ id: 'ready_1', featureId: 'feat_1', runId: 'run_1', scenario: 'Checkout', whatToTest: 'Pay.', createdAt: 3 }]
+      : [{ id: 'ready_1', featureId: 'feat_1', runId: 'run_1', scenario: 'Checkout', createdAt: 3 }]
   state.driveMissing = over.driveMissing ?? []
   state.notes = over.notes ?? []
   state.findings = over.findings ?? []
   state.openDefects = over.openDefects ?? []
-  state.carriedFindings = over.carriedFindings ?? []
   state.summary = over.summary ?? { found: state.findings.filter((f) => f.kind === 'defect').length, fixed: 0, open: state.openDefects.length, observations: state.findings.filter((f) => f.kind === 'observation').length }
   state.recordings = over.recordings ?? []
   state.drive = over.drive
   state.driveInstructions = over.driveInstructions
   state.events = over.events ?? []
-  const feature = full({ id: 'feat_1', phase: over.phase ?? 'review' })
+  const feature = full({ id: 'feat_1' })
   return renderToStaticMarkup(
     createElement(ReviewBody, {
       full: {
         ...feature,
-        feature: { ...feature.feature, lap: 1 },
+        feature: { ...feature.feature },
         tickets,
         sessions: over.sessions ?? [],
         runs: over.runs ?? [],
@@ -272,7 +259,7 @@ function render(
       driving: null,
       conflict: null,
       readonly: over.readonly ?? false,
-      onViewPhase: () => undefined,
+      onOpenWork: () => undefined,
     }),
   )
 }
@@ -415,31 +402,13 @@ describe('the review page’s arrival bands', () => {
    */
   it('reports the counts the server sends, never the rows it holds', () => {
     const html = render({
-      findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', lap: 0, title: 'from an earlier lap' }],
+      findings: [DEFECT, OBSERVATION, { ...DEFECT, id: 'find_9', title: 'from an earlier lap' }],
       openDefects: [DEFECT],
       summary: { found: 1, fixed: 0, open: 1, observations: 1 },
       tickets: [{ ...REVIEW_TICKET, digest: undefined }] as FeatureFull['tickets'],
     })
     expect(html).not.toContain('3 findings')
     expect(html).not.toContain('2 defects found')
-  })
-
-  /**
-   * The triage step and the carried band are gone (decision 16): a parked
-   * defect is settled work, behind the disclosure, with the human's Reopen —
-   * and outside the open work, so it inflates nothing.
-   */
-  it('files a carried defect with the settled work, reopenable, outside the open count', () => {
-    const html = render({
-      findings: [DEFECT, CARRIED],
-      openDefects: [DEFECT],
-      carriedFindings: [CARRIED],
-    })
-    expect(html).not.toContain('Carried, still open')
-    expect(html).toContain('carried for later')
-    expect(html).toContain('>Reopen<')
-    expect(html).not.toContain('2 open')
-    expect(html.indexOf('carried for later')).toBeGreaterThan(html.indexOf('Full account'))
   })
 
   // A disclosure that opens on emptiness is worse than no disclosure.
@@ -461,11 +430,11 @@ describe('the review page’s arrival bands', () => {
       startedAt,
     })
 
-    it('raises a banner naming the files, with the way to run another review', () => {
+    it('raises a banner naming the files, and asks the human to ask the agent for another review', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('src/App.tsx')
-      expect(html).toContain('Agentic review')
+      expect(html).toContain('ask the agent for another review')
     })
 
     it('says nothing when no drive was ever refused', () => {
@@ -491,12 +460,6 @@ describe('the review page’s arrival bands', () => {
       expect(render({ events: [DENIED], runs })).not.toContain('Review couldn’t drive')
     })
 
-    /** The review body also mounts to LOOK BACK at review on a feature that has
-     *  moved on — history, where there is nothing left to act on (decision 7). */
-    it('does not render outside the review phase', () => {
-      expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review couldn’t drive')
-    })
-
     /** Decision 33a: history has no live verbs, this banner's retry included. */
     it('renders no banner at all on a readonly view', () => {
       expect(render({ events: [DENIED], readonly: true })).not.toContain('Review couldn’t drive')
@@ -516,7 +479,7 @@ describe('the review page’s arrival bands', () => {
    * that produced that silence could not attach a browser. It has to arrive as
    * the page's top line, and it may not block anything.
    */
-  describe('a current lap whose review verified nothing', () => {
+  describe('a latest review that verified nothing', () => {
     const UNVERIFIED: ReviewArtifacts = {
       ...RECORDING,
       hasVideo: false,
@@ -528,7 +491,7 @@ describe('the review page’s arrival bands', () => {
     const UNVERIFIED_TICKET = {
       ...REVIEW_TICKET,
       digest:
-        'Lap 1 · drive mode · DRIVE FAILED · nothing verified — no browser could be attached\n\n' +
+        'drive mode · DRIVE FAILED · nothing verified — no browser could be attached\n\n' +
         'All acceptance criteria remain honestly unverified.',
     } as FeatureFull['tickets'][number]
 
@@ -545,41 +508,16 @@ describe('the review page’s arrival bands', () => {
     it('states the templated line and the declared reason, never the agent’s prose', () => {
       const html = arrival()
       const banner = html.slice(0, html.indexOf('data-tier="work"'))
-      expect(banner).toContain('Lap 1 · drive mode · DRIVE FAILED · nothing verified')
+      expect(banner).toContain('drive mode · DRIVE FAILED · nothing verified')
       expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
     })
 
-    /** Decision 5: the banner's action slot favours another review pass. */
-    it('offers the Agentic review mint as the banner’s action', () => {
-      const banner = arrival().slice(0, arrival().indexOf('data-tier="work"'))
-      expect(banner).toContain('Agentic review')
-    })
-
-    /**
-     * DESIGN.md: one primary per view, and it is the next-step bar's — no band
-     * in the body claims one. Both notices can be up at once — a pass denied its
-     * drive over a dirty tree that then leaves no parseable declaration block
-     * lands unverified while the denial is still showing — and both mints are
-     * the same verb, so only the loud notice's keeps its hairline and the
-     * denial's steps down to ghost.
-     */
-    it('keeps one hairline mint when the denied-drive notice is up beside it', () => {
+    /** Another review is the agent's to run (tickets-and-review-are-tools-not-phases decision 12). */
+    it('offers no review button in either notice, and claims no primary', () => {
       const html = arrival({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('Nothing verified')
-      expect(primaryButtons(html)).toEqual([])
-      const notices = html.slice(0, html.indexOf('data-tier="work"'))
-      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
-      // And it is this notice's: the denial above it steps down.
-      expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified')))).toEqual([])
-    })
-
-    /** With no unverified lap the denial's mint keeps its hairline. */
-    it('leaves the denied-drive notice its hairline mint when nothing is unverified', () => {
-      const html = render({ events: [DENIED] })
-      expect(html).toContain('Review couldn’t drive')
-      const notices = html.slice(0, html.indexOf('data-tier="work"'))
-      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      expect(html).not.toContain('Agentic review')
       expect(primaryButtons(html)).toEqual([])
     })
 
@@ -592,12 +530,6 @@ describe('the review page’s arrival bands', () => {
 
     /** An earlier lap's silence is history — the trail carries it, not the top
      *  line, which is about the lap the human is standing in. */
-    it('says nothing when the unverified pass belongs to an earlier lap', () => {
-      expect(arrival({ recordings: [{ ...UNVERIFIED, lap: 0 }] })).not.toContain(
-        'Nothing verified',
-      )
-    })
-
     it('renders no banner at all on a readonly view', () => {
       expect(arrival({ readonly: true })).not.toContain('Nothing verified')
     })
@@ -621,8 +553,8 @@ describe('the review page’s arrival bands', () => {
 
   /**
    * The Agentic review control left with the Status tier it stood beside
-   * (decision 24): a review is the agent's tool now (decision 10), so only the
-   * notices that call for another pass still offer one.
+   * (decision 24): a review is the agent's tool now
+   * (tickets-and-review-are-tools-not-phases decision 12), so nothing offers one.
    */
   describe('the Agentic review control', () => {
     it('is not offered on a page whose review needs nothing', () => {
@@ -682,9 +614,8 @@ describe('the review page as one document', () => {
     const html = render({
       sessions: [LIVE_CHAT],
       recordings: [RECORDING],
-      findings: [DEFECT, CARRIED],
+      findings: [DEFECT, DISMISSED],
       openDefects: [DEFECT],
-      carriedFindings: [CARRIED],
       driveInstructions: 'Drive the sample project at ./examples/demo.',
     })
     const bands = [

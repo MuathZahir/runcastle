@@ -175,7 +175,7 @@ describe('merge starts up-next dependents', () => {
     const res = await caller.feature.merge({ featureId: a.id })
 
     expect(res.ok).toBe(true)
-    expect(getFeatureRow(ctx, a.id).phase).toBe('shipped')
+    expect(getFeatureRow(ctx, a.id).status).toBe('shipped')
     expect(getFeatureRow(ctx, b.id).status).toBe('draft')
     expect(events(b.id, AUTOSTART_FAILED)[0]?.message).toContain('git refused')
   })

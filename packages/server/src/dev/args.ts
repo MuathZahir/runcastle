@@ -1,4 +1,3 @@
-import { Phase } from '@runcastle/core'
 import type { FeatureStatus } from '@runcastle/core'
 
 /**
@@ -22,7 +21,6 @@ export type DevCommand =
   | { kind: 'project-ls' }
   | { kind: 'project-rm'; target: string; confirmed: boolean; branches: boolean }
   | { kind: 'feature-ls'; project?: string }
-  | { kind: 'feature-phase'; feature: string; phase: Phase }
   | { kind: 'feature-status'; feature: string; status: FeatureStatus }
   | { kind: 'feature-rm'; target: string; confirmed: boolean; branches: boolean }
   | { kind: 'prep-reset'; target: string }
@@ -91,17 +89,6 @@ export function parseArgs(argv: readonly string[]): DevCommand {
       const project = tail[0]
       return project === undefined ? { kind: 'feature-ls' } : { kind: 'feature-ls', project }
     }
-    if (action === 'phase') {
-      const [feature, phase] = tail
-      if (feature === undefined || phase === undefined) {
-        throw new UsageError(`feature phase needs <feature> <${Phase.options.join('|')}>`)
-      }
-      const parsed = Phase.safeParse(phase)
-      if (!parsed.success) {
-        throw new UsageError(`unknown phase \`${phase}\` (${Phase.options.join(', ')})`)
-      }
-      return { kind: 'feature-phase', feature, phase: parsed.data }
-    }
     if (action === 'status') {
       const [feature, status] = tail
       if (feature === undefined || status === undefined) {
@@ -117,7 +104,7 @@ export function parseArgs(argv: readonly string[]): DevCommand {
       if (target === undefined) throw new UsageError('feature rm needs a feature id, slug, or `all`')
       return { kind: 'feature-rm', target, confirmed, branches }
     }
-    throw new UsageError(`unknown feature action \`${action}\` (ls, phase, status, rm)`)
+    throw new UsageError(`unknown feature action \`${action}\` (ls, status, rm)`)
   }
 
   if (group === 'prep') {
@@ -175,8 +162,7 @@ Usage: bun run dev:tool <command> [flags]
   project rm <id|name|all>        hard-delete a project, its features and rows
   prep reset <id|name|all>        forget preparation findings so it asks again
 
-  feature ls [projectId|name]     list features with phase and status
-  feature phase <id|slug> <phase> force a phase (${Phase.options.join(', ')})
+  feature ls [projectId|name]     list features with status
   feature status <id|slug> <s>    force a status (${FEATURE_STATUSES.join(', ')})
   feature rm <id|slug|all>        hard-delete a feature and its rows
 

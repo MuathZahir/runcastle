@@ -16,7 +16,6 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
     featureId: `feat_${slug}`,
     slug,
     title: `The ${slug} feature`,
-    phase: 'building',
     status: 'active',
     satisfied: false,
     upNext: false,
@@ -25,14 +24,14 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
 }
 
 const AUTH = dep('auth')
-const BILLING = dep('billing', { status: 'archived', phase: 'planning' })
-const MERGED = dep('base', { status: 'shipped', phase: 'shipped', satisfied: true })
+const BILLING = dep('billing', { status: 'archived' })
+const MERGED = dep('base', { status: 'shipped', satisfied: true })
 
 const PROJECT = [
   listItem({ id: 'me', slug: 'me', status: 'draft' }),
   listItem({ id: 'feat_auth', slug: 'auth' }),
-  { ...listItem({ id: 'feat_search', slug: 'search', phase: 'planning' }), title: 'Search' },
-  { ...listItem({ id: 'feat_done', slug: 'done', status: 'shipped', phase: 'shipped' }), title: 'Done' },
+  { ...listItem({ id: 'feat_search', slug: 'search' }), title: 'Search' },
+  { ...listItem({ id: 'feat_done', slug: 'done', status: 'shipped' }), title: 'Done' },
   { ...listItem({ id: 'feat_far', slug: 'far' }), projectId: 'proj_2', title: 'Far' },
 ]
 
@@ -54,7 +53,7 @@ describe('the Waits-on row', () => {
   it('shows each dependency with its state, and merged ones with no ✕', () => {
     row([AUTH, BILLING, MERGED])
     expect(screen.getByText('The auth feature')).toBeTruthy()
-    expect(screen.getByText('building')).toBeTruthy()
+    expect(screen.getByText('in progress')).toBeTruthy()
     expect(screen.getByText('archived')).toBeTruthy()
     expect(screen.getByText('merged')).toBeTruthy()
     expect(screen.queryByLabelText('Stop waiting on base')).toBeNull()

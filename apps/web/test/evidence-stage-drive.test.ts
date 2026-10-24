@@ -35,7 +35,6 @@ const { EvidenceStage } = await import('../src/components/review/EvidenceStage')
 const RECORDING: ReviewArtifacts = {
   ticketId: 'tkt_1',
   seq: 4,
-  lap: 1,
   passKind: 'review',
   reviewMode: null,
   reviewVerdict: null,

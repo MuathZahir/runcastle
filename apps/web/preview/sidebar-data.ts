@@ -3,7 +3,7 @@ import { listItem } from '../test/fixtures'
 
 /**
  * A busy project's features, one or more in every lane the sidebar draws:
- * waiting on you (a planning chat, a failed run, a review), agents at work,
+ * waiting on you (a chat awaiting input, a question, ready to test), agents at work,
  * work in progress, drafts (one waiting on another), a long shipped tail and a
  * few archived.
  */
@@ -35,26 +35,19 @@ const tickets = (total: number, done: number, failed = 0) => ({
 })
 
 export const busyFeatures: FeatureListItem[] = [
-  f('Sidebar refresh', { phase: 'planning', liveSession: { status: 'live', awaitingInput: true } }),
+  f('Sidebar refresh', { liveSession: { status: 'live', awaitingInput: true } }),
   f('Rounds see blockers outside the round', {
-    phase: 'building',
     ticketCounts: tickets(4, 3, 1),
-    lapTally: { landed: 3, total: 4, waived: 0 },
+    waitingReason: 'which retry policy should rounds use?',
   }),
-  f('Changelog file per release', { phase: 'review', lapTally: { landed: 5, total: 5, waived: 0 } }),
+  f('Changelog file per release', { ticketCounts: tickets(5, 5), waitingReason: 'ready to test' }),
   f('Prepare reruns stale checks', {
-    phase: 'building',
     activeRun: true,
     orchestrated: true,
     ticketCounts: tickets(7, 3),
-    lapTally: { landed: 3, total: 7, waived: 0 },
   } as Partial<FeatureListItem>),
-  f('Note capture keeps drafts', { phase: 'planning', liveSession: { status: 'live', awaitingInput: false } }),
-  f('Scenario fixtures for drives', {
-    phase: 'building',
-    ticketCounts: tickets(6, 4),
-    lapTally: { landed: 4, total: 6, waived: 0 },
-  }),
+  f('Note capture keeps drafts', { liveSession: { status: 'live', awaitingInput: false } }),
+  f('Scenario fixtures for drives', { ticketCounts: tickets(6, 4) }),
   f('Dark terminal palette', { status: 'draft' }),
   f('Portfolio search', {
     status: 'draft',
@@ -63,7 +56,6 @@ export const busyFeatures: FeatureListItem[] = [
         featureId: 'feat_x',
         slug: 'scenario-fixtures-for-drives',
         title: 'Scenario fixtures for drives',
-        phase: 'building',
         status: 'active',
         satisfied: false,
       },
@@ -83,10 +75,8 @@ export const busyFeatures: FeatureListItem[] = [
     'Codex runtime',
     'Settings: models and annotations',
     'First-run wizard',
-  ].map((t) => f(t, { status: 'shipped', phase: 'shipped' })),
-  ...['Storybook previews', 'Violet theme', 'Two-line sidebar rows'].map((t) =>
-    f(t, { status: 'archived', phase: 'shipped' }),
-  ),
+  ].map((t) => f(t, { status: 'shipped' })),
+  ...['Storybook previews', 'Violet theme', 'Two-line sidebar rows'].map((t) => f(t, { status: 'archived' })),
 ]
 
 /** A quiet day: nothing waits on you, one agent at work, a short shipped tail. */

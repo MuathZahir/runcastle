@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as z from 'zod'
 import type { DiscoverySnapshot, RunStatus, Ticket, TicketInput } from '@runcastle/core'
 import { SessionKind, TicketInput as TicketInputSchema, newId } from '@runcastle/core'
-import { projects, runs, testNotes } from '../src/db/schema'
+import { projects, runs } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { GateError, InvalidInputError, NotFoundError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
@@ -23,7 +23,6 @@ import mcpApp, {
   resolveFeatureReader,
   resolveSession,
   toolCancelTicket,
-  toolCompletePhase,
   toolEmitTickets,
   toolGetFeatureContext,
   toolGetTicket,
@@ -68,7 +67,7 @@ describe('mcp tools', () => {
     repoPath = tmpRepo()
     const project = seedProject(ctx, repoPath)
     slug = 'dark-mode'
-    const feature = seedFeature(ctx, project.id, { slug, phase: 'planning' })
+    const feature = seedFeature(ctx, project.id, { slug })
     featureId = feature.id
     session = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, session.id)
@@ -375,7 +374,7 @@ describe('mcp tools', () => {
     expect(() => toolCancelTicket(ctx, session, { id: foreign.id })).toThrow(GateError)
   })
 
-  it('get_feature_context returns the feature, phase, docs contents and tickets', () => {
+  it('get_feature_context returns the feature, docs contents and tickets', () => {
     const docsDir = join(repoPath, 'docs', 'features', slug)
     mkdirSync(docsDir, { recursive: true })
     writeFileSync(join(docsDir, 'brief.md'), '# Brief\n\nseed', 'utf8')
@@ -384,7 +383,6 @@ describe('mcp tools', () => {
 
     const out = toolGetFeatureContext(ctx, session)
     expect(out.feature.id).toBe(featureId)
-    expect(out.phase).toBe('planning')
     expect(out.tickets).toHaveLength(1)
     const byPath = Object.fromEntries(out.docs.map((d) => [d.relPath, d.content]))
     expect(byPath['brief.md']).toContain('seed')
@@ -431,48 +429,23 @@ describe('mcp tools', () => {
       ticketsFailed: 1,
       errorHeadlines: ['container died'],
     })
-    expect(out.currentLapReview).toEqual([
-      expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done', lap: 1 }),
-    ])
-    expect(out.currentLapReview[0].digestPath).toContain('DIGEST.md')
+    expect(out.reviewEvidence).toEqual(
+      expect.objectContaining({ ticketId: review.id, seq: review.seq, status: 'done' }),
+    )
+    expect(out.reviewEvidence?.digestPath).toContain('DIGEST.md')
     // The defect starts open for the lead, so it is stated once, in openDefects,
     // and not repeated in the record of the pass.
     expect(out.openDefects.map((defect) => defect.title)).toEqual(['Save loses edits'])
     expect(out.findings).toEqual([])
-    expect(out.testNotes.map((note) => note.text)).toEqual(['the empty state flashes'])
+    // Drive notes reach the agent as a chat message (Send to agent), not here.
+    expect(out).not.toHaveProperty('testNotes')
   })
 
   it('get_feature_context omits latestRun entirely on a feature that has never burned', () => {
     const out = toolGetFeatureContext(ctx, session)
     expect('latestRun' in out).toBe(false)
-    expect(out.currentLapReview).toEqual([])
+    expect(out.reviewEvidence).toBeNull()
     expect(out.findings).toEqual([])
-    expect(out.testNotes).toEqual([])
-  })
-
-  /**
-   * Keyed on status, not on the lap number alone — the mistake `carriedWork`
-   * documents. A note carried into this lap keeps the lap that captured it, so
-   * asking only for this lap's would lose exactly the notes still owed.
-   */
-  it('get_feature_context keeps a note an earlier lap carried rather than answered', () => {
-    const feature = seedFeature(ctx, getFeatureRow(ctx, featureId).projectId, {
-      slug: 'second-lap',
-      lap: 2,
-    })
-    const carried = addNote(ctx, feature.id, 'the contrast is still wrong')
-    ctx.db
-      .update(testNotes)
-      .set({ lap: 1, status: 'carried' })
-      .where(eq(testNotes.id, carried.id))
-      .run()
-    addNote(ctx, feature.id, 'this lap’s own note')
-
-    const out = featureContext(ctx, { featureId: feature.id, sessionId: session.id })
-    expect(out.testNotes.map((note) => note.text)).toEqual([
-      'the contrast is still wrong',
-      'this lap’s own note',
-    ])
   })
 
   it('ticket surgery refuses a ticket the live burn holds and allows one it does not', () => {
@@ -562,7 +535,6 @@ describe('mcp tools', () => {
       'title',
       'status',
       'kind',
-      'lap',
       'blockedBy',
       'seams',
       'goal',
@@ -603,24 +575,6 @@ describe('mcp tools', () => {
     expect(ev?.message).toBe('chose sqlite')
   })
 
-  it.each(['ideation', 'spec'] as const)('complete_phase(%s) records progress without moving state', (phase) => {
-    // Nothing on disk in this fixture, so the derived hint points at the first
-    // artifact still missing.
-    expect(toolCompletePhase(ctx, session, { phase })).toEqual({
-      ok: true,
-      nextPhase: 'planning',
-      nextStep: 'ideation',
-    })
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-  })
-
-  it('complete_phase(tickets) remains wire-compatible and waits for Burn', () => {
-    const out = toolCompletePhase(ctx, session, { phase: 'tickets' })
-    expect(out.ok).toBe(true)
-    expect(out.nextPhase).toBe('planning')
-    expect(out.waitingOn).toBe('human burn')
-    expect(getFeatureRow(ctx, featureId).phase).toBe('planning')
-  })
 })
 
 /**
@@ -652,7 +606,7 @@ describe('mcp chat write contract', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     repoPath = tmpRepo()
-    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q', phase: 'planning' })
+    const feature = seedFeature(ctx, seedProject(ctx, repoPath).id, { slug: 'q' })
     featureId = feature.id
     qa = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: repoPath })
     setRuntimeCtx(ctx)
@@ -774,11 +728,19 @@ describe('mcp run-scoped feature reads', () => {
  * DEFINITION is re-sent on every turn, so the same argument does not carry.
  */
 describe('mcp tool registration by audience', () => {
+  it('registers neither complete_phase nor go_feature for any session kind', () => {
+    for (const audience of [...SessionKind.options, 'run' as const, undefined]) {
+      const tools = toolsForAudience(audience)
+      expect(tools, String(audience)).not.toContain('complete_phase')
+      expect(tools, String(audience)).not.toContain('go_feature')
+    }
+  })
+
   it('offers each kind only the tools its own runtime gates can let through', () => {
     const chat = toolsForAudience('chat')
     expect(chat).toContain('get_feature_context')
     expect(chat).toContain('list_tickets')
-    for (const write of ['emit_tickets', 'complete_phase', 'update_ticket', 'cancel_ticket']) {
+    for (const write of ['emit_tickets', 'update_ticket', 'cancel_ticket']) {
       expect(chat, write).toContain(write)
     }
 

@@ -11,7 +11,7 @@ import { listByFeature as listTickets } from './tickets'
 
 export interface OutcomeArtifact {
   ticketId: string
-  lap: number
+  seq: number
   passKind: 'review' | 'verification'
   reviewedCommit: string | null
   completedAt: number | null
@@ -51,28 +51,25 @@ function noteResolution(note: TestNote): string {
 /** Pure synthesis of the permanent shipped record. */
 export function composeOutcomeDoc(input: OutcomeInput): string {
   const { feature, tickets, findings, notes, artifacts, shippedAt, delta } = input
-  const laps = Math.max(feature.lap, ...tickets.map((ticket) => ticket.lap), 1)
   const blocks = [
     `# Outcome — ${feature.title}`,
     feature.oneLiner,
-    `- Shipped: ${new Date(shippedAt).toISOString().slice(0, 10)}\n- Laps run: ${laps}`,
+    `- Shipped: ${new Date(shippedAt).toISOString().slice(0, 10)}`,
     `## What shipped\n\n${delta.commits} commits · ${delta.files} files`,
   ]
-  for (let lap = 1; lap <= laps; lap += 1) {
-    const implementation = tickets.filter((ticket) => ticket.kind === 'implementation' && ticket.lap === lap)
-    const line = (status: Ticket['status'], label: string): string => {
-      const matches = implementation.filter((ticket) => ticket.status === status)
-      return `- ${matches.length} ${label}${matches.length ? `: ${matches.map((t) => `#${t.seq} ${t.title}`).join('; ')}` : ''}`
-    }
-    blocks.push(`### Lap ${lap}\n${line('done', 'tickets landed')}\n${line('cancelled', 'waived')}\n${line('failed', 'failed')}`)
+  const implementation = tickets.filter((ticket) => ticket.kind === 'implementation')
+  const line = (status: Ticket['status'], label: string): string => {
+    const matches = implementation.filter((ticket) => ticket.status === status)
+    return `- ${matches.length} ${label}${matches.length ? `: ${matches.map((t) => `#${t.seq} ${t.title}`).join('; ')}` : ''}`
   }
+  blocks.push(`${line('done', 'tickets landed')}\n${line('cancelled', 'waived')}\n${line('failed', 'failed')}`)
 
   blocks.push('## Review record')
   const completed = artifacts.filter((artifact) => artifact.completedAt !== null)
   const latest = [...completed].sort((a, b) => a.completedAt! - b.completedAt!).at(-1)
   for (const artifact of completed) {
     const ticket = tickets.find((candidate) => candidate.id === artifact.ticketId)
-    blocks.push(`### Lap ${artifact.lap} · ${artifact.passKind}\n\n- Reviewed commit: ${artifact.reviewedCommit ?? 'unknown'}\n- Landed since: ${artifact.landedSince}\n- Outcome: ${ticket?.status ?? 'unknown'}`)
+    blocks.push(`### Ticket ${artifact.seq} · ${artifact.passKind}\n\n- Reviewed commit: ${artifact.reviewedCommit ?? 'unknown'}\n- Landed since: ${artifact.landedSince}\n- Outcome: ${ticket?.status ?? 'unknown'}`)
     if (artifact.ticketId === latest?.ticketId) {
       const passFindings = findings.filter((finding) => finding.reviewTicketId === artifact.ticketId)
       blocks.push(passFindings.length
@@ -88,11 +85,10 @@ export function composeOutcomeDoc(input: OutcomeInput): string {
 
   const substantive = tickets.filter((ticket) => ticket.digest && digestHasSubstance(ticket.digest))
   if (substantive.length) {
-    blocks.push('## Per-ticket digests')
-    for (let lap = 1; lap <= laps; lap += 1) {
-      const inLap = substantive.filter((ticket) => ticket.lap === lap)
-      if (inLap.length) blocks.push(`### Lap ${lap}`, ...inLap.map((ticket) => `#### ${ticket.seq}. ${ticket.title}\n\n${ticket.digest!.trim()}`))
-    }
+    blocks.push(
+      '## Per-ticket digests',
+      ...substantive.map((ticket) => `### ${ticket.seq}. ${ticket.title}\n\n${ticket.digest!.trim()}`),
+    )
   }
   return `${blocks.join('\n\n')}\n`
 }
@@ -105,7 +101,7 @@ export async function promoteOutcomeDoc(
   try {
     const tickets = listTickets(ctx, feature.id)
     const artifacts: OutcomeArtifact[] = tickets.filter((ticket) => ticket.kind === 'review').map((ticket) => ({
-      ticketId: ticket.id, lap: ticket.lap, passKind: ticket.passKind,
+      ticketId: ticket.id, seq: ticket.seq, passKind: ticket.passKind,
       reviewedCommit: ticket.reviewedCommit, completedAt: ticket.completedAt,
       landedSince: ticket.completedAt === null ? 0 : tickets.filter((candidate) =>
         candidate.kind === 'implementation' && candidate.status === 'done' &&

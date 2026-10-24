@@ -61,7 +61,6 @@ describe('NoteThumbnail', () => {
     const note: TestNote = {
       id: 'note_1',
       featureId: 'ftr_1',
-      lap: 1,
       text: 'the crumbs overflow on a long title',
       status: 'open',
       author: 'human',

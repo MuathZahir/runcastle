@@ -25,7 +25,7 @@ import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
  * Merge-order dependencies (ADR-0013): a draft waits on other features in its
- * project until each one's phase is `shipped`. Start is the only gate; the set
+ * project until each one's status is `shipped`. Start is the only gate; the set
  * is replaced whole; a deleted dependency cascades away with a timeline event on
  * the dependent. Real git in temp repos (Start and delete do git work), HOME
  * redirected, like the sibling draft-features suite.
@@ -59,8 +59,8 @@ describe('feature dependencies', () => {
 
   const draft = (slug: string): Feature =>
     seedFeature(ctx, project.id, { slug, status: 'draft', baseBranch: null })
-  const active = (slug: string, phase: Feature['phase'] = 'building'): Feature =>
-    seedFeature(ctx, project.id, { slug, phase })
+  const active = (slug: string, status: Feature['status'] = 'active'): Feature =>
+    seedFeature(ctx, project.id, { slug, status })
 
   beforeEach(async () => {
     const home = mkTmp('rc-home-')
@@ -134,18 +134,12 @@ describe('feature dependencies', () => {
       expect(() => setDependencies(ctx, b.id, [b.id])).toThrow(/`b` cannot wait on itself/)
     })
 
-    it('refuses an already-merged dependency, even one archived since', () => {
+    it('refuses an already-merged dependency', () => {
       const shipped = active('shipped-one', 'shipped')
-      const gone = seedFeature(ctx, project.id, {
-        slug: 'shipped-archived',
-        phase: 'shipped',
-        status: 'archived',
-      })
       const b = draft('b')
       expect(() => setDependencies(ctx, b.id, [shipped.id])).toThrow(
         '`shipped-one` has already merged — nothing to wait on',
       )
-      expect(() => setDependencies(ctx, b.id, [gone.id])).toThrow(/`shipped-archived` has already merged/)
     })
 
     it('refuses a cycle, naming the slugs in it', () => {
@@ -171,7 +165,7 @@ describe('feature dependencies', () => {
   })
 
   describe('derived reads', () => {
-    it('reports satisfied by phase, and blocks only from unmerged dependencies to drafts', () => {
+    it('reports satisfied by status, and blocks only from unmerged dependencies to drafts', () => {
       const building = active('building-one')
       const archived = seedFeature(ctx, project.id, { slug: 'archived-one', status: 'archived' })
       const waiter = draft('waiter')
@@ -179,7 +173,7 @@ describe('feature dependencies', () => {
 
       expect(dependsOnOf(ctx, waiter.id)).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ slug: 'building-one', phase: 'building', status: 'active', satisfied: false }),
+          expect.objectContaining({ slug: 'building-one', status: 'active', satisfied: false }),
           expect.objectContaining({ slug: 'archived-one', status: 'archived', satisfied: false }),
         ]),
       )
@@ -188,8 +182,8 @@ describe('feature dependencies', () => {
         { featureId: waiter.id, slug: 'waiter', title: waiter.title, upNext: false },
       ])
 
-      // The dependency ships then gets archived: still satisfied, blocks nothing.
-      shipThenArchive(ctx, building.id)
+      // The dependency ships: satisfied, blocks nothing.
+      ship(ctx, building.id)
       expect(dependsOnOf(ctx, waiter.id).find((d) => d.slug === 'building-one')?.satisfied).toBe(true)
       expect(waitingOn(ctx, waiter.id).map((d) => d.slug)).toEqual(['archived-one'])
       expect(blocksOf(ctx, building.id)).toEqual([])
@@ -224,20 +218,20 @@ describe('feature dependencies', () => {
       const refusal = await startDraft(ctx, b.id).catch((e: unknown) => e)
       expect(refusal).toBeInstanceOf(GateError)
       expect((refusal as GateError).message).toBe(
-        '`b` waits on `a` (building), `c` (archived — remove it to start), `d` (draft)',
+        '`b` waits on `a` (not merged yet), `c` (archived — remove it to start), `d` (draft)',
       )
       expect(getFeatureRow(ctx, b.id).status).toBe('draft')
       expect((await simpleGit(repoPath).branchLocal()).all).not.toContain('feature/b')
     })
 
-    it('starts once every dependency has shipped, including shipped-then-archived', async () => {
+    it('starts once every dependency has shipped', async () => {
       const a = active('a')
-      const c = active('c', 'review')
+      const c = active('c')
       const b = draft('b')
       setDependencies(ctx, b.id, [a.id, c.id])
 
-      shipThenArchive(ctx, a.id)
-      setPhaseShipped(ctx, c.id)
+      ship(ctx, a.id)
+      ship(ctx, c.id)
 
       const started = await startDraft(ctx, b.id)
       expect(started.status).toBe('active')
@@ -273,7 +267,7 @@ describe('feature dependencies', () => {
     const b = draft('b')
     const refs = await caller.feature.setDependencies({ featureId: b.id, dependsOn: [a.id] })
     expect(refs).toEqual([
-      { featureId: a.id, slug: 'a', title: a.title, phase: 'building', status: 'active', satisfied: false, upNext: false },
+      { featureId: a.id, slug: 'a', title: a.title, status: 'active', satisfied: false, upNext: false },
     ])
     await expect(
       caller.feature.setDependencies({ featureId: b.id, dependsOn: [b.id] }),
@@ -281,10 +275,6 @@ describe('feature dependencies', () => {
   })
 })
 
-function setPhaseShipped(ctx: AppCtx, featureId: string): void {
-  ctx.db.update(features).set({ phase: 'shipped', status: 'shipped' }).where(eq(features.id, featureId)).run()
-}
-
-function shipThenArchive(ctx: AppCtx, featureId: string): void {
-  ctx.db.update(features).set({ phase: 'shipped', status: 'archived' }).where(eq(features.id, featureId)).run()
+function ship(ctx: AppCtx, featureId: string): void {
+  ctx.db.update(features).set({ status: 'shipped' }).where(eq(features.id, featureId)).run()
 }

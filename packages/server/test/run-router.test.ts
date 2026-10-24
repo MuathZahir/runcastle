@@ -33,7 +33,7 @@ describe('run router — cancel', () => {
   beforeEach(async () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
-    featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'building' }).id
+    featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     workflowRegistry.set(cancellableDef.id, cancellableDef)
   })
 

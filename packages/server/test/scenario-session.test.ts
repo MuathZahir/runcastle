@@ -188,7 +188,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
       await testDrive(ctx, project, feature, 'start')
       await expect(launch()).rejects.toThrow(/Open app/)
       await testDrive(ctx, project, feature, 'stop')
-      await reviewDrive(ctx, project, { ...feature, phase: 'review' }, 'start')
+      await reviewDrive(ctx, project, { ...feature }, 'start')
       await expect(launch()).rejects.toThrow(GateError)
     }, 30_000)
 
@@ -231,7 +231,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
 
       const line = write.mock.calls.at(-1)?.[0].kickoffLine ?? ''
       expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
-      expect(line).toContain('Feature state: planning;')
+      expect(line).toContain('Feature status: Talking with you;')
       expect(line).toContain('Human: we were building the cart page')
       expect(line).toContain(transcriptPath)
     }, 30_000)

@@ -25,7 +25,6 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
     featureId: `feat_${slug}`,
     slug,
     title: slug,
-    phase: 'building',
     status: 'active',
     satisfied: false,
     upNext: false,
@@ -33,28 +32,28 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
   }
 }
 
-const MERGED = dep('merged', { phase: 'shipped', status: 'shipped', satisfied: true })
-const ARCHIVED = dep('old', { phase: 'planning', status: 'archived' })
+const MERGED = dep('merged', { status: 'shipped', satisfied: true })
+const ARCHIVED = dep('old', { status: 'archived' })
 
 const draft = (id: string, dependsOn: DependencyRef[] = []) =>
-  listItem({ id, status: 'draft', phase: 'planning', dependsOn })
+  listItem({ id, status: 'draft', dependsOn })
 
 const upNext = (id: string, dependsOn: DependencyRef[] = [], upNextProblem: string | null = null) =>
-  listItem({ id, status: 'draft', phase: 'planning', dependsOn, upNext: true, upNextProblem })
+  listItem({ id, status: 'draft', dependsOn, upNext: true, upNextProblem })
 
 describe('the rail chip of a backlog draft', () => {
   it('names the one dependency a draft is blocked by', () => {
     expect(rowChip(draft('d', [dep('auth')]))).toEqual({
       kind: 'draft',
       text: 'Blocked by auth',
-      title: 'blocked by auth (building)',
+      title: 'blocked by auth (in progress)',
     })
   })
 
   it('counts several, and lists them with their state in the tooltip', () => {
     const chip = rowChip(draft('d', [dep('auth'), ARCHIVED, MERGED]))
     expect(chip.text).toBe('Blocked by 2')
-    expect(chip.title).toBe('blocked by auth (building), old (archived)')
+    expect(chip.title).toBe('blocked by auth (in progress), old (archived)')
   })
 
   it('says Ready to start once every dependency it had shipped', () => {
@@ -110,7 +109,7 @@ describe('a stuck Up next feature', () => {
     const f = upNext('s', [MERGED])
     expect(triageOf(f)).toBe('needsYou')
     expect(needsMe(f)).toEqual({
-      kind: 'attention',
+      kind: 'stuck',
       label: 'nothing left to wait on — start it or move it to the backlog',
     })
     expect(rowChip(f).text).toBe('Needs you')
@@ -124,7 +123,7 @@ describe('a stuck Up next feature', () => {
 
   it("says why its automatic start didn't happen when the server recorded it", () => {
     const problem = "couldn't start by itself: its dependencies merged into different branches (main, develop)"
-    expect(needsMe(upNext('s', [MERGED], problem))).toEqual({ kind: 'attention', label: problem })
+    expect(needsMe(upNext('s', [MERGED], problem))).toEqual({ kind: 'stuck', label: problem })
   })
 })
 
@@ -146,9 +145,9 @@ describe('the lanes and order around Up next', () => {
     const groups = triage([
       ...list,
       upNext('stuck', [MERGED]),
-      listItem({ id: 'working', phase: 'building', activeRun: true }),
-      listItem({ id: 'stopped', phase: 'building' }),
-      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      listItem({ id: 'working', activeRun: true }),
+      listItem({ id: 'stopped' }),
+      listItem({ id: 'shipped', status: 'shipped' }),
     ])
     expect(groups.map((g) => [g.key, g.label])).toEqual([
       ['needsYou', 'Needs you'],
@@ -164,10 +163,10 @@ describe('the lanes and order around Up next', () => {
 
   it('sorts the same way in the flat sidebar order, still between active and shipped', () => {
     const sorted = sortForSidebar([
-      listItem({ id: 'shipped', status: 'shipped', phase: 'shipped' }),
+      listItem({ id: 'shipped', status: 'shipped' }),
       ...list,
       upNext('stuck', [MERGED]),
-      listItem({ id: 'active', phase: 'building' }),
+      listItem({ id: 'active' }),
     ])
     expect(sorted.map((f) => f.id)).toEqual(['stuck', 'active', 'u1', 'r1', 'p1', 'b1', 'b2', 'shipped'])
   })
@@ -179,31 +178,29 @@ describe('the lanes and order around Up next', () => {
 
 describe('Start on a waiting draft', () => {
   const draftFull = (dependsOn: DependencyRef[]) => ({
-    ...full({ status: 'draft', phase: 'planning' }),
+    ...full({ status: 'draft' }),
     dependsOn,
   })
 
   it('is disabled with each blocker and its state, archived ones told to remove it', () => {
-    const ns = nextStep(draftFull([dep('auth'), dep('idea', { status: 'draft', phase: 'planning' }), ARCHIVED]), {
-      driving: false,
-    })
+    const ns = nextStep(draftFull([dep('auth'), dep('idea', { status: 'draft' }), ARCHIVED]), {})
     expect(ns.primary?.kind).toBe('startDraft')
     expect(ns.primary?.disabled).toBe(
-      'Waits on auth (building), idea (draft), old (archived — remove it to start)',
+      'Waits on auth (in progress), idea (draft), old (archived — remove it to start)',
     )
   })
 
   it('outranks a missing base branch', () => {
-    const ns = nextStep(draftFull([dep('auth')]), { driving: false, draftBaseMissing: 'unpicked' })
-    expect(ns.primary?.disabled).toBe('Waits on auth (building)')
+    const ns = nextStep(draftFull([dep('auth')]), { draftBaseMissing: 'unpicked' })
+    expect(ns.primary?.disabled).toBe('Waits on auth (in progress)')
   })
 
   it('behaves exactly as before once every dependency merged', () => {
-    expect(nextStep(draftFull([MERGED]), { driving: false }).primary).toEqual({
+    expect(nextStep(draftFull([MERGED]), {}).primary).toEqual({
       label: 'Start',
       kind: 'startDraft',
     })
-    expect(nextStep(draftFull([MERGED]), { driving: false, draftBaseMissing: 'loading' }).primary?.disabled).toBe(
+    expect(nextStep(draftFull([MERGED]), { draftBaseMissing: 'loading' }).primary?.disabled).toBe(
       'Loading the branch list…',
     )
   })
@@ -215,11 +212,10 @@ describe('the Waits-on picker’s candidates', () => {
     const features = [
       listItem({ id: 'me', status: 'draft' }),
       listItem({ id: 'feat_auth', slug: 'auth' }),
-      listItem({ id: 'other', slug: 'other', phase: 'planning' }),
-      listItem({ id: 'parked', slug: 'parked', status: 'draft', phase: 'planning' }),
-      listItem({ id: 'gone', slug: 'gone', status: 'archived', phase: 'building' }),
-      listItem({ id: 'done', slug: 'done', status: 'shipped', phase: 'shipped' }),
-      listItem({ id: 'old-done', slug: 'old-done', status: 'archived', phase: 'shipped' }),
+      listItem({ id: 'other', slug: 'other' }),
+      listItem({ id: 'parked', slug: 'parked', status: 'draft' }),
+      listItem({ id: 'gone', slug: 'gone', status: 'archived' }),
+      listItem({ id: 'done', slug: 'done', status: 'shipped' }),
       { ...listItem({ id: 'elsewhere' }), projectId: 'proj_2' },
     ]
     expect(dependencyCandidates(features, self, [dep('auth')]).map((f) => f.id)).toEqual([
@@ -313,14 +309,14 @@ describe('the read-only dependency lines', () => {
 
 describe('the up-next mark on an unstarted feature’s bar', () => {
   const unstarted = (dependsOn: DependencyRef[], upNext = false, upNextProblem: string | null = null) => ({
-    ...full({ status: 'draft', phase: 'planning', upNext }),
+    ...full({ status: 'draft', upNext }),
     dependsOn,
     upNextProblem,
   })
 
   it('offers Start when ready beside the disabled Start of a blocked backlog feature', () => {
-    const ns = nextStep(unstarted([dep('auth')]), { driving: false })
-    expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft', disabled: 'Waits on auth (building)' })
+    const ns = nextStep(unstarted([dep('auth')]), {})
+    expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft', disabled: 'Waits on auth (in progress)' })
     const markUpNext = ns.secondary.find((a) => a.kind === 'markUpNext')
     expect(markUpNext?.label).toBe('Start when ready')
     expect(markUpNext?.disabled).toBeUndefined()
@@ -328,7 +324,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
   })
 
   it('says an up-next feature starts by itself, and offers Move to backlog', () => {
-    const ns = nextStep(unstarted([dep('auth'), dep('ui'), MERGED], true), { driving: false })
+    const ns = nextStep(unstarted([dep('auth'), dep('ui'), MERGED], true), {})
     expect(ns.kick).toBe('UP NEXT')
     expect(ns.title).toBe('Starts by itself when auth and ui ship')
     expect(ns.desc).toContain('no tokens are spent')
@@ -337,14 +333,14 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
   })
 
   it('says an up-next feature waiting on a backlog feature will not start until that one is started', () => {
-    const idea = dep('idea', { status: 'draft', phase: 'planning' })
-    const ns = nextStep(unstarted([dep('auth'), idea], true), { driving: false })
+    const idea = dep('idea', { status: 'draft' })
+    const ns = nextStep(unstarted([dep('auth'), idea], true), {})
     expect(ns.title).toBe("Won't start until you start idea")
     expect(ns.secondary.map((a) => a.kind)).toEqual(['moveToBacklog'])
   })
 
   it('gives a stuck feature its reason, an enabled Start when nothing is left, and Move to backlog', () => {
-    const ns = nextStep(unstarted([MERGED], true), { driving: false })
+    const ns = nextStep(unstarted([MERGED], true), {})
     expect(ns.alert).toBe(true)
     expect(ns.desc).toBe('Nothing left to wait on — start it or move it to the backlog')
     expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
@@ -356,7 +352,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
 
   it('prefers the server’s autostart problem as the stuck reason', () => {
     const problem = "didn't start by itself: its dependencies merged into different branches (a → main, b → dev) — pick a base and Start"
-    const ns = nextStep(unstarted([MERGED], true, problem), { driving: false, draftBaseMissing: 'unpicked' })
+    const ns = nextStep(unstarted([MERGED], true, problem), { draftBaseMissing: 'unpicked' })
     expect(ns.desc).toBe('Its dependencies merged into different branches (a → main, b → dev) — pick a base and Start')
     expect(ns.primary?.disabled).toBe('pick a branch first')
     expect(upNextBasesDiffer(problem)).toBe(true)
@@ -365,7 +361,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
   })
 
   it('keeps Start disabled with the archived reason while an archived dependency remains', () => {
-    const ns = nextStep(unstarted([ARCHIVED], true), { driving: false })
+    const ns = nextStep(unstarted([ARCHIVED], true), {})
     expect(ns.desc).toBe('old was archived — remove it or move this to the backlog')
     expect(ns.primary?.disabled).toBe('Waits on old (archived — remove it to start)')
     expect(ns.secondary.map((a) => a.kind)).toContain('moveToBacklog')
@@ -373,7 +369,7 @@ describe('the up-next mark on an unstarted feature’s bar', () => {
 
   it('leaves ready-to-start and plain backlog bars as they were', () => {
     for (const deps of [[MERGED], []]) {
-      const ns = nextStep(unstarted(deps), { driving: false })
+      const ns = nextStep(unstarted(deps), {})
       expect(ns.title).toBe('Start this feature')
       expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
       expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])

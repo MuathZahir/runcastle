@@ -47,6 +47,8 @@ function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     activeRun: false,
     liveSession: null,
     lastActivityAt: 0,
+    dependsOn: [],
+    blocks: [],
     ...over,
   } as FeatureListItem
 }
@@ -116,13 +118,20 @@ describe('command palette on an empty query', () => {
 })
 
 describe('command palette feature rows', () => {
-  it('leads with the phase glyph, names the phase and marks the one already open', () => {
-    const html = palette([listItem()], 'feat_1')
+  it('leads with the progress glyph, says where it is in words and marks the one already open', () => {
+    const counts = { total: 5, pending: 2, burning: 0, done: 2, failed: 0, cancelled: 1 }
+    const html = palette([listItem({ ticketCounts: counts })], 'feat_1')
 
     expect(html).toContain('Flow redesign: project shell and navigation')
-    expect(html).toContain('data-phase="building"')
-    expect(html).toContain('>Build<') // PHASE_NAME.building
+    expect(html).toContain('stroke-dasharray:50 100') // 2 of the 4 not cancelled
+    expect(html).not.toContain('data-phase')
+    expect(html).toContain('>In progress<')
     expect(html).toContain('>Current<')
+  })
+
+  it('wears the dashed ring on a draft and the check once shipped', () => {
+    expect(palette([listItem({ status: 'draft' })])).toContain('text-phase-draft')
+    expect(palette([listItem({ status: 'shipped' })])).toContain('text-phase-shipped')
   })
 
   it('marks nothing as current when the palette is opened off a feature', () => {

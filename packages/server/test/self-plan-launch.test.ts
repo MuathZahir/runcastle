@@ -18,6 +18,7 @@ import {
   markSessionLive,
 } from '../src/launcher/sessions'
 import { listAfter } from '../src/services/events'
+import { setWaiting } from '../src/services/lead-status'
 import { featureDocPath } from '../src/services/feature-docs'
 import { createFeatureBranch } from '../src/services/git'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
@@ -109,11 +110,11 @@ describe('a self-planning run', () => {
     expect(command).toContain('claude -p ')
     expect(command).not.toContain('--resume')
     expect(command).toContain('Proceed with your task: no human is present')
-    expect(command).toContain('/runcastle:ideate')
-    expect(command).toContain('Planning without a human')
+    expect(command).toContain('/runcastle:feature')
+    expect(command).toContain('references/planning-alone.md')
     // The feature-state part of the chat header still follows the opening.
     // No lap in it: the round count is the human-facing number (decision 16).
-    expect(command).toContain('Feature state: planning; rounds run: 0;')
+    expect(command).toContain('Feature status: Talking with you; rounds run: 0;')
     expect(command).not.toMatch(/\blap\b/i)
   })
 
@@ -126,8 +127,8 @@ describe('a self-planning run', () => {
     expect(command).toContain('codex exec --dangerously-bypass-hook-trust ')
     expect(command).not.toContain(' resume ')
     expect(command).toContain('no human is present')
-    expect(command).toContain('$ideate')
-    expect(command).toContain('Planning without a human')
+    expect(command).toContain('$feature')
+    expect(command).toContain('references/planning-alone.md')
   })
 
   it('never resumes an earlier conversation', async () => {
@@ -155,18 +156,36 @@ describe('a self-planning run', () => {
       expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual(before)
     }
 
-    it('when the feature already has decisions', async () => {
-      const f = await feature('decided')
+    it('when the feature is a draft', async () => {
+      const f = await feature('drafted', { status: 'draft' })
+      await expectRefused(f, /in the backlog/)
+    })
+
+    it('when the feature has shipped', async () => {
+      const f = await feature('done', { status: 'shipped' })
+      await expectRefused(f, /is shipped/)
+    })
+  })
+
+  it('plans a started feature whatever it has already produced or done', async () => {
+    for (const [slug, overrides] of [['decided', {}], ['building', {}]] as const) {
+      const f = await feature(slug, overrides)
       const path = featureDocPath(projectForFeature(ctx, f), f, 'decisions.md')
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, '# decisions\n')
-      await expectRefused(f, /already has planning on record/)
-    })
+      const sessionId = await launch(f.id, 'self-plan')
+      expect(getSessionRow(ctx, sessionId)?.purpose).toBe('self-plan')
+    }
+  })
 
-    it('when the feature is past planning', async () => {
-      const f = await feature('building', { phase: 'building' })
-      await expectRefused(f, /past planning/)
-    })
+  describe('is still refused, leaving no session behind,', () => {
+    async function expectRefused(f: Feature, reason: RegExp): Promise<void> {
+      const before = activeSessionsForFeature(ctx, f.id).map((s) => s.id)
+      const attempt = launch(f.id, 'self-plan')
+      await expect(attempt).rejects.toBeInstanceOf(GateError)
+      await expect(attempt).rejects.toThrow(reason)
+      expect(activeSessionsForFeature(ctx, f.id).map((s) => s.id)).toEqual(before)
+    }
 
     it('when another session is up', async () => {
       const f = await feature('busy')
@@ -196,10 +215,10 @@ describe('a self-planning run', () => {
       return listAfter(ctx, featureId, 0).filter((e) => e.type === 'session.self_plan_ended')
     }
 
-    it('says the plan is complete when the tickets step is done for the lap', async () => {
+    it('says the plan is complete when the run ended by asking the human for the yes', async () => {
       const f = await feature('done')
       const run = await launch(f.id, 'self-plan')
-      ctx.db.update(features).set({ ticketsReadyLap: 1 }).where(eq(features.id, f.id)).run()
+      setWaiting(ctx, f.id, 'Start round 1?')
 
       handlePtyExit(ctx, f, getSessionRow(ctx, run)!, {}, 0)
 
@@ -209,7 +228,7 @@ describe('a self-planning run', () => {
     })
 
     it('says planning stopped short otherwise', async () => {
-      const f = await feature('short', { lap: 2, ticketsReadyLap: 1 })
+      const f = await feature('short')
       const run = await launch(f.id, 'self-plan')
 
       handlePtyExit(ctx, getFeatureRow(ctx, f.id), getSessionRow(ctx, run)!, {}, 1)

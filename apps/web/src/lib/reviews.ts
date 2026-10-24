@@ -15,7 +15,6 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 export interface ReviewArtifacts {
   ticketId: string
   seq: number
-  lap: number
   passKind: 'review' | 'verification'
   reviewMode: 'drive' | 'gates' | null
   reviewVerdict: 'verified' | 'unverified' | null

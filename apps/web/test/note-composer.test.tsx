@@ -62,7 +62,6 @@ const { NoteRow } = await import('../src/components/review/NoteRow')
 const NOTE: TestNote = {
   id: 'note_1',
   featureId: 'ftr_1',
-  lap: 2,
   text: 'the run chip goes grey while burning',
   status: 'open',
   author: 'human',

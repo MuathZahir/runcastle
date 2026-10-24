@@ -1,14 +1,8 @@
 import type { Feature, Project, Ticket, WorkflowDef } from '@runcastle/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
-import { getFeatureRow } from '../src/services/repo'
-import {
-  carryFinding,
-  markFailed,
-  openDefectsAcrossLaps,
-  reportFinding,
-} from '../src/services/review-findings'
-import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
+import { markFailed, reportFinding } from '../src/services/review-findings'
+import { storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { workflowRegistry } from '../src/workflows/registry'
@@ -17,11 +11,10 @@ import { reportWithFixTicket } from './helpers/findings'
 import { seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * The wire the review page's lead card and its "Fix N open defects" button talk
- * to. The findings lifecycle itself is covered at the service seam
- * (`review-findings.test.ts`); what has to be right HERE is the read model the
- * page renders — counts that cannot disagree with the list under them — and that
- * one click really does mint the tickets AND start the burn.
+ * The wire the review page's lead card talks to. The findings lifecycle itself
+ * is covered at the service seam (`review-findings.test.ts`); what has to be
+ * right HERE is the read model the page renders — counts that cannot disagree
+ * with the list under them — and the human's Dismiss.
  *
  * A stubbed ticket-burner keeps sandcastle out of the loop: it leaves the fresh
  * tickets pending, so the feature parks at implementation and the run is
@@ -47,7 +40,7 @@ describe('findings router', () => {
     ctx = await makeTestCtx()
     caller = createCallerFactory(appRouter)(ctx)
     project = seedProject(ctx)
-    feature = seedFeature(ctx, project.id, { phase: 'review' })
+    feature = seedFeature(ctx, project.id, {})
     reviewTicket = storeTickets(ctx, feature.id, [
       {
         title: 'Review the lap',
@@ -142,79 +135,5 @@ describe('findings router', () => {
     expect(dismissed.status).toBe('dismissed')
     const view = await caller.findings.listByFeature({ featureId: feature.id })
     expect(view.summary).toEqual({ found: 1, fixed: 0, open: 0, observations: 0 })
-  })
-
-  it('reopens a carried finding, and refuses one that was never carried', async () => {
-    const parked = report('the toast never dismisses')
-    updateTicket(ctx, parked.fixTicket.id, { status: 'failed' })
-    markFailed(ctx, parked.finding.id, 'could not land')
-    carryFinding(ctx, feature.id, parked.finding.id)
-    expect((await caller.findings.listByFeature({ featureId: feature.id })).summary.open).toBe(0)
-
-    const reopened = await caller.findings.reopen({ findingId: parked.finding.id })
-
-    expect(reopened).toMatchObject({ status: 'open', carriedLap: null })
-    const view = await caller.findings.listByFeature({ featureId: feature.id })
-    expect(view.summary.open).toBe(1)
-    expect(view.carriedFindings).toEqual([])
-    await expect(caller.findings.reopen({ findingId: parked.finding.id })).rejects.toThrow(
-      /only a carried finding/,
-    )
-  })
-
-  it('fixes every open defect in one call: a ticket each on this lap, then a burn', async () => {
-    const failed = report('the save drops the value')
-    updateTicket(ctx, failed.fixTicket.id, { status: 'failed' })
-    markFailed(ctx, failed.finding.id, 'tests still red')
-    for (let index = 2; index <= 8; index += 1) report(`defect ${index}`)
-    // A ninth defect never got a ticket at all — reviews no longer mint them.
-    reportFinding(ctx, { featureId: feature.id, reviewTicket, input: defect('defect 9') })
-    for (const ticket of listTickets(ctx, feature.id)) {
-      if (ticket.status === 'pending') updateTicket(ctx, ticket.id, { status: 'done', commits: ['abc'] })
-    }
-
-    const result = await caller.findings.fixOpenDefects({ featureId: feature.id })
-
-    expect(result.runId).toMatch(/^run/)
-    expect(result.tickets).toHaveLength(2)
-    expect(result.tickets.map((t) => t.title).sort()).toEqual([
-      'defect 9',
-      'the save drops the value',
-    ])
-    // Built mechanically from the finding, blocking on nothing, and stamped
-    // with the lap the burn this click starts runs them in — the one after the
-    // review that found them.
-    expect(result.tickets.find((t) => t.originFindingId === failed.finding.id)).toMatchObject({
-      title: 'the save drops the value',
-      goal: 'Fix: the save drops the value',
-      kind: 'implementation',
-      status: 'pending',
-      lap: feature.lap + 1,
-      blockedBy: [],
-    })
-    expect(result.findings.every((f) => f.status === 'fixing')).toBe(true)
-    // One click, one burn, one lap: the fix burn opens the next one, and the
-    // feature stays in building until a ready declaration moves it on.
-    const after = getFeatureRow(ctx, feature.id)
-    expect(after.phase).toBe('building')
-    expect(after.lap).toBe(feature.lap + 1)
-    // Nothing is open any more, and nothing was minted twice. The summary
-    // counts the lap the feature is ON, which this click just moved forward —
-    // the nine defects stay where the review that found them left them.
-    const view = await caller.findings.listByFeature({ featureId: feature.id })
-    expect(view.findings).toHaveLength(9)
-    expect(openDefectsAcrossLaps(ctx, feature.id)).toEqual([])
-  })
-
-  it('refuses a fix with nothing open, minting no tickets', async () => {
-    const landed = report('the save drops the value')
-    updateTicket(ctx, landed.fixTicket.id, { status: 'done', commits: ['def'] })
-    const before = listTickets(ctx, feature.id).length
-
-    await expect(caller.findings.fixOpenDefects({ featureId: feature.id })).rejects.toThrow(
-      /no open defects/,
-    )
-    expect(listTickets(ctx, feature.id)).toHaveLength(before)
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('review')
   })
 })

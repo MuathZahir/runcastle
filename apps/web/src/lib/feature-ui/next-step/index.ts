@@ -1,46 +1,26 @@
-import { lapWorkTickets, ticketTally } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
-import { hasResumable } from '../internal'
-import { pendingTickets } from '../tickets'
-import { latestRun } from '../sidebar'
-import { resolveBuilding } from './building'
 import { resolveDraft } from './draft'
 export { upNextBasesDiffer } from './draft'
 import { resolveHeadlessRun } from './headless'
-import { resolvePlanning } from './planning'
-import { resolveReview } from './review'
-import { resolveShipped } from './shipped'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'
 
 export * from './chat'
 export * from './types'
 
-export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
-  const { feature, tickets, sessions, runs } = full
-  const live = activeSession(sessions)
-  const resumableChat = hasResumable(sessions, 'chat')
-  const tally = ticketTally(tickets, feature.lap)
-  const failed = lapWorkTickets(tickets, feature.lap).filter((ticket) => ticket.status === 'failed').length
-  const burnable = pendingTickets(tickets)
-  const pending = burnable.length
-  const run = latestRun(runs)
-  const running = run?.status === 'running'
-  const input: ResolverInput = {
-    full,
-    ctx,
-    live,
-    resumableChat,
-    tally,
-    failed,
-    pending,
-    pendingTickets: burnable,
-    run,
-    running,
-  }
+/**
+ * A started feature's step: no per-phase resolver (tickets-and-review-are-tools-not-phases
+ * decision 12) — the status line picks the one primary, and Merge & ship, the one
+ * transition the human makes, joins the row beside it in every state but shipped.
+ */
+const PLAIN: NextStep = { kick: 'NEXT STEP', secondary: [], busy: false }
 
-  // A parked draft and an archived feature are outside the phase pipeline.
+export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
+  const { feature, sessions } = full
+  const input: ResolverInput = { full, ctx, live: activeSession(sessions) }
+
+  // A parked draft and an archived feature are outside the work.
   if (feature.status === 'draft') return resolveDraft(input)
   if (feature.status === 'archived') {
     return {
@@ -54,20 +34,5 @@ export function nextStep(full: FeatureFull, ctx: NextStepContext): NextStep {
   }
 
   // A run with no terminal says so in every state, with Stop as its one control.
-  const headless = resolveHeadlessRun(input)
-  if (headless) return headless
-
-  // One resolver per state (decision 3): the six the pipeline used to need
-  // collapsed with it, and the three planning sub-steps are derived inside
-  // `resolvePlanning` from the artifacts rather than dispatched to from here.
-  switch (feature.phase) {
-    case 'planning':
-      return resolvePlanning(input)
-    case 'building':
-      return resolveBuilding(input)
-    case 'review':
-      return resolveReview(input)
-    case 'shipped':
-      return resolveShipped(input)
-  }
+  return resolveHeadlessRun(input) ?? PLAIN
 }

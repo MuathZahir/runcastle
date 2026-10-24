@@ -5,14 +5,14 @@ import { resolvePluginDir } from '../src/launcher/skills-root'
 
 /**
  * The plan preview is skill content plus one shipped starter file, so the rules
- * are pinned the way `tickets-skill.test` pins the tickets skill: read the
+ * are pinned the way `tickets-skill.test` pins the feature skill: read the
  * shipped files and assert their wording. The starter is also held to the app's
  * theme, because a session in another repo cannot see runcastle's tokens — the
  * starter is the only place it gets them from.
  */
 const skillsDir = (): string => join(resolvePluginDir(), 'skills')
 const read = (...parts: string[]): string => readFileSync(join(skillsDir(), ...parts), 'utf8')
-const starter = (): string => read('ideate', 'references', 'preview-starter.html')
+const starter = (): string => read('feature', 'references', 'preview-starter.html')
 
 /** The body of the first `{ … }` block after `opener`, braces balanced. */
 function blockAfter(text: string, opener: string): string {
@@ -63,7 +63,7 @@ describe('the preview starter', () => {
 
     // The core grounds are declared, so an empty block cannot pass vacuously.
     for (const tokens of [dark, light]) {
-      for (const name of ['canvas', 'surface', 'text', 'accent', 'border', 'phase-spec']) {
+      for (const name of ['canvas', 'surface', 'text', 'accent', 'border']) {
         expect(tokens.has(name), name).toBe(true)
       }
     }
@@ -123,7 +123,7 @@ describe('designed screens in the preview', () => {
   })
 
   it('describes designed-screen entries and blocks that name the component, not markup', () => {
-    const text = read('ideate', 'references', 'preview.md')
+    const text = read('feature', 'references', 'preview.md')
     const section = text.slice(text.indexOf('## Designed screens'), text.indexOf('## Inline only'))
     expect(section).toContain('is **not mocked\nagain**')
     expect(section).toContain('**designed-screen entry**')
@@ -135,11 +135,11 @@ describe('designed screens in the preview', () => {
 })
 
 describe('the design guide', () => {
-  const guide = (): string => read('design', 'SKILL.md')
+  const guide = (): string => read('feature', 'references', 'design.md')
 
-  it('exists with frontmatter and is not an entry skill', async () => {
+  it('is a reference of the feature skill, not an entry skill', async () => {
     const { ENTRY_SKILLS } = await import('../src/launcher/runtimes/skills')
-    expect(guide()).toMatch(/^---\nname: design\ndescription: .+\n/)
+    expect(guide()).toMatch(/^# Design/)
     expect((ENTRY_SKILLS as readonly string[]).includes('design')).toBe(false)
   })
 
@@ -154,29 +154,28 @@ describe('the design guide', () => {
       'RUNCASTLE_DESIGN_PORT',
       '.runcastle/design.json',
       "show_panel({ view: 'design', path })",
-      '`body`, `preview`, `drive` and `details`',
+      '`plan`, `work`, `review`, `details` and `drive`',
       '[Screenshot: <absolute png path>] <their words>',
       '**Tweaks.**',
-      'delete the Tweaks menu',
+      'delete the Tweaks\n   menu',
       '`design: <what>`',
-      'Never commit unapproved work',
-      'Go waits while design work is uncommitted',
-      'Data loading, API calls and behaviour ride tickets',
+      '**Never commit unapproved work.**',
       'Next.js server components',
       'Native mobile has no browser',
     ]) {
       expect(text, part).toContain(part)
     }
+    expect(text).not.toMatch(/\bGo\b/)
   })
 
-  it('is pointed to by ideate, revisit and lead, and a self-planned feature never designs', () => {
-    for (const entry of ['ideate', 'revisit', 'lead']) expect(read(entry, 'SKILL.md')).toContain('../design/SKILL.md')
-    expect(read('ideate', 'SKILL.md')).toContain('A self-planned feature never opens a design')
+  it('is pointed to by the feature skill, and a self-planned feature never designs', () => {
+    expect(read('feature', 'SKILL.md')).toContain('./references/design.md')
+    expect(read('feature', 'references', 'planning-alone.md')).toContain('**No design.** Never open a design')
   })
 })
 
-describe('the preview rules (ideate/references/preview.md)', () => {
-  const rules = (): string => read('ideate', 'references', 'preview.md')
+describe('the preview rules (feature/references/preview.md)', () => {
+  const rules = (): string => read('feature', 'references', 'preview.md')
 
   it('names the one file and the starter it is copied from', () => {
     const text = rules()
@@ -230,54 +229,34 @@ describe('the preview rules (ideate/references/preview.md)', () => {
   })
 })
 
-describe('the ideate skill’s preview step', () => {
-  const skill = (): string => read('ideate', 'SKILL.md')
+describe('the feature skill’s preview step', () => {
+  const rules = (): string => read('feature', 'references', 'preview.md')
 
-  it('sits between locking decisions and completing ideation', () => {
-    const text = skill()
-    const lock = text.indexOf('## 2. Lock decisions incrementally')
-    const preview = text.indexOf('## 3. Draw the preview, then wait for the human to look')
-    const complete = text.indexOf('## 4. Complete ideation')
-    expect(lock).toBeGreaterThanOrEqual(0)
-    expect(preview).toBeGreaterThan(lock)
-    expect(complete).toBeGreaterThan(preview)
+  it("draws the preview and gets the human's yes before the first round", () => {
+    const skill = read('feature', 'SKILL.md')
+    const yes = skill.slice(skill.indexOf("## The human's yes"), skill.indexOf('## Review is your call'))
+    expect(yes).toContain('`./references/preview.md`')
+    expect(yes).toContain('`./references/preview-starter.html`')
+    expect(yes).toContain("get the human's **explicit yes in chat**")
   })
 
-  it('draws from the starter, checks every decision, waits, redraws on a correction', () => {
-    const step = skill().slice(skill().indexOf('## 3. Draw the preview'), skill().indexOf('## 4. Complete ideation'))
-    expect(step).toContain('**The preview is what the human confirms shared understanding on.**')
-    expect(step).toContain('`./references/preview.md`')
-    expect(step).toContain('`./references/preview-starter.html`')
-    expect(step).toContain('Every decision appears by its number and title.')
-    expect(step).toContain('**Overview**')
-    expect(step).toContain('Then stop and wait for their answer.')
+  it('shows it in the Plan view, waits, and redraws on a correction', () => {
+    const step = rules().slice(rules().indexOf('## Show it, then get the yes'), rules().indexOf('## The file'))
+    expect(step).toContain("`show_panel({ view: 'plan' })`")
+    expect(step).toContain('Then wait for the answer.')
     expect(step).toContain('**A correction is a decision edit plus a redraw.**')
-    expect(step).toContain('**Only after the human confirms**, complete ideation')
     expect(step).toContain('**Never skip the preview on your own judgement**')
     expect(step).toContain('**If the human says to skip it**, write no file')
   })
 
-  it('carries the redraw rule, and section 1 hands confirmation to the preview', () => {
-    const text = skill()
-    expect(text).toMatch(/edit to `decisions\.md`.*updates `preview\.html` in the same move/)
-    expect(text).toContain('That confirmation happens on the preview (§3)')
+  it('carries the redraw rule, and grilling hands the redraw to the preview', () => {
+    expect(rules()).toMatch(/edit to `decisions\.md` updates `preview\.html` in\s+the same move/)
+    expect(read('feature', 'references', 'grilling.md')).toMatch(/a `preview\.html` exists, redraw the/)
   })
 })
 
-describe('the revisit skill and the preview', () => {
-  const skill = (): string => read('revisit', 'SKILL.md')
-
-  it('redraws the preview with a decision edit in an ordinary revisit at planning', () => {
-    const text = skill()
-    const docs = text.slice(text.indexOf('3. **Docs.**'), text.indexOf('4. **Ticket surgery.**'))
-    expect(docs).toContain('at `planning`')
-    expect(docs).toContain('update `preview.html` in the same move as the decisions edit')
-    expect(docs).toContain('`../ideate/references/preview.md`')
-  })
-})
-
-describe('the tickets skill and the preview', () => {
-  const skill = (): string => read('tickets', 'SKILL.md')
+describe('the tickets reference and the preview', () => {
+  const skill = (): string => read('feature', 'references', 'tickets.md')
 
   it('points a screen-building ticket at one named screen block, never the file', () => {
     const text = skill()
@@ -286,7 +265,7 @@ describe('the tickets skill and the preview', () => {
     expect(block).toContain('**read only the lines between them**')
     expect(block).toContain('**is not the implementation**')
     expect(block).toContain('never copy the mock\'s markup')
-    expect(block).toContain('**Never tell an agent to read the whole file**')
+    expect(block).toContain('**Never tell a worker to read the whole file.**')
     expect(block).toContain('A ticket with no screen does not mention the preview.')
     expect(block).toContain('A **designed-screen block** holds no mock')
   })

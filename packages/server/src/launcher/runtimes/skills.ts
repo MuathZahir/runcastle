@@ -6,11 +6,11 @@ import type { AgentRuntime, SessionKind } from '@runcastle/core'
  *
  * The pack itself is a single content source (`packages/skills/packs/runcastle`)
  * rendered into whatever format the runtime discovers, but the *invocation* is
- * spelled by the CLI: Claude Code opens a plugin skill as `/runcastle:ideate`,
+ * spelled by the CLI: Claude Code opens a plugin skill as `/runcastle:feature`,
  * where Codex discovers `.agents/skills/<name>/SKILL.md` and opens it as
- * `$ideate`. Both the injected system prompts (`artifacts.ts`) and the kickoff
+ * `$feature`. Both the injected system prompts (`artifacts.ts`) and the kickoff
  * lines typed into a fresh terminal have to say it the session's way — a Codex
- * session told to invoke `/runcastle:ideate` simply does nothing.
+ * session told to invoke `/runcastle:feature` simply does nothing.
  */
 
 /** The Claude Code plugin pack these skills ship as. */
@@ -28,8 +28,8 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
 
 /**
  * Every SESSION-ENTRY skill in the pack — the ones whose whole procedure belongs
- * to one session kind. The chained/reached skills (`spec`, `tickets`,
- * `code-review`) are deliberately not here: any session may reach them.
+ * to one session kind. The reached skill (`code-review`) is deliberately not
+ * here: any session may reach it.
  *
  * These used to carry `disable-model-invocation: true` so no session could pick
  * up another kind's procedure by description-matching. Claude Code now hard-blocks
@@ -41,24 +41,15 @@ export function skillRef(runtime: AgentRuntime, skill: string): string {
  * skill that is not its own ({@link entrySkillsFor} → `entrySkillDenyRules` in
  * artifacts.ts).
  */
-export const ENTRY_SKILLS = [
-  'ideate',
-  'qa',
-  'revisit',
-  'lead',
-  'project',
-  'prepare',
-] as const
+export const ENTRY_SKILLS = ['feature', 'qa', 'project', 'prepare'] as const
 export type EntrySkill = (typeof ENTRY_SKILLS)[number]
 
 /**
  * The entry skill(s) a session of `kind` may open — everything else in
  * {@link ENTRY_SKILLS} is denied to it.
  *
- * - `chat` gets all three of its openings (see {@link chatKickoffFor}): the one
- *   conversation persists across feature states, so a chat that opened on
- *   `ideate` can legitimately be resumed into `revisit` territory, and into
- *   `lead` once Go is given.
+ * - `chat` gets `feature`: every feature chat is the feature's lead from its
+ *   first message (tickets-and-review-are-tools-not-phases decision 4).
  * - `qa` is allowed nowhere: no live kind opens on it (the qa session kind was
  *   retired with one-chat-per-feature), which matches its pre-flip reachability
  *   of exactly zero.
@@ -70,7 +61,7 @@ export type EntrySkill = (typeof ENTRY_SKILLS)[number]
 export function entrySkillsFor(kind?: SessionKind): readonly EntrySkill[] {
   switch (kind) {
     case 'chat':
-      return ['ideate', 'revisit', 'lead']
+      return ['feature']
     case 'prepare':
       return ['prepare']
     case 'project':
@@ -94,55 +85,32 @@ export function sideKickoffFor(): string {
   return (
     'Proceed as a side session: you are a side session of this feature, opened beside its main ' +
     'chat, and you do not carry on the main chat\'s task. You may do anything the main chat does — ' +
-    'read, write the spec and decisions, emit and edit tickets, report planning steps, resolve ' +
-    'findings, park drafts, edit code after Go — except run rounds: the main chat is the lead and ' +
-    'alone dispatches, stops and declares ready. The folder is shared with the main chat, so stage ' +
-    'only your own files (`git add <paths>`, never `-A`). Wait for the human\'s ask.'
+    'read, write the spec and decisions, emit and edit tickets, resolve findings, park drafts, ' +
+    'edit code — except run rounds: the main chat alone dispatches, stops and declares ready. ' +
+    'The folder is shared with the main chat, so stage only your own files (`git add <paths>`, ' +
+    'never `-A`). Wait for the human\'s ask.'
   )
 }
 
-/** Which skill the feature's one chat opens on — see `chatOpening` in artifacts.ts. */
-export type ChatOpening = 'ideate' | 'revisit' | 'lead'
+/** The pack's one skill for a feature's chat — its lead from the first message. */
+export const FEATURE_SKILL = 'feature'
 
 /**
- * The chat's opening move, spelled for `runtime`.
- *
- * The one chat has THREE of them, because one kind now covers the whole feature:
- * a feature that has not produced a decision, a spec or a ticket yet opens on
- * `ideate` — the grilling that creates them — a planning feature with a record
- * opens on `revisit`, amending it, and a feature past Go opens on `lead`, running
- * rounds of workers (`the-feature-lead-runs-rounds`). Which one is a question about the
- * feature's artifacts, so only a caller holding the feature can answer it; the
- * per-kind table below can hold just one line and holds the revisit form, while
- * the launcher composes the real line (`chatKickoffHeader`) with the opening the
- * artifacts call for and the system prompt names.
+ * The chat's opening move, spelled for `runtime`. One line for every feature
+ * chat, whatever the feature's state: every chat on a feature is its lead from
+ * its first message, with one brief and one skill
+ * (tickets-and-review-are-tools-not-phases decision 4).
  */
-export function chatKickoffFor(runtime: AgentRuntime, opening: ChatOpening): string {
-  switch (opening) {
-    case 'ideate':
-      return (
-        `Proceed with your task: invoke the ${skillRef(runtime, 'ideate')} skill and drive this ` +
-        "feature's ideation to completion."
-      )
-    case 'revisit':
-      return (
-        `Proceed with your task: invoke the ${skillRef(runtime, 'revisit')} skill and continue this ` +
-        "feature's conversation."
-      )
-    case 'lead':
-      return (
-        `Proceed as the feature's lead: invoke ${skillRef(runtime, 'lead')} and run this ` +
-        'feature in rounds until it is ready for the human to drive.'
-      )
-  }
+export function chatKickoffFor(runtime: AgentRuntime): string {
+  return `Proceed with your task: invoke ${skillRef(runtime, FEATURE_SKILL)} and continue this feature.`
 }
 
 /**
- * The heading of the ideate skill's section for a session with nobody to answer
- * it (`features-plan-themselves`). Named verbatim by both halves of a
- * self-planning briefing, so the skill's heading and the pointer to it agree.
+ * The feature skill's reference file for a session with nobody to answer it
+ * (`features-plan-themselves`). Named verbatim by both halves of a
+ * self-planning briefing, so the file and the pointer to it agree.
  */
-export const PLANNING_WITHOUT_A_HUMAN = 'Planning without a human'
+export const PLANNING_ALONE = 'references/planning-alone.md'
 
 /**
  * The heading of the project skill's section for the orchestrator
@@ -155,28 +123,28 @@ export const ORCHESTRATING = 'Orchestrating'
 /**
  * The opening of a self-planning run's prompt, spelled for `runtime` — the
  * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
- * on the other end, so the line says so before anything else and sends the
- * session straight through to tickets rather than stopping to confirm.
+ * on the other end, so the line says so before anything else, plans without
+ * building, and ends by asking for the human's yes.
  */
 export function selfPlanKickoffFor(runtime: AgentRuntime): string {
   return (
-    'Proceed with your task: no human is present and nobody will reply to you. Invoke the ' +
-    `${skillRef(runtime, 'ideate')} skill and follow its "${PLANNING_WITHOUT_A_HUMAN}" section ` +
-    "to plan this feature by yourself, through the preview, the spec and the tickets, in this one run."
+    'Proceed with your task: no human is present and nobody will reply to you. Invoke ' +
+    `${skillRef(runtime, FEATURE_SKILL)} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
+    "by yourself in this one run: plan it, do not build it, and end by asking for the human's yes."
   )
 }
 
 /**
  * The opening of a `relay` run's prompt, spelled for `runtime`
  * (`whole-cuts-plan-themselves` decision 16): the orchestrator's message to the
- * feature's planning conversation, applied headless by the revisit skill's
- * change-handling rules, with the record saying who decided.
+ * feature's lead, applied headless by the feature skill's change-handling
+ * rules, with the record saying who decided.
  */
 export function relayKickoffFor(runtime: AgentRuntime, message: string): string {
   return (
     'Proceed with your task: no human is present and nobody will reply to you. The message below ' +
-    `is from the project's orchestrator, not the human. Invoke the ${skillRef(runtime, 'revisit')} ` +
-    'skill and apply it by its change-handling rules: every decision it changes keeps or gains ' +
+    `is from the project's orchestrator, not the human. Invoke ${skillRef(runtime, FEATURE_SKILL)} ` +
+    'and apply it by its change-handling rules: every decision it changes keeps or gains ' +
     'its **Assumed.** line and adds **Changed by the orchestrator:** <why>, unless the message ' +
     "says it relays the human's own answer, in which case remove both marks from that decision. " +
     'Redraw the preview, reconcile the spec and the tickets, and do not wait for anyone. ' +
@@ -188,7 +156,7 @@ export function relayKickoffFor(runtime: AgentRuntime, message: string): string 
  * The per-kind kickoff line typed into a freshly-live session so no session
  * starts dead. Each line names the same opening skill its appended system prompt
  * does (`renderSystemPrompt` in artifacts.ts) so the injected line and the brief
- * agree on the first move. A per-purpose revisit briefing arrives as
+ * agree on the first move. A per-purpose briefing (relay, conflict) arrives as
  * `launchSession`'s own `kickoffLine`, not from this table.
  *
  * Built per runtime rather than written out once, because the only thing that
@@ -198,9 +166,9 @@ export function relayKickoffFor(runtime: AgentRuntime, message: string): string 
 export function kickoffLinesFor(runtime: AgentRuntime): Record<SessionKind, string> {
   const skill = (name: string): string => skillRef(runtime, name)
   return {
-    // State-unknown default: a chat launched through `launchSession` gets the
-    // composed line instead, which picks between this feature's two openings.
-    chat: chatKickoffFor(runtime, 'revisit'),
+    // A chat launched through `launchSession` gets this line followed by the
+    // feature's state (`chatKickoffHeader`).
+    chat: chatKickoffFor(runtime),
     // The method moved out of the prompt and into a skill, so this names it like
     // every other entry line does. The rest of the line is the opening MOVE — a
     // headless run already measured what it could, so the useful first thing is

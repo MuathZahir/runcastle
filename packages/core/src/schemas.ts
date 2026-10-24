@@ -12,24 +12,6 @@ import { ReviewGateRun } from './review-gates'
 
 // --- enums -----------------------------------------------------------------
 
-export const Phase = z.enum(['planning', 'building', 'review', 'shipped'])
-export type Phase = z.infer<typeof Phase>
-
-/**
- * Read a phase from a value this build may not recognize — a row written by a
- * newer server, a hand-edited column, a corrupt import. Returns null instead of
- * throwing so callers can degrade to a readable "unrecognized" state.
- *
- * Every downstream reader types `phase` as `Phase` and switches on it
- * exhaustively, which means ONE bad value falls through EVERY switch at once —
- * on the web that rendered the whole app as a blank page (findings F19). Parsing
- * at the boundary is what turns that into one contained, named failure.
- */
-export function parsePhase(value: unknown): Phase | null {
-  const parsed = Phase.safeParse(value)
-  return parsed.success ? parsed.data : null
-}
-
 /**
  * `cancelled` is a terminal state set by a human/agent (revisit sessions,
  * `cancel_ticket`) — never by the burner. The scheduler skips cancelled tickets
@@ -203,19 +185,19 @@ export const FindingSeverity = z.enum(['high', 'medium', 'low'])
 export type FindingSeverity = z.infer<typeof FindingSeverity>
 
 /**
- * `carried` mirrors the test-note status of the same name: a defect a later lap
- * looked at and deliberately parked. It is out of the open count and out of the
- * lap's obligations, and only the human's reopen returns it to `open`.
+ * A finding stays `open` until it is resolved: its fix ticket drives it through
+ * `fixing` to `fixed` or `failed`, or the agent marks it addressed (`fixed`) or
+ * `dismissed`.
  */
-export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed', 'carried'])
+export const FindingStatus = z.enum(['open', 'fixing', 'fixed', 'failed', 'dismissed'])
 export type FindingStatus = z.infer<typeof FindingStatus>
 
 export const FindingOpenReason = z.enum(['over-cap', 'fix-failed', 'verification'])
 export type FindingOpenReason = z.infer<typeof FindingOpenReason>
 
 /**
- * How a `fixed` defect got there: its own fix ticket landed, or a later lap's
- * session attested that the lap's work already addressed it. Both are fixed —
+ * How a `fixed` defect got there: its own fix ticket landed, or the feature's
+ * agent attested that later work already addressed it. Both are fixed —
  * the counts deliberately do not distinguish them — but a burner-verified fix
  * and a session's word are different classes of evidence, so the row keeps
  * which one it was and the UI can say so.
@@ -252,17 +234,14 @@ export type ReviewFindingInput = z.infer<typeof ReviewFindingInput>
 export const ReviewFinding = ReviewFindingInput.safeExtend({
   id: z.string(),
   featureId: z.string(),
-  lap: z.number(),
   reviewTicketId: z.string(),
   reproStep: z.string(),
   status: FindingStatus,
   openReason: FindingOpenReason.nullable(),
   failureReason: z.string().nullable(),
   fixTicketId: z.string().nullable(),
-  /** The lap a `carried` defect was parked into; null for every other status. */
-  carriedLap: z.number().nullable(),
   resolvedBy: FindingResolvedBy.nullable(),
-  /** A carry's rationale or a session attestation's evidence; null otherwise. */
+  /** A dismissal's rationale or a session attestation's evidence; null otherwise. */
   resolutionNote: z.string().nullable(),
   createdAt: z.number(),
 })
@@ -304,14 +283,6 @@ export const Ticket = TicketInput.extend({
   featureId: z.string(),
   seq: z.number(),
   status: TicketStatus,
-  /**
-   * The lap this ticket burns in (ADR-0010 / SPEC §15.1). Stamped from
-   * `feature.lap` at store time — `TicketInput` deliberately has no `lap`,
-   * because sessions never choose it — and carried forward by the Burn click
-   * that opens the next lap, since an Iterate session writes its fix tickets
-   * before the click that runs them.
-   */
-  lap: z.number(),
   commits: z.array(z.string()),
   /** Feature-branch head observed when a review pass completed. */
   reviewedCommit: z.string().nullable().default(null),
@@ -370,10 +341,7 @@ export const TestNoteAuthor = z.enum(['human', 'agent'])
 export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
 
 /**
- * One observation captured during a feature's review phase. Notes are the
- * source of truth; `docs/features/<slug>/test-notes.md` is regenerated from
- * them on every change. `lap` is stamped from the feature's lap at capture —
- * callers never choose it, mirroring tickets. `ticketId` is set exactly when
+ * One observation jotted during a test drive. `ticketId` is set exactly when
  * `status` is `promoted`.
  *
  * A note captured from the walkthrough annotation player additionally carries
@@ -384,13 +352,11 @@ export type TestNoteAuthor = z.infer<typeof TestNoteAuthor>
 export const TestNote = z.object({
   id: z.string(),
   featureId: z.string(),
-  lap: z.number(),
   text: z.string(),
   status: TestNoteStatus,
   author: TestNoteAuthor.default('human'),
   ticketId: z.string().optional(),
   reviewTicketId: z.string().optional(),
-  carriedLap: z.number().optional(),
   videoTimestamp: z.number().optional(),
   screenshotUrl: z.string().optional(),
   /** When "Send to agent" delivered the note to the lead; unset while unsent. */
@@ -605,23 +571,6 @@ export const Feature = z.object({
    * stays as a historical artifact. Unset on features created before drafts.
    */
   brief: z.string().optional(),
-  /**
-   * Which trip round the pipeline the feature is on (ADR-0010 / SPEC §15.1).
-   * Starts at 1; a Burn from review opens the next one, and nothing else moves
-   * it — a restarted burn resumes the lap its dead run was running. Tickets,
-   * sessions and events are stamped with it, and the lap trail is derived by
-   * grouping on those stamps — there is no laps table.
-   */
-  lap: z.number(),
-  /**
-   * The lap whose tickets the talk session declared finished (via
-   * `complete_phase({phase:"tickets"})`). The first burn out of the `tickets`
-   * phase waits for this to equal {@link lap}, so a Burn click cannot land
-   * while the session is still emitting and enriching; null until a session
-   * completes a tickets phase, and stale-by-construction on the next lap.
-   */
-  ticketsReadyLap: z.number().nullable(),
-  phase: Phase,
   branch: z.string(),
   /**
    * The branch `branch` was forked from at creation, and the branch it merges
@@ -651,14 +600,13 @@ export type Feature = z.infer<typeof Feature>
 
 /**
  * One "Ready for you" declaration (decision 9): the scenario the human is asked
- * to drive, what to test in it, and the round it follows (null before any).
+ * to drive, and the round it follows (null before any).
  */
 export const ReadyDeclaration = z.object({
   id: z.string(),
   featureId: z.string(),
   runId: z.string().nullable(),
   scenario: z.string(),
-  whatToTest: z.string(),
   createdAt: z.number(),
 })
 export type ReadyDeclaration = z.infer<typeof ReadyDeclaration>
@@ -694,8 +642,6 @@ export const SessionRow = z.object({
   featureId: z.string().optional(),
   /** Set on project-scoped sessions only; feature sessions derive it via the feature. */
   projectId: z.string().optional(),
-  /** The feature lap when this session was created. */
-  lap: z.number(),
   kind: SessionKind,
   /** Why this session was opened, when `kind` cannot say it — see {@link SessionPurpose}. */
   purpose: SessionPurpose.optional(),

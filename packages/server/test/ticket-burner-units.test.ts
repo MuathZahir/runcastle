@@ -107,7 +107,6 @@ const feature: Feature = {
   slug: 'my-feature',
   title: 'My Feature',
   oneLiner: 'does a thing',
-  phase: 'building',
   branch: 'feature/my-feature',
   status: 'active',
   createdAt: 0,

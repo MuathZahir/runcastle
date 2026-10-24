@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -28,7 +28,7 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { rowToRun } from '../src/services/repo'
-import { addNote, listByFeature as listNotes, promoteNote } from '../src/services/test-notes'
+import { addNote, listByFeature as listNotes } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets, updateTicket } from '../src/services/tickets'
 import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
@@ -95,7 +95,7 @@ describe('the review agent wires', () => {
     repo = mkTmp('rc-review-')
     await initRepo(repo)
     project = await openProject(ctx, repo)
-    feature = seedFeature(ctx, project.id, { slug: 'reviewed', phase: 'building' })
+    feature = seedFeature(ctx, project.id, { slug: 'reviewed' })
     await createFeatureBranch(project, feature.slug, 'main')
     // A review ticket only ever burns inside its own run, so that run is the
     // identity every call below arrives with.
@@ -421,39 +421,27 @@ describe('the review agent wires', () => {
 
   // --- the notes wire -------------------------------------------------------
 
-  it('appends an agent-attributed note to the notes, the doc and the event stream', () => {
+  it('appends an agent-attributed note to the notes and the event stream', () => {
     const note = toolAddTestNote(ctx, { runId: run.id }, { text: 'the empty state renders twice' })
 
     expect(note).toMatchObject({
       author: 'agent',
       status: 'open',
-      lap: 1,
       text: 'the empty state renders twice',
     })
     expect(listNotes(ctx, feature.id)).toEqual([note])
-    expect(
-      readFileSync(join(repo, 'docs', 'features', 'reviewed', 'test-notes.md'), 'utf8'),
-    ).toContain('- [ ] the empty state renders twice')
+    expect(existsSync(join(repo, 'docs', 'features', 'reviewed', 'test-notes.md'))).toBe(false)
 
     const added = events().find((e) => e.type === 'note.added')
     expect(added?.data).toMatchObject({ noteId: note.id, author: 'agent' })
   })
 
-  it('leaves the human note flow alone and promotes an agent note unchanged', () => {
+  it('keeps the human note flow alone beside an agent note', () => {
     const human = addNote(ctx, feature.id, 'the header wraps at 400px')
     expect(human.author).toBe('human')
 
     const agent = toolAddTestNote(ctx, { runId: run.id }, { text: 'saving twice duplicates a row' })
-    const { note, ticket } = promoteNote(ctx, agent.id)
-
-    // Attribution survives promotion, and the fix ticket is the ordinary one.
-    expect(note).toMatchObject({ author: 'agent', status: 'promoted', ticketId: ticket.id })
-    expect(ticket).toMatchObject({
-      title: 'saving twice duplicates a row',
-      status: 'pending',
-      kind: 'implementation',
-    })
-    expect(listTickets(ctx, feature.id)).toHaveLength(1)
+    expect(agent.author).toBe('agent')
     expect(listNotes(ctx, feature.id).map((n) => n.author)).toEqual(['human', 'agent'])
   })
 })

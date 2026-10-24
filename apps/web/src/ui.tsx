@@ -44,8 +44,6 @@ export {
   FindingSeverityChip,
   NoteAuthorChip,
   OrchestratedTag,
-  PhaseDot,
-  PhaseTag,
   RunStatusChip,
   SessionStatusDot,
   StatusDot,

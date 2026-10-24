@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePhase, Phase, SessionKind, Ticket, TicketInput } from '../src/schemas'
+import { SessionKind, Ticket, TicketInput } from '../src/schemas'
 
 const validTicket = {
   title: 'Add health endpoint',
@@ -80,7 +80,6 @@ describe('Ticket — stored shape', () => {
       featureId: 'feat_xyz789',
       seq: 1,
       status: 'pending',
-      lap: 1,
       commits: [],
     }
     expect(Ticket.safeParse(stored).success).toBe(true)
@@ -100,35 +99,9 @@ describe('Ticket — stored shape', () => {
 })
 
 describe('enums', () => {
-  it('Phase accepts pipeline phases and rejects others', () => {
-    expect(Phase.safeParse('planning').success).toBe(true)
-    expect(Phase.safeParse('shipped').success).toBe(true)
-    expect(Phase.safeParse('bogus').success).toBe(false)
-  })
-
   it('SessionKind no longer accepts the retired waypoint/converge kinds (ADR-0012)', () => {
     expect(SessionKind.options).toEqual(['chat', 'prepare', 'project', 'drive-fix', 'scenario', 'side'])
     expect(SessionKind.safeParse('waypoint').success).toBe(false)
     expect(SessionKind.safeParse('converge').success).toBe(false)
-  })
-})
-
-describe('parsePhase — tolerant read of an unrecognized phase (findings F19)', () => {
-  it('returns the phase for every value the pipeline knows', () => {
-    expect(parsePhase('planning')).toBe('planning')
-    expect(parsePhase('building')).toBe('building')
-    expect(parsePhase('shipped')).toBe('shipped')
-  })
-
-  it('returns null for a phase name this build does not know', () => {
-    expect(parsePhase('bogus')).toBeNull()
-    expect(parsePhase('polish')).toBeNull()
-  })
-
-  it('returns null rather than throwing for a non-string value', () => {
-    expect(parsePhase(undefined)).toBeNull()
-    expect(parsePhase(null)).toBeNull()
-    expect(parsePhase(7)).toBeNull()
-    expect(parsePhase({ phase: 'planning' })).toBeNull()
   })
 })

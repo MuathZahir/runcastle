@@ -87,7 +87,6 @@ const feature: Feature = {
   slug: 'demo',
   title: 'Demo',
   oneLiner: 'x',
-  phase: 'building',
   branch: 'feature/demo',
   baseBranch: 'main',
   status: 'active',
@@ -524,7 +523,7 @@ describe('a retried review over the real store', () => {
   it('refreshes the one finding and burns no fix ticket in the run', async () => {
     const ctx = await makeTestCtx()
     const proj = seedProject(ctx)
-    const feat = seedFeature(ctx, proj.id, { phase: 'building' })
+    const feat = seedFeature(ctx, proj.id, {})
     const input = (title: string, over = {}) => ({
       title, goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [], ...over,
     })
@@ -1371,13 +1370,13 @@ describe('review declaration resolution', () => {
 
   it('puts the server-owned unverified headline above the agent prose', () => {
     expect(
-      composeReviewDigest(3, {
+      composeReviewDigest({
         reviewMode: 'drive',
         reviewVerdict: 'unverified',
         reason: 'The browser could not attach.',
       }, 'Agent prose that used to become the headline.'),
     ).toBe(
-      'Lap 3 · drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
+      'drive mode · DRIVE FAILED · nothing verified — The browser could not attach.\n\n' +
       'Agent prose that used to become the headline.',
     )
   })
@@ -1387,12 +1386,11 @@ describe('review declaration resolution', () => {
   it('names no mode in the headline when the pass declared none', () => {
     expect(
       composeReviewDigest(
-        2,
         { reviewVerdict: 'unverified', reason: 'Review declaration missing or unparseable.' },
         undefined,
       ),
     ).toBe(
-      'Lap 2 · mode unrecorded · NO DECLARATION · nothing verified — ' +
+      'mode unrecorded · NO DECLARATION · nothing verified — ' +
       'Review declaration missing or unparseable.',
     )
   })
@@ -1400,7 +1398,6 @@ describe('review declaration resolution', () => {
   it('leaves a verified pass’s digest exactly as the agent wrote it', () => {
     expect(
       composeReviewDigest(
-        1,
         { reviewMode: 'gates', reviewVerdict: 'verified', reason: '' },
         'Every gate ran green.',
       ),
@@ -1937,7 +1934,7 @@ describe.skipIf(!PTY)('releasing the drive a review agent left behind', () => {
     await g.add(['README.md'])
     await g.commit('initial commit')
     proj = await openProject(ctx, repo)
-    feat = seedFeature(ctx, proj.id, { slug: 'reviewed', phase: 'building' })
+    feat = seedFeature(ctx, proj.id, { slug: 'reviewed' })
     await createFeatureBranch(proj, feat.slug, 'main')
     ctx.db
       .insert(runs)
@@ -2019,7 +2016,7 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('stays in building after the run and keeps the review digest in the run digest', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning' }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {
@@ -2038,7 +2035,6 @@ describe('a run containing a review ticket still lands the feature in review', (
       await new Promise((r) => setTimeout(r, 5))
     }
 
-    expect(getFeatureRow(ctx, featureId).phase).toBe('building')
     // A review ticket lands `done` with no commits — its deliverable is notes.
     const reviewTicket = listByFeature(ctx, featureId).find((t) => t.kind === 'review')
     expect(reviewTicket).toMatchObject({ status: 'done', commits: [] })
@@ -2047,7 +2043,7 @@ describe('a run containing a review ticket still lands the feature in review', (
   })
 
   it('appends no verification pass to a round with one trivial ticket and no review', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [{
       title: 'trivial change', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [],
     }])
@@ -2113,7 +2109,7 @@ describe('the burner mints its verification pass into a lap that already has a r
   })
 
   it('stores the second review ticket untouched, and G3 still reads satisfied', async () => {
-    const featureId = seedFeature(ctx, seedProject(ctx).id, { phase: 'planning', lap: 2 }).id
+    const featureId = seedFeature(ctx, seedProject(ctx).id, {}).id
     storeTickets(ctx, featureId, [
       { title: 'build it', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: ['s'], blockedBy: [] },
       {
@@ -2146,7 +2142,6 @@ describe('the burner mints its verification pass into a lap that already has a r
       kind: 'review',
       passKind: 'verification',
       // The feature's own lap: a burn from planning runs the lap it is on.
-      lap: 2,
       status: 'done',
       title: 'Verify the fixes that landed',
     })

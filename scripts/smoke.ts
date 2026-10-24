@@ -6,7 +6,7 @@
  * burn on trivial tickets:
  *
  *   git target repo → project.open → feature.create → fabricate ideation session
- *   → hooks/session-start → MCP emit_tickets + complete_phase → feature.burn
+ *   → hooks/session-start → MCP emit_tickets → dispatch_round
  *   (noSandbox, smoke model via runOverride) → poll run/events → testDrive
  *   start/stop → merge.
  *
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
     oneLiner: 'add a HEALTH.md file to prove the pipeline works end to end',
   })
   assert(feature.slug === 'health-check-file', `slug is health-check-file (got ${feature.slug})`)
-  assert(feature.phase === 'planning', 'phase planning')
+  assert(feature.status === 'active', 'status active')
   assert(feature.branch === 'feature/health-check-file', 'branch feature/health-check-file')
   const branches = git(TARGET, 'branch', '--list', 'feature/health-check-file')
   assert(branches.includes('feature/health-check-file'), 'real feature branch created')
@@ -258,8 +258,8 @@ async function main(): Promise<void> {
   assert(sess?.ccSessionId === 'cc-smoke-001', 'ccSessionId stored')
   record('hooks/session-start', 'additionalContext (nested) + session live + ccSessionId stored')
 
-  // (6) MCP emit_tickets + complete_phase --------------------------------------
-  banner('STEP 6 — MCP initialize + emit_tickets(2) + complete_phase (ideation→tickets)')
+  // (6) MCP emit_tickets --------------------------------------
+  banner('STEP 6 — MCP initialize + emit_tickets(2)')
   const init = await mcp(sessionId, {
     jsonrpc: '2.0',
     id: 1,
@@ -307,22 +307,13 @@ async function main(): Promise<void> {
   )
   record('MCP emit_tickets', `stored 2 tickets (one ${Math.round(fatContext.length / 1024)}KB context); seq2 blockedBy=[1]`)
 
-  const complete = await mcpToolCall(sessionId, 'complete_phase', { phase: 'ideation' })
-  assert(!complete.isError, 'complete_phase not an error')
-  assert(complete.data.ok === true, `complete_phase ok (got ${JSON.stringify(complete.data)})`)
-  assert(complete.data.nextPhase === 'planning', `still planning (got ${complete.data.nextPhase})`)
-  const afterComplete = await trpc.feature.get({ id: featureId })
-  assert(afterComplete.feature.phase === 'planning', 'feature remains in planning')
-  record('MCP complete_phase', 'ideation step recorded; the feature stays in planning')
-
-  // (7) feature.go + MCP dispatch_round — REAL noSandbox claude runs on the host
-  banner('STEP 7 — tRPC feature.go, then the lead\'s dispatch_round (RUNCASTLE_SANDBOX=noSandbox)')
+  // (7) MCP dispatch_round, no Go — REAL noSandbox claude runs on the host
+  banner('STEP 7 — the lead\'s dispatch_round, with no Go (RUNCASTLE_SANDBOX=noSandbox)')
   process.env.RUNCASTLE_SANDBOX = 'noSandbox'
   log(`  dispatching with sandbox=noSandbox model=${smokeModel} (real host claude — trivial tickets)`)
   // A round takes no per-run model, so the smoke model is the project's own
   // override, which wins the model chain for the round's agents.
   await trpc.settings.update({ projectId: project.id, key: 'model', value: smokeModel })
-  await trpc.feature.go({ featureId })
   const dispatched = await mcpToolCall(sessionId, 'dispatch_round', { seqs: [1, 2] })
   assert(!dispatched.isError, `dispatch_round not an error (got ${JSON.stringify(dispatched.data)})`)
   const runId: string = dispatched.data.runId
@@ -378,12 +369,14 @@ async function main(): Promise<void> {
 
   const ready = await mcpToolCall(sessionId, 'declare_ready', {
     scenario: 'HEALTH.md',
-    whatToTest: 'Open HEALTH.md on the feature branch; it should say ok and checked.',
   })
   assert(!ready.isError, `declare_ready not an error (got ${JSON.stringify(ready.data)})`)
   const afterReady = await trpc.feature.get({ id: featureId })
-  assert(afterReady.feature.phase === 'review', `declare_ready moved the feature to review (got ${afterReady.feature.phase})`)
-  record('MCP declare_ready', 'the lead declared it ready; the feature is in review')
+  assert(
+    afterReady.feature.waitingReason === 'ready to test',
+    `declare_ready put the feature under Needs you (got ${afterReady.feature.waitingReason})`,
+  )
+  record('MCP declare_ready', 'the lead declared it ready; the feature waits on the human')
 
   // (8) testDrive start/stop ---------------------------------------------------
   banner('STEP 8 — tRPC feature.testDrive start → stop (with a live talk worktree)')
@@ -399,17 +392,17 @@ async function main(): Promise<void> {
   record('feature.testDrive', 'start switched to feature branch, stop restored main')
 
   // (9) merge ------------------------------------------------------------------
-  banner('STEP 9 — tRPC feature.merge → phase shipped + HEALTH.md on main')
+  banner('STEP 9 — tRPC feature.merge → status shipped + HEALTH.md on main')
   const merge = await trpc.feature.merge({ featureId })
   assert(merge.ok === true, `merge ok (conflict=${merge.conflict})`)
   assert(!merge.conflict, 'no conflict')
   const shipped = await trpc.feature.get({ id: featureId })
-  assert(shipped.feature.phase === 'shipped', `feature phase shipped (got ${shipped.feature.phase})`)
+  assert(shipped.feature.status === 'shipped', `feature status shipped (got ${shipped.feature.status})`)
   assert(git(TARGET, 'rev-parse', '--abbrev-ref', 'HEAD') === 'main', 'still on main after merge')
   const healthOnMain = git(TARGET, 'show', 'main:HEALTH.md')
   assert(/\bok\b/.test(healthOnMain) && /\bchecked\b/.test(healthOnMain), 'HEALTH.md on main contains ok + checked')
   assert(existsSync(join(TARGET, 'HEALTH.md')), 'HEALTH.md present in main working tree after merge')
-  record('feature.merge', `phase shipped; HEALTH.md on main = ${JSON.stringify(healthOnMain)}`)
+  record('feature.merge', `status shipped; HEALTH.md on main = ${JSON.stringify(healthOnMain)}`)
 }
 
 // --- summary table ------------------------------------------------------------

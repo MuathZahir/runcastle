@@ -96,7 +96,6 @@ describe('draft features', () => {
       expect(f.brief).toBe('the reasoning we worked out before deferring this')
       // The branch NAME is recorded even though nothing was cut (decision 2).
       expect(f.branch).toBe('feature/parked-idea')
-      expect(f.phase).toBe('planning')
 
       const g = simpleGit(repoPath)
       expect((await g.branchLocal()).all).not.toContain('feature/parked-idea')

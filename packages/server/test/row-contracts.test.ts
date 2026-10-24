@@ -39,10 +39,10 @@ import { seedFeature, seedProject } from './helpers/fixtures'
  * The row→wire contract, from the outside: a row that violates its core schema
  * has to stop at the service seam.
  *
- * Drizzle's `$type<Phase>()` is a compile-time cast over a plain TEXT column, so
+ * Drizzle's `$type<FeatureStatus>()` is a compile-time cast over a plain TEXT column, so
  * nothing at runtime stops a bad value getting in — a newer server's enum
  * member, a hand-edited column, a botched migration. Downstream every reader
- * switches on the value exhaustively, which is how ONE bad phase blank-screened
+ * switches on the value exhaustively, which is how ONE bad phase value blank-screened
  * the whole web app (findings F19). These tests corrupt a real column and assert
  * the read fails loudly, naming the field, instead of handing the lie onward.
  *
@@ -78,14 +78,14 @@ describe('row → wire contracts', () => {
     feature = seedFeature(ctx, project.id)
   })
 
-  it('rejects a corrupt phase on a features row — the F19 class', () => {
+  it('rejects a corrupt status on a features row — the F19 class', () => {
     ctx.db
       .update(features)
-      .set({ phase: 'bulldozing' as Feature['phase'] })
+      .set({ status: 'bulldozing' as Feature['status'] })
       .where(eq(features.id, feature.id))
       .run()
 
-    expectRejectsField(() => getFeatureFull(ctx, feature.id), 'phase')
+    expectRejectsField(() => getFeatureFull(ctx, feature.id), 'status')
   })
 
   it('rejects a non-numeric closedAt on a projects row', () => {
@@ -183,7 +183,6 @@ describe('row → wire contracts', () => {
       .values({
         id,
         featureId: feature.id,
-        lap: 1,
         text: 'the button is off-centre',
         status: 'shelved' as 'open',
         ticketId: null,
@@ -261,7 +260,11 @@ describe('row contracts across the mapped-ideation retirement', () => {
     // The rewritten rows lose their conversation, so Chat resumes the
     // feature's own chat rather than a transcript told to use the map tools.
     expect(mostRecentResumableSession(ctx, 'feat_1', 'chat')?.ccSessionId).toBe('cc_chat')
-    expect(db.all(sql.raw('SELECT * FROM events ORDER BY id'))).toEqual(eventsBefore)
+    // Untouched but for the lap stamp, which a later migration (0053) drops.
+    const withoutLap = (rows: Record<string, unknown>[]) => rows.map(({ lap: _lap, ...rest }) => rest)
+    expect(db.all<Record<string, unknown>>(sql.raw('SELECT * FROM events ORDER BY id'))).toEqual(
+      withoutLap(eventsBefore as Record<string, unknown>[]),
+    )
     expect(listAfter(ctx, 'feat_1').map((e) => e.type)).toEqual(['waypoint.resolved', 'feature.escalated'])
   })
 })

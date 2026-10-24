@@ -2,8 +2,6 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project, TicketInput } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
-import { eq } from 'drizzle-orm'
-import { features } from '../../src/db/schema'
 import type { AppCtx } from '../../src/db/types'
 import { emit } from '../../src/services/events'
 import {
@@ -12,7 +10,6 @@ import {
   triageNotes,
 } from '../../src/services/project-notes'
 import { reportFinding } from '../../src/services/review-findings'
-import { addNote } from '../../src/services/test-notes'
 import { getTicket, storeTickets, updateTicket } from '../../src/services/tickets'
 import { seedFeature } from './fixtures'
 
@@ -22,11 +19,11 @@ import { seedFeature } from './fixtures'
  *
  * Every part is sized past the real maxima measured on 2026-09-24: every
  * ticket's context, acceptance criteria and digest at its real maximum, goals
- * of 1K (three laps well past the real 4–6K per lap) with one real-max 5K goal,
- * ~35K of this lap's findings plus test notes, and canonical docs over 111K (an
- * 83K `decisions.md`). With every doc moved out, the rows and to-do alone still
+ * of 1K (three batches well past the real 4–6K per batch) with one real-max 5K
+ * goal, ~20K of open findings, and canonical docs over 111K (an 83K
+ * `decisions.md`). With every doc moved out, the rows and to-do alone still
  * cross the ceiling, so the fixture also exercises the ticket move-out tiers:
- * goals on both feature shapes, and on the backlogged one an earlier lap's rows.
+ * goals on both feature shapes, and on the backlogged one settled tickets' rows.
  */
 
 /** `n` chars of filler prose, labelled so a failing assertion can say whose. */
@@ -36,8 +33,8 @@ export function prose(label: string, n: number): string {
 }
 
 export const OVERSIZED = {
-  laps: 3,
-  ticketsPerLap: 15,
+  batches: 3,
+  ticketsPerBatch: 15,
   largestGoalChars: 5_000,
   goalChars: 1_000,
   contextChars: 9_000,
@@ -46,10 +43,8 @@ export const OVERSIZED = {
   digestChars: 8_000,
   findings: 7,
   findingDetailChars: 2_800,
-  testNotes: 7,
-  testNoteChars: 2_200,
-  /** Extra test notes on the `backlogged` shape — enough to move a lap's rows out. */
-  backlogTestNotes: 3,
+  /** Extra open findings on the `backlogged` shape — enough to move settled rows out. */
+  backlogFindings: 12,
   docs: {
     'brief.md': 7_500,
     'decisions.md': 83_000,
@@ -65,16 +60,16 @@ export interface OversizedFeature {
   docsDir: string
 }
 
-function oversizedTicket(lap: number, i: number, kind: TicketInput['kind']): TicketInput {
+function oversizedTicket(batch: number, i: number, kind: TicketInput['kind']): TicketInput {
   return {
-    title: `Lap ${lap} ticket ${i}: a realistically long ticket title for the row`,
+    title: `Batch ${batch} ticket ${i}: a realistically long ticket title for the row`,
     goal: prose(
-      `goal ${lap}.${i}`,
-      lap === 1 && i === 1 ? OVERSIZED.largestGoalChars : OVERSIZED.goalChars,
+      `goal ${batch}.${i}`,
+      batch === 1 && i === 1 ? OVERSIZED.largestGoalChars : OVERSIZED.goalChars,
     ),
-    context: prose(`context ${lap}.${i}`, OVERSIZED.contextChars),
+    context: prose(`context ${batch}.${i}`, OVERSIZED.contextChars),
     acceptanceCriteria: Array.from({ length: OVERSIZED.acceptanceCriteria }, (_, n) =>
-      prose(`ac ${lap}.${i}.${n}`, OVERSIZED.acceptanceCriterionChars),
+      prose(`ac ${batch}.${i}.${n}`, OVERSIZED.acceptanceCriterionChars),
     ),
     seams: ['packages/server/src/mcp/server.ts read tools', 'packages/server/test guard'],
     blockedBy: i === 1 ? [] : [1],
@@ -83,9 +78,9 @@ function oversizedTicket(lap: number, i: number, kind: TicketInput['kind']): Tic
 }
 
 /**
- * Seed one feature at lap 3 with three laps of burned tickets, real-max docs on
- * disk, this lap's review findings and test notes, and — when `backlogged` — a
- * test-notes backlog heavy enough to push earlier laps' rows out.
+ * Seed one feature with three batches of burned tickets, real-max docs on disk,
+ * its review's open findings, and — when `backlogged` — a findings backlog
+ * heavy enough to push settled tickets' rows out.
  */
 export function seedOversizedFeature(
   ctx: AppCtx,
@@ -95,14 +90,12 @@ export function seedOversizedFeature(
   const feature = seedFeature(ctx, project.id, {
     slug: options.slug,
     title: `Oversized ${options.slug}`,
-    lap: 1,
   })
 
   let reviewTicketId = ''
-  for (let lap = 1; lap <= OVERSIZED.laps; lap++) {
-    ctx.db.update(features).set({ lap }).where(eq(features.id, feature.id)).run()
-    const inputs = Array.from({ length: OVERSIZED.ticketsPerLap }, (_, n) =>
-      oversizedTicket(lap, n + 1, n + 1 === OVERSIZED.ticketsPerLap ? 'review' : 'implementation'),
+  for (let batch = 1; batch <= OVERSIZED.batches; batch++) {
+    const inputs = Array.from({ length: OVERSIZED.ticketsPerBatch }, (_, n) =>
+      oversizedTicket(batch, n + 1, n + 1 === OVERSIZED.ticketsPerBatch ? 'review' : 'implementation'),
     )
     for (const stored of storeTickets(ctx, feature.id, inputs)) {
       updateTicket(ctx, stored.id, {
@@ -114,7 +107,8 @@ export function seedOversizedFeature(
   }
 
   const reviewTicket = getTicket(ctx, reviewTicketId)
-  for (let i = 1; i <= OVERSIZED.findings; i++) {
+  const findings = OVERSIZED.findings + (options.backlogged ? OVERSIZED.backlogFindings : 0)
+  for (let i = 1; i <= findings; i++) {
     reportFinding(ctx, {
       featureId: feature.id,
       reviewTicket,
@@ -129,16 +123,6 @@ export function seedOversizedFeature(
       },
     })
   }
-  for (let i = 1; i <= OVERSIZED.testNotes; i++) {
-    addNote(ctx, feature.id, prose(`note ${i}`, OVERSIZED.testNoteChars))
-  }
-
-  if (options.backlogged) {
-    for (let i = 1; i <= OVERSIZED.backlogTestNotes; i++) {
-      addNote(ctx, feature.id, prose(`backlog note ${i}`, OVERSIZED.testNoteChars))
-    }
-  }
-
   const docsDir = join(worktreeDir(project.id, feature.slug), 'docs', 'features', feature.slug)
   mkdirSync(docsDir, { recursive: true })
   for (const [name, size] of Object.entries(OVERSIZED.docs)) {
@@ -146,7 +130,7 @@ export function seedOversizedFeature(
   }
 
   // Ticket #1 carries the 5K goal alongside every other maximum.
-  return { feature: { ...feature, lap: OVERSIZED.laps }, largestTicketSeq: 1, docsDir }
+  return { feature, largestTicketSeq: 1, docsDir }
 }
 
 /**
@@ -160,9 +144,8 @@ export const OVERSIZED_PORTFOLIO = {
   archived: 3,
   shipped: 115,
   oneLinerChars: 2_500,
-  /** One feature's work record: three laps of ten tickets, each with a real-max digest. */
-  workRecordLaps: 3,
-  workRecordTicketsPerLap: 10,
+  /** One feature's work record: thirty tickets, each with a real-max digest. */
+  workRecordTickets: 30,
   /** Tickets across that many shipped features share one seam, each with a digest. */
   seamTickets: 40,
   errorChars: 600,
@@ -219,14 +202,14 @@ export function seedOversizedPortfolio(
       ...overrides,
     })
 
-  for (let i = 1; i <= P.inFlight; i++) seed(`in-flight-${i}`, { phase: 'building', lap: 2 })
+  for (let i = 1; i <= P.inFlight; i++) seed(`in-flight-${i}`)
   for (let i = 1; i <= P.drafts; i++) seed(`draft-${i}`, { status: 'draft' })
   for (let i = 1; i <= P.archived; i++) seed(`archived-${i}`, { status: 'archived' })
 
   const seam = 'apps/web shared shell'
   const shipped: Feature[] = []
   for (let i = 1; i <= P.shipped; i++) {
-    const feature = seed(`shipped-${i}`, { status: 'shipped', phase: 'shipped' })
+    const feature = seed(`shipped-${i}`, { status: 'shipped' })
     emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
     shipped.push(feature)
     if (i > P.seamTickets) continue
@@ -239,20 +222,17 @@ export function seedOversizedPortfolio(
     })
   }
 
-  const record = seed('work-record', { status: 'shipped', phase: 'shipped' })
+  const record = seed('work-record', { status: 'shipped' })
   emit(ctx, record.id, { type: 'feature.shipped', message: 'merged to main' })
-  for (let lap = 1; lap <= P.workRecordLaps; lap++) {
-    ctx.db.update(features).set({ lap }).where(eq(features.id, record.id)).run()
-    const inputs = Array.from({ length: P.workRecordTicketsPerLap }, (_, n) =>
-      ticketInput(`lap ${lap} ticket ${n + 1}`, ['packages/server/src/mcp/server.ts']),
-    )
-    for (const stored of storeTickets(ctx, record.id, inputs)) {
-      updateTicket(ctx, stored.id, {
-        status: 'done',
-        commits: ['0123456789abcdef0123456789abcdef01234567'],
-        digest: prose(`digest ${stored.seq}`, OVERSIZED.digestChars),
-      })
-    }
+  const inputs = Array.from({ length: P.workRecordTickets }, (_, n) =>
+    ticketInput(`ticket ${n + 1}`, ['packages/server/src/mcp/server.ts']),
+  )
+  for (const stored of storeTickets(ctx, record.id, inputs)) {
+    updateTicket(ctx, stored.id, {
+      status: 'done',
+      commits: ['0123456789abcdef0123456789abcdef01234567'],
+      digest: prose(`digest ${stored.seq}`, OVERSIZED.digestChars),
+    })
   }
 
   const briefSlug = shipped[0].slug

@@ -115,7 +115,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
 
   it('returns the conflicting files + base and emits a merge.conflict event carrying them', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
@@ -128,7 +128,6 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
 
     // A failed merge must not ship the feature.
     const row = getFeatureRow(ctx, feature.id)
-    expect(row.phase).toBe('review')
     expect(row.status).toBe('active')
   })
 
@@ -141,7 +140,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
    */
   it('lets a recorded conflict be retried, recording the conflict as it stands now', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
     await caller.feature.merge({ featureId: feature.id })
 
     // A second file starts clashing between the two attempts. The failed merge
@@ -182,14 +181,13 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     await g.add(['feature.txt'])
     await g.commit('feat: work')
     await g.checkout('main')
-    const feature = seedFeature(ctx, project.id, { slug: 'happy', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'happy' })
 
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
     expect(res.conflict).toBeUndefined()
     const row = getFeatureRow(ctx, feature.id)
-    expect(row.phase).toBe('shipped')
     expect(row.status).toBe('shipped')
     // no conflict event on the happy path
     expect(listAfter(ctx, feature.id, 0).some((e) => e.type === 'merge.conflict')).toBe(false)
@@ -216,7 +214,6 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
 
       expect(res.ok).toBe(true)
       const row = getFeatureRow(ctx, feature.id)
-      expect(row.phase).toBe('shipped')
       expect(row.status).toBe('shipped')
     },
     15_000,
@@ -236,7 +233,7 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     await g.add(['driven.txt'])
     await g.commit('feat: work')
     await g.checkout('main')
-    const feature = seedFeature(ctx, project.id, { slug: 'driven', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'driven' })
     const start = await testDrive(ctx, project, feature, 'start')
     expect(start.ok).toBe(true)
     expect(activeTestDriveFeatureId(project.id)).toBe(feature.id)
@@ -244,13 +241,12 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
     expect(activeTestDriveFeatureId(project.id)).toBeUndefined()
   }, 15_000)
 
   it('merge is denied while another feature is being test-driven (guard holds)', async () => {
     await createFeatureBranch(project, 'target', 'main')
-    const target = seedFeature(ctx, project.id, { slug: 'target', phase: 'review' })
+    const target = seedFeature(ctx, project.id, { slug: 'target' })
     // A DIFFERENT feature holds an active drive — the merge handler only stops
     // THIS feature's drive, so the git-service guard must still deny the merge.
     const other = seedFeature(ctx, project.id, { slug: 'other' })
@@ -259,7 +255,6 @@ describe('feature.merge — conflict surfacing (ticket 9)', () => {
     expect(start.ok).toBe(true)
 
     await expect(caller.feature.merge({ featureId: target.id })).rejects.toThrow(/test drive/i)
-    expect(getFeatureRow(ctx, target.id).phase).toBe('review')
 
     await testDrive(ctx, project, other, 'stop')
   })
@@ -300,7 +295,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     await g.add([`${slug}.txt`])
     await g.commit('feat: work')
     await g.checkout('main')
-    return seedFeature(ctx, project.id, { slug, phase: 'review', title: `The ${slug} feature` })
+    return seedFeature(ctx, project.id, { slug, title: `The ${slug} feature` })
   }
 
   /** Store tickets and drive each to the terminal state the outcome doc reads. */
@@ -340,8 +335,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     expect(res.ok).toBe(true)
     const doc = await outcomeAt('main', 'thick')
     expect(doc).toContain('# Outcome — The thick feature')
-    expect(doc).toContain('- Laps run: 1')
-    expect(doc).toContain('#### 1. Harvest the digest')
+    expect(doc).toContain('### 1. Harvest the digest')
     expect(doc).toContain('Read DIGEST.md after the run.')
     expect(doc).toContain('- 1 failed: #2 Aggregate the run')
     await expect(outcomeAt('feature/thick', 'thick')).rejects.toThrow()
@@ -352,9 +346,9 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     ])
   })
 
-  it('regenerates the doc on a later lap, and commits nothing when it is unchanged', async () => {
+  it('regenerates the doc around later work, and commits nothing when it is unchanged', async () => {
     const feature = await seedShippableFeature('laps')
-    seedTickets(feature.id, [{ title: 'Lap one work', status: 'done', digest: '## Work\n- First lap.' }])
+    seedTickets(feature.id, [{ title: 'First work', status: 'done', digest: '## Work\n- First lap.' }])
     expect((await caller.feature.merge({ featureId: feature.id })).ok).toBe(true)
 
     // Merging again with nothing changed regenerates identical content, which
@@ -363,16 +357,14 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     expect((await caller.feature.merge({ featureId: feature.id })).ok).toBe(true)
     expect((await g.revparse(['feature/laps'])).trim()).toBe(tip)
 
-    // Lap 2 adds a ticket; the merge regenerates the doc around both laps.
-    ctx.db.update(features).set({ lap: 2 }).where(eq(features.id, feature.id)).run()
-    seedTickets(feature.id, [{ title: 'Lap two work', status: 'done', digest: '## Work\n- Second lap.' }])
+    // Later work adds a ticket; the merge regenerates the doc around both.
+    seedTickets(feature.id, [{ title: 'Later work', status: 'done', digest: '## Work\n- Second lap.' }])
     expect((await caller.feature.merge({ featureId: feature.id })).ok).toBe(true)
 
     const doc = await outcomeAt('main', 'laps')
-    expect(doc).toContain('- Laps run: 2')
     expect(doc).toContain('First lap.')
     expect(doc).toContain('Second lap.')
-    // Outcome commits belong only to the base; synthesizing a later lap never mutates the feature ref.
+    // Outcome commits belong only to the base; regenerating never mutates the feature ref.
     expect((await g.revparse(['feature/laps'])).trim()).toBe(tip)
   })
 
@@ -390,7 +382,7 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
 
   it('keeps the conflict payload and writes no outcome on either branch', async () => {
     await makeConflict(project, g, 'clash')
-    const feature = seedFeature(ctx, project.id, { slug: 'clash', phase: 'review' })
+    const feature = seedFeature(ctx, project.id, { slug: 'clash' })
     seedTickets(feature.id, [{ title: 'Clashing work', status: 'done', digest: '## Work\n- Did it.' }])
 
     const res = await caller.feature.merge({ featureId: feature.id })
@@ -407,7 +399,6 @@ describe('feature.merge — outcome.md promotion (the-work-record ticket 3)', ()
     const res = await caller.feature.merge({ featureId: feature.id })
 
     expect(res.ok).toBe(true)
-    expect(getFeatureRow(ctx, feature.id).phase).toBe('shipped')
     expect(await outcomeAt('main', 'unwritable')).toContain('Some work')
   })
 })

@@ -170,15 +170,14 @@ describe('the Orchestrator card', () => {
 })
 
 describe('what needs you', () => {
-  it('lists preparation, then the waiting features, then the stopped ones — unheaded', () => {
+  it('lists preparation, then the waiting features, then the ones in progress — unheaded', () => {
     data.prep = { prepared: false, pendingKeys: ['a', 'b'], findings: [] }
     data.features = [
-      titled('Order history', { phase: 'building' }),
-      titled('Coupons', { phase: 'review' }),
-      titled('Checkout', {
-        phase: 'building',
+      titled('Order history', {
         ticketCounts: { total: 2, pending: 0, burning: 0, done: 1, failed: 1, cancelled: 0 },
       }),
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Checkout', { waitingReason: 'stopped' }),
     ]
     rail()
     const needs = screen.getByRole('region', { name: 'Needs you' })
@@ -187,13 +186,17 @@ describe('what needs you', () => {
     expect(needs.textContent!.indexOf('Prepare this project')).toBeLessThan(needs.textContent!.indexOf('Coupons'))
     expect(needs.textContent!.indexOf('Coupons')).toBeLessThan(needs.textContent!.indexOf('Checkout'))
     expect(needs.textContent!.indexOf('Checkout')).toBeLessThan(needs.textContent!.indexOf('Order history'))
-    expect(within(needs).getByText('Run failed')).toBeTruthy()
+    expect(within(needs).getByText('Ready to test')).toBeTruthy()
     expect(within(needs).getByText('Stopped')).toBeTruthy()
+    expect(within(needs).getByText('In progress')).toBeTruthy()
     expect(within(needs).queryByRole('heading')).toBeNull()
   })
 
   it('keeps no lane headings, Project or Preparation rows, or runs elsewhere', () => {
-    data.features = [titled('Coupons', { phase: 'review' }), titled('Order history', { phase: 'building' })]
+    data.features = [
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Order history', { waitingReason: 'stopped' }),
+    ]
     rail()
     for (const gone of ['Inbox', 'In progress', 'Agent working', 'Drafts', 'Show archived'])
       expect(screen.queryByText(gone)).toBeNull()
@@ -205,19 +208,22 @@ describe('what needs you', () => {
 describe('the Working shelf', () => {
   it('holds the features with an agent at work, open in the bay', () => {
     data.features = [
-      titled('Coupons', { phase: 'review' }),
-      titled('Search', { phase: 'building', activeRun: true, lapTally: { landed: 3, total: 7, waived: 0 } }),
+      titled('Coupons', { waitingReason: 'ready to test' }),
+      titled('Search', {
+        activeRun: true,
+        ticketCounts: { total: 7, pending: 4, burning: 0, done: 3, failed: 0, cancelled: 0 },
+      }),
     ]
     rail()
     const working = screen.getByRole('region', { name: 'Working' })
     expect(titles(working)).toEqual(['Search'])
-    expect(within(working).getByText('Building · 3/7')).toBeTruthy()
+    expect(within(working).getByText('Working · 3/7')).toBeTruthy()
     expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
   })
 })
 
 describe('the folded shelves', () => {
-  const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped', phase: 'shipped' }))
+  const shipped = Array.from({ length: 7 }, (_, i) => titled(`Shipped ${i}`, { status: 'shipped' }))
 
   it('count Backlog, Shipped and Archived while folded — archived included', () => {
     data.features = [
@@ -263,7 +269,7 @@ describe('the folded shelves', () => {
 describe('the row menus', () => {
   it('archive a feature and unarchive an archived one', () => {
     localStorage.setItem('runcastle.sidebar.showArchived', '1')
-    data.features = [titled('Coupons', { id: 'f1', phase: 'review' }), titled('Old', { id: 'f2', status: 'archived' })]
+    data.features = [titled('Coupons', { id: 'f1' }), titled('Old', { id: 'f2', status: 'archived' })]
     rail()
     const [first, second] = screen.getAllByRole('button', { name: 'Feature actions' })
     openMenu(first!)
@@ -277,7 +283,7 @@ describe('the row menus', () => {
 
 describe('the foot', () => {
   it('shows a test drive as a card naming its feature, with Stop', () => {
-    data.features = [titled('Coupons', { id: 'f1', phase: 'review' })]
+    data.features = [titled('Coupons', { id: 'f1' })]
     rail({ driving: { featureId: 'f1', branch: 'feature/coupons' } as DriveState })
     const card = screen.getByRole('button', { name: /^Test drive/ })
     expect(card.textContent).toBe('Test driveCoupons')

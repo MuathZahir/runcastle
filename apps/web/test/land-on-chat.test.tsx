@@ -68,7 +68,7 @@ describe('the land-on-chat operation', () => {
   it("selects the feature's Chat tab and remembers it for that feature", () => {
     // Landing from another feature, in miniature: `select(featureId, 'chat')`.
     const { result: ws } = renderHook(() => useWorkspace('p1'))
-    act(() => ws.current.select('feat_other', 'body'))
+    act(() => ws.current.select('feat_other', 'work'))
     const { result: landing } = renderHook(() => useLandOnChat('feat_a'), {
       wrapper: ({ children }: { children: ReactNode }) => (
         <LandOnChatProvider value={(id) => ws.current.select(id, 'chat')}>

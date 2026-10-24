@@ -1,7 +1,6 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { Phase } from '@runcastle/core'
 import { PhaseIcon } from '../src/icons'
 import type { PhaseIconPhase } from '../src/icons'
 import {
@@ -22,7 +21,6 @@ import {
   NavItem,
   NoteAuthorChip,
   PageHeader,
-  PhaseTag,
   PropertyList,
   RunStatusChip,
   SectionLabel,
@@ -360,19 +358,6 @@ describe('the former chips', () => {
     expect(html(createElement(NoteAuthorChip, { author: 'human' }))).toBe('')
   })
 
-  it('tag a phase with its glyph and its sentence-case name', () => {
-    const phases: [Phase, string][] = [
-      ['planning', 'Planning'],
-      ['building', 'Build'],
-      ['review', 'Review'],
-      ['shipped', 'Shipped'],
-    ]
-    for (const [phase, name] of phases) {
-      const out = html(createElement(PhaseTag, { phase }))
-      expect(out).toContain(`text-phase-${phase}`)
-      expect(out).toContain(`>${name}</span>`)
-    }
-  })
 
   // A title, not an accessible name: the dot sits inside buttons named by
   // their own title, which it must not prefix.

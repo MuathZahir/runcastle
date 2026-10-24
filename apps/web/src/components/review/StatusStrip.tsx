@@ -1,7 +1,7 @@
 import type { TallyTicket } from '@runcastle/core'
 import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
-import { IconCube, IconPlay, IconShield, IconUndo } from '../../icons'
-import type { CheckTone, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
+import { IconCube, IconPlay, IconUndo } from '../../icons'
+import type { CheckTone, DriveTicketFigure, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
 import { statusProperties, type StatusBuilding, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
 
@@ -17,10 +17,8 @@ import { Markdown } from '../Markdown'
  * them, and the unverified-drive caveat is the Test drive row's sub-note (the
  * whole sentence is its tooltip).
  *
- * On review the list is the page's ONE state line (decision 8), so the two
- * things a human can start from here — their own Test drive and another
- * Agentic review — sit beside it, never as the page's primary (that is the
- * next-step bar's).
+ * On review the list is the page's ONE state line (decision 8), so the human's
+ * own Test drive sits beside it, never as the page's primary.
  */
 const DOT: Record<CheckTone, StatusTone> = {
   ok: 'success',
@@ -53,32 +51,29 @@ function toItem(p: StatusProperty): PropertyItem {
 export function StatusStrip({
   artifact,
   outcome,
-  currentLap,
   landedSince,
   tickets,
   runState,
   verification,
-  driveLap,
+  drivenAt,
   unverifiedKeys,
   testDrive,
-  agenticReview,
   shipped = false,
   driving,
   noWalkthrough = false,
   building,
 }: {
   /** The latest COMPLETED review pass, or null when none has finished. */
-  artifact: Pick<ReviewArtifactFigure, 'lap' | 'gateRun'> | null
+  artifact: Pick<ReviewArtifactFigure, 'ticketId' | 'gateRun'> | null
   /** What that pass amounted to — the Review row's verdict ({@link stampedOutcome}). */
   outcome?: TrailOutcome
-  currentLap: number
   /** Implementation tickets that landed after that pass — decision 19's stamp. */
   landedSince: number
-  tickets: readonly TallyTicket[]
+  tickets: readonly (TallyTicket & DriveTicketFigure)[]
   runState: string
   verification?: { state: 'running' | 'failed'; reason?: string }
-  /** The lap the branch was last driven in; omit where the strip is not to say. */
-  driveLap?: number | null
+  /** When the branch was last driven (null: never); omit where the strip is not to say. */
+  drivenAt?: number | null
   /** Drive-loop keys no dry run has ever proven — the Test drive row's caveat. */
   unverifiedKeys?: readonly string[]
   /**
@@ -89,19 +84,6 @@ export function StatusStrip({
   testDrive?: {
     onStart: () => void
     /** Why it cannot start right now, when something else holds the one slot. */
-    blocked?: string
-  }
-  /**
-   * Ask for another review pass, beside the drive the human would take
-   * themselves (decision 6). Present in every review-page state — an agentic
-   * review is always a thing to ask for, whatever the last one amounted to —
-   * and disabled with its reason while a burn holds the feature, which is the
-   * same idiom the Test drive control beside it uses for the occupied slot.
-   * Omitted only where nothing on the page acts: the shipped record.
-   */
-  agenticReview?: {
-    onStart: () => void
-    /** Why it cannot start right now — a burn is running, or one is starting. */
     blocked?: string
   }
   /**
@@ -120,12 +102,11 @@ export function StatusStrip({
   const properties = statusProperties({
     artifact,
     ...(outcome ? { outcome } : {}),
-    currentLap,
     landedSince,
     tickets,
     ...(shipped ? {} : { runState }),
     ...(verification ? { verification } : {}),
-    ...(driveLap === undefined ? {} : { driveLap }),
+    ...(drivenAt === undefined ? {} : { drivenAt }),
     ...(driving === undefined ? {} : { driving }),
     ...(noWalkthrough ? { noWalkthrough } : {}),
     ...(unverifiedKeys ? { unverifiedKeys } : {}),
@@ -137,29 +118,16 @@ export function StatusStrip({
     <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
       <PropertyList className="min-w-0 flex-1" items={properties.map(toItem)} />
 
-      {(testDrive || agenticReview) && (
+      {testDrive && (
         <div className="flex shrink-0 items-center gap-2">
-          {testDrive && (
-            <Button
-              icon={<IconPlay />}
-              disabled={!!testDrive.blocked}
-              {...(testDrive.blocked ? { title: testDrive.blocked } : {})}
-              onClick={testDrive.onStart}
-            >
-              Test drive
-            </Button>
-          )}
-          {agenticReview && (
-            <Button
-              variant="ghost"
-              icon={<IconShield />}
-              disabled={!!agenticReview.blocked}
-              {...(agenticReview.blocked ? { title: agenticReview.blocked } : {})}
-              onClick={agenticReview.onStart}
-            >
-              Agentic review
-            </Button>
-          )}
+          <Button
+            icon={<IconPlay />}
+            disabled={!!testDrive.blocked}
+            {...(testDrive.blocked ? { title: testDrive.blocked } : {})}
+            onClick={testDrive.onStart}
+          >
+            Test drive
+          </Button>
         </div>
       )}
     </div>

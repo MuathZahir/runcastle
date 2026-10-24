@@ -11,7 +11,9 @@ import {
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21),
- * derived from the feature row, its rounds and its ready declarations.
+ * derived from facts — the feature row's status and waiting reason, its rounds,
+ * its ready declarations and the agent's session — never from a phase
+ * (tickets-and-review-are-tools-not-phases decisions 2, 7).
  */
 const input = (over: {
   feature?: Partial<FeatureStatusInput['feature']>
@@ -20,24 +22,15 @@ const input = (over: {
   agentWorking?: boolean
   driving?: boolean
   selfPlanning?: boolean
-  uncommittedDesign?: boolean
   leadWake?: FeatureStatusInput['leadWake']
   now?: number
 }): FeatureStatusInput => ({
-  feature: {
-    phase: 'building',
-    status: 'active',
-    lap: 1,
-    ticketsReadyLap: null,
-    waitingReason: null,
-    ...over.feature,
-  },
+  feature: { status: 'active', waitingReason: null, ...over.feature },
   rounds: over.rounds ?? [],
   declarations: over.declarations ?? [],
   agentWorking: over.agentWorking ?? false,
   driving: over.driving ?? false,
   selfPlanning: over.selfPlanning ?? false,
-  ...(over.uncommittedDesign ? { uncommittedDesign: true } : {}),
   ...(over.leadWake ? { leadWake: over.leadWake } : {}),
   now: over.now ?? 0,
 })
@@ -48,75 +41,40 @@ const round = (n: number, status: 'running' | 'succeeded' | 'failed' | 'cancelle
   startedAt,
 })
 
-const declaration = (scenario: string, createdAt: number) => ({
-  scenario,
-  whatToTest: `What to test in ${scenario}.`,
-  createdAt,
-})
+const declaration = (scenario: string, createdAt: number) => ({ scenario, createdAt })
 
 describe('featureStatus', () => {
-  it('reads Planning with you before Go, with Go gated until the plan is finished', () => {
-    expect(featureStatus(input({ feature: { phase: 'planning' } }))).toEqual({
-      kind: 'planning',
-      label: 'Planning with you',
-      primary: 'goGated',
-    })
-  })
-
-  it('waits for Go once this lap’s plan is complete', () => {
-    expect(featureStatus(input({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 2 } }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'plan ready for Go',
-      primary: 'go',
-    })
-  })
-
-  it('does not call an earlier lap’s plan ready', () => {
-    expect(featureStatus(input({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })).kind).toBe(
-      'planning',
-    )
+  it('reads Talking with you with nothing running and nothing asked, and offers no button', () => {
+    expect(featureStatus(input({}))).toEqual({ kind: 'talking', label: 'Talking with you' })
   })
 
   it('reads Planning by itself while a self-planning run is live, with its Stop', () => {
-    for (const ticketsReadyLap of [null, 1]) {
-      expect(featureStatus(input({ feature: { phase: 'planning', ticketsReadyLap }, selfPlanning: true }))).toEqual({
-        kind: 'working',
-        label: 'Planning by itself',
-        primary: 'stopSelfPlan',
-      })
-    }
+    expect(featureStatus(input({ selfPlanning: true }))).toEqual({
+      kind: 'working',
+      label: 'Planning by itself',
+      primary: 'stopSelfPlan',
+    })
   })
 
-  it('returns to Planning with you, or plan ready for Go, once the self-planning run ends', () => {
-    expect(featureStatus(input({ feature: { phase: 'planning' }, selfPlanning: false }))).toEqual({
-      kind: 'planning',
-      label: 'Planning with you',
-      primary: 'goGated',
-    })
-    expect(featureStatus(input({ feature: { phase: 'planning', ticketsReadyLap: 1 }, selfPlanning: false }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'plan ready for Go',
-      primary: 'go',
-    })
+  it('returns to Talking with you once the self-planning run ends', () => {
+    expect(featureStatus(input({ selfPlanning: false })).kind).toBe('talking')
   })
 
   it('a running round, a drive and Merged outrank planning by itself', () => {
-    const planning = { phase: 'planning' as const }
-    expect(featureStatus(input({ feature: planning, selfPlanning: true, rounds: [round(1, 'running', 10)] }))).toEqual({
+    expect(featureStatus(input({ selfPlanning: true, rounds: [round(1, 'running', 10)] }))).toEqual({
       kind: 'working',
       label: 'Working · Round 1',
       round: 1,
       primary: 'stop',
     })
-    expect(featureStatus(input({ feature: planning, selfPlanning: true, driving: true }))).toMatchObject({
+    expect(featureStatus(input({ selfPlanning: true, driving: true }))).toMatchObject({
       label: 'Planning by itself',
       primary: 'testDriveStop',
     })
-    expect(
-      featureStatus(input({ feature: { phase: 'shipped', status: 'shipped' }, selfPlanning: true })),
-    ).toEqual({ kind: 'merged', label: 'Merged' })
+    expect(featureStatus(input({ feature: { status: 'shipped' }, selfPlanning: true }))).toEqual({
+      kind: 'merged',
+      label: 'Merged',
+    })
   })
 
   it('reads Working · Round N while a round runs', () => {
@@ -133,38 +91,22 @@ describe('featureStatus', () => {
     })
   })
 
-  it('reads Working · Round 1 right after Go, while the wake is inside its grace', () => {
+  it('reads Working, with no round to name, while a message for the agent is inside its grace', () => {
     expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 59_000 }))).toEqual({
       kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
+      label: 'Working',
     })
   })
 
-  it('Go given, no round, no live lead: reads Waiting for you · the agent stopped, with the Chat door', () => {
-    expect(featureStatus(input({}))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'the agent stopped',
-      primary: 'chat',
+  it('a wake pending past its grace reads Talking with you', () => {
+    expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 60_000 }))).toEqual({
+      kind: 'talking',
+      label: 'Talking with you',
     })
   })
 
-  it('a wake pending past its grace reads the agent stopped', () => {
-    expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 60_000 }))).toMatchObject({
-      kind: 'waiting',
-      why: 'the agent stopped',
-      primary: 'chat',
-    })
-  })
-
-  it('a running round or the agent mid-turn still reads Working with no wake at all', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'running', 10)] })).kind).toBe('working')
-    expect(featureStatus(input({ agentWorking: true }))).toEqual({
-      kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
-    })
+  it('the agent mid-turn reads Working with no round and no wake at all', () => {
+    expect(featureStatus(input({ agentWorking: true }))).toEqual({ kind: 'working', label: 'Working' })
   })
 
   it('a wake failure newer than the last round and wake reads the failure, with its exit code and the Chat door', () => {
@@ -188,13 +130,10 @@ describe('featureStatus', () => {
     ).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'the agent’s run failed', primary: 'chat' })
   })
 
-  it('a woken session that already ended (End session) ends its grace at once: the agent stopped, not Working', () => {
-    expect(featureStatus(input({ leadWake: { pendingSince: 1_000, endedAt: 20_000 }, now: 21_000 }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'the agent stopped',
-      primary: 'chat',
-    })
+  it('a woken session that already ended ends its grace at once', () => {
+    expect(featureStatus(input({ leadWake: { pendingSince: 1_000, endedAt: 20_000 }, now: 21_000 })).kind).toBe(
+      'talking',
+    )
     // A message sent after that end opens a fresh grace.
     expect(featureStatus(input({ leadWake: { pendingSince: 30_000, endedAt: 20_000 }, now: 31_000 })).kind).toBe(
       'working',
@@ -203,50 +142,31 @@ describe('featureStatus', () => {
 
   it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
     const failed = { at: 30, exitCode: 1 }
-    expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).why).toBe(
-      'round 2 done',
+    expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).kind).toBe(
+      'talking',
     )
-    expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 100_000 })).why).toBe('the agent stopped')
+    expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 100_000 })).kind).toBe('talking')
     expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 50 })).kind).toBe('working')
   })
 
-  it('reads Waiting for you with the agent’s reason', () => {
-    for (const why of ['which coupon rule wins?', 'stuck: migration fails', 'provider limit', 'stopped']) {
-      expect(featureStatus(input({ feature: { waitingReason: why }, rounds: [round(3, 'failed', 30)] }))).toEqual({
+  it('reads Waiting for you · <why> with the agent’s reason, round or no round', () => {
+    for (const why of ['which coupon rule wins?', 'start round 1?', 'provider limit', 'stopped']) {
+      expect(featureStatus(input({ feature: { waitingReason: why } }))).toEqual({
         kind: 'waiting',
         label: 'Waiting for you',
         why,
       })
+      expect(featureStatus(input({ feature: { waitingReason: why }, rounds: [round(3, 'failed', 30)] })).why).toBe(why)
     }
   })
 
-  it('waits for the human once a stopped round’s agent is idle, with no Stop to offer', () => {
-    expect(featureStatus(input({ feature: { phase: 'review' }, rounds: [round(2, 'cancelled', 20)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'stopped',
-    })
-  })
-
-  it('waits for the human once a failed round’s agent is idle', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'failed', 10)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'round 1 failed',
-    })
-  })
-
-  it('waits for the human once a succeeded round’s agent has ended its turn without declaring ready', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'succeeded', 10), round(2, 'succeeded', 20)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'round 2 done',
-    })
-    expect(featureStatus(input({ feature: { phase: 'review' }, rounds: [round(1, 'succeeded', 10)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'round 1 done',
-    })
+  it('an idle agent after any round, with nothing asked, reads Talking with you, as the sidebar files it In progress', () => {
+    for (const status of ['cancelled', 'failed', 'succeeded'] as const) {
+      expect(featureStatus(input({ rounds: [round(2, status, 20)] }))).toEqual({
+        kind: 'talking',
+        label: 'Talking with you',
+      })
+    }
   })
 
   it('reads Working while the agent is mid-turn after a stopped or failed round', () => {
@@ -269,7 +189,6 @@ describe('featureStatus', () => {
     expect(
       featureStatus(
         input({
-          feature: { phase: 'review' },
           rounds: [round(1, 'succeeded', 10), round(2, 'succeeded', 20)],
           declarations: [declaration('Old drive', 15), declaration('Apply a coupon at checkout', 25)],
         }),
@@ -279,30 +198,49 @@ describe('featureStatus', () => {
       label: 'Ready for you',
       why: 'Test drive ▸ Apply a coupon at checkout',
       scenario: 'Apply a coupon at checkout',
-      whatToTest: 'What to test in Apply a coupon at checkout.',
       primary: 'testDriveStart',
     })
+  })
+
+  it('reads Ready, not Waiting, while declare_ready’s own waiting reason stands', () => {
+    expect(
+      featureStatus(
+        input({
+          feature: { waitingReason: 'ready to test' },
+          rounds: [round(1, 'succeeded', 10)],
+          declarations: [declaration('Apply a coupon', 25)],
+        }),
+      ),
+    ).toEqual({
+      kind: 'ready',
+      label: 'Ready for you',
+      why: 'Test drive ▸ Apply a coupon',
+      scenario: 'Apply a coupon',
+      primary: 'testDriveStart',
+    })
+  })
+
+  it('reads Ready on a declaration made before any round', () => {
+    expect(featureStatus(input({ declarations: [declaration('Look around', 5)] })).kind).toBe('ready')
   })
 
   it('a round dispatched after the declaration takes the line off Ready', () => {
     const after = (agentWorking: boolean) =>
       featureStatus(
         input({
-          feature: { phase: 'review' },
           rounds: [round(2, 'succeeded', 20), round(3, 'succeeded', 30)],
           declarations: [declaration('Apply a coupon', 25)],
           agentWorking,
         }),
       )
     expect(after(true).kind).toBe('working')
-    expect(after(false)).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'round 3 done' })
+    expect(after(false)).toEqual({ kind: 'talking', label: 'Talking with you' })
   })
 
   it('the agent at work on the human’s drive notes is Working, not Ready', () => {
     expect(
       featureStatus(
         input({
-          feature: { phase: 'review' },
           rounds: [round(2, 'succeeded', 20)],
           declarations: [declaration('Apply a coupon', 25)],
           agentWorking: true,
@@ -315,7 +253,8 @@ describe('featureStatus', () => {
     expect(
       featureStatus(
         input({
-          feature: { phase: 'shipped', status: 'shipped', waitingReason: 'stale' },
+          feature: { status: 'shipped', waitingReason: 'stale' },
+          rounds: [round(1, 'running', 10)],
           declarations: [declaration('Apply a coupon', 25)],
         }),
       ),
@@ -327,7 +266,6 @@ describe('leadWakeOf', () => {
   it('reads the newest wake and the newest wake failure off the event log', () => {
     expect(
       leadWakeOf([
-        { type: 'feature.go', ts: 5, data: undefined },
         { type: 'lead.message_pending', ts: 10, data: {} },
         { type: 'lead.wake_failed', ts: 12, data: { exitCode: null, tail: 'refused', messages: 1 } },
         { type: 'lead.woken_headless', ts: 20, data: {} },
@@ -362,88 +300,33 @@ describe('leadWakeOf', () => {
 describe('the status line’s one primary (decision 24)', () => {
   const primary = (over: Parameters<typeof input>[0]) => featureStatus(input(over)).primary
 
-  it('is Go in planning once this lap’s plan is finished, and gated Go before', () => {
-    expect(primary({ feature: { phase: 'planning', ticketsReadyLap: 1 } })).toBe('go')
-    expect(primary({ feature: { phase: 'planning' } })).toBe('goGated')
-    expect(primary({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })).toBe('goGated')
-  })
-
-  it('is never Go while the feature plans itself', () => {
-    for (const ticketsReadyLap of [null, 1]) {
-      expect(primary({ feature: { phase: 'planning', ticketsReadyLap }, selfPlanning: true })).toBe('stopSelfPlan')
-    }
-  })
-
   it('is Stop while a round runs', () => {
     expect(primary({ rounds: [round(1, 'running', 10)] })).toBe('stop')
   })
 
   it('is Start test drive when ready', () => {
-    expect(
-      primary({ feature: { phase: 'review' }, rounds: [round(1, 'succeeded', 10)], declarations: [declaration('S', 15)] }),
-    ).toBe('testDriveStart')
+    expect(primary({ rounds: [round(1, 'succeeded', 10)], declarations: [declaration('S', 15)] })).toBe(
+      'testDriveStart',
+    )
   })
 
   it('is Stop drive while this feature is driven, over every other state', () => {
     expect(
-      primary({
-        feature: { phase: 'review' },
-        rounds: [round(1, 'succeeded', 10)],
-        declarations: [declaration('S', 15)],
-        driving: true,
-      }),
+      primary({ rounds: [round(1, 'succeeded', 10)], declarations: [declaration('S', 15)], driving: true }),
     ).toBe('testDriveStop')
   })
 
-  it('is none while waiting on the human, between rounds, or merged', () => {
+  it('is none while talking, waiting on the human, between rounds, or merged', () => {
+    expect(primary({})).toBeUndefined()
     expect(primary({ feature: { waitingReason: 'stopped' } })).toBeUndefined()
     expect(primary({ rounds: [round(1, 'succeeded', 10)], agentWorking: true })).toBeUndefined()
-    expect(primary({ feature: { phase: 'shipped', status: 'shipped' }, driving: true })).toBeUndefined()
+    expect(primary({ feature: { status: 'shipped' }, driving: true })).toBeUndefined()
   })
 })
 
 describe('the action row beside the status line', () => {
   const ns = (over: Partial<NextStep>): NextStep => ({ kick: '', secondary: [], busy: false, ...over })
   const status = (over: Partial<FeatureStatus> = {}): FeatureStatus => ({ kind: 'working', label: 'W', ...over })
-
-  it('turns the plan’s Burn into Go, keeping its refusal', () => {
-    const out = leadActions(
-      ns({ primary: { label: 'Burn 3 tickets', kind: 'burn', disabled: 'busy' } }),
-      status({ kind: 'planning', primary: 'go' }),
-    )
-    expect(out.primary).toEqual({ label: 'Go', kind: 'burn', disabled: 'busy' })
-  })
-
-  it('offers Go enabled once the plan is finished, even when the resolver offered no burn', () => {
-    const row = (over: Parameters<typeof input>[0]) =>
-      leadActions(ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }), featureStatus(input(over)))
-    expect(row({ feature: { phase: 'planning', ticketsReadyLap: 1 } }).primary).toEqual({ label: 'Go', kind: 'burn' })
-  })
-
-  it('disables Go with the reason before the plan is finished, and offers the gate’s override', () => {
-    const out = leadActions(
-      ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }),
-      featureStatus(input({ feature: { phase: 'planning', lap: 2, ticketsReadyLap: 1 } })),
-    )
-    expect(out.primary).toEqual({
-      label: 'Go',
-      kind: 'burn',
-      disabled: 'the plan is not finished',
-      escape: { label: 'Go anyway…', kind: 'burn' },
-    })
-  })
-
-  it('disables Go with no override while design work is uncommitted, finished plan or not', () => {
-    for (const ticketsReadyLap of [null, 1]) {
-      const over = { feature: { phase: 'planning' as const, ticketsReadyLap }, uncommittedDesign: true }
-      expect(featureStatus(input(over)).primary).toBe('goBlocked')
-      expect(leadActions(ns({}), featureStatus(input(over))).primary).toEqual({
-        label: 'Go',
-        kind: 'burn',
-        disabled: 'Uncommitted design work: ask the chat to commit or drop it',
-      })
-    }
-  })
 
   it('offers Start test drive, Stop drive and Stop as the one primary for their states', () => {
     expect(leadActions(ns({}), status({ kind: 'ready', primary: 'testDriveStart' })).primary).toEqual({
@@ -461,14 +344,19 @@ describe('the action row beside the status line', () => {
     })
   })
 
+  it('keeps the resolver’s refusal on the primary it chose', () => {
+    const out = leadActions(
+      ns({ primary: { label: 'Start test drive', kind: 'testDriveStart', disabled: 'another drive holds the slot' } }),
+      status({ kind: 'ready', primary: 'testDriveStart' }),
+    )
+    expect(out.primary).toEqual({ label: 'Start test drive', kind: 'testDriveStart', disabled: 'another drive holds the slot' })
+  })
+
   it('keeps Merge & ship as the one secondary in every state but merged, and the rest after it', () => {
     const out = leadActions(
       ns({
-        primary: { label: 'Resume burn', kind: 'burn' },
         secondary: [
-          { label: 'Burn 1 ticket', kind: 'burn' },
           { label: 'Chat', kind: 'chat' },
-          { label: 'Cancel run', kind: 'cancelRun' },
           { label: 'Resolve conflict', kind: 'resolveConflict' },
         ],
       }),
@@ -479,25 +367,22 @@ describe('the action row beside the status line', () => {
       { label: 'Merge & ship', kind: 'merge' },
       { label: 'Resolve conflict', kind: 'resolveConflict' },
     ])
+    expect(leadActions(ns({}), status({ kind: 'talking' })).secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
     expect(leadActions(ns({}), status({ kind: 'merged' })).secondary).toEqual([])
   })
 
-  it('offers the self-planning run’s Stop as the primary, and Go nowhere on the row', () => {
+  it('offers the self-planning run’s Stop as the primary', () => {
     const out = leadActions(
-      ns({
-        primary: { label: 'Stop', kind: 'stopHeadlessRun' },
-        secondary: [{ label: 'Burn 3 tickets', kind: 'burn' }],
-      }),
-      featureStatus(input({ feature: { phase: 'planning' }, selfPlanning: true })),
+      ns({ primary: { label: 'Stop', kind: 'stopHeadlessRun' } }),
+      featureStatus(input({ selfPlanning: true })),
     )
     expect(out.primary).toEqual({ label: 'Stop', kind: 'stopHeadlessRun', danger: true })
-    expect([out.primary, ...out.secondary].some((a) => a?.kind === 'burn' || a?.label === 'Go')).toBe(false)
   })
 
-  it('offers the Chat door as the primary once the agent stopped', () => {
+  it('offers the Chat door as the primary once the agent’s run failed', () => {
     const out = leadActions(
-      ns({ secondary: [{ label: 'Chat', kind: 'chat' }, { label: 'Burn 1 ticket', kind: 'burn' }] }),
-      featureStatus(input({})),
+      ns({ secondary: [{ label: 'Chat', kind: 'chat' }] }),
+      featureStatus(input({ leadWake: { failed: { at: 30, exitCode: 1 } } })),
     )
     expect(out.primary).toEqual({ label: 'Chat', kind: 'chat' })
     expect(out.secondary).toEqual([{ label: 'Merge & ship', kind: 'merge' }])
@@ -512,39 +397,34 @@ describe('the action row beside the status line', () => {
   })
 })
 
-/** design-mode decision 12: the row spread over the one header — one button, Go to the tickets view, the rest in "⋯". */
+/** design-mode decision 12: the row spread over the one header — one button, the rest in "⋯". */
 describe('the header’s share of the row', () => {
   const ns = (over: Partial<NextStep>): NextStep => ({ kick: '', secondary: [], busy: false, ...over })
   const status = (over: Partial<FeatureStatus> = {}): FeatureStatus => ({ kind: 'working', label: 'W', ...over })
   const MERGE = { label: 'Merge & ship', kind: 'merge' } as const
   const DRIVE = { label: 'Start test drive', kind: 'testDriveStart' } as const
 
-  it('moves Go to the tickets view, leaving Merge & ship as the header’s button when the resolver offers it', () => {
-    const out = headerActions(ns({ secondary: [MERGE] }), status({ kind: 'planning', primary: 'goGated' }))
-    expect(out.go).toMatchObject({ label: 'Go', kind: 'burn', disabled: 'the plan is not finished' })
-    expect(out.action).toEqual(MERGE)
-    expect(out.overflow).toEqual([])
+  it('has no button while talking: Merge & ship waits in "⋯"', () => {
+    expect(headerActions(ns({}), status({ kind: 'talking' }))).toEqual({ overflow: [MERGE] })
   })
 
-  it('keeps Merge & ship out of the header when the resolver did not offer it, reachable from "⋯"', () => {
-    const out = headerActions(ns({}), status({ kind: 'planning', primary: 'go' }))
-    expect(out.action).toBeUndefined()
-    expect(out.overflow).toEqual([MERGE])
+  it('gives the header’s one button to Merge & ship when the resolver offers it and nothing else leads', () => {
+    const out = headerActions(ns({ secondary: [MERGE] }), status({ kind: 'waiting' }))
+    expect(out.action).toEqual(MERGE)
+    expect(out.overflow).toEqual([])
   })
 
   it('gives the header’s one button to the status’s primary, Merge & ship going to "⋯"', () => {
     const out = headerActions(ns({ primary: DRIVE, secondary: [MERGE] }), status({ kind: 'ready', primary: 'testDriveStart' }))
     expect(out.action).toEqual(DRIVE)
-    expect(out.go).toBeUndefined()
     expect(out.overflow).toEqual([MERGE])
   })
 
-  it('puts every other former strip action in "⋯", never the human’s burn, run cancel or chat', () => {
+  it('puts every other action in "⋯", never the chat', () => {
     const out = headerActions(
       ns({
         primary: MERGE,
         secondary: [
-          { label: 'Cancel run', kind: 'cancelRun' },
           { label: 'Chat', kind: 'chat' },
           { label: 'Fix the drive', kind: 'fixDrive' },
         ],

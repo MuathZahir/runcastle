@@ -143,7 +143,6 @@ describe('feature.sessions', () => {
     const scenario = createSessionRow(ctx, {
       featureId: f.id,
       kind: 'scenario',
-      lap: 1,
       worktreePath: scratch,
     })
 
@@ -170,7 +169,7 @@ describe('feature.sessions', () => {
 
   it('does not list a scenario chat once it has ended', async () => {
     const f = await feature('scenario-ended')
-    const scenario = createSessionRow(ctx, { featureId: f.id, kind: 'scenario', lap: 1, worktreePath: scratch })
+    const scenario = createSessionRow(ctx, { featureId: f.id, kind: 'scenario', worktreePath: scratch })
     markSessionEnded(ctx, scenario.id)
     expect(await caller().feature.sessions({ featureId: f.id })).toEqual([])
   })

@@ -8,7 +8,6 @@ import { endSession } from '../src/pty/end-session'
 import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { emit, listAfter } from '../src/services/events'
-import { go } from '../src/services/features'
 import {
   deliverToLead,
   leadDeliveryFor,
@@ -56,7 +55,7 @@ afterEach(() => {
 })
 
 function feature(overrides: Partial<Feature> = {}): Feature {
-  return seedFeature(ctx, projectId, { slug: `lead-${++n}`, phase: 'building', ...overrides })
+  return seedFeature(ctx, projectId, { slug: `lead-${++n}`, ...overrides })
 }
 
 /** A chat session on the feature, live unless said otherwise. */
@@ -170,30 +169,6 @@ describe('deliverToLead', () => {
     expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toBeGreaterThan(0)
     expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(true)
     takeOrchestratorLines(leadMessageKey(f.id))
-  })
-})
-
-describe('Go, to a chat that planned live', () => {
-  // The chat opened on ideate/revisit and never saw the lead brief, so Go's wake
-  // is the only thing that can tell it to load the lead skill.
-  it('tells a live Claude Code chat to invoke /runcastle:lead', async () => {
-    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
-    chat(f.id)
-
-    await go(ctx, f.id)
-
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([
-      expect.stringMatching(/^\[runcastle\] Go given.*invoke \/runcastle:lead first/),
-    ])
-  })
-
-  it('spells it $lead for a live Codex chat', async () => {
-    const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
-    chat(f.id, { runtime: 'codex', live: false })
-
-    await go(ctx, f.id)
-
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([expect.stringMatching(/invoke \$lead first/)])
   })
 })
 
@@ -428,7 +403,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
         markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
         emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
 
-        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:lead\nAPI Error: overloaded')
+        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:feature\nAPI Error: overloaded')
         await new Promise((r) => setTimeout(r, 10))
       } finally {
         stop()
@@ -440,7 +415,7 @@ describe('the lead waker — a headless resume when nothing is open', () => {
       expect(failed[0]?.data).toEqual({
         sessionId: ids[0],
         exitCode: 1,
-        tail: 'Loaded skill runcastle:lead\nAPI Error: overloaded',
+        tail: 'Loaded skill runcastle:feature\nAPI Error: overloaded',
         messages: 1,
       })
       expect(failed[0]?.message).toBe(

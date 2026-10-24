@@ -77,7 +77,7 @@ describe('draft creation surfaces', () => {
       title: 'Review the tickets, then burn',
       desc: 'Three tickets for this lap.',
       note: 'Still unspecified: keyboard behavior',
-      primary: { label: 'Burn 3 tickets', kind: 'burn' },
+      primary: { label: 'Start test drive', kind: 'testDriveStart' },
       secondary: [{ label: 'Chat', kind: 'chat', hint: 'Open the chat to change the tickets before burning' }],
       busy: false,
     }

@@ -91,14 +91,14 @@ describe('the next-step bar’s count line', () => {
       secondary: [
         { label: 'Merge & ship', kind: 'merge' },
         { label: 'Start test drive', kind: 'testDriveStart' },
-        { label: 'Burn 2 tickets', kind: 'burn' },
+        { label: 'Fix the drive', kind: 'fixDrive' },
       ],
     })
     expect(html).toContain('Merge &amp; ship')
     expect(html).toContain('Start test drive')
     expect(html).toContain('aria-label="More actions"')
     // The overflow item is in the closed menu, not on the row.
-    expect(html).not.toContain('>Burn 2 tickets</button>')
+    expect(html).not.toContain('>Fix the drive</button>')
   })
 
   it('still gates the explanatory paragraph on guidance where one exists', () => {

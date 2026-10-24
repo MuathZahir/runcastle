@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { sessions } from '../src/db/schema'
 import { newId } from '@runcastle/core'
-import { listAfter } from '../src/services/events'
+import { emit, listAfter } from '../src/services/events'
 import { archiveFeature, unarchiveFeature } from '../src/services/features'
 import { getSessionRow } from '../src/launcher/sessions'
 import { useDataDir } from './helpers/data-dir'
@@ -47,7 +47,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('archives from any phase, sets status=archived, and emits feature.archived', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'planning', status: 'active' })
+    const f = seedFeature(ctx, projectId, { status: 'active' })
 
     const archived = await archiveFeature(ctx, f.id)
 
@@ -57,7 +57,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('ends a live session before archiving', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'building', status: 'active' })
+    const f = seedFeature(ctx, projectId, { status: 'active' })
     const sessionId = seedLiveSession(ctx, f.id)
 
     await archiveFeature(ctx, f.id)
@@ -68,7 +68,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('archives a shipped feature (any status except archived)', async () => {
-    const f = seedFeature(ctx, projectId, { phase: 'shipped', status: 'shipped' })
+    const f = seedFeature(ctx, projectId, { status: 'shipped' })
     expect((await archiveFeature(ctx, f.id)).status).toBe('archived')
   })
 
@@ -78,7 +78,7 @@ describe('feature archive / unarchive', () => {
   })
 
   it('unarchives a non-shipped feature back to active', () => {
-    const f = seedFeature(ctx, projectId, { phase: 'planning', status: 'archived' })
+    const f = seedFeature(ctx, projectId, { status: 'archived' })
 
     const restored = unarchiveFeature(ctx, f.id)
 
@@ -86,8 +86,9 @@ describe('feature archive / unarchive', () => {
     expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'feature.unarchived')).toBe(true)
   })
 
-  it('unarchives a shipped-phase feature back to shipped', () => {
-    const f = seedFeature(ctx, projectId, { phase: 'shipped', status: 'archived' })
+  it('unarchives a feature whose merge landed back to shipped', () => {
+    const f = seedFeature(ctx, projectId, { status: 'archived' })
+    emit(ctx, f.id, { type: 'feature.shipped', message: 'merged to main' })
     expect(unarchiveFeature(ctx, f.id).status).toBe('shipped')
   })
 

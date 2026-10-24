@@ -59,9 +59,7 @@ describe('feature.create', () => {
     expect(b.slug).toBe('my-feature-2')
     expect(c.slug).toBe('my-feature-3')
     expect(a.branch).toBe('feature/my-feature')
-    expect(a.phase).toBe('planning')
     expect(a.status).toBe('active')
-    expect(a.lap).toBe(1) // every feature starts on lap 1 (ADR-0010)
   })
 
   it('creates the row + real feature branch + scaffolds brief.md', async () => {

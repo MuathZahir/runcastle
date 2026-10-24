@@ -53,7 +53,6 @@ const feature: Feature = {
   slug: 'demo',
   title: 'Demo',
   oneLiner: 'x',
-  phase: 'building',
   branch: 'feature/demo',
   status: 'active',
   createdAt: 0,
