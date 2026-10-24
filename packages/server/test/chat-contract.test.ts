@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { newId, type Feature, type TicketInput } from '@runcastle/core'
+import { newId, type Feature } from '@runcastle/core'
 import { featureDocsRel, sessionDir, worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -12,7 +12,6 @@ import { runs } from '../src/db/schema'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
-import { storeTickets, updateTicket } from '../src/services/tickets'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
@@ -40,11 +39,7 @@ describe('chat contract', () => {
     ])
   })
 
-  it.each([
-    { reviewStatus: 'done' as const, outcome: 'passed' },
-    { reviewStatus: 'failed' as const, outcome: 'failed' },
-    { reviewStatus: undefined, outcome: 'unverified' },
-  ])('names a Review feature’s real $outcome drive outcome', async ({ reviewStatus, outcome }) => {
+  it('tells the chat the feature status and the rounds run, never a phase or a lap', async () => {
     const ctx = await makeTestCtx()
     const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'review', lap: 3 })
     ctx.db.insert(runs).values({
@@ -55,48 +50,45 @@ describe('chat contract', () => {
       startedAt: 1,
       endedAt: 2,
     }).run()
-    if (reviewStatus) {
-      const input: TicketInput = {
-        title: 'Review the lap',
-        goal: 'Review it',
-        context: 'Review context',
-        acceptanceCriteria: ['Review completed'],
-        seams: ['review'],
-        blockedBy: [],
-        kind: 'review',
-      }
-      const [review] = storeTickets(ctx, feature.id, [input])
-      updateTicket(ctx, review.id, { status: reviewStatus })
-    }
     const line = chatKickoffHeader(ctx, feature)
-    expect(line).toContain('Feature state: review')
+    expect(line).toContain('Feature status: Talking with you;')
     // The lap column (3 here) no longer moves; the round count is what's told.
     expect(line).toContain('rounds run: 1;')
-    expect(line).not.toMatch(/\blap\b/i)
-    expect(line).toContain(`Drive outcome: ${outcome}; see the review evidence`)
+    expect(line).not.toMatch(/\blap\b|phase|review/i)
     expect(line.endsWith('Call get_feature_context for the full picture.')).toBe(true)
   })
 
-  it('names a Review feature with no run as never driven', async () => {
+  it('says "Working · Round N" in the kickoff while a round runs', async () => {
     const ctx = await makeTestCtx()
-    const feature = seedFeature(ctx, seedProject(ctx).id, { phase: 'review' })
+    const feature = seedFeature(ctx, seedProject(ctx).id)
+    ctx.db.insert(runs).values({
+      id: newId('run'),
+      featureId: feature.id,
+      workflow: 'ticket-burner',
+      status: 'running',
+      startedAt: 1,
+    }).run()
+    expect(chatKickoffHeader(ctx, feature)).toContain('Feature status: Working · Round 1;')
+  })
 
-    expect(chatKickoffHeader(ctx, feature)).toContain('Drive outcome: never driven;')
+  it('says "Waiting for you · <why>" and "Merged" in the kickoff', async () => {
+    const ctx = await makeTestCtx()
+    const projectId = seedProject(ctx).id
+    const waiting = { ...seedFeature(ctx, projectId, { slug: 'waiting' }), waitingReason: 'start round 1?' }
+    const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' })
+    expect(chatKickoffHeader(ctx, waiting)).toContain('Feature status: Waiting for you · start round 1?;')
+    expect(chatKickoffHeader(ctx, shipped)).toContain('Feature status: Merged;')
   })
 })
 
 /**
- * Which opening move the one chat is briefed with.
- *
- * The collapsed kind was mapped straight onto the revisit brief and the revisit
- * skill, so the only door into a brand-new feature handed it the
- * amend-an-existing-record contract — including "Do NOT call `complete_phase`" —
- * and the front of the pipeline had no instructed path to its own first
- * decisions, spec and tickets. Both renders are asserted here, because a prompt
- * and a kickoff that name different opening skills is the older bug (F2) this
- * codebase already paid for once.
+ * Every feature chat is the lead from its first message, with one brief and one
+ * skill (tickets-and-review-are-tools-not-phases decision 4): what the feature
+ * has produced no longer picks the opening. Both renders are asserted here,
+ * because a prompt and a kickoff that name different opening skills is the
+ * older bug (F2) this codebase already paid for once.
  */
-describe('the one chat opens on the move its state calls for', () => {
+describe('every chat opens on the feature skill', () => {
   let ctx: AppCtx
   let projectId: string
   let repoPath: string
@@ -158,27 +150,19 @@ describe('the one chat opens on the move its state calls for', () => {
     }
   }
 
-  it('sends a feature with no decisions, spec or tickets to ideation', async () => {
-    const feature = await planningFeature('fresh-chat', [])
+  it('briefs and kicks off a fresh feature and a grilled one alike, on the feature skill', async () => {
+    for (const [slug, docs] of [['fresh-chat', []], ['grilled-chat', ['decisions.md', 'spec.md']]] as const) {
+      const feature = await planningFeature(slug, [...docs])
 
-    const { prompt, command } = await chatBriefing(feature)
+      const { prompt, command } = await chatBriefing(feature)
 
-    expect(prompt).toContain('/runcastle:ideate')
-    expect(prompt).not.toContain('/runcastle:revisit')
-    // the ideation contract, not the amend-a-record one
-    expect(prompt).toContain('complete_phase')
-    expect(prompt).not.toContain('a revisit never moves the pipeline')
-    expect(command).toContain('/runcastle:ideate')
-    expect(command).not.toContain('/runcastle:revisit')
-  })
-
-  it('sends a feature that has already been grilled to a revisit', async () => {
-    const feature = await planningFeature('grilled-chat', ['decisions.md'])
-
-    const { prompt, command } = await chatBriefing(feature)
-
-    expect(prompt).toContain('/runcastle:revisit')
-    expect(prompt).not.toContain('/runcastle:ideate')
-    expect(command).toContain('/runcastle:revisit')
+      expect(prompt).toContain('Invoke the `/runcastle:feature` skill')
+      expect(prompt).not.toMatch(/runcastle:(ideate|revisit|lead)/)
+      expect(command).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
+      expect(command).toContain('Feature status: Talking with you;')
+      // every chat on a feature runs without permission prompts
+      expect(command).toContain('--permission-mode bypassPermissions')
+    }
   })
 })
+

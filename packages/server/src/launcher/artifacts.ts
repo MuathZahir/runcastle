@@ -199,6 +199,8 @@ export function renderSystemPrompt(
   if (kind === 'side') return renderSidePrompt(feature)
   const docs = featureDocsRel(feature.slug) // docs/features/<slug>
   const errand = purposeLine(purpose, runtime)
+  // A self-planning run has nobody to answer it by definition, however it was launched.
+  const unattended = headless || purpose === 'self-plan'
 
   return [
     `# runcastle — ${feature.title}`,
@@ -229,10 +231,10 @@ export function renderSystemPrompt(
     leadCodeRule(),
     otherEntrySkillsRule(),
     '',
-    ...(headless ? [headlessRule(), ''] : []),
+    ...(unattended ? [headlessRule(), ''] : []),
     '## Your task',
     ...(errand ? [errand] : []),
-    headless
+    unattended
       ? `Invoke the \`${skillRef(runtime, FEATURE_SKILL)}\` skill and do what your opening prompt asks, in this one run.`
       : `Invoke the \`${skillRef(runtime, FEATURE_SKILL)}\` skill and continue this feature.`,
     '',

@@ -19,8 +19,6 @@ import {
   renderMcpConfig,
   renderSessionPrompt,
   renderSettings,
-  designRule,
-  noCodeRule,
   renderSystemPrompt,
   skillPackReadRule,
   talkingToTheHumanSection,
@@ -191,7 +189,7 @@ describe('renderSettings', () => {
   })
 
   /**
-   * A self-planning run (`-p`) was refused `ideate/references/preview.md` and the
+   * A self-planning run (`-p`) was refused `feature/references/preview.md` and the
    * starter page: the pack lives outside the worktree, and in print mode nobody
    * is there to approve the read. Every session gets read access to its own pack
    * — and to nothing else outside its worktree.
@@ -242,7 +240,7 @@ describe('renderSettings', () => {
   it('denies the other kinds\' entry skills, and only those', () => {
     // each kind's own entry skill(s) never appear in its deny list
     const own: Record<string, string[]> = {
-      chat: ['ideate', 'revisit', 'lead'],
+      chat: ['feature'],
       prepare: ['prepare'],
       project: ['project'],
       'drive-fix': [],
@@ -257,8 +255,8 @@ describe('renderSettings', () => {
       for (const rule of deny) {
         expect(rule).toMatch(/^Skill\(runcastle:[a-z-]+( \*)?\)$/)
       }
-      // the chained/reached skills are never denied to anyone
-      for (const open of ['spec', 'tickets', 'code-review']) {
+      // the reached skill is never denied to anyone
+      for (const open of ['code-review']) {
         expect(deny).not.toContain(`Skill(runcastle:${open})`)
       }
       // both forms travel together
@@ -267,12 +265,20 @@ describe('renderSettings', () => {
     }
     // a prepare session cannot open another kind's procedure…
     expect(entrySkillDenyRules('prepare')).toEqual(
-      expect.arrayContaining(['Skill(runcastle:ideate)', 'Skill(runcastle:project *)']),
+      expect.arrayContaining(['Skill(runcastle:feature)', 'Skill(runcastle:project *)']),
     )
     // …an unknown kind gets no entry skill at all (the edit guard's stance)…
-    expect(entrySkillDenyRules(undefined)).toContain('Skill(runcastle:ideate)')
-    // …the lead skill is the feature chat's alone…
-    expect(entrySkillDenyRules('project')).toContain('Skill(runcastle:lead)')
+    expect(entrySkillDenyRules(undefined)).toContain('Skill(runcastle:feature)')
+    // …the feature skill is the feature chat's alone, and the deleted skills are named nowhere…
+    expect(entrySkillDenyRules('project')).toContain('Skill(runcastle:feature)')
+    expect(entrySkillDenyRules('chat')).toEqual([
+      'Skill(runcastle:qa)',
+      'Skill(runcastle:qa *)',
+      'Skill(runcastle:project)',
+      'Skill(runcastle:project *)',
+      'Skill(runcastle:prepare)',
+      'Skill(runcastle:prepare *)',
+    ])
     // …and the rendered settings carry the list
     const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
     expect(s.permissions.deny).toEqual(entrySkillDenyRules('project'))
@@ -459,33 +465,78 @@ describe('renderMcpConfig', () => {
 })
 
 describe('renderSystemPrompt', () => {
-  const empty = { hasDecisions: false, hasSpec: false, hasTickets: false }
-  const grilled = { hasDecisions: true, hasSpec: false, hasTickets: false }
+  /**
+   * Every feature chat is the lead from its first message, with one brief
+   * (tickets-and-review-are-tools-not-phases decision 4): attended, headless
+   * wake, self-plan, relay and resolve-conflict, in any state of the feature.
+   */
+  const CHAT_LAUNCHES: [string, string | undefined, boolean][] = [
+    ['attended', undefined, false],
+    ['headless wake', undefined, true],
+    ['self-plan', 'self-plan', true],
+    ['relay', 'relay', true],
+    ['resolve-conflict', 'resolve-conflict', false],
+  ]
+  const STATES: Partial<Feature>[] = [
+    {},
+    { phase: 'building' },
+    { phase: 'review', waitingReason: 'ready to test' },
+    { phase: 'shipped', status: 'shipped' },
+  ]
 
-  it('directs a new planning chat to /runcastle:ideate with the docs paths', () => {
-    const p = renderSystemPrompt(feature(), 'chat', undefined, undefined, empty)
-    expect(p).toContain('/runcastle:ideate')
-    expect(p).toContain('docs/features/dark-mode/')
-    expect(p).toContain('complete_phase')
-    // Go, not Burn, is the click that moves the feature out of planning
-    expect(p).toContain('Go (planning → building)')
+  it('gives every feature chat, in any state, one brief naming the feature skill and no phase', () => {
+    for (const [name, purpose, headless] of CHAT_LAUNCHES) {
+      for (const state of STATES) {
+        const p = renderSystemPrompt(feature(state), 'chat', purpose as SessionPurpose | undefined, undefined, headless)
+        expect(p, name).toContain("You are this feature's **lead**, from your first message")
+        expect(p, name).toContain('Invoke the `/runcastle:feature` skill')
+        expect(p, name).toContain('docs/features/dark-mode/brief.md')
+        expect(p, name).toContain('docs/features/dark-mode/decisions.md')
+        expect(p, name).toContain('docs/features/dark-mode/spec.md')
+        expect(p, name).not.toMatch(/phase/i)
+        expect(p, name).not.toMatch(/\bGo\b|revisit|ideat|\(feature lead\)|runcastle:(lead|design)/i)
+        expect(p, name).not.toMatch(/Talk sessions do not write code/)
+        expect(p, name).toMatch(/You may change code yourself/)
+        expect(p, name).toMatch(/never merge/)
+      }
+    }
   })
 
-  it('tells a self-planning run no human is present, adding to the ideation brief alone', () => {
-    const ideation = renderSystemPrompt(feature(), 'chat', undefined, 'codex', empty)
-    const selfPlan = renderSystemPrompt(feature(), 'chat', 'self-plan', 'codex', empty)
-    expect(selfPlan).toContain('## No human is present')
-    expect(selfPlan).toContain('Never end your turn to ask a question')
-    expect(selfPlan).toContain('A refused tool is not a wait')
-    expect(selfPlan).toContain('"Planning without a human"')
-    expect(selfPlan).toContain('$ideate')
-    // The section is the whole difference: an ordinary ideation chat is untouched.
-    // ...apart from the rule: no human to approve code, so the docs-only one holds.
-    const docs = 'docs/features/dark-mode'
-    expect(selfPlan.replace(/## No human is present[\s\S]*?\n\n/, '')).toBe(
-      ideation.replace(designRule(docs), noCodeRule(docs)),
-    )
-    expect(ideation).not.toContain('No human is present')
+  it('spells the feature skill the way the runtime invokes it', () => {
+    expect(renderSystemPrompt(feature(), 'chat', undefined, 'codex')).toContain('Invoke the `$feature` skill')
+  })
+
+  it('renders the same brief whatever the feature is doing', () => {
+    const fresh = renderSystemPrompt(feature(), 'chat')
+    for (const state of STATES) expect(renderSystemPrompt(feature(state), 'chat')).toBe(fresh)
+  })
+
+  it('adds one sentence for each errand, and nothing else', () => {
+    // A self-planning run is unattended by definition, so it is compared with a headless brief.
+    const errands: [SessionPurpose, RegExp, boolean][] = [
+      ['self-plan', /self-planning run: plan this feature by yourself and do not build it, .*`references\/planning-alone\.md`/, true],
+      ['relay', /relay run: the project's orchestrator, not the human, sent this conversation a message/, false],
+      ['resolve-conflict', /resolves a merge conflict: merge the base branch in, resolve the conflicts/, false],
+    ]
+    for (const [purpose, sentence, headless] of errands) {
+      const plain = renderSystemPrompt(feature(), 'chat', undefined, undefined, headless)
+      const p = renderSystemPrompt(feature(), 'chat', purpose)
+      const lines = p.split('\n')
+      const extra = lines.filter((line) => !plain.split('\n').includes(line))
+      expect(extra, purpose).toHaveLength(1)
+      expect(extra[0], purpose).toMatch(sentence)
+    }
+  })
+
+  it('tells a headless run no human is present, and to ask only through wait_for_you', () => {
+    for (const purpose of [undefined, 'self-plan', 'relay'] as const) {
+      const p = renderSystemPrompt(feature(), 'chat', purpose, undefined, true)
+      expect(p).toContain('## No human is present')
+      expect(p).toContain('call `wait_for_you` with why, then end your turn')
+      expect(p).toContain('A refused tool is not a wait')
+      expect(p).toContain('do what your opening prompt asks, in this one run')
+    }
+    expect(renderSystemPrompt(feature(), 'chat')).not.toContain('No human is present')
   })
 
   /**
@@ -496,99 +547,28 @@ describe('renderSystemPrompt', () => {
    * from each other and from the schema.
    */
   it('carries no MCP tool cheat-sheet in any renderer', () => {
-    const prompts = [
-      renderSystemPrompt(feature(), 'chat'),
-      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-    ]
+    const prompts = [renderSystemPrompt(feature(), 'chat'), renderSystemPrompt(feature(), 'side')]
     for (const p of prompts) expect(p).not.toContain('## runcastle MCP tools')
   })
 
-  // Mapped ideation was retired (ADR-0012): no feature prompt, whatever the
-  // phase, still sends a session to a waypoint, a converge or a map.
+  // Mapped ideation was retired (ADR-0012): no feature prompt still sends a
+  // session to a waypoint, a converge or a map.
   it('mentions no waypoint, converge or map.md in any feature prompt', () => {
-    const prompts = [
-      renderSystemPrompt(feature(), 'chat'),
-      renderSystemPrompt(feature({ phase: 'building' }), 'chat'),
-      renderSystemPrompt(feature({ phase: 'review' }), 'chat'),
-    ]
-    for (const p of prompts) {
+    for (const [, purpose, headless] of CHAT_LAUNCHES) {
+      const p = renderSystemPrompt(feature(), 'chat', purpose as SessionPurpose | undefined, undefined, headless)
       expect(p).not.toMatch(/waypoint|converge|map\.md/i)
     }
   })
 
-  it('directs a planning chat with a record to /runcastle:revisit, no phase writes', () => {
-    const p = renderSystemPrompt(feature(), 'chat', undefined, undefined, grilled)
-    expect(p).toContain('/runcastle:revisit')
-    expect(p).toContain('decisions.md')
-    // a revisit never moves the pipeline
-    expect(p).toMatch(/do not call `complete_phase`/i)
-    expect(p).not.toContain('This is lap')
-  })
-
-  /**
-   * Past Go the chat is the feature's lead (`the-feature-lead-runs-rounds`): it
-   * runs rounds rather than amending a record, may change code itself, and
-   * hands the drive to the human — the lap and review-iteration briefings it
-   * used to get at review are gone with laps.
-   */
-  it('briefs a building or review chat as the lead, naming the lead skill per runtime', () => {
-    for (const phase of ['building', 'review'] as const) {
-      const p = renderSystemPrompt(feature({ phase }), 'chat')
-      expect(p).toContain('(feature lead)')
-      expect(p).toContain('Invoke the `/runcastle:lead` skill')
-      expect(p).not.toContain('/runcastle:revisit')
-      expect(p).not.toMatch(/Talk sessions do not write code/)
-      expect(p).toMatch(/You may change code yourself/)
-      expect(p).toMatch(/landing queue/)
-      expect(p).toMatch(/never merge/)
-      expect(p).not.toMatch(/This is lap|Review iteration|click Burn/)
+  it('briefs a side session with the main chat as lead, no phase and no Go', () => {
+    for (const state of STATES) {
+      const p = renderSystemPrompt(feature(state), 'side')
+      expect(p).toContain('(side session)')
+      expect(p).toContain('except run rounds')
+      expect(p).toContain('You may change code in this checkout')
+      expect(p).not.toMatch(/phase/i)
+      expect(p).not.toMatch(/\bGo\b|runcastle:design/)
     }
-    expect(renderSystemPrompt(feature({ phase: 'building' }), 'chat', undefined, 'codex')).toContain(
-      'Invoke the `$lead` skill',
-    )
-  })
-
-  it('gives a human planning chat the design rule in the revisit and ideation prompts', () => {
-    for (const p of [
-      renderSystemPrompt(feature(), 'chat', undefined, undefined, empty),
-      renderSystemPrompt(feature(), 'chat', undefined, undefined, grilled),
-    ]) {
-      expect(p).not.toMatch(/Talk sessions do not write code/)
-      expect(p).toContain('`runcastle:design`')
-      expect(p).toContain('`design: <what>`')
-      expect(p).toMatch(/Go waits until no design work is left uncommitted/)
-      // and it says where the change goes instead
-      expect(p).toContain('docs/features/dark-mode/')
-      expect(p).toMatch(/ticket/i)
-      expect(p).not.toMatch(/Package installs are blocked in this worktree/)
-    }
-  })
-
-  it('keeps the no-code rule for a self-planning run', () => {
-    const p = renderSystemPrompt(feature(), 'chat', 'self-plan', undefined, empty)
-    expect(p).toMatch(/Talk sessions do not write code/)
-    expect(p).not.toContain('runcastle:design')
-  })
-
-  /**
-   * E2E F18 — the conflict-resolution revisit was briefed to resolve the merge
-   * AND told edits are denied. The agent believed the ban, aborted the merge and
-   * emitted a ticket to carry it instead, so the feature never worked. It stays
-   * a revisit at review, where every other chat is the lead.
-   */
-  it('tells the conflict-resolution revisit that it does write code here', () => {
-    const p = renderSystemPrompt(feature({ phase: 'review' }), 'chat', 'resolve-conflict')
-    expect(p).toContain('(revisit session)')
-    expect(p).not.toMatch(/Talk sessions do not write code/)
-    expect(p).toMatch(/resolves a merge conflict, so it DOES write code/i)
-    // the exception is bounded: other work still rides a ticket
-    expect(p).toMatch(/ticket/i)
-    // and it verifies without dependencies — the install guard has no merge exemption
-    expect(p).toMatch(/package installs are blocked in this worktree/i)
-    expect(p).toContain('git diff --check')
-    expect(p).toMatch(/test-drive the branch/)
-    expect(p).not.toMatch(/run the tests/i)
-    expect(p).not.toMatch(/fix ticket/i)
   })
 })
 
@@ -858,7 +838,6 @@ describe('writeSessionArtifacts', () => {
     const out = await writeSessionArtifacts({
       session: sess,
       feature: feature(),
-      planning: { hasDecisions: false, hasSpec: false, hasTickets: false },
       project: {
         id: 'proj_1',
         name: 'p',
@@ -884,23 +863,18 @@ describe('writeSessionArtifacts', () => {
     const mcp = JSON.parse(readFileSync(out.mcpConfigPath, 'utf8'))
     expect(mcp.mcpServers.runcastle.headers['X-Runcastle-Session']).toBe(sess.id)
 
-    expect(readFileSync(out.systemPromptPath, 'utf8')).toContain('/runcastle:ideate')
+    expect(readFileSync(out.systemPromptPath, 'utf8')).toContain('/runcastle:feature')
   })
 })
 
 describe('renderSessionPrompt', () => {
   const project: Project = { id: 'proj_1', name: 'p', repoPath: 'C:\\repo' }
-  const noArtifacts = { hasDecisions: false, hasSpec: false, hasTickets: false }
 
   const briefs: Array<[string, Partial<WriteArtifactsInput>]> = [
-    ['ideation', { feature: feature(), planning: noArtifacts }],
-    [
-      'revisit chat',
-      { feature: feature(), planning: { hasDecisions: true, hasSpec: true, hasTickets: false } },
-    ],
-    ['lead', { feature: feature({ phase: 'review' }) }],
+    ['feature chat', { feature: feature() }],
+    ['resolve-conflict', { feature: feature({ phase: 'review' }), purpose: 'resolve-conflict' }],
     ['qa', { session: session({ kind: 'qa' }), feature: feature({ phase: 'review' }) }],
-    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    ['self-plan', { feature: feature(), purpose: 'self-plan' }],
     [
       'prepare',
       {
@@ -953,7 +927,7 @@ describe('renderSessionPrompt', () => {
   })
 
   const headlessBriefs: Array<[string, Partial<WriteArtifactsInput>]> = [
-    ['self-plan', { feature: feature(), planning: noArtifacts, purpose: 'self-plan' }],
+    ['self-plan', { feature: feature(), purpose: 'self-plan' }],
     [
       'relay',
       {
@@ -976,7 +950,7 @@ describe('renderSessionPrompt', () => {
       expect(rule).toContain(
         'This section outranks "How to talk to the human" at the end of this brief',
       )
-      expect(rule).toContain('turn on a decision for them.')
+      expect(rule).toContain('put a question\n  to them only through `wait_for_you`')
     },
   )
 
@@ -986,7 +960,6 @@ describe('renderSessionPrompt', () => {
       project,
       config,
       feature: feature(),
-      planning: noArtifacts,
     })
 
     expect(prompt).not.toContain('outranks "How to talk to the human"')
@@ -1043,12 +1016,7 @@ describe('claudeRuntime.writeArtifacts', () => {
         },
       }
     }
-    return {
-      feature: feature(),
-      ...(kind === 'chat'
-        ? { planning: { hasDecisions: false, hasSpec: false, hasTickets: false } }
-        : {}),
-    }
+    return { feature: feature() }
   }
 
   async function launchSpec(
@@ -1176,7 +1144,6 @@ describe('codexRuntime.writeArtifacts', () => {
     return codexRuntime.writeArtifacts({
       session: sess,
       feature: feature(),
-      planning: { hasDecisions: false, hasSpec: false, hasTickets: false },
       project,
       config,
       worktreePath: worktree,
@@ -1269,7 +1236,7 @@ describe('codexRuntime.writeArtifacts', () => {
       'http_headers = { "X-Runcastle-Session" = "sess_codex_chat" }\n' +
       'default_tools_approval_mode = "approve"\n'
 
-    await launchSpec('chat', { headless: true, kickoffLine: '$ideate' })
+    await launchSpec('chat', { headless: true, kickoffLine: '$feature' })
     expect(configToml('sess_codex_chat')).toContain(approved)
 
     // the chat that resumes the run gets its home rewritten, and keeps the grant
@@ -1393,7 +1360,7 @@ describe('codexRuntime.writeArtifacts', () => {
   it('writes the per-kind prompt as AGENTS.md, spelled the way Codex invokes a skill', async () => {
     await launchSpec('chat')
     const chat = readFileSync(join(codexHomeDir('sess_codex_chat'), 'AGENTS.md'), 'utf8')
-    expect(chat).toContain('$ideate')
+    expect(chat).toContain('$feature')
     expect(chat).not.toContain('/runcastle:')
   })
 
@@ -1480,11 +1447,11 @@ describe('codexRuntime.writeArtifacts', () => {
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: worktree })
 
     const spec = await launchSpec('chat')
-    const skill = join(worktree, '.agents', 'skills', 'ideate', 'SKILL.md')
+    const skill = join(worktree, '.agents', 'skills', 'feature', 'SKILL.md')
 
     expect(spec.files).toContain(skill)
-    // Codex resolves `$ideate` from the frontmatter name used by the rendered prompt.
-    expect(readFileSync(skill, 'utf8')).toContain('name: ideate')
+    // Codex resolves `$feature` from the frontmatter name used by the rendered prompt.
+    expect(readFileSync(skill, 'utf8')).toContain('name: feature')
 
     // the invariant: skills load and the human's diff is untouched — via
     // .git/info/exclude, never their .gitignore, which is their file and their PR

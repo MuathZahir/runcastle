@@ -99,7 +99,7 @@ describe('session.kickoff — emitted at spawn, never before one', () => {
     expect(recorded).toMatchObject({ sessionId, kind: 'chat', mechanism: 'argv' })
     // what was recorded is the composed chat briefing: the opening this feature's
     // state calls for (nothing on disk yet, so ideation), then the state header
-    expect(recorded?.line).toContain('/runcastle:ideate')
+    expect(recorded?.line).toContain('/runcastle:feature')
     expect(recorded?.line).toContain('Feature status: Talking with you')
   })
 

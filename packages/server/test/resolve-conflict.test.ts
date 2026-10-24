@@ -39,88 +39,44 @@ const GUARD_BASE = {
 
 const SOURCE_FILE = '/wt/dark-mode/vitest.config.ts'
 
-describe('evaluateEditGuard — the resolve-conflict exemption', () => {
-  it('allows any file write while the merge it was opened for is in progress', () => {
-    for (const toolName of ['Edit', 'Write', 'NotebookEdit']) {
-      for (const filePath of [SOURCE_FILE, 'src/theme.ts', '/wt/dark-mode/package.json']) {
-        expect(
-          evaluateEditGuard({
-            ...GUARD_BASE,
-            kind: 'chat',
-            purpose: 'resolve-conflict',
-            mergeInProgress: true,
-            toolName,
-            filePath,
-          }),
-        ).toBeNull()
+/** The `PreToolUse` answer a feature chat on Claude Code gets: allowed, no prompt. */
+const ALLOW = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+
+describe('evaluateEditGuard — the resolve-conflict session', () => {
+  /**
+   * A resolve-conflict session is a feature chat, and every feature chat is the
+   * lead from its first message (tickets-and-review-are-tools-not-phases
+   * decision 13): it writes source while the merge is in progress and after it
+   * lands alike.
+   */
+  it('writes any file, with or without a merge in progress', () => {
+    for (const mergeInProgress of [true, false]) {
+      for (const toolName of ['Edit', 'Write', 'NotebookEdit']) {
+        for (const filePath of [SOURCE_FILE, 'src/theme.ts', 'docs/features/dark-mode/decisions.md']) {
+          expect(
+            evaluateEditGuard({
+              ...GUARD_BASE,
+              kind: 'chat',
+              purpose: 'resolve-conflict',
+              mergeInProgress,
+              toolName,
+              filePath,
+            }),
+          ).toBeNull()
+        }
       }
     }
   })
 
-  /**
-   * The exemption is scoped to the merge, not granted to the session: once the
-   * merge commit lands, MERGE_HEAD is gone and the standard ticket message is
-   * what the agent gets for the next stray edit.
-   */
-  it('denies with the standard message once no merge is in progress', () => {
-    const denial = evaluateEditGuard({
-      ...GUARD_BASE,
-      kind: 'chat',
-      purpose: 'resolve-conflict',
-      mergeInProgress: false,
-      filePath: SOURCE_FILE,
-    })
-    expect(denial?.reason).toMatch(/Talk sessions do not write code/)
-    expect(denial?.reason).toMatch(/docs\/features\/dark-mode/)
-  })
-
-  it('still lets a resolve session write its feature docs between merges', () => {
-    expect(
-      evaluateEditGuard({
-        ...GUARD_BASE,
-        kind: 'chat',
-        purpose: 'resolve-conflict',
-        mergeInProgress: false,
-        filePath: 'docs/features/dark-mode/decisions.md',
-      }),
-    ).toBeNull()
-  })
-
-  /** A merge in someone else's worktree grants nothing — the purpose is the key. */
-  it('denies a session with no purpose even while a merge is in progress', () => {
-    for (const kind of ['chat'] as const) {
-      const denial = evaluateEditGuard({
-        ...GUARD_BASE,
-        kind,
-        mergeInProgress: true,
-        filePath: SOURCE_FILE,
-      })
-      expect(denial?.reason).toMatch(/Talk sessions do not write code/)
-    }
-  })
-
   describe('every other session behaves exactly as before', () => {
-    it('denies source and allows the feature docs for an ordinary talk session', () => {
-      expect(
-        evaluateEditGuard({ ...GUARD_BASE, kind: 'chat', filePath: SOURCE_FILE })?.reason,
-      ).toMatch(/Talk sessions do not write code/)
-      expect(
-        evaluateEditGuard({
-          ...GUARD_BASE,
-          kind: 'chat',
-          filePath: 'docs/features/dark-mode/spec.md',
-        }),
-      ).toBeNull()
-    })
-
     it('leaves a project session alone and keeps failing open on what it cannot read', () => {
       expect(
         evaluateEditGuard({ ...GUARD_BASE, kind: 'project', filePath: '/wt/project/src/index.ts' }),
       ).toBeNull()
       expect(
-        evaluateEditGuard({ ...GUARD_BASE, kind: 'chat', toolName: 'Bash', filePath: 'x.ts' }),
+        evaluateEditGuard({ ...GUARD_BASE, kind: 'scenario', toolName: 'Bash', filePath: 'x.ts' }),
       ).toBeNull()
-      expect(evaluateEditGuard({ ...GUARD_BASE, kind: 'chat' })).toBeNull()
+      expect(evaluateEditGuard({ ...GUARD_BASE, kind: 'scenario' })).toBeNull()
     })
 
     it('sends a session with no feature to `record_finding`, purpose or not', () => {
@@ -192,7 +148,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { feature: true }\n')
     git(worktree, 'commit', '-am', 'feature moves')
 
-    // In planning: a human chat's guards are lifted in every phase (design mode).
+    // Every feature chat is the lead, so its guards are lifted and its calls auto-allowed.
     const feature = seedFeature(ctx, project.id, { slug: 'dark-mode', phase: 'planning' })
     sessionId = createSessionRow(ctx, {
       featureId: feature.id,
@@ -231,20 +187,20 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
 
   it('allows the conflicting file to be written while the merge is unresolved', async () => {
     startConflictingMerge()
-    expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual({})
+    expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual(ALLOW)
   })
 
-  // A human chat is unguarded in every phase now, so the merge window no longer
+  // Every feature chat is unguarded now, so the merge window no longer
   // changes what the hook answers; the pure guard tests above keep the scoping.
   it('keeps allowing the write once the merge commit lands', async () => {
     startConflictingMerge()
     writeFileSync(join(worktree, 'vitest.config.ts'), 'export default { both: true }\n')
     git(worktree, 'commit', '-am', 'resolve the merge')
 
-    expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual({})
+    expect(await preTool(sessionId, join(worktree, 'vitest.config.ts'))).toEqual(ALLOW)
   })
 
-  it('allows a package install from a planning chat', async () => {
+  it('allows a package install from the resolving chat', async () => {
     startConflictingMerge()
     const app = new Hono()
     app.route('/api/hooks', hooksApp)
@@ -261,7 +217,7 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
       }),
     })
     const json: any = await res.json()
-    expect(json).toEqual({})
+    expect(json).toEqual(ALLOW)
   })
 
   /** A worktree git cannot read answers "no merge", never a thrown hook. */
@@ -275,8 +231,8 @@ describe('pre-tool — a resolve-conflict session against a real worktree', () =
       worktreePath: join(tmpdir(), 'runcastle-does-not-exist', 'gone'),
     }).id
 
-    expect(await preTool(orphan, '/wt/gone/src/theme.ts')).toEqual({})
-    expect(await preTool(orphan, 'docs/features/gone/spec.md')).toEqual({})
+    expect(await preTool(orphan, '/wt/gone/src/theme.ts')).toEqual(ALLOW)
+    expect(await preTool(orphan, 'docs/features/gone/spec.md')).toEqual(ALLOW)
   })
 })
 

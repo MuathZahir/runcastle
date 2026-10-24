@@ -174,26 +174,25 @@ describe('deliverToLead', () => {
 })
 
 describe('Go, to a chat that planned live', () => {
-  // The chat opened on ideate/revisit and never saw the lead brief, so Go's wake
-  // is the only thing that can tell it to load the lead skill.
-  it('tells a live Claude Code chat to invoke /runcastle:lead', async () => {
+  // Go's wake names the feature skill, spelled for the chat's runtime.
+  it('tells a live Claude Code chat to carry on by /runcastle:feature', async () => {
     const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id)
 
     await go(ctx, f.id)
 
     expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([
-      expect.stringMatching(/^\[runcastle\] Go given.*invoke \/runcastle:lead first/),
+      expect.stringMatching(/^\[runcastle\] Go given.*Carry on by \/runcastle:feature:/),
     ])
   })
 
-  it('spells it $lead for a live Codex chat', async () => {
+  it('spells it $feature for a live Codex chat', async () => {
     const f = feature({ phase: 'planning', ticketsReadyLap: 1 })
     chat(f.id, { runtime: 'codex', live: false })
 
     await go(ctx, f.id)
 
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([expect.stringMatching(/invoke \$lead first/)])
+    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual([expect.stringMatching(/Carry on by \$feature:/)])
   })
 })
 

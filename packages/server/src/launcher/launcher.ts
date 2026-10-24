@@ -289,14 +289,11 @@ function isSelfPlan(input: LaunchSessionInput): boolean {
 
 /**
  * Refuse a self-planning run the feature cannot take (`features-plan-themselves`
- * decision 5): a draft has not been started and a shipped feature is done, so
- * neither has anything to plan, and — like any terminal — no other session may
+ * decision 5): a shipped feature is done, so it has nothing to plan (a draft is
+ * refused like any launch), and — like any terminal — no other session may
  * be up. Checked before the row exists, so a refusal leaves nothing behind.
  */
 function assertSelfPlannable(ctx: AppCtx, feature: Feature): void {
-  if (feature.status === 'draft') {
-    throw new GateError(`${feature.slug} is a draft, so it cannot plan itself — start it first`)
-  }
   if (feature.status === 'shipped') {
     throw new GateError(`${feature.slug} is shipped, so there is nothing for it to plan — open its chat to change it`)
   }
