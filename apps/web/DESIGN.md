@@ -88,7 +88,8 @@ before adding.
     (`text-shimmer`); rows that need you only wear their dot.
   - **Shelf counts sit in a small round well** (`ShelfCount`) — a sidebar-only
     exception to "no pills"; nowhere else.
-  - Behind the head, a static `film-grain` at 7%, fading out downward.
+  - Behind the head, a static `film-grain` at 20%, fading out downward: white
+    specks on dark, softer dark specks on light.
 - **The sidebar has two states: open or closed** (design-mode decision 12).
   Closed is zero width — no icon rail, nothing of it left on the canvas — and
   the content panel takes the whole window. Ctrl/⌘+B toggles it, the sidebar's
