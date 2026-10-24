@@ -166,6 +166,7 @@ describe('feature dependencies over MCP', () => {
         { slug: 'auth-rework', satisfied: false },
         { slug: 'ledger', satisfied: false },
       ],
+      upNext: false,
     })
 
     const second = toolSetFeatureDependencies(ctx, session, { slug: 'billing', dependsOn: ['ledger'] })
@@ -203,6 +204,105 @@ describe('feature dependencies over MCP', () => {
     }
   })
 
+  // --- up next --------------------------------------------------------------
+
+  it('a project session creates a draft up next and the reads show the mark', async () => {
+    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework', phase: 'building' })
+
+    const out = await toolCreateFeature(ctx, session, {
+      title: 'Billing',
+      oneLiner: 'charge for it',
+      draft: true,
+      dependsOn: ['auth-rework'],
+      upNext: true,
+    })
+
+    expect(out.upNext).toBe(true)
+    const row = ctx.db.select().from(features).where(eq(features.id, out.id)).get()
+    expect(row?.upNext).toBe(true)
+    const index = (await toolGetProjectContext(ctx, session)).featureIndex
+    expect(index).toContain('billing — Billing [draft, up next] · waits on: auth-rework')
+
+    const authSession = createSessionRow(ctx, {
+      featureId: auth.id,
+      kind: 'chat',
+      worktreePath: repoPath,
+    })
+    expect(toolGetFeatureContext(ctx, authSession).blocks).toEqual([
+      { slug: 'billing', upNext: true },
+    ])
+    const billingSession = createSessionRow(ctx, {
+      featureId: out.id,
+      kind: 'chat',
+      worktreePath: repoPath,
+    })
+    expect(toolGetFeatureContext(ctx, billingSession).upNext).toBe(true)
+  })
+
+  it('refuses upNext without a draft, without dependsOn, or with tickets', async () => {
+    seedFeature(ctx, projectId, { slug: 'auth-rework' })
+    const before = rowCount()
+    const cases: [string, Parameters<typeof toolCreateFeature>[2]][] = [
+      ['not a draft', { title: 'B', oneLiner: 'o', dependsOn: ['auth-rework'], upNext: true }],
+      ['no dependsOn', { title: 'B', oneLiner: 'o', draft: true, upNext: true }],
+      [
+        'tickets',
+        { title: 'B', draft: true, tickets: ['t'], dependsOn: ['auth-rework'], upNext: true },
+      ],
+    ]
+    for (const [name, input] of cases) {
+      const thrown = await toolCreateFeature(ctx, session, input).catch((e: unknown) => e)
+      expect(thrown, name).toBeInstanceOf(InvalidInputError)
+      expect((thrown as Error).message, name).toMatch(/upNext/)
+    }
+    expect(rowCount()).toBe(before)
+  })
+
+  it('refuses upNext from a feature chat or side session, pointing at the backlog', async () => {
+    const own = seedFeature(ctx, projectId, { slug: 'dark-mode' })
+    const before = rowCount()
+    for (const kind of ['chat', 'side'] as const) {
+      const grill = createSessionRow(ctx, { featureId: own.id, kind, worktreePath: repoPath })
+      const thrown = await toolCreateFeature(ctx, grill, {
+        title: 'Theme editor',
+        oneLiner: 'o',
+        draft: true,
+        dependsOn: ['dark-mode'],
+        upNext: true,
+      }).catch((e: unknown) => e)
+      expect(thrown, kind).toBeInstanceOf(GateError)
+      expect((thrown as Error).message, kind).toMatch(/backlog.*its page/)
+    }
+    expect(rowCount()).toBe(before)
+  })
+
+  it('set_feature_dependencies sets, clears and leaves the mark, in one call with the set', () => {
+    const auth = seedFeature(ctx, projectId, { slug: 'auth-rework' })
+    const billing = draft('billing')
+
+    const set = toolSetFeatureDependencies(ctx, session, {
+      slug: 'billing',
+      dependsOn: ['auth-rework'],
+      upNext: true,
+    })
+    expect(set.upNext).toBe(true)
+
+    // Omitted leaves it as it was.
+    const kept = toolSetFeatureDependencies(ctx, session, {
+      slug: 'billing',
+      dependsOn: ['auth-rework'],
+    })
+    expect(kept.upNext).toBe(true)
+
+    const cleared = toolSetFeatureDependencies(ctx, session, {
+      slug: 'billing',
+      dependsOn: ['auth-rework'],
+      upNext: false,
+    })
+    expect(cleared.upNext).toBe(false)
+    expect(dependsOnOf(ctx, billing.id).map((d) => d.featureId)).toEqual([auth.id])
+  })
+
   // --- context reads --------------------------------------------------------
 
   it('get_project_context index lines show each feature’s edges and flag waiting drafts', async () => {
@@ -222,7 +322,7 @@ describe('feature dependencies over MCP', () => {
     const out = await toolGetProjectContext(ctx, session)
 
     expect(out.featureIndex).toContain(
-      'billing — Demo feature [draft, waiting] · waits on: auth-rework',
+      'billing — Demo feature [draft, blocked] · waits on: auth-rework',
     )
     expect(out.featureIndex).toContain('reports — Demo feature [draft] · waits on: ledger ✓')
     expect(out.featureIndex).toContain('auth-rework — Auth rework [in flight: planning, lap 1]')
@@ -248,7 +348,8 @@ describe('feature dependencies over MCP', () => {
 
     const authContext = toolGetFeatureContext(ctx, authSession)
     expect(authContext.dependsOn).toEqual([])
-    expect(authContext.blocks).toEqual(['billing'])
+    expect(authContext.blocks).toEqual([{ slug: 'billing', upNext: false }])
+    expect(authContext.upNext).toBe(false)
 
     const billingContext = toolGetFeatureContext(ctx, billingSession)
     expect(billingContext.dependsOn).toEqual([{ slug: 'auth-rework', satisfied: false }])
