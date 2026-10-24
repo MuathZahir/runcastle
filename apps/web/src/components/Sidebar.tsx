@@ -21,6 +21,7 @@ import type { ProjectNavApi } from '../lib/use-project-nav'
 import type { ProjectTalkApi } from '../lib/use-project-talk'
 import {
   IconArchive,
+  IconClock,
   IconDoc,
   IconGitMerge,
   IconList,
@@ -117,7 +118,8 @@ const TALK_WORDS: Record<ProjectSessionState, string> = {
  * - what needs you, unheaded: preparation while it is owed, the features
  *   waiting on you, then the stopped ones;
  * - the Working shelf, its rows in the bay;
- * - the folded shelves: Backlog, Shipped (five, then "Show N more"), Archived;
+ * - the shelves: Up next (open), then folded Backlog, Shipped (five, then
+ *   "Show N more"), Archived;
  * - foot — live drives as cards, then the icon-only status line.
  *
  * Every feature row is two lines; its menu is a hover "…" or a right-click.
@@ -341,6 +343,15 @@ export function Sidebar(props: SidebarProps) {
         )}
         <WorkingShelf features={working} renderRow={row} />
         <div className="flex flex-col divide-y divide-border-subtle">
+          {/* After live work, before the backlog (waiting-is-not-backlog
+              decision 16); open, because what is in it is wanted. */}
+          <Shelf
+            icon={<IconClock />}
+            label="Up next"
+            features={lane('upNext')}
+            renderRow={(f) => row(f)}
+            defaultOpen
+          />
           <Shelf icon={<IconList />} label="Backlog" features={lane('drafts')} renderRow={(f) => row(f)} />
           <Shelf
             icon={<IconGitMerge />}
