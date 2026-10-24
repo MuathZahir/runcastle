@@ -13,7 +13,7 @@ not to any feature, and it records a *symptom*, not an intent: "crumbs overflow"
 "this dialog feels wrong".
 
 So triage is **not sorting**. Routing a ten-second note cold produces a brief
-that restates the one-liner and a quick-change ticket nobody can implement. Your
+that restates the one-liner and a change nobody can implement. Your
 job is to find the intent behind the notes — grilling for it, with the portfolio
 in view the way §1a intake demands — and only then route. Three movements, in
 order.
@@ -61,7 +61,7 @@ file to write and nothing else to report.
 Take the themes one at a time and work each until its **intent** is clear enough
 to route. This is the one place this session grills, and it grills about what the
 human wanted, never about how it should be built — the design still belongs to
-the feature's own `/runcastle:ideate` session.
+the feature's own `/runcastle:feature` session.
 
 - **One question at a time, always with your recommended answer attached.** A
   bare question with no recommendation hands the work back to the human.
@@ -103,37 +103,35 @@ already settles. **Name screenshots by absolute path** — the `screenshotPath`
 from `list_project_notes`, verbatim. Ideation runs on the host and `Read`s it
 from there.
 
-### Quick changes — one batch per triage session
+### Small changes — one batch per triage session
 
-Every quick-sized theme of **this** triage session goes into **one**
-`create_feature({ title, oneLiner, tickets })` call: one feature, one rail row,
-one **Burn**, one **Merge** for the whole pass. This is where §2's "one call per
-quick change, not per ticket" widens — inside triage, the batch *is* the quick
-change, and calling it once per theme would give you a feature each.
+Every small, concrete theme of **this** triage session goes into **one**
+`create_feature({ title, oneLiner, brief })` call: one feature, one rail row,
+one **Merge** for the whole pass. This is where §2's "one feature per change,
+not per fix" widens — inside triage, the batch *is* the change, and creating
+one per theme would give you a feature each.
 
 - Title it for the pass ("Triage batch — card density and empty states"), with a
   one-liner the human would recognise a week from now.
-- Every quick-sized theme contributes its ticket strings to that one `tickets`
-  array — the grilled version, carrying the repro or the expected/got the
-  grilling produced, never the ten-second line.
-- A ticket whose note has a screenshot ends with that note's
+- Every small theme gets its own paragraph in that one `brief` — the grilled
+  version, carrying the repro or the expected/got the grilling produced, never
+  the ten-second line. The feature's agent reads it and judges the work.
+- A theme whose note has a screenshot ends with that note's
   `attachmentSentence`, **pasted verbatim**. That sentence is the whole contract:
-  the burner scans it back out of the ticket and puts the PNG in its sandbox.
+  the feature's agent carries it into any ticket it writes, and the burner scans
+  it back out of the ticket and puts the PNG in its sandbox.
 - Pass `baseBranch` the way §1c requires. The batch's review is then an ordinary
   feature test drive of its branch.
 
-### A revisit, or another lap
+### A change to a feature in flight
 
 Destinations 3 and 4 have no tool. Give the human a **handoff line** to paste
-into that feature's own session, carrying the grilled reasoning — not "see the
+into that feature's own chat, carrying the grilled reasoning — not "see the
 notes":
 
-> Paste this into `burn-log-readability`'s revisit: "Timestamps in the burn log
+> Paste this into `burn-log-readability`'s chat: "Timestamps in the burn log
 > are unreadable at a glance; we settled that the want is relative ages with the
 > absolute time on hover, and that the run header keeps its absolute start time."
-
-Then say which button opens it: **revisit** on the feature, or **Iterate** on its
-review page for another lap.
 
 ### Nothing
 
@@ -153,9 +151,8 @@ note went. Use these forms:
 | Destination | Outcome line |
 |---|---|
 | New feature | `→ new feature <title>` |
-| The batched quick change | `→ batch quick change <title>` |
-| A revisit | `→ revisit of <slug> (handoff given)` |
-| Another lap | `→ another lap of <slug> (handoff given)` |
+| The batched feature | `→ batch feature <title>` |
+| A feature in flight | `→ handed to <slug> (handoff given)` |
 | Dropped, or nothing | `dropped: <why>` |
 
 **Pass `featureId` whenever the destination is a feature.** `create_feature`
@@ -177,7 +174,7 @@ can reopen one from the inbox). Get the outcome line right the first time.
 
 ## Close
 
-Tell them what this pass produced: the batch and how many tickets it carries,
+Tell them what this pass produced: the batch and how many themes it carries,
 each new feature, each handoff line still to paste, and how many notes are still
 open. Then stop — you never launch what you created (§1c), and the cards
 appearing in the rail are the handoff.

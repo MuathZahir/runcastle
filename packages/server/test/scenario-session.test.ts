@@ -231,7 +231,7 @@ describe.skipIf(!RUNNER)('the scenario session', () => {
 
       const line = write.mock.calls.at(-1)?.[0].kickoffLine ?? ''
       expect(line).toContain(kickoffLineFor('scenario', undefined, 'claude-code'))
-      expect(line).toContain('Feature state: planning;')
+      expect(line).toContain('Feature status: Talking with you;')
       expect(line).toContain('Human: we were building the cart page')
       expect(line).toContain(transcriptPath)
     }, 30_000)

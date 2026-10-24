@@ -1,6 +1,6 @@
 # Skill packs
 
-**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Most of the pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `revisit` and `prepare` are original runcastle work.
+**Packs** are runcastle-owned Claude Code *plugin directories* wired to runcastle's MCP contracts. They are injected into each launched terminal via `--plugin-dir`, so the human's Claude Code needs nothing preinstalled, and upstream changes to Matt Pocock's skills can never break us. Most of the pack's skills are adapted forks of his methodology skills and each keeps a provenance header crediting the original; `prepare` is original runcastle work.
 
 ## The `runcastle` pack
 
@@ -8,13 +8,10 @@ Scope-specific skills, each namespaced `/runcastle:<skill>`:
 
 | Skill | Invoked | Does |
 |---|---|---|
-| `/runcastle:ideate` | entry for `kind=ideation` | grills the human, locks decisions incrementally, drives spec + tickets out of one unbroken window |
-| `/runcastle:spec` | by ideate | synthesizes `spec.md`, completes the `spec` phase |
-| `/runcastle:tickets` | by ideate | emits session-sized vertical-slice tickets via MCP, completes the `tickets` phase |
-| `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never advances phases |
+| `/runcastle:feature` | entry for `kind=chat` | the feature's lead from its first message to merge: grills when the intent is unclear, records decisions, writes the spec, builds itself or writes tickets and runs rounds, reviews when it is worth it, hands over the drive; grilling, spec, tickets, rounds, planning alone, the preview and design live in its `references/` |
+| `/runcastle:qa` | entry for `kind=qa` | read-only Q&A over an existing feature; never changes it |
 | `/runcastle:project` | entry for `kind=project` | project scope, not feature scope: consults the portfolio, advises on how a lump of intent should be cut into N features and creates them, routes, answers portfolio questions, curates advisory-only, and owns `CONTEXT.md` |
-| `/runcastle:revisit` | entry for `kind=revisit` | *original* — folds late information into a finished feature; on an Iterate from review, runs the whole front half of a lap |
-| `/runcastle:design` | by the feature chat's entry skills | *original* — live UI design beside the chat: preview pages, the design server and panel, Tweaks, `design:` commits; not an entry skill |
+| `/runcastle:prepare` | entry for `kind=prepare` | *original* — establishes the project's prepared settings and drive machinery with the human |
 | `/runcastle:code-review` | by description, or by name | two-axis review (Standards + Spec) of a feature branch's diff against its base, run as parallel sub-agents and reported unmerged; never edits |
 
 Layout (the verified plugin format — only `plugin.json` lives inside `.claude-plugin/`; `skills/` is a sibling at the plugin root):
@@ -26,16 +23,17 @@ packs/
     ├── .claude-plugin/
     │   └── plugin.json        # name: "runcastle" → sets the /runcastle: namespace
     └── skills/
-        ├── ideate/SKILL.md
-        ├── spec/SKILL.md
-        ├── tickets/SKILL.md
+        ├── feature/
+        │   ├── SKILL.md
+        │   └── references/         # grilling, spec, tickets, rounds, planning-alone, preview, design
         ├── qa/SKILL.md
         ├── project/
         │   ├── SKILL.md
         │   └── references/         # loaded on demand by SKILL.md, never up front
         │       ├── charter.md
-        │       └── health-sweeps.md
-        ├── revisit/SKILL.md
+        │       ├── health-sweeps.md
+        │       └── triage.md
+        ├── prepare/SKILL.md
         └── code-review/SKILL.md
 ```
 
@@ -68,7 +66,7 @@ The session launcher spawns Claude Code with the pack's **root** directory (the 
 claude ... --plugin-dir "<abs path>/packages/skills/packs/runcastle" ...
 ```
 
-The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:ideate` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:ideate` for ideation, `/runcastle:qa` for Q&A).
+The `name` field in `plugin.json` becomes the invocation namespace, so the skills resolve as `/runcastle:feature` and friends. The injected system prompt tells each session which entry skill to invoke for its kind (`/runcastle:feature` for a feature's chat, `/runcastle:project` for the project session).
 
 ### Entry-skill isolation — settings deny rules, not `disable-model-invocation`
 
@@ -76,11 +74,11 @@ Every skill's `description` is loaded into every session in the pack, whether or
 not that session can use it. That is cheap for a skill the model might genuinely
 need and risky for one it must not run: a session carrying the descriptions of
 every other kind's entry skill is one description-match away from running
-another session's procedure — `project/SKILL.md` says "**Never run an ideation
-grilling**" while `ideate`'s description sits in the same list offering exactly
+another session's procedure — `project/SKILL.md` says "**Never run a design
+grilling**" while `feature`'s description sits in the same list offering exactly
 that.
 
-The five **session-entry** skills — `ideate`, `qa`, `revisit`, `project`,
+The **session-entry** skills — today `feature`, `qa`, `project` and
 `prepare` — used to carry `disable-model-invocation:
 true` for that reason, on the build-era understanding that explicit invocation
 kept working (CC-INTEGRATION-NOTES §1). It no longer does: Claude Code now
@@ -98,13 +96,11 @@ live: **per-session settings**. The launcher launches each session with
 — for every entry skill that is not that kind's own (`entrySkillsFor` /
 `entrySkillDenyRules` in `packages/server/src/launcher`), and each injected
 prompt states the policy in one line. Same layering as the edit guard: the
-prompt says it, the harness enforces it. `chat` keeps both of its openings
-(`ideate` + `revisit`); `qa` — whose session kind was retired — is denied
-everywhere; `drive-fix` has no entry skill and denies all five.
+prompt says it, the harness enforces it. `chat` gets `feature`; `qa` — whose
+session kind was retired — is denied everywhere; `drive-fix` has no entry skill
+and denies all of them.
 
-The chained/reached skills — `spec` and `tickets` (invoked by name from inside
-`ideate`) and `code-review` (reached by description) — are in no
-deny list.
+The reached skill — `code-review` (reached by description) — is in no deny list.
 
 The rule, for anything added later: **a session-entry skill goes into
 `ENTRY_SKILLS` and the per-kind table in
@@ -129,14 +125,13 @@ The standing convention across this pack:
   rule lives there, backed by `launcher/edit-guard.ts`, and is *not* restated in
   any skill).
 - **Procedures belong to the skill.** One skill owns each procedure in full;
-  `revisit/SKILL.md` §Lap mode is the whole lap procedure, `ideate/SKILL.md` §1
-  is the whole grilling procedure.
+  `feature/references/grilling.md` is the whole grilling procedure.
 - **Where a skill names a fact the prompt also names, it points instead of
-  restating** — the shape is `ideate/SKILL.md`'s "The injected system prompt
-  carries the slug and paths; trust `get_feature_context` for the live state."
+  restating** — "the injected system prompt carries the slug and paths; trust
+  `get_feature_context` for the live state."
 - **Where two skills need the same procedure, the second delegates by
-  reference** — "grill the way `/runcastle:ideate` §1 does" rather than a
-  second copy that ages differently.
+  reference** — "grill the way `feature/references/grilling.md` does" rather
+  than a second copy that ages differently.
 - **A rule the hook enforces is stated once, as enforced, not as advice.** The
   `qa` kind's write refusals are server-side; `qa/SKILL.md` says so rather than
   asking nicely.
@@ -150,7 +145,7 @@ ticket instead.
 
 1. Create `packs/<pack-name>/.claude-plugin/plugin.json` with at least `{ "name": "<pack-name>" }` — `name` sets the `/<pack-name>:` namespace.
 2. Add skills at `packs/<pack-name>/skills/<skill>/SKILL.md` (folder name = skill name; frontmatter needs `name` matching the folder, `description`, and `disable-model-invocation` — see the split above). Long, rarely-needed sections go in a sibling `references/` dir.
-3. If you are forking an upstream skill, keep the provenance header and rewire its steps to runcastle's MCP tools (`get_feature_context`, `emit_tickets`, `record_event`, `complete_phase`).
+3. If you are forking an upstream skill, keep the provenance header and rewire its steps to runcastle's MCP tools (`get_feature_context`, `emit_tickets`, `record_event`).
 4. Pass another `--plugin-dir` for it at launch.
 
 ## Not a pack: `../burner/`

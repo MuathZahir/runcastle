@@ -158,7 +158,7 @@ describe('opening a side session', () => {
       expect(command).not.toContain('--fork-session')
       expect(command).not.toMatch(/--resume|codex (exec )?resume/)
       expect(command).toContain(`[runcastle] ${SIDE_OPENING}: you are a side session of this feature`)
-      expect(command).toContain('Feature state: planning;')
+      expect(command).toContain('Feature status: Talking with you;')
       expect(command).toContain("Wait for the human's ask.")
       // Recognised as runcastle's kickoff, so titles and transcripts can drop it.
       const kickoff = command.slice(command.indexOf('[runcastle]'))
@@ -222,16 +222,15 @@ describe('opening a side session', () => {
     expect(prompt).toContain('The folder is shared with the main chat')
     expect(prompt).toContain('never `git add -A`')
     expect(prompt).toContain("Wait for the human's ask")
-    expect(prompt).toContain('preview.html')
+    expect(prompt).toContain('You may change code in this checkout')
   })
 
-  it('works unprompted past Go, like the lead, and with prompts in planning', async () => {
-    const planning = await feature('perm-planning')
+  it('works unprompted whatever the feature is doing, like the lead', async () => {
+    const fresh = await feature('perm-fresh')
     const building = await feature('perm-building', { phase: 'building' })
-    expect(launchedCommand(planning.id, await openSide(planning.id))).not.toContain('bypassPermissions')
-    expect(launchedCommand(building.id, await openSide(building.id))).toContain(
-      '--permission-mode bypassPermissions',
-    )
+    for (const f of [fresh, building]) {
+      expect(launchedCommand(f.id, await openSide(f.id))).toContain('--permission-mode bypassPermissions')
+    }
   })
 })
 
@@ -368,14 +367,13 @@ describe('what a side session may write', () => {
   const doc = 'docs/features/feat/spec.md'
   const code = 'src/app.ts'
 
-  function edit(kind: 'chat' | 'side', phase: 'planning' | 'building', filePath: string) {
-    return evaluateEditGuard({ kind, featurePhase: phase, toolName: 'Edit', filePath, worktreePath, featureSlug: 'feat' })
+  function edit(kind: 'chat' | 'side', filePath: string) {
+    return evaluateEditGuard({ kind, toolName: 'Edit', filePath, worktreePath, featureSlug: 'feat' })
   }
 
-  function install(kind: 'chat' | 'side', phase: 'planning' | 'building') {
+  function install(kind: 'chat' | 'side') {
     return evaluateInstallGuard({
       kind,
-      featurePhase: phase,
       toolName: 'Bash',
       command: 'bun install',
       worktreePath,
@@ -383,25 +381,23 @@ describe('what a side session may write', () => {
     })
   }
 
-  // Design mode (its decision 2) lets a human-attended chat write code and
-  // install in every phase; a side session follows the main chat exactly.
-  it('writes docs and code in planning and after Go — exactly as the main chat', () => {
+  // Every feature chat is the lead and writes code and installs; a side session
+  // follows the main chat exactly.
+  it('writes docs and code — exactly as the main chat', () => {
     for (const kind of ['chat', 'side'] as const) {
-      expect(edit(kind, 'planning', doc)).toBeNull()
-      expect(edit(kind, 'planning', code)).toBeNull()
-      expect(edit(kind, 'building', code)).toBeNull()
+      expect(edit(kind, doc)).toBeNull()
+      expect(edit(kind, code)).toBeNull()
     }
   })
 
-  it('installs in planning and after Go, exactly as the main chat', () => {
+  it('installs, exactly as the main chat', () => {
     for (const kind of ['chat', 'side'] as const) {
-      expect(install(kind, 'planning')).toBeNull()
-      expect(install(kind, 'building')).toBeNull()
+      expect(install(kind)).toBeNull()
     }
   })
 
   it('stays out of a session kind that is neither: drive-fix keeps its narrow paths', () => {
-    expect(evaluateEditGuard({ kind: 'drive-fix', featurePhase: 'building', toolName: 'Edit', filePath: code, worktreePath, featureSlug: 'feat' })).not.toBeNull()
+    expect(evaluateEditGuard({ kind: 'drive-fix', toolName: 'Edit', filePath: code, worktreePath, featureSlug: 'feat' })).not.toBeNull()
   })
 
   it('is held by the lead’s line guard, like the main chat', async () => {
@@ -438,7 +434,7 @@ describe('what a side session may write', () => {
     })
     const json = (await res.json()) as { hookSpecificOutput: { additionalContext: string } }
     expect(json.hookSpecificOutput.additionalContext).toBe(
-      `[runcastle] feature=${f.slug} phase=planning tickets=0 role=side`,
+      `[runcastle] feature=${f.slug} status=Talking with you tickets=0 role=side`,
     )
   })
 })
@@ -529,7 +525,7 @@ describe('what a new side session knows of the main chat', () => {
       const text = kickoffOf(f.id, await openSide(f.id))
 
       expect(text).toContain(SIDE_OPENING)
-      expect(text).toContain('Feature state: planning;')
+      expect(text).toContain('Feature status: Talking with you;')
       expect(text).toContain('not the human speaking to you now')
       expect(text).toContain('Human: lets talk about the cache')
       expect(text).toContain('Assistant: the cache should expire hourly')

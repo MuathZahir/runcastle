@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path'
-import type { Phase, SessionKind, SessionPurpose } from '@runcastle/core'
+import type { SessionKind, SessionPurpose } from '@runcastle/core'
 import { featureDocsRel } from '@runcastle/core/paths'
 
 /**
@@ -21,8 +21,7 @@ import { featureDocsRel } from '@runcastle/core/paths'
  *
  * The one exempt kind is `project`: decision 18 gives it whole-repo write access
  * on a runcastle-owned branch, and its commits are the point of the session.
- * A feature's `chat` is exempt in every phase but a headless self-plan run in
- * planning (see {@link isUnguardedChat}).
+ * A feature's `chat` and `side` sessions are exempt too (see {@link isUnguardedLead}).
  *
  * A `prepare` session gets a narrow path exception instead of a kind exemption —
  * see {@link DRIVE_MACHINERY_WRITABLE}. A `scenario` session gets `.runcastle/`,
@@ -52,45 +51,22 @@ export function guardsEdits(kind: SessionKind): boolean {
 }
 
 /**
- * Is this session the feature's lead with its code permissions — a `chat`
- * whose feature has left planning? From Go on (`the-feature-lead-runs-rounds`
- * decision 7) the lead may edit code and install dependencies in its worktree,
- * so both guards lift for it. Decided per call from the feature's CURRENT
- * phase, so a chat opened in planning gains the permission the moment Go is
- * given; until then it stays docs-only, as every talk session is.
+ * Is this session the feature's lead with its code permissions? Every feature
+ * `chat` is the lead from its first message (tickets-and-review-are-tools-not-phases
+ * decisions 4 and 13), attended or headless, self-planning included: it may edit
+ * code and install dependencies in its worktree, so both guards lift for it, and
+ * it runs without permission prompts.
  *
  * A `side` session shares the main chat's worktree and write rules
  * (several-sessions-per-feature decision 5), so it is unguarded exactly when
  * the main chat is.
  */
-export function isUnguardedLead(kind: SessionKind, featurePhase: Phase | undefined): boolean {
-  return (kind === 'chat' || kind === 'side') && featurePhase !== undefined && featurePhase !== 'planning'
-}
-
-/**
- * Do the edit and install guards lift for this session? A human-attended
- * feature `chat` may write code and install dependencies in EVERY phase (design
- * mode, decision 2): in planning it designs UI, past Go it is the lead. The one
- * chat that stays docs-only is the headless `self-plan` run in planning — no
- * human is present to approve what it writes. Permission posture (bypass,
- * auto-allow) stays on {@link isUnguardedLead}: a planning chat still asks.
- *
- * A `side` session writes exactly what the main chat writes
- * (several-sessions-per-feature decision 5); it is never a self-plan run.
- */
-export function isUnguardedChat(
-  kind: SessionKind,
-  featurePhase: Phase | undefined,
-  purpose?: SessionPurpose,
-): boolean {
-  if ((kind !== 'chat' && kind !== 'side') || featurePhase === undefined) return false
-  return !(featurePhase === 'planning' && purpose === 'self-plan')
+export function isUnguardedLead(kind: SessionKind): boolean {
+  return kind === 'chat' || kind === 'side'
 }
 
 export interface EditGuardInput {
   kind: SessionKind
-  /** The feature's phase at the time of the call; past planning, a chat is the unguarded lead. */
-  featurePhase?: Phase
   /** The session's errand, when it has one — `resolve-conflict` is the exempt purpose. */
   purpose?: SessionPurpose
   /**
@@ -148,7 +124,7 @@ export interface EditDenial {
  */
 export function evaluateEditGuard(input: EditGuardInput): EditDenial | null {
   if (!guardsEdits(input.kind)) return null
-  if (isUnguardedChat(input.kind, input.featurePhase, input.purpose)) return null
+  if (isUnguardedLead(input.kind)) return null
   // The merge being resolved is what the session was opened for: while it is in
   // progress, ANY path is fair game (the content comes from the two sides of the
   // merge, not from the agent deciding to write code).

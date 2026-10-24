@@ -28,10 +28,10 @@ short list of findings the human can route.
 
 ## What to do with the findings
 
-Route **every** finding through §2 — a new feature, a quick change, a revisit,
-another lap, or nothing. Say which, and why.
+Route **every** finding through §2 — a new feature, a small change, a change to
+a feature in flight, more rounds, or nothing. Say which, and why.
 
-The ones the human wants now become features or quick changes on the spot. The
+The ones the human wants now become features on the spot. The
 ones they don't want **are stored nowhere.** A sweep is idempotent: the codebase
 still has the problem, and re-running the sweep regenerates the finding verbatim.
 Storing a derivable list buys nothing and costs a graveyard. There is no
@@ -43,5 +43,5 @@ sweep finding is regenerable by definition.
 
 You **report**; you do not fix. Not the dead code, not the drifted doc, not the
 stale ADR. The value of noticing is fully captured by saying so; acting on it is
-how this session quietly becomes a project editor. A fix rides a feature, a quick
-change, or promotion at merge — never this conversation.
+how this session quietly becomes a project editor. A fix rides a feature, or
+promotion at merge — never this conversation.

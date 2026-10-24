@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolvePluginDir } from '../src/launcher/skills-root'
@@ -20,7 +20,6 @@ const ORCHESTRATOR_TOOLS = [
   'plan_feature',
   'send_to_feature',
   'stop_feature_run',
-  'go_feature',
   'drive',
   'record_test_note',
   'merge_feature',
@@ -108,13 +107,54 @@ describe('the project skill, orchestrating', () => {
   })
 })
 
-describe('the revisit skill and the orchestrator', () => {
-  const text = (): string => read('revisit', 'SKILL.md')
+describe('the project skill, with no Go and no quick changes', () => {
+  const texts = (): string[] =>
+    ['SKILL.md', 'references/triage.md', 'references/health-sweeps.md'].map((f) => read('project', ...f.split('/')))
+
+  it('mentions neither Go, go_feature nor a quick change', () => {
+    for (const text of texts()) {
+      expect(text).not.toMatch(/\bGo\b/)
+      expect(text).not.toMatch(/go_feature|quick[ -]change/i)
+      expect(text).not.toMatch(/create_feature\(\{[^}]*tickets/)
+    }
+  })
+
+  it("creates a feature with a brief, and has its own agent ask the human for the yes", () => {
+    const text = texts()[0]
+    expect(text).toContain('`create_feature({ title, oneLiner, brief })`')
+    expect(text).toContain('asks the human for the yes in its chat')
+  })
+})
+
+describe('the feature skill and the orchestrator', () => {
+  const text = (): string => read('feature', 'references', 'grilling.md')
 
   it('marks a change made on the orchestrator\'s message, and clears it for a relayed human answer', () => {
-    const docs = text().slice(text().indexOf('3. **Docs.**'), text().indexOf('4. **Ticket surgery.**'))
+    const at = text().indexOf("**A change on the orchestrator's message is not the human's.**")
+    expect(at).toBeGreaterThanOrEqual(0)
+    const docs = text().slice(at, text().indexOf('\n\n', at))
     expect(docs).toContain('`**Changed by the orchestrator:** <why>`')
-    expect(docs).toContain('keeps its `**Assumed.**` line, or gains one')
-    expect(docs).toContain("**A message that relays the human's own answer** is the human confirming")
+    expect(docs).toContain('keeps its\n`**Assumed.**` line, or gains one')
+    expect(docs).toContain("A message that relays the human's own answer is\nthe human confirming")
+  })
+})
+
+describe('the deleted skills', () => {
+  const skillsDir = join(resolvePluginDir(), 'skills')
+  const DELETED = '(ideate|lead|spec|tickets|revisit|design)'
+
+  it('leave the pack with feature, qa, project, prepare and code-review', () => {
+    expect(readdirSync(skillsDir).sort()).toEqual(['code-review', 'feature', 'prepare', 'project', 'qa'])
+  })
+
+  it('are named by no remaining skill text', () => {
+    const reference = new RegExp(
+      `runcastle:${DELETED}\\b|\\$${DELETED}\\b|\\b${DELETED}/(SKILL\\.md|references)|\\.\\./${DELETED}/`,
+    )
+    const files = readdirSync(skillsDir, { recursive: true, encoding: 'utf8' }).filter((f) => /\.(md|html)$/.test(f))
+    expect(files.length).toBeGreaterThan(5)
+    for (const file of files) {
+      expect(readFileSync(join(skillsDir, file), 'utf8'), file).not.toMatch(reference)
+    }
   })
 })
