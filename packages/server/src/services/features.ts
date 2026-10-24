@@ -377,7 +377,7 @@ async function ensureFeatureBranch(
 
 /**
  * Scaffold the feature's docs and commit them onto the FEATURE branch — the one
- * step every creation door shares (create, Start a draft, quick change).
+ * step every creation door shares (create, Start a draft).
  *
  * The work happens inside the feature's talk worktree, which is git's own
  * checkout of `feature/<slug>`, and never in the human's checkout. Committing at

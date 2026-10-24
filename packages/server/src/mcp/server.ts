@@ -2912,7 +2912,7 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'List project notes',
         description:
           'List this project’s open notes oldest first. Notes with a screenshot include its ' +
-          'absolute host path and a ready-made attachment sentence for quick-change tickets.',
+          'absolute host path and a ready-made attachment sentence for a feature’s brief.',
         inputSchema: {},
       },
       async (_args, extra) => {
