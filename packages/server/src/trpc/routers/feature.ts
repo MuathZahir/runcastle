@@ -9,7 +9,7 @@ import {
 } from '../../launcher/launcher'
 import { goWarnings } from '../../services/burn-warnings'
 import { listFeatureSessions } from '../../services/conversations'
-import { setDependencies } from '../../services/dependencies'
+import { setDependencies, setUpNext } from '../../services/dependencies'
 import { sendDriveCall } from '../../services/drive-call'
 import * as features from '../../services/features'
 import * as git from '../../services/git'
@@ -49,6 +49,12 @@ export const featureRouter = router({
   setDependencies: publicProcedure
     .input(z.object({ featureId: z.string(), dependsOn: z.array(z.string()) }))
     .mutation(({ ctx, input }) => setDependencies(ctx, input.featureId, input.dependsOn)),
+
+  // Set or clear the up-next mark on a draft (`waiting-is-not-backlog`): the
+  // page's "Start when ready" / "Move to backlog" buttons.
+  setUpNext: publicProcedure
+    .input(z.object({ featureId: z.string(), upNext: z.boolean() }))
+    .mutation(({ ctx, input }) => setUpNext(ctx, input.featureId, input.upNext)),
 
   // The quick-change door (decision 21) — the second entrance beside `create`,
   // for work too small to deserve a conversation. Creates an ordinary feature

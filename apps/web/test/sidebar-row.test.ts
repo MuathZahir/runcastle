@@ -28,6 +28,7 @@ const blocker = (slug: string) => ({
   title: slug,
   phase: 'building' as const,
   status: 'active' as const,
+  upNext: false,
   satisfied: false,
 })
 

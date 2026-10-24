@@ -19,6 +19,7 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
     phase: 'building',
     status: 'active',
     satisfied: false,
+    upNext: false,
     ...over,
   }
 }

@@ -34,6 +34,8 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],
     blocks: over.blocks ?? [],
+    upNext: false,
+    upNextProblem: null,
   } as FeatureListItem
 }
 

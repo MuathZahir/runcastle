@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { SessionRow } from '@runcastle/core'
-import { EventRow } from '@runcastle/core'
-import { and, asc, desc, eq, gt, max } from 'drizzle-orm'
+import { AUTOSTART_FAILED, AUTOSTART_SKIPPED, EventRow, UPNEXT_CHANGED } from '@runcastle/core'
+import { and, asc, desc, eq, gt, inArray, max } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features } from '../db/schema'
 import { NotFoundError } from '../errors'
@@ -257,6 +257,34 @@ export function latestTsByFeature(ctx: AppCtx, projectId: string): Map<string, n
   // Project-level events (open/close/rename) carry no feature and are skipped.
   for (const row of rows) {
     if (row.featureId !== null && row.ts !== null) out.set(row.featureId, row.ts)
+  }
+  return out
+}
+
+/**
+ * Why each up-next draft in a project did not start by itself, keyed by feature
+ * id: the message of its newest autostart skipped/failed event that came after
+ * its newest up-next change. One query for the whole project (the list is
+ * polled); features without a problem are absent.
+ */
+export function upNextProblems(ctx: AppCtx, projectId: string): Map<string, string> {
+  const rows = ctx.db
+    .select({ featureId: events.featureId, type: events.type, message: events.message })
+    .from(events)
+    .where(
+      and(
+        eq(events.projectId, projectId),
+        inArray(events.type, [UPNEXT_CHANGED, AUTOSTART_SKIPPED, AUTOSTART_FAILED]),
+      ),
+    )
+    .orderBy(asc(events.id))
+    .all()
+
+  const out = new Map<string, string>()
+  for (const row of rows) {
+    if (row.featureId === null) continue
+    if (row.type === UPNEXT_CHANGED) out.delete(row.featureId)
+    else out.set(row.featureId, row.message)
   }
   return out
 }

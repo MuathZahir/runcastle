@@ -26,6 +26,7 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
     phase: 'building',
     status: 'active',
     satisfied: false,
+    upNext: false,
     ...over,
   }
 }
@@ -169,8 +170,8 @@ describe('the read-only dependency lines', () => {
       createElement(BlocksLine, {
         projectId: 'proj_1',
         blocks: [
-          { featureId: 'a', slug: 'alpha', title: 'Alpha' },
-          { featureId: 'b', slug: 'beta', title: 'Beta' },
+          { featureId: 'a', slug: 'alpha', title: 'Alpha', upNext: false },
+          { featureId: 'b', slug: 'beta', title: 'Beta', upNext: false },
         ],
       }),
     )
