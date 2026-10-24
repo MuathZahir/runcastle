@@ -33,6 +33,8 @@ export function listItem(over: Partial<FeatureListItem> = {}): FeatureListItem {
     lastActivityAt: over.lastActivityAt ?? 0,
     dependsOn: over.dependsOn ?? [],
     blocks: over.blocks ?? [],
+    upNext: over.upNext ?? false,
+    upNextProblem: over.upNextProblem ?? null,
   } as FeatureListItem
 }
 

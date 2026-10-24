@@ -15,11 +15,14 @@ const PEEK_OFFSET_PX = 9
  * stays neutral; the hue is on the icon chip, the eyebrow, the count, the
  * action and a faint glow from the top-left corner. The action is hand-rolled
  * rather than a `Button` because its tint changes per card, and no `Button`
- * variant carries a phase hue.
+ * variant carries a phase hue. `text` is the hue, for the marks (the chip's
+ * glyph, the action's arrow); `word` is its `-text` peer, for the eyebrow, the
+ * count and the action's label (DESIGN.md §Colour).
  */
-const HUE: Record<ChatNoticeHue, { text: string; chip: string; tint: string; action: string; glow: string }> = {
+const HUE: Record<ChatNoticeHue, { text: string; word: string; chip: string; tint: string; action: string; glow: string }> = {
   planning: {
     text: 'text-phase-planning',
+    word: 'text-phase-planning-text',
     chip: 'bg-phase-planning/15 ring-phase-planning/30',
     tint: 'bg-phase-planning/15',
     action: 'bg-phase-planning/15 hover:bg-phase-planning/25',
@@ -27,6 +30,7 @@ const HUE: Record<ChatNoticeHue, { text: string; chip: string; tint: string; act
   },
   tickets: {
     text: 'text-phase-tickets',
+    word: 'text-phase-tickets-text',
     chip: 'bg-phase-tickets/15 ring-phase-tickets/30',
     tint: 'bg-phase-tickets/15',
     action: 'bg-phase-tickets/15 hover:bg-phase-tickets/25',
@@ -34,6 +38,7 @@ const HUE: Record<ChatNoticeHue, { text: string; chip: string; tint: string; act
   },
   building: {
     text: 'text-phase-building',
+    word: 'text-phase-building-text',
     chip: 'bg-phase-building/15 ring-phase-building/30',
     tint: 'bg-phase-building/15',
     action: 'bg-phase-building/15 hover:bg-phase-building/25',
@@ -41,6 +46,7 @@ const HUE: Record<ChatNoticeHue, { text: string; chip: string; tint: string; act
   },
   review: {
     text: 'text-phase-review',
+    word: 'text-phase-review-text',
     chip: 'bg-phase-review/15 ring-phase-review/30',
     tint: 'bg-phase-review/15',
     action: 'bg-phase-review/15 hover:bg-phase-review/25',
@@ -48,6 +54,7 @@ const HUE: Record<ChatNoticeHue, { text: string; chip: string; tint: string; act
   },
   danger: {
     text: 'text-danger',
+    word: 'text-danger-text',
     chip: 'bg-danger/15 ring-danger/30',
     tint: 'bg-danger/15',
     action: 'bg-danger/15 hover:bg-danger/25',
@@ -176,13 +183,13 @@ function NoticeCard({
         {hueIcon(notice.hue)}
       </span>
       <div className={cx('relative flex min-w-0 flex-col gap-px', content)}>
-        <span className={cx('text-xs font-semibold tracking-wide uppercase', hue.text)}>{EYEBROW[notice.hue]}</span>
+        <span className={cx('text-xs font-semibold tracking-wide uppercase', hue.word)}>{EYEBROW[notice.hue]}</span>
         <span className="flex items-center gap-2 font-semibold text-text">
           {notice.title}
           {notice.count > 1 && (
             <span
               aria-label={`${notice.count} times`}
-              className={cx('rounded-full px-1.5 text-xs font-semibold tabular-nums', hue.tint, hue.text)}
+              className={cx('rounded-full px-1.5 text-xs font-semibold tabular-nums', hue.tint, hue.word)}
             >
               ×{notice.count}
             </span>
@@ -197,11 +204,11 @@ function NoticeCard({
             'mt-2 inline-flex cursor-pointer items-center gap-1.5 self-start rounded-md px-2.5 py-1 text-xs font-semibold',
             'transition-colors duration-(--dur-1) ease-app',
             hue.action,
-            hue.text,
+            hue.word,
           )}
         >
           {notice.actionLabel}
-          <IconArrowRight size={12} />
+          <IconArrowRight size={12} className={hue.text} />
         </button>
       </div>
       <IconButton

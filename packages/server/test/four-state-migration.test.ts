@@ -42,7 +42,7 @@ describe('four-state migration', () => {
     runMigrations(db, DRIZZLE_DIR)
     const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
 
-    // The phase itself is gone at head (0052); every legacy row still reads.
+    // The phase itself is gone at head (0053); every legacy row still reads.
     expect(Array.from({ length: 6 }, (_, index) => getFeatureRow(ctx, `feat_${index}`).status)).toEqual(
       Array(6).fill('active'),
     )

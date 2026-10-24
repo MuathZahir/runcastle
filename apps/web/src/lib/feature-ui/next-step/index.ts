@@ -1,6 +1,7 @@
 import type { FeatureFull } from '../../api'
 import { activeSession } from '../gates'
 import { resolveDraft } from './draft'
+export { upNextBasesDiffer } from './draft'
 import { resolveHeadlessRun } from './headless'
 import type { NextStepContext, ResolverInput } from './resolver-input'
 import type { NextStep } from './types'

@@ -33,6 +33,7 @@ import {
   agentDigestFillRank,
   isAgentDigestDoc,
   isProjectSessionKind,
+  unstartedState,
 } from '@runcastle/core'
 import { attachmentRelPath, featureDocsRel, projectNotePath, reviewDir } from '@runcastle/core/paths'
 import { type Context, Hono } from 'hono'
@@ -57,6 +58,7 @@ import {
   blocksOf,
   dependsOnOf,
   setDependencies,
+  setUpNext,
   validateDependencies,
 } from '../services/dependencies'
 import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
@@ -360,7 +362,9 @@ export interface FeatureContext {
    * up before it suggests an archive or a scope widening (decision 8).
    */
   dependsOn: DependencyMark[]
-  blocks: string[]
+  blocks: { slug: string; upNext: boolean }[]
+  /** This feature's own up-next mark: it starts by itself when its dependencies ship. */
+  upNext: boolean
   /**
    * The canonical docs (`AGENT_DIGEST_DOCS`) that fit under the never-hidden
    * ceiling, whole, in fill order: brief → decisions → spec.
@@ -610,7 +614,8 @@ export function featureContext(
     stopped: feature.stoppedAt !== null,
     waitingReason: feature.waitingReason,
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
-    blocks: blocksOf(ctx, feature.id).map((b) => b.slug),
+    blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
+    upNext: feature.upNext,
     annotatedModels: annotatedModels(ctx),
     burnConcurrency: ctx.config.burnConcurrency,
     ...(scenarios ? { scenarios } : {}),
@@ -1741,6 +1746,8 @@ export interface CreateFeatureResult {
   status: FeatureStatusT
   /** The slugs the new draft waits on — present only when `dependsOn` was passed. */
   dependsOn?: string[]
+  /** True when the draft was created up next. */
+  upNext?: boolean
 }
 
 /** The feature-scoped talk kinds that may park a draft (draft-features decision 6). */
@@ -1806,10 +1813,25 @@ export async function toolCreateFeature(
     brief?: string
     draft?: boolean
     dependsOn?: string[]
+    upNext?: boolean
   },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
   const dependsOn = input.dependsOn ?? []
+  if (input.upNext) {
+    if (!isProjectSessionKind(session.kind)) {
+      throw new GateError(
+        `a ${session.kind} session cannot make a feature up next: parked scope goes to the ` +
+          'backlog, and the human can mark it up next on its page.',
+      )
+    }
+    if (!input.draft || dependsOn.length === 0) {
+      throw new InvalidInputError(
+        '`upNext` needs `draft: true` and a non-empty `dependsOn` — up next means ' +
+          '"start by itself when those ship", so it needs something to wait on.',
+      )
+    }
+  }
   if (dependsOn.length > 0 && !input.draft) {
     throw new InvalidInputError(
       'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` to park ' +
@@ -1840,12 +1862,14 @@ export async function toolCreateFeature(
     return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
   }
   const edges = setDependencies(ctx, feature.id, dependencyIds)
+  if (input.upNext) setUpNext(ctx, feature.id, true)
   return {
     id: feature.id,
     slug: feature.slug,
     branch: feature.branch,
     status: feature.status,
     dependsOn: edges.map((d) => d.slug),
+    ...(input.upNext ? { upNext: true } : {}),
   }
 }
 
@@ -1874,8 +1898,8 @@ function featureIdsBySlug(ctx: AppCtx, projectId: string, slugs: string[]): stri
 export function toolSetFeatureDependencies(
   ctx: AppCtx,
   session: SessionRow,
-  input: { slug: string; dependsOn: string[] },
-): { slug: string; dependsOn: DependencyMark[] } {
+  input: { slug: string; dependsOn: string[]; upNext?: boolean },
+): { slug: string; dependsOn: DependencyMark[]; upNext: boolean } {
   const project = requireProject(ctx, session)
   if (session.kind !== 'project') {
     throw new GateError(
@@ -1885,7 +1909,12 @@ export function toolSetFeatureDependencies(
   const [dependentId] = featureIdsBySlug(ctx, project.id, [input.slug])
   const dependencyIds = featureIdsBySlug(ctx, project.id, input.dependsOn)
   const edges = setDependencies(ctx, dependentId as string, dependencyIds)
-  return { slug: input.slug, dependsOn: edges.map(dependencyMark) }
+  // After the new set is written, so one call can both set the edges and mark the draft.
+  const feature =
+    input.upNext === undefined
+      ? getFeatureRow(ctx, dependentId as string)
+      : setUpNext(ctx, dependentId as string, input.upNext)
+  return { slug: input.slug, dependsOn: edges.map(dependencyMark), upNext: feature.upNext }
 }
 
 /** One live ADR as an index row — title and address, not the argument itself. */
@@ -1946,8 +1975,10 @@ const ADRS_NOTE =
 const FEATURE_INDEX_NOTE =
   'featureIndex lists every in-flight feature, then every draft, then the most recently shipped, ' +
   'one `slug — title [state]` line each. A trailing `· waits on: a, b ✓` lists the features it ' +
-  'must wait to merge (✓ = already shipped), and `[draft, waiting]` marks a draft that cannot ' +
-  'start until every unmarked one ships. A shipped feature’s docs live at docs/features/<slug>/ ' +
+  'must wait to merge (✓ = already shipped). `[draft, up next]` marks a draft that starts by ' +
+  'itself once every unmarked one ships; `[draft, up next, stuck]` one that meant to and could ' +
+  'not, and waits on the human; `[draft, blocked]` a backlog draft that cannot start until every ' +
+  'unmarked one ships, and will not start by itself. A shipped feature’s docs live at docs/features/<slug>/ ' +
   'in this worktree; an in-flight or draft feature’s docs live on an unmerged branch. Any ' +
   'feature’s brief is read_feature_brief({ slug }); what one actually did is ' +
   'get_work_record({ featureSlug }).'
@@ -2109,6 +2140,9 @@ export function toolReadAdr(
  * and `read_feature_brief` match on. A feature's merge-order edges (ADR-0013)
  * trail the line as slugs and marks — edges and state only, so the session can
  * tell what is startable without re-cutting already-ordered work (decision 8).
+ * An unstarted feature carries its state: `up next` (starts by itself when its
+ * dependencies ship), `up next, stuck` (needs the human) or `blocked` (backlog
+ * with an open dependency); otherwise plain `draft`.
  */
 function featureIndexLine(feature: FeatureListItem): string {
   const edges = feature.dependsOn.length
@@ -2117,8 +2151,14 @@ function featureIndexLine(feature: FeatureListItem): string {
   // The orchestrator's own features (`whole-cuts-plan-themselves` decision 9).
   const owner = feature.orchestrated ? ' · orchestrated' : ''
   if (feature.status !== 'active') {
-    const waiting = feature.status === 'draft' && feature.dependsOn.some((d) => !d.satisfied)
-    return `${feature.slug} — ${feature.title} [${feature.status}${waiting ? ', waiting' : ''}]${edges}${owner}`
+    const mark = {
+      upNext: ', up next',
+      stuck: ', up next, stuck',
+      blocked: ', blocked',
+      readyToStart: '',
+      backlog: '',
+    }[unstartedState(feature, feature.dependsOn) ?? 'backlog']
+    return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}${owner}`
   }
   const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
   const counts = feature.ticketCounts
@@ -2865,6 +2905,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
                 'until the human clicks Start. Ask them per feature whether to start or park.',
             ),
           dependsOn: DEPENDS_ON_SCHEMA,
+          upNext: z
+            .boolean()
+            .optional()
+            .describe(
+              'UP NEXT instead of backlog: with `draft: true` and `dependsOn`, the draft starts by ' +
+                'itself (branch cut, no session) as soon as every feature in `dependsOn` has ' +
+                'shipped. Without it the draft is in the backlog: not now, it waits for the ' +
+                'human’s Start.',
+            ),
         },
       },
       async (args, extra) => {
@@ -2889,7 +2938,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'ones your work touches with `read_adr`; and a feature index of `slug — title [state]` ' +
           'lines: every in-flight feature (whether a round runs, ticket counts), then every draft, then the ' +
           `${FEATURE_INDEX_SHIPPED_CAP} most recently shipped; a line ending ` +
-          '`· waits on: …` names the features it must wait to merge. Older shipped and archived ' +
+          '`· waits on: …` names the features it must wait to merge; a draft is marked `up next` ' +
+          '(starts by itself when they ship), `up next, stuck` (needs the human) or `blocked` ' +
+          '(backlog, with an open dependency). Older shipped and archived ' +
           'features collapse into one closing line: search docs/features/*/brief.md on disk. ' +
           'Shipped docs live at docs/features/<slug>/; any feature’s brief is ' +
           '`read_feature_brief({ slug })`, and what one actually did is `get_work_record`.',
@@ -2970,12 +3021,19 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'Replace a parked draft’s whole merge-order set: the draft cannot be started until ' +
           'every feature in `dependsOn` has merged. Pass `[]` to clear it. Refused for a started ' +
           'feature, a self-reference, an already-merged dependency or a cycle. Returns the stored ' +
-          'set, each with whether it has shipped.',
+          'set, each with whether it has shipped. `upNext` moves the draft either way: true = up ' +
+          'next (starts by itself as soon as every feature in `dependsOn` has shipped; refused ' +
+          'when nothing is left unshipped), false = backlog (not now, waits for the human’s ' +
+          'Start); omitted leaves it as it is.',
         inputSchema: {
           slug: z.string().min(1).describe('The draft whose set this replaces.'),
           dependsOn: z
             .array(z.string().min(1))
             .describe('Slugs of features in this project the draft must wait on — the WHOLE set.'),
+          upNext: z
+            .boolean()
+            .optional()
+            .describe('true = up next, false = backlog; omit to leave the mark unchanged.'),
         },
       },
       async (args, extra) => {
@@ -3105,8 +3163,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
         'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
         'not replied — no round starts), `waitingReason`, `dependsOn` (the ' +
-        'features it waits on to merge, each `satisfied` once shipped) and `blocks` (slugs of ' +
-        'drafts waiting on this feature), `annotatedModels` (the ' +
+        'features it waits on to merge, each `satisfied` once shipped) and `blocks` (the ' +
+        'drafts waiting on this feature, each with its `upNext` mark) and `upNext` (this ' +
+        'feature’s own mark: it starts by itself when its dependencies ship), `annotatedModels` (the ' +
         'models the operator described a use case for — the only ones `emit_tickets` may ' +
         'assign; empty when they annotated none), `burnConcurrency` (how many tickets this ' +
         'project burns at once — budget a batch’s blocking edges against it), `latestRun` (how ' +

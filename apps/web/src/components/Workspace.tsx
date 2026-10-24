@@ -40,6 +40,7 @@ import {
   landedShare,
   unfinishedRuns,
   unresolvedMergeConflict,
+  upNextBasesDiffer,
   verificationState,
   type ActionKind,
   type DraftBaseMissing,
@@ -233,11 +234,14 @@ export function Workspace({
   // so an unstamped pick would follow the user to the next draft and quietly
   // fork it off a branch they chose for a different idea. No pick (or a stale
   // one) means the client default: the current checkout, and nothing at all when
-  // that checkout is not a base a feature can fork from (decision 8).
+  // that checkout is not a base a feature can fork from (decision 8). An
+  // up-next draft whose dependencies merged into different branches gets no
+  // default either: there is no safe guess (waiting-is-not-backlog decision 4).
   const [draftPick, setDraftPick] = useState<{ featureId: string; base: string } | null>(null)
+  const noDefaultBase = upNextBasesDiffer(q.data?.upNextProblem ?? null)
   const effectiveDraftBase =
     (draftPick?.featureId === featureId ? draftPick.base : '') ||
-    (branchesQ.data ? defaultBaseBranch(branchesQ.data) : '')
+    (branchesQ.data && !noDefaultBase ? defaultBaseBranch(branchesQ.data) : '')
   // Why Start has no base to send, when it has none — read by the bar, which
   // warns on the picker and says so on the disabled button.
   const draftBaseMissing: DraftBaseMissing | undefined =
@@ -399,16 +403,25 @@ export function Workspace({
   // A failure leaves the draft intact and startable, so the toast is the whole
   // recovery.
   // A draft's Waits-on row (ADR-0013): candidates come from the rail's own list
-  // query, and a refusal is rejected back to the row, which says it inline.
+  // query, and a refusal is rejected back to the row, which says it inline. The
+  // Starts-when-this-ships line reads it too, for what else each up-next
+  // dependent waits on.
+  const startsUpNext = !!q.data?.blocks.some((b) => b.upNext)
   const projectList = trpc.feature.list.useQuery(
     { projectId: projectId ?? '' },
-    { enabled: !!projectId && isDraft },
+    { enabled: !!projectId && (isDraft || startsUpNext) },
   )
   const setDependencies = trpc.feature.setDependencies.useMutation({
     onSuccess: invalidate,
     // No toast: the row already says the refusal inline, and without a handler
     // here the MutationCache safety net would repeat it raw (backticks and all).
     onError: () => undefined,
+  })
+  // Start when ready / Move to backlog (waiting-is-not-backlog decision 8): the
+  // mark only — nothing starts on this click.
+  const setUpNext = trpc.feature.setUpNext.useMutation({
+    onSuccess: invalidate,
+    onError: (e) => toast.push(e.message),
   })
   const start = trpc.feature.start.useMutation({
     onSuccess: (_res, vars) => {
@@ -501,6 +514,7 @@ export function Workspace({
     merge.isPending ||
     fixDrive.isPending ||
     unarchive.isPending ||
+    setUpNext.isPending ||
     endSession.isPending ||
     resolveConflict.pending
 
@@ -580,6 +594,12 @@ export function Workspace({
         // not necessarily what the picker has on screen. The bar's Start is
         // disabled while this is empty, so it never sends nothing.
         start.mutate({ featureId, baseBranch: effectiveDraftBase })
+        break
+      case 'markUpNext':
+        setUpNext.mutate({ featureId, upNext: true })
+        break
+      case 'moveToBacklog':
+        setUpNext.mutate({ featureId, upNext: false })
         break
       case 'chat':
         openChat()
@@ -775,7 +795,7 @@ export function Workspace({
     />
   )
   const resumeAlert = resumeFailed.message && (
-    <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+    <div className="flex items-start gap-3 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
       <span className="min-w-0 flex-1">
         <span className="font-medium">Resume failed.</span> {resumeFailed.message}
       </span>
@@ -806,7 +826,12 @@ export function Workspace({
         candidates={dependencyCandidates(projectList.data ?? [], feature, full.dependsOn)}
         onChange={(dependsOn) => setDependencies.mutateAsync({ featureId, dependsOn })}
       />
-      <BlocksLine projectId={feature.projectId} blocks={full.blocks} />
+      <BlocksLine
+        projectId={feature.projectId}
+        featureId={feature.id}
+        blocks={full.blocks}
+        features={projectList.data ?? []}
+      />
       {draftRow}
     </FeatureHeader>
   )

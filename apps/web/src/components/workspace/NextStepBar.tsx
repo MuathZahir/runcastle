@@ -6,7 +6,10 @@ import type { ActionKind, CountPill, NextAction, NextStep } from '../../lib/feat
 import {
   IconAlert,
   IconArchive,
+  IconArrowRight,
+  IconClock,
   IconGitMerge,
+  IconInbox,
   IconMessage,
   IconMore,
   IconPlay,
@@ -19,6 +22,8 @@ import {
 /** Every action leads with an icon (DESIGN.md principle 7) — one per kind. */
 export const ACTION_ICON: Record<ActionKind, ReactNode> = {
   startDraft: <IconPlay />,
+  markUpNext: <IconClock />,
+  moveToBacklog: <IconInbox />,
   chat: <IconMessage />,
   selfPlan: <IconSparkle />,
   stopHeadlessRun: <IconStop />,
@@ -227,7 +232,7 @@ export function NextStepBar({
               className={cx(
                 'flex flex-wrap items-center justify-end gap-2 text-right text-xs',
                 draftBranch && a.kind === 'startDraft' && draftBranch.missing
-                  ? 'text-warning'
+                  ? 'text-warning-text'
                   : 'text-text-tertiary',
               )}
             >

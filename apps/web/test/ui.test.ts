@@ -74,7 +74,7 @@ describe('Button', () => {
     expect(ghost).toContain('text-text-secondary')
 
     const danger = render({ variant: 'danger' })
-    expect(danger).toContain('text-danger')
+    expect(danger).toContain('text-danger-text')
 
     expect(new Set([secondary, primary, ghost, danger]).size).toBe(4)
   })
@@ -143,7 +143,7 @@ describe('Button', () => {
   it('has a borderless danger for a destructive action in a row of ghosts', () => {
     const out = render({ variant: 'danger-ghost' })
     expect(out).toContain('data-variant="danger-ghost"')
-    expect(out).toContain('border-transparent bg-transparent text-danger')
+    expect(out).toContain('border-transparent bg-transparent text-danger-text')
     expect(out).toContain('enabled:hover:bg-danger-subtle')
     expect(out).not.toContain('border-border ')
     expect(out).not.toContain('!')

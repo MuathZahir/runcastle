@@ -59,12 +59,22 @@
   /* ---- the one accent (blue): focus, selection, links, live, review ---- */
   --color-accent: #4f8ef7;
   --color-accent-text: #7aaafa;
+  /* A solid accent fill that carries words or numbers (the walkthrough's
+     numbered marker). The hue in dark, the word peer in light, so the
+     number on it keeps 4.5:1 there without changing dark. */
+  --color-accent-fill: var(--color-accent);
   --color-accent-subtle: #16213a;
 
-  /* ---- status ---- */
+  /* ---- status ---- Each hue paints marks (dots, glyphs, icons); words in
+     that colour wear its `-text` peer, as words in the accent wear
+     `accent-text`. In dark the peers equal their hues; light pulls them apart,
+     so marks can sit at the 3:1 floor and words at 4.5:1. */
   --color-success: #46b67a;
+  --color-success-text: #46b67a;
   --color-warning: #e2a53b;
+  --color-warning-text: #e2a53b;
   --color-danger: #f06363;
+  --color-danger-text: #f06363;
   --color-danger-subtle: #2a1515;
 
   /* ---- phases (shape first — PhaseIcon — hue second). References, so both
@@ -74,15 +84,26 @@
   --color-phase-draft: var(--color-text-disabled);
   /* Each step before review wears its own hue — pink, teal, amber, orange —
      so the sidebar reads as a pipeline, not a column of grey rings. The
-     literals are restated in the light block below. */
+     literals are restated in the light block below. Each has a `-text` word
+     peer, like the status hues above. */
   --color-phase-ideation: #ec7cb5;
+  --color-phase-ideation-text: #ec7cb5;
   --color-phase-spec: #35c2b8;
+  --color-phase-spec-text: #35c2b8;
   --color-phase-planning: var(--color-phase-spec);
+  --color-phase-planning-text: var(--color-phase-spec-text);
   --color-phase-tickets: var(--color-warning);
+  --color-phase-tickets-text: var(--color-warning-text);
   --color-phase-implementation: #f08a4b;
+  --color-phase-implementation-text: #f08a4b;
   --color-phase-building: var(--color-phase-implementation);
+  --color-phase-building-text: var(--color-phase-implementation-text);
   --color-phase-review: var(--color-accent);
+  /* In dark, words in the review hue have always worn the accent hue itself
+     (`accent-text` is lighter there); light points it at `accent-text`. */
+  --color-phase-review-text: var(--color-accent);
   --color-phase-shipped: var(--color-success);
+  --color-phase-shipped-text: var(--color-success-text);
 
   --color-focus-ring: var(--color-accent);
   /* the veil behind a dialog — dark in both themes, lighter in light */
@@ -181,7 +202,11 @@
 
 /* ---- the light theme: a full peer. `lib/theme.ts` sets `data-theme` on
    <html> before first paint. The base tokens are restated, and the three phase hues that are literals;
-   the other phase and focus names are `var()`s onto these, so they follow. ---- */
+   the other phase and focus names are `var()`s onto these, so they follow.
+   Each coloured hue is a mark here, tuned just above 3:1 on the darkest
+   ground (`surface-selected`); its `-text` peer carries words, just above
+   4.5:1 on the canvas and on a wash of its hue. `theme-contrast.test.ts`
+   holds both floors. ---- */
 :root[data-theme="light"] {
   color-scheme: light;
   --color-canvas: #f4f6f9;
@@ -194,23 +219,31 @@
   --color-border-subtle: rgb(22 30 50 / 0.07);
   --color-border-strong: #cdd2de;
   --color-text: #161a24;
-  --color-text-secondary: #4c5366;
-  --color-text-tertiary: #5c6377;
+  --color-text-secondary: #596075;
+  --color-text-tertiary: #676e82;
   --color-text-disabled: #a4aab9;
-  --color-icon: #6a7185;
+  --color-icon: #7a8195;
   --color-primary: #161a24;
   --color-primary-hover: #2a3040;
   --color-on-primary: #ffffff;
-  --color-accent: #2f6fe4;
-  --color-accent-text: #2463d6;
+  --color-accent: #3a7ef0;
+  --color-accent-text: #2361d4;
   --color-accent-subtle: #ecf2fe;
-  --color-success: #1e8e53;
-  --color-warning: #a86a06;
-  --color-danger: #c42828;
+  --color-accent-fill: var(--color-accent-text);
+  --color-phase-review-text: var(--color-accent-text);
+  --color-success: #23955a;
+  --color-success-text: #137745;
+  --color-warning: #c06e00;
+  --color-warning-text: #9c5600;
+  --color-danger: #df5050;
+  --color-danger-text: #c42828;
   --color-danger-subtle: #fdeeee;
-  --color-phase-ideation: #c13d7e;
-  --color-phase-spec: #0b7f78;
-  --color-phase-implementation: #b44f0c;
+  --color-phase-ideation: #d4529a;
+  --color-phase-ideation-text: #ba3176;
+  --color-phase-spec: #10928a;
+  --color-phase-spec-text: #087570;
+  --color-phase-implementation: #d4621a;
+  --color-phase-implementation-text: #ac4b0a;
   --color-scrim: rgb(22 26 36 / 0.28);
   --elevation-popover: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 8px 24px -8px rgba(0, 0, 0, 0.16);
   --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 24px 64px -16px rgba(0, 0, 0, 0.22);

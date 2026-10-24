@@ -38,8 +38,9 @@ dependencies between decisions one at a time.
   backlog feature, no branch, nothing written, with the `brief` carrying why you
   deferred it and what it must not swallow. When it builds on this feature, pass
   `dependsOn: [<this feature's slug>]` so it cannot start before this one
-  merges. Then get back to this feature. Backlog features are the only kind you
-  create.
+  merges. If the human wants it started by itself once this one ships, they can
+  mark it up next on its page. Then get back to this feature. Backlog features
+  are the only kind you create.
 
 Grilling is done when the human agrees you share the picture. That agreement
 is made on the plan preview (`./preview.md`), not in chat alone.

@@ -369,8 +369,15 @@
     {
       "idx": 52,
       "version": "6",
-      "when": 1792853191692,
-      "tag": "0052_strong_sprite",
+      "when": 1792847895970,
+      "tag": "0052_friendly_black_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1792865670658,
+      "tag": "0053_soft_karma",
       "breakpoints": true
     }
   ]

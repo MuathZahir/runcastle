@@ -260,7 +260,7 @@ describe('row contracts across the mapped-ideation retirement', () => {
     // The rewritten rows lose their conversation, so Chat resumes the
     // feature's own chat rather than a transcript told to use the map tools.
     expect(mostRecentResumableSession(ctx, 'feat_1', 'chat')?.ccSessionId).toBe('cc_chat')
-    // Untouched but for the lap stamp, which a later migration (0052) drops.
+    // Untouched but for the lap stamp, which a later migration (0053) drops.
     const withoutLap = (rows: Record<string, unknown>[]) => rows.map(({ lap: _lap, ...rest }) => rest)
     expect(db.all<Record<string, unknown>>(sql.raw('SELECT * FROM events ORDER BY id'))).toEqual(
       withoutLap(eventsBefore as Record<string, unknown>[]),

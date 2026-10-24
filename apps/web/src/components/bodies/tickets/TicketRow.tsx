@@ -205,7 +205,7 @@ export function TicketRow({
           )}
           {ticket.status === 'failed' && ticket.error && (
             <div className="rounded-md bg-danger-subtle px-3 py-2 text-sm">
-              <div className="mb-1 text-xs font-medium text-danger">Error</div>
+              <div className="mb-1 text-xs font-medium text-danger-text">Error</div>
               <MessageWithSettingsLink text={ticket.error} />
             </div>
           )}

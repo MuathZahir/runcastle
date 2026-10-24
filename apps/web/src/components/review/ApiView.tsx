@@ -88,7 +88,7 @@ export function ApiView({
           {!current && <p className="m-0 text-sm text-text-tertiary">Pick a call to seed its state and fill its request.</p>}
           {mine && mine.status !== 'landed' && strip}
           {mine?.status === 'landed' && mine.callError && (
-            <p className="m-0 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+            <p className="m-0 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
               Couldn’t read the call: {mine.callError}
             </p>
           )}
@@ -224,7 +224,7 @@ function RequestForm({ form, onChange }: { form: CallForm; onChange: (form: Call
 function CallResponse({ result }: { result: DriveCallResult }) {
   if (!result.ok) {
     return (
-      <p className="m-0 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+      <p className="m-0 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
         Couldn’t send: {result.error}
       </p>
     )
@@ -250,7 +250,7 @@ function CallResponse({ result }: { result: DriveCallResult }) {
       <pre className="m-0 max-h-96 overflow-auto rounded-md bg-surface px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-text">
         {prettyBody(result.body)}
       </pre>
-      {result.truncated && <span className="text-xs text-warning">Truncated at 256 KB</span>}
+      {result.truncated && <span className="text-xs text-warning-text">Truncated at 256 KB</span>}
     </div>
   )
 }

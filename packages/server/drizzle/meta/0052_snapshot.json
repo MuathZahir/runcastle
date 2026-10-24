@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5d914de4-6980-4f93-9af6-39669cf1d025",
+  "id": "f94f4cce-06a3-46a5-958d-91e215e42934",
   "prevId": "29715cbe-81bd-433e-8326-01fe52253204",
   "tables": {
     "events": {
@@ -41,6 +41,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
         },
         "ts": {
           "name": "ts",
@@ -205,6 +213,28 @@
           "notNull": false,
           "autoincrement": false
         },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "tickets_ready_lap": {
+          "name": "tickets_ready_lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "branch": {
           "name": "branch",
           "type": "text",
@@ -235,6 +265,14 @@
         },
         "orchestrated": {
           "name": "orchestrated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "up_next": {
+          "name": "up_next",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -604,6 +642,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "what_to_test": {
+          "name": "what_to_test",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -631,6 +676,13 @@
         "feature_id": {
           "name": "feature_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -715,6 +767,13 @@
         "fix_ticket_id": {
           "name": "fix_ticket_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "carried_lap": {
+          "name": "carried_lap",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -843,6 +902,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
         },
         "kind": {
           "name": "kind",
@@ -989,6 +1056,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "text": {
           "name": "text",
           "type": "text",
@@ -1021,6 +1095,13 @@
         "review_ticket_id": {
           "name": "review_ticket_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "carried_lap": {
+          "name": "carried_lap",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -1190,6 +1271,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "lap": {
+          "name": "lap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
         },
         "status": {
           "name": "status",

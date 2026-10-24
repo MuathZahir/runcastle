@@ -241,7 +241,7 @@ export function FailureNote({
 }) {
   return (
     <div className="rounded-md bg-danger-subtle px-3 py-2.5" id={id} role="alert">
-      <div className="text-sm font-medium text-danger">{message}</div>
+      <div className="text-sm font-medium text-danger-text">{message}</div>
       {path && (
         <div className="mt-1 truncate text-left font-mono text-xs text-text-tertiary" dir="rtl" title={path}>
           <bdi>{path}</bdi>
@@ -646,7 +646,7 @@ export function BranchMenu({
         className={cx(
           BRANCH_TRIGGER,
           missing
-            ? 'border-transparent text-warning'
+            ? 'border-transparent text-warning-text'
             : 'border-transparent text-text-secondary enabled:hover:bg-surface-hover enabled:hover:text-text',
           className,
         )}

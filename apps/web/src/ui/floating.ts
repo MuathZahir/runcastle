@@ -63,9 +63,9 @@ export const FLOATING_ITEM_DEFAULT =
   'text-text [&_svg]:text-icon ' +
   'hover:bg-surface-hover data-highlighted:bg-surface-hover data-[selected=true]:bg-surface-hover'
 
-/** The destructive row (Delete, Remove): label and icon in `danger`. */
+/** The destructive row (Delete, Remove): the label in `danger-text`, the icon in `danger`. */
 export const FLOATING_ITEM_DANGER =
-  'text-danger [&_svg]:text-danger hover:bg-danger-subtle data-highlighted:bg-danger-subtle'
+  'text-danger-text [&_svg]:text-danger hover:bg-danger-subtle data-highlighted:bg-danger-subtle'
 
 /** The group heading inside a floating list: 12px medium, sentence case. */
 export const FLOATING_LABEL =

@@ -8,6 +8,8 @@
  */
 export const ACTION_KINDS = [
   'startDraft', // feature.start — cut the branch on a parked draft, then start the chat
+  'markUpNext', // feature.setUpNext { upNext: true } — Start when ready: the draft starts by itself when its dependencies ship
+  'moveToBacklog', // feature.setUpNext { upNext: false } — an up-next draft goes back to "not now"
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
   'stopHeadlessRun', // feature.endSession on the live headless run (self-plan, relay)

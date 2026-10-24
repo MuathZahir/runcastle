@@ -201,7 +201,7 @@ export function Field({
         </div>
       )}
       {error && (
-        <div id={errorId} role="alert" className="text-xs text-danger">
+        <div id={errorId} role="alert" className="text-xs text-danger-text">
           {error}
         </div>
       )}

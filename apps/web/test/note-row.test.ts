@@ -155,7 +155,7 @@ describe('NoteRow', () => {
     })
     expect(attested).toContain('closed by a session as addressed')
     expect(attested).toContain('addressed by lap 2’s ticket 7')
-    expect(attested).toContain('text-warning')
+    expect(attested).toContain('text-warning-text')
 
     const verified = render({
       kind: 'defect',
@@ -163,7 +163,7 @@ describe('NoteRow', () => {
     })
     expect(verified).toContain('fixed by its fix ticket')
     expect(verified).not.toContain('closed by a session')
-    expect(verified).toContain('text-success')
+    expect(verified).toContain('text-success-text')
   })
 
   it('says nothing about the standing of a defect that is still open', () => {

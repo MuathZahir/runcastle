@@ -70,7 +70,7 @@ export function ConflictCard({
       {conflict.files.length > 0 && (
         <ul className="m-0 mt-2 flex list-none flex-col gap-0.5 p-0">
           {conflict.files.map((f) => (
-            <li key={f} className="truncate font-mono text-xs text-danger" title={f}>
+            <li key={f} className="truncate font-mono text-xs text-danger-text" title={f}>
               {f}
             </li>
           ))}
@@ -81,7 +81,7 @@ export function ConflictCard({
           it says what it can see rather than standing unchanged, which reads as
           the button having done nothing. Retry stays on the next-step bar. */}
       {resolveEnded && (
-        <p className="m-0 mt-2 text-warning">
+        <p className="m-0 mt-2 text-warning-text">
           The resolve session ended but the merge hasn’t landed — resolve by hand or retry.
         </p>
       )}

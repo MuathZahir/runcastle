@@ -33,8 +33,8 @@ const blocker = (slug: string) => ({
   featureId: `feat_${slug}`,
   slug,
   title: slug,
-  phase: 'building' as const,
   status: 'active' as const,
+  upNext: false,
   satisfied: false,
 })
 
@@ -69,7 +69,14 @@ describe('featureStateWords', () => {
 
   it('puts a parked idea in the backlog, or says what it waits on', () => {
     expect(featureStateWords(listItem({ status: 'draft' }))).toBe('In the backlog')
-    expect(featureStateWords(listItem({ status: 'draft', dependsOn: [blocker('auth')] }))).toBe('Waits on auth')
+    expect(featureStateWords(listItem({ status: 'draft', dependsOn: [blocker('auth')] }))).toBe('Blocked by auth')
+  })
+
+  it('says what an Up next feature starts after, and when one cannot start by itself', () => {
+    expect(featureStateWords(listItem({ status: 'draft', upNext: true, dependsOn: [blocker('auth')] }))).toBe(
+      'After auth',
+    )
+    expect(featureStateWords(listItem({ status: 'draft', upNext: true }))).toBe("Won't start by itself")
   })
 
   it('says shipped and archived plainly', () => {
@@ -109,6 +116,12 @@ describe('the sidebar feature row', () => {
   it('wears the dashed ring on a parked idea and the check once shipped', () => {
     expect(row(listItem({ status: 'draft' }))).toContain('aria-label="Backlog"')
     expect(row(listItem({ status: 'shipped', ticketCounts: tickets(3, 3) }))).toContain('aria-label="Shipped"')
+  })
+
+  it('says on hover that an Up next feature starts by itself', () => {
+    expect(row(listItem({ status: 'draft', upNext: true, dependsOn: [blocker('auth')] }))).toContain(
+      'title="Flow redesign: project shell — starts by itself when auth ships"',
+    )
   })
 
   it('dots amber when it needs you, and carries no dot otherwise — not even for a failed ticket', () => {

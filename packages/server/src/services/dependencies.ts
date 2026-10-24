@@ -1,5 +1,5 @@
 import type { BlockRef, DependencyEdge, DependencyRef, Feature } from '@runcastle/core'
-import { findDependencyCycle, isDependencySatisfied } from '@runcastle/core'
+import { findDependencyCycle, isDependencySatisfied, UPNEXT_CHANGED } from '@runcastle/core'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { featureDependencies, features } from '../db/schema'
@@ -22,11 +22,12 @@ function toDependencyRef(f: Feature): DependencyRef {
     title: f.title,
     status: f.status,
     satisfied: isDependencySatisfied(f),
+    upNext: f.upNext,
   }
 }
 
 function toBlockRef(f: Feature): BlockRef {
-  return { featureId: f.id, slug: f.slug, title: f.title }
+  return { featureId: f.id, slug: f.slug, title: f.title, upNext: f.upNext }
 }
 
 /** Every edge whose dependent lives in `projectId` — one query. */
@@ -137,6 +138,34 @@ export function setDependencies(
     data: { dependsOn: slugs },
   })
   return dependsOnOf(ctx, dependentId)
+}
+
+/**
+ * Set or clear the up-next mark on a draft. Setting needs something unshipped to
+ * wait on ("start when X ships" with no X is just Start); clearing is always
+ * allowed. Removing dependencies never clears it — the feature becomes `stuck`.
+ */
+export function setUpNext(ctx: AppCtx, featureId: string, upNext: boolean): Feature {
+  const feature = getFeatureRow(ctx, featureId)
+  if (feature.status !== 'draft') {
+    throw new InvalidInputError(
+      `\`${feature.slug}\` has already started — only a feature that has not started can be up next`,
+    )
+  }
+  if (upNext && waitingOn(ctx, featureId).length === 0) {
+    throw new InvalidInputError(
+      `\`${feature.slug}\` has nothing unshipped to wait on — start it instead`,
+    )
+  }
+  ctx.db.update(features).set({ upNext }).where(eq(features.id, featureId)).run()
+  emit(ctx, featureId, {
+    type: UPNEXT_CHANGED,
+    message: upNext
+      ? `${feature.slug} is up next — it starts by itself when what it waits on ships`
+      : `${feature.slug} moved back to the backlog`,
+    data: { upNext },
+  })
+  return { ...feature, upNext }
 }
 
 /** What `featureId` waits on (or, once started, waited on), with derived state. */

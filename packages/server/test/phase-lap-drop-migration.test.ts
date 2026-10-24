@@ -12,18 +12,18 @@ import type { Db } from '../src/db/types'
 
 /**
  * Phases and laps leave the schema (tickets-and-review-are-tools-not-phases
- * decisions 2, 6 and 11): 0052 drops every phase and lap column, and the ready
+ * decisions 2, 6 and 11): 0053 drops every phase and lap column, and the ready
  * declaration's what-to-test. Existing rows lose only those columns, and a
  * finding a lap had carried is open again, since only the agent resolves one.
  */
 
 const DRIZZLE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'drizzle')
 
-/** A migrations dir holding every file strictly before `0052`. */
+/** A migrations dir holding every file strictly before `0053`. */
 function withPhasesDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'runcastle-phase-lap-drop-'))
   for (const f of readdirSync(DRIZZLE_DIR)) {
-    if (f.endsWith('.sql') && f < '0052') copyFileSync(join(DRIZZLE_DIR, f), join(dir, f))
+    if (f.endsWith('.sql') && f < '0053') copyFileSync(join(DRIZZLE_DIR, f), join(dir, f))
   }
   return dir
 }
@@ -60,7 +60,7 @@ function seed(db: Db): void {
   }
 }
 
-describe('phase and lap columns drop (0052)', () => {
+describe('phase and lap columns drop (0053)', () => {
   it('drops every phase and lap column and the ready declaration what-to-test', async () => {
     const db = await freshDb()
     runMigrations(db, DRIZZLE_DIR)

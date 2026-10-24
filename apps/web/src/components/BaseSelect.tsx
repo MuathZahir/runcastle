@@ -99,7 +99,7 @@ export function BaseSelect({
           </ComboboxList>
         </ComboboxContent>
       </Combobox>
-      <span className={mustPick ? 'text-xs text-warning' : 'text-xs text-text-tertiary'}>
+      <span className={mustPick ? 'text-xs text-warning-text' : 'text-xs text-text-tertiary'}>
         {mustPick
           ? 'This project’s checkout is not a branch a feature can fork from — say where to cut from.'
           : hint}

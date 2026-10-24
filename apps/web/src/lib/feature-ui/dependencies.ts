@@ -1,4 +1,4 @@
-import { isDependencySatisfied, type DependencyRef } from '@runcastle/core'
+import { backlogDependencies, isDependencySatisfied, type DependencyRef } from '@runcastle/core'
 import type { FeatureListItem } from '../api'
 
 /**
@@ -12,7 +12,10 @@ export function blockers(deps: DependencyRef[]): DependencyRef[] {
   return deps.filter((d) => !d.satisfied)
 }
 
-/** A draft that cannot be started yet: at least one dependency is unmerged. */
+/**
+ * A draft that cannot be started yet: at least one dependency is unmerged.
+ * @deprecated "waiting" now means Up next — classify a draft with core's `unstartedState`.
+ */
 export function isWaiting(f: Pick<FeatureListItem, 'status' | 'dependsOn'>): boolean {
   return f.status === 'draft' && blockers(f.dependsOn).length > 0
 }
@@ -34,6 +37,21 @@ export function blockerList(deps: DependencyRef[]): string {
   return blockers(deps)
     .map((d) => `${d.slug} (${dependencyState(d)})`)
     .join(', ')
+}
+
+/**
+ * An Up next feature's hover: it starts by itself when what it still waits on
+ * ships — and, while one of those is itself in the backlog, that nothing will
+ * move it until the human starts that one (decision 14).
+ */
+export function upNextHint(deps: DependencyRef[]): string {
+  const open = blockers(deps).map((d) => d.slug)
+  const when =
+    open.length === 1
+      ? `starts by itself when ${open[0]} ships`
+      : `starts by itself when these ship: ${open.join(', ')}`
+  const parked = backlogDependencies(deps).map((d) => d.slug)
+  return parked.length > 0 ? `${when} — won't start until you start ${parked.join(', ')}` : when
 }
 
 /**

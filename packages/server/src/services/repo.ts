@@ -40,6 +40,7 @@ export function rowToFeature(row: FeatureSelect): Feature {
     status: row.status,
     createdAt: row.createdAt,
     orchestrated: row.orchestrated,
+    upNext: row.upNext,
     stoppedAt: row.stoppedAt,
     waitingReason: row.waitingReason,
     lastHumanMessageAt: row.lastHumanMessageAt,

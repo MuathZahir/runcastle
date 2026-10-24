@@ -72,12 +72,14 @@ export function featureStateWords(f: FeatureListItem): string {
   const lane = triageOf(f)
   const progress = ticketProgress(f)
   if (lane === 'needsYou') {
+    // An Up next feature that cannot start by itself (its hover says why).
+    if (f.status === 'draft') return "Won't start by itself"
     const nm = needsMe(f)
     if (nm?.kind === 'waiting') return nm.label === READY_TO_TEST ? 'Ready to test' : capitalise(nm.label)
     return 'Waiting on you'
   }
   if (lane === 'agentWorking') return f.activeRun ? `Working${progress ? ` · ${progress}` : ''}` : 'Agent working'
-  // A waiting draft says what it waits on (ADR-0013 decision 6); a ready one is just in the backlog.
+  // Up next says what it starts after; a backlog draft whether it could start.
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Shipped'
   if (f.status === 'archived') return 'Archived'
@@ -202,10 +204,13 @@ export function SidebarFeatureRow({
   return (
     <TwoLineRow
       title={f.title}
-      tooltip={nm ? `${f.title} — ${nm.label}` : f.title}
+      tooltip={nm ? `${f.title} — ${nm.label}` : f.status === 'draft' ? `${f.title} — ${rowChip(f).title}` : f.title}
       glyph={<FeatureProgressIcon f={f} size={12} />}
       words={words}
-      wordsClassName={cx(lane === 'agentWorking' && 'text-shimmer', nm && 'text-text-secondary')}
+      wordsClassName={cx(
+        lane === 'agentWorking' && 'text-shimmer',
+        nm && (nm.kind === 'stuck' ? 'text-danger-text' : 'text-text-secondary'),
+      )}
       aside={relTime(f.lastActivityAt)}
       dot={rowDot(f)}
       quiet={f.status === 'draft' || f.status === 'shipped' || f.status === 'archived'}
@@ -301,7 +306,7 @@ function ShelfHead({
 /**
  * A folded shelf: Backlog, Shipped, Archived. Opened, its rows are the same
  * two-line rows as every lane; `cap` shows that many, then "Show N more".
- * Absent when empty. Folded by default; `open`/`onOpenChange` to control it.
+ * Absent when empty. Folded unless `defaultOpen`; `open`/`onOpenChange` to control it.
  */
 export function Shelf({
   icon,
@@ -309,6 +314,7 @@ export function Shelf({
   features,
   renderRow,
   cap,
+  defaultOpen = false,
   open: openProp,
   onOpenChange,
 }: {
@@ -317,10 +323,11 @@ export function Shelf({
   features: FeatureListItem[]
   renderRow: (f: FeatureListItem) => ReactNode
   cap?: number
+  defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
-  const [openState, setOpenState] = useState(false)
+  const [openState, setOpenState] = useState(defaultOpen)
   const [all, setAll] = useState(false)
   const open = openProp ?? openState
   if (features.length === 0) return null

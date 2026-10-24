@@ -1,0 +1,1 @@
+ALTER TABLE `features` ADD `up_next` integer DEFAULT false NOT NULL;

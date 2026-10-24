@@ -1,12 +1,17 @@
+import { stuckReason, unstartedState, type UnstartedState } from '@runcastle/core'
 import type { FeatureFull, FeatureListItem } from '../api'
 import { relTime } from '../format'
-import { blockerList, blockers, isWaiting } from './dependencies'
+import { blockerList, blockers, upNextHint } from './dependencies'
+
+/** Where an unstarted feature stands (decision 7 / spec "Derived states"); null once started. */
+const draftState = (f: FeatureListItem): UnstartedState | null => unstartedState(f, f.dependsOn)
 
 /**
- * Why a feature needs me: its chat stopped for my `input`, or it is `waiting`
- * with a reason — the agent's own words, 'stopped', or 'ready to test'.
+ * Why a feature needs me: its chat stopped for my `input`, it is `waiting`
+ * with a reason — the agent's own words, 'stopped', or 'ready to test' — or it
+ * is an Up next draft that is `stuck` and cannot start by itself.
  */
-export type NeedsMeKind = 'input' | 'waiting'
+export type NeedsMeKind = 'input' | 'waiting' | 'stuck'
 
 export interface NeedsMe {
   kind: NeedsMeKind
@@ -34,7 +39,13 @@ function agentMidTurn(f: FeatureListItem): boolean {
  */
 export function needsMe(f: FeatureListItem): NeedsMe | null {
   // A parked draft claims no attention until the human clicks Start (decision 9).
-  if (f.status === 'draft') return null
+  // The one exception is an Up next feature that cannot start by itself any more
+  // (waiting-is-not-backlog decision 5) — the backlog itself never asks.
+  if (f.status === 'draft') {
+    return draftState(f) === 'stuck'
+      ? { kind: 'stuck', label: f.upNextProblem ?? stuckReason(f.dependsOn) }
+      : null
+  }
   if (f.status === 'shipped' || f.status === 'archived') return null
   if (f.activeRun) return null // a round running: shown as working, not a needs-me dot
   // An agent mid-turn is working, whatever reason it left earlier.
@@ -93,14 +104,19 @@ export function rowChip(f: FeatureListItem, now: number = Date.now()): RowChip {
     return { kind: 'working', text: 'Working', title: 'the agent is working in the session' }
   }
   if (f.status === 'shipped') return { kind: 'shipped', text: '', title: 'shipped' }
-  // A parked idea's age is noise, not news (decision 9) — say what it IS instead.
-  // One that waits on unmerged work says what it waits on (ADR-0013 decision 6).
-  if (f.status === 'draft') {
+  // A parked idea's age is noise, not news (decision 9) — say what it IS instead:
+  // Up next says what it starts after; a backlog row whether it could start
+  // (waiting-is-not-backlog decision 7).
+  const state = draftState(f)
+  if (state) {
     const open = blockers(f.dependsOn)
-    if (open.length === 0)
-      return { kind: 'draft', text: 'In the backlog', title: 'parked — click Start to cut its branch' }
-    const text = open.length === 1 ? `Waits on ${open[0]!.slug}` : `Waits on ${open.length}`
-    return { kind: 'draft', text, title: `waits on ${blockerList(f.dependsOn)}` }
+    const named = (verb: string) => (open.length === 1 ? `${verb} ${open[0]!.slug}` : `${verb} ${open.length}`)
+    if (state === 'upNext') return { kind: 'draft', text: named('After'), title: upNextHint(f.dependsOn) }
+    if (state === 'blocked')
+      return { kind: 'draft', text: named('Blocked by'), title: `blocked by ${blockerList(f.dependsOn)}` }
+    if (state === 'readyToStart')
+      return { kind: 'draft', text: 'Ready to start', title: 'everything it waited on shipped — click Start to cut its branch' }
+    return { kind: 'draft', text: 'In the backlog', title: 'parked — click Start to cut its branch' }
   }
   const text = relTime(f.lastActivityAt, now)
   return { kind: 'age', text, title: `last activity ${text === 'now' ? 'just now' : `${text} ago`}` }
@@ -126,19 +142,29 @@ function stableByRank(features: FeatureListItem[], rank: (f: FeatureListItem) =>
     .map((x) => x.f)
 }
 
-/** Within the drafts, the startable ones above those still waiting (ADR-0013). */
-const draftRank = (f: FeatureListItem): number => (isWaiting(f) ? 1 : 0)
+/**
+ * Within the Backlog, the ones that could start now first, then the plain
+ * parked ideas, then those still blocked (waiting-is-not-backlog decision 7).
+ */
+const BACKLOG_RANK: Partial<Record<UnstartedState, number>> = { readyToStart: 0, backlog: 1, blocked: 2 }
+const draftRank = (f: FeatureListItem): number => {
+  const state = draftState(f)
+  return (state && BACKLOG_RANK[state]) ?? 0
+}
 
-/** Sidebar sort: needs-me first, then active, then parked drafts (ready before
- *  waiting), then shipped (both dimmed). Stable within groups (the server
- *  returns newest-first). */
+/** Sidebar sort: needs-me first, then active, then Up next, then the backlog
+ *  (ready, parked, blocked), then shipped (both dimmed). Stable within groups
+ *  (the server returns newest-first). */
 export function sortForSidebar(features: FeatureListItem[]): FeatureListItem[] {
   return stableByRank(features, (f) => {
-    if (f.status === 'shipped') return 4
+    if (f.status === 'shipped') return 6
+    if (needsMe(f)) return 0
     // Parked ideas sit below work in motion and above shipped history
     // (decision 9) — more alive than a merged branch, not in the pipeline.
-    if (f.status === 'draft') return 2 + draftRank(f)
-    if (needsMe(f)) return 0
+    // Up next is between the two: wanted, but not moving yet.
+    const state = draftState(f)
+    if (state === 'upNext') return 2
+    if (state) return 3 + draftRank(f)
     return 1
   })
 }
@@ -159,6 +185,7 @@ export type TriageKey =
   | 'needsYou'
   | 'agentWorking'
   | 'inProgress'
+  | 'upNext'
   | 'drafts'
   | 'shipped'
   | 'archived'
@@ -181,9 +208,14 @@ export interface TriageGroup {
 export function triageOf(f: FeatureListItem): TriageKey {
   if (f.status === 'archived') return 'archived'
   if (f.status === 'shipped') return 'shipped'
-  // Its own band (decision 9): a parked draft carries no needs-me or working
-  // state, so it never interleaves with things in motion.
-  if (f.status === 'draft') return 'drafts'
+  // Its own band (decision 9): a parked draft carries no working state, so it
+  // never interleaves with things in motion. Up next has a band of its own,
+  // and one that can no longer start by itself needs you (waiting-is-not-backlog
+  // decisions 5 and 7).
+  const state = draftState(f)
+  if (state === 'upNext') return 'upNext'
+  if (state === 'stuck') return 'needsYou'
+  if (state) return 'drafts'
   if (f.activeRun) return 'agentWorking'
   if (needsMe(f)) return 'needsYou'
   if (agentMidTurn(f)) return 'agentWorking'
@@ -193,7 +225,9 @@ export function triageOf(f: FeatureListItem): TriageKey {
 /**
  * Group features into the sidebar's triage lanes (app-redesign). Preserves the
  * incoming order within each lane (the server returns newest-first) — except
- * that ready drafts sort above waiting ones in theirs (ADR-0013). Empty lanes
+ * that the Backlog sorts ready-to-start first and blocked last. Up next sits
+ * after the lanes of work in motion and before Backlog, placed by meaning
+ * (waiting-is-not-backlog decision 16). Empty lanes
  * are omitted; lanes are returned in display order. Archived features are
  * excluded from the default view (decision #8) — pass `showArchived` to surface
  * them in a trailing Archived lane.
@@ -206,6 +240,7 @@ export function triage(
     needsYou: [],
     agentWorking: [],
     inProgress: [],
+    upNext: [],
     drafts: [],
     shipped: [],
     archived: [],
@@ -217,6 +252,7 @@ export function triage(
     { key: 'needsYou', label: 'Needs you' },
     { key: 'agentWorking', label: 'Agent working' },
     { key: 'inProgress', label: 'In progress' },
+    { key: 'upNext', label: 'Up next' },
     { key: 'drafts', label: 'Backlog' },
     { key: 'shipped', label: 'Shipped' },
   ]
@@ -252,7 +288,7 @@ export function sidebarLanes(
 
 /**
  * The lanes a project can land you in (decision 4), in the rail's own order.
- * Drafts, Shipped and Archived are deliberately absent: entering a project used
+ * Up next, Drafts, Shipped and Archived are deliberately absent: entering a project used
  * to open `list.data[0]` — newest-created, lane-blind — which is how a parked
  * draft or a shipped feature's retrospective became the first thing you saw
  * (findings F10.4).

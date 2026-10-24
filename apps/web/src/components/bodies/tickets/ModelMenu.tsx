@@ -82,7 +82,7 @@ export function ModelMenu({
         </SelectContent>
       </Select>
       {reviewMismatch && (
-        <span className="text-xs text-warning">
+        <span className="text-xs text-warning-text">
           Implementer-only model — not recommended for review tickets
         </span>
       )}

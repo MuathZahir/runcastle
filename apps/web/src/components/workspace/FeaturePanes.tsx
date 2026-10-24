@@ -22,8 +22,8 @@ export function BrokenFeaturePane({
   const toast = useToast()
   return (
     <div className="flex flex-col gap-3 rounded-md bg-danger-subtle px-4 py-3" role="alert">
-      <div className="flex items-center gap-2 text-sm font-medium text-danger">
-        <IconAlert size={16} className="shrink-0" />
+      <div className="flex items-center gap-2 text-sm font-medium text-danger-text">
+        <IconAlert size={16} className="shrink-0 text-danger" />
         {tag}
       </div>
       <p className="m-0 text-sm text-text-secondary">{children}</p>

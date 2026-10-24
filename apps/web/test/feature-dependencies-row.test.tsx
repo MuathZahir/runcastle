@@ -18,6 +18,7 @@ function dep(slug: string, over: Partial<DependencyRef> = {}): DependencyRef {
     title: `The ${slug} feature`,
     status: 'active',
     satisfied: false,
+    upNext: false,
     ...over,
   }
 }
