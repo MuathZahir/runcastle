@@ -19,7 +19,7 @@ import { activeSessionsForFeature } from '../launcher/sessions'
 import { landChatCommits } from '../services/chat-branch'
 import { emit, runAsActor } from '../services/events'
 import { featureDocPath } from '../services/feature-docs'
-import { go, requireNotDraft, startDraft } from '../services/features'
+import { requireNotDraft, startDraft } from '../services/features'
 import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
@@ -162,23 +162,11 @@ export const toolPlanFeature = orchestratorTool(
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
     const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    // The run plan_feature starts is always one this can stop; the lead that
-    // go_feature's message woke never is — ending it would drop the Go it took.
+    // The run plan_feature starts is always one this can stop; the feature's
+    // lead never is — ending it would drop the conversation it is having.
     const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
     if (!run) throw new GateError(`\`${feature.slug}\` has no headless run going, so there is nothing to stop.`)
     return endSession(ctx, run.id)
-  },
-)
-
-/**
- * Give the feature Go, as the human's Go does (`the-feature-lead-runs-rounds`
- * decision 11): approve its plan and hand it to its lead, which dispatches every
- * round. The orchestrator never dispatches one itself.
- */
-export const toolGoFeature = orchestratorTool(
-  async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<{ warnings: string[] }> => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    return go(ctx, feature.id)
   },
 )
 
@@ -383,19 +371,6 @@ export function registerOrchestratorTools(
       inputSchema: { slug: SlugInput },
     },
     toolStopFeatureRun,
-  )
-
-  acting(
-    'go_feature',
-    {
-      title: 'Give a feature Go',
-      description:
-        'Approve the feature’s plan, as the human’s Go does: it moves to building and its agent ' +
-        'dispatches the rounds from there — you never dispatch one. Refused on a draft or past ' +
-        'planning. Returns the warnings Go carries. Orchestrator only.',
-      inputSchema: { slug: SlugInput },
-    },
-    toolGoFeature,
   )
 
   acting(

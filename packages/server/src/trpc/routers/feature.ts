@@ -50,26 +50,6 @@ export const featureRouter = router({
     .input(z.object({ featureId: z.string(), dependsOn: z.array(z.string()) }))
     .mutation(({ ctx, input }) => setDependencies(ctx, input.featureId, input.dependsOn)),
 
-  // The quick-change door (decision 21) — the second entrance beside `create`,
-  // for work too small to deserve a conversation. Creates an ordinary feature
-  // born at `implementation` on lap 1 carrying one ticket per sentence the
-  // human typed (decisions.md #4). No session is launched: the human reviews
-  // the cards and clicks Burn.
-  //
-  // The list is only checked for being a list here; blank rows are dropped and
-  // the "at least one sentence" rule enforced by the service, so the overlay's
-  // add/remove list and the MCP door answer to exactly one definition of empty.
-  quickChange: publicProcedure
-    .input(
-      z.object({
-        projectId: z.string(),
-        title: z.string().min(1),
-        tickets: z.array(z.string()).min(1),
-        baseBranch: z.string().optional(),
-      }),
-    )
-    .mutation(({ ctx, input }) => features.quickChange(ctx, input)),
-
   list: publicProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => features.list(ctx, input.projectId)),

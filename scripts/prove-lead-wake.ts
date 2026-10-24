@@ -66,7 +66,7 @@ const { endSession, launchSession } = await import('../packages/server/src/launc
 const { getSessionRow } = await import('../packages/server/src/launcher/sessions.ts')
 const { listAfter } = await import('../packages/server/src/services/events.ts')
 const { deliverToLead, startLeadWaker } = await import('../packages/server/src/services/lead-delivery.ts')
-const { getFeatureRow, setPhase } = await import('../packages/server/src/services/repo.ts')
+const { getFeatureRow } = await import('../packages/server/src/services/repo.ts')
 
 
 const WORD = 'LEADWOKE'
@@ -83,8 +83,7 @@ const actText = (branch: string): string =>
   `[runcastle] Wake proof 1, run unattended. Do exactly these three things, then reply with ` +
   `exactly the word ${WORD}1: (1) run the shell command \`git tag ${PROOF_TAG}\`; (2) run ` +
   `\`git branch -D ${branch}\` — it is expected to be refused, do not retry or work around it; ` +
-  `(3) call the runcastle MCP tool declare_ready with scenario "${SCENARIO}" and whatToTest ` +
-  `"Nothing; this is a wake proof."`
+  `(3) call the runcastle MCP tool declare_ready with scenario "${SCENARIO}".`
 
 function log(msg: string): void {
   process.stdout.write(`${msg}\n`)
@@ -128,8 +127,6 @@ const created = await trpc.feature.create({
   title: 'wake proof',
   oneLiner: 'prove the lead wakes',
 })
-// Past Go, as a lead is: set directly, so no Go wake runs before the proof's own.
-setPhase(ctx, created.id, 'building')
 const featureId = created.id
 
 const eventsOf = (type: string) =>
@@ -177,8 +174,8 @@ async function proveHeadless(): Promise<void> {
   log('  ✓ ran git unprompted: the tag exists')
   if (!gitOut('branch', '--list', feature.branch).includes(feature.branch)) fail('the guard let the feature branch be deleted')
   log('  ✓ the guard refused deleting the feature branch')
-  if (getFeatureRow(ctx, featureId).phase !== 'review') fail('declare_ready did not move the feature to review')
-  log('  ✓ declare_ready moved the feature to review')
+  if (getFeatureRow(ctx, featureId).waitingReason !== 'ready to test') fail('declare_ready did not put the feature under Needs you')
+  log('  ✓ declare_ready put the feature under Needs you')
   headlessCcSessionId = getSessionRow(ctx, sessionId)?.ccSessionId ?? undefined
   const next = await until('the held message’s resume', () => eventsOf('lead.woken_headless')[before + 1])
   const nextId = String(next.data.sessionId)

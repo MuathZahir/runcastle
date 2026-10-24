@@ -9,7 +9,6 @@ import type {
   FeatureStatus as FeatureStatusT,
   FindingSource as FindingSourceT,
   Phase as PhaseT,
-  PlanningStep,
   PreparedKey as PreparedKeyT,
   Project,
   ReadyDeclaration,
@@ -27,16 +26,13 @@ import type {
   TicketStatus as TicketStatusT,
 } from '@runcastle/core'
 import {
-  Phase,
   PreparedKey,
   ReviewFindingInput,
   TicketInput,
   TicketStatus,
   agentDigestFillRank,
   isAgentDigestDoc,
-  isPastPhase,
   isProjectSessionKind,
-  nextPlanningStep,
   withheldFeatureDocs,
 } from '@runcastle/core'
 import { attachmentRelPath, featureDocsRel, projectNotePath } from '@runcastle/core/paths'
@@ -54,11 +50,9 @@ import {
   type FeatureListItem,
   list as listFeatures,
   listReadyDeclarations,
-  quickChange,
   setWaiting,
   stopRound,
 } from '../services/features'
-import { burnWarnings } from '../services/burn-warnings'
 import { landChatCommits } from '../services/chat-branch'
 import {
   type CarriedDefect,
@@ -88,7 +82,6 @@ import * as git from '../services/git'
 import type { AdrDoc } from '../services/knowledge'
 import { ADR_DIR_REL, listDocs, listLiveAdrs, readCharter, readDoc } from '../services/knowledge'
 import { type SerialQueue, createSerialQueue } from '../services/landing-queue'
-import { PLANNING_STEP_EVENT, planningFacts, planningStepReported } from '../services/planning'
 import {
   editNote as editProjectNote,
   listNotes as listProjectNotes,
@@ -99,7 +92,6 @@ import {
   getProjectById,
   listRunsByFeature,
   markOrchestrated,
-  markTicketsReady,
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
@@ -112,7 +104,6 @@ import {
   editTicket,
   getTicket,
   listByFeature,
-  pendingTickets,
   requireAnnotatedModels,
   storeTickets,
   type TicketContentPatch,
@@ -863,6 +854,9 @@ export function toolEmitTickets(
   for (const ticket of stored) {
     if (ticket.originFindingId) linkFixTicket(ctx, feature.id, ticket.originFindingId, ticket.id)
   }
+  // The tickets the agent just wrote are what the human should see next, so the
+  // panel opens on Work as the agent's own act (decision 8).
+  emitPanelShow(ctx, feature.id, { view: 'work' })
   // `seq` is the number the batch's own `blockedBy` speaks in and the number the
   // UI shows, and it is assigned HERE, by the store. Returning bare ids meant
   // the emitting session could not name what it had just written back to the
@@ -961,11 +955,11 @@ export function toolStopRound(
 export function toolDeclareReady(
   ctx: AppCtx,
   session: SessionRow,
-  input: { scenario: string; whatToTest: string },
-): { ok: true; phase: PhaseT; warnings: string[] } {
+  input: { scenario: string },
+): { ok: true; waitingReason: string | null; warnings: string[] } {
   const featureId = requireLeadFeatureId(session)
   const { warnings } = declareReady(ctx, featureId, input)
-  return { ok: true, phase: getFeatureRow(ctx, featureId).phase, warnings }
+  return { ok: true, waitingReason: getFeatureRow(ctx, featureId).waitingReason, warnings }
 }
 
 export function toolWaitForYou(
@@ -995,28 +989,19 @@ export function toolStartDesignServer(
   return startDesignServer(ctx, requireChatFeatureId(session), input.command)
 }
 
-/** The views the human's panel can show (design-mode decision 5). */
-const PanelView = z.enum(['body', 'preview', 'design', 'drive', 'details'])
+/** The views the human's panel can show (decision 8). */
+const PanelView = z.enum(['plan', 'work', 'review', 'details', 'design', 'drive'])
+type PanelViewT = z.infer<typeof PanelView>
 
 /**
- * Open the human's panel on a view. `design` needs something to show: a server
- * running, or a recorded command the panel can start one from.
+ * The `panel.show` event the web opens a view on — always the agent's own act,
+ * whether it asked by name (`show_panel`) or by emitting tickets.
  */
-export function toolShowPanel(
+function emitPanelShow(
   ctx: AppCtx,
-  session: SessionRow,
-  input: { view: z.infer<typeof PanelView>; path?: string; width?: number },
-): { ok: true } {
-  const featureId = requireChatFeatureId(session)
-  if (input.view === 'design') {
-    const status = designServerStatus(ctx, featureId)
-    if (!status.running && !status.hasRecordedCommand) {
-      throw new GateError(
-        'no design server runs and none is recorded — call start_design_server with a command first',
-      )
-    }
-    if (input.path) rememberDesignPath(featureId, input.path)
-  }
+  featureId: string,
+  input: { view: PanelViewT; path?: string; width?: number },
+): void {
   const width = input.view === 'design' ? input.width : undefined
   const where = `${input.path ? ` at ${input.path}` : ''}${width !== undefined ? `, ${width}px wide` : ''}`
   emit(ctx, featureId, {
@@ -1028,6 +1013,28 @@ export function toolShowPanel(
       ...(width !== undefined ? { width } : {}),
     },
   })
+}
+
+/**
+ * Open the human's panel on a view. `design` needs something to show: a server
+ * running, or a recorded command the panel can start one from.
+ */
+export function toolShowPanel(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: { view: PanelViewT; path?: string; width?: number },
+): { ok: true } {
+  const featureId = requireChatFeatureId(session)
+  if (input.view === 'design') {
+    const status = designServerStatus(ctx, featureId)
+    if (!status.running && !status.hasRecordedCommand) {
+      throw new GateError(
+        'no design server runs and none is recorded — call start_design_server with a command first',
+      )
+    }
+    if (input.path) rememberDesignPath(featureId, input.path)
+  }
+  emitPanelShow(ctx, featureId, input)
   return { ok: true }
 }
 
@@ -1122,101 +1129,6 @@ export function toolRecordEvent(
     )
   }
   return { ok: true }
-}
-
-/** What a session hears back from a planning step it has just finished. */
-export interface CompletePhaseResult {
-  ok: true
-  /**
-   * The state the feature is STILL in. Ideation, spec and tickets are steps
-   * inside Planning, so this tool moves nothing — the field stays for wire
-   * compatibility with the skills that read it, and now answers honestly.
-   */
-  nextPhase: PhaseT
-  /**
-   * The next planning step still missing its artifact, derived rather than
-   * stored (decisions §2). Absent once all three are in — there is nothing left
-   * to do but burn.
-   */
-  nextStep?: PlanningStep
-  waitingOn?: string
-  warnings?: string[]
-  /**
-   * Why there was nothing left to do — set only when the step was already
-   * reported, or the feature has already left Planning, so a healthy late call
-   * reads as the success it is instead of a refusal.
-   */
-  note?: string
-}
-
-/**
- * Report a planning step complete (SPEC: the `complete_phase` seam).
- *
- * Wire-compatible on purpose: the name and the `ideation | spec | tickets`
- * argument are what `/runcastle:ideate`, `spec` and `tickets`
- * already call, and in-flight sessions must not have to relearn them. What
- * changed underneath is that there is no gate and no transition left — the three
- * steps live inside one Planning state, so this records the milestone on the
- * timeline and answers with what is next. It never refuses: the review-ticket
- * rule that used to park the tickets step comes back as a warning (decisions §5),
- * said here because this is the moment the session that wrote the tickets is
- * still alive to fix them.
- */
-export function toolCompletePhase(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { phase: PlanningStep },
-): CompletePhaseResult {
-  const feature = getFeatureRow(ctx, requireFeatureId(session))
-  // Read before the emit below, which would otherwise count as this call's own
-  // earlier report.
-  const repeated = planningStepReported(ctx, feature, input.phase)
-  emit(ctx, feature.id, {
-    type: PLANNING_STEP_EVENT,
-    message: `session marked planning step '${input.phase}' complete`,
-    data: { phase: input.phase, currentPhase: feature.phase },
-  })
-
-  // An iterate lap is the next lap being planned FROM Review. With `rethink`
-  // gone nothing moves a feature backwards, so the session that writes lap N+1's
-  // fix tickets does it while the feature stands at `review` — the same road
-  // `burn` already recognises (`iterating`, services/features.ts). Its briefing
-  // forbids this call — Burn from review is what starts the lap — but a stray one
-  // is not refused: it falls through to the full answer below, Burn warnings
-  // included, instead of being told there is nothing left to do.
-  const iterating = feature.phase === 'review' && pendingTickets(ctx, feature.id).length > 0
-
-  // The human clicked Burn while this session was still closing out: the work
-  // being reported IS complete — the feature moved on without it. Saying so is
-  // what keeps a healthy late call from reading as a failure and sending the
-  // session looking for something to fix.
-  if (isPastPhase(feature, 'planning') && !iterating) {
-    return {
-      ok: true,
-      nextPhase: feature.phase,
-      note: `planning is already closed out — the feature is ${feature.phase}; nothing left to complete`,
-    }
-  }
-
-  // The lap stops changing here: the session is done emitting and enriching, so
-  // the Burn click can no longer land mid-batch. A repeat would only re-emit the
-  // milestone the first call already stamped.
-  if (input.phase === 'tickets' && !repeated) markTicketsReady(ctx, feature.id, 'building')
-
-  const nextStep = nextPlanningStep(planningFacts(ctx, feature))
-  return {
-    ok: true,
-    nextPhase: feature.phase,
-    ...(nextStep ? { nextStep } : {}),
-    ...(input.phase === 'tickets'
-      ? { waitingOn: 'human burn', warnings: burnWarnings(ctx, feature.id) }
-      : {}),
-    ...(repeated
-      ? {
-          note: `the ${input.phase} step was already reported complete on lap ${feature.lap} — nothing further to do`,
-        }
-      : {}),
-  }
 }
 
 /**
@@ -1843,7 +1755,7 @@ const DRAFTING_KINDS: readonly SessionKindT[] = ['chat', 'side']
 function createFeatureProject(
   ctx: AppCtx,
   session: SessionRow,
-  input: { draft?: boolean; tickets?: string[] },
+  input: { draft?: boolean },
 ): Project {
   if (isProjectSessionKind(session.kind)) return requireProject(ctx, session)
   if (!DRAFTING_KINDS.includes(session.kind)) {
@@ -1852,12 +1764,11 @@ function createFeatureProject(
         'Tell the human what is worth capturing; the project session is where features are made.',
     )
   }
-  if (!input.draft || input.tickets) {
+  if (!input.draft) {
     throw new GateError(
       `a ${session.kind} session may only PARK a feature here: call create_feature with ` +
-        '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch — a full ' +
-        'create or the quick-change `tickets` shape — belongs to the project session; tell the ' +
-        'human to open it.',
+        '`draft: true` and a `brief` carrying why you deferred it. Cutting a branch belongs to ' +
+        'the project session; tell the human to open it.',
     )
   }
   return projectForFeature(ctx, getFeatureRow(ctx, requireFeatureId(session)))
@@ -1867,15 +1778,13 @@ function createFeatureProject(
  * The point of the project session: intake and decomposition terminating in a
  * feature (decision 19).
  *
- * Three shapes, one call. Without `ticket` it is the ordinary door — an
- * ideation-phase feature whose `brief.md` is the prose the intake conversation
- * just produced, so the reasoning about why this feature exists and what it
- * must not swallow survives the terminal closing. With `draft` it parks that
- * same feature instead of starting it (draft-features decision 5): a row and a
- * stored brief, no branch, until the human clicks Start. With `tickets` it is
- * the quick-change door (decision 21): ONE feature born at `implementation`
- * carrying a ticket per prose, created atomically with them — which is why this
- * is NOT the feature-less `emit_tickets` the session is deliberately denied.
+ * Two shapes, one call. The ordinary door is a feature whose `brief.md` is the
+ * prose the intake conversation just produced, so the reasoning about why this
+ * feature exists and what it must not swallow survives the terminal closing.
+ * With `draft` it parks that same feature instead of starting it
+ * (draft-features decision 5): a row and a stored brief, no branch, until the
+ * human clicks Start. Never tickets: the feature's own agent reads the brief and
+ * judges the work (decision 10).
  *
  * It launches nothing. Spawning terminals from inside a terminal would make
  * this session an orchestrator, where runcastle's premise is that the human
@@ -1890,50 +1799,33 @@ export async function toolCreateFeature(
     baseBranch?: string
     brief?: string
     draft?: boolean
-    tickets?: string[]
     dependsOn?: string[]
   },
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
   const dependsOn = input.dependsOn ?? []
-  if (dependsOn.length > 0 && (!input.draft || input.tickets)) {
+  if (dependsOn.length > 0 && !input.draft) {
     throw new InvalidInputError(
-      'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` (and no ' +
-        '`tickets`) to park it waiting on those features.',
+      'dependsOn is only for drafts — a started feature cannot wait. Pass `draft: true` to park ' +
+        'it waiting on those features.',
     )
   }
   // Validated BEFORE the row exists, so a bad slug, a merged dependency or a
   // foreign feature refuses the whole create instead of leaving a half-made draft.
   const dependencyIds = featureIdsBySlug(ctx, project.id, dependsOn)
   validateDependencies(ctx, project.id, null, dependencyIds)
-  // `oneLiner` is required by the ORDINARY door only. The quick-change door
-  // derives it from the first ticket's prose (`quickChange`) and ignores
-  // anything passed, so demanding it there made the schema lie about the call.
-  if (!input.tickets && !input.oneLiner?.trim()) {
-    throw new InvalidInputError(
-      'create_feature needs a oneLiner — one line saying what this feature is. Only the ' +
-        'quick-change shape (`tickets`) may omit it: there it comes from the first ticket.',
-    )
+  const oneLiner = input.oneLiner?.trim()
+  if (!oneLiner) {
+    throw new InvalidInputError('create_feature needs a oneLiner — one line saying what this feature is.')
   }
-  const feature = input.tickets
-    ? await quickChange(ctx, {
-        projectId: project.id,
-        title: input.title,
-        // Same list the overlay sends, through the same service function — so
-        // the review-ticket append and every other quick-change invariant hold
-        // identically on both doors.
-        tickets: input.tickets,
-        baseBranch: input.baseBranch,
-        draft: input.draft,
-      })
-    : await createFeature(ctx, {
-        projectId: project.id,
-        title: input.title,
-        oneLiner: input.oneLiner ?? '',
-        baseBranch: input.baseBranch,
-        brief: input.brief,
-        draft: input.draft,
-      })
+  const feature = await createFeature(ctx, {
+    projectId: project.id,
+    title: input.title,
+    oneLiner,
+    baseBranch: input.baseBranch,
+    brief: input.brief,
+    draft: input.draft,
+  })
   // What the orchestrator creates is its own (`whole-cuts-plan-themselves`
   // decision 9). It still launches nothing: it calls `plan_feature` when it
   // judges the feature ready.
@@ -2545,7 +2437,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   emit_tickets: FEATURE_KINDS,
   update_ticket: FEATURE_KINDS,
   cancel_ticket: FEATURE_KINDS,
-  complete_phase: FEATURE_KINDS,
   // The same roster as `emit_tickets` on purpose: linking a defect to a ticket
   // IS an emit, so any session that can shape a lap's work can also say what
   // that work did to the defects it inherited.
@@ -2594,7 +2485,6 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   plan_feature: ['project'],
   send_to_feature: ['project'],
   stop_feature_run: ['project'],
-  go_feature: ['project'],
   drive: ['project'],
   record_test_note: ['project'],
   merge_feature: ['project'],
@@ -2622,14 +2512,6 @@ export function toolsForAudience(audience: McpAudience | undefined): string[] {
     .filter((tool) => registeredFor(tool, audience))
     .sort()
 }
-
-/**
- * The phases a SESSION can complete. `shipped` is in `Phase` because features
- * reach it; it is excluded here because nothing reaches it by asking — a feature
- * ships when the human merges it, so offering it was offering a call that can
- * only be refused.
- */
-const CompletablePhase = z.enum(['ideation', 'spec', 'tickets'])
 
 /**
  * The shape of a timeline event tag: `subject.verb`, lowercase, dotted.
@@ -2911,8 +2793,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
 
   // A drafting TALK session may only park a draft (`createFeatureProject`), so
-  // it is offered only that shape — the quick-change and full-create arguments
-  // it would be refused are neither described to it nor accepted from it. Same
+  // it is offered only that shape — the full-create arguments it would be
+  // refused are neither described to it nor accepted from it. Same
   // guard at call time either way; this only stops charging a grill for the
   // project session's door. (Item 9: with the audience known, policy prose that
   // does not apply to the reader is simply not sent.)
@@ -2951,22 +2833,15 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
       {
         title: 'Create a feature',
         description:
-          'Create a feature — the end of intake. Three shapes, one call: the ordinary door ' +
-          '(title + oneLiner + brief), the parked draft (`draft: true`), and the quick change ' +
-          '(`tickets`). It opens NO terminal on what it creates; the new card in the rail is the ' +
-          'feedback, and the human decides what to work on next. From a feature session ' +
-          '(ideation, revisit) only the draft shape is allowed — deflect ' +
-          'scope creep here and leave full creation to the project session.',
+          'Create a feature — the end of intake: a title, a oneLiner and a brief, started or ' +
+          'parked (`draft: true`). No tickets: the feature’s own agent reads the brief and ' +
+          'judges the work. It opens NO terminal on what it creates; the new card in the rail is ' +
+          'the feedback, and the human decides what to work on next. From a feature session ' +
+          'only the draft shape is allowed — deflect scope creep here and leave full creation to ' +
+          'the project session.',
         inputSchema: {
           title: z.string().min(1).describe('The feature’s name; its slug and branch derive from this.'),
-          oneLiner: z
-            .string()
-            .optional()
-            .describe(
-              'One line saying what this feature is. Required for every shape EXCEPT `tickets`, ' +
-                'where the first ticket’s prose becomes the one-liner and anything sent here is ' +
-                'ignored.',
-            ),
+          oneLiner: z.string().min(1).describe('One line saying what this feature is.'),
           baseBranch: z
             .string()
             .optional()
@@ -2982,25 +2857,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
             .describe(
               'The reasoning you just worked out with the human — why this feature exists and ' +
                 'what it must NOT swallow. Becomes brief.md verbatim, and without it that ' +
-                'reasoning is lost. Unused by the `tickets` shape, whose brief IS the proses.',
+                'reasoning is lost.',
             ),
           draft: z
             .boolean()
             .optional()
             .describe(
               'PARK it instead of starting it: a row and its brief, no branch and no files, ' +
-                'until the human clicks Start. With `tickets`, the draft keeps them and Start lands ' +
-                'it ready to Burn. Ask them per feature whether to start or park.',
-            ),
-          tickets: z
-            .array(z.string().min(1))
-            .min(1)
-            .optional()
-            .describe(
-              'The quick-change shape: work too small to deserve a grill. Creates ONE feature at ' +
-                'the implementation phase carrying a ticket per prose (plus the review ticket ' +
-                'every batch closes with). Send every sentence of one quick change in a SINGLE ' +
-                'call — calling this once per ticket makes one feature per ticket.',
+                'until the human clicks Start. Ask them per feature whether to start or park.',
             ),
           dependsOn: DEPENDS_ON_SCHEMA,
         },
@@ -3426,7 +3290,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'speak in. Send the whole batch in one call: positions in `blockedBy` are positions ' +
           'within THIS call. A ticket’s optional `model` takes an id from `get_feature_context`’s ' +
           'annotatedModels whose note gives a reason to deviate — omit it otherwise and the burn ' +
-          'resolves the model the ordinary way.',
+          'resolves the model the ordinary way. Storing the batch opens the human’s panel on Work, ' +
+          'so they see the tickets you just wrote.',
         inputSchema: {
           tickets: z
             .array(TicketInput)
@@ -3563,42 +3428,6 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
     )
   }
 
-  if (wants('complete_phase')) {
-    server.registerTool(
-      'complete_phase',
-      {
-        title: 'Complete phase',
-        description:
-          'Mark the named planning step complete. Ideation, spec and tickets are steps INSIDE ' +
-          'the single Planning state, so this never moves the feature: it records the ' +
-          'milestone on the timeline and comes back { ok: true, nextPhase } naming the state ' +
-          'the feature is still in, plus { nextStep } — the planning step whose artifact is ' +
-          'still missing, read off disk rather than stored. It never refuses; a step you ' +
-          'report twice comes back ok with a note. Completing the tickets step additionally ' +
-          'returns { waitingOn: "human burn", warnings } — `warnings` carries what the human ' +
-          'will be told at the Burn click, so you can still act on it while you are alive. ' +
-          'That call is also what ARMS the Burn click — until it lands, the button waits on you ' +
-          'rather than burning tickets you are still writing, so make it the last thing you do ' +
-          'in the tickets step.',
-        inputSchema: {
-          phase: CompletablePhase.describe(
-            'The phase you are finishing — normally the feature’s current one. `shipped` is not ' +
-              'completable by any session: a feature ships when the human merges it.',
-          ),
-        },
-      },
-      async (args, extra) => {
-        const rs = await resolveCtxSession(extra)
-        if (!rs) return noSession()
-        const result = toolCompletePhase(rs.ctx, rs.session, args)
-        if (result.ok) {
-          checkpointDocsAfterReply(rs.ctx, rs.session, `phase '${args.phase}' complete`)
-        }
-        return ok(result)
-      },
-    )
-  }
-
   if (wants('dispatch_round')) {
     server.registerTool(
       'dispatch_round',
@@ -3610,9 +3439,10 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'blockedBy edges order them inside the round. A blocker outside the round that landed ' +
           'or was cancelled counts as satisfied; one still pending or failed, or one that does ' +
           'not exist, refuses the round, naming each such edge. When the round returns you are woken ' +
-          'with its outcome, each ticket’s status and the verify-gate result. Refused, with the ' +
-          'reason, while a round is already running, while the human is test-driving this ' +
-          'feature, before Go, and after the human pressed Stop until they have replied.',
+          'with its outcome, each ticket’s status and the verify-gate result. Start a round only ' +
+          'once the human has said yes to it in chat. Refused, with the reason, while a round is ' +
+          'already running, while the human is test-driving this feature, once it has shipped, ' +
+          'and after the human pressed Stop until they have replied.',
         inputSchema: {
           seqs: z
             .array(z.number().int().min(1))
@@ -3653,19 +3483,14 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Declare the feature ready for the human',
         description:
           'Put a test drive in front of the human: "Ready for you · Test drive ▸ <scenario>". ' +
-          'The first declaration moves the feature to review; later ones (after the human’s ' +
-          'notes and more rounds) keep it there. A declaration, never refused for the work’s ' +
-          'state: it returns `warnings` — a last round with failures, work nothing has reviewed ' +
-          'since it changed — and you must relay each one to the human.',
+          'This puts the feature under Needs you ("ready to test") until the human replies or ' +
+          'the next round runs. Run the project’s checks first, and tell the human in chat what ' +
+          'to test and how you checked the work (e.g. "typecheck and tests green; no review ' +
+          'agent, since it’s a one-file style change"). A declaration, never refused for the ' +
+          'work’s state: it returns `warnings` — a last round with failures — and you must relay ' +
+          'each one to the human.',
         inputSchema: {
           scenario: z.string().min(1).describe('A short title for what to drive, e.g. "Checkout with a coupon".'),
-          whatToTest: z
-            .string()
-            .min(1)
-            .describe(
-              'A short paragraph aimed at the drive: what changed, where to look, and what would ' +
-                'count as broken.',
-            ),
         },
       },
       async (args, extra) => {
@@ -3683,8 +3508,9 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Wait for the human',
         description:
           'Say that nothing moves until the human acts, and why, in a few words — the feature ' +
-          'shows "Waiting for you · <why>". Use it when you need a decision the plan did not ' +
-          'settle, or when you are stuck. The human’s next message, or your next dispatch, clears it.',
+          'shows "Waiting for you · <why>" and sits under Needs you. Use it when you need the ' +
+          'human’s yes to start a round, a decision the plan did not settle, or when you are ' +
+          'stuck. The human’s next message, or your next dispatch, clears it.',
         inputSchema: {
           why: z.string().min(1).describe('A few words: "round 3 proposed", "stuck on the same test failure".'),
         },
@@ -3740,9 +3566,11 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         title: 'Show the human a panel',
         description:
           'Open the panel beside the chat on the human’s screen, while you are talking about what ' +
-          'it shows: `design` (the live design server at `path`, e.g. `/preview/checkout-empty.html`), ' +
-          '`preview` (the plan preview), `body` (the phase’s tickets, runs or review), `drive` ' +
-          '(the test drive) or `details` (docs and timeline). `design` refuses until ' +
+          'it shows: `plan` (the plan preview, with the decisions and spec inside it), `work` (the ' +
+          'feature’s tickets by round, with live status), `review` (ready declarations, findings ' +
+          'and evidence), `details` (timeline, docs and sessions), `design` (the live design ' +
+          'server at `path`, e.g. `/preview/checkout-empty.html`) or `drive` (the test drive). ' +
+          '`design` refuses until ' +
           'start_design_server has run or a command is recorded. For `design`, `width` lays the page ' +
           'out at that screen width, scaled to fit the pane (e.g. `width: 390` for the mobile layout); ' +
           'without it the human’s own choice holds (Desktop 1440 by default).',

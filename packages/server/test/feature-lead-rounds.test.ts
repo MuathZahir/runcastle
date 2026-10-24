@@ -182,10 +182,26 @@ describe('the feature lead runs rounds', () => {
       expect(listByFeature(ctx, featureId).find((t) => t.id === b.id)?.status).toBe('pending')
     })
 
-    it('refuses while the feature is still in planning', async () => {
-      const featureId = seedFeature(ctx, projectId, { ticketsReadyLap: 1 }).id
+    it('starts a round on a feature that never had Go, and leaves the phase alone', async () => {
+      const featureId = seedFeature(ctx, projectId).id
       const [t] = storeTickets(ctx, featureId, [ticketInput('a')])
-      await expect(dispatchRound(ctx, featureId, [t.seq])).rejects.toThrow(/no Go yet/)
+
+      const { runId } = await dispatchRound(ctx, featureId, [t.seq])
+
+      expect(eventsOf(ctx, featureId, 'round.dispatched').map((e) => e.runId)).toEqual([runId])
+      expect(eventsOf(ctx, featureId, 'feature.go')).toHaveLength(0)
+      await waitFor(() => getRunRow(ctx, runId).status !== 'running')
+    })
+
+    it('refuses a shipped feature and a draft', async () => {
+      const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' }).id
+      const [s] = storeTickets(ctx, shipped, [ticketInput('a')])
+      await expect(dispatchRound(ctx, shipped, [s.seq])).rejects.toThrow(/has shipped/)
+
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', baseBranch: null }).id
+      const [d] = storeTickets(ctx, draft, [ticketInput('a')])
+      await expect(dispatchRound(ctx, draft, [d.seq])).rejects.toThrow(/backlog/)
+      expect(ctx.db.select().from(runs).all()).toHaveLength(0)
     })
 
     it('refuses while a round is already running', async () => {
@@ -426,19 +442,28 @@ describe('the feature lead runs rounds', () => {
   })
 
   describe('declaring ready', () => {
-    it('moves building → review the first time only, and records each declaration', async () => {
-      const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
+    it('works with no Go, records each declaration and waits on the human, never moving the phase', async () => {
+      const featureId = seedFeature(ctx, projectId).id
 
-      declareReady(ctx, featureId, { scenario: 'Checkout', whatToTest: 'Pay with a coupon.' })
-      expect(getFeatureRow(ctx, featureId).phase).toBe('review')
-      declareReady(ctx, featureId, { scenario: 'Refund', whatToTest: 'Refund the order.' })
+      declareReady(ctx, featureId, { scenario: 'Checkout' })
+      expect(getFeatureRow(ctx, featureId)).toMatchObject({ phase: 'planning', waitingReason: 'ready to test' })
+      markHumanMessage(ctx, featureId)
+      expect(getFeatureRow(ctx, featureId).waitingReason).toBeNull()
+      declareReady(ctx, featureId, { scenario: 'Refund' })
 
-      expect(getFeatureRow(ctx, featureId).phase).toBe('review')
-      expect(eventsOf(ctx, featureId, 'phase.advanced')).toHaveLength(1)
+      expect(getFeatureRow(ctx, featureId)).toMatchObject({ phase: 'planning', waitingReason: 'ready to test' })
+      expect(eventsOf(ctx, featureId, 'phase.advanced')).toHaveLength(0)
       expect(listReadyDeclarations(ctx, featureId).map((d) => d.scenario)).toEqual(['Checkout', 'Refund'])
     })
 
-    it('warns about a failing last round and about work no review has seen', async () => {
+    it('refuses a shipped feature and a draft', () => {
+      const shipped = seedFeature(ctx, projectId, { slug: 'shipped', status: 'shipped' }).id
+      expect(() => declareReady(ctx, shipped, { scenario: 'S' })).toThrow(/already shipped/)
+      const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', baseBranch: null }).id
+      expect(() => declareReady(ctx, draft, { scenario: 'S' })).toThrow(/backlog/)
+    })
+
+    it('warns about a failing last round, and not about work no review has seen', async () => {
       const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
       const [impl] = storeTickets(ctx, featureId, [ticketInput('a')])
       workflowRegistry.set('ticket-burner', {
@@ -451,23 +476,18 @@ describe('the feature lead runs rounds', () => {
       const { runId, done } = await startRun(ctx, featureId, 'ticket-burner')
       await done
 
-      const { declaration, warnings } = declareReady(ctx, featureId, { scenario: 'S', whatToTest: 'W' })
+      const { declaration, warnings } = declareReady(ctx, featureId, { scenario: 'S' })
 
       expect(declaration.runId).toBe(runId)
-      expect(warnings).toEqual([
-        expect.stringMatching(/the last round had failures/),
-        expect.stringMatching(/nothing has reviewed the work since the last change/),
-      ])
+      expect(warnings).toEqual([expect.stringMatching(/the last round had failures/)])
     })
 
-    it('does not warn about review when a review landed after the last change', async () => {
+    it('does not warn when changed work was never reviewed — review is the agent’s call', () => {
       const featureId = seedFeature(ctx, projectId, { phase: 'building' }).id
-      const [impl, review] = storeTickets(ctx, featureId, [ticketInput('a'), ticketInput('Review', 'review')])
+      const [impl] = storeTickets(ctx, featureId, [ticketInput('a')])
       updateTicket(ctx, impl.id, { status: 'done', commits: ['abc'] })
-      await new Promise((r) => setTimeout(r, 2))
-      updateTicket(ctx, review.id, { status: 'done', commits: [] })
 
-      expect(declareReady(ctx, featureId, { scenario: 'S', whatToTest: 'W' }).warnings).toEqual([])
+      expect(declareReady(ctx, featureId, { scenario: 'S' }).warnings).toEqual([])
     })
   })
 
@@ -575,9 +595,9 @@ describe('the rounds over tRPC', () => {
     await expect(caller.feature.rounds({ featureId })).resolves.toEqual([
       expect.objectContaining({ round: 1, runId, landed: [t.seq] }),
     ])
-    declareReady(ctx, featureId, { scenario: 'S', whatToTest: 'W' })
+    declareReady(ctx, featureId, { scenario: 'S' })
     await expect(caller.feature.readyDeclarations({ featureId })).resolves.toEqual([
-      expect.objectContaining({ scenario: 'S', whatToTest: 'W', runId }),
+      expect.objectContaining({ scenario: 'S', runId }),
     ])
     await expect(caller.feature.stop({ featureId })).resolves.toMatchObject({
       stoppedAt: expect.any(Number),
