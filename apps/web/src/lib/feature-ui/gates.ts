@@ -9,8 +9,8 @@ export function mergeConflictKickoff(base: string, branch: string, files: string
     `Proceed with your task: RESOLVE A MERGE CONFLICT. Merging ${base} into ${branch} conflicts ` +
     `on: ${list}. Your working directory IS the talk worktree, already checked out on ${branch}. ` +
     `Run \`git merge ${base}\`, then resolve every conflict using this feature’s spec.md and ` +
-    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and ` +
-    `do NOT advance the phase (never call complete_phase). When the merge commit is in, tell me ` +
+    `decisions.md for intent. ${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. ` +
+    `When the merge commit is in, tell me ` +
     `to click “Merge & ship” again for a clean retry — ${TEST_DRIVE_OFFER}`
   )
 }
@@ -61,9 +61,9 @@ export function ticketConflictKickoff(input: {
     `${input.featureBranch}. Run \`git merge ${input.branch}\`, read both sides before resolving ` +
     `(the ticket's work on one side, the sibling tickets that landed first on the other), and ` +
     `resolve by intent using this feature's spec.md and decisions.md — keep BOTH sides working. ` +
-    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push and do NOT advance the phase ` +
-    `(never call complete_phase). When the merge commit is in, tell me to click Retry on the ` +
-    `ticket so runcastle records it as landed — ${TEST_DRIVE_OFFER}`
+    `${DEPENDENCY_FREE_CHECKS} Then commit the merge. Do NOT push. When the merge commit is in, ` +
+    `retry the ticket with dispatch_round({ seqs: [${input.seq}] }) so runcastle records it as ` +
+    `landed, then tell me it is in — ${TEST_DRIVE_OFFER}`
   )
 }
 

@@ -817,12 +817,12 @@ describe('sessionNotReady', () => {
 })
 
 describe('mergeConflictKickoff', () => {
-  it('names the base, feature branch, and files, and forbids advancing the phase', () => {
+  it('names the base, feature branch, and files, and names no phase', () => {
     const line = mergeConflictKickoff('main', 'feature/x', ['a.ts', 'b.ts'])
     expect(line).toContain('git merge main')
     expect(line).toContain('feature/x')
     expect(line).toContain('a.ts, b.ts')
-    expect(line).toContain('complete_phase')
+    expect(line).not.toMatch(/complete_phase|phase/)
     expect(line).toContain('Merge & ship')
   })
 
@@ -857,10 +857,10 @@ describe('ticketConflictKickoff', () => {
     expect(line).toContain('a/staging.service.ts, b/staging.spec.ts')
   })
 
-  it('forbids advancing the phase and points back at the lane action', () => {
+  it('has the agent retry the ticket itself, and names no phase or human Retry', () => {
     const line = ticketConflictKickoff(input)
-    expect(line).toContain('complete_phase')
-    expect(line).toContain('Retry')
+    expect(line).toContain('dispatch_round({ seqs: [3] })')
+    expect(line).not.toMatch(/complete_phase|phase|click Retry/)
   })
 
   it('degrades gracefully when git reported no file list', () => {
