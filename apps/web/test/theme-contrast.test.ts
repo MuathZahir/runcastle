@@ -100,8 +100,8 @@ describe('the light palette holds its contrast floors', () => {
     expectContrast('accent-text', 'accent-subtle', 4.5)
   })
 
-  it('white numbers on a solid accent-text fill clear 4.5:1', () => {
-    expectContrast('on-primary', resolveColour('light','accent-text'), 4.5)
+  it('white numbers on the solid accent fill clear 4.5:1', () => {
+    expectContrast('on-primary', resolveColour('light','accent-fill'), 4.5)
   })
 
   // Tailwind mixes a `/15` wash in oklab, not sRGB, so hold a small margin.
@@ -137,7 +137,13 @@ describe('the dark palette is unchanged by the word peers', () => {
     expect(resolveColour('dark',peer)).toBe(resolveColour('dark',hue))
   })
 
-  it('phase-review-text follows accent-text, which already differs from its hue', () => {
-    expect(resolveColour('dark','phase-review-text')).toBe(resolveColour('dark','accent-text'))
+  it('phase-review-text and accent-fill equal the accent hue, as review words and markers always have', () => {
+    expect(resolveColour('dark','phase-review-text')).toBe(resolveColour('dark','accent'))
+    expect(resolveColour('dark','accent-fill')).toBe(resolveColour('dark','accent'))
+  })
+
+  it('in light, phase-review-text and accent-fill wear accent-text', () => {
+    expect(resolveColour('light','phase-review-text')).toBe(resolveColour('light','accent-text'))
+    expect(resolveColour('light','accent-fill')).toBe(resolveColour('light','accent-text'))
   })
 })

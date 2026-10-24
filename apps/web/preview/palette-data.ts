@@ -40,6 +40,7 @@ export const TODAY_LIGHT: Record<`--color-${string}`, string> = {
   '--color-phase-review': TODAY.accent,
   '--color-phase-shipped': TODAY.success,
   '--color-focus-ring': TODAY.accent,
+  '--color-accent-fill': TODAY.accent,
   '--color-text-secondary': '#4c5366',
   '--color-text-tertiary': '#5c6377',
   '--color-icon': '#6a7185',

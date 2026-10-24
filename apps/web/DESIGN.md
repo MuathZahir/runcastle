@@ -219,8 +219,9 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
   link or label painted in a colour takes the peer, which holds 4.5:1. Where one
   element colours both, split it: the peer on the element, the hue on the glyph
   (`text-danger-text [&_svg]:text-danger`). A solid hue fill that carries words
-  or numbers (the walkthrough's numbered marker) wears the peer as its fill. In
-  dark each peer equals its hue.
+  or numbers (the walkthrough's numbered marker) wears `accent-fill`, the peer in
+  light. In dark each peer equals its hue — `phase-review-text` and
+  `accent-fill` included, which equal `accent` there, not `accent-text`.
 - Phases each wear a hue, in pipeline order: ideation pink, spec/planning teal,
   tickets amber (`warning`), implementation/building orange, review blue
   (`accent`), shipped green (`success`); draft stays `text-disabled`. The hue is

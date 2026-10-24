@@ -271,11 +271,11 @@ function StatusRow() {
 /**
  * The walkthrough player's scrub track and markers, with WalkthroughPlayer's
  * own marker classes (it does not export them). Today the numbered marker is
- * filled with the hue; the retune fills it with the word peer so its white
+ * filled with the hue; the retune fills it with `accent-fill` (the word peer in light) so its white
  * number keeps 4.5:1 (decision 9).
  */
 function WalkthroughMarkers({ palette }: { palette: Palette }) {
-  const numbered = palette === 'today' ? 'bg-accent' : 'bg-accent-text'
+  const numbered = palette === 'today' ? 'bg-accent' : 'bg-accent-fill'
   return (
     <div className="flex items-center gap-3 rounded-lg bg-surface p-3 text-icon">
       <div className="relative h-1 flex-1 rounded-full bg-surface-selected">

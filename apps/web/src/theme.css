@@ -59,6 +59,10 @@
   /* ---- the one accent (blue): focus, selection, links, live, review ---- */
   --color-accent: #4f8ef7;
   --color-accent-text: #7aaafa;
+  /* A solid accent fill that carries words or numbers (the walkthrough's
+     numbered marker). The hue in dark, the word peer in light, so the
+     number on it keeps 4.5:1 there without changing dark. */
+  --color-accent-fill: var(--color-accent);
   --color-accent-subtle: #16213a;
 
   /* ---- status ---- Each hue paints marks (dots, glyphs, icons); words in
@@ -95,7 +99,9 @@
   --color-phase-building: var(--color-phase-implementation);
   --color-phase-building-text: var(--color-phase-implementation-text);
   --color-phase-review: var(--color-accent);
-  --color-phase-review-text: var(--color-accent-text);
+  /* In dark, words in the review hue have always worn the accent hue itself
+     (`accent-text` is lighter there); light points it at `accent-text`. */
+  --color-phase-review-text: var(--color-accent);
   --color-phase-shipped: var(--color-success);
   --color-phase-shipped-text: var(--color-success-text);
 
@@ -223,6 +229,8 @@
   --color-accent: #3a7ef0;
   --color-accent-text: #2361d4;
   --color-accent-subtle: #ecf2fe;
+  --color-accent-fill: var(--color-accent-text);
+  --color-phase-review-text: var(--color-accent-text);
   --color-success: #23955a;
   --color-success-text: #137745;
   --color-warning: #c06e00;

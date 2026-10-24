@@ -45,7 +45,11 @@ following the pattern the accent already uses (`accent` for marks,
   success's. `phase-draft` stays as it is (it is `text-disabled`, decorative).
 
 In the dark theme each peer equals its hue's current dark value, so dark does
-not change. In light, the peer carries the word value and the hue itself is
+not change. That includes `phase-review-text`, which equals `accent` in dark
+and `accent-text` only in light (found in round 1's review: pointing it at
+`accent-text` in dark repainted review-phase notice words). Solid accent fills
+that carry words use a separate `accent-fill` token for the same reason: the
+accent hue in dark, `accent-text` in light. In light, the peer carries the word value and the hue itself is
 retuned for marks. Whether a peer is written as a literal or as a mix of its
 hue is the builder's choice; what is fixed is that it clears its floor.
 
