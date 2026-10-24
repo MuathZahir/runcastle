@@ -375,10 +375,10 @@ describe('design MCP tools', () => {
   })
 
   it('show_panel emits panel.show with the view and path', async () => {
-    const out = await call('show_panel', { view: 'body' })
+    const out = await call('show_panel', { view: 'work' })
     expect(out.isError).toBe(false)
     expect(JSON.parse(out.text)).toEqual({ ok: true })
-    expect(panelShows()).toEqual([{ view: 'body' }])
+    expect(panelShows()).toEqual([{ view: 'work' }])
   })
 
   it('show_panel refuses an unknown view', async () => {

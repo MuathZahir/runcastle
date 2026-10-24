@@ -1,7 +1,7 @@
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, SessionRow } from '@runcastle/core'
-import { sessionDir, worktreeDir } from '@runcastle/core/paths'
+import { worktreeDir } from '@runcastle/core/paths'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
@@ -82,39 +82,18 @@ describe('the orchestrator’s headless-run tools', () => {
     return f
   }
 
-  const spawnOff = { spawn: false } as const
-
-  it('send_to_feature relays the message to an owned feature, headless', async () => {
-    const f = await feature('sent-back')
-    const { sessionId } = await toolSendToFeature(
-      ctx,
-      orchestrator(),
-      { slug: 'sent-back', message: 'Keep the list; drop the grid.' },
-      spawnOff,
-    )
-    cleanup.push(sessionDir(sessionId))
-
-    const row = getSessionRow(ctx, sessionId)
-    expect(row?.purpose).toBe('relay')
-    expect(row?.headless).toBe(true)
-    const launched = listAfter(ctx, f.id, 0).find((e) => e.type === 'session.launched')
-    expect(String(launched?.data?.command)).toContain('Keep the list; drop the grid.')
-  })
-
   /**
-   * Past Go the chat is the feature's lead (`the-feature-lead-runs-rounds`
-   * decision 11): the orchestrator's drive notes reach it as the human's would,
-   * through the one lead-delivery path, and count as a human message.
+   * Every chat on a feature is its lead: the orchestrator's message reaches it
+   * as the human's would, through the one lead-delivery path, and counts as a
+   * human message — whatever the feature's state, with no planning relay.
    */
-  it('send_to_feature reaches a building feature’s lead as a human message, launching nothing', async () => {
-    for (const phase of ['building', 'review'] as const) {
+  it('send_to_feature reaches the feature’s lead as a human message whatever its state, launching nothing', async () => {
+    for (const phase of ['planning', 'building', 'review'] as const) {
       const f = await feature(`led-${phase}`, { phase })
-      const result = await toolSendToFeature(
-        ctx,
-        orchestrator(),
-        { slug: f.slug, message: 'The empty state still says nothing.' },
-        spawnOff,
-      )
+      const result = await toolSendToFeature(ctx, orchestrator(), {
+        slug: f.slug,
+        message: 'The empty state still says nothing.',
+      })
 
       expect(result).toEqual({ deliveredToLead: true })
       const events = listAfter(ctx, f.id, 0)
@@ -134,7 +113,7 @@ describe('the orchestrator’s headless-run tools', () => {
       await feature('humans', { orchestrated: false, phase: 'review' })
       const session = orchestrator()
       await expect(
-        toolSendToFeature(ctx, session, { slug: 'humans', message: 'x' }, spawnOff),
+        toolSendToFeature(ctx, session, { slug: 'humans', message: 'x' }),
       ).rejects.toThrow(/the human's feature, not yours/)
     })
 
@@ -143,7 +122,7 @@ describe('the orchestrator’s headless-run tools', () => {
       updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
       const ordinary = projectSession()
       for (const call of [
-        () => toolSendToFeature(ctx, ordinary, { slug: 'owned', message: 'x' }, spawnOff),
+        () => toolSendToFeature(ctx, ordinary, { slug: 'owned', message: 'x' }),
       ]) {
         await expect(call()).rejects.toBeInstanceOf(GateError)
         await expect(call()).rejects.toThrow(/only the orchestrator/)
@@ -155,7 +134,7 @@ describe('the orchestrator’s headless-run tools', () => {
       const session = orchestrator()
       updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
       await expect(
-        toolSendToFeature(ctx, session, { slug: 'stopped', message: 'x' }, spawnOff),
+        toolSendToFeature(ctx, session, { slug: 'stopped', message: 'x' }),
       ).rejects.toThrow(/Orchestrator setting is off/)
     })
   })

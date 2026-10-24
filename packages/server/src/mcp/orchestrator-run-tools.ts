@@ -2,11 +2,6 @@ import type { SessionRow } from '@runcastle/core'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod'
 import type { AppCtx } from '../db/types'
-import {
-  launchSession,
-  type LaunchSessionOptions,
-  type LaunchSessionResult,
-} from '../launcher/launcher'
 import { deliverToLead } from '../services/lead-delivery'
 import {
   noSession,
@@ -18,38 +13,25 @@ import {
 
 /**
  * The orchestrator's tool that talks to a feature (`whole-cuts-plan-themselves`,
- * `the-feature-lead-runs-rounds` decision 11): a message to its planning
- * conversation before Go, and to its lead after.
- *
- * A relay goes through the very launch the human's door uses, so it is refused
- * exactly where that door is and nowhere else (decision 6).
+ * `the-feature-lead-runs-rounds` decision 11): a message to its lead.
  */
 
 /** What `send_to_feature` did with the message. */
-export type SendToFeatureResult = LaunchSessionResult | { deliveredToLead: true }
+export type SendToFeatureResult = { deliveredToLead: true }
 
 /**
- * Send a message to an owned feature. Before Go it is a `relay` run, headless,
- * resuming the planning conversation (decision 16). From Go on the feature's
- * chat is its lead, and the message reaches it as the human's would — drive
- * notes, an answer — so it counts as a human message, and clears a Stop.
+ * Send a message to an owned feature. Every chat on a feature is its lead, so
+ * the message reaches it as the human's would — drive notes, an answer — and
+ * counts as a human message, which clears a Stop.
  */
 export async function toolSendToFeature(
   ctx: AppCtx,
   session: SessionRow,
   input: { slug: string; message: string },
-  opts: LaunchSessionOptions = {},
 ): Promise<SendToFeatureResult> {
   const feature = requireOrchestratedFeature(ctx, session, input.slug)
-  if (feature.phase !== 'planning') {
-    await deliverToLead(ctx, feature, { text: input.message, source: 'human' })
-    return { deliveredToLead: true }
-  }
-  return launchSession(
-    ctx,
-    { featureId: feature.id, kind: 'chat', purpose: 'relay', message: input.message },
-    opts,
-  )
+  await deliverToLead(ctx, feature, { text: input.message, source: 'human' })
+  return { deliveredToLead: true }
 }
 
 export function registerOrchestratorRunTools(
@@ -63,11 +45,9 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to one of your features. Before Go it reaches the planning conversation " +
-          "— a plan sent back with the change you want and why, or the human's answer relayed as " +
-          'theirs — as a headless run you are told the end of, refused while another session is ' +
-          "live on the feature. From Go on it reaches the feature's agent as the human's message " +
-          '(drive notes, an answer), which lets it dispatch again after a Stop. Orchestrator only.',
+          "Send a message to one of your features. It reaches the feature's agent as the human's " +
+          "message — a plan sent back with the change you want and why, drive notes, the human's " +
+          'answer relayed as theirs — which lets it dispatch again after a Stop. Orchestrator only.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z

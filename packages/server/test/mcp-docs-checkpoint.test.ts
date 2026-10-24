@@ -9,8 +9,6 @@ import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import mcpApp from '../src/mcp/server'
 import { listAfter } from '../src/services/events'
 import { commitDocs } from '../src/services/git'
-import { PLANNING_STEP_EVENT } from '../src/services/planning'
-import { getFeatureRow } from '../src/services/repo'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject, tmpRepo } from './helpers/fixtures'
 
@@ -22,10 +20,12 @@ vi.mock('../src/services/git', async (importOriginal) => ({
 
 /**
  * A pipeline write answers once it is recorded, never after the docs checkpoint
- * behind it. Seen on a headless self-planning run: `complete_phase(ideation)`
+ * behind it. Seen on a headless self-planning run: a planning write
  * timed out on the caller's side while its milestone was already on the
  * timeline, because the handler awaited a git commit before replying.
  */
+const ONE_TICKET = { title: 't', goal: 'g', context: 'c', acceptanceCriteria: ['a'], seams: [], blockedBy: [] }
+
 describe('docs checkpoint behind a pipeline write', () => {
   let ctx: AppCtx
   let feature: Feature
@@ -87,18 +87,8 @@ describe('docs checkpoint behind a pipeline write', () => {
       .map((e) => e.message)
   }
 
-  it('complete_phase answers while the checkpoint commit is still running', async () => {
-    const out = await call('complete_phase', { phase: 'tickets' })
-
-    expect(out.waitingOn).toBe('human burn')
-    expect(commitDocs).toHaveBeenCalledTimes(1)
-    expect(listAfter(ctx, feature.id, 0).some((e) => e.type === PLANNING_STEP_EVENT)).toBe(true)
-    // Burn is armed by the answer, not by the checkpoint.
-    expect(getFeatureRow(ctx, feature.id).ticketsReadyLap).toBe(feature.lap)
-  })
-
   it('a checkpoint that fails after the answer still reports itself on the timeline', async () => {
-    await call('complete_phase', { phase: 'ideation' })
+    await call('emit_tickets', { tickets: [ONE_TICKET] })
     expect(commitPending()).toEqual([])
 
     failCommit(new Error('index.lock exists'))
@@ -112,7 +102,7 @@ describe('docs checkpoint behind a pipeline write', () => {
     const onUnhandled = (reason: unknown) => unhandled.push(reason)
     process.on('unhandledRejection', onUnhandled)
     try {
-      await call('complete_phase', { phase: 'ideation' })
+      await call('emit_tickets', { tickets: [ONE_TICKET] })
       // deleteFeature's last step: the rows go while the checkpoint is running.
       ctx.db.delete(sessions).where(eq(sessions.featureId, feature.id)).run()
       ctx.db.delete(events).where(eq(events.featureId, feature.id)).run()

@@ -99,9 +99,8 @@ describe('the orchestrator’s ownership and gate', () => {
       oneLiner: 'parked',
       draft: true,
     })
-    const quick = await toolCreateFeature(ctx, session, { title: 'Quick fix', tickets: ['Fix the typo.'] })
 
-    for (const out of [ordinary, draft, quick]) {
+    for (const out of [ordinary, draft]) {
       expect(getFeatureRow(ctx, out.id).orchestrated, out.slug).toBe(true)
       expect(listAfter(ctx, out.id).map((e) => e.type), out.slug).toContain('feature.orchestrated')
     }
@@ -201,7 +200,6 @@ describe('the orchestrator’s ownership and gate', () => {
       'plan_feature',
       'send_to_feature',
       'stop_feature_run',
-      'go_feature',
       'drive',
       'record_test_note',
       'merge_feature',

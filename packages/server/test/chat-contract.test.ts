@@ -21,7 +21,6 @@ describe('chat contract', () => {
   it('registers the settled union toolset', () => {
     expect(toolsForAudience('chat').sort()).toEqual([
       'cancel_ticket',
-      'complete_phase',
       'create_feature',
       'declare_ready',
       'dispatch_round',

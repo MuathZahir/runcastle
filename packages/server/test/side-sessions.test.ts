@@ -451,7 +451,6 @@ describe('the tools a side session gets', () => {
       'read_feature_doc',
       'list_tickets',
       'get_ticket',
-      'complete_phase',
       'emit_tickets',
       'update_ticket',
       'cancel_ticket',
