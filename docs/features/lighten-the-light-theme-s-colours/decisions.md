@@ -64,7 +64,7 @@ accent already has `accent-text`: `success-text`, `warning-text`,
 `danger-text`, `phase-ideation-text`, `phase-spec-text`,
 `phase-implementation-text`, and the referenced phases follow (planning →
 spec's, tickets → warning's, building → implementation's, review →
-accent-text, shipped → success's). Every word painted in a hue moves to its
+accent-text in light and the accent hue in dark, shipped → success's). Every word painted in a hue moves to its
 peer. In light, the hue itself then brightens to sit just above 3:1 on the
 canvas; the peer sits just above 4.5:1. Dots, glyphs, icons, rings and the
 tinted washes made from the hue get visibly lighter; coloured words stay close
