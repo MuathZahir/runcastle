@@ -81,7 +81,7 @@ export const MOMENTS: MomentSample[] = [
   {
     key: 'talking',
     label: 'Talking',
-    status: { kind: 'planning', label: 'Talking with you' },
+    status: { kind: 'talking', label: 'Talking with you' },
     views: ['plan', 'design', 'details'],
     open: 'plan',
     said: 'Should the PDF carry the note’s tags, or only its title and body? I’d leave tags out: the brief asks for the note, not its filing.',

@@ -149,7 +149,7 @@ function page(lap = 2): void {
       }}
       driving={null}
       conflict={null}
-      onViewPhase={() => undefined}
+      onOpenWork={() => undefined}
     />,
   )
 }

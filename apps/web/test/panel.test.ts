@@ -1,58 +1,72 @@
 import { describe, expect, it } from 'vitest'
 import {
   INITIAL_PANEL,
+  PANEL_VIEWS,
   availableViews,
-  bodyLabel,
+  hasPlan,
   panelReducer,
+  reviewRan,
   type PanelAction,
+  type PanelFacts,
   type PanelState,
 } from '../src/lib/feature-ui/panel'
 
-/** design-mode decisions 4, 5: the views a feature offers and what the panel does. */
+/**
+ * tickets-and-review-are-tools-not-phases decision 8: the views a feature
+ * offers come from facts, never a phase, and the panel's transitions.
+ */
 describe('availableViews', () => {
-  const started = { isDraft: false, hasPreview: false, driveActive: false }
+  const none: PanelFacts = {
+    isDraft: false,
+    hasPlan: false,
+    hasTickets: false,
+    hasReview: false,
+    shipped: false,
+    designRunning: false,
+    driveActive: false,
+  }
 
-  it('offers the body, design and details in every working phase', () => {
-    for (const phase of ['planning', 'building', 'review'] as const) {
-      expect(availableViews({ ...started, phase })).toEqual(['body', 'design', 'details'])
-    }
+  it('offers only the details to a started feature with nothing to show yet', () => {
+    expect(availableViews(none)).toEqual(['details'])
   })
 
-  it('drops design once the feature has shipped', () => {
-    expect(availableViews({ ...started, phase: 'shipped' })).toEqual(['body', 'details'])
+  it('offers each view once its fact holds, in the switcher’s order', () => {
+    expect(availableViews({ ...none, hasPlan: true })).toEqual(['plan', 'details'])
+    expect(availableViews({ ...none, hasTickets: true })).toEqual(['work', 'details'])
+    expect(availableViews({ ...none, hasReview: true })).toEqual(['review', 'details'])
+    expect(availableViews({ ...none, shipped: true })).toEqual(['review', 'details'])
+    expect(availableViews({ ...none, designRunning: true })).toEqual(['details', 'design'])
+    expect(availableViews({ ...none, driveActive: true })).toEqual(['details', 'drive'])
   })
 
-  it('offers the preview only when the feature has one', () => {
-    expect(availableViews({ ...started, phase: 'planning', hasPreview: true })).toEqual([
-      'body',
-      'preview',
-      'design',
-      'details',
-    ])
-  })
-
-  it('offers the drive only while one is up', () => {
-    expect(availableViews({ ...started, phase: 'review', driveActive: true })).toEqual([
-      'body',
-      'design',
-      'drive',
-      'details',
-    ])
+  it('lists plan, work, review, details, design, drive when every fact holds', () => {
+    const all = { isDraft: false, hasPlan: true, hasTickets: true, hasReview: true, shipped: false, designRunning: true, driveActive: true }
+    expect(availableViews(all)).toEqual(['plan', 'work', 'review', 'details', 'design', 'drive'])
   })
 
   it('gives a draft no panel at all', () => {
-    expect(availableViews({ isDraft: true, phase: 'planning', hasPreview: true, driveActive: true })).toEqual([])
+    const all = { isDraft: true, hasPlan: true, hasTickets: true, hasReview: true, shipped: false, designRunning: true, driveActive: true }
+    expect(availableViews(all)).toEqual([])
+  })
+
+  it('has no phase-keyed body and no separate preview view', () => {
+    expect(PANEL_VIEWS).toEqual(['plan', 'work', 'review', 'details', 'design', 'drive'])
   })
 })
 
-describe('bodyLabel', () => {
-  it('names the body after what the phase shows', () => {
-    expect(bodyLabel('planning', { ticketsIsBody: false, hasRun: false })).toBe('Plan')
-    expect(bodyLabel('planning', { ticketsIsBody: true, hasRun: false })).toBe('Tickets')
-    expect(bodyLabel('building', { ticketsIsBody: true, hasRun: false })).toBe('Tickets')
-    expect(bodyLabel('building', { ticketsIsBody: false, hasRun: true })).toBe('Run')
-    expect(bodyLabel('review', { ticketsIsBody: false, hasRun: true })).toBe('Review')
-    expect(bodyLabel('shipped', { ticketsIsBody: false, hasRun: true })).toBe('Outcome')
+describe('the facts behind Plan and Review', () => {
+  it('has a plan with a preview, decisions.md or spec.md, and none with only the brief', () => {
+    const doc = (relPath: string) => ({ relPath })
+    expect(hasPlan({ docs: [doc('docs/features/x/brief.md')] })).toBe(false)
+    expect(hasPlan({ preview: { relPath: 'preview.html' }, docs: [] })).toBe(true)
+    expect(hasPlan({ docs: [doc('docs/features/x/decisions.md')] })).toBe(true)
+    expect(hasPlan({ docs: [doc('docs/features/x/spec.md')] })).toBe(true)
+  })
+
+  it('counts a review ticket that ran, not one still pending or cancelled, nor a work ticket', () => {
+    expect(reviewRan([{ kind: 'review', status: 'pending' }, { kind: 'review', status: 'cancelled' }])).toBe(false)
+    expect(reviewRan([{ kind: 'implementation', status: 'done' }])).toBe(false)
+    for (const status of ['burning', 'done', 'failed']) expect(reviewRan([{ kind: 'review', status }])).toBe(true)
   })
 })
 
@@ -64,7 +78,7 @@ describe('panelReducer', () => {
   })
 
   it('opens a view and says who opened it', () => {
-    expect(run({ type: 'open', view: 'body', origin: 'human' })).toMatchObject({ view: 'body', origin: 'human' })
+    expect(run({ type: 'open', view: 'work', origin: 'human' })).toMatchObject({ view: 'work', origin: 'human' })
   })
 
   it("keeps the agent's path for the design view, and only for it", () => {
@@ -73,12 +87,11 @@ describe('panelReducer', () => {
       path: '/preview/x',
       origin: 'agent',
     })
-    expect(run({ type: 'open', view: 'body', path: '/preview/x', origin: 'agent' }).path).toBeUndefined()
+    expect(run({ type: 'open', view: 'work', path: '/preview/x', origin: 'agent' }).path).toBeUndefined()
     expect(run({ type: 'open', view: 'design', origin: 'human' }).path).toBeUndefined()
   })
 
   it('opens the run after Go and the drive after Test drive, as runcastle', () => {
-    expect(run({ type: 'follow', click: 'go' })).toMatchObject({ view: 'body', origin: 'runcastle' })
     expect(run({ type: 'follow', click: 'testDrive' })).toMatchObject({ view: 'drive', origin: 'runcastle' })
   })
 
@@ -99,16 +112,16 @@ describe('panelReducer', () => {
   it("holds the agent's screen width for that design open only", () => {
     const asked = run({ type: 'open', view: 'design', path: '/p', width: 390, origin: 'agent' })
     expect(asked).toMatchObject({ view: 'design', width: 390 })
-    expect(panelReducer(asked, { type: 'switch', view: 'body' }).width).toBe(390)
+    expect(panelReducer(asked, { type: 'switch', view: 'work' }).width).toBe(390)
     expect(panelReducer(asked, { type: 'open', view: 'design', origin: 'human' }).width).toBeUndefined()
     expect(panelReducer(asked, { type: 'close' }).width).toBeUndefined()
-    expect(run({ type: 'open', view: 'body', width: 390, origin: 'agent' }).width).toBeUndefined()
+    expect(run({ type: 'open', view: 'work', width: 390, origin: 'agent' }).width).toBeUndefined()
   })
 
   it('takes a new design path over the remembered one', () => {
     const state = run(
       { type: 'open', view: 'design', path: '/p', origin: 'agent' },
-      { type: 'switch', view: 'body' },
+      { type: 'switch', view: 'work' },
       { type: 'open', view: 'design', path: '/q', origin: 'agent' },
     )
     expect(state.path).toBe('/q')
@@ -116,17 +129,17 @@ describe('panelReducer', () => {
 
   it('closes to the chat alone, keeping the size', () => {
     const state = run(
-      { type: 'open', view: 'body', origin: 'human' },
+      { type: 'open', view: 'work', origin: 'human' },
       { type: 'setWidth', share: 0.7 },
       { type: 'close' },
     )
-    expect(state).toEqual({ view: null, last: 'body', share: 0.7, collapsed: false })
+    expect(state).toEqual({ view: null, last: 'work', share: 0.7, collapsed: false })
   })
 
   it('the header toggle reopens the last view, and closes an open one', () => {
-    const views = ['body', 'design', 'details'] as const
+    const views = ['work', 'design', 'details'] as const
     const closed = run(
-      { type: 'open', view: 'body', origin: 'human' },
+      { type: 'open', view: 'work', origin: 'human' },
       { type: 'switch', view: 'details' },
       { type: 'toggle', views },
     )
@@ -135,9 +148,9 @@ describe('panelReducer', () => {
   })
 
   it('the toggle opens the first view on offer when nothing was open, or the last is gone', () => {
-    expect(run({ type: 'toggle', views: ['body', 'details'] }).view).toBe('body')
+    expect(run({ type: 'toggle', views: ['work', 'details'] }).view).toBe('work')
     const driveGone = run({ type: 'open', view: 'drive', origin: 'human' }, { type: 'close' })
-    expect(panelReducer(driveGone, { type: 'toggle', views: ['body', 'details'] }).view).toBe('body')
+    expect(panelReducer(driveGone, { type: 'toggle', views: ['work', 'details'] }).view).toBe('work')
     expect(run({ type: 'toggle', views: [] }).view).toBeNull()
   })
 
@@ -155,13 +168,13 @@ describe('panelReducer', () => {
   })
 
   it('toggles between the panel full and an even split', () => {
-    const full = run({ type: 'open', view: 'body', origin: 'human' }, { type: 'setWidth', share: 0.3 }, { type: 'toggleFull' })
+    const full = run({ type: 'open', view: 'work', origin: 'human' }, { type: 'setWidth', share: 0.3 }, { type: 'toggleFull' })
     expect(full.share).toBe(1)
     expect(panelReducer(full, { type: 'toggleFull' }).share).toBe(0.5)
   })
 
   it('collapses an open panel to a strip, and unfolds it on expand or on any open', () => {
-    const folded = run({ type: 'open', view: 'body', origin: 'human' }, { type: 'collapse' })
+    const folded = run({ type: 'open', view: 'work', origin: 'human' }, { type: 'collapse' })
     expect(folded.collapsed).toBe(true)
     expect(panelReducer(folded, { type: 'expand' }).collapsed).toBe(false)
     expect(panelReducer(folded, { type: 'switch', view: 'details' }).collapsed).toBe(false)

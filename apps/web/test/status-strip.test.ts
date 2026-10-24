@@ -110,50 +110,12 @@ describe('StatusStrip', () => {
     expect(render({ driving: true, driveLap: null })).toContain('Running')
   })
 
-  /**
-   * The Agentic review control (review-as-a-lap-trail decision 6), beside the
-   * drive the human would take themselves.
-   */
-  describe('the Agentic review control', () => {
-    it('sits beside Test drive, after it', () => {
-      const html = render({
-        testDrive: { onStart: () => undefined },
-        agenticReview: { onStart: () => undefined },
-      })
-      expect(html).toContain('Test drive</button>')
-      expect(html).toContain('Agentic review</button>')
-      expect(html.indexOf('Test drive</button>')).toBeLessThan(html.indexOf('Agentic review</button>'))
-    })
-
-    it('is never the page’s primary — that is the next-step bar’s', () => {
-      const html = render({
-        testDrive: { onStart: () => undefined },
-        agenticReview: { onStart: () => undefined },
-      })
-      expect(html).not.toContain('data-variant="primary"')
-    })
-
-    /** A drive at the wheel takes Test drive away; asking for a review is
-     *  never about what the drive is doing. */
-    it('is offered with no Test drive control beside it', () => {
-      const html = render({ agenticReview: { onStart: () => undefined } })
-      expect(html).toContain('Agentic review</button>')
-      expect(html).not.toContain('Test drive</button>')
-    })
-
-    /** One burn at a time is the server's rule, so the button says so rather
-     *  than dead-ending on the click. */
-    it('is disabled with its reason while a burn is running', () => {
-      const html = render({
-        agenticReview: { onStart: () => undefined, blocked: 'a burn is running' },
-      })
-      expect(html).toContain('title="a burn is running"')
-      expect(html).toContain('disabled')
-    })
-
-    it('is absent where the page acts on nothing at all', () => {
-      expect(render({ shipped: true })).not.toContain('Agentic review')
-    })
+  /** Another review is the agent's to run (tickets-and-review-are-tools-not-phases decision 12). */
+  it('offers the human’s own Test drive beside the list, and no Agentic review', () => {
+    const html = render({ testDrive: { onStart: () => undefined } })
+    expect(html).toContain('Test drive</button>')
+    expect(html).not.toContain('data-variant="primary"')
+    expect(html).not.toContain('Agentic review')
   })
 
   /**

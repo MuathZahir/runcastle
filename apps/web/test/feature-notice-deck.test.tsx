@@ -72,7 +72,7 @@ describe('FeatureNoticeDeck', () => {
     const { update, onView } = setup([])
     update([ticketsStored()])
     fireEvent.click(screen.getByRole('button', { name: /View tickets/ }))
-    expect(onView).toHaveBeenCalledWith('body')
+    expect(onView).toHaveBeenCalledWith('work')
     expect(screen.queryByText('Tickets updated')).toBeNull()
   })
 

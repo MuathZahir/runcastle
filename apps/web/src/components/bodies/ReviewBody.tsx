@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { Phase } from '@runcastle/core'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import type { DriveState as BrowserDrive } from '../../lib/workspace'
@@ -9,7 +8,6 @@ import {
   deferredScope,
   roundOfSeq,
   latestRoundTickets,
-  latestRun,
   liveSessionLine,
   mergeConflictResolved,
   reviewDriveDenial,
@@ -35,7 +33,7 @@ import { NothingVerifiedAlert } from '../review/NothingVerifiedAlert'
 import { NotesRail } from '../review/NotesRail'
 import { ProjectDriveBlocking } from '../review/ProjectDriveBlocking'
 import { ReferenceTier } from '../review/ReferenceTier'
-import { ReviewDriveDeniedAlert } from '../review/ReviewDriveDeniedCard'
+import { ReviewDriveDeniedCard } from '../review/ReviewDriveDeniedCard'
 import { RoundTrail } from '../review/RoundTrail'
 import { DeferredScope } from '../review/StatusStrip'
 import { OpenWork } from '../review/OpenWork'
@@ -81,7 +79,7 @@ export function ReviewBody({
   driving,
   conflict,
   readonly = false,
-  onViewPhase,
+  onOpenWork,
   onOpenDrive,
 }: {
   full: FeatureFull
@@ -89,8 +87,8 @@ export function ReviewBody({
   conflict: MergeConflictState | null
   /** Looking back at review on a shipped feature — history, not work. */
   readonly?: boolean
-  /** Go and look at another phase — how a defect reaches the lane fixing it. */
-  onViewPhase?: (phase: Phase) => void
+  /** Open the panel's Work view — how a defect reaches the lane fixing it. */
+  onOpenWork?: () => void
   /** Open the panel's drive view, where a live drive of this feature is. */
   onOpenDrive?: () => void
 }) {
@@ -101,7 +99,6 @@ export function ReviewBody({
   // that is still up is the page header's live line, and lives on the Chat tab.
   // The drive and conflict bands below still need to know it is up.
   const live = liveSessionLine(full.sessions)
-  const run = latestRun(runs)
   // The same query key the workspace shell reads, so the conflict card's state
   // and the bar's conflict branch come out of one fetch of one feed.
   const events = useEventLog(feature.id)
@@ -115,10 +112,9 @@ export function ReviewBody({
   // be a straight misattribution.
   const ownDrive = drive.data?.featureId === feature.id ? drive.data : undefined
   const poll = useLivePoll()
-  // Notes and findings are review-phase reads. They used to poll in every phase
-  // (research still-open 24), which is a timer per surface for data nothing on
-  // screen was showing; the SSE feed invalidates both keys regardless.
-  const reviewPoll = feature.phase === 'review' ? poll : (false as const)
+  // Notes and findings poll only while the review is live: a shipped record's
+  // rows no longer change, and the SSE feed invalidates both keys regardless.
+  const reviewPoll = readonly ? (false as const) : poll
   const notes = trpc.notes.list.useQuery({ featureId: feature.id }, { refetchInterval: reviewPoll })
   // What the review agent found, typed and counted server-side — the strip's
   // chip and the open-work list below both come out of this one read, and the
@@ -149,18 +145,6 @@ export function ReviewBody({
     onSuccess: () => {
       void utils.feature.driveInfo.invalidate()
       void utils.feature.get.invalidate({ id: feature.id })
-    },
-    onError: (e) => toast.push(e.message),
-  })
-  // Another review pass, on demand (decisions 6–7): a fresh review ticket is
-  // minted and burned. The server refuses it while a run is live or
-  // while the tree would deny the drive again, and those refusals are the
-  // server's own words — a toast here, and inside the banner where the banner
-  // is what asked.
-  const agenticReview = trpc.feature.agenticReview.useMutation({
-    onSuccess: () => {
-      void utils.feature.get.invalidate({ id: feature.id })
-      void utils.events.invalidate()
     },
     onError: (e) => toast.push(e.message),
   })
@@ -227,12 +211,11 @@ export function ReviewBody({
     document.getElementById('evidence-stage')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [])
 
-  // A defect being fixed links to its lane, which lives in the run view one
-  // phase back (decision 18c). Both halves of the list offer it, so it is
-  // resolved once here.
-  const onViewLane = onViewPhase
+  // A defect being fixed links to its lane, which lives in the Work view's run
+  // (decision 18c). Both halves of the list offer it, so it is resolved once here.
+  const onViewLane = onOpenWork
     ? (ticketId: string): void => {
-        onViewPhase('building')
+        onOpenWork()
         // Best effort: the run body has to mount before its lanes exist, so the
         // scroll waits a frame. Landing on the run view is the part that
         // matters; the scroll is the courtesy on top.
@@ -268,27 +251,13 @@ export function ReviewBody({
   const blockingProjectDrive =
     slotHolder?.projectDrive && slotHolder.projectId ? slotHolder.projectId : undefined
   // A review drive the human's own uncommitted files refused (decision 7). Only
-  // while the feature is actually AT review — this body also mounts to look back
-  // at review on a feature that has moved on, and a denial answered by a later
-  // phase is a record, not something to act on.
-  const denial = feature.phase === 'review' ? reviewDriveDenial(events, runs, dismissedDenial) : null
+  // on the live page — on a shipped feature's record a denial is history, not
+  // something to act on.
+  const denial = readonly ? null : reviewDriveDenial(events, runs, dismissedDenial)
   // The latest review ran and verified nothing (decision 5) — the page's top
   // line, in runcastle's own words. A history view states nothing and offers
   // nothing (decision 33a), so the banner is the live page's alone.
   const unverified = readonly ? null : unverifiedLap({ passes: rows, tickets, currentLap: feature.lap })
-  // One burn at a time is a hard rule the server enforces, so the control says
-  // so rather than dead-ending on the click (findings F3). Same shape as the
-  // Test drive control's occupied-slot reason beside it.
-  const agenticReviewControl = readonly
-    ? null
-    : {
-        onStart: () => agenticReview.mutate({ featureId: feature.id }),
-        ...(agenticReview.isPending
-          ? { blocked: 'starting…' }
-          : run?.status === 'running'
-            ? { blocked: 'a round is running' }
-            : {}),
-      }
   // One partition, two halves (decision 8): what needs attention is the middle
   // of the page, what has been dealt with rides inside the bottom disclosure.
   const { attention, settled } = partitionWork({
@@ -344,25 +313,16 @@ export function ReviewBody({
       {/* The refusal the human can still act on, at the moment they can act
           on it — the digest that used to carry it is read long afterwards. */}
       {denial && (
-        <ReviewDriveDeniedAlert
-          // A new denial is a new notice, so a refusal answered about the old
-          // one cannot linger under it.
+        <ReviewDriveDeniedCard
           key={denial.eventId}
-          featureId={feature.id}
           denial={denial}
           readonly={readonly}
-          // Both notices can be up at once — a denied drive whose pass then
-          // declares nothing — and both mints are the same verb, so this one
-          // steps down to ghost beside the other.
-          primary={!unverified}
           onDismiss={() => setDismissedDenial(denial.eventId)}
         />
       )}
       {/* A review that verified nothing says so before anything else on the
           page (decision 5) — loud, and blocking nothing. */}
-      {unverified && (
-        <NothingVerifiedAlert outcome={unverified} agenticReview={agenticReviewControl} />
-      )}
+      {unverified && <NothingVerifiedAlert outcome={unverified} />}
       {!readonly && !driveUp && slotHolder && blockingProjectDrive && (
         <ProjectDriveBlocking projectId={blockingProjectDrive} holderLabel={slotHolder.holderLabel} />
       )}
@@ -449,7 +409,7 @@ export function ReviewBody({
                 staged: staged?.ticketId ?? null,
                 onStage: stageRecording,
               }}
-              {...(onViewPhase ? { onViewRun: () => onViewPhase('building') } : {})}
+              {...(onOpenWork ? { onViewRun: onOpenWork } : {})}
             />
           }
         >

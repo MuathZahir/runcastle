@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
-import { Button, Page, PageHeader, PageTopbar } from '../../ui'
+import { Button, Page, PageTopbar } from '../../ui'
 import { IconAlert, IconCopy } from '../../icons'
-import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
 import { copyText } from './copy-text'
 
@@ -64,30 +63,6 @@ export function FeatureCrash({ featureId, error }: { featureId: string; error: E
       <BrokenFeaturePane tag="Broken" details={`feature ${featureId} — ${error.name}: ${error.message}`}>
         This feature couldn't be rendered. Everything else still works.
       </BrokenFeaturePane>
-    </BrokenFrame>
-  )
-}
-
-/**
- * The degraded feature view for a phase this build does not recognize (findings
- * F19). Read-only by construction: it offers no pipeline, no next step and no
- * action, because every one of those is derived from a phase we cannot place.
- * What it does offer is the bad value itself and the feature's identity, so the
- * user can report it or fix the row instead of staring at a blank page.
- */
-export function UnrecognizedPhase({ feature }: { feature: FeatureFull['feature'] }) {
-  return (
-    <BrokenFrame crumb={feature.title}>
-      <PageHeader title={feature.title} meta={[{ text: 'Unknown phase' }]} />
-      <div className="mt-8">
-        <BrokenFeaturePane
-          tag="Unrecognized phase"
-          details={`feature ${feature.id} (${feature.slug}) has phase "${feature.phase}"`}
-        >
-          This feature's phase is <strong className="font-mono font-medium text-text">{feature.phase}</strong>,
-          which this version of runcastle doesn't know. Nothing here can be acted on until the row is fixed.
-        </BrokenFeaturePane>
-      </div>
     </BrokenFrame>
   )
 }

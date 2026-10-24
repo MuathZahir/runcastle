@@ -1,9 +1,6 @@
 import {
   LEAD_WAKE_FAILED,
   LeadWakeFailedData,
-  PLAN_UNFINISHED,
-  planFinished,
-  UNCOMMITTED_DESIGN,
   type EventRow,
   type Feature,
   type ReadyDeclaration,
@@ -14,20 +11,19 @@ import type { ActionKind, NextAction, NextStep } from './next-step/types'
 
 /**
  * The feature's one status line (`the-feature-lead-runs-rounds` decision 21):
- * what the human reads at a glance, from a fixed set. The four phases stay
- * underneath as machine states; this is the story told over them.
+ * what the human reads at a glance, from a fixed set, read off what is actually
+ * happening — there is no phase underneath (tickets-and-review-are-tools-not-phases
+ * decisions 2, 7).
  */
-export type FeatureStatusKind = 'planning' | 'working' | 'waiting' | 'ready' | 'merged'
+export type FeatureStatusKind = 'talking' | 'working' | 'waiting' | 'ready' | 'merged'
 
 /**
- * The one primary button the status line's row carries (decision 24): Go in
- * planning, Start test drive when ready, Stop drive while driving, Stop while a
- * round runs, Stop while the feature plans itself, the Chat door once the agent
- * stopped — and none in any other state.
- * Go before the plan is finished is `goGated`: the same button, disabled with
- * the reason and an override that asks for one (CONTEXT.md decision 8).
+ * The one primary button the status line's row carries (decision 24): Start
+ * test drive when ready, Stop drive while driving, Stop while a round runs,
+ * Stop while the feature plans itself, the Chat door once the agent's run
+ * failed — and none in any other state.
  */
-export type StatusPrimary = 'go' | 'goGated' | 'goBlocked' | 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
+export type StatusPrimary = 'testDriveStart' | 'testDriveStop' | 'stop' | 'stopSelfPlan' | 'chat'
 
 export interface FeatureStatus {
   kind: FeatureStatusKind
@@ -37,19 +33,18 @@ export interface FeatureStatus {
   why?: string
   /** The round in flight, or the last one the agent is checking. */
   round?: number
-  /** The drive the agent asked for, and what to test in it. */
+  /** The drive the agent asked for. */
   scenario?: string
-  whatToTest?: string
   /** The row's one primary; absent when this state has none. */
   primary?: StatusPrimary
 }
 
 export interface FeatureStatusInput {
-  feature: Pick<Feature, 'phase' | 'status' | 'lap' | 'ticketsReadyLap' | 'waitingReason'>
+  feature: Pick<Feature, 'status' | 'waitingReason'>
   /** The feature's rounds in order, as `feature.rounds` returns them. */
   rounds: readonly Pick<RoundSummary, 'round' | 'status' | 'startedAt'>[]
   /** Every ready declaration, oldest first, as `feature.readyDeclarations` returns them. */
-  declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'whatToTest' | 'createdAt'>[]
+  declarations: readonly Pick<ReadyDeclaration, 'scenario' | 'createdAt'>[]
   /** The agent's session is mid-turn — working on something it was sent. */
   agentWorking: boolean
   /** A drive of this feature holds the drive slot right now. */
@@ -61,8 +56,6 @@ export interface FeatureStatusInput {
   selfPlanning: boolean
   /** The lead's latest wake and wake failure, as {@link leadWakeOf} reads them off the event log. */
   leadWake?: LeadWake
-  /** The talk worktree holds uncommitted design work: Go is disabled, with no override. */
-  uncommittedDesign?: boolean
   /** The wall clock, passed in so a pending wake's grace is testable. */
   now: number
 }
@@ -112,14 +105,11 @@ export function leadWakeOf(events: readonly Pick<EventRow, 'type' | 'ts' | 'data
   return wake
 }
 
-/** The reason Go waits on, when the plan is finished and the preview stands. */
-export const PLAN_READY = 'plan ready for Go'
-
 /** The reason an idle agent waits on after the human stopped its round. */
 export const STOPPED = 'stopped'
 
-/** The reason when nothing is working and no round says why: the agent's turn ended. */
-export const AGENT_STOPPED = 'the agent stopped'
+/** The line for a feature with nothing running and nothing asked. */
+export const TALKING = 'Talking with you'
 
 /** The reason when the lead's latest wake failed to launch or died in its turn. */
 export function wakeFailedWhy(exitCode: number | null): string {
@@ -131,31 +121,26 @@ export function wakeFailedWhy(exitCode: number | null): string {
  *
  * - Merged — shipped is final.
  * - Working · Round N — a round is running; nothing else is true until it returns.
- * - Planning by itself — a planning feature's self-planning run is live; the
- *   plan is being written, so Go would cut it short.
- * - Waiting for you · <why> — the agent said it needs the human (a question,
- *   stuck, stopped, provider limit). The next human message or dispatch clears it.
- * - Planning with you — before Go; Waiting for you · plan ready for Go once the
- *   tickets step is complete for this lap (the same arming Go's bar reads).
+ * - Planning by itself — a self-planning run is live.
  * - Ready for you · Test drive ▸ <scenario> — the latest declaration is newer
  *   than the latest round, and the agent is not working on something since
- *   (notes the human sent wake it, and it is Working again).
- * - Working · Round N — only on evidence: the agent's session is mid-turn
- *   between rounds, or a message for it (Go's included) went out less than
- *   {@link LEAD_WAKE_GRACE_MS} ago and round 1 may not be out yet.
+ *   (notes the human sent wake it, and it is Working again). Read before the
+ *   waiting reason, because declaring ready sets it ("ready to test").
+ * - Waiting for you · <why> — the agent said it needs the human (a question,
+ *   stuck, stopped, provider limit). The next human message or dispatch clears it.
+ * - Working · Round N — only on evidence: the agent's session is mid-turn, or a
+ *   message for it went out less than {@link LEAD_WAKE_GRACE_MS} ago.
  * - Waiting for you · the agent's run failed — the newest `lead.wake_failed` is
  *   newer than the last round and the last wake.
  * - Waiting for you · stopped / round N failed / round N done — the last round
  *   returned and the agent's turn is over: nothing is running and nothing will
  *   be dispatched until the human replies.
- * - Waiting for you · the agent stopped — otherwise: Go was given, no round
- *   exists and nothing is live, so nothing is working.
+ * - Talking with you — otherwise: nothing running and nothing asked.
  *
  * The primary follows the state: Stop drive while this feature is driven, Stop
- * while a round runs, Stop the run while the feature plans itself, Go in
- * planning (gated until the plan is finished), Start test drive when ready, and
- * the Chat door to resume an agent that stopped or whose run failed (set by the
- * status itself).
+ * while a round runs, Stop the run while the feature plans itself, Start test
+ * drive when ready, and the Chat door to resume an agent whose run failed (set
+ * by the status itself).
  */
 export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   const status = statusOf(input)
@@ -163,26 +148,18 @@ export function featureStatus(input: FeatureStatusInput): FeatureStatus {
   return primary ? { ...status, primary } : status
 }
 
-function planningItself(input: FeatureStatusInput): boolean {
-  return input.selfPlanning && input.feature.phase === 'planning'
-}
-
 function primaryOf(input: FeatureStatusInput, status: FeatureStatus): StatusPrimary | undefined {
   if (status.kind === 'merged') return undefined
   if (input.driving) return 'testDriveStop'
   if (input.rounds.at(-1)?.status === 'running') return 'stop'
-  if (planningItself(input)) return 'stopSelfPlan'
-  if (input.feature.phase === 'planning') {
-    if (input.uncommittedDesign) return 'goBlocked'
-    return planFinished(input.feature) ? 'go' : 'goGated'
-  }
+  if (input.selfPlanning) return 'stopSelfPlan'
   if (status.kind === 'ready') return 'testDriveStart'
   return undefined
 }
 
 function statusOf(input: FeatureStatusInput): FeatureStatus {
   const { feature, rounds, declarations, agentWorking } = input
-  if (feature.status === 'shipped' || feature.phase === 'shipped') return { kind: 'merged', label: 'Merged' }
+  if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
 
   const latest = rounds.at(-1)
   const working = (): FeatureStatus => {
@@ -191,15 +168,7 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   }
   if (latest?.status === 'running') return working()
 
-  if (planningItself(input)) return { kind: 'working', label: 'Planning by itself' }
-
-  if (feature.waitingReason) return { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
-
-  if (feature.phase === 'planning') {
-    return feature.ticketsReadyLap === feature.lap
-      ? { kind: 'waiting', label: 'Waiting for you', why: PLAN_READY }
-      : { kind: 'planning', label: 'Planning with you' }
-  }
+  if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
 
   const declared = declarations.at(-1)
   if (declared && !agentWorking && (!latest || declared.createdAt > latest.startedAt)) {
@@ -208,9 +177,11 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
       label: 'Ready for you',
       why: `Test drive ▸ ${declared.scenario}`,
       scenario: declared.scenario,
-      whatToTest: declared.whatToTest,
     }
   }
+
+  if (feature.waitingReason) return { kind: 'waiting', label: 'Waiting for you', why: feature.waitingReason }
+
   // Working needs evidence: the agent mid-turn, or a message on its way to it
   // that has not had time to wake it yet. A wake that went nowhere must not
   // read as Working forever, and one that already failed, or whose session
@@ -241,21 +212,11 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
           : `round ${latest.round} done`
     return { kind: 'waiting', label: 'Waiting for you', why }
   }
-  return { kind: 'waiting', label: 'Waiting for you', why: AGENT_STOPPED, primary: 'chat' }
+  return { kind: 'talking', label: TALKING }
 }
 
 /** What each primary reads as, and the dispatcher kind it fires. */
 const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
-  go: { label: 'Go', kind: 'burn' },
-  // The escape opens Go's confirmation, which asks for the override's reason.
-  goGated: {
-    label: 'Go',
-    kind: 'burn',
-    disabled: PLAN_UNFINISHED,
-    escape: { label: 'Go anyway…', kind: 'burn' },
-  },
-  // Unlike goGated there is no escape: the server refuses it whatever the reason.
-  goBlocked: { label: 'Go', kind: 'burn', disabled: UNCOMMITTED_DESIGN },
   testDriveStart: { label: 'Start test drive', kind: 'testDriveStart' },
   testDriveStop: { label: 'Stop drive', kind: 'testDriveStop' },
   stop: { label: 'Stop', kind: 'stopAgent', danger: true },
@@ -266,14 +227,12 @@ const PRIMARY_ACTION: Record<StatusPrimary, NextAction> = {
 const MERGE: NextAction = { label: 'Merge & ship', kind: 'merge' }
 
 /**
- * Kinds the row never offers beside the status line: the human never burns
- * (Go is the one road out of planning, and the agent dispatches every round
- * after — decision 8), Stop is the one move that halts the agent, so the bar's
- * own run cancel goes, and the agent is the top bar's Agent tab, not a button
- * in the header (decision 24) — save as the primary that resumes an agent that
- * stopped.
+ * Kinds the row never offers beside the status line: Stop is the one move that
+ * halts the agent, and the agent is the top bar's Agent tab, not a button in
+ * the header (decision 24) — save as the primary that resumes an agent whose
+ * run failed.
  */
-const NEVER_OFFERED: readonly ActionKind[] = ['burn', 'cancelRun', 'chat']
+const NEVER_OFFERED: readonly ActionKind[] = ['chat']
 
 /**
  * The action row beside the status line (decision 24): exactly the status's one
@@ -300,28 +259,22 @@ export function leadActions(ns: NextStep, status: FeatureStatus): NextStep {
 export interface HeaderActions {
   /** The header's one button besides the switcher, if any. */
   action?: NextAction
-  /** Go, gated or not — the tickets view's, above the list, never the header's. */
-  go?: NextAction
   /** Everything else the row offered, for the header's "⋯" menu. */
   overflow: NextAction[]
 }
 
 /**
  * Split {@link leadActions}' row over the one header row (decision 12): the
- * status's primary takes the header's one button — save Go, which moves to
- * the tickets view — and with no other primary Merge & ship takes it, but only
- * when the resolver `ns` itself offered a merge. Every other action, a Merge
- * the resolver did not offer among them, waits in "⋯".
+ * status's primary takes the header's one button, and with no primary Merge &
+ * ship takes it, but only when the resolver `ns` itself offered a merge. Every
+ * other action, a Merge the resolver did not offer among them, waits in "⋯".
  */
 export function headerActions(ns: NextStep, status: FeatureStatus): HeaderActions {
   const row = leadActions(ns, status)
-  const go = row.primary?.kind === 'burn' ? row.primary : undefined
-  const primary = go ? undefined : row.primary
   const offersMerge = [ns.primary, ...ns.secondary].some((a) => a?.kind === 'merge')
-  const action = primary ?? (offersMerge ? row.secondary.find((a) => a.kind === 'merge') : undefined)
+  const action = row.primary ?? (offersMerge ? row.secondary.find((a) => a.kind === 'merge') : undefined)
   return {
     ...(action ? { action } : {}),
-    ...(go ? { go } : {}),
     overflow: row.secondary.filter((a) => a !== action),
   }
 }

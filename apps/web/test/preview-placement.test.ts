@@ -1,12 +1,12 @@
 import { createElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { Feature, Phase, Ticket } from '@runcastle/core'
+import type { Feature } from '@runcastle/core'
 import type { FeatureFull } from '../src/lib/api'
 
 const store = vi.hoisted(() => ({ full: undefined as unknown }))
 
-/** Every tRPC hook a planning body calls: queries answer from `store`, nothing mutates. */
+/** Every tRPC hook the Plan view calls: queries answer from `store`, nothing mutates. */
 vi.mock('../src/trpc', () => {
   const query = (data: unknown) => ({ data, isLoading: false, error: null })
   return {
@@ -29,82 +29,55 @@ vi.mock('../src/trpc', () => {
 vi.mock('../src/lib/live', () => ({ useLivePoll: () => false, useLiveStatus: () => 'live' }))
 vi.mock('../src/lib/toast', () => ({ useToast: () => ({ push: () => undefined }) }))
 
-const { PhaseBody } = await import('../src/components/Workspace')
+const { PlanBody } = await import('../src/components/bodies/PlanBody')
 const { GrillBody } = await import('../src/components/bodies/grill/GrillBody')
-const { PinnedBody } = await import('../src/components/bodies/PinnedBody')
-const { TicketsBody } = await import('../src/components/bodies/tickets/TicketsBody')
-const { planningFills } = await import('../src/lib/feature-ui/pipeline')
 
-const feature = { id: 'f1', projectId: 'p1', slug: 'x', title: 'X', lap: 1, phase: 'planning', status: 'active' } as Feature
-const ticket = { id: 't1', featureId: 'f1', seq: 1, lap: 1, title: 'Build it', goal: 'g', context: '', acceptanceCriteria: [], seams: [], blockedBy: [], kind: 'implementation', passKind: 'review', reviewedCommit: null, completedAt: null, status: 'pending', commits: [] } as unknown as Ticket
+const feature = { id: 'f1', projectId: 'p1', slug: 'x', title: 'X', lap: 1, status: 'active' } as Feature
 
-function fullWith({ tickets = [] as Ticket[], preview = null as FeatureFull['preview'] } = {}): FeatureFull {
-  const full = { feature, tickets, sessions: [], runs: [], docs: [{ relPath: 'decisions.md', title: 'Decisions' }], preview, dependsOn: [], blocks: [] } as unknown as FeatureFull
+function fullWith({ preview = null as FeatureFull['preview'], docs = ['decisions.md'] } = {}): FeatureFull {
+  const full = {
+    feature,
+    tickets: [],
+    sessions: [],
+    runs: [],
+    docs: docs.map((relPath) => ({ relPath, title: relPath })),
+    preview,
+    dependsOn: [],
+    blocks: [],
+  } as unknown as FeatureFull
   store.full = full
   return full
 }
 
-function body(full: FeatureFull, effective: Phase, { readonly = false, ticketsIsBody = false } = {}): string {
-  return withoutIds(
-    renderToStaticMarkup(
-      createElement(PhaseBody, {
-        effective,
-        full,
-        events: [],
-        driving: null,
-        conflict: null,
-        runId: null,
-        ticketsIsBody,
-        readonly,
-        onViewPhase: () => undefined,
-      }),
-    ),
-  )
-}
-
 /**
- * React's generated ids follow a node's place among its siblings, so the last
- * review's UI-states slot beside a planning body (rendering nothing before a
- * first review) renumbers them without changing a byte of what is shown.
+ * React's generated ids follow a node's place among its siblings, so two
+ * renders of the same body can differ in them without differing in a byte of
+ * what is shown.
  */
 const withoutIds = (html: string) => html.replace(/_R_\w+_/g, '_R_')
 const markup = (element: ReactElement) => withoutIds(renderToStaticMarkup(element))
+const plan = (full: FeatureFull) => markup(createElement(PlanBody, { full, onOpenDesign: () => undefined }))
 const PREVIEW = { relPath: 'preview.html', updatedAt: Date.now() } as const
+
 /**
- * design-mode decision 5: the plan preview left planning's bodies (plan-preview
- * decisions 6 and 11 had it leading them) for a panel view of its own, which
- * `availableViews` offers once a preview exists.
+ * tickets-and-review-are-tools-not-phases decision 8: the Plan view leads with
+ * the plan preview, the decisions and the spec one click away inside it; with
+ * no preview yet, it is the decisions or the spec themselves.
  */
-describe('the preview and the planning body', () => {
-  it('is in no planning body, live or pinned, before tickets or after', () => {
-    expect(body(fullWith({ preview: PREVIEW }), 'planning')).not.toContain('<iframe')
-    expect(body(fullWith({ tickets: [ticket], preview: PREVIEW }), 'planning', { ticketsIsBody: true })).not.toContain(
-      '<iframe',
-    )
-    expect(body(fullWith({ preview: PREVIEW }), 'planning', { readonly: true })).not.toContain('<iframe')
+describe('the Plan view', () => {
+  it('leads with the preview once one exists, the plan docs one click away above it', () => {
+    const html = plan(fullWith({ preview: PREVIEW, docs: ['brief.md', 'decisions.md', 'spec.md'] }))
+    expect(html).toContain('<iframe')
+    expect(html).toContain('decisions.md</span></button>')
+    expect(html).toContain('spec.md</span></button>')
+    expect(html).not.toContain('brief.md</span></button>')
+    expect(html.indexOf('spec.md</span></button>')).toBeLessThan(html.indexOf('<iframe'))
   })
 
-  it('is not on the Building body before a first run, though its ledger is the same', () => {
-    const html = body(fullWith({ tickets: [ticket], preview: PREVIEW }), 'building', { ticketsIsBody: true })
-    expect(html).toContain('aria-label="Tickets"')
-    expect(html).not.toContain('<iframe')
-  })
-
-  it('lets live planning fill the body whether or not there is a preview', () => {
-    expect(planningFills({ phase: 'planning', readonly: false, ticketsIsBody: false })).toBe(true)
-    expect(planningFills({ phase: 'planning', readonly: false, ticketsIsBody: true })).toBe(false)
-    expect(planningFills({ phase: 'planning', readonly: true, ticketsIsBody: false })).toBe(false)
-  })
-
-  it('leaves every planning body exactly as it was, with a preview or without', () => {
-    const previewed = fullWith({ preview: PREVIEW })
-    expect(body(previewed, 'planning')).toBe(markup(createElement(GrillBody, { full: previewed })))
+  it('is the decisions or spec pane, exactly, before a preview exists', () => {
     const grill = fullWith()
-    expect(body(grill, 'planning')).toBe(markup(createElement(GrillBody, { full: grill })))
-    expect(body(grill, 'planning', { readonly: true })).toBe(
-      markup(createElement(PinnedBody, { full: grill, effective: 'planning', events: [] })),
-    )
-    const ledger = fullWith({ tickets: [ticket] })
-    expect(body(ledger, 'planning', { ticketsIsBody: true })).toBe(markup(createElement(TicketsBody, { featureId: 'f1' })))
+    expect(plan(grill)).toBe(markup(createElement(GrillBody, { full: grill })))
+    expect(plan(grill)).not.toContain('<iframe')
   })
 })
+

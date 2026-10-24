@@ -62,14 +62,19 @@ describe('initialTab — which view a feature opens on', () => {
     expect(initialTab({ ...none, stored: 'drive' })).toBe('drive')
   })
 
-  it('reopens a feature left on the retired Overview or Tickets tab on its body', () => {
-    expect(initialTab({ ...none, stored: 'overview' })).toBe('body')
-    expect(initialTab({ ...none, stored: 'tickets' })).toBe('body')
+  it('reopens a feature left on the retired Overview or Tickets tab on Work', () => {
+    expect(initialTab({ ...none, stored: 'overview' })).toBe('work')
+    expect(initialTab({ ...none, stored: 'tickets' })).toBe('work')
   })
 
-  it('always lands a draft on its body, which is its page', () => {
-    expect(initialTab({ stored: 'chat', isDraft: true })).toBe('body')
-    expect(initialTab({ ...none, isDraft: true })).toBe('body')
+  it('reopens a feature left on the retired body or preview on Work or Plan', () => {
+    expect(initialTab({ ...none, stored: 'body' })).toBe('work')
+    expect(initialTab({ ...none, stored: 'preview' })).toBe('plan')
+  })
+
+  it('always lands a draft on the bare address, its body being its page', () => {
+    expect(initialTab({ stored: 'chat', isDraft: true })).toBe('work')
+    expect(initialTab({ ...none, isDraft: true })).toBe('work')
   })
 
   it('treats an unrecognised stored value as nothing remembered', () => {
@@ -91,32 +96,32 @@ describe('useWorkspace — per-feature view memory', () => {
     const { result } = renderHook(() => useWorkspace('proj_1'))
     act(() => result.current.select('feat_a', rememberedView('feat_a', active)))
     expect(result.current.featureView).toBe('chat')
-    act(() => result.current.selectView('body'))
+    act(() => result.current.selectView('work'))
     act(() => result.current.select('feat_b', rememberedView('feat_b', active)))
     expect(result.current.featureView).toBe('chat')
     act(() => result.current.selectView('details'))
 
     act(() => result.current.select('feat_a', rememberedView('feat_a', active)))
-    expect(result.current.featureView).toBe('body')
+    expect(result.current.featureView).toBe('work')
     act(() => result.current.select('feat_b', rememberedView('feat_b', active)))
     expect(result.current.featureView).toBe('details')
   })
 
   it('selects the chat alone when a selection names no view', () => {
     const { result } = renderHook(() => useWorkspace('proj_1'))
-    act(() => result.current.select('feat_a', 'body'))
+    act(() => result.current.select('feat_a', 'work'))
     act(() => result.current.select('feat_a'))
     expect(result.current.featureView).toBe('chat')
   })
 
   it('starts on the restored feature’s remembered view across a reload', () => {
     localStorage.setItem('runcastle.selected.v1:proj_1', 'feat_a')
-    localStorage.setItem('runcastle.feature.tab:feat_a', 'preview')
+    localStorage.setItem('runcastle.feature.tab:feat_a', 'review')
     const { result } = renderHook(() => useWorkspace('proj_1'))
     expect(result.current.selectedFeatureId).toBe('feat_a')
-    expect(result.current.featureView).toBe('preview')
+    expect(result.current.featureView).toBe('review')
     // Mounting is not a choice: nothing remembered is overwritten by it.
-    expect(localStorage.getItem('runcastle.feature.tab:feat_a')).toBe('preview')
+    expect(localStorage.getItem('runcastle.feature.tab:feat_a')).toBe('review')
   })
 
   it('still navigates when storage throws', () => {
@@ -128,7 +133,7 @@ describe('useWorkspace — per-feature view memory', () => {
     })
     expect(rememberedView('feat_a', active)).toBe('chat')
     const { result } = renderHook(() => useWorkspace('proj_1'))
-    act(() => result.current.select('feat_a', 'body'))
-    expect(result.current.featureView).toBe('body')
+    act(() => result.current.select('feat_a', 'work'))
+    expect(result.current.featureView).toBe('work')
   })
 })

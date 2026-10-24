@@ -23,7 +23,7 @@ describe('noticeFor', () => {
       title: 'Spec written',
       subtitle: 'spec.md',
       actionLabel: 'View spec',
-      target: 'body',
+      target: 'plan',
       count: 1,
       eventId: e.id,
     })
@@ -37,7 +37,7 @@ describe('noticeFor', () => {
       title: 'Preview ready',
       subtitle: 'preview.html',
       actionLabel: 'View preview',
-      target: 'preview',
+      target: 'plan',
       count: 1,
       eventId: e.id,
     })
@@ -69,7 +69,7 @@ describe('noticeFor', () => {
         title: 'Tickets updated',
         subtitle: 'ticket 3 content edited (title)',
         actionLabel: 'View tickets',
-        target: 'body',
+        target: 'work',
       })
     },
   )
@@ -81,7 +81,7 @@ describe('noticeFor', () => {
       title: 'Ticket #4 failed',
       subtitle: 'typecheck failed',
       actionLabel: 'View run',
-      target: 'body',
+      target: 'work',
     })
   })
 
@@ -95,7 +95,7 @@ describe('noticeFor', () => {
       title: 'Run finished',
       subtitle: '6 of 6 landed',
       actionLabel: 'View run',
-      target: 'body',
+      target: 'work',
     })
   })
 
@@ -108,7 +108,7 @@ describe('noticeFor', () => {
       hue: 'danger',
       title: 'Run finished with failures',
       subtitle: '4 of 6 landed',
-      target: 'body',
+      target: 'work',
     })
   })
 
@@ -119,7 +119,7 @@ describe('noticeFor', () => {
       title: 'Review ready',
       subtitle: 'Agentic review — lap 1',
       actionLabel: 'View review',
-      target: 'body',
+      target: 'review',
     })
   })
 
@@ -160,7 +160,7 @@ function n(kind: ChatNotice['kind'], subtitle: string = kind, eventId = 0): Chat
     title: kind,
     subtitle,
     actionLabel: 'View',
-    target: 'body',
+    target: 'work',
     count: 1,
     eventId,
   }

@@ -1,6 +1,6 @@
 import type { TallyTicket } from '@runcastle/core'
 import { Button, Disclosure, PropertyList, type PropertyItem, type StatusTone } from '../../ui'
-import { IconCube, IconPlay, IconShield, IconUndo } from '../../icons'
+import { IconCube, IconPlay, IconUndo } from '../../icons'
 import type { CheckTone, ReviewArtifactFigure, TrailOutcome } from '../../lib/feature-ui'
 import { statusProperties, type StatusBuilding, type StatusProperty } from '../../lib/feature-ui/review'
 import { Markdown } from '../Markdown'
@@ -17,10 +17,8 @@ import { Markdown } from '../Markdown'
  * them, and the unverified-drive caveat is the Test drive row's sub-note (the
  * whole sentence is its tooltip).
  *
- * On review the list is the page's ONE state line (decision 8), so the two
- * things a human can start from here — their own Test drive and another
- * Agentic review — sit beside it, never as the page's primary (that is the
- * next-step bar's).
+ * On review the list is the page's ONE state line (decision 8), so the human's
+ * own Test drive sits beside it, never as the page's primary.
  */
 const DOT: Record<CheckTone, StatusTone> = {
   ok: 'success',
@@ -61,7 +59,6 @@ export function StatusStrip({
   driveLap,
   unverifiedKeys,
   testDrive,
-  agenticReview,
   shipped = false,
   driving,
   noWalkthrough = false,
@@ -89,19 +86,6 @@ export function StatusStrip({
   testDrive?: {
     onStart: () => void
     /** Why it cannot start right now, when something else holds the one slot. */
-    blocked?: string
-  }
-  /**
-   * Ask for another review pass, beside the drive the human would take
-   * themselves (decision 6). Present in every review-page state — an agentic
-   * review is always a thing to ask for, whatever the last one amounted to —
-   * and disabled with its reason while a burn holds the feature, which is the
-   * same idiom the Test drive control beside it uses for the occupied slot.
-   * Omitted only where nothing on the page acts: the shipped record.
-   */
-  agenticReview?: {
-    onStart: () => void
-    /** Why it cannot start right now — a burn is running, or one is starting. */
     blocked?: string
   }
   /**
@@ -137,29 +121,16 @@ export function StatusStrip({
     <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
       <PropertyList className="min-w-0 flex-1" items={properties.map(toItem)} />
 
-      {(testDrive || agenticReview) && (
+      {testDrive && (
         <div className="flex shrink-0 items-center gap-2">
-          {testDrive && (
-            <Button
-              icon={<IconPlay />}
-              disabled={!!testDrive.blocked}
-              {...(testDrive.blocked ? { title: testDrive.blocked } : {})}
-              onClick={testDrive.onStart}
-            >
-              Test drive
-            </Button>
-          )}
-          {agenticReview && (
-            <Button
-              variant="ghost"
-              icon={<IconShield />}
-              disabled={!!agenticReview.blocked}
-              {...(agenticReview.blocked ? { title: agenticReview.blocked } : {})}
-              onClick={agenticReview.onStart}
-            >
-              Agentic review
-            </Button>
-          )}
+          <Button
+            icon={<IconPlay />}
+            disabled={!!testDrive.blocked}
+            {...(testDrive.blocked ? { title: testDrive.blocked } : {})}
+            onClick={testDrive.onStart}
+          >
+            Test drive
+          </Button>
         </div>
       )}
     </div>

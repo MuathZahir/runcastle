@@ -232,7 +232,7 @@ describe('the project chat', () => {
 /** design-mode decision 12: one panel toggle in the header, no button per view. */
 describe('PanelToggle', () => {
   const toggle = (props: Partial<Parameters<typeof PanelToggle>[0]> = {}) =>
-    html(createElement(PanelToggle, { open: false, views: ['body', 'design', 'details'], onToggle: () => undefined, ...props }))
+    html(createElement(PanelToggle, { open: false, views: ['work', 'design', 'details'], onToggle: () => undefined, ...props }))
 
   it('is one icon button, whatever views the state offers', () => {
     const out = toggle()

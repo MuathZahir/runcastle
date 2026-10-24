@@ -52,7 +52,7 @@ function TitleGlyph({ moment }: { moment: MomentSample }) {
 }
 
 function viewLabel(view: PanelView): string {
-  return view === 'body' ? 'Body' : PANEL_VIEW_LABEL[view]
+  return PANEL_VIEW_LABEL[view]
 }
 
 /** What each view holds. Only Tickets is drawn for real: the others are today's bodies, unchanged. */
