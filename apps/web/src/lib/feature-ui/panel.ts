@@ -8,14 +8,30 @@ import type { Phase } from '@runcastle/core'
  * address bar names it) and the storage the size persists in.
  */
 
-/** What the panel can show, one at a time. */
-export type PanelView = 'body' | 'preview' | 'design' | 'drive' | 'details'
+/**
+ * What the panel can show, one at a time. `plan`, `work` and `review` are the
+ * fixed views that replace the phase-keyed `body`
+ * (tickets-and-review-are-tools-not-phases decision 8); each is offered once
+ * it has something to show.
+ */
+export type PanelView =
+  | 'body'
+  | 'plan'
+  | 'work'
+  | 'review'
+  | 'preview'
+  | 'design'
+  | 'drive'
+  | 'details'
 
 /** Every view, in the order the switcher and the topbar list them. */
 export const PANEL_VIEWS: readonly PanelView[] = ['body', 'preview', 'design', 'drive', 'details']
 
+/** Every view name the panel knows, offered or not. */
+const ALL_PANEL_VIEWS: readonly PanelView[] = [...PANEL_VIEWS, 'plan', 'work', 'review']
+
 export function isPanelView(value: string): value is PanelView {
-  return (PANEL_VIEWS as readonly string[]).includes(value)
+  return (ALL_PANEL_VIEWS as readonly string[]).includes(value)
 }
 
 /**
@@ -119,6 +135,9 @@ export function bodyLabel(phase: Phase, { ticketsIsBody, hasRun }: { ticketsIsBo
 }
 
 export const PANEL_VIEW_LABEL: Record<Exclude<PanelView, 'body'>, string> = {
+  plan: 'Plan',
+  work: 'Work',
+  review: 'Review',
   preview: 'Preview',
   design: 'Design',
   drive: 'Drive',

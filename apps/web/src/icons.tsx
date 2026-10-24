@@ -766,6 +766,88 @@ export function PhaseIcon({
 }
 
 /* ============================================================================
+   PROGRESS ICON — what replaces the phase glyph once a feature has no phase
+   (tickets-and-review-are-tools-not-phases): the same ring and pie, the pie
+   now the share of this lap's tickets that landed. draft dashed ring · active
+   ring + pie · shipped filled check.
+   ========================================================================== */
+
+export type ProgressIconState = 'draft' | 'active' | 'shipped'
+
+const PROGRESS_TEXT: Record<ProgressIconState, string> = {
+  draft: 'text-phase-draft',
+  active: 'text-text-tertiary',
+  shipped: 'text-phase-shipped',
+}
+
+/**
+ * A feature as a 16px glyph: its lap's landed share of tickets as the pie
+ * (`progress`, 0..1), a dashed ring while it is a draft, the filled check once
+ * shipped. The pie sweeps when `progress` changes on a mounted glyph. `label`
+ * as PhaseIcon's: `''` makes it decorative.
+ */
+export function ProgressIcon({
+  state,
+  progress = 0,
+  size = 16,
+  label,
+  className,
+}: {
+  state: ProgressIconState
+  progress?: number
+  size?: number
+  label?: string
+  className?: string
+}) {
+  const maskId = `progress-check-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const fill = state === 'active' ? Math.round(Math.min(1, Math.max(0, progress)) * 100) : 0
+  const name = state === 'draft' ? 'Backlog' : state === 'shipped' ? 'Shipped' : `${fill}% landed`
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      role={label === '' ? undefined : 'img'}
+      aria-label={label === '' ? undefined : (label ?? name)}
+      aria-hidden={label === '' ? true : undefined}
+      className={['inline-block shrink-0 transition-colors duration-(--dur-3) ease-app', PROGRESS_TEXT[state], className]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <defs>
+        <mask id={maskId}>
+          <rect width="16" height="16" fill="white" />
+          <path d="M5.2 8.2 7 10l3.8-3.8" fill="none" stroke="black" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+        </mask>
+      </defs>
+      <g mask={state === 'shipped' ? 'url(#' + maskId + ')' : undefined}>
+        <circle cx="8" cy="8" r="6" strokeDasharray={state === 'draft' ? '2.2 2.2' : undefined} />
+        <circle
+          cx="8"
+          cy="8"
+          r="2"
+          strokeWidth={4}
+          pathLength={100}
+          transform="rotate(-90 8 8)"
+          style={{ strokeDasharray: `${fill} 100`, transition: `stroke-dasharray ${SWEEP}` }}
+        />
+        <circle
+          cx="8"
+          cy="8"
+          r="7"
+          fill="currentColor"
+          stroke="none"
+          style={{ opacity: state === 'shipped' ? 1 : 0, transition: `opacity ${SWEEP}` }}
+        />
+      </g>
+    </svg>
+  )
+}
+
+/* ============================================================================
    BRAND — castle mark with a play-triangle gate (Runcastle Logo template,
    Runcastle Design System). One silhouette: a crenellated wall whose gate is
    the run button, cut in negative space via the evenodd fill rule.
