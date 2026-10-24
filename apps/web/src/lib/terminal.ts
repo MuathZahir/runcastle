@@ -285,22 +285,32 @@ const TOKEN_FALLBACK: Record<Resolved, Record<string, string>> = {
     '--color-accent': '#4f8ef7',
     '--color-accent-subtle': '#16213a',
     '--color-surface-selected': '#212636',
-    '--color-danger': '#f06363',
-    '--color-success': '#46b67a',
-    '--color-warning': '#e2a53b',
+    '--color-danger-text': '#f06363',
+    '--color-success-text': '#46b67a',
+    '--color-warning-text': '#e2a53b',
     '--color-accent-text': '#7aaafa',
   },
   light: {
     '--color-surface-inset': '#f4f6f9',
     '--color-text': '#161a24',
-    '--color-accent': '#2f6fe4',
+    '--color-accent': '#3a7ef0',
     '--color-accent-subtle': '#ecf2fe',
     '--color-surface-selected': '#e4e8f1',
-    '--color-danger': '#c42828',
-    '--color-success': '#1e8e53',
-    '--color-warning': '#a86a06',
-    '--color-accent-text': '#2463d6',
+    '--color-danger-text': '#c42828',
+    '--color-success-text': '#137745',
+    '--color-warning-text': '#9c5600',
+    '--color-accent-text': '#2361d4',
   },
+}
+
+/**
+ * ANSI blue is program output, so it wears the accent's word colour — except in
+ * dark, where it has always worn the accent hue itself (`accent-text` there is
+ * brightBlue), and dark does not change.
+ */
+const BLUE_TOKEN: Record<Resolved, string> = {
+  dark: '--color-accent',
+  light: '--color-accent-text',
 }
 
 /**
@@ -348,9 +358,9 @@ function tokenReader(resolved: Resolved): (name: string) => string {
 /**
  * The xterm palette for the painted theme, derived from the design tokens:
  * ground `surface-inset`, ink `text`, cursor `accent`, selection
- * `accent-subtle`, and the four status hues as red/green/yellow/blue. Read at
- * call time, so calling it again after `<html data-theme>` flips re-themes a
- * live terminal.
+ * `accent-subtle`, and the status and accent word colours (`-text` peers, since
+ * program output is words) as red/green/yellow/blue. Read at call time, so
+ * calling it again after `<html data-theme>` flips re-themes a live terminal.
  */
 export function terminalTheme(resolved: Resolved, read = tokenReader(resolved)): TerminalTheme {
   const ground = read('--color-surface-inset')
@@ -361,10 +371,10 @@ export function terminalTheme(resolved: Resolved, read = tokenReader(resolved)):
     cursorAccent: ground,
     selectionBackground: read('--color-accent-subtle'),
     selectionInactiveBackground: read('--color-surface-selected'),
-    red: read('--color-danger'),
-    green: read('--color-success'),
-    yellow: read('--color-warning'),
-    blue: read('--color-accent'),
+    red: read('--color-danger-text'),
+    green: read('--color-success-text'),
+    yellow: read('--color-warning-text'),
+    blue: read(BLUE_TOKEN[resolved]),
     brightBlue: read('--color-accent-text'),
     ...ANSI_EXTRA[resolved],
   }

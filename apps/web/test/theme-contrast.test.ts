@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { resolveColour } from './theme-tokens'
 
 /**
  * The light palette holds two WCAG floors (DESIGN.md §Colour): a word painted
@@ -9,47 +8,6 @@ import { describe, expect, it } from 'vitest'
  * a `-text` peer for words, so the hue itself is free to be as light as a mark
  * allows. The dark theme's peers equal their hues, so dark renders as before.
  */
-const css = readFileSync(join(import.meta.dirname, '../src/theme.css'), 'utf8')
-
-/** The body of the first block opened by `selector`, comments stripped. */
-function block(selector: string): string {
-  const open = css.indexOf(selector)
-  if (open === -1) throw new Error(`theme.css has no ${selector} block`)
-  let depth = 0
-  const start = css.indexOf('{', open)
-  for (let i = start; i < css.length; i++) {
-    if (css[i] === '{') depth++
-    else if (css[i] === '}' && --depth === 0) {
-      return css.slice(start + 1, i).replace(/\/\*[\s\S]*?\*\//g, '')
-    }
-  }
-  throw new Error(`unterminated ${selector} block`)
-}
-
-/** Every `--color-<name>: <value>;` in a block, keyed by `<name>`. */
-function colours(body: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [, name, value] of body.matchAll(/--color-([\w-]+):\s*([^;]+);/g)) {
-    out[name!] = value!.trim()
-  }
-  return out
-}
-
-const dark = colours(block('@theme static'))
-/** The light block overrides the dark one; whatever it does not restate is shared. */
-const light = { ...dark, ...colours(block(':root[data-theme="light"]')) }
-
-/** A token's value with every `var(--color-…)` hop followed. */
-function resolve(theme: Record<string, string>, name: string): string {
-  let value = theme[name]
-  for (let hops = 0; value !== undefined && hops < 10; hops++) {
-    const ref = /^var\(--color-([\w-]+)\)$/.exec(value)
-    if (!ref) return value.toLowerCase()
-    value = theme[ref[1]!]
-  }
-  throw new Error(`--color-${name} does not resolve to a value`)
-}
-
 function channels(hex: string): [number, number, number] {
   if (!/^#[0-9a-f]{6}$/.test(hex)) throw new Error(`${hex} is not #rrggbb`)
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
@@ -78,8 +36,8 @@ function wash(hue: string, ground: string, share: number): string {
 }
 
 function expectContrast(fg: string, bg: string, floor: number): void {
-  const a = resolve(light, fg)
-  const ratio = contrast(a, bg.startsWith('#') ? bg : resolve(light, bg))
+  const a = resolveColour('light',fg)
+  const ratio = contrast(a, bg.startsWith('#') ? bg : resolveColour('light',bg))
   expect(ratio, `${fg} (${a}) on ${bg} is ${ratio.toFixed(2)}:1, under ${floor}:1`).toBeGreaterThanOrEqual(floor)
 }
 
@@ -143,12 +101,12 @@ describe('the light palette holds its contrast floors', () => {
   })
 
   it('white numbers on a solid accent-text fill clear 4.5:1', () => {
-    expectContrast('on-primary', resolve(light, 'accent-text'), 4.5)
+    expectContrast('on-primary', resolveColour('light','accent-text'), 4.5)
   })
 
   // Tailwind mixes a `/15` wash in oklab, not sRGB, so hold a small margin.
   it.each(PEERS)('%s clears 4.5:1 on a 15%% wash of %s', (peer, hue) => {
-    expectContrast(peer, wash(resolve(light, hue), resolve(light, 'surface'), 0.15), 4.6)
+    expectContrast(peer, wash(resolveColour('light',hue), resolveColour('light','surface'), 0.15), 4.6)
   })
 
   it.each(MARKS)('%s clears 3:1 as a mark on every ground', (mark) => {
@@ -158,7 +116,7 @@ describe('the light palette holds its contrast floors', () => {
   })
 
   it.each(Object.entries(LIGHT_MARKS_BEFORE))('%s is lighter than before the retune (%s)', (mark, before) => {
-    const now = resolve(light, mark)
+    const now = resolveColour('light',mark)
     expect(luminance(now), `${mark} ${now} is no lighter than ${before}`).toBeGreaterThan(luminance(before))
   })
 })
@@ -176,10 +134,10 @@ describe('the dark palette is unchanged by the word peers', () => {
     ['phase-building-text', 'phase-building'],
     ['phase-shipped-text', 'phase-shipped'],
   ])('%s equals %s', (peer, hue) => {
-    expect(resolve(dark, peer)).toBe(resolve(dark, hue))
+    expect(resolveColour('dark',peer)).toBe(resolveColour('dark',hue))
   })
 
   it('phase-review-text follows accent-text, which already differs from its hue', () => {
-    expect(resolve(dark, 'phase-review-text')).toBe(resolve(dark, 'accent-text'))
+    expect(resolveColour('dark','phase-review-text')).toBe(resolveColour('dark','accent-text'))
   })
 })
