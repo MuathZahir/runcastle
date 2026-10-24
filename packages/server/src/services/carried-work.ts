@@ -1,9 +1,7 @@
 import { join } from 'node:path'
 import type { ReviewFinding, TicketStatus } from '@runcastle/core'
 import { reviewDir } from '@runcastle/core/paths'
-import { and, eq } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { testNotes } from '../db/schema'
 import { getFeatureRow } from './repo'
 import { carriedDefectsAcrossLaps, openDefectsAcrossLaps } from './review-findings'
 import { listByFeature as listTickets } from './tickets'
@@ -15,7 +13,7 @@ import { listByFeature as listTickets } from './tickets'
  * This is the carry CHANNEL, read-only and computed on demand: the lap's
  * kickoff line, its injected system prompt and `get_feature_context` all state
  * the same work, from one query rather than three guesses. Nothing here mutates,
- * so nothing here emits; carrying itself is `carryNotes`' job and already emits.
+ * so nothing here emits.
  *
  * Everything is keyed on STATUS, never on a lap number. A note carried into lap
  * 2 and then skipped there keeps `carriedLap: 2` while the feature moves to lap
@@ -92,17 +90,9 @@ export interface CarriedDefect {
 }
 
 export function carriedWork(ctx: AppCtx, featureId: string): CarriedWork {
-  // `carried` is a terminal status of its own: a carried note cannot be toggled
-  // done (`toggleNote` refuses it) and only `reopenNote` moves it back to open,
-  // so "carried and not done" is precisely this one predicate.
-  const carried = ctx.db
-    .select({ id: testNotes.id })
-    .from(testNotes)
-    .where(and(eq(testNotes.featureId, featureId), eq(testNotes.status, 'carried')))
-    .all()
-
   return {
-    carriedNotes: carried.length,
+    // Notes are no longer carried between laps; the field stays so the MCP side compiles.
+    carriedNotes: 0,
     // Across laps, for the same reason the note query is keyed on status: the
     // defects a lap has to answer for are the ones EARLIER laps left open, and
     // the review page's own view is scoped to the current lap.

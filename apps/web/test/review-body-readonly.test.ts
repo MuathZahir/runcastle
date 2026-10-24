@@ -180,8 +180,7 @@ const LIVE_CONTROLS = [
   'Test drive</button>',
   'Dismiss</button>',
   'Add note</button>',
-  // A note's own verbs: Done, and Edit/Delete behind its "…" menu.
-  'aria-label="Mark done"',
+  // A note's own verbs: Edit/Delete behind its "…" menu.
   'aria-label="Note actions"',
 ]
 

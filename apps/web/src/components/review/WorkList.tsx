@@ -2,7 +2,7 @@ import { useEffect, useState, type RefObject } from 'react'
 import type { ReviewFinding, TestNote } from '@runcastle/core'
 import { Button, IconButton } from '../../ui'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu'
-import { IconCheck, IconMore, IconPencil, IconTrash, IconUndo, IconX } from '../../icons'
+import { IconMore, IconPencil, IconTrash, IconUndo, IconX } from '../../icons'
 import { trpc } from '../../trpc'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
@@ -167,7 +167,6 @@ export function WorkList({
   const [picture, setPicture] = useState<string | null>(null)
 
   const onError = (e: { message: string }): void => toast.push(e.message)
-  const refreshNotes = (): void => void utils.notes.list.invalidate({ featureId })
   const refreshFindings = (): void => void utils.findings.listByFeature.invalidate({ featureId })
   // Dismissing is how the open count reaches zero without a burn — a defect the
   // human judged shippable is a decision, not a fix.
@@ -175,11 +174,6 @@ export function WorkList({
   // The other half of carry, and the human's alone (decisions #3): a lap session
   // parks a defect, only a person un-parks one.
   const reopenFinding = trpc.findings.reopen.useMutation({ onSuccess: refreshFindings, onError })
-  const toggle = trpc.notes.toggle.useMutation({ onSuccess: refreshNotes, onError })
-  const reopen = trpc.notes.reopen.useMutation({ onSuccess: refreshNotes, onError })
-  // One note mutation in flight at a time: the list is about to be refetched, so
-  // a second click would act on a row the server is already moving.
-  const busy = toggle.isPending || reopen.isPending
 
   // Both directions of a jump are visible (decision 25b): a marker click or a
   // fresh annotation brings its row into view rather than changing the list off
@@ -270,50 +264,21 @@ export function WorkList({
     }
 
     const note = item.note
-    // A promoted note is frozen as the record of what its ticket was built from,
-    // so it offers nothing at all; the row states where it went itself.
-    if (note.status === 'promoted') return undefined
-    if (note.status === 'carried') {
-      return (
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<IconUndo />}
-          disabled={busy}
-          onClick={() => reopen.mutate({ noteId: note.id })}
-        >
-          Reopen
-        </Button>
-      )
-    }
     if (editing === note.id) return undefined
-    const done = note.status === 'done'
     return (
-      <>
-        <IconButton
-          size="sm"
-          label={done ? 'Mark not done' : 'Mark done'}
-          icon={<IconCheck />}
-          active={done}
-          disabled={busy}
-          onClick={() => toggle.mutate({ noteId: note.id })}
-        />
-        {note.status === 'open' && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton size="sm" label="Note actions" icon={<IconMore />} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem icon={<IconPencil />} onSelect={() => setEditing(note.id)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem tone="danger" icon={<IconTrash />} onSelect={() => setDeleting(note)}>
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton size="sm" label="Note actions" icon={<IconMore />} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem icon={<IconPencil />} onSelect={() => setEditing(note.id)}>
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem tone="danger" icon={<IconTrash />} onSelect={() => setDeleting(note)}>
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 

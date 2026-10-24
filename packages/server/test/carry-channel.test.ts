@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Feature, Project, Ticket } from '@runcastle/core'
 import { reviewDir } from '@runcastle/core/paths'
@@ -11,7 +10,6 @@ import { createSessionRow, markSessionLive } from '../src/launcher/sessions'
 import { toolGetFeatureContext } from '../src/mcp/server'
 import { carriedWork } from '../src/services/carried-work'
 import { carryFinding, openDefectsAcrossLaps } from '../src/services/review-findings'
-import { addNote, carryNotes, listByFeature as listNotes, reopenNote } from '../src/services/test-notes'
 import { storeTickets, updateTicket } from '../src/services/tickets'
 import { makeTestCtx } from './helpers/db'
 import { reportWithFixTicket } from './helpers/findings'
@@ -60,12 +58,6 @@ describe('the carry channel into the next lap', () => {
     rmTemp(repoPath)
   })
 
-  /** Capture a note and carry it into the next lap, as the triage exit does. */
-  function carry(text: string, intoLap = feature.lap + 1): void {
-    const note = addNote(ctx, feature.id, text)
-    carryNotes(ctx, feature.id, [note.id], intoLap)
-  }
-
   /**
    * A defect whose in-run fix ticket failed, which is the state `openDefects`
    * counts — a defect still being fixed is the run's problem, not the lap's.
@@ -86,32 +78,6 @@ describe('the carry channel into the next lap', () => {
     })
     updateTicket(ctx, fixTicket.id, { status: 'failed' })
   }
-
-  function testNotesDoc(): string {
-    return readFileSync(join(repoPath, 'docs', 'features', 'dark-mode', 'test-notes.md'), 'utf8')
-  }
-
-  it('stops withholding test-notes.md once a note is carried, and withholds it again when none is', () => {
-    addNote(ctx, feature.id, 'the empty state is confusing')
-    const triaged = toolGetFeatureContext(ctx, session).moreDocs.find(
-      (doc) => doc.relPath === 'test-notes.md',
-    )
-    expect(triaged?.withheld).toMatch(/triaged/i)
-
-    const [note] = listNotes(ctx, feature.id)
-    carryNotes(ctx, feature.id, [note.id], 2)
-    const carried = toolGetFeatureContext(ctx, session).moreDocs.find(
-      (doc) => doc.relPath === 'test-notes.md',
-    )
-    expect(carried?.withheld).toBeUndefined()
-
-    // Reopening the note un-carries it, and the reason is true again.
-    reopenNote(ctx, note.id)
-    expect(
-      toolGetFeatureContext(ctx, session).moreDocs.find((d) => d.relPath === 'test-notes.md')
-        ?.withheld,
-    ).toMatch(/triaged/i)
-  })
 
   it('states each open defect with its id, title, location, detail and repro step', () => {
     openDefect()
@@ -163,29 +129,6 @@ describe('the carry channel into the next lap', () => {
       },
     })
     expect(toolGetFeatureContext(ctx, session).openDefects).toEqual([])
-  })
-
-  /**
-   * THE SKIPPED-NOTE BUG. A note carried into lap 2 and not addressed there
-   * keeps `carriedLap: 2` while the feature moves to lap 3, so every pointer
-   * keyed on a lap number ("the `## Lap 2` section") loses it permanently.
-   */
-  it('keeps a note the next lap skipped visible at the lap after that', () => {
-    carry('the toast never dismisses')
-    ctx.db.update(features).set({ lap: 3 }).where(eq(features.id, feature.id)).run()
-
-    expect(carriedWork(ctx, feature.id).carriedNotes).toBe(1)
-    const doc = testNotesDoc()
-    expect(doc).toContain('## Carried, still open')
-    expect(doc).toContain('- [→] the toast never dismisses (captured lap 1, carried into lap 2)')
-    // The section leads the doc, above the capture-lap sections it summarises.
-    expect(doc.indexOf('## Carried, still open')).toBeLessThan(doc.indexOf('## Lap 1'))
-  })
-
-  it('leaves the note lifecycle alone: a carried note is out of open work', () => {
-    carry('the toast never dismisses')
-    expect(listNotes(ctx, feature.id).filter((note) => note.status === 'open')).toEqual([])
-    expect(listNotes(ctx, feature.id).map((note) => note.status)).toEqual(['carried'])
   })
 
   /**

@@ -18,7 +18,6 @@ import {
   reportFinding,
   viewByFeature,
 } from '../src/services/review-findings'
-import { triagePreview } from '../src/services/test-notes'
 import { listByFeature as listTickets, storeTickets, sweepOrphanedBurning, updateTicket } from '../src/services/tickets'
 import { features, reviewFindings } from '../src/db/schema'
 import { makeTestCtx } from './helpers/db'
@@ -329,13 +328,6 @@ describe('review findings service', () => {
       expect(view.findings).toHaveLength(3)
       // The lap that has to answer for the stale one can still reach it.
       expect(openDefectsAcrossLaps(ctx, featureId).map((finding) => finding.id)).toEqual([stale, fresh])
-    })
-
-    it('hands the boundary triage the same current-lap defect count', () => {
-      abandonedDefect('Lap 3 left this open')
-      expect(triagePreview(ctx, featureId).openDefects).toBe(1)
-      nextLap(4)
-      expect(triagePreview(ctx, featureId).openDefects).toBe(0)
     })
   })
 })
