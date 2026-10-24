@@ -216,7 +216,7 @@ export function ScenarioFailed({
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-md bg-danger-subtle px-3 py-2 text-sm" role="alert">
-      <span className="font-medium text-danger">{scenarioFailureLine(scenario)}</span>
+      <span className="font-medium text-danger-text">{scenarioFailureLine(scenario)}</span>
       {scenario.failure?.outputTail && (
         <pre className="m-0 max-h-40 overflow-auto rounded-md bg-surface-inset px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-text-secondary">
           {scenario.failure.outputTail}

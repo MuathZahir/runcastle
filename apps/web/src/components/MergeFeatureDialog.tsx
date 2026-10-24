@@ -150,7 +150,7 @@ export function MergeConfirmation({
           {/* The loudest thing in the dialog, above the green rows rather than
               instead of them: the human still sees what lands IF it lands. */}
           {summary.conflictRow && (
-            <p className="mt-1 mb-2 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger" role="alert">
+            <p className="mt-1 mb-2 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-text" role="alert">
               {summary.conflictRow}
             </p>
           )}

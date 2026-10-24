@@ -234,7 +234,7 @@ export function NextStepBar({
               className={cx(
                 'flex flex-wrap items-center justify-end gap-2 text-right text-xs',
                 draftBranch && a.kind === 'startDraft' && draftBranch.missing
-                  ? 'text-warning'
+                  ? 'text-warning-text'
                   : 'text-text-tertiary',
               )}
             >

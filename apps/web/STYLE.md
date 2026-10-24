@@ -23,8 +23,8 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 | `--color-*` lines | `border`, `border-subtle` (translucent, so it reads on every ground — `surface-raised` included), `border-strong` | `border-border-subtle` |
 | `--color-*` text | `text`, `text-secondary`, `text-tertiary`, `text-disabled`, `icon` | `text-text-secondary`, `text-icon` |
 | `--color-*` action | `primary`, `primary-hover`, `on-primary`, `accent`, `accent-text`, `accent-subtle`, `focus-ring` | `bg-primary`, `text-accent-text` |
-| `--color-*` status | `success`, `warning`, `danger`, `danger-subtle` | `text-success`, `bg-danger-subtle` |
-| `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped` | `text-phase-review` |
+| `--color-*` status | `success`, `warning`, `danger`, `danger-subtle`; word peers `success-text`, `warning-text`, `danger-text` | `text-success`, `text-danger-text`, `bg-danger-subtle` |
+| `--color-phase-*` | `draft`, `ideation`, `spec`, `planning`, `tickets`, `implementation`, `building`, `review`, `shipped`; a `-text` word peer for each but `draft` | `text-phase-review`, `text-phase-review-text` |
 | `--font-*` | `sans` (Geist Variable), `mono` (Geist Mono Variable) — Fontsource, imported in `main.tsx` | `font-mono` |
 | `--text-*` | `xs` 12/16 · `sm` **13/20, the UI default** · `base` 14/22 prose · `lg` 16/24 section title · `xl` 22/28 page title | `text-sm`, `text-xl` |
 | `--radius-*` | `sm` 4 (kbd) · `md` 6 (controls, rows) · `lg` 10 (panel, menus, dialogs) · `full` (dots only) | `rounded-md` |
@@ -36,7 +36,8 @@ Tokens sit under Tailwind's namespaces, so declaring one generates its utility:
 in the light block); `draft` / `tickets` / `review` / `shipped` are `var()`s onto
 `text-disabled` / `warning` / `accent` / `success`, and `planning` / `building`
 are the app's own `Phase` names (`var()`s onto spec's and implementation's
-hue). `focus-ring` is `accent`.
+hue). `focus-ring` is `accent`. A hue paints marks; words in a colour wear
+its `-text` peer (`accent-text` is the accent's) — DESIGN.md §Colour.
 
 **No deprecated aliases remain.** The pre-redesign names (`bg`, `panel*`,
 `hairline*`, `text-2/-3/-4`, `accent-hi/-2/-ink/-soft/-line`, `ph-*`, `needs`,

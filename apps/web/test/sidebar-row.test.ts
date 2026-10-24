@@ -118,7 +118,7 @@ describe('the sidebar feature row', () => {
   it('dots amber when it waits on you, red with red words when a run failed, grey when stopped', () => {
     expect(row(waiting)).toContain('bg-warning')
     expect(row(failed)).toContain('bg-danger')
-    expect(row(failed)).toContain('text-danger')
+    expect(row(failed)).toContain('text-danger-text')
     expect(row(stopped)).toContain('bg-icon')
   })
 

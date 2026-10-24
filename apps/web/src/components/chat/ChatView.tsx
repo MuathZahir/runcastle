@@ -156,7 +156,7 @@ function ChatAtRest({
             {launchLabel ?? (transcriptId ? 'Resume the conversation' : 'Start the conversation')}
           </Button>
           {launchError && !launching && (
-            <p role="alert" className="m-0 max-w-(--content-max) text-center text-sm text-danger">
+            <p role="alert" className="m-0 max-w-(--content-max) text-center text-sm text-danger-text">
               {launchError}
             </p>
           )}
