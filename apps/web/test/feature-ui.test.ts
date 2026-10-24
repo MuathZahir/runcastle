@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { modelRoster } from '@runcastle/core'
-import type { EventRow, Phase, TicketStatus } from '@runcastle/core'
+import type { EventRow } from '@runcastle/core'
 import {
-  ACTION_KINDS,
   activeSession,
   awaitingCheckIn,
   burnInterruption,
@@ -38,22 +37,15 @@ import {
   ticketConflictKickoff,
   ticketDurations,
   ticketModelChip,
+  landedShare,
   ticketProgress,
   triage,
   triageOf,
   unresolvedMergeConflict,
-  type NextAction,
 } from '../src/lib/feature-ui'
 import type { FeatureFull, FeatureListItem } from '../src/lib/api'
 import { runHeadline } from '../src/lib/feature-ui/run'
 import { full, listItem } from './fixtures'
-
-/**
- * Merge is reachable from every state after creation (decisions §3), so every
- * planning and building bar carries it as a secondary — never the primary,
- * because enabled is not the same as recommended.
- */
-const MERGE_ACTION: NextAction = { label: 'Merge & ship', kind: 'merge' }
 
 describe('run headline review verdict', () => {
   it('does not present an unverified successful review as clean success', () => {
@@ -65,30 +57,6 @@ describe('run headline review verdict', () => {
     ).toBe('Succeeded-unverified · nothing verified')
   })
 })
-
-/**
- * The one Chat door, on every bar in all four states (one-chat-per-feature
- * decision 8) — first in `secondary`, except where the resolver promoted it to
- * the primary and rendering it twice would be the bug.
- */
-const CHAT_ACTION: NextAction = { label: 'Chat', kind: 'chat' }
-
-/**
- * A ticket a coder could read before it writes: a goal, and a context that is
- * different from it and past the thin floor. Both roads into a burn now carry
- * the shape warnings (core's `ticket-shape.ts`), so the fixtures that are NOT
- * about them say nothing to warn about; the shape cases build their own.
- */
-const BURNABLE = {
-  kind: 'implementation',
-  goal: 'Put the shape warnings on the burn card.',
-  context:
-    'The bar lives in apps/web/src/lib/feature-ui/next-step and the ledger beneath it in ' +
-    'components/bodies/tickets. Follow the resolver that is already there rather than adding a ' +
-    'second one, and pin the copy in apps/web/test/feature-ui.test.ts as the neighbouring cases ' +
-    'do. The warnings themselves belong to core, beside the rules, so the card and the door that ' +
-    'stores the tickets cannot word the same problem two ways.',
-}
 
 /**
  * Every cutting form prefills Branch-from with the branch the project is
@@ -1314,6 +1282,23 @@ describe('ticketProgress', () => {
 
   it('is null when the feature has no tickets', () => {
     expect(ticketProgress(listItem())).toBeNull()
+  })
+})
+
+/**
+ * tickets-and-review-are-tools-not-phases decision 9 — the feature glyph's pie:
+ * the share of every ticket that landed, review tickets included and cancelled
+ * ones not counted.
+ */
+describe('landedShare', () => {
+  it('is done over the non-cancelled tickets, review tickets counted', () => {
+    expect(landedShare([{ status: 'done' }, { status: 'pending' }, { status: 'cancelled' }])).toBe(0.5)
+    expect(landedShare([{ status: 'done' }, { status: 'failed' }, { status: 'burning' }, { status: 'done' }])).toBe(0.5)
+  })
+
+  it('is nothing with no ticket, or only cancelled ones', () => {
+    expect(landedShare([])).toBe(0)
+    expect(landedShare([{ status: 'cancelled' }])).toBe(0)
   })
 })
 

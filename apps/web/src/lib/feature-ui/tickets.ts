@@ -18,11 +18,6 @@ export function pendingTickets<T extends { status: string }>(tickets: readonly T
   )
 }
 
-/** "Burn 3 tickets" — what a burn of these pending tickets says on its button. */
-export function burnLabel(pending: readonly unknown[]): string {
-  return `Burn ${noun(pending.length, 'ticket')}`
-}
-
 /**
  * The one ticket count every surface states: the feature's work tickets, the
  * review tickets and waived (cancelled) tickets never counted.

@@ -397,11 +397,6 @@ export function useLiveSync(): LiveStatus {
       // The merge confirmation's "what lands" row is the same git read one step
       // further on (commits AND files), so it moves when the count does.
       refetches.push(u.feature.mergeDelta.invalidate())
-      // The burn confirmation's warn box, for the same reason: every one of its
-      // three sentences is about tickets, findings or a doc an agent is moving
-      // WHILE the human reads them, and a warning that outlives the thing it
-      // warns about is worse than none.
-      refetches.push(u.feature.goWarnings.invalidate())
       refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
       // The design view's frame follows `design.server_started` / `_stopped`:

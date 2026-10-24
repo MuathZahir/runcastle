@@ -267,10 +267,6 @@ export function Workspace({
       })
     : []
   const panel = usePanel(requested && views.includes(requested) ? requested : null, onViewChange)
-  // The human's click, or the agent's: the design view starts its own server.
-  const openDesign = (origin: 'human' | 'agent', path?: string) => {
-    if (designOpenable) panel.dispatch({ type: 'open', view: 'design', ...(path ? { path } : {}), origin })
-  }
   // The agent's `show_panel` and `emit_tickets`, for a view this feature offers.
   // Work is taken on trust: `emit_tickets` opens it the moment it stores them,
   // and the panel shows it once the refetched feature has the tickets.
@@ -842,7 +838,16 @@ export function Workspace({
   const panelView = (v: PanelView) => {
     switch (v) {
       case 'plan':
-        return documentView(v, <PlanBody full={full} onOpenDesign={(path) => openDesign('human', path)} />)
+        return documentView(
+          v,
+          <PlanBody
+            full={full}
+            // The human's own click inside the preview; the design view starts the server.
+            onOpenDesign={(path) => {
+              if (designOpenable) panel.dispatch({ type: 'open', view: 'design', path, origin: 'human' })
+            }}
+          />,
+        )
       case 'work':
         // The run's live lanes above the ledger, which groups every ticket under
         // the round that ran it.
