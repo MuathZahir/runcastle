@@ -10,7 +10,7 @@ import { FeaturePanel, PanelSplit, PanelStrip, usePanel } from '../src/component
  * the divider's drag and double-click, the fold, and the size surviving a
  * reload and a storage that throws.
  */
-function Page({ start = 'body' as FeatureView }) {
+function Page({ start = 'work' as FeatureView }) {
   const [view, setView] = useState<FeatureView>(start)
   const panel = usePanel(view === 'chat' ? null : view, setView)
   const shown = panel.state.view
@@ -21,7 +21,7 @@ function Page({ start = 'body' as FeatureView }) {
         shown && (
           <FeaturePanel
             view={shown}
-            views={['body', 'details']}
+            views={['work', 'details']}
             label={(v) => v}
             onSwitch={(v) => panel.dispatch({ type: 'switch', view: v })}
             onCollapse={() => panel.dispatch({ type: 'collapse' })}
@@ -101,6 +101,13 @@ describe('the feature panel', () => {
     expect(screen.queryByText('the body')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Unfold body' }))
     expect(panelWidth()).toBe('30%')
+  })
+
+  it('names the open view with its icon on the picker', () => {
+    render(<Page />)
+    const picker = screen.getByRole('combobox', { name: 'Panel view' })
+    expect(picker.textContent).toContain('work')
+    expect(picker.querySelector('svg')).not.toBeNull()
   })
 
   it('closes to the chat alone', () => {

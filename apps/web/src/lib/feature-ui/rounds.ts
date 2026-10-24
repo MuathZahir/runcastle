@@ -53,7 +53,6 @@ export type AgentFixEntry = {
 export type ReadyEntry = {
   type: 'ready'
   scenario: string
-  whatToTest: string
   /** The round the declaration follows, or null when none had run. */
   afterRound: number | null
 }
@@ -93,7 +92,7 @@ export function codeLandings(events: readonly EventRow[]): CodeLanding[] {
 export function roundTrail<T extends TrailTicket>(
   rounds: readonly RoundSummary[],
   tickets: readonly T[],
-  declarations: readonly Pick<ReadyDeclaration, 'runId' | 'scenario' | 'whatToTest' | 'createdAt'>[],
+  declarations: readonly Pick<ReadyDeclaration, 'runId' | 'scenario' | 'createdAt'>[],
   landings: readonly CodeLanding[] = [],
   runs: readonly { id: string; summary?: string }[] = [],
 ): RoundTrail<T> {
@@ -130,7 +129,7 @@ export function roundTrail<T extends TrailTicket>(
     const afterRound = d.runId !== null ? (roundOf.get(d.runId) ?? null) : null
     placed.push({
       key: [afterRound ?? 0, 1, d.createdAt],
-      item: { type: 'ready', scenario: d.scenario, whatToTest: d.whatToTest, afterRound },
+      item: { type: 'ready', scenario: d.scenario, afterRound },
     })
   }
   placed.sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.key[2] - b.key[2])

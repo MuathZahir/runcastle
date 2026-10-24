@@ -89,8 +89,8 @@ describe('roundTrail', () => {
       event({ id: 1, ts: 1700, data: { commits: [{ sha: 'abc1234def', subject: 'feat(pricing): rename field' }], files: ['a.ts'], afterRunId: 'r1' } }),
     ])
     const { entries } = roundTrail(rounds, tickets, [
-      { runId: 'r2', scenario: 'Apply a coupon', whatToTest: 'Check the total.', createdAt: 3000 },
-      { runId: 'r1', scenario: 'Early drive', whatToTest: 'Look around.', createdAt: 1800 },
+      { runId: 'r2', scenario: 'Apply a coupon', createdAt: 3000 },
+      { runId: 'r1', scenario: 'Early drive', createdAt: 1800 },
     ], landings)
     expect(entries.map((e) => (e.type === 'round' ? `round ${e.round}` : e.type))).toEqual([
       'round 1',
@@ -100,13 +100,13 @@ describe('roundTrail', () => {
       'ready',
     ])
     expect(entries[1]).toEqual({ type: 'agent-fix', commits: [{ sha: 'abc1234def', subject: 'feat(pricing): rename field' }], files: ['a.ts'] })
-    expect(entries[2]).toEqual({ type: 'ready', scenario: 'Early drive', whatToTest: 'Look around.', afterRound: 1 })
+    expect(entries[2]).toEqual({ type: 'ready', scenario: 'Early drive', afterRound: 1 })
     expect(entries[4]).toMatchObject({ type: 'ready', scenario: 'Apply a coupon', afterRound: 2 })
   })
 
   it('puts what came before any round first', () => {
     const landings = codeLandings([event({ data: { commits: [{ sha: 'a1', subject: 'fix' }], files: [], afterRunId: null } })])
-    const { entries } = roundTrail(rounds, tickets, [{ runId: null, scenario: 's', whatToTest: 'w', createdAt: 1 }], landings)
+    const { entries } = roundTrail(rounds, tickets, [{ runId: null, scenario: 's', createdAt: 1 }], landings)
     expect(entries.slice(0, 2).map((e) => e.type)).toEqual(['agent-fix', 'ready'])
     expect(entries[1]).toMatchObject({ afterRound: null })
   })

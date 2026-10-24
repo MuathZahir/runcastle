@@ -7,10 +7,10 @@ import { FeatureStatusLine } from '../src/components/workspace/FeatureStatusLine
 import { HeaderAction } from '../src/components/workspace/HeaderAction'
 
 /**
- * The planning header while the feature plans itself: the status line says so and
- * the header carries the run's Stop, never Go, so a click on Plan it yourself
- * visibly did something. Tier 2: Stop's click reaching the dispatcher is an
- * event, which a rendered string cannot show.
+ * The header while the feature plans itself: the status line says so and the
+ * header carries the run's Stop, so a click on Plan it yourself visibly did
+ * something. Tier 2: Stop's click reaching the dispatcher is an event, which a
+ * rendered string cannot show.
  */
 afterEach(cleanup)
 
@@ -24,12 +24,12 @@ const selfPlanBar: NextStep = {
   busy: true,
 }
 
-/** What it offers once the run has ended and the plan waits on the human. */
-const planBar: NextStep = { kick: 'PLAN', primary: { label: 'Burn 3 tickets', kind: 'burn' }, secondary: [], busy: false }
+/** What it offers once the run has ended: the plain step. */
+const plainBar: NextStep = { kick: 'NEXT STEP', secondary: [], busy: false }
 
-function planningRow(selfPlanning: boolean, onAction = vi.fn()) {
+function headerRow(selfPlanning: boolean, onAction = vi.fn()) {
   const status = featureStatus({
-    feature: { phase: 'planning', status: 'active', lap: 1, ticketsReadyLap: null, waitingReason: null },
+    feature: { status: 'active', waitingReason: null },
     rounds: [],
     declarations: [],
     agentWorking: false,
@@ -38,7 +38,7 @@ function planningRow(selfPlanning: boolean, onAction = vi.fn()) {
     now: 0,
   })
   // The header row as the feature page composes it (design-mode decision 12).
-  const row = headerActions(selfPlanning ? selfPlanBar : planBar, status)
+  const row = headerActions(selfPlanning ? selfPlanBar : plainBar, status)
   render(
     <header>
       <FeatureStatusLine status={status} />
@@ -48,23 +48,22 @@ function planningRow(selfPlanning: boolean, onAction = vi.fn()) {
   return { onAction, row }
 }
 
-describe('the planning header while the feature plans itself', () => {
-  it('says Planning by itself and offers the run’s Stop, with no Go anywhere', () => {
-    const { onAction, row } = planningRow(true)
+describe('the header while the feature plans itself', () => {
+  it('says Planning by itself and offers the run’s Stop', () => {
+    const { onAction } = headerRow(true)
 
     expect(screen.getByRole('status').textContent).toContain('Planning by itself')
-    expect(row.go).toBeUndefined()
 
     fireEvent.click(screen.getByRole('button', { name: /^Stop$/ }))
     expect(onAction).toHaveBeenCalledWith('stopHeadlessRun')
   })
 
-  it('reads Planning with you again once the run has ended, Go back on the tickets view', () => {
-    const { row } = planningRow(false)
+  it('reads Talking with you once the run has ended, with no Go and no button', () => {
+    const { row } = headerRow(false)
 
-    expect(screen.getByRole('status').textContent).toContain('Planning with you')
+    expect(screen.getByRole('status').textContent).toContain('Talking with you')
     expect(screen.queryByText('Planning by itself')).toBeNull()
-    expect(screen.queryByRole('button', { name: /^(Go|Stop)$/ })).toBeNull()
-    expect(row.go?.label).toBe('Go')
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(row.overflow.map((a) => a.label)).toEqual(['Merge & ship'])
   })
 })

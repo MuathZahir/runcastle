@@ -14,7 +14,7 @@ const SPEC: ChatNotice = {
   title: 'Spec written',
   subtitle: 'spec.md',
   actionLabel: 'View spec',
-  target: 'body',
+  target: 'work',
   count: 1,
   eventId: 1,
 }
@@ -24,7 +24,7 @@ const TICKETS: ChatNotice = {
   title: 'Tickets updated',
   subtitle: 'ticket 3 cancelled',
   actionLabel: 'View tickets',
-  target: 'body',
+  target: 'work',
   count: 3,
   eventId: 2,
 }
@@ -34,7 +34,7 @@ const RUN: ChatNotice = {
   title: 'Run finished with failures',
   subtitle: '4 of 6 landed',
   actionLabel: 'View run',
-  target: 'body',
+  target: 'work',
   count: 1,
   eventId: 3,
 }

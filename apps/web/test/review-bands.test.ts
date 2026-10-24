@@ -205,7 +205,6 @@ const buttonsOf = (html: string, variant: string): string[] =>
 /** The primary is the next-step bar's (DESIGN.md: one per view) — never a body band's. */
 const primaryButtons = (html: string): string[] => buttonsOf(html, 'primary')
 /** The hairline button a notice's action takes. */
-const secondaryButtons = (html: string): string[] => buttonsOf(html, 'secondary')
 
 /** The feature as each prototype state has it, plus what the queries answer. */
 function render(
@@ -272,7 +271,7 @@ function render(
       driving: null,
       conflict: null,
       readonly: over.readonly ?? false,
-      onViewPhase: () => undefined,
+      onOpenWork: () => undefined,
     }),
   )
 }
@@ -461,11 +460,11 @@ describe('the review page’s arrival bands', () => {
       startedAt,
     })
 
-    it('raises a banner naming the files, with the way to run another review', () => {
+    it('raises a banner naming the files, and asks the human to ask the agent for another review', () => {
       const html = render({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('src/App.tsx')
-      expect(html).toContain('Agentic review')
+      expect(html).toContain('ask the agent for another review')
     })
 
     it('says nothing when no drive was ever refused', () => {
@@ -489,12 +488,6 @@ describe('the review page’s arrival bands', () => {
     it('comes down once a burn has started after the denial', () => {
       const runs = [RUN(DENIED.ts - 1_000), RUN(DENIED.ts + 1_000)]
       expect(render({ events: [DENIED], runs })).not.toContain('Review couldn’t drive')
-    })
-
-    /** The review body also mounts to LOOK BACK at review on a feature that has
-     *  moved on — history, where there is nothing left to act on (decision 7). */
-    it('does not render outside the review phase', () => {
-      expect(render({ events: [DENIED], phase: 'shipped' })).not.toContain('Review couldn’t drive')
     })
 
     /** Decision 33a: history has no live verbs, this banner's retry included. */
@@ -549,37 +542,12 @@ describe('the review page’s arrival bands', () => {
       expect(banner).not.toContain('All acceptance criteria remain honestly unverified')
     })
 
-    /** Decision 5: the banner's action slot favours another review pass. */
-    it('offers the Agentic review mint as the banner’s action', () => {
-      const banner = arrival().slice(0, arrival().indexOf('data-tier="work"'))
-      expect(banner).toContain('Agentic review')
-    })
-
-    /**
-     * DESIGN.md: one primary per view, and it is the next-step bar's — no band
-     * in the body claims one. Both notices can be up at once — a pass denied its
-     * drive over a dirty tree that then leaves no parseable declaration block
-     * lands unverified while the denial is still showing — and both mints are
-     * the same verb, so only the loud notice's keeps its hairline and the
-     * denial's steps down to ghost.
-     */
-    it('keeps one hairline mint when the denied-drive notice is up beside it', () => {
+    /** Another review is the agent's to run (tickets-and-review-are-tools-not-phases decision 12). */
+    it('offers no review button in either notice, and claims no primary', () => {
       const html = arrival({ events: [DENIED] })
       expect(html).toContain('Review couldn’t drive')
       expect(html).toContain('Nothing verified')
-      expect(primaryButtons(html)).toEqual([])
-      const notices = html.slice(0, html.indexOf('data-tier="work"'))
-      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
-      // And it is this notice's: the denial above it steps down.
-      expect(secondaryButtons(html.slice(0, html.indexOf('Nothing verified')))).toEqual([])
-    })
-
-    /** With no unverified lap the denial's mint keeps its hairline. */
-    it('leaves the denied-drive notice its hairline mint when nothing is unverified', () => {
-      const html = render({ events: [DENIED] })
-      expect(html).toContain('Review couldn’t drive')
-      const notices = html.slice(0, html.indexOf('data-tier="work"'))
-      expect(secondaryButtons(notices).filter((label) => label === 'Agentic review')).toHaveLength(1)
+      expect(html).not.toContain('Agentic review')
       expect(primaryButtons(html)).toEqual([])
     })
 
@@ -621,8 +589,8 @@ describe('the review page’s arrival bands', () => {
 
   /**
    * The Agentic review control left with the Status tier it stood beside
-   * (decision 24): a review is the agent's tool now (decision 10), so only the
-   * notices that call for another pass still offer one.
+   * (decision 24): a review is the agent's tool now
+   * (tickets-and-review-are-tools-not-phases decision 12), so nothing offers one.
    */
   describe('the Agentic review control', () => {
     it('is not offered on a page whose review needs nothing', () => {

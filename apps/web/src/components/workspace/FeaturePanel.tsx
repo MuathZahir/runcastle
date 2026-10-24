@@ -16,7 +16,6 @@ import {
   IconCheck,
   IconChevronRight,
   IconDoc,
-  IconEye,
   IconInfo,
   IconList,
   IconPanelRight,
@@ -34,11 +33,9 @@ import {
 
 /** Every view leads with an icon (DESIGN.md principle 7). */
 export const PANEL_VIEW_ICON: Record<PanelView, ReactNode> = {
-  body: <IconList />,
   plan: <IconDoc />,
   work: <IconList />,
   review: <IconCheck />,
-  preview: <IconEye />,
   design: <IconPen />,
   drive: <IconPlay />,
   details: <IconInfo />,

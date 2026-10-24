@@ -11,14 +11,12 @@ export const ACTION_KINDS = [
   'chat', // launchSession { kind: 'chat' } — the feature's one conversation, every state
   'selfPlan', // start a draft if need be, then launchSession { kind: 'chat', purpose: 'self-plan' }
   'stopHeadlessRun', // feature.endSession on the live headless run (self-plan, relay)
-  'burn', // feature.burn — crosses planning → building, and resumes a parked run
-  'cancelRun', // run.cancel
   'stopAgent', // feature.stop — the status line's Stop: the round stops, nothing dispatches until the human replies
   'openBurnSettings', // opens Settings → Workers where a failed run's summary points (image rebuild)
   'testDriveStart', // feature.testDrive { action: 'start' }
   'testDriveStop', // feature.testDrive { action: 'stop' }
   'fixDrive', // feature.fixDrive — an agent repairs the environment a drive's setup died in
-  'merge', // feature.merge — crosses to shipped, reachable from every state
+  'merge', // feature.merge — ships the feature, reachable from every state
   'resolveConflict', // launchSession { kind: 'chat', kickoffLine: mergeConflictKickoff(…) }
   'unarchive', // feature.unarchive — restore an archived feature to its lane (next-step bar)
 ] as const

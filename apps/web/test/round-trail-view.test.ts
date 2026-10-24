@@ -32,7 +32,7 @@ const trail: RoundTrailFigure = {
       verdict: 'Pricing landed; the totals worker failed on a fixture.',
     },
     { type: 'agent-fix', commits: [{ sha: 'abc1234def5678', subject: 'feat(pricing): rename the total field' }], files: ['a.ts', 'b.ts'] },
-    { type: 'ready', scenario: 'Apply a coupon at checkout', whatToTest: 'Add two items, apply SAVE10, check the total.', afterRound: 1 },
+    { type: 'ready', scenario: 'Apply a coupon at checkout', afterRound: 1 },
     {
       type: 'round',
       round: 2,
@@ -85,16 +85,12 @@ describe('RoundTrail', () => {
     expect(html).toContain('feat(pricing): rename the total field')
   })
 
-  it('shows a ready declaration’s scenario with the what-to-test paragraph collapsed', () => {
+  it('shows a ready declaration’s scenario alone: what to test is said in the chat', () => {
     const html = render()
     expect(html).toContain('Ready for you')
     expect(html).toContain('after round 1')
     expect(html).toContain('Test drive ▸ Apply a coupon at checkout')
-    const before = html.slice(0, html.indexOf('What to test'))
-    const tag = before.slice(before.lastIndexOf('<details'))
-    expect(tag.startsWith('<details')).toBe(true)
-    expect(tag.slice(0, tag.indexOf('>'))).not.toMatch(/\sopen/)
-    expect(html.indexOf('Add two items')).toBeGreaterThan(html.indexOf('What to test'))
+    expect(html).not.toContain('What to test')
   })
 
   it('lists tickets no round has held as not yet dispatched', () => {

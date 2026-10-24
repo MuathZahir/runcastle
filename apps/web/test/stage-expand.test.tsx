@@ -182,7 +182,7 @@ function page(): { root: { readonly className: string }; rerender: () => void } 
       full={{ ...feature, feature: { ...feature.feature, lap: 1 }, tickets: [REVIEW_TICKET] }}
       driving={null}
       conflict={null}
-      onViewPhase={() => undefined}
+      onOpenWork={() => undefined}
     />
   )
   const view = render(body())

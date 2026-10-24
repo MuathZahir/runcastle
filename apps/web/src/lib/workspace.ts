@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Phase } from '@runcastle/core'
 import { parseFeatureView, type FeatureView } from './routes'
 import type { SettingsLocation } from './settings'
 
 /**
  * Workspace navigation state for the pipeline-first shell (app-redesign).
  *
- * The redesign replaces the old tab model with a single selected feature whose
- * *current phase* drives the workspace body. The user can also pin `viewedPhase`
- * to an earlier, completed phase to inspect it read-only; selecting a different
- * feature clears the pin so the workspace snaps back to following the live phase.
+ * The redesign replaces the old tab model with a single selected feature and
+ * the panel view beside its chat.
  *
  * Only `selectedFeatureId`, an open preparation, the guidance toggle and each
- * feature's last view persist across reloads — the viewed
- * phase, command palette, and Draft overlay are ephemeral session state.
+ * feature's last view persist across reloads — the command palette and Draft
+ * overlay are ephemeral session state.
  */
 
 /** Client-tracked active test drive (at most one globally, server-enforced). */
@@ -46,10 +43,10 @@ function featureViewKeyFor(featureId: string): string {
 /**
  * Which view a feature opens on when nothing names one (one-chat-layout-everywhere
  * decision 8): the view it was left on, if that is still a view — a feature
- * left on the retired Overview or Tickets tab reopens on its body, one left on
+ * left on the retired Overview or Tickets tab reopens on Work, one left on
  * Chat with the panel closed. Else the chat alone, which is the page
  * (design-mode decision 5): nothing opens the panel by itself. A draft has no
- * chat, so its body is the page whatever was remembered.
+ * chat, so its body is the page whatever was remembered, at the bare address.
  */
 export function initialTab({
   stored,
@@ -59,7 +56,7 @@ export function initialTab({
   stored: string | null
   isDraft: boolean
 }): FeatureView {
-  if (isDraft) return 'body'
+  if (isDraft) return 'work'
   return parseFeatureView(stored) ?? 'chat'
 }
 
@@ -108,8 +105,6 @@ export interface WorkspaceApi {
    * is still the one you come back to when you leave the project workspace.
    */
   projectSelected: boolean
-  /** Pinned phase to view read-only, or null to follow the feature's live phase. */
-  viewedPhase: Phase | null
   /**
    * The selected feature's view — the panel view beside its chat, or the chat
    * alone. Shell state rather than the page's, so the address bar can name it
@@ -150,8 +145,6 @@ export interface WorkspaceApi {
   selectView: (view: FeatureView) => void
   /** Select the pinned project row — the project workspace fills the body. */
   selectProject: () => void
-  /** Pin a phase to view (null = follow live phase). */
-  viewPhase: (phase: Phase | null) => void
   /** Open the Draft door's overlay in the workspace. */
   startDraft: () => void
   /** Give the workspace over to preparation. */
@@ -171,7 +164,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   const selectedKey = selectedKeyFor(projectId)
   const preparingKey = preparingKeyFor(projectId)
   const [selectedFeatureId, setSelected] = useState<string | null>(() => readLS(selectedKey))
-  const [viewedPhase, setViewedPhase] = useState<Phase | null>(null)
   // A first guess from storage; the shell's landing settles it once the feature
   // list says whether the feature is a draft.
   const [featureView, setFeatureView] = useState<FeatureView>(() => {
@@ -211,7 +203,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     setSelected(featureId)
     setFeatureView(view)
     if (featureId) writeLS(featureViewKeyFor(featureId), view)
-    setViewedPhase(null)
     setCreating(false)
     setPreparing(false)
     setProjectSelected(false)
@@ -222,7 +213,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   // deselection, so leaving it puts you back on the feature you were reading.
   const selectProject = useCallback(() => {
     setProjectSelected(true)
-    setViewedPhase(null)
     setCreating(false)
     setPreparing(false)
     setCmdk(false)
@@ -236,7 +226,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     [selectedFeatureId],
   )
 
-  const viewPhase = useCallback((phase: Phase | null) => setViewedPhase(phase), [])
   const startDraft = useCallback(() => {
     setCreating(true)
     setPreparing(false)
@@ -262,7 +251,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
   return {
     selectedFeatureId,
     projectSelected,
-    viewedPhase,
     featureView,
     creating,
     preparing,
@@ -272,7 +260,6 @@ export function useWorkspace(projectId: string): WorkspaceApi {
     select,
     selectView,
     selectProject,
-    viewPhase,
     startDraft,
     startPreparation,
     cancelCreate,

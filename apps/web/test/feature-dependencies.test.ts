@@ -95,9 +95,7 @@ describe('Start on a waiting draft', () => {
   })
 
   it('is disabled with each blocker and its state, archived ones told to remove it', () => {
-    const ns = nextStep(draftFull([dep('auth'), dep('idea', { status: 'draft', phase: 'planning' }), ARCHIVED]), {
-      driving: false,
-    })
+    const ns = nextStep(draftFull([dep('auth'), dep('idea', { status: 'draft', phase: 'planning' }), ARCHIVED]), {})
     expect(ns.primary?.kind).toBe('startDraft')
     expect(ns.primary?.disabled).toBe(
       'Waits on auth (building), idea (draft), old (archived — remove it to start)',
@@ -105,16 +103,16 @@ describe('Start on a waiting draft', () => {
   })
 
   it('outranks a missing base branch', () => {
-    const ns = nextStep(draftFull([dep('auth')]), { driving: false, draftBaseMissing: 'unpicked' })
+    const ns = nextStep(draftFull([dep('auth')]), { draftBaseMissing: 'unpicked' })
     expect(ns.primary?.disabled).toBe('Waits on auth (building)')
   })
 
   it('behaves exactly as before once every dependency merged', () => {
-    expect(nextStep(draftFull([MERGED]), { driving: false }).primary).toEqual({
+    expect(nextStep(draftFull([MERGED]), {}).primary).toEqual({
       label: 'Start',
       kind: 'startDraft',
     })
-    expect(nextStep(draftFull([MERGED]), { driving: false, draftBaseMissing: 'loading' }).primary?.disabled).toBe(
+    expect(nextStep(draftFull([MERGED]), { draftBaseMissing: 'loading' }).primary?.disabled).toBe(
       'Loading the branch list…',
     )
   })

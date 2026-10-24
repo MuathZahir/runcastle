@@ -1,4 +1,4 @@
-import { isPanelView, type PanelView } from './feature-ui/panel'
+import { isPanelView, panelViewOf, type PanelView } from './feature-ui/panel'
 
 /**
  * The URL as a projection of the navigation state machine (decision 1).
@@ -24,11 +24,11 @@ import { isPanelView, type PanelView } from './feature-ui/panel'
 export type FeatureView = PanelView | 'chat'
 
 /**
- * The feature views that carry a path segment of their own. The body is the
- * feature's bare path — the old Overview link, which showed the body — and
- * `chat`, the old Chat tab's segment, is the chat alone.
+ * The feature views that carry a path segment of their own. Work is the
+ * feature's bare path — the old Overview link, which showed the phase body the
+ * Work view replaced — and `chat`, the old Chat tab's segment, is the chat alone.
  */
-export type FeatureSegment = Exclude<FeatureView, 'body'>
+export type FeatureSegment = Exclude<FeatureView, 'work'>
 
 /** The path segment and remembered value the Tickets tab had before it was retired. */
 export const RETIRED_TICKETS_TAB = 'tickets'
@@ -37,14 +37,18 @@ export const RETIRED_TICKETS_TAB = 'tickets'
 export const RETIRED_OVERVIEW_TAB = 'overview'
 
 function isFeatureSegment(segment: string): segment is FeatureSegment {
-  return segment === 'chat' || (segment !== 'body' && isPanelView(segment))
+  return segment === 'chat' || (segment !== 'work' && isPanelView(segment))
 }
 
-/** A feature view read from a path segment or from storage, with the retired tabs mapped onto the body. */
+/**
+ * A feature view read from a path segment or from storage: the retired tabs
+ * land on Work, and the retired panel views on the fixed view each became
+ * (`body` on Work, `preview` on Plan).
+ */
 export function parseFeatureView(value: string | null): FeatureView | null {
   if (value === null) return null
-  if (value === RETIRED_TICKETS_TAB || value === RETIRED_OVERVIEW_TAB) return 'body'
-  return value === 'chat' || isPanelView(value) ? value : null
+  if (value === RETIRED_TICKETS_TAB || value === RETIRED_OVERVIEW_TAB) return 'work'
+  return value === 'chat' ? value : panelViewOf(value)
 }
 
 /** Everywhere the app can be, in a form that survives a reload. */
@@ -53,16 +57,16 @@ export type AppLocation =
   | { kind: 'home' }
   /** A project, landing on its restored feature (or its home). */
   | { kind: 'project'; projectId: string }
-  /** A feature inside a project, addressed by slug; no `view` is its body. */
+  /** A feature inside a project, addressed by slug; no `view` is its Work view. */
   | { kind: 'feature'; projectId: string; featureSlug: string; view?: FeatureSegment }
   /** A project's conversation. */
   | { kind: 'chat'; projectId: string }
   /** A project's preparation. */
   | { kind: 'prepare'; projectId: string }
 
-/** The view a feature location names — its segment, or the body for none. */
+/** The view a feature location names — its segment, or Work for none. */
 export function featureViewOf(location: { view?: FeatureSegment }): FeatureView {
-  return location.view ?? 'body'
+  return location.view ?? 'work'
 }
 
 /** The project a location is inside, or null for the portfolio home. */
@@ -123,11 +127,12 @@ export function parsePath(path: string): AppLocation | null {
   if (parts.length === 5 && parts[2] === 'f' && parts[3] && segment && isFeatureSegment(segment)) {
     return { kind: 'feature', projectId, featureSlug: parts[3], view: segment }
   }
-  // The retired Tickets tab, and a hand-typed `/body`: they land on the body,
-  // which shows the tickets in every phase that has them.
-  if (parts.length === 5 && parts[2] === 'f' && parts[3] && segment && parseFeatureView(segment) === 'body') {
-    return { kind: 'feature', projectId, featureSlug: parts[3] }
-  }
+  // The retired Tickets tab, the retired `/body` and a hand-typed `/work` land
+  // on Work; the retired `/preview` on Plan.
+  const featureSlug = parts[3]
+  const retired = parts.length === 5 && parts[2] === 'f' && featureSlug && segment ? parseFeatureView(segment) : null
+  if (featureSlug && retired === 'work') return { kind: 'feature', projectId, featureSlug }
+  if (featureSlug && retired === 'plan') return { kind: 'feature', projectId, featureSlug, view: retired }
   return null
 }
 
@@ -168,15 +173,15 @@ export function locationFor(state: {
   projectSelected: boolean
   /** The selected feature's slug, or null when none is selected. */
   featureSlug: string | null
-  /** The selected feature's view; the body when omitted. */
+  /** The selected feature's view; Work when omitted. */
   featureView?: FeatureView
 }): AppLocation {
-  const { projectId, featureView = 'body' } = state
+  const { projectId, featureView = 'work' } = state
   if (state.preparing) return { kind: 'prepare', projectId }
   if (state.projectSelected) return { kind: 'chat', projectId }
   if (state.featureSlug) {
     const feature = { kind: 'feature', projectId, featureSlug: state.featureSlug } as const
-    return featureView === 'body' ? feature : { ...feature, view: featureView }
+    return featureView === 'work' ? feature : { ...feature, view: featureView }
   }
   return { kind: 'project', projectId }
 }

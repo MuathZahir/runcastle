@@ -180,9 +180,6 @@ function ReadyItem({ entry }: { entry: ReadyEntry }) {
         meta={[{ text: entry.afterRound !== null ? `after round ${entry.afterRound}` : 'before any round' }]}
       />
       <p className="m-0 text-sm text-text">Test drive ▸ {entry.scenario}</p>
-      <Disclosure size="sm" title="What to test">
-        <p className="m-0 text-sm text-pretty whitespace-pre-line text-text-secondary">{entry.whatToTest}</p>
-      </Disclosure>
     </>
   )
 }

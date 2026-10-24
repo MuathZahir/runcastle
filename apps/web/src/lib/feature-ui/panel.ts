@@ -1,5 +1,3 @@
-import type { Phase } from '@runcastle/core'
-
 /**
  * The feature page's one panel (design-mode decisions 4, 5): the chat is the
  * page, and a single panel opens on its right holding one view at a time.
@@ -9,29 +7,25 @@ import type { Phase } from '@runcastle/core'
  */
 
 /**
- * What the panel can show, one at a time. `plan`, `work` and `review` are the
- * fixed views that replace the phase-keyed `body`
- * (tickets-and-review-are-tools-not-phases decision 8); each is offered once
- * it has something to show.
+ * What the panel can show, one at a time: four fixed views — Plan, Work,
+ * Review, Details — and Design and Drive while they run
+ * (tickets-and-review-are-tools-not-phases decision 8).
  */
-export type PanelView =
-  | 'body'
-  | 'plan'
-  | 'work'
-  | 'review'
-  | 'preview'
-  | 'design'
-  | 'drive'
-  | 'details'
+export type PanelView = 'plan' | 'work' | 'review' | 'details' | 'design' | 'drive'
 
 /** Every view, in the order the switcher and the topbar list them. */
-export const PANEL_VIEWS: readonly PanelView[] = ['body', 'preview', 'design', 'drive', 'details']
-
-/** Every view name the panel knows, offered or not. */
-const ALL_PANEL_VIEWS: readonly PanelView[] = [...PANEL_VIEWS, 'plan', 'work', 'review']
+export const PANEL_VIEWS: readonly PanelView[] = ['plan', 'work', 'review', 'details', 'design', 'drive']
 
 export function isPanelView(value: string): value is PanelView {
-  return (ALL_PANEL_VIEWS as readonly string[]).includes(value)
+  return (PANEL_VIEWS as readonly string[]).includes(value)
+}
+
+/** The retired views' names, and the fixed view each became: the phase body's tickets, the plan preview. */
+const RETIRED_VIEWS: Readonly<Record<string, PanelView>> = { body: 'work', preview: 'plan' }
+
+/** A view name read from an address or an event, the retired `body` and `preview` mapped onto Work and Plan. */
+export function panelViewOf(value: string): PanelView | null {
+  return isPanelView(value) ? value : (RETIRED_VIEWS[value] ?? null)
 }
 
 /**
@@ -40,41 +34,58 @@ export function isPanelView(value: string): value is PanelView {
  */
 export type PanelOrigin = 'human' | 'agent' | 'runcastle'
 
-/** The human's clicks runcastle answers by opening a view: Go opens the run, Test drive the drive. */
-export type PanelFollowedClick = 'go' | 'testDrive'
+/** The human's clicks runcastle answers by opening a view: Test drive opens the drive. */
+export type PanelFollowedClick = 'testDrive'
 
-const FOLLOWS: Record<PanelFollowedClick, PanelView> = { go: 'body', testDrive: 'drive' }
+const FOLLOWS: Record<PanelFollowedClick, PanelView> = { testDrive: 'drive' }
+
+/** The facts that decide which views a feature offers. */
+export interface PanelFacts {
+  /** A draft has no chat, so its body is the page and it has no panel at all. */
+  isDraft: boolean
+  /** A plan preview, decisions.md or spec.md exists. */
+  hasPlan: boolean
+  /** The feature has any ticket. */
+  hasTickets: boolean
+  /** Any ready declaration, or any review ticket that ran. */
+  hasReview: boolean
+  shipped: boolean
+  /** A design server runs for the feature. */
+  designRunning: boolean
+  /** A drive of the feature is up. */
+  driveActive: boolean
+}
+
+/** The plan documents the Plan view leads with, after the preview. */
+export const PLAN_DOCS = ['decisions.md', 'spec.md'] as const
+
+/** Whether a feature has a plan to read: a preview, decisions.md or spec.md. */
+export function hasPlan(full: { preview?: unknown; docs: readonly { relPath: string }[] }): boolean {
+  return !!full.preview || full.docs.some((doc) => PLAN_DOCS.some((name) => doc.relPath.endsWith(name)))
+}
+
+/** Whether any review ticket has run — started, landed or failed. */
+export function reviewRan(tickets: readonly { kind?: string; status: string }[]): boolean {
+  return tickets.some((ticket) => ticket.kind === 'review' && ticket.status !== 'pending' && ticket.status !== 'cancelled')
+}
 
 /**
- * The views a feature offers right now. A draft has no chat, so its body is
- * the page and it has no panel at all. The plan preview is offered once one
- * exists, the drive only while one is up, and design until the feature ships
- * (its server stops then — design-mode decision 10).
+ * The views a feature offers right now, each once it has something to show:
+ * Plan once there is a plan to read, Work once there is a ticket, Review once
+ * the agent declared ready, a review ran or the feature shipped, Details
+ * always, and Design and Drive only while they run.
  */
-export function availableViews({
-  isDraft,
-  phase,
-  hasPreview,
-  driveActive,
-}: {
-  isDraft: boolean
-  phase: Phase
-  hasPreview: boolean
-  driveActive: boolean
-}): PanelView[] {
-  if (isDraft) return []
-  return PANEL_VIEWS.filter((view) => {
-    switch (view) {
-      case 'preview':
-        return hasPreview
-      case 'design':
-        return phase !== 'shipped'
-      case 'drive':
-        return driveActive
-      default:
-        return true
-    }
-  })
+export function availableViews(facts: PanelFacts): PanelView[] {
+  if (facts.isDraft) return []
+  const offered: Record<PanelView, boolean> = {
+    plan: facts.hasPlan,
+    work: facts.hasTickets,
+    review: facts.hasReview || facts.shipped,
+    details: true,
+    design: facts.designRunning,
+    drive: facts.driveActive,
+  }
+  return PANEL_VIEWS.filter((view) => offered[view])
 }
 
 /**
@@ -88,7 +99,7 @@ export function projectViews({ driveActive, hasNotes }: { driveActive: boolean; 
 
 /** What the project page calls its views: its details are the Notes inbox. */
 export function projectViewLabel(view: PanelView): string {
-  return view === 'details' ? 'Notes' : view === 'body' ? 'Project' : PANEL_VIEW_LABEL[view]
+  return view === 'details' ? 'Notes' : PANEL_VIEW_LABEL[view]
 }
 
 /** The event the agent's `show_panel` tool emits (design-mode spec, Events). */
@@ -112,33 +123,19 @@ export function panelShowRequest(
 ): PanelShowRequest | null {
   if (event.type !== PANEL_SHOW_EVENT || event.featureId !== featureId) return null
   const data = (event.data ?? {}) as { view?: unknown; path?: unknown; width?: unknown }
-  if (typeof data.view !== 'string' || !isPanelView(data.view)) return null
+  const view = typeof data.view === 'string' ? panelViewOf(data.view) : null
+  if (!view) return null
   return {
-    view: data.view,
+    view,
     ...(typeof data.path === 'string' ? { path: data.path } : {}),
     ...(typeof data.width === 'number' && Number.isInteger(data.width) && data.width > 0 ? { width: data.width } : {}),
   }
 }
 
-/** What the phase body is called in the switcher and on its topbar button. */
-export function bodyLabel(phase: Phase, { ticketsIsBody, hasRun }: { ticketsIsBody: boolean; hasRun: boolean }): string {
-  switch (phase) {
-    case 'planning':
-      return ticketsIsBody ? 'Tickets' : 'Plan'
-    case 'building':
-      return hasRun ? 'Run' : 'Tickets'
-    case 'review':
-      return 'Review'
-    case 'shipped':
-      return 'Outcome'
-  }
-}
-
-export const PANEL_VIEW_LABEL: Record<Exclude<PanelView, 'body'>, string> = {
+export const PANEL_VIEW_LABEL: Record<PanelView, string> = {
   plan: 'Plan',
   work: 'Work',
   review: 'Review',
-  preview: 'Preview',
   design: 'Design',
   drive: 'Drive',
   details: 'Details',

@@ -1,47 +1,8 @@
-import type { DriveState, TicketTally } from '@runcastle/core'
 import type { FeatureFull } from '../../api'
-import type { MergeConflictState } from '../gates'
-import type { BurnDurationStats, BurnInterruption } from '../run'
 import type { DraftBaseMissing } from './types'
 
 export interface NextStepContext {
-  driving: boolean
-  /**
-   * This feature's drive as the SERVER sees it (decision 20) — the same value
-   * the evidence stage renders from, so the bar and the stage cannot disagree
-   * about what a drive is doing. `driving` above is only this browser's record
-   * of a drive it started itself, which is what the bar falls back to while the
-   * poll catches up.
-   */
-  driveState?: DriveState
-  /** This project's own ticket history, for the pre-burn time expectation (#16b). */
-  burnStats?: BurnDurationStats
-  /**
-   * Bytes of feature docs the next burn will hand EVERY ticket — the server's
-   * own `readDocsDigest`, so the card warns with the same number the run's
-   * timeline event reports rather than a second estimate of it.
-   */
-  docsDigestBytes?: number
-  conflict?: MergeConflictState | null
-  unverifiedDriveKeys?: string[]
-  /**
-   * The server's `holderLabel` for a drive that is NOT this feature's and holds
-   * the one slot — a dry run, another feature's drive, or a project drive
-   * (project-level-test-drive decision 9). Absent while the slot is free or ours.
-   */
-  slotHolder?: string
   draftBaseMissing?: DraftBaseMissing
-  openNotes?: number
-  openDefects?: number
-  /**
-   * This lap's review ran and verified nothing (review-as-a-lap-trail
-   * decision 5), with the reason it declared. Merge stops being the primary
-   * action while it stands — the page's own banner carries the one action that
-   * answers it, another review pass.
-   */
-  unverifiedReview?: { reason: string | null }
-  laterLaps?: string | null
-  interruptedBurn?: BurnInterruption
   /** The headless runs the server said stopped before they were finished (`unfinishedRuns`). */
   unfinishedRuns?: readonly string[]
 }
@@ -50,15 +11,4 @@ export interface ResolverInput {
   full: FeatureFull
   ctx: NextStepContext
   live: FeatureFull['sessions'][number] | undefined
-  /** The feature's chat has a conversation on disk — Resume vs Start wording. */
-  resumableChat: boolean
-  /** This lap's work tickets, landed of total — core's one `ticketTally`. */
-  tally: TicketTally
-  /** This lap's failed work tickets; a failed review pass is not one. */
-  failed: number
-  pending: number
-  /** The pending rows themselves, for the Burn label's lap breakdown (#28a). */
-  pendingTickets: FeatureFull['tickets']
-  run: FeatureFull['runs'][number] | undefined
-  running: boolean
 }

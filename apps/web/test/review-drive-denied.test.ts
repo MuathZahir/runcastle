@@ -112,23 +112,25 @@ const render = (props: Partial<Parameters<typeof ReviewDriveDeniedCard>[0]> = {}
     createElement(ReviewDriveDeniedCard, {
       denial: DENIAL,
       readonly: false,
-      primary: true,
-      busy: false,
-      refusal: null,
-      onReview: () => undefined,
       onDismiss: () => undefined,
       ...props,
     }),
   )
 
 describe('ReviewDriveDeniedCard', () => {
-  it('says the drive was refused, names the files, and offers another pass', () => {
+  it('says the drive was refused and names the files, with Dismiss its one control', () => {
     const html = render()
     expect(html).toContain('Review couldn’t drive')
     expect(html).toContain('a.ts')
     expect(html).toContain('b.ts')
-    expect(html).toContain('Agentic review')
     expect(html).toContain('Dismiss')
+  })
+
+  /** Another review is the agent's to run (tickets-and-review-are-tools-not-phases decision 12). */
+  it('offers no review button: the human asks the agent', () => {
+    const html = render()
+    expect(html).not.toContain('Agentic review')
+    expect(html).toContain('ask the agent for another review')
   })
 
   /** A red panel with no date reads as "right now" (as ConflictCard's does). */
@@ -156,51 +158,5 @@ describe('ReviewDriveDeniedCard', () => {
 
   it('falls back to the server’s sentence when the event carried no file list', () => {
     expect(render({ denial: { ...DENIAL, dirtyFiles: [] } })).toContain('uncommitted file(s)')
-  })
-
-  /** The refusal the endpoint hands back names what is STILL in the way, and it
-   *  belongs in the banner rather than a toast that fades off that list. */
-  it('renders the refusal verbatim, in the banner', () => {
-    const refusal =
-      'the working tree is still dirty — the review drive would be denied again. Commit or ' +
-      'discard 1 file(s) first: a.ts'
-    expect(render({ refusal })).toContain('discard 1 file(s) first: a.ts')
-  })
-
-  it('says nothing about a refusal until one has been handed back', () => {
-    expect(render()).not.toContain('still dirty')
-  })
-
-  it('holds the mint shut while one is starting', () => {
-    const html = render({ busy: true })
-    expect(html).toContain('disabled')
-    expect(html).toContain('Starting…')
-  })
-
-  /** Decision 7: the denied pass stays in the trail, and the action mints a
-   *  fresh one — so the banner never claims to resume the reviewer it refused. */
-  it('offers a fresh pass rather than a retry of the refused one', () => {
-    const html = render()
-    expect(html).toContain('a fresh pass is minted and burns')
-    expect(html).not.toContain('Retry review')
-  })
-
-  /** The mint needs no ticket, so the action is there whatever this lap ran —
-   *  the old retry went missing on a lap that had emitted no review ticket. */
-  it('offers the action whatever review tickets this lap emitted', () => {
-    const html = render()
-    expect(html).toContain('Agentic review')
-    expect(html).toContain('Dismiss')
-  })
-
-  /** One primary per view, and it is the next-step bar's: the mint is a
-   *  hairline button at most, and steps down to ghost when another notice on
-   *  the page is carrying the same verb. */
-  it('steps its mint down to ghost when it is not the page’s primary', () => {
-    const ghost = render({ primary: false })
-    expect(ghost).toContain('Agentic review')
-    expect(ghost).toContain('data-variant="ghost"')
-    expect(render()).toContain('data-variant="secondary"')
-    expect(render()).not.toContain('data-variant="primary"')
   })
 })

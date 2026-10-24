@@ -16,7 +16,7 @@ export type ChatNoticeKind = 'preview' | 'spec' | 'tickets' | 'ticket-failed' | 
 export type ChatNoticeHue = 'planning' | 'tickets' | 'building' | 'review' | 'danger'
 
 /** The panel view a notice's action opens beside the chat (design-mode decision 5). */
-export type ChatNoticeTarget = Extract<PanelView, 'body' | 'preview' | 'drive'>
+export type ChatNoticeTarget = Extract<PanelView, 'plan' | 'work' | 'review' | 'drive'>
 
 export interface ChatNotice {
   kind: ChatNoticeKind
@@ -79,7 +79,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
         title: 'Preview ready',
         subtitle: PREVIEW_FILE,
         actionLabel: 'View preview',
-        target: 'preview',
+        target: 'plan',
       })
     }
     if (!names('spec.md')) return null
@@ -89,7 +89,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Spec written',
       subtitle: 'spec.md',
       actionLabel: 'View spec',
-      target: 'body',
+      target: 'plan',
     })
   }
 
@@ -100,7 +100,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Tickets updated',
       subtitle: event.message,
       actionLabel: 'View tickets',
-      target: 'body',
+      target: 'work',
     })
   }
 
@@ -112,7 +112,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: match ? `Ticket #${match[1]} failed` : 'Ticket failed',
       subtitle: match?.[2]?.trim() || event.message,
       actionLabel: 'View run',
-      target: 'body',
+      target: 'work',
     })
   }
 
@@ -127,7 +127,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: failed ? 'Run finished with failures' : 'Run finished',
       subtitle: counts ? `${counts[1]} of ${counts[2]} landed` : summary,
       actionLabel: 'View run',
-      target: 'body',
+      target: 'work',
     })
   }
 
@@ -140,7 +140,7 @@ export function noticeFor(event: EventRow, tickets: readonly NoticeTicket[] = []
       title: 'Review ready',
       subtitle: ticket.title,
       actionLabel: 'View review',
-      target: 'body',
+      target: 'review',
     })
   }
 
