@@ -27,6 +27,7 @@ import type { FeatureListItem } from '../src/lib/api'
 import type { FeatureAction } from '../src/components/FeatureActionsMenu'
 import type { ProjectNavApi } from '../src/lib/use-project-nav'
 import { shortcut } from '../src/lib/platform'
+import { applyStoredTheme, useTheme } from '../src/lib/theme'
 import { installSilentEventSource } from '../../../.runcastle/preview/event-source'
 import { PROJECT_ID, project } from '../../../.runcastle/preview/shell-fakes'
 import { busyFeatures, quietFeatures, SELECTED_TITLE } from './sidebar-data'
@@ -38,6 +39,7 @@ import { busyFeatures, quietFeatures, SELECTED_TITLE } from './sidebar-data'
  * navigation do nothing here.
  */
 
+applyStoredTheme()
 installSilentEventSource()
 document.addEventListener(
   'click',
@@ -67,6 +69,7 @@ const rowActions: FeatureAction[] = [{ key: 'copy-link', label: 'Copy link', onS
 type Sample = 'busy' | 'quiet' | 'unprepared'
 
 function Design({ features, sample }: { features: FeatureListItem[]; sample: Sample }) {
+  const theme = useTheme()
   const [selectedId, setSelectedId] = useState(() => features.find((f) => f.title === SELECTED_TITLE)?.id ?? null)
   const busy = sample !== 'quiet'
   const { inbox, lanes } = sidebarLanes(features)
@@ -143,8 +146,8 @@ function Design({ features, sample }: { features: FeatureListItem[]; sample: Sam
           healthTip="Server ok — live updates streaming"
           sandbox="docker"
           notify={{ state: 'on', title: '', onToggle: noop }}
-          theme="dark"
-          onToggleTheme={noop}
+          theme={theme.resolved}
+          onToggleTheme={theme.toggle}
           onOpenSettings={noop}
         />
       </div>
@@ -169,6 +172,7 @@ const SAMPLES: { key: Sample; label: string; features: FeatureListItem[] }[] = [
 
 function Page() {
   const [sample, setSample] = useState<Sample>('busy')
+  const theme = useTheme()
   const current = SAMPLES.find((s) => s.key === sample) ?? SAMPLES[0]
   return (
     <div className="flex h-screen flex-col bg-canvas">
@@ -187,6 +191,13 @@ function Page() {
             {s.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={theme.toggle}
+          className="h-6 cursor-pointer rounded-md px-2 hover:bg-surface-hover/50 hover:text-text-secondary"
+        >
+          {theme.resolved === 'dark' ? 'Light theme' : 'Dark theme'}
+        </button>
         <span className="ml-auto">Hover the Orchestrator · click a shelf · hover a row for its menu</span>
       </div>
       <div key={sample} className="flex min-h-0 flex-1 px-4">
