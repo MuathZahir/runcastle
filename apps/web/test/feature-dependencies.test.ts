@@ -11,6 +11,7 @@ import {
   sortForSidebar,
   triage,
   triageOf,
+  upNextBasesDiffer,
 } from '../src/lib/feature-ui'
 import { full, listItem } from './fixtures'
 
@@ -168,6 +169,7 @@ describe('the read-only dependency lines', () => {
   it('lists the drafts a feature blocks, each a link to its workspace', () => {
     const html = renderToStaticMarkup(
       createElement(BlocksLine, {
+        featureId: 'feat_me',
         projectId: 'proj_1',
         blocks: [
           { featureId: 'a', slug: 'alpha', title: 'Alpha', upNext: false },
@@ -181,6 +183,114 @@ describe('the read-only dependency lines', () => {
   })
 
   it('renders no Blocks line when nothing waits on the feature', () => {
-    expect(renderToStaticMarkup(createElement(BlocksLine, { projectId: 'proj_1', blocks: [] }))).toBe('')
+    expect(renderToStaticMarkup(createElement(BlocksLine, { projectId: 'proj_1', featureId: 'feat_me', blocks: [] }))).toBe('')
+  })
+
+  it('splits the up-next dependents this merge starts from the backlog ones it blocks', () => {
+    const html = renderToStaticMarkup(
+      createElement(BlocksLine, {
+        projectId: 'proj_1',
+        featureId: 'feat_me',
+        blocks: [
+          { featureId: 'feat_y', slug: 'y', title: 'Y', upNext: true },
+          { featureId: 'feat_w', slug: 'w', title: 'W', upNext: true },
+          { featureId: 'feat_p', slug: 'parked', title: 'Parked', upNext: false },
+        ],
+        features: [
+          listItem({ id: 'feat_y', slug: 'y', status: 'draft', dependsOn: [dep('me'), dep('z'), MERGED] }),
+          listItem({ id: 'feat_w', slug: 'w', status: 'draft', dependsOn: [dep('me')] }),
+        ],
+      }),
+    )
+    const [starts, blocks] = html.split('Blocks:')
+    expect(starts).toContain('Starts when this ships:')
+    expect(starts).toMatch(/>y<\/a> \(also waits on z\),/)
+    expect(starts).toMatch(/>w<\/a><\/span>/)
+    expect(starts).not.toContain('parked')
+    expect(blocks).toMatch(/>parked<\/a>/)
+    expect(blocks).not.toMatch(/>y<\/a>/)
+  })
+
+  it('shows only the Starts line when every dependent is up next', () => {
+    const html = renderToStaticMarkup(
+      createElement(BlocksLine, {
+        projectId: 'proj_1',
+        featureId: 'feat_me',
+        blocks: [{ featureId: 'feat_y', slug: 'y', title: 'Y', upNext: true }],
+      }),
+    )
+    expect(html).toContain('Starts when this ships:')
+    expect(html).not.toContain('Blocks:')
+  })
+})
+
+describe('the up-next mark on an unstarted feature’s bar', () => {
+  const unstarted = (dependsOn: DependencyRef[], upNext = false, upNextProblem: string | null = null) => ({
+    ...full({ status: 'draft', phase: 'planning', upNext }),
+    dependsOn,
+    upNextProblem,
+  })
+
+  it('offers Start when ready beside the disabled Start of a blocked backlog feature', () => {
+    const ns = nextStep(unstarted([dep('auth')]), { driving: false })
+    expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft', disabled: 'Waits on auth (building)' })
+    const markUpNext = ns.secondary.find((a) => a.kind === 'markUpNext')
+    expect(markUpNext?.label).toBe('Start when ready')
+    expect(markUpNext?.disabled).toBeUndefined()
+    expect(ns.note).toBe("Start when ready: starts by itself when auth ships; it can't be undone.")
+  })
+
+  it('says an up-next feature starts by itself, and offers Move to backlog', () => {
+    const ns = nextStep(unstarted([dep('auth'), dep('ui'), MERGED], true), { driving: false })
+    expect(ns.kick).toBe('UP NEXT')
+    expect(ns.title).toBe('Starts by itself when auth and ui ship')
+    expect(ns.desc).toContain('no tokens are spent')
+    expect(ns.primary).toBeUndefined()
+    expect(ns.secondary).toEqual([{ label: 'Move to backlog', kind: 'moveToBacklog' }])
+  })
+
+  it('says an up-next feature waiting on a backlog feature will not start until that one is started', () => {
+    const idea = dep('idea', { status: 'draft', phase: 'planning' })
+    const ns = nextStep(unstarted([dep('auth'), idea], true), { driving: false })
+    expect(ns.title).toBe("Won't start until you start idea")
+    expect(ns.secondary.map((a) => a.kind)).toEqual(['moveToBacklog'])
+  })
+
+  it('gives a stuck feature its reason, an enabled Start when nothing is left, and Move to backlog', () => {
+    const ns = nextStep(unstarted([MERGED], true), { driving: false })
+    expect(ns.alert).toBe(true)
+    expect(ns.desc).toBe('nothing left to wait on — start it or move it to the backlog')
+    expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
+    expect(ns.secondary.map((a) => [a.kind, a.disabled])).toEqual([
+      ['selfPlan', undefined],
+      ['moveToBacklog', undefined],
+    ])
+  })
+
+  it('prefers the server’s autostart problem as the stuck reason', () => {
+    const problem = "didn't start by itself: its dependencies merged into different branches (a → main, b → dev) — pick a base and Start"
+    const ns = nextStep(unstarted([MERGED], true, problem), { driving: false, draftBaseMissing: 'unpicked' })
+    expect(ns.desc).toBe(problem)
+    expect(ns.primary?.disabled).toBe('pick a branch first')
+    expect(upNextBasesDiffer(problem)).toBe(true)
+    expect(upNextBasesDiffer("couldn't start by itself: git refused")).toBe(false)
+    expect(upNextBasesDiffer(null)).toBe(false)
+  })
+
+  it('keeps Start disabled with the archived reason while an archived dependency remains', () => {
+    const ns = nextStep(unstarted([ARCHIVED], true), { driving: false })
+    expect(ns.desc).toBe('old was archived — remove it or move this to the backlog')
+    expect(ns.primary?.disabled).toBe('Waits on old (archived — remove it to start)')
+    expect(ns.secondary.map((a) => a.kind)).toContain('moveToBacklog')
+  })
+
+  it('leaves ready-to-start and plain backlog bars as they were', () => {
+    for (const deps of [[MERGED], []]) {
+      const ns = nextStep(unstarted(deps), { driving: false })
+      expect(ns.title).toBe('Start this feature')
+      expect(ns.primary).toEqual({ label: 'Start', kind: 'startDraft' })
+      expect(ns.secondary).toEqual([{ label: 'Plan it yourself', kind: 'selfPlan' }])
+      expect(ns.note).toBeUndefined()
+    }
   })
 })

@@ -131,24 +131,70 @@ export function DependenciesRow({
   )
 }
 
-/**
- * The drafts still waiting on this feature (ADR-0013 decision 6) — read-only,
- * because the edge is edited from the dependent's side. Shown so the edge is
- * in view before this feature is archived or deleted.
- */
-export function BlocksLine({ projectId, blocks }: { projectId: string; blocks: BlockRef[] }) {
+function DependentLinks({
+  label,
+  projectId,
+  blocks,
+  alsoWaitsOn,
+}: {
+  label: string
+  projectId: string
+  blocks: BlockRef[]
+  alsoWaitsOn?: (b: BlockRef) => string[]
+}) {
   if (blocks.length === 0) return null
   return (
     <p className={LINE}>
-      <span>Blocks:</span>
-      {blocks.map((b, i) => (
-        <span key={b.featureId}>
-          <a className={cx(LINK, 'font-mono')} href={pathFor({ kind: 'feature', projectId, featureSlug: b.slug })} title={b.title}>
-            {b.slug}
-          </a>
-          {i < blocks.length - 1 && ','}
-        </span>
-      ))}
+      <span>{label}</span>
+      {blocks.map((b, i) => {
+        const others = alsoWaitsOn?.(b) ?? []
+        return (
+          <span key={b.featureId}>
+            <a className={cx(LINK, 'font-mono')} href={pathFor({ kind: 'feature', projectId, featureSlug: b.slug })} title={b.title}>
+              {b.slug}
+            </a>
+            {others.length > 0 && ` (also waits on ${others.join(', ')})`}
+            {i < blocks.length - 1 && ','}
+          </span>
+        )
+      })}
     </p>
+  )
+}
+
+/**
+ * The drafts still waiting on this feature (ADR-0013 decision 6) — read-only,
+ * because the edge is edited from the dependent's side. Shown so the edge is
+ * in view before this feature is archived or deleted, and split by what this
+ * feature's merge does to them (waiting-is-not-backlog decision 13): the
+ * up-next ones it starts — or moves one step closer, named with what else
+ * they wait on, looked up in `features` — and the backlog ones it only blocks.
+ */
+export function BlocksLine({
+  projectId,
+  featureId,
+  blocks,
+  features = [],
+}: {
+  projectId: string
+  featureId: string
+  blocks: BlockRef[]
+  /** The project's feature list, for each up-next dependent's other dependencies. */
+  features?: FeatureListItem[]
+}) {
+  const alsoWaitsOn = (b: BlockRef): string[] =>
+    (features.find((f) => f.id === b.featureId)?.dependsOn ?? [])
+      .filter((d) => !d.satisfied && d.featureId !== featureId)
+      .map((d) => d.slug)
+  return (
+    <>
+      <DependentLinks
+        label="Starts when this ships:"
+        projectId={projectId}
+        blocks={blocks.filter((b) => b.upNext)}
+        alsoWaitsOn={alsoWaitsOn}
+      />
+      <DependentLinks label="Blocks:" projectId={projectId} blocks={blocks.filter((b) => !b.upNext)} />
+    </>
   )
 }
