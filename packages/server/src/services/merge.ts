@@ -1,4 +1,4 @@
-import { unresolvedMergeConflict } from '@runcastle/core'
+import { AUTOSTART_FAILED, unresolvedMergeConflict } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { stopDesignServer } from './design'
 import { emit, listAfter } from './events'
@@ -7,6 +7,7 @@ import { requireNotDraft } from './features'
 import * as git from './git'
 import { promoteOutcomeDoc } from './outcome'
 import { getFeatureRow, projectForFeature, setFeatureStatus, setPhase } from './repo'
+import { startUpNextDependents } from './up-next'
 
 /** What a merge click answers: landed, or the conflict and the files it stands on. */
 export interface MergeFlowResult {
@@ -52,6 +53,16 @@ export async function mergeFeatureFlow(ctx: AppCtx, featureId: string): Promise<
     await promoteOutcomeDoc(ctx, project, feature, res.target, delta)
     setPhase(ctx, featureId, 'shipped', 'feature.shipped', `merged to ${res.target}`)
     setFeatureStatus(ctx, featureId, 'shipped')
+    // Best-effort: the merge has landed, so a start that fails is an event on
+    // the dependent (startUpNextDependents records them), never a failed ship.
+    try {
+      await startUpNextDependents(ctx, getFeatureRow(ctx, featureId))
+    } catch (err) {
+      emit(ctx, featureId, {
+        type: AUTOSTART_FAILED,
+        message: `couldn't start up-next dependents: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    }
     // Before the worktree goes: the design server runs inside it.
     await stopDesignServer(ctx, featureId, 'shipped')
     // Last, and best-effort: the merge has landed, so a worktree that will

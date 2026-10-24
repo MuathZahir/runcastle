@@ -293,7 +293,7 @@ export function requireNotDraft(feature: Feature): void {
 export async function startDraft(
   ctx: AppCtx,
   featureId: string,
-  opts: { baseBranch?: string } = {},
+  opts: { baseBranch?: string; autoStartedBy?: string } = {},
 ): Promise<Feature> {
   const feature = getFeatureRow(ctx, featureId)
   if (feature.status !== 'draft') {
@@ -319,10 +319,17 @@ export async function startDraft(
 
   emit(ctx, featureId, {
     type: 'feature.started',
-    message: branchReady
-      ? `feature ${feature.slug} started (${feature.branch} ← ${baseBranch})`
-      : `feature ${feature.slug} started (branch pending)`,
-    data: { branch: feature.branch, baseBranch, branchReady },
+    message: opts.autoStartedBy
+      ? `feature ${feature.slug} started by itself: \`${opts.autoStartedBy}\` shipped (${feature.branch} ← ${baseBranch})`
+      : branchReady
+        ? `feature ${feature.slug} started (${feature.branch} ← ${baseBranch})`
+        : `feature ${feature.slug} started (branch pending)`,
+    data: {
+      branch: feature.branch,
+      baseBranch,
+      branchReady,
+      ...(opts.autoStartedBy ? { autoStartedBy: opts.autoStartedBy } : {}),
+    },
   })
 
   // The brief parked in the column becomes the file, through the same verbatim
