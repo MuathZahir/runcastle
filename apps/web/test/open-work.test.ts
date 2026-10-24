@@ -28,8 +28,6 @@ vi.mock('../src/trpc', () => {
         delivery: { useQuery: () => ({ data: undefined }) },
         edit: { useMutation: mutation },
         remove: { useMutation: mutation },
-        toggle: { useMutation: mutation },
-        reopen: { useMutation: mutation },
       },
       findings: { dismiss: { useMutation: mutation }, reopen: { useMutation: mutation } },
     },
@@ -176,7 +174,7 @@ describe('OpenWork', () => {
     expect(renderSettled(work)).toContain('the save drops the edited value')
   })
 
-  it('files carried, quick-fixed and handled notes into the settled half, reopenable', () => {
+  it('files carried, quick-fixed and handled notes from earlier data into the settled half', () => {
     const work = {
       notes: [
         note({ id: 'n1', status: 'carried', carriedLap: 3, text: 'carried one' }),
@@ -187,9 +185,7 @@ describe('OpenWork', () => {
     }
     const settled = renderSettled(work)
     expect(settled).not.toContain('carried into lap')
-    expect(settled).toContain('>Reopen<')
     expect(settled).toContain('#9 fix the chip')
-    // A handled note is struck through and keeps its toggle back to open.
     expect(settled).toContain('line-through')
     // None of them is still asking for attention.
     expect(render(work)).toContain('Nothing needs attention')
