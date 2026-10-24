@@ -277,7 +277,7 @@ export function AnnotationOverlay({
 
       <div className="absolute inset-x-3 bottom-3 flex flex-col gap-2 rounded-lg bg-surface-raised p-2 shadow-popover animate-rise-in">
         {failed && (
-          <p className="m-0 px-1 text-sm text-danger" role="alert">
+          <p className="m-0 px-1 text-sm text-danger-text" role="alert">
             {failed}
           </p>
         )}

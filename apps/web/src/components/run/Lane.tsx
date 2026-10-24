@@ -290,7 +290,7 @@ export function Lane({
         <div className="flex flex-col gap-2 pr-2 pb-3 pl-17.5">
           {reason && (
             <div
-              className={cx('min-w-0 truncate text-xs', bad ? 'text-danger' : 'text-text-tertiary')}
+              className={cx('min-w-0 truncate text-xs', bad ? 'text-danger-text' : 'text-text-tertiary')}
               title={ticket.error}
             >
               <MessageWithSettingsLink text={errorHeadline} />

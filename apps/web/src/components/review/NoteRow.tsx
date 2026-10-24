@@ -77,8 +77,8 @@ function FindingDetail({ finding }: { finding: ReviewFinding }) {
  */
 const EVIDENCE_TONE: Record<FindingStanding['evidence'], string> = {
   carried: 'text-text-tertiary',
-  attested: 'text-warning',
-  verified: 'text-success',
+  attested: 'text-warning-text',
+  verified: 'text-success-text',
 }
 
 export function NoteRow({
@@ -181,13 +181,13 @@ export function NoteRow({
               // (decision 22).
               <span className="font-mono tabular-nums">{fmtClock(moment)} · earlier walkthrough</span>
             ))}
-          {why && <span className="text-warning">{why}</span>}
+          {why && <span className="text-warning-text">{why}</span>}
           {standing && <span>{standing}</span>}
           {note?.sentAt !== undefined && <span>{waitingForAgent ? 'Waiting for the agent' : 'Sent to the agent'}</span>}
           {disposition && <span className={EVIDENCE_TONE[disposition.evidence]}>{disposition.text}</span>}
           {fixing &&
             (readonly || !onViewLane ? (
-              <span className="text-phase-implementation">being fixed by #{fixing.seq}</span>
+              <span className="text-phase-implementation-text">being fixed by #{fixing.seq}</span>
             ) : (
               <button
                 type="button"

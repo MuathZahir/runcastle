@@ -443,7 +443,7 @@ export function WalkthroughPlayer({
                 type="button"
                 className={
                   marker.noteIds.length > 1
-                    ? 'absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-accent text-xs leading-none text-on-primary transition-transform duration-(--dur-1) ease-app hover:scale-110'
+                    ? 'absolute top-1/2 flex size-4 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-accent-text text-xs leading-none text-on-primary transition-transform duration-(--dur-1) ease-app hover:scale-110'
                     : 'absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-accent ring-2 ring-surface transition-transform duration-(--dur-1) ease-app hover:scale-125'
                 }
                 style={{ left: `${Math.min(100, (marker.at / span) * 100)}%` }}

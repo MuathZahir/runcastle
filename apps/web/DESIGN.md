@@ -194,7 +194,9 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 `border-border-strong`, `text-text`, `text-text-secondary`, `text-text-tertiary`,
 `text-text-disabled`, `text-icon`, `bg-primary` / `text-on-primary`, `text-accent`,
 `text-accent-text`, `bg-accent-subtle`, `text-success`, `text-warning`,
-`text-danger`, `bg-danger-subtle`, `text-phase-*`.
+`text-danger`, `bg-danger-subtle`, `text-phase-*`, and the word peers
+`text-success-text`, `text-warning-text`, `text-danger-text`,
+`text-phase-*-text` (every phase but `draft`).
 
 - Neutrals are a faint cool slate (hue ≈225°, low chroma), not pure zinc: the
   chrome reads as a material, never as flat grey. Keep new greys on that ramp.
@@ -210,12 +212,22 @@ Tokens live in `src/theme.css` (both themes). Use them by utility:
 - `accent` (blue) is spent only on focus, selection, links, *live* and the review
   phase. Never a button fill, never a gradient, never a glow. Violet is retired.
 - `success` / `warning` / `danger` appear as 6px dots, 16px glyphs or short words.
+- **Marks wear the hue, words wear its `-text` peer.** Every coloured hue
+  (`accent`, `success`, `warning`, `danger`, each phase) has a word peer
+  (`accent-text`, `success-text`, …, `phase-review-text`). A dot, glyph, icon,
+  ring, border or wash takes the hue, which only has to hold 3:1; a word, count,
+  link or label painted in a colour takes the peer, which holds 4.5:1. Where one
+  element colours both, split it: the peer on the element, the hue on the glyph
+  (`text-danger-text [&_svg]:text-danger`). A solid hue fill that carries words
+  or numbers (the walkthrough's numbered marker) wears the peer as its fill. In
+  dark each peer equals its hue.
 - Phases each wear a hue, in pipeline order: ideation pink, spec/planning teal,
   tickets amber (`warning`), implementation/building orange, review blue
   (`accent`), shipped green (`success`); draft stays `text-disabled`. The hue is
   on the glyph, and — only for the stepper's current step — a 14% wash of it
-  behind the step. Never on words, rows or selection: selection stays
-  `surface-selected`.
+  behind the step. Never on rows or selection: selection stays
+  `surface-selected`. A word that must name a phase in its colour (a notice
+  eyebrow, "being fixed by") wears the phase's `-text` peer.
 - Dark is the default theme; light is a full peer (`<html data-theme="light">`).
 
 ## Type

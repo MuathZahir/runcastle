@@ -99,7 +99,7 @@ export function SendToAgent({
           Send to agent
         </Button>
       </div>
-      {failure && <p className="m-0 text-xs text-pretty text-warning">{failure}</p>}
+      {failure && <p className="m-0 text-xs text-pretty text-warning-text">{failure}</p>}
       {driveActive &&<p className="m-0 text-xs text-text-tertiary">{DRIVE_HOLDS_THE_AGENT}</p>}
     </div>
   )

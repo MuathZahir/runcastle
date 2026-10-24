@@ -123,7 +123,7 @@ export function DependenciesRow({
         </Combobox>
       </div>
       {error && (
-        <p className="m-0 text-xs text-danger" role="alert">
+        <p className="m-0 text-xs text-danger-text" role="alert">
           {error}
         </p>
       )}

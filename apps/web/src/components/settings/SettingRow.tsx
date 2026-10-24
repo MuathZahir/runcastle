@@ -404,7 +404,7 @@ export function SettingRow({
                 // "re-prepare to refresh it" while offering no way to and
                 // nothing on screen mentioning one.
                 <span
-                  className="inline-flex items-center gap-1.5 text-xs text-warning"
+                  className="inline-flex items-center gap-1.5 text-xs text-warning-text"
                   title="Measured a long time ago — “Re-prepare the project”, at the foot of the features rail, refreshes it"
                 >
                   <StatusDot tone="warning" />
@@ -413,9 +413,9 @@ export function SettingRow({
               )}
             </div>
           )}
-          {restart && <div className="text-xs text-warning">Restart the server to apply</div>}
+          {restart && <div className="text-xs text-warning-text">Restart the server to apply</div>}
           {invalid && (
-            <div id={errorId} role="alert" className="text-xs text-danger">
+            <div id={errorId} role="alert" className="text-xs text-danger-text">
               {invalid}
             </div>
           )}
@@ -635,7 +635,7 @@ function ProvenanceChip({
       <span className="truncate">{chip.text}</span>
     </>
   )
-  const word = chip.tone === 'warn' ? 'text-warning' : 'text-text-secondary'
+  const word = chip.tone === 'warn' ? 'text-warning-text' : 'text-text-secondary'
   if (!onOpenEvidence)
     return <span className={cx('inline-flex min-w-0 items-center gap-1.5 text-xs', word)}>{body}</span>
   return (

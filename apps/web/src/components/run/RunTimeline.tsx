@@ -53,7 +53,7 @@ export function RunTimeline({ events }: { events: readonly EventRow[] }) {
                   carrying a warning, which wraps: it is the only kind whose text
                   is worth more than the density it costs. */}
               <span
-                className={cx('min-w-0 flex-1', warns ? 'break-words text-warning' : 'truncate text-text-secondary')}
+                className={cx('min-w-0 flex-1', warns ? 'break-words text-warning-text' : 'truncate text-text-secondary')}
               >
                 {/* A warning's fix is often a Settings → Workers pointer (the
                     drifted sandbox CLI's Rebuild); make it the link there. */}
