@@ -274,7 +274,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
       <li><i class="dot"></i>The dark theme</li>
       <li><i class="dot"></i>Grounds, borders, primary text, the primary button</li>
       <li><i class="dot"></i>The sidebar grain (canvas unchanged, so no re-check)</li>
-      <li><i class="dot"></i>The terminal's ANSI text colours</li>
+      <li><i class="dot"></i>The terminal's ANSI colours that no token names</li>
     </ul></div>
   </div>
 </section>
@@ -307,7 +307,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Each hue gets a word peer; the hue itself lightens to the 3:1 floor', 'One token per hue cannot lighten without failing words, which already sit near 4.5:1. The accent already splits this way (accent / accent-text).', 'assumed'],
     ['The dark theme does not change', 'Out of scope by the brief. Dark word peers equal their hue, so dark renders exactly as today.', 'assumed'],
     ['Status words that fail today get fixed, even if a shade deeper', 'Success and warning words are under 4.5:1 on the canvas today. Fixing them makes them a shade deeper; warning leans orange so it reads less brown.', 'assumed'],
-    ['The terminal follows the tokens; its own text colours stay', 'The terminal mirrors a few tokens and must match the page. Its ANSI colours are all words, so they have no room to lighten.', 'assumed'],
+    ['The terminal follows the tokens; its own text colours stay', 'The terminal mirrors a few tokens and must match the page. Its red, green, yellow and blue come from the tokens and are program output, so they read the word peers. The other ANSI colours stay.', 'assumed'],
     ['One lap, judged on a palette page', 'A palette is judged by looking, and real pieces of the app show how the colours feel together. A test holds the floors.', 'assumed'],
     ['Lighter and cleaner, not only lighter', 'You said "brownish", "deep" and "heavy". A cleaner hue at the floor reads both lighter and brighter.', 'assumed'],
     ['A hue fill that carries words uses the word peer', 'White numbers on the lighter accent would fall to about 3.3:1. The word peer keeps them at 4.5:1.', 'assumed']

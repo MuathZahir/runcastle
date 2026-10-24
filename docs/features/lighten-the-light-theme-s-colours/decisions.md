@@ -106,11 +106,13 @@ only lighten the hues.
 ## 6. The terminal follows the tokens; its own text colours stay
 **Decision:** The embedded terminal's copy of the theme tokens
 (`lib/terminal.ts`, which mirrors a few tokens into xterm) takes the new light
-values. Its ANSI text palette (the sixteen colours programs print in) does not
-change.
+values. Its red, green, yellow and blue text colours, which it takes from the
+danger, success, warning and accent tokens, read the word peers instead, so
+program output keeps 4.5:1; the cursor stays on the hue. The rest of its ANSI
+text palette (the colours the tokens have no name for) does not change.
 **Why:** The mirror must match the tokens or the terminal disagrees with the
-page around it. The ANSI colours are all words on the inset ground, so
-decision 2 leaves them no room to lighten.
+page around it. Every ANSI colour is words on the inset ground, so decision 2
+leaves them no room to lighten.
 **Assumed.** Alternative: retune the ANSI light palette as well, to the same
 floors.
 

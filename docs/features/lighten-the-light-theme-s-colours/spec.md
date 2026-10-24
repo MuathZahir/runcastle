@@ -84,9 +84,13 @@ cleaner and not only lighter. `danger-subtle` and `accent-subtle` stay; the
 peer must clear 4.5:1 on them where words sit on them (error banners).
 
 **The terminal** (decision 6). The embedded terminal keeps its own copy of a
-few theme tokens for xterm; its light copy takes the new values (the hue for
-cursor, selection and similar marks; any word use takes the peer). Its ANSI
-text palette is unchanged.
+few theme tokens for xterm, with fallback values restated for when no
+stylesheet is loaded. Its light fallbacks take the new values. Its ANSI red,
+green, yellow and blue — program output, so words — read the word peers
+(`danger-text`, `success-text`, `warning-text`, `accent-text`) instead of the
+hues; the cursor stays on the accent hue. Dark renders exactly as today (dark
+blue keeps today's dark accent value). The rest of the ANSI palette is
+unchanged.
 
 **The contrast check** (decision 7). A test reads the light block of the theme
 file — the same way the existing reduced-motion and native-reset tests read
