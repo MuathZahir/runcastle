@@ -95,13 +95,11 @@ export function RunBody({
     onSuccess: () => utils.feature.get.invalidate({ id: featureId }),
     onError: (e: { message: string }) => toast.push(e.message),
   }
-  const retry = trpc.ticket.retry.useMutation(onMutated)
   // Reassignment's one door, the same the tickets-phase ledger uses. The
   // scheduler launches each lane from the live row, so an edit here reaches
   // every ticket this run has not started yet.
   const edit = trpc.ticket.edit.useMutation(onMutated)
   const stop = trpc.ticket.stop.useMutation(onMutated)
-  const waive = trpc.ticket.cancel.useMutation(onMutated)
   // Resolve in terminal lands on the Chat tab, where the session it opens is.
   const landOnChat = useLandOnChat(featureId)
   const launch = trpc.feature.launchSession.useMutation({
@@ -113,10 +111,8 @@ export function RunBody({
   })
   const cancelRun = trpc.run.cancel.useMutation(onMutated)
   const busy =
-    retry.isPending ||
     edit.isPending ||
     stop.isPending ||
-    waive.isPending ||
     launch.isPending ||
     cancelRun.isPending
 
@@ -173,12 +169,6 @@ export function RunBody({
   // launcher refuses while a run holds the feature branch or another terminal
   // is open — so the lane greys the button rather than offering a certain error.
   const terminalBlocked = live || run.data?.status === 'running'
-  // ADR-0006 refuses `ticket.retry` while a run is live, so the gesture that
-  // composes one appears only once the run is over — mid-run the model menu
-  // alone is the control. A run whose status has not arrived yet counts as
-  // live: offering a refused retry would land the reassignment and nothing else.
-  const runLive = run.data ? run.data.status === 'running' : !!shownRunId
-
   if (!runId && !live) {
     return (
       <EmptyState
@@ -196,25 +186,6 @@ export function RunBody({
       () => toast.push('copy failed'),
     )
   }
-
-  // Retry's own toasts, shared by the plain retry and the one composed after a
-  // reassignment — the second is the same burn and says the same things.
-  const retryTicket = (ticket: Ticket) =>
-    retry.mutate(
-      { ticketId: ticket.id },
-      {
-        onSuccess: (r) => {
-          if (r.resolvingConflict) {
-            toast.push(`resolving ticket #${ticket.seq}'s conflict with an agent`, 'info')
-          } else if (r.resumedFrom) {
-            toast.push(
-              `resuming ticket #${ticket.seq} from ${r.preservedCommits} preserved commit(s)`,
-              'info',
-            )
-          }
-        },
-      },
-    )
 
   const lane = (ticket: Ticket, index: number) => {
     const fact = facts.get(ticket.id)
@@ -241,41 +212,11 @@ export function RunBody({
         // Every lane is `busy` while any mutation runs; only the one being
         // stopped is stopping.
         stopping={stop.isPending && stop.variables?.ticketId === ticket.id}
-        waiving={waive.isPending && waive.variables?.ticketId === ticket.id}
         terminalBlocked={terminalBlocked}
         onCopySha={copySha}
         onModel={(model) => edit.mutate({ ticketId: ticket.id, model })}
-        onRetry={() => retryTicket(ticket)}
-        onRetryWithModel={
-          runLive
-            ? undefined
-            : (model) =>
-                // Two existing calls as one gesture (decision 4): the edit lands
-                // first, and the burn it starts resolves the fresh row — so the
-                // retry runs on the model just chosen.
-                edit.mutate(
-                  { ticketId: ticket.id, model },
-                  { onSuccess: () => retryTicket(ticket) },
-                )
-        }
-        onRetryFresh={() => retry.mutate({ ticketId: ticket.id, fresh: true })}
-        onWaive={() =>
-          waive.mutate(
-            { ticketId: ticket.id, reason: 'waived from the run view' },
-            {
-              onSuccess: (r) => {
-                toast.push(
-                  `ticket #${ticket.seq} set aside — it stays visible as unfinished work at review`,
-                  'info',
-                )
-                // The waive killed a live agent and the kill ran out of time —
-                // the lane reads waived either way, so this is the only place
-                // the human hears that something of it may still be running.
-                if (!r.confirmed) toast.push(STOP_TIMEOUT)
-              },
-            },
-          )
-        }
+        // No Retry or Waive here: a failed ticket is the agent's to retry or set
+        // aside, from its round wake (tickets-and-review decision 12).
         onStop={() =>
           stop.mutate(
             { ticketId: ticket.id },

@@ -162,10 +162,9 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   if (feature.status === 'shipped') return { kind: 'merged', label: 'Merged' }
 
   const latest = rounds.at(-1)
-  const working = (): FeatureStatus => {
-    const round = latest?.round ?? 1
-    return { kind: 'working', label: `Working · Round ${round}`, round }
-  }
+  // Before any round, an agent at work is just working: there is no round to name.
+  const working = (): FeatureStatus =>
+    latest ? { kind: 'working', label: `Working · Round ${latest.round}`, round: latest.round } : { kind: 'working', label: 'Working' }
   if (latest?.status === 'running') return working()
 
   if (input.selfPlanning) return { kind: 'working', label: 'Planning by itself' }
@@ -198,20 +197,9 @@ function statusOf(input: FeatureStatusInput): FeatureStatus {
   if (failed && failedSinceWake && failed.at > (latest?.startedAt ?? -Infinity)) {
     return { kind: 'waiting', label: 'Waiting for you', why: wakeFailedWhy(failed.exitCode), primary: 'chat' }
   }
-  // Once a round has returned and the agent's turn is over, nothing runs and
-  // nobody works: a stopped or failed round wakes nobody to finish it (Stop
-  // marks the feature stopped, a provider-limit halt is not woken — decision
-  // 15), and an agent that reported a succeeded round without declaring ready
-  // is waiting on the human's reply. Nothing moves until the human replies.
-  if (latest) {
-    const why =
-      latest.status === 'cancelled'
-        ? STOPPED
-        : latest.status === 'failed'
-          ? `round ${latest.round} failed`
-          : `round ${latest.round} done`
-    return { kind: 'waiting', label: 'Waiting for you', why }
-  }
+  // Nothing runs and nothing is asked: the sidebar files this under In progress,
+  // so the header must not claim the feature waits on the human. A stopped round
+  // already says so through the waiting reason Stop sets.
   return { kind: 'talking', label: TALKING }
 }
 

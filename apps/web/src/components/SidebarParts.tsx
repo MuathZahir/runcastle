@@ -76,7 +76,7 @@ export function featureStateWords(f: FeatureListItem): string {
     if (nm?.kind === 'waiting') return nm.label === READY_TO_TEST ? 'Ready to test' : capitalise(nm.label)
     return 'Waiting on you'
   }
-  if (lane === 'agentWorking') return f.activeRun ? `Building${progress ? ` · ${progress}` : ''}` : 'Agent working'
+  if (lane === 'agentWorking') return f.activeRun ? `Working${progress ? ` · ${progress}` : ''}` : 'Agent working'
   // A waiting draft says what it waits on (ADR-0013 decision 6); a ready one is just in the backlog.
   if (f.status === 'draft') return rowChip(f).text
   if (f.status === 'shipped') return 'Shipped'

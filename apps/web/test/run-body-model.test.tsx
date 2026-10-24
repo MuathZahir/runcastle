@@ -106,32 +106,17 @@ describe('reassigning a lane mid-run', () => {
     expect(server.calls).toEqual([{ call: 'ticket.edit', input: { ticketId: 't1', model: '' } }])
   })
 
-  /** ADR-0006: the server refuses a retry mid-run, so nothing offers one. */
-  it('leaves a live run’s failed lane the retry it has today, and no retry-on-a-model', () => {
-    mount()
-    const lane = document.getElementById('lane-t2')!
-    expect(within(lane).queryByRole('combobox', { name: 'Retry on…' })).toBeNull()
-    fireEvent.click(within(lane).getByRole('button', { name: 'Retry' }))
-    expect(server.calls).toEqual([{ call: 'ticket.retry', input: { ticketId: 't2' } }])
-  })
-
-  it('retries on a chosen model as one gesture, the edit first and the same toast after', () => {
-    server.runStatus = 'done'
-    mount()
-    pick('lane-t2', 'Retry on…', /gpt-5.6-sol/)
-    expect(server.calls).toEqual([
-      { call: 'ticket.edit', input: { ticketId: 't2', model: 'gpt-5.6-sol' } },
-      { call: 'ticket.retry', input: { ticketId: 't2' } },
-    ])
-    expect(server.toasts).toContain('resuming ticket #2 from 2 preserved commit(s)')
-  })
-
-  it('keeps the plain retry on the model the ticket already has', () => {
-    server.runStatus = 'done'
-    mount()
-    fireEvent.click(within(document.getElementById('lane-t2')!).getByRole('button', { name: 'Retry' }))
-    expect(server.calls).toEqual([{ call: 'ticket.retry', input: { ticketId: 't2' } }])
-    expect(server.toasts).toContain('resuming ticket #2 from 2 preserved commit(s)')
+  /** A failed ticket is the agent's to retry or set aside (tickets-and-review decision 12). */
+  it('offers a failed lane no Retry, Retry on… or Waive, live run or not', () => {
+    for (const status of ['running', 'done'] as const) {
+      server.runStatus = status
+      mount()
+      const lane = document.getElementById('lane-t2')!
+      expect(within(lane).queryByRole('button', { name: 'Retry' })).toBeNull()
+      expect(within(lane).queryByRole('combobox', { name: 'Retry on…' })).toBeNull()
+      expect(within(lane).queryByRole('button', { name: /Waive|Set aside/ })).toBeNull()
+      cleanup()
+    }
   })
 
   it('offers a burning lane no menu of any kind', () => {

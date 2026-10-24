@@ -37,9 +37,12 @@ export function needsMe(f: FeatureListItem): NeedsMe | null {
   if (f.status === 'draft') return null
   if (f.status === 'shipped' || f.status === 'archived') return null
   if (f.activeRun) return null // a round running: shown as working, not a needs-me dot
-  if (f.liveSession?.awaitingInput) return { kind: 'input', label: 'the chat is waiting on you' }
-  if (f.liveSession) return null
+  // An agent mid-turn is working, whatever reason it left earlier.
+  if (f.liveSession && !f.liveSession.awaitingInput) return null
+  // The reason outranks the bare "chat is waiting": an agent that declared ready
+  // or asked a question ends its turn, so its chat is awaiting input too.
   if (f.waitingReason) return { kind: 'waiting', label: f.waitingReason }
+  if (f.liveSession?.awaitingInput) return { kind: 'input', label: 'the chat is waiting on you' }
   return null
 }
 

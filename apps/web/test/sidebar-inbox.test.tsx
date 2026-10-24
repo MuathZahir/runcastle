@@ -217,7 +217,7 @@ describe('the Working shelf', () => {
     rail()
     const working = screen.getByRole('region', { name: 'Working' })
     expect(titles(working)).toEqual(['Search'])
-    expect(within(working).getByText('Building · 3/7')).toBeTruthy()
+    expect(within(working).getByText('Working · 3/7')).toBeTruthy()
     expect(within(working).getByRole('button', { expanded: true })).toBeTruthy()
   })
 })

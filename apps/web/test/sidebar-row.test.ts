@@ -56,8 +56,8 @@ describe('featureStateWords', () => {
   })
 
   it('says an agent is at work, with the tickets landed out of those not cancelled while it builds', () => {
-    expect(featureStateWords(building)).toBe('Building · 3/7')
-    expect(featureStateWords(listItem({ activeRun: true }))).toBe('Building')
+    expect(featureStateWords(building)).toBe('Working · 3/7')
+    expect(featureStateWords(listItem({ activeRun: true }))).toBe('Working')
     expect(featureStateWords(midTurn)).toBe('Agent working')
   })
 

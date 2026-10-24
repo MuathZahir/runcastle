@@ -84,11 +84,10 @@ describe('renderSettings', () => {
         'mcp__runcastle__get_feature_context',
         'mcp__runcastle__emit_tickets',
         'mcp__runcastle__record_event',
-        'mcp__runcastle__complete_phase',
       ]),
     )
-    // the retired mapped-ideation tools are not allowed for anyone (ADR-0012)
-    for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint']) {
+    // retired tools are not allowed for anyone (ADR-0012; complete_phase went with the phases)
+    for (const retired of ['escalate_to_map', 'emit_waypoints', 'resolve_waypoint', 'complete_phase']) {
       expect(s.permissions.allow).not.toContain(`mcp__runcastle__${retired}`)
     }
     // the project session's three (decision 19) — server-side kind gating makes
@@ -852,7 +851,7 @@ describe('writeSessionArtifacts', () => {
       ...SESSION_START_SOURCES,
     ])
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain(hookClientPath())
-    expect(settings.permissions.allow).toContain('mcp__runcastle__complete_phase')
+    expect(settings.permissions.allow).toContain('mcp__runcastle__emit_tickets')
     // the pack the session's skills load from is readable without a prompt
     expect(settings.permissions.allow).toContain(skillPackReadRule(resolvePluginDir()))
     // the edit guard reaches the session as a real registered hook, not just a rule

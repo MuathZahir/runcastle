@@ -399,7 +399,7 @@ export function CreateMenu({
         <CreateItem
           icon={<IconMessage />}
           label="New chat"
-          hint="Features and quick changes alike — a conversation that plans the work and runs it in rounds"
+          hint="A conversation with the feature's agent — it plans the work, builds it and runs rounds when you say yes"
           onSelect={onNewChat}
         />
         <CreateItem

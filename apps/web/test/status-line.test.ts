@@ -91,11 +91,10 @@ describe('featureStatus', () => {
     })
   })
 
-  it('reads Working · Round 1 while a message for the agent is inside its grace', () => {
+  it('reads Working, with no round to name, while a message for the agent is inside its grace', () => {
     expect(featureStatus(input({ leadWake: { pendingSince: 1_000 }, now: 1_000 + 59_000 }))).toEqual({
       kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
+      label: 'Working',
     })
   })
 
@@ -107,11 +106,7 @@ describe('featureStatus', () => {
   })
 
   it('the agent mid-turn reads Working with no round and no wake at all', () => {
-    expect(featureStatus(input({ agentWorking: true }))).toEqual({
-      kind: 'working',
-      label: 'Working · Round 1',
-      round: 1,
-    })
+    expect(featureStatus(input({ agentWorking: true }))).toEqual({ kind: 'working', label: 'Working' })
   })
 
   it('a wake failure newer than the last round and wake reads the failure, with its exit code and the Chat door', () => {
@@ -147,8 +142,8 @@ describe('featureStatus', () => {
 
   it('a wake failure older than the last round or a newer wake does not read as the failure', () => {
     const failed = { at: 30, exitCode: 1 }
-    expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).why).toBe(
-      'round 2 done',
+    expect(featureStatus(input({ rounds: [round(2, 'succeeded', 40)], leadWake: { failed }, now: 100_000 })).kind).toBe(
+      'talking',
     )
     expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 100_000 })).kind).toBe('talking')
     expect(featureStatus(input({ leadWake: { pendingSince: 40, failed }, now: 50 })).kind).toBe('working')
@@ -165,28 +160,13 @@ describe('featureStatus', () => {
     }
   })
 
-  it('waits for the human once a stopped round’s agent is idle, with no Stop to offer', () => {
-    expect(featureStatus(input({ rounds: [round(2, 'cancelled', 20)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'stopped',
-    })
-  })
-
-  it('waits for the human once a failed round’s agent is idle', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'failed', 10)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'round 1 failed',
-    })
-  })
-
-  it('waits for the human once a succeeded round’s agent has ended its turn without declaring ready', () => {
-    expect(featureStatus(input({ rounds: [round(1, 'succeeded', 10), round(2, 'succeeded', 20)] }))).toEqual({
-      kind: 'waiting',
-      label: 'Waiting for you',
-      why: 'round 2 done',
-    })
+  it('an idle agent after any round, with nothing asked, reads Talking with you, as the sidebar files it In progress', () => {
+    for (const status of ['cancelled', 'failed', 'succeeded'] as const) {
+      expect(featureStatus(input({ rounds: [round(2, status, 20)] }))).toEqual({
+        kind: 'talking',
+        label: 'Talking with you',
+      })
+    }
   })
 
   it('reads Working while the agent is mid-turn after a stopped or failed round', () => {
@@ -254,7 +234,7 @@ describe('featureStatus', () => {
         }),
       )
     expect(after(true).kind).toBe('working')
-    expect(after(false)).toEqual({ kind: 'waiting', label: 'Waiting for you', why: 'round 3 done' })
+    expect(after(false)).toEqual({ kind: 'talking', label: 'Talking with you' })
   })
 
   it('the agent at work on the human’s drive notes is Working, not Ready', () => {

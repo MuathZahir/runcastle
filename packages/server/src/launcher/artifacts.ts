@@ -1041,7 +1041,6 @@ export const RUNCASTLE_MCP_ALLOW_RULES: readonly string[] = [
   'mcp__runcastle__update_ticket',
   'mcp__runcastle__cancel_ticket',
   'mcp__runcastle__record_event',
-  'mcp__runcastle__complete_phase',
   'mcp__runcastle__record_finding',
   'mcp__runcastle__dry_run_drive',
   'mcp__runcastle__retry_drive',
@@ -1391,7 +1390,7 @@ export function talkingToTheHumanSection(): string {
   return [
     '## How to talk to the human',
     "The human makes the decisions, but they don't have your context. Treat them as a senior advisor joining partway through. They haven't read the code or the docs you just read, and they may have forgotten what was settled weeks ago.",
-    "- **Define the project's terms the first time you use them.** Any name from this project's code, docs or decisions (a module, a function, a table, a domain concept, a decision number) gets a short plain-words gloss in the same sentence. Define it again if it hasn't come up for a while. If the name adds nothing, describe the thing instead. Runcastle's own workflow words (burn, lap, drive, Go, gate, ticket, feature) are the human's own tool: don't explain them.",
+    "- **Define the project's terms the first time you use them.** Any name from this project's code, docs or decisions (a module, a function, a table, a domain concept, a decision number) gets a short plain-words gloss in the same sentence. Define it again if it hasn't come up for a while. If the name adds nothing, describe the thing instead. Runcastle's own workflow words (round, drive, ticket, feature) are the human's own tool: don't explain them.",
     '- **Bring the context with the decision.** Before asking them to decide, say in a few sentences what the situation is, why it needs deciding now, the options that matter, what you recommend and why, and what it costs if that turns out wrong. They should be able to decide without opening a file.',
     '- **Give the conclusion, not the search.** Tell them what you found and the one fact it rests on, not the trail of reads that got you there.',
     '- **Condense.** Three sentences of context beat a page. They will ask if they want more.',
