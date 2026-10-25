@@ -1,0 +1,32 @@
+# Opening a feature shows its chat as you left it
+
+## Problem
+A chat's terminal is a PTY owned by the runcastle server, so every server restart, reinstall or CLI exit ends it. Afterwards the chat sits at rest: its transcript over a "Resume the conversation" button. While dogfooding the human meets that button constantly, and clicking it does more than resume — the feature chat is handed a runcastle kickoff, so a model turn is spent and the agent speaks before the human has said anything. The human wants to open a feature and see the chat exactly as they left it.
+
+## Approach
+**What the human sees.** Opening a feature that is in progress (`active`), whose chat has ended and has a resumable conversation, resumes that conversation at once. The transcript stays on screen with a quiet "Resuming…" line where the button was, and the terminal takes its place once the session reports live — Claude Code redraws the conversation itself. Nothing is typed into it: the chat is idle until the human speaks. The project page does the same for the conversation it is showing (the newest, or the one picked in its switcher). Shipped and archived features keep the Resume button; a feature with no conversation yet keeps "Start the conversation"; a live terminal of any kind is shown as today. If the automatic resume cannot happen, the page quietly stays at rest with the Resume button (and the existing failed-resume notice when the resume died) — no toast, no fresh conversation, no retry loop: one attempt per visit to a conversation.
+
+An auto-resumed chat that never receives a prompt is ended once no browser has its terminal attached for about 10 seconds — navigating to another feature, to the project page, closing the tab. A reload or a quick click away and back reattaches inside the grace and keeps it. Any prompt — typed by the human, or delivered by runcastle (lead wake, relay, queued message) — makes it an ordinary live chat that stays up as today.
+
+**No kickoff on a plain chat resume.** The launcher's chat path today always builds a kickoff (`chatKickoffHeader` with `chatKickoffFor`) and tags it with `tagRuncastlePrompt`, resume or not. A `kind: 'chat'` launch that resumes a conversation and carries neither a `purpose` nor an explicit `kickoffLine` now sends no kickoff at all — this covers the automatic resume and the manual Resume button alike. Purpose-carrying roads (lead wake, relay, self-plan, resolve-conflict, stop-drive-and-iterate) and a chat starting with no conversation keep their briefings unchanged. The project launcher already sends nothing on resume. The state the kickoff header carried moves into the feature `SessionStart` hook context (which fires on `resume` too): it already has title, one-liner, status, branch, docs and ticket counts, and gains the number of rounds run and the latest run's status.
+
+**Asking for an automatic resume.** Both chat doors take an `auto: true` flag: `feature.launchSession({ featureId, kind: 'chat', auto: true })` and `project.talkToProject({ projectId, resumeSessionId, auto: true })`. With `auto`, the launch only ever resumes. Every case that would otherwise fall through to something else returns a non-throwing refusal instead, before anything is created (no session row, no worktree, no events beyond at most one timeline note): the feature is not `active`; nothing resumable is on record; the transcript is gone (`resumeGoneReason`); the runtime cannot resume (Codex); another terminal holds the feature (`assertSpawnable`); a chat is already live (answered as today, without a briefing, since an auto call carries none). The result shape is the existing launch result plus `{ autoSkipped?: string }` naming why, so the client stays quiet. The re-entry cap does not apply to chats today and still does not.
+
+**Untouched tracking.** A small server-side module holds the set of auto-resumed session ids that have not received a prompt, in memory (a server restart kills the PTYs anyway). A session enters it when an `auto` launch spawns. Any `UserPromptSubmit` for it — the hook route already calls `markAgentWorking` on every prompt of every scope — removes it, tagged or not. While a session is in the set, the PTY registry's attach/detach drives a leave timer: when its last sink detaches (or it spawns with none attached) a ~10 s timer starts; an attach cancels it; on firing, if the session is still untouched and still has no sink, it is ended through the ordinary `endSession` path, which emits its usual event. A session that ends any other way leaves the set.
+
+**Web.** The feature workspace and the project page each fire the automatic resume from the chat column when the conditions above hold, at most once per visit to a conversation (keyed by the conversation's row id, reset on navigating away), using the `auto` flag, without landing on the chat or moving the panel, and without a toast on refusal. `ChatView` at rest gains a "resuming" state: the transcript stays, the button area shows "Resuming…" instead of the button, and the terminal replaces the transcript once the session row is `live`, not merely `launching`.
+
+## Seams
+- **`launchSession` / `launchProjectSession` (existing)** — called with and without `auto`: observe the kickoff written to launch artifacts (none on a plain chat resume; unchanged elsewhere), and the `autoSkipped` refusals with no row created.
+- **The hooks route (existing)** — `SessionStart` context carries rounds run and latest run; a `user-prompt` for an auto-resumed session clears its untouched mark.
+- **The untouched-leave module (new)** — driven through the PTY registry's attach/detach with a short injected grace in tests: ended when untouched and unattached past the grace; kept when reattached in time or once prompted.
+- **`ChatView` / `FeatureChat` / `ProjectChat` (existing)** — component tests: the auto launch fires once with `auto: true` under the right conditions and not for shipped/archived/no-conversation/live cases; the at-rest "Resuming…" state; transcript kept until the session is `live`.
+
+## Out of scope
+- Keeping terminals alive across server restarts (PTYs in a separate long-running process).
+- "Chat as web components" — no non-terminal chat UI.
+- Kickoffs of other session kinds and purposes (lead wakes, relays, self-planning runs, side, drive-fix, prepare, scenario sessions); a fresh chat's opening briefing.
+- Auto-resume of side sessions, scenario chats, or shipped/archived features.
+
+## Open questions
+None.
