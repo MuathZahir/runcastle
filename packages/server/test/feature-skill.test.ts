@@ -144,6 +144,26 @@ describe('the feature skill, planning with no human present', () => {
     expect(close).toContain("asking\n   the human for their yes to start round 1")
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "start round 1?" })`')
   })
+
+  it('designs the screens it adds or reshapes, and leaves them for the human (designs-wait-for-you)', () => {
+    const alone = text().slice(text().indexOf('## Designing alone'), text().indexOf('## Straight through, then ask'))
+    expect(alone).toContain("**adds a screen or changes a screen's layout**")
+    expect(alone).toContain('**At most two\n  open choices per screen**')
+    expect(alone).toContain('`start_design_server({ command })`')
+    expect(alone).toContain('`agent-browser\n  open <url>`')
+    expect(alone).toContain('**Leave the designs uncommitted.**')
+    expect(text()).toContain('never call `show_panel`')
+    const close = text().slice(text().indexOf('## Straight through, then ask'))
+    expect(close).toContain('the yes commits the designs as they stand')
+    expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`')
+  })
+
+  it('lets only the human approve a waiting design (designs-wait-for-you)', () => {
+    const design = read('references', 'design.md')
+    expect(design).toContain('**Only the human approves.**')
+    expect(design).toContain('**They say yes to round 1**: that yes also approves every design still\n  uncommitted')
+    expect(read('SKILL.md')).toContain('It never approves a design')
+  })
 })
 
 describe('the feature skill, grilling', () => {

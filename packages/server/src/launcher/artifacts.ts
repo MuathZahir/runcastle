@@ -122,7 +122,8 @@ function purposeLine(purpose: SessionPurpose | undefined, runtime: AgentRuntime)
   switch (purpose) {
     case 'self-plan':
       return (
-        "This is a self-planning run: plan this feature by yourself and do not build it, by the " +
+        "This is a self-planning run: plan this feature by yourself, designing its screens where it adds or " +
+        "reshapes them, and do not build it, by the " +
         `${skillRef(runtime, FEATURE_SKILL)} skill's \`${PLANNING_ALONE}\`, ending on a request for the human's yes.`
       )
     case 'relay':

@@ -57,6 +57,7 @@ describe('kickoff registry + override', () => {
       expect(line).toContain(feature)
       expect(line).toContain('`references/planning-alone.md`')
       expect(line).toContain('do not build it')
+      expect(line).toContain('design its screens where it adds or reshapes them')
       expect(line).not.toMatch(/[\r\n]/)
     }
   })

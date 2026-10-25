@@ -21,6 +21,7 @@ import {
   heartbeatDesignServer,
   IDLE_MS,
   restartDesignServer,
+  sessionEndStopsServer,
   startDesignServer,
   stopDesignServer,
   substituteDesignPort,
@@ -132,6 +133,26 @@ describe('design port helpers', () => {
   })
 })
 
+describe('which session ends stop the design server', () => {
+  const chat = { id: 'ses_chat', kind: 'chat' as const, headless: false, featureId: 'feat_1' }
+  const run = { id: 'ses_run', kind: 'chat' as const, headless: true, featureId: 'feat_1' }
+
+  it('the human’s feature chat always stops it', () => {
+    expect(sessionEndStopsServer(chat, undefined)).toBe(true)
+    expect(sessionEndStopsServer(chat, 'ses_run')).toBe(true)
+  })
+
+  it('a headless run stops only the server it started and still owns', () => {
+    expect(sessionEndStopsServer(run, 'ses_run')).toBe(true)
+    expect(sessionEndStopsServer(run, undefined)).toBe(false)
+    expect(sessionEndStopsServer(run, 'ses_other')).toBe(false)
+  })
+
+  it('a session of another kind never does', () => {
+    expect(sessionEndStopsServer({ ...chat, kind: 'project' as const }, undefined)).toBe(false)
+  })
+})
+
 describe.skipIf(!AVAILABLE)('design server', () => {
   it('substitutes the port in the command it runs, and records the command as given', async () => {
     const given =
@@ -233,7 +254,7 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     expect(stoppedReasons()).toEqual(['session-ended'])
   }, 15000)
 
-  it('keeps running when a headless run of the feature ends', async () => {
+  it('keeps running when a headless run of the feature that did not start it ends', async () => {
     const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
     await startDesignServer(ctx, feature.id, FAKE_DEV)
 
@@ -242,6 +263,34 @@ describe.skipIf(!AVAILABLE)('design server', () => {
     expect(designServerStatus(ctx, feature.id).running).toBe(true)
     expect(stoppedReasons()).toEqual([])
   }, 15000)
+
+  it('stops when the headless run that started it ends', async () => {
+    const run = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+    await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: run.id })
+
+    handlePtyExit(ctx, feature, getSessionRow(ctx, run.id)!, {}, 0)
+
+    await waitFor(() => stoppedReasons().length > 0)
+    expect(stoppedReasons()).toEqual(['session-ended'])
+    expect(ptyRegistry().has(designPaneId(feature.id))).toBe(false)
+  }, 15000)
+
+  it('keeps running past the headless run that started it once the human has opened it', async () => {
+    const viaHeartbeat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+    await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: viaHeartbeat.id })
+    heartbeatDesignServer(feature.id)
+    handlePtyExit(ctx, feature, getSessionRow(ctx, viaHeartbeat.id)!, {}, 0)
+    expect(designServerStatus(ctx, feature.id).running).toBe(true)
+
+    await stopDesignServer(ctx, feature.id, 'stopped')
+    const viaWebStart = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: worktree, headless: true })
+    await startDesignServer(ctx, feature.id, FAKE_DEV, { sessionId: viaWebStart.id })
+    await startDesignServer(ctx, feature.id)
+    handlePtyExit(ctx, feature, getSessionRow(ctx, viaWebStart.id)!, {}, 0)
+
+    expect(designServerStatus(ctx, feature.id).running).toBe(true)
+    expect(stoppedReasons()).toEqual(['stopped'])
+  }, 20000)
 
   it('stops when the feature ships', async () => {
     await startDesignServer(ctx, feature.id, FAKE_DEV)

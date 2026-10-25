@@ -123,14 +123,16 @@ export const ORCHESTRATING = 'Orchestrating'
 /**
  * The opening of a self-planning run's prompt, spelled for `runtime` — the
  * `self-plan` counterpart of {@link chatKickoffFor}. A headless run has no human
- * on the other end, so the line says so before anything else, plans without
- * building, and ends by asking for the human's yes.
+ * on the other end, so the line says so before anything else, plans (designing
+ * the screens it adds or reshapes, designs-wait-for-you) without building, and
+ * ends by asking for the human's yes.
  */
 export function selfPlanKickoffFor(runtime: AgentRuntime): string {
   return (
     'Proceed with your task: no human is present and nobody will reply to you. Invoke ' +
     `${skillRef(runtime, FEATURE_SKILL)} and follow its \`${PLANNING_ALONE}\` to plan this feature ` +
-    "by yourself in this one run: plan it, do not build it, and end by asking for the human's yes."
+    'by yourself in this one run: plan it, design its screens where it adds or reshapes them, ' +
+    "do not build it, and end by asking for the human's yes."
   )
 }
 

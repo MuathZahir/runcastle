@@ -168,9 +168,10 @@ describe('the design guide', () => {
     expect(text).not.toMatch(/\bGo\b/)
   })
 
-  it('is pointed to by the feature skill, and a self-planned feature never designs', () => {
+  it('is pointed to by the feature skill, and a self-planned feature designs but never shows', () => {
     expect(read('feature', 'SKILL.md')).toContain('./references/design.md')
-    expect(read('feature', 'references', 'planning-alone.md')).toContain('**No design.** Never open a design')
+    expect(read('feature', 'references', 'planning-alone.md')).toContain('**Design, but never show.**')
+    expect(read('feature', 'references', 'design.md')).toContain('## 8. Designs that wait for the human')
   })
 })
 

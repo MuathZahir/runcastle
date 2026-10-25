@@ -10,6 +10,8 @@ plan the next move.
 
 Start the first round only after the human's explicit yes in chat, and ask again
 before any round the agreed plan did not settle (SKILL.md, "The human's yes").
+If designs wait uncommitted in the worktree, the human's yes commits them first;
+an orchestrator relay never does (`./design.md`, section 8).
 
 ## What you run on
 
