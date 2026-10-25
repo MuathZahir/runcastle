@@ -12,7 +12,7 @@ A feature can plan itself while the human is away, but it never designs anything
 
 **The closing message** gains, for a run that designed: the designed screens by name, the open Tweaks choices, any shared component it changed, whether it saw its screens (or only compiled them), and that the yes to round 1 commits the designs as they are.
 
-**What changes in runcastle.** Three things, all small (decision 9):
+**What changes in runcastle.** Three things, all small (decision 9), checked by a review agent that drives a real self-planning run (decision 13):
 
 - *The feature skill's text.* `planning-alone.md` loses its "never edit code, never install" and "no design" rules for screen design only: a self-planning run may install dependencies and write components, preview pages and sample data, and must leave them uncommitted, check them as above, and not open the design panel. It gains the closing-message items and the `wait_for_you` reason. `design.md` gains a short section for a run with nobody present (check with screenshots, no `show_panel`, Tweaks capped at two, leave uncommitted) and the yes-commits-the-rest rule. `SKILL.md`'s "When to ask" and situations lines say a relayed message from the orchestrator never approves a design, and that a yes to round 1 commits waiting designs first. `rounds.md`'s pre-dispatch step says the same.
 - *The self-planning briefing line.* Today it says "plan this feature by yourself and do not build it". It becomes "plan this feature by yourself, designing its screens where it adds or reshapes them, and do not build it", still naming `planning-alone.md`.
@@ -27,7 +27,7 @@ Nothing changes in the web, the schema, the status model or the panel: the waiti
 - **The design server's session-end rule** (existing seam, `services/design.ts`: start with a session, then the session-ended handler). Observe that a headless session's end stops the server it started; that it leaves a server the web started, or took over, running; and that an attended chat's end still stops the server as today. Tested where `design-server.test.ts` already tests the stop rules.
 - **The feature skill pack's text** (existing seam, the skill tests that already pin `planning-alone.md`, `design.md` and `SKILL.md` content). Observe that planning alone permits designing screens, requires leaving them uncommitted and checking them, forbids `show_panel`, and asks for the yes in a way that names the designs; that the orchestrator-relay and yes-commits-designs rules are present.
 - **The self-planning briefing** (existing seam, the launch-artifacts tests of the purpose line). Observe the new sentence and that it still names `planning-alone.md`.
-- **The human's drive** (the real check). Run "Plan it yourself" on a feature that adds a screen in a project with a frontend dev server. Observe: the run ends under Needs you with a reason naming the designs; the Plan view lists the designed screens with Open in design; each opens a live preview page; nothing designed is committed; no design server is left running after the run ends.
+- **A review agent's drive** (decision 13), then **the human's drive**, of the same walk. Run "Plan it yourself" on a feature that adds a screen in a project with a frontend dev server. Observe: the run ends under Needs you with a reason naming the designs; the Plan view lists the designed screens with Open in design; each opens a live preview page; nothing designed is committed; no design server is left running after the run ends.
 
 ## Out of scope
 

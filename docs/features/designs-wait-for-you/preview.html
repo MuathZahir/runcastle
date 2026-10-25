@@ -322,7 +322,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
           <li><i class="dot"></i><span>A server the web started, or took over, keeps running</span></li>
         </ul></div>
       </div>
-      <p class="hint" style="margin-top:10px">Checked by the existing tests of the skill text, the briefing and the design server, then by your drive: &ldquo;Plan it yourself&rdquo; on a feature that adds a screen.</p>
+      <p class="hint" style="margin-top:10px">Checked by the existing tests of the skill text, the briefing and the design server, then by a review agent that drives a real self-planning run <a class="pin" data-d="13">13</a>, then by your drive.</p>
     </div>
   </details>
 </section>
@@ -348,7 +348,8 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
     ['Built whole by the feature’s agent, no tickets', 'A few files of skill text, one briefing line and one server stop rule. The real test is running one self-planning run, which is your drive.'],
     ['Each run designs against the base branch; consistency across features is the orchestrator’s', 'A run cannot see its siblings’ unapproved designs. A shared component it changes is named in its closing message. Cross-feature consistency belongs to One orchestrator, no mode.'],
     ['No limit on runs designing at once', 'The brief accepts a dependency install per feature as the cost, and each run’s design server lives only minutes.'],
-    ['Iterating can also happen while the human is away', 'Ask for a change and leave: the agent redesigns, checks its screens, and waits again with “designs updated · look again?”.']
+    ['Iterating can also happen while the human is away', 'Ask for a change and leave: the agent redesigns, checks its screens, and waits again with “designs updated · look again?”.'],
+    ['A review agent drives a real self-planning run before the human’s drive', 'You asked for it after the build. In the demo project it runs Plan it yourself on a new screen, then clicks through everything you would and judges the designs. Supersedes the no-review part of 9.']
   ]
   // check first, a self-planned feature only (at most five): [decisionNumber, alternative, whyUnsure, tag?]
   // leave it empty for a grilled feature, and no group is drawn

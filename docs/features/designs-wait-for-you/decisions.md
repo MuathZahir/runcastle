@@ -49,3 +49,8 @@ Planned by a self-planning run on 2026-10-25; the human confirmed the whole plan
 ## 12. Iterating can also happen while the human is away
 **Decision:** The human may ask for changes and leave ("make the list denser, I'll look tomorrow"). The agent redesigns without anyone watching, checks its screens as in decision 3, leaves the changes uncommitted, and calls `wait_for_you` again with a reason naming what changed ("designs updated · look again?"). Nothing new is built for this: it is the feature's chat working on, as it does today.
 **Why:** It is the same loop the feature exists for, at a smaller size. A rule that iterating needs the human watching would make them stay for every change.
+
+## 13. A review agent drives a real self-planning run before the human's drive
+**Decision:** One review ticket drives this branch's runcastle in a browser. In the demo project (shiplog, whose `web/` frontend runs on Vite) it creates a feature that adds a screen, runs "Plan it yourself", waits for it to finish, and walks everything the human would click: the Needs you reason, the Plan view's designed-screen entries, Open in design, and the design panel. It checks that no design server outlived the run and that the designs are uncommitted. Then it judges the designs as a reviewer would and reports anything off as findings.
+**Why:** The human asked for it after the build. The run is the only real test of the feature, and an agent can do the waiting and the clicking before the human spends their own time.
+**Supersedes:** the "no review ticket" part of 9.
