@@ -51,7 +51,7 @@ function submissions(writes: string[]): string[] {
 }
 
 function session(id: string, extra: Partial<SessionRow> = {}): SessionRow {
-  return { id, kind: 'project', status: 'live', purpose: 'orchestrate', ...extra } as SessionRow
+  return { id, kind: 'project', status: 'live', ...extra } as SessionRow
 }
 
 let n = 0
@@ -253,8 +253,9 @@ describe('the waiter route', () => {
     return res.json()
   }
 
-  function orchestrator(purpose?: 'orchestrate'): string {
-    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/repo', ...(purpose ? { purpose } : {}) })
+  /** A live project session — the orchestrator — or, with `kind`, a live session of another kind. */
+  function orchestrator(kind: 'project' | 'prepare' = 'project'): string {
+    const row = createSessionRow(ctx, { projectId, kind, worktreePath: '/repo' })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     return row.id
   }
@@ -269,7 +270,7 @@ describe('the waiter route', () => {
 
   it('hands lines already pending to the waiter at once, and never twice', async () => {
     const app = mount()
-    const id = orchestrator('orchestrate')
+    const id = orchestrator()
     queueOrchestratorLine(id, 'one')
     queueOrchestratorLine(id, 'two')
 
@@ -279,7 +280,7 @@ describe('the waiter route', () => {
 
   it('answers only the newest waiter, and the older one superseded', async () => {
     const app = mount()
-    const id = orchestrator('orchestrate')
+    const id = orchestrator()
     const older = poll(app, id, 'w1')
     await vi.waitFor(() => expect(takeOrchestratorLines(id)).toEqual([]))
     const newer = poll(app, id, 'w2')
@@ -292,7 +293,7 @@ describe('the waiter route', () => {
 
   it('answers ended when the session ends, and for a session that is over or not orchestrating', async () => {
     const app = mount()
-    const id = orchestrator('orchestrate')
+    const id = orchestrator()
     const held = poll(app, id, 'w1')
     await new Promise((r) => setTimeout(r, 20))
 
@@ -300,7 +301,7 @@ describe('the waiter route', () => {
 
     expect(await held).toEqual({ status: 'ended' })
     expect(await poll(app, id, 'w2')).toEqual({ status: 'ended' })
-    expect(await poll(app, orchestrator(), 'w3')).toEqual({ status: 'ended' })
+    expect(await poll(app, orchestrator('prepare'), 'w3')).toEqual({ status: 'ended' })
     expect(await poll(app, 'nobody', 'w4')).toEqual({ status: 'ended' })
   })
 

@@ -463,17 +463,6 @@ const FIELD_META: Record<string, FieldMeta> = {
     group: 'chat',
     placeholder: 'main (detected)',
   },
-  // The orchestrator IS the project session (`whole-cuts-plan-themselves`
-  // decisions 3, 10, 14), so it sits with the project chat's own fields.
-  orchestrator: {
-    label: 'Orchestrator',
-    tag: 'experimental',
-    tooltip:
-      'The project session runs your features for you: it creates them, has them plan themselves, gives them Go, drives them and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
-    control: 'switch',
-    page: 'project',
-    group: 'chat',
-  },
 }
 
 /** Field order within a group — the order they are declared above. */

@@ -379,6 +379,13 @@
       "when": 1792865670658,
       "tag": "0053_soft_karma",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1792927750411,
+      "tag": "0054_careless_stellaris",
+      "breakpoints": true
     }
   ]
 }

@@ -95,7 +95,7 @@ hooks.get('/orchestrator-messages', async (c) => {
 
 /** The message-store key a session's waiter waits on, or null for a session that has none. */
 function waiterKeyOf(session: SessionRow): string | null {
-  if (session.purpose === 'orchestrate') return session.id
+  if (session.kind === 'project') return session.id
   if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
   return null
 }
@@ -422,7 +422,7 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id)
+  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
 }
 
 /**

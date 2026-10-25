@@ -77,13 +77,8 @@ describe('the feature header', () => {
     expect(header({}, true)).not.toContain('aria-label="Pipeline"')
   })
 
-  it('marks a feature the orchestrator owns beside its title, and no other', () => {
-    const owned = header({ orchestrated: true })
-    expect(owned).toContain(`${LONG_TITLE}<span`)
-    expect(classesAround(owned, '>Orchestrated<')).toContain('bg-accent-subtle')
-    expect(classesAround(owned, '>Orchestrated<')).toContain('text-accent-text')
-
-    expect(header({ orchestrated: false })).not.toContain('Orchestrated')
+  it('renders no Orchestrated tag — no feature is the orchestrator’s (one-orchestrator-no-mode)', () => {
+    expect(header()).not.toContain('Orchestrated')
   })
 })
 
