@@ -206,6 +206,52 @@ describe('FeatureChat', () => {
   it('carries the notice deck over the chat', () => {
     expect(tab([session({ id: 'sess_1' })])).toContain('aria-label="Chat notifications"')
   })
+
+  /** opening-a-feature-shows-its-chat-as-you-left-it decision 6. */
+  describe('while opening it resumes the chat by itself', () => {
+    const resumingTab = (sessions: Session[]) => {
+      const f = fixture()
+      return html(
+        createElement(FeatureChat, {
+          full: { ...f, sessions },
+          events: [],
+          hidden: false,
+          launching: false,
+          autoResuming: true,
+          onLaunch: () => undefined,
+          onView: () => undefined,
+        }),
+      )
+    }
+    const ended = session({ id: 'sess_old', status: 'ended', ccSessionId: 'cc-1' })
+
+    it('keeps the transcript up with Resuming… where the button was', () => {
+      const out = resumingTab([ended])
+      expect(out).toContain('why did ticket 25 drop the override path?')
+      expect(out).toContain('Resuming…')
+      expect(out).not.toContain('Resume the conversation')
+      expect(out).not.toContain('data-terminal')
+    })
+
+    it('keeps the ended transcript in front while the session is launching, its terminal attached out of sight', () => {
+      const out = resumingTab([ended, session({ id: 'sess_new', status: 'launching' })])
+      expect(out).toContain('why did ticket 25 drop the override path?')
+      expect(out).toContain('Resuming…')
+      expect(out).toMatch(/class="hidden" data-chat-terminal=""><div data-terminal="sess_new"/)
+    })
+
+    it('shows the terminal once the session is live', () => {
+      const out = resumingTab([ended, session({ id: 'sess_new', status: 'live' })])
+      expect(out).not.toContain('Resuming…')
+      expect(out).toMatch(/class="min-h-0 flex-1" data-chat-terminal=""><div data-terminal="sess_new"/)
+    })
+  })
+
+  it('shows a launching terminal at once when nothing is resuming by itself', () => {
+    const out = tab([session({ id: 'sess_new', status: 'launching' })])
+    expect(out).not.toContain('Resuming…')
+    expect(out).toMatch(/class="min-h-0 flex-1" data-chat-terminal=""/)
+  })
 })
 
 describe('the project chat', () => {

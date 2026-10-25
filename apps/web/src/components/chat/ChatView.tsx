@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { IconMessage, IconPlay, IconRefresh } from '../../icons'
-import { Button, EmptyState } from '../../ui'
+import { Button, EmptyState, Spinner } from '../../ui'
 import { ConversationTranscript } from '../ConversationTranscript'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TerminalView } from '../TerminalView'
@@ -41,6 +41,7 @@ export function ChatView({
   launchLabel,
   launching = false,
   launchError,
+  autoResuming = false,
   hidden = false,
   label = 'Chat',
   children,
@@ -65,11 +66,20 @@ export function ChatView({
   launching?: boolean
   /** Why the last launch was refused, said under its button. */
   launchError?: string
+  /**
+   * Opening the page is resuming this chat by itself
+   * (`opening-a-feature-shows-its-chat-as-you-left-it` decision 6): until the
+   * session reports live, the transcript stays up with "Resuming…" where the
+   * button was, and the terminal is mounted out of sight — attached, so the
+   * conversation is not taken for one nobody is watching.
+   */
+  autoResuming?: boolean
   hidden?: boolean
   /** The region's accessible name. */
   label?: string
   children?: ReactNode
 }) {
+  const resumingNow = autoResuming && session?.status !== 'live'
   return (
     <section
       aria-label={label}
@@ -82,24 +92,30 @@ export function ChatView({
       <div className="relative flex min-h-0 flex-1 flex-col bg-surface-inset animate-fade-in">
         {session && headless ? (
           <div className="px-6 py-6 text-sm text-text-secondary">{headless}</div>
-        ) : session ? (
-          <div className="min-h-0 flex-1" data-chat-terminal="">
-            <ErrorBoundary label="terminal">
-              <TerminalView sessionId={session.id} onEnded={onEnded} />
-            </ErrorBoundary>
-          </div>
         ) : (
-          <ChatAtRest
-            transcriptId={transcriptId}
-            onLaunch={onLaunch}
-            launchLabel={launchLabel}
-            launching={launching}
-            launchError={launchError}
-          >
-            {children}
-          </ChatAtRest>
+          <>
+            {(!session || resumingNow) && (
+              <ChatAtRest
+                transcriptId={transcriptId}
+                onLaunch={onLaunch}
+                launchLabel={launchLabel}
+                launching={launching}
+                launchError={launchError}
+                resuming={resumingNow}
+              >
+                {children}
+              </ChatAtRest>
+            )}
+            {session && (
+              <div className={resumingNow ? 'hidden' : 'min-h-0 flex-1'} data-chat-terminal="">
+                <ErrorBoundary label="terminal">
+                  <TerminalView sessionId={session.id} onEnded={onEnded} />
+                </ErrorBoundary>
+              </div>
+            )}
+          </>
         )}
-        {session && children}
+        {session && !resumingNow && children}
       </div>
     </section>
   )
@@ -116,6 +132,7 @@ function ChatAtRest({
   launchLabel,
   launching,
   launchError,
+  resuming,
   children,
 }: {
   transcriptId?: string
@@ -123,6 +140,8 @@ function ChatAtRest({
   launchLabel?: string
   launching: boolean
   launchError?: string
+  /** An automatic resume is starting: a quiet line stands where the button was. */
+  resuming: boolean
   children?: ReactNode
 }) {
   return (
@@ -145,7 +164,15 @@ function ChatAtRest({
         </div>
         {children}
       </div>
-      {onLaunch && (
+      {resuming ? (
+        <div
+          role="status"
+          className="flex flex-none items-center justify-center gap-2 border-t border-border-subtle bg-surface px-4 py-3 text-sm text-text-secondary"
+        >
+          <Spinner />
+          Resuming…
+        </div>
+      ) : onLaunch && (
         <div className="flex flex-none flex-col items-center gap-2 border-t border-border-subtle bg-surface px-4 py-3">
           <Button
             variant="primary"

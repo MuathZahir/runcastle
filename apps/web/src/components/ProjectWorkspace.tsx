@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../trpc'
 import type { ProjectConversation } from '../lib/api'
 import { PROJECT_BRANCH } from '../lib/project-workspace'
+import { useAutoResumeOnce } from '../lib/use-auto-resume'
 import type { ProjectTalkApi, ProjectTalkPurpose } from '../lib/use-project-talk'
 import { useSessionBranch } from '../lib/use-session-branch'
 import { IconArrowRight, IconBranch, IconFolder, IconPlay } from '../icons'
@@ -176,6 +177,19 @@ export function ProjectWorkspace({
     talk.resume(sessionId)
     showChat()
   }
+
+  // Showing an ended conversation resumes it by itself (decision 3), once per
+  // visit to it; the read-back stays in front until the session is live.
+  useAutoResumeOnce({
+    visit: projectId,
+    resumable: !session && reading?.resumable ? reading.id : null,
+    resume: talk.autoResume,
+  })
+  const autoResumed = useRef<string | null>(null)
+  if (talk.autoResuming) autoResumed.current = talk.autoResuming
+  useEffect(() => {
+    if (session?.status === 'live' && front && front === autoResumed.current) setFront(undefined)
+  }, [session?.status, front])
 
   const chatHidden = !!shown && !panel.state.collapsed && panel.state.share >= 1
   const refreshProjectChat = (): void => {
@@ -364,6 +378,7 @@ export function ProjectWorkspace({
                   transcriptId={reading.id}
                   onResume={reading.resumable ? () => reopen(reading.id) : undefined}
                   resuming={talk.starting}
+                  autoResuming={talk.autoResuming === reading.id}
                   hidden={chatHidden}
                 />
               )}

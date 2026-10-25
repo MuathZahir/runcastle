@@ -144,6 +144,8 @@ describe('the project workspace at rest', () => {
     triage: vi.fn(),
     replace: vi.fn(),
     resume: vi.fn(),
+    autoResume: vi.fn(),
+    autoResuming: null,
     starting: false,
     ...over,
   })

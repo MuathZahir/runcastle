@@ -178,13 +178,19 @@ describe('every launch site lands', () => {
   // The mutations that open a feature session. The project chat and
   // preparation launch through other routers, and have no Chat tab to land on.
   const LAUNCH = /trpc\.feature\.(launchSession|fixDrive)\.useMutation/
+  // Opening a feature resumes its chat by itself, from the chat column, without
+  // moving the page (`opening-a-feature-shows-its-chat-as-you-left-it`): the one
+  // launch that must NOT land.
+  const AUTO_RESUME = 'lib/use-auto-resume.ts'
+  const rel = (f: string): string => relative(SRC, f).split('\\').join('/')
 
   it('finds the launch sites it guards', () => {
     const sites = files(SRC).filter((f) => LAUNCH.test(readFileSync(f, 'utf8')))
-    expect(sites.map((f) => relative(SRC, f).split('\\').join('/')).sort()).toEqual([
+    expect(sites.map(rel).sort()).toEqual([
       'components/Workspace.tsx',
       'components/bodies/RunBody.tsx',
       'components/review/drive-parts.tsx',
+      AUTO_RESUME,
       'lib/use-resolve-conflict.ts',
     ])
   })
@@ -195,7 +201,7 @@ describe('every launch site lands', () => {
         const source = readFileSync(f, 'utf8')
         return LAUNCH.test(source) && !/useLandOnChat\(/.test(source)
       })
-      .map((f) => relative(SRC, f))
-    expect(forgetful).toEqual([])
+      .map(rel)
+    expect(forgetful).toEqual([AUTO_RESUME])
   })
 })
