@@ -103,10 +103,6 @@ export function isProjectSessionKind(kind: SessionKind): boolean {
  * plans the feature through preview, spec and tickets in one run. The briefing,
  * the page and the exit handling key on it; a live one refuses every chat launch.
  *
- * `orchestrate` — the project session launched with the project's Orchestrator
- * setting on (`whole-cuts-plan-themselves` decision 14): prompts off, the
- * orchestrating briefing, and the tools that act on the features it owns.
- *
  * `relay` — a headless run that resumes a feature's planning conversation with
  * a message from the orchestrator as its prompt.
  *
@@ -123,7 +119,6 @@ export const SessionPurpose = z.enum([
   'resolve-conflict',
   'start-lap',
   'self-plan',
-  'orchestrate',
   'relay',
   'lead-wake',
   'scenario-setup',
@@ -520,8 +515,6 @@ export const Project = z.object({
   scenarioRunner: z.string().optional(),
   /** Subject prefix for runcastle-owned docs checkpoint commits. */
   docsCommitPrefix: z.string().optional(),
-  /** The project session launches as the orchestrator; unset reads as off. */
-  orchestrator: z.boolean().optional(),
   /**
    * When the project was closed (issue #43); unset while it is open. The column
    * drives `listProjects`, so the wire type has to carry it — a field the row
@@ -580,8 +573,6 @@ export const Feature = z.object({
   baseBranch: z.string().optional(),
   status: FeatureStatus,
   createdAt: z.number(),
-  /** The orchestrator owns this feature — see the db schema. */
-  orchestrated: z.boolean().default(false),
   /** The up-next mark — see the db schema. Only meaningful on a draft. */
   upNext: z.boolean().default(false),
   /**

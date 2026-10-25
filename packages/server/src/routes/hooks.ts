@@ -94,7 +94,7 @@ hooks.get('/orchestrator-messages', async (c) => {
 
 /** The message-store key a session's waiter waits on, or null for a session that has none. */
 function waiterKeyOf(session: SessionRow): string | null {
-  if (session.purpose === 'orchestrate') return session.id
+  if (session.kind === 'project') return session.id
   if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
   return null
 }

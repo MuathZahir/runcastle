@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { type Feature, type SessionRow, type TestNote, isStoppableHeadlessRun } from '@runcastle/core'
+import { type Feature, type SessionRow, isStoppableHeadlessRun } from '@runcastle/core'
 import { worktreeDir } from '@runcastle/core/paths'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
@@ -24,21 +24,18 @@ import * as git from '../services/git'
 import type { TestDriveResult } from '../services/git'
 import { type MergeFlowResult, mergeFeatureFlow } from '../services/merge'
 import {
-  markOrchestrated,
   projectForFeature,
   requireProjectById,
   rowToFeature,
 } from '../services/repo'
-import { orchestratorOn } from '../services/settings'
-import { addNote } from '../services/test-notes'
 import type { HeaderCarrier } from './server'
 
 /**
- * The orchestrator's tools (`whole-cuts-plan-themselves`): the project session,
- * launched with the project's Orchestrator setting on, acting on the features
- * it owns. Every acting tool refuses through one gate — {@link
- * requireOrchestratedFeature} — with a sentence saying why, as the human's
- * buttons do, and adds no rule of its own (decision 6).
+ * The orchestrator's tools (`one-orchestrator-no-mode`): every project session
+ * is the orchestrator, acting on any feature of its project. What it may act on
+ * is drawn by its instructions, not here (decision 2): every acting tool refuses
+ * only through {@link requireProjectFeature} and the refusals its service
+ * already has, with a sentence saying why, as the human's buttons do.
  */
 
 /** The caller of a session tool, or null when the request names no session. */
@@ -46,26 +43,13 @@ export type ResolveSession = (
   extra: HeaderCarrier,
 ) => Promise<{ ctx: AppCtx; session: SessionRow } | null>
 
-/**
- * Refuse unless `session` is a still-open `orchestrate` project session and its
- * project's Orchestrator setting is still on. Turning the setting off is the
- * one-move stop (decision 6): from that moment the tools start nothing.
- */
-export function requireOrchestratorSession(ctx: AppCtx, session: SessionRow): string {
-  if (session.kind !== 'project' || session.purpose !== 'orchestrate' || !session.projectId) {
-    throw new GateError(
-      'only the orchestrator may do this: the project session launched with the ' +
-        "project's Orchestrator setting on.",
-    )
+/** Refuse unless `session` is a still-open project session; its project's id. */
+export function requireOrchestratorSession(session: SessionRow): string {
+  if (session.kind !== 'project' || !session.projectId) {
+    throw new GateError('only the orchestrator may do this: the project session.')
   }
   if (session.status === 'ended') {
     throw new GateError('this orchestrator session has ended; a new one must be opened to act.')
-  }
-  if (!orchestratorOn(ctx, session.projectId)) {
-    throw new GateError(
-      "the project's Orchestrator setting is off, so the orchestrator starts nothing new. " +
-        'Runs already going finish on their own.',
-    )
   }
   return session.projectId
 }
@@ -81,24 +65,9 @@ function featureBySlug(ctx: AppCtx, projectId: string, slug: string): Feature {
   return rowToFeature(row)
 }
 
-/**
- * {@link requireOrchestratorSession}, and the feature `slug` must be one the
- * orchestrator owns (decision 9): one it created, or one the human handed it.
- */
-export function requireOrchestratedFeature(
-  ctx: AppCtx,
-  session: SessionRow,
-  slug: string,
-): Feature {
-  const projectId = requireOrchestratorSession(ctx, session)
-  const feature = featureBySlug(ctx, projectId, slug)
-  if (!feature.orchestrated) {
-    throw new GateError(
-      `\`${slug}\` is the human's feature, not yours: you act only on the features you created ` +
-        'and the ones the human hands you. Tell the human if it bears on your work.',
-    )
-  }
-  return feature
+/** {@link requireOrchestratorSession}, and the feature `slug` names in its project. */
+export function requireProjectFeature(ctx: AppCtx, session: SessionRow, slug: string): Feature {
+  return featureBySlug(ctx, requireOrchestratorSession(session), slug)
 }
 
 /**
@@ -112,29 +81,14 @@ export function orchestratorTool<A extends unknown[], R>(
   return (...args) => runAsActor('orchestrator', () => handler(...args))
 }
 
-/**
- * Take over a feature the human handed the orchestrator by name (decision 13:
- * handing one over is a sentence in its terminal, not a button).
- */
-export function toolTakeOverFeature(
-  ctx: AppCtx,
-  session: SessionRow,
-  input: { slug: string },
-): { slug: string; orchestrated: true } {
-  const projectId = requireOrchestratorSession(ctx, session)
-  const feature = featureBySlug(ctx, projectId, input.slug)
-  if (!feature.orchestrated) markOrchestrated(ctx, feature.id, 'taken over')
-  return { slug: feature.slug, orchestrated: true }
-}
-
-/** Start a draft the orchestrator owns, as Start does: refused where Start is. */
+/** Start a draft, as Start does: refused where Start is. */
 export const toolStartFeature = orchestratorTool(
   async (
     ctx: AppCtx,
     session: SessionRow,
     input: { slug: string; baseBranch?: string },
   ): Promise<Pick<Feature, 'slug' | 'status' | 'baseBranch'>> => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     const started = await startDraft(ctx, feature.id, { baseBranch: input.baseBranch })
     return { slug: started.slug, status: started.status, baseBranch: started.baseBranch }
   },
@@ -148,7 +102,7 @@ export const toolPlanFeature = orchestratorTool(
     input: { slug: string },
     launch: LaunchSessionOptions = {},
   ): Promise<{ slug: string; sessionId: string }> => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     const { sessionId } = await launchSession(
       ctx,
       { featureId: feature.id, kind: 'chat', purpose: 'self-plan' },
@@ -161,7 +115,7 @@ export const toolPlanFeature = orchestratorTool(
 /** End the feature's live headless run, as its Stop button does. */
 export const toolStopFeatureRun = orchestratorTool(
   (ctx: AppCtx, session: SessionRow, input: { slug: string }): EndSessionResult => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     // The run plan_feature starts is always one this can stop; the feature's
     // lead never is — ending it would drop the conversation it is having.
     const run = activeSessionsForFeature(ctx, feature.id).find(isStoppableHeadlessRun)
@@ -182,24 +136,12 @@ export const toolDrive = orchestratorTool(
     input: { slug?: string; action: 'start' | 'stop' },
   ): Promise<TestDriveResult> => {
     if (input.slug === undefined) {
-      const project = requireProjectById(ctx, requireOrchestratorSession(ctx, session))
+      const project = requireProjectById(ctx, requireOrchestratorSession(session))
       return git.projectDrive(ctx, project, input.action)
     }
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     requireNotDraft(feature)
     return git.testDrive(ctx, projectForFeature(ctx, feature), feature, input.action)
-  },
-)
-
-/** File a test note on a feature, authored by whoever observed it. */
-export const toolRecordTestNote = orchestratorTool(
-  (
-    ctx: AppCtx,
-    session: SessionRow,
-    input: { slug: string; text: string; observedBy: 'human' | 'orchestrator' },
-  ): TestNote => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
-    return addNote(ctx, feature.id, input.text, input.observedBy === 'human' ? 'human' : 'agent')
   },
 )
 
@@ -210,7 +152,7 @@ export const toolRecordTestNote = orchestratorTool(
  */
 export const toolMergeFeature = orchestratorTool(
   async (ctx: AppCtx, session: SessionRow, input: { slug: string }): Promise<MergeFlowResult> => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     return mergeFeatureFlow(ctx, feature.id)
   },
 )
@@ -236,7 +178,7 @@ export const toolAddToBrief = orchestratorTool(
     session: SessionRow,
     input: { slug: string; text: string },
   ): Promise<{ slug: string; relPath: string }> => {
-    const feature = requireOrchestratedFeature(ctx, session, input.slug)
+    const feature = requireProjectFeature(ctx, session, input.slug)
     const text = input.text.trim()
     if (!text) throw new InvalidInputError('there is nothing to add: the text is empty.')
     if (feature.status === 'draft') {
@@ -292,26 +234,6 @@ export function registerOrchestratorTools(
   wants: (tool: string) => boolean,
   resolve: ResolveSession,
 ): void {
-  if (wants('take_over_feature')) {
-    server.registerTool(
-      'take_over_feature',
-      {
-        title: 'Take over a feature',
-        description:
-          'Make a feature the human handed you yours, so your tools act on it and you hear when ' +
-          'something ends on it. Only when the human has handed it to you by name. Orchestrator only.',
-        inputSchema: {
-          slug: z.string().describe('The slug of the feature the human handed you.'),
-        },
-      },
-      orchestratorTool(async (args, extra) => {
-        const rs = await resolve(extra)
-        if (!rs) return noSession()
-        return ok(toolTakeOverFeature(rs.ctx, rs.session, args))
-      }),
-    )
-  }
-
   /** Register one acting tool whose handler is a `tool*` function above. */
   function acting<S extends z.ZodRawShape>(
     name: string,
@@ -333,9 +255,9 @@ export function registerOrchestratorTools(
     {
       title: 'Start a draft',
       description:
-        'Start a draft you own, as Start does: cut its branch and scaffold its brief. Refused ' +
-        'while it waits on an unmerged dependency, or once started. Launches nothing — call ' +
-        'plan_feature when it is ready to plan. Orchestrator only.',
+        'Start a draft, as Start does: cut its branch and scaffold its brief. Refused while it ' +
+        'waits on an unmerged dependency, or once started. Launches nothing — call plan_feature ' +
+        'or send_to_feature when it is ready to work.',
       inputSchema: {
         slug: SlugInput,
         baseBranch: z
@@ -354,8 +276,8 @@ export function registerOrchestratorTools(
       title: 'Have a feature plan itself',
       description:
         'Launch a feature’s self-planning run, as Plan it yourself does: headless, no terminal. ' +
-        'Refused past planning, with planning already on record, or while another session is ' +
-        'up on it. You are told in your terminal when it ends. Orchestrator only.',
+        'Refused on a draft or a shipped feature, or while another session is up on it. You are ' +
+        'told in your terminal when it ends.',
       inputSchema: { slug: SlugInput },
     },
     toolPlanFeature,
@@ -367,7 +289,7 @@ export function registerOrchestratorTools(
       title: 'Stop a feature’s headless run',
       description:
         'End the headless run going on a feature (self-planning or a relay), as ' +
-        'its Stop button does. Orchestrator only.',
+        'its Stop button does.',
       inputSchema: { slug: SlugInput },
     },
     toolStopFeatureRun,
@@ -380,7 +302,7 @@ export function registerOrchestratorTools(
       description:
         'Start or stop a test drive: of a feature’s branch with `slug`, of the project’s base ' +
         'checkout without one. One drive runs on the machine at a time — a refusal comes back as ' +
-        '`deniedReason`. Orchestrator only.',
+        '`deniedReason`.',
       inputSchema: {
         slug: SlugInput.optional().describe(
           'The feature whose branch to drive. Omit to drive the base branch.',
@@ -392,24 +314,6 @@ export function registerOrchestratorTools(
   )
 
   acting(
-    'record_test_note',
-    {
-      title: 'Record a test note',
-      description:
-        'File a test note on a feature, as the human does from a drive. Say who observed it. ' +
-        'Notes are for the feature’s agent: tell it what you found with send_to_feature. Orchestrator only.',
-      inputSchema: {
-        slug: SlugInput,
-        text: z.string().min(1).describe('What was observed, in a sentence or two.'),
-        observedBy: z
-          .enum(['human', 'orchestrator'])
-          .describe('`human` when the human told you this; `orchestrator` when you saw it.'),
-      },
-    },
-    toolRecordTestNote,
-  )
-
-  acting(
     'merge_feature',
     {
       title: 'Merge a feature',
@@ -417,7 +321,7 @@ export function registerOrchestratorTools(
         'Merge a feature into its base through runcastle, as Merge does: the outcome doc, the ' +
         'shipped state and the worktree clean-up. On a conflict it returns `conflict` and the ' +
         '`files`; resolve them in the feature’s worktree (never while a session is live on it) ' +
-        'and merge again. Orchestrator only.',
+        'and merge again.',
       inputSchema: { slug: SlugInput },
     },
     toolMergeFeature,
@@ -430,8 +334,7 @@ export function registerOrchestratorTools(
       description:
         'Append what the human told you later about a feature to its brief.md, as a dated ' +
         'section, and commit it; on a draft it is added to the parked brief that Start turns ' +
-        'into brief.md. The brief is where the human’s intent for the feature lives. ' +
-        'Orchestrator only.',
+        'into brief.md. The brief is where the human’s intent for the feature lives.',
       inputSchema: {
         slug: SlugInput,
         text: z.string().min(1).describe('What the human said, in your words, as markdown.'),

@@ -88,11 +88,6 @@ export const projects = sqliteTable('projects', {
   // Subject prefix for commits authored by runcastle's docs machinery. Null
   // uses the product default; burn-agent ticket subjects stay unchanged.
   docsCommitPrefix: text('docs_commit_prefix'),
-  // Project-only (no global twin, no env var): whether the project session
-  // launches as the orchestrator (`whole-cuts-plan-themselves` decision 14). An
-  // experiment is switched on one project at a time. Null means "not set",
-  // which resolves to off.
-  orchestrator: integer('orchestrator', { mode: 'boolean' }),
 })
 
 /**
@@ -152,14 +147,6 @@ export const features = sqliteTable('features', {
   baseBranch: text('base_branch'),
   status: text('status').notNull().$type<FeatureStatus>(),
   createdAt: integer('created_at').notNull(),
-  /**
-   * The orchestrator owns this feature (`whole-cuts-plan-themselves` decision
-   * 9): it created it from an `orchestrate` session, or took it over when the
-   * human handed it. Drives the page's marker, which events reach the
-   * orchestrator, and which features its acting tools accept. Every feature
-   * created before the column was the human's, which is what the default says.
-   */
-  orchestrated: integer('orchestrated', { mode: 'boolean' }).notNull().default(false),
   /**
    * The up-next mark (`waiting-is-not-backlog` decision 1): "start by itself when
    * what I wait on ships". Meaningful only while `status = 'draft'`; starting

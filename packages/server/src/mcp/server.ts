@@ -62,7 +62,7 @@ import {
   validateDependencies,
 } from '../services/dependencies'
 import { type DesignServerInfo, designServerStatus, rememberDesignPath, startDesignServer } from '../services/design'
-import { emit, emitForSession, emitProject, latestEventTs } from '../services/events'
+import { emit, emitForSession, emitProject, latestEventTs, runAsActor } from '../services/events'
 import { featureDocsDir } from '../services/feature-docs'
 import { isOverwritable, recordFinding } from '../services/findings'
 import {
@@ -87,7 +87,6 @@ import {
   getFeatureRow,
   getProjectById,
   listRunsByFeature,
-  markOrchestrated,
   projectForFeature,
   tryGetRun,
 } from '../services/repo'
@@ -243,9 +242,8 @@ export function resolveFeatureReader(ctx: AppCtx, caller: RunCaller): FeatureRea
 
 /**
  * The feature a PROJECT session reads: any feature of its own project, named by
- * slug. Reads are not gated on the orchestrator mode or on ownership — the
- * project session already sees the whole portfolio, and the orchestrator reads
- * features through these tools (`whole-cuts-plan-themselves`).
+ * slug. The project session sees the whole portfolio, and as the orchestrator
+ * it reads features through these tools (`one-orchestrator-no-mode`).
  */
 export function projectFeatureReader(
   ctx: AppCtx,
@@ -1799,22 +1797,36 @@ function createFeatureProject(
  * human clicks Start. Never tickets: the feature's own agent reads the brief and
  * judges the work (decision 10).
  *
- * It launches nothing. Spawning terminals from inside a terminal would make
- * this session an orchestrator, where runcastle's premise is that the human
- * decides what to work on next; the rail polls, so the new card IS the feedback.
+ * It launches nothing: the orchestrator sets a feature working with its acting
+ * tools when it judges it ready. From a project session — the orchestrator — it
+ * runs as the orchestrator, so every event it emits carries `actor:
+ * 'orchestrator'` and the orchestrator follows what it created
+ * (`one-orchestrator-no-mode` decision 3).
  */
 export async function toolCreateFeature(
   ctx: AppCtx,
   session: SessionRow,
-  input: {
-    title: string
-    oneLiner?: string
-    baseBranch?: string
-    brief?: string
-    draft?: boolean
-    dependsOn?: string[]
-    upNext?: boolean
-  },
+  input: CreateFeatureInput,
+): Promise<CreateFeatureResult> {
+  return session.kind === 'project'
+    ? runAsActor('orchestrator', () => createFeatureFor(ctx, session, input))
+    : createFeatureFor(ctx, session, input)
+}
+
+interface CreateFeatureInput {
+  title: string
+  oneLiner?: string
+  baseBranch?: string
+  brief?: string
+  draft?: boolean
+  dependsOn?: string[]
+  upNext?: boolean
+}
+
+async function createFeatureFor(
+  ctx: AppCtx,
+  session: SessionRow,
+  input: CreateFeatureInput,
 ): Promise<CreateFeatureResult> {
   const project = createFeatureProject(ctx, session, input)
   const dependsOn = input.dependsOn ?? []
@@ -1854,10 +1866,6 @@ export async function toolCreateFeature(
     brief: input.brief,
     draft: input.draft,
   })
-  // What the orchestrator creates is its own (`whole-cuts-plan-themselves`
-  // decision 9). It still launches nothing: it calls `plan_feature` when it
-  // judges the feature ready.
-  if (session.purpose === 'orchestrate') markOrchestrated(ctx, feature.id, 'created')
   if (dependencyIds.length === 0) {
     return { id: feature.id, slug: feature.slug, branch: feature.branch, status: feature.status }
   }
@@ -2148,8 +2156,6 @@ function featureIndexLine(feature: FeatureListItem): string {
   const edges = feature.dependsOn.length
     ? ` · waits on: ${feature.dependsOn.map((d) => (d.satisfied ? `${d.slug} ✓` : d.slug)).join(', ')}`
     : ''
-  // The orchestrator's own features (`whole-cuts-plan-themselves` decision 9).
-  const owner = feature.orchestrated ? ' · orchestrated' : ''
   if (feature.status !== 'active') {
     const mark = {
       upNext: ', up next',
@@ -2158,13 +2164,13 @@ function featureIndexLine(feature: FeatureListItem): string {
       readyToStart: '',
       backlog: '',
     }[unstartedState(feature, feature.dependsOn) ?? 'backlog']
-    return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}${owner}`
+    return `${feature.slug} — ${feature.title} [${feature.status}${mark}]${edges}`
   }
   const state = [feature.activeRun ? 'in flight: round running' : 'in flight']
   const counts = feature.ticketCounts
   if (counts.pending > 0) state.push(`${counts.pending} pending`)
   if (counts.burning > 0) state.push(`${counts.burning} burning`)
-  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}${owner}`
+  return `${feature.slug} — ${feature.title} [${state.join(', ')}]${edges}`
 }
 
 /** One feature's brief on request: the fetch-one behind a slim index line. */
@@ -2515,17 +2521,15 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   // The one tool both halves share — it emits at whatever scope the caller has.
   // Not a run agent, though: `emitForSession` needs a session row.
   record_event: [...FEATURE_KINDS, ...PROJECT_KINDS, 'scenario'],
-  // The orchestrator's tools (`whole-cuts-plan-themselves`): offered to the
-  // project session, refused at call time unless it is a live `orchestrate`
-  // session with the setting on (`requireOrchestratorSession`). Registered in
-  // `orchestrator-tools.ts` and `orchestrator-run-tools.ts`.
-  take_over_feature: ['project'],
+  // The orchestrator's tools (`one-orchestrator-no-mode`): offered to the
+  // project session, refused at call time unless it is still live
+  // (`requireOrchestratorSession`). Registered in `orchestrator-tools.ts` and
+  // `orchestrator-run-tools.ts`.
   start_feature: ['project'],
   plan_feature: ['project'],
   send_to_feature: ['project'],
   stop_feature_run: ['project'],
   drive: ['project'],
-  record_test_note: ['project'],
   merge_feature: ['project'],
   add_to_brief: ['project'],
 }

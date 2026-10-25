@@ -1,5 +1,5 @@
 import type { EventRow, Project, SessionRow, Ticket } from '@runcastle/core'
-import { and, asc, desc, eq, gt, inArray, isNotNull } from 'drizzle-orm'
+import { type SQL, and, asc, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
 import { events, features, sessions, tickets } from '../db/schema'
 import { activeProjectSession, getSessionRow } from '../launcher/sessions'
@@ -11,18 +11,24 @@ import { getFeatureRow } from './repo'
 import { getTicket } from './tickets'
 
 /**
- * What the orchestrator hears about its features (`whole-cuts-plan-themselves`
- * decisions 11, 13, 20): one `[runcastle]` line delivered into its session
- * while it is live (see `orchestrator-delivery.ts`), and a catch-up list in its
- * briefing when the human reopens it.
+ * What the orchestrator hears about the features it follows
+ * (`whole-cuts-plan-themselves` decisions 11, 13, 20; `one-orchestrator-no-mode`
+ * decision 3): one `[runcastle]` line delivered into the live project session
+ * (see `orchestrator-delivery.ts`), and a catch-up list in its briefing when the
+ * human reopens it.
  *
- * Two kinds of event reach it, both only on features it owns:
+ * A feature is FOLLOWED while it is not shipped and at least one of its events
+ * carries `actor: 'orchestrator'` — one the orchestrator created, messaged,
+ * planned, started, drove or merged. It is read from the events table; nothing
+ * is stored on the feature.
+ *
+ * Two kinds of event reach it, both only on followed features:
  *
  * - END events — something it may be waiting on is over. Forwarded whoever
  *   started the work, except a merge's landing or conflict stamped
  *   `actor: 'orchestrator'`, which `merge_feature` already returned. The only
  *   kind the catch-up lists.
- * - ACT events — the human did something on its feature. Forwarded only when
+ * - ACT events — the human did something on a followed feature. Forwarded only when
  *   not stamped `actor: 'orchestrator'`, since the orchestrator's own tool call
  *   already answered it in the call's result.
  *
@@ -41,14 +47,13 @@ import { getTicket } from './tickets'
  * | `testdrive.started` / `.stopped`  | act  | a test drive (not the review agent's)       |
  *
  * A lap starting is the `start-lap` session opening; a merge is its landing or
- * conflict above. Project-level events produce nothing except the orchestrator
- * setting turning off, which sends the stop line.
+ * conflict above. Project-level events produce nothing.
  */
 
 /** What the notifier needs to know about an event beyond its row. */
 export interface NotifyState {
   /** The event's feature; absent for a project-level event. */
-  feature?: { slug: string; orchestrated: boolean }
+  feature?: { slug: string; followed: boolean }
   /** The session the event names (`data.sessionId`), when there is one. */
   session?: Pick<SessionRow, 'kind' | 'purpose' | 'headless'>
   /** The ticket the event is about, when there is one. */
@@ -64,8 +69,6 @@ const SUMMARY_MAX = 80
 
 /** Lines the catch-up lists before it stops counting them out. */
 const CATCH_UP_MAX = 50
-
-export const ORCHESTRATOR_STOP_LINE = `${PREFIX} The orchestrator mode was turned off for this project. Start nothing new; runs already going finish on their own. Tell the human what is still in flight.`
 
 /** The event types that can be END events — the catch-up's query filter. */
 const END_TYPES = [
@@ -168,24 +171,12 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
   }
 }
 
-/** Whether a project-level event is the orchestrator setting turning off. */
-function isOrchestratorTurnedOff(event: EventRow): boolean {
-  const data = record(event.data)
-  return (
-    event.type === 'settings.updated' &&
-    data.key === 'orchestrator' &&
-    data.scope === 'project' &&
-    (data.value === false || data.value === null)
-  )
-}
-
 /**
  * The line to deliver to a live orchestrator for `event`, or null for none.
  * Pure: everything it needs about the feature, session and ticket is in `state`.
  */
 export function orchestratorLineFor(event: EventRow, state: NotifyState): string | null {
-  if (!event.featureId) return isOrchestratorTurnedOff(event) ? ORCHESTRATOR_STOP_LINE : null
-  if (!state.feature?.orchestrated) return null
+  if (!event.featureId || !state.feature?.followed) return null
   const described = describe(event, state.session, state.ticket, state.feature.slug)
   if (!described) return null
   if (record(event.data).actor === 'orchestrator' && (described.kind === 'act' || ANSWERED_END_TYPES.has(event.type))) {
@@ -194,10 +185,14 @@ export function orchestratorLineFor(event: EventRow, state: NotifyState): string
   return `${PREFIX} ${state.feature.slug} ${described.text}`
 }
 
-/** The project's live orchestrating session, if it has one. */
-function liveOrchestrator(ctx: AppCtx, projectId: string): SessionRow | null {
-  const session = activeProjectSession(ctx, projectId, 'project')
-  return session?.purpose === 'orchestrate' ? session : null
+/** The followed features `where` selects: unshipped, with an orchestrator-stamped event. */
+function followedFeatures(ctx: AppCtx, where: SQL): { id: string; slug: string }[] {
+  const orchestratorActed = sql`exists (select 1 from ${events} where ${events.featureId} = ${features.id} and json_extract(${events.data}, '$.actor') = 'orchestrator')`
+  return ctx.db
+    .select({ id: features.id, slug: features.slug })
+    .from(features)
+    .where(and(where, ne(features.status, 'shipped'), orchestratorActed))
+    .all()
 }
 
 /** Read the feature, session and ticket an event names. Missing rows are left out. */
@@ -205,7 +200,8 @@ function stateFor(ctx: AppCtx, event: EventRow): NotifyState {
   const state: NotifyState = {}
   if (event.featureId) {
     const feature = getFeatureRow(ctx, event.featureId)
-    state.feature = { slug: feature.slug, orchestrated: feature.orchestrated }
+    const followed = followedFeatures(ctx, eq(features.id, feature.id)).length > 0
+    state.feature = { slug: feature.slug, followed }
   }
   const sessionId = record(event.data).sessionId
   if (typeof sessionId === 'string') {
@@ -231,7 +227,7 @@ function ticketFor(ctx: AppCtx, event: EventRow): Ticket | undefined {
  */
 function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): void {
   try {
-    const orchestrator = liveOrchestrator(ctx, projectId)
+    const orchestrator = activeProjectSession(ctx, projectId, 'project')
     if (!orchestrator) return
     const event = getEventRow(ctx, eventId)
     if (!event) return
@@ -245,9 +241,9 @@ function notifyOrchestrator(ctx: AppCtx, projectId: string, eventId: number): vo
 }
 
 /**
- * One line per thing that ended on the orchestrator's features since the
- * project's last orchestrating session ended, oldest first. Nothing when there
- * never was one: a first orchestrator has nothing to catch up on.
+ * One line per thing that ended on the followed features since the project's
+ * last project session ended, oldest first. Nothing when there never was one:
+ * a first orchestrator has nothing to catch up on.
  */
 export function orchestratorCatchUp(ctx: AppCtx, project: Project): string[] {
   const last = ctx.db
@@ -256,7 +252,7 @@ export function orchestratorCatchUp(ctx: AppCtx, project: Project): string[] {
     .where(
       and(
         eq(sessions.projectId, project.id),
-        eq(sessions.purpose, 'orchestrate'),
+        eq(sessions.kind, 'project'),
         isNotNull(sessions.endedAt),
       ),
     )
@@ -265,13 +261,9 @@ export function orchestratorCatchUp(ctx: AppCtx, project: Project): string[] {
     .get()
   if (!last?.endedAt) return []
 
-  const owned = ctx.db
-    .select({ id: features.id, slug: features.slug })
-    .from(features)
-    .where(and(eq(features.projectId, project.id), eq(features.orchestrated, true)))
-    .all()
-  if (owned.length === 0) return []
-  const slugs = new Map(owned.map((f) => [f.id, f.slug]))
+  const followed = followedFeatures(ctx, eq(features.projectId, project.id))
+  if (followed.length === 0) return []
+  const slugs = new Map(followed.map((f) => [f.id, f.slug]))
 
   const ids = ctx.db
     .select({ id: events.id })

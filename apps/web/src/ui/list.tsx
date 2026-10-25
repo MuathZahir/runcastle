@@ -4,7 +4,6 @@ import type { PhaseIconPhase } from '../icons'
 import { cx } from './floating'
 import { StatusDot, TONE_TEXT } from './status'
 import type { StatusTone } from './status'
-import { Tooltip } from './tooltip'
 
 /**
  * Rows, groups and facts (DESIGN.md §Components): the sidebar's `NavItem`, the
@@ -110,9 +109,6 @@ function RowControl({
  * `surface-selected` + `text` + medium weight — nothing else.
  *
  * - `icon` | `phase` — the leading glyph (`phase` draws a `PhaseIcon`).
- * - `glyphRing` — a second, accent ring around the phase glyph, with these
- *   words as its tooltip and accessible name ("Orchestrated"). It takes no
- *   width, so the label keeps the row.
  * - `label` — one line; the full title lives in the page header. `title`
  *   sets the hover tooltip (defaults to the label when it is a string).
  * - `meta` — trailing count or fraction ("3/7"), `text-tertiary`, tabular.
@@ -141,7 +137,6 @@ export function NavItem({
   tone = 'default',
   title,
   className,
-  glyphRing,
 }: {
   icon?: ReactNode
   phase?: PhaseIconPhase
@@ -157,27 +152,11 @@ export function NavItem({
   tone?: 'default' | 'quiet'
   title?: string
   className?: string
-  glyphRing?: string
 }) {
   const quiet = tone === 'quiet'
   const hasMeta = meta !== undefined && meta !== null
   const glyph = phase ? (
-    glyphRing ? (
-      // A second ring in the accent, on the glyph's own 16px box so the row
-      // keeps its height; named on hover and to assistive tech.
-      <Tooltip label={glyphRing}>
-        <span className="relative inline-flex" data-glyph-ring>
-          <PhaseIcon phase={phase} />
-          <span
-            role="img"
-            aria-label={glyphRing}
-            className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-accent"
-          />
-        </span>
-      </Tooltip>
-    ) : (
-      <PhaseIcon phase={phase} />
-    )
+    <PhaseIcon phase={phase} />
   ) : icon ? (
     <span className={cx('inline-flex [&>svg]:size-4', active ? 'text-text' : 'text-icon group-hover/nav:text-text')}>
       {icon}
