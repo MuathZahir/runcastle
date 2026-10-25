@@ -43,9 +43,8 @@ export const busyFeatures: FeatureListItem[] = [
   f('Changelog file per release', { ticketCounts: tickets(5, 5), waitingReason: 'ready to test' }),
   f('Prepare reruns stale checks', {
     activeRun: true,
-    orchestrated: true,
     ticketCounts: tickets(7, 3),
-  } as Partial<FeatureListItem>),
+  }),
   f('Note capture keeps drafts', { liveSession: { status: 'live', awaitingInput: false } }),
   f('Scenario fixtures for drives', { ticketCounts: tickets(6, 4) }),
   f('Dark terminal palette', { status: 'draft' }),

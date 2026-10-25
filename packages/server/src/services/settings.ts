@@ -63,10 +63,6 @@ type ProjectColumn =
   | 'driveInstructions'
   | 'scenarioRunner'
   | 'docsCommitPrefix'
-  | 'orchestrator'
-
-/** A project override column's value: text for most, a boolean for the switches; null inherits. */
-type ProjectOverride = string | boolean | null
 
 interface FieldDescriptor {
   key: string
@@ -295,17 +291,6 @@ const DESCRIPTORS: FieldDescriptor[] = [
     valueSchema: z.string().min(1),
     parseEnv: idEnv,
   },
-  // Project-only (no global twin, no env var): the experimental orchestrator
-  // (`whole-cuts-plan-themselves` decision 14). An experiment is switched on one
-  // project at a time, and the project session reads it at launch.
-  {
-    key: 'orchestrator',
-    projectColumn: 'orchestrator',
-    restartRequired: false,
-    valueSchema: z.boolean(),
-    parseEnv: idEnv,
-    defaultValue: false,
-  },
 ]
 
 const DEFAULTS = RuncastleConfigSchema.parse({})
@@ -374,7 +359,7 @@ function stepModelFields(fileRaw: Record<string, unknown>): SettingField[] {
 }
 
 /** The per-project override columns for one project (raw row, override-null = inherit). */
-function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn, ProjectOverride> {
+function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn, string | null> {
   const row = ctx.db
     .select({
       model: projects.model,
@@ -391,7 +376,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
       driveInstructions: projects.driveInstructions,
       scenarioRunner: projects.scenarioRunner,
       docsCommitPrefix: projects.docsCommitPrefix,
-      orchestrator: projects.orchestrator,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -411,7 +395,6 @@ function projectOverrides(ctx: AppCtx, projectId: string): Record<ProjectColumn,
     driveInstructions: row?.driveInstructions ?? null,
     scenarioRunner: row?.scenarioRunner ?? null,
     docsCommitPrefix: row?.docsCommitPrefix ?? null,
-    orchestrator: row?.orchestrator ?? null,
   }
 }
 
@@ -420,7 +403,7 @@ function resolveField(
   layers: {
     env: Record<string, string | undefined>
     fileRaw: Record<string, unknown>
-    overrides: Record<ProjectColumn, ProjectOverride> | null
+    overrides: Record<ProjectColumn, string | null> | null
     defaults: RuncastleConfig
   },
 ): SettingField {
@@ -475,15 +458,6 @@ export function getSettings(ctx: AppCtx, projectId?: string, io: SettingsIO = {}
     fields: [...fields, ...stepModelFields(fileRaw)],
     discovery: discoverySnapshot(ctx),
   }
-}
-
-/**
- * Whether the project's Orchestrator setting is on — the resolved value of the
- * `orchestrator` field, read by the project session launch and by every
- * orchestrator tool's gate.
- */
-export function orchestratorOn(ctx: AppCtx, projectId: string): boolean {
-  return projectOverrides(ctx, projectId).orchestrator === true
 }
 
 /**
@@ -568,7 +542,7 @@ export function updateSettings(
     const project = requireProjectById(ctx, input.projectId as string)
     ctx.db
       .update(projects)
-      .set({ [desc.projectColumn as ProjectColumn]: typeof value === 'boolean' ? value : String(value) })
+      .set({ [desc.projectColumn as ProjectColumn]: String(value) })
       .where(eq(projects.id, project.id))
       .run()
     // Stamp it human so no later preparation run overwrites what was typed here.

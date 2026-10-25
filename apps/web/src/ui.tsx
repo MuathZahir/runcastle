@@ -43,7 +43,6 @@ export {
   CheckLine,
   FindingSeverityChip,
   NoteAuthorChip,
-  OrchestratedTag,
   RunStatusChip,
   SessionStatusDot,
   StatusDot,

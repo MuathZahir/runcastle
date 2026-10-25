@@ -1202,7 +1202,6 @@ describe('the words Settings reads in — rounds and workers, never burns or lap
       ...pageRows(globalView(), 'general'),
       ...pageRows(globalView(), 'burns'),
       ...pageRows(projectView(), 'project'),
-      describeField(field({ key: 'orchestrator', value: false, scope: 'project' })),
     ]
     for (const row of rows) expect(words(row)).not.toMatch(/\bburn|\blaps?\b/i)
   })

@@ -7,7 +7,7 @@ import {
   noSession,
   ok,
   orchestratorTool,
-  requireOrchestratedFeature,
+  requireProjectFeature,
   type ResolveSession,
 } from './orchestrator-tools'
 
@@ -20,7 +20,7 @@ import {
 export type SendToFeatureResult = { deliveredToLead: true }
 
 /**
- * Send a message to an owned feature. Every chat on a feature is its lead, so
+ * Send a message to a feature of the project. Every chat on a feature is its lead, so
  * the message reaches it as the human's would — drive notes, an answer — and
  * counts as a human message, which clears a Stop.
  */
@@ -29,7 +29,7 @@ export async function toolSendToFeature(
   session: SessionRow,
   input: { slug: string; message: string },
 ): Promise<SendToFeatureResult> {
-  const feature = requireOrchestratedFeature(ctx, session, input.slug)
+  const feature = requireProjectFeature(ctx, session, input.slug)
   await deliverToLead(ctx, feature, { text: input.message, source: 'human' })
   return { deliveredToLead: true }
 }
@@ -45,9 +45,9 @@ export function registerOrchestratorRunTools(
       {
         title: 'Send a feature a message',
         description:
-          "Send a message to one of your features. It reaches the feature's agent as the human's " +
-          "message — a plan sent back with the change you want and why, drive notes, the human's " +
-          'answer relayed as theirs — which lets it dispatch again after a Stop. Orchestrator only.',
+          "Send a message to a feature's agent. It reaches the agent as the human's message — " +
+          "the change you want and why, what you found, the human's answer relayed as theirs — " +
+          'which lets it start a round again after a Stop.',
         inputSchema: {
           slug: z.string().describe('The slug of the feature.'),
           message: z

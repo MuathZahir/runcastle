@@ -6,7 +6,7 @@ const feature: Feature = {
   id: 'feat_1', projectId: 'proj_1', slug: 'record', title: 'A durable record',
   oneLiner: 'Evidence and state first.',
   branch: 'feature/record', status: 'active', createdAt: 1,
-  orchestrated: false, stoppedAt: null, waitingReason: null, lastHumanMessageAt: null, lastDispatchAt: null,
+  stoppedAt: null, waitingReason: null, lastHumanMessageAt: null, lastDispatchAt: null,
 }
 const ticket = (seq: number, overrides: Partial<Ticket> = {}): Ticket => ({
   id: `tkt_${seq}`, featureId: feature.id, seq, title: `Ticket ${seq}`, goal: 'ship', context: '',

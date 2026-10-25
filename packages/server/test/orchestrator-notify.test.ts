@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { EventRow, Project } from '@runcastle/core'
+import type { EventRow, Feature, Project } from '@runcastle/core'
 import { eq } from 'drizzle-orm'
 import { simpleGit } from 'simple-git'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,6 @@ import { renderProjectPrompt } from '../src/launcher/artifacts'
 import { ptyRegistry, type PtyEntry } from '../src/pty/registry'
 import { emit, emitProject, runAsActor } from '../src/services/events'
 import {
-  ORCHESTRATOR_STOP_LINE,
   orchestratorCatchUp,
   orchestratorLineFor,
   startOrchestratorNotifier,
@@ -19,15 +18,14 @@ import {
 } from '../src/services/orchestrator-notify'
 import { takeOrchestratorLines, waitForOrchestratorLines } from '../src/services/orchestrator-messages'
 import { openProject } from '../src/services/projects'
-import { updateSettings } from '../src/services/settings'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * What the orchestrator hears (`whole-cuts-plan-themselves` decisions 6, 11,
- * 13): a `[runcastle]` line per thing that ended on its features or per human
- * act on one, the stop line when the mode turns off, and a catch-up briefing.
+ * What the orchestrator hears (`whole-cuts-plan-themselves` decisions 11, 13;
+ * `one-orchestrator-no-mode` decision 3): a `[runcastle]` line per thing that
+ * ended on a feature it follows or per human act on one, and a catch-up briefing.
  */
 
 function event(type: string, data?: Record<string, unknown>, extra: Partial<EventRow> = {}): EventRow {
@@ -43,8 +41,8 @@ function event(type: string, data?: Record<string, unknown>, extra: Partial<Even
   }
 }
 
-const owned: NotifyState = { feature: { slug: 'export-csv', orchestrated: true } }
-const notOwned: NotifyState = { feature: { slug: 'export-csv', orchestrated: false } }
+const followed: NotifyState = { feature: { slug: 'export-csv', followed: true } }
+const notFollowed: NotifyState = { feature: { slug: 'export-csv', followed: false } }
 const chat = { kind: 'chat', purpose: undefined, headless: false } as const
 
 describe('orchestratorLineFor — end events', () => {
@@ -52,61 +50,61 @@ describe('orchestratorLineFor — end events', () => {
     [
       'a self-planning run that finished',
       event('session.self_plan_ended', { complete: true }),
-      owned,
+      followed,
       '[runcastle] export-csv finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a self-planning run that stopped short',
       event('session.self_plan_ended', { complete: false }),
-      owned,
+      followed,
       '[runcastle] export-csv stopped before the plan was complete. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a relay run that finished',
       event('session.run_ended', { complete: true }),
-      owned,
+      followed,
       '[runcastle] export-csv headless run finished. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a burn that succeeded',
       event('run.finished', { status: 'succeeded', summary: '3/3 tickets done' }),
-      owned,
+      followed,
       '[runcastle] export-csv burn finished (3/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
       'a burn that failed',
       event('run.finished', { status: 'failed', summary: '2/3 tickets done' }),
-      owned,
+      followed,
       '[runcastle] export-csv burn failed (2/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
       'a review pass that finished',
       event('ticket.done'),
-      { ...owned, ticket: { seq: 4, kind: 'review', passKind: 'review' } },
+      { ...followed, ticket: { seq: 4, kind: 'review', passKind: 'review' } },
       '[runcastle] export-csv review pass (ticket 4) finished. Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
       'a verification pass that failed',
       event('ticket.failed'),
-      { ...owned, ticket: { seq: 5, kind: 'review', passKind: 'verification' } },
+      { ...followed, ticket: { seq: 5, kind: 'review', passKind: 'verification' } },
       '[runcastle] export-csv verification pass (ticket 5) failed. Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
       'a merge that landed',
       event('feature.shipped', undefined, { message: 'merged to main' }),
-      owned,
+      followed,
       '[runcastle] export-csv merged to main: shipped. Backlog features waiting on it may start now. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a merge that conflicted',
       event('merge.conflict', { files: ['a.ts', 'b.ts'] }),
-      owned,
+      followed,
       `[runcastle] export-csv merge conflicted in 2 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "export-csv" }).`,
     ],
     [
       'a drive that failed',
       event('testdrive.dev_failed', undefined, { message: 'dev server failed to start: ENOENT' }),
-      owned,
+      followed,
       '[runcastle] export-csv drive failed: dev server failed to start: ENOENT. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
   ]
@@ -133,20 +131,20 @@ describe('orchestratorLineFor — end events', () => {
     },
   )
 
-  it.each(cases)('%s says nothing on a feature it does not own', (_name, e, state) => {
-    expect(orchestratorLineFor(e, { ...state, ...notOwned })).toBeNull()
+  it.each(cases)('%s says nothing on a feature it does not follow', (_name, e, state) => {
+    expect(orchestratorLineFor(e, { ...state, ...notFollowed })).toBeNull()
   })
 
   it('keeps every line one short line', () => {
     const long = event('run.finished', { status: 'failed', summary: `x\n${'y'.repeat(500)}` })
-    const line = orchestratorLineFor(long, owned) as string
+    const line = orchestratorLineFor(long, followed) as string
     expect(line).not.toContain('\n')
     expect(line.length).toBeLessThan(200)
   })
 
   it('ignores implementation tickets finishing', () => {
     const e = event('ticket.done')
-    expect(orchestratorLineFor(e, { ...owned, ticket: { seq: 1, kind: 'implementation', passKind: 'review' } })).toBeNull()
+    expect(orchestratorLineFor(e, { ...followed, ticket: { seq: 1, kind: 'implementation', passKind: 'review' } })).toBeNull()
   })
 })
 
@@ -155,43 +153,43 @@ describe('orchestratorLineFor — act events', () => {
     [
       'the human opening a chat',
       event('session.launched', { sessionId: 's' }),
-      { ...owned, session: chat },
+      { ...followed, session: chat },
       '[runcastle] export-csv the human opened a chat session on it; it is busy until that session ends.',
     ],
     [
       'the human starting a lap',
       event('session.launched', { sessionId: 's' }),
-      { ...owned, session: { ...chat, purpose: 'start-lap' } },
+      { ...followed, session: { ...chat, purpose: 'start-lap' } },
       '[runcastle] export-csv the human started the next lap in a chat; it is busy until that session ends.',
     ],
     [
       'the human clicking Plan it yourself',
       event('session.launched', { sessionId: 's' }),
-      { ...owned, session: { ...chat, purpose: 'self-plan', headless: true } },
+      { ...followed, session: { ...chat, purpose: 'self-plan', headless: true } },
       '[runcastle] export-csv the human had it plan itself. Wait for the run to end.',
     ],
     [
       'the human’s session ending',
       event('session.pty_exited', { sessionId: 's' }),
-      { ...owned, session: chat },
+      { ...followed, session: chat },
       `[runcastle] export-csv the human's chat session on it ended; it is free again. Read it with get_feature_context({ slug: "export-csv" }).`,
     ],
     [
       'a burn starting',
       event('burn.started'),
-      owned,
+      followed,
       '[runcastle] export-csv the human started a burn. Wait for it to finish.',
     ],
     [
       'a test drive starting',
       event('testdrive.started', { purpose: 'test' }),
-      owned,
+      followed,
       '[runcastle] export-csv the human started a test drive of it.',
     ],
     [
       'a test drive stopping',
       event('testdrive.stopped', { purpose: 'test' }),
-      owned,
+      followed,
       '[runcastle] export-csv the human stopped the test drive of it. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
   ]
@@ -205,32 +203,24 @@ describe('orchestratorLineFor — act events', () => {
     expect(orchestratorLineFor(stamped, state)).toBeNull()
   })
 
-  it.each(cases)('%s says nothing on a feature it does not own', (_name, e, state) => {
-    expect(orchestratorLineFor(e, { ...state, ...notOwned })).toBeNull()
+  it.each(cases)('%s says nothing on a feature it does not follow', (_name, e, state) => {
+    expect(orchestratorLineFor(e, { ...state, ...notFollowed })).toBeNull()
   })
 
   it('leaves a headless run’s exit to its own end event', () => {
     const e = event('session.pty_exited', { sessionId: 's' })
-    expect(orchestratorLineFor(e, { ...owned, session: { ...chat, purpose: 'relay' } })).toBeNull()
+    expect(orchestratorLineFor(e, { ...followed, session: { ...chat, purpose: 'relay' } })).toBeNull()
   })
 
   it('leaves the review agent’s drive alone', () => {
-    expect(orchestratorLineFor(event('testdrive.started', { purpose: 'review' }), owned)).toBeNull()
+    expect(orchestratorLineFor(event('testdrive.started', { purpose: 'review' }), followed)).toBeNull()
   })
 })
 
 describe('orchestratorLineFor — project-level events', () => {
-  const setting = (value: unknown, key = 'orchestrator'): EventRow =>
-    event('settings.updated', { key, scope: 'project', value }, { featureId: undefined })
-
-  it('types the stop line when the mode is turned off or cleared', () => {
-    expect(orchestratorLineFor(setting(false), {})).toBe(ORCHESTRATOR_STOP_LINE)
-    expect(orchestratorLineFor(setting(null), {})).toBe(ORCHESTRATOR_STOP_LINE)
-  })
-
-  it('says nothing when the mode is turned on, or for any other project event', () => {
-    expect(orchestratorLineFor(setting(true), {})).toBeNull()
-    expect(orchestratorLineFor(setting(false, 'burnConcurrency'), {})).toBeNull()
+  it('says nothing for any project event: there is no mode to turn off, so no stop line', () => {
+    const setting = event('settings.updated', { key: 'orchestrator', scope: 'project', value: false }, { featureId: undefined })
+    expect(orchestratorLineFor(setting, {})).toBeNull()
     expect(orchestratorLineFor(event('project.renamed', undefined, { featureId: undefined }), {})).toBeNull()
   })
 })
@@ -271,15 +261,18 @@ describe('the notifier and the catch-up', () => {
     rmTemp(repoPath)
   })
 
-  function projectSession(purpose?: 'orchestrate'): string {
-    const row = createSessionRow(ctx, {
-      projectId,
-      kind: 'project',
-      worktreePath: repoPath,
-      ...(purpose ? { purpose } : {}),
-    })
+  /** A live project session — the orchestrator. */
+  function projectSession(): string {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     return row.id
+  }
+
+  /** A feature the orchestrator follows: one of its events carries its stamp. */
+  function followedFeature(slug = 'demo', overrides: Partial<Feature> = {}): Feature {
+    const feature = seedFeature(ctx, projectId, { slug, ...overrides })
+    runAsActor('orchestrator', () => emit(ctx, feature.id, { type: 'feature.created', message: 'created' }))
+    return feature
   }
 
   /** Stand a terminal up for a session and record what is typed into it. */
@@ -298,11 +291,10 @@ describe('the notifier and the catch-up', () => {
     return opened
   }
 
-  it('hands an owned feature’s end event to the live orchestrator’s waiter, typing nothing', async () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const id = projectSession('orchestrate')
+  it('hands a followed feature’s end event to the live orchestrator’s waiter, typing nothing', async () => {
+    const id = projectSession()
     const typed = terminalFor(id)
-    const feature = seedFeature(ctx, projectId, { slug: 'export-csv', orchestrated: true })
+    const feature = followedFeature('export-csv')
     const answer = waitForOrchestratorLines(id, 'w1', 5000)
 
     emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'planning finished', data: { complete: true } })
@@ -317,10 +309,9 @@ describe('the notifier and the catch-up', () => {
   })
 
   it('hands two events ending inside 350 ms over as one message with two separate lines', async () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const id = projectSession('orchestrate')
+    const id = projectSession()
     const typed = terminalFor(id)
-    const feature = seedFeature(ctx, projectId, { slug: 'snake-core', orchestrated: true })
+    const feature = followedFeature('snake-core')
 
     // No waiter is up mid-turn: the lines wait together for the next one.
     emit(ctx, feature.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: true } })
@@ -336,12 +327,11 @@ describe('the notifier and the catch-up', () => {
     expect(typed).toEqual([])
   })
 
-  it('stays quiet about a feature it does not own, and about acts and merges it took itself', () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const id = projectSession('orchestrate')
+  it('stays quiet about a feature it does not follow, and about acts and merges it took itself', () => {
+    const id = projectSession()
     const typed = terminalFor(id)
     const human = seedFeature(ctx, projectId, { slug: 'human-one' })
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
+    const mine = followedFeature('mine')
 
     emit(ctx, human.id, { type: 'feature.shipped', message: 'merged to main' })
     runAsActor('orchestrator', () => emit(ctx, mine.id, { type: 'burn.started', message: 'burning' }))
@@ -352,31 +342,33 @@ describe('the notifier and the catch-up', () => {
     expect(typed).toEqual([])
   })
 
-  it('sends nothing when the project session is not orchestrating', () => {
+  it('follows a feature the orchestrator only messaged, and stops once it has shipped', () => {
     const id = projectSession()
-    const typed = terminalFor(id)
-    const feature = seedFeature(ctx, projectId, { orchestrated: true })
+    const touched = seedFeature(ctx, projectId, { slug: 'touched' })
+    runAsActor('orchestrator', () => emit(ctx, touched.id, { type: 'lead.message_pending', message: 'x' }))
+    const done = followedFeature('done', { status: 'shipped' })
 
-    emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
+    emit(ctx, touched.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
+    emit(ctx, done.id, { type: 'testdrive.dev_failed', message: 'boom' })
 
-    expect(takeOrchestratorLines(id)).toEqual([])
-    expect(typed).toEqual([])
+    expect(takeOrchestratorLines(id)).toEqual([
+      `[runcastle] touched merge conflicted in 1 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "touched" }).`,
+    ])
   })
 
-  it('sends the stop line through the same path when the mode is turned off', async () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const id = projectSession('orchestrate')
-    const answer = waitForOrchestratorLines(id, 'w1', 5000)
+  it('sends nothing when no project session is live', () => {
+    const id = projectSession()
+    markSessionEnded(ctx, id)
+    const feature = followedFeature()
 
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
+    emit(ctx, feature.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
 
-    expect(await answer).toEqual({ status: 'lines', lines: [ORCHESTRATOR_STOP_LINE] })
+    expect(takeOrchestratorLines(id)).toEqual([])
   })
 
   it('drops an ended orchestrator’s lines and answers its waiter ended', async () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const id = projectSession('orchestrate')
-    const feature = seedFeature(ctx, projectId, { orchestrated: true })
+    const id = projectSession()
+    const feature = followedFeature()
     emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
 
     markSessionEnded(ctx, id)
@@ -388,30 +380,29 @@ describe('the notifier and the catch-up', () => {
   })
 
   it('never lets a failure reach the service that emitted', () => {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    projectSession('orchestrate')
+    projectSession()
     vi.spyOn(ptyRegistry(), 'get').mockImplementation(() => {
       throw new Error('terminal gone')
     })
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const feature = seedFeature(ctx, projectId, { orchestrated: true })
+    const feature = followedFeature()
 
     expect(() => emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })).not.toThrow()
   })
 
   it('catches up on nothing when there never was an orchestrator', () => {
-    const feature = seedFeature(ctx, projectId, { orchestrated: true })
+    const feature = followedFeature()
     emit(ctx, feature.id, { type: 'feature.shipped', message: 'merged to main' })
 
     expect(orchestratorCatchUp(ctx, project())).toEqual([])
   })
 
-  it('lists end events on owned features since the last orchestrator ended, oldest first', () => {
-    const last = projectSession('orchestrate')
+  it('lists end events on followed features since the last project session ended, oldest first', () => {
+    const last = projectSession()
     markSessionEnded(ctx, last)
     const endedAt = Date.now() - 10_000
     ctx.db.update(sessions).set({ endedAt }).where(eq(sessions.id, last)).run()
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
+    const mine = followedFeature('mine')
     const human = seedFeature(ctx, projectId, { slug: 'human-one' })
 
     emit(ctx, mine.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: false } })
@@ -427,9 +418,9 @@ describe('the notifier and the catch-up', () => {
   })
 
   it('leaves out what happened before the last orchestrator ended', () => {
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
+    const mine = followedFeature('mine')
     emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' })
-    const last = projectSession('orchestrate')
+    const last = projectSession()
     markSessionEnded(ctx, last)
     ctx.db.update(sessions).set({ endedAt: Date.now() + 10_000 }).where(eq(sessions.id, last)).run()
 
@@ -437,10 +428,10 @@ describe('the notifier and the catch-up', () => {
   })
 
   it('caps the catch-up and says how many more there were', () => {
-    const last = projectSession('orchestrate')
+    const last = projectSession()
     markSessionEnded(ctx, last)
     ctx.db.update(sessions).set({ endedAt: Date.now() - 10_000 }).where(eq(sessions.id, last)).run()
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
+    const mine = followedFeature('mine')
     for (let i = 0; i < 53; i++) {
       emit(ctx, mine.id, { type: 'run.finished', message: 'x', data: { status: 'failed', summary: `run ${i}` } })
     }
@@ -453,10 +444,10 @@ describe('the notifier and the catch-up', () => {
   })
 
   it('renders the catch-up under "Since you were last live" in the orchestrating prompt', () => {
-    const last = projectSession('orchestrate')
+    const last = projectSession()
     markSessionEnded(ctx, last)
     ctx.db.update(sessions).set({ endedAt: Date.now() - 10_000 }).where(eq(sessions.id, last)).run()
-    const mine = seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
+    const mine = followedFeature('mine')
     emit(ctx, mine.id, { type: 'feature.shipped', message: 'merged to main' })
 
     const prompt = renderProjectPrompt(
@@ -466,7 +457,6 @@ describe('the notifier and the catch-up', () => {
         worktreePath: repoPath,
         base: 'main',
         openNotes: 0,
-        orchestrate: true,
         catchUp: orchestratorCatchUp(ctx, project()),
       },
       'claude-code',

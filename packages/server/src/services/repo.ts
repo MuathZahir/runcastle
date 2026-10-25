@@ -39,7 +39,6 @@ export function rowToFeature(row: FeatureSelect): Feature {
     baseBranch: row.baseBranch ?? undefined,
     status: row.status,
     createdAt: row.createdAt,
-    orchestrated: row.orchestrated,
     upNext: row.upNext,
     stoppedAt: row.stoppedAt,
     waitingReason: row.waitingReason,
@@ -66,7 +65,6 @@ export function rowToProject(row: ProjectSelect): Project {
     driveInstructions: row.driveInstructions ?? undefined,
     scenarioRunner: row.scenarioRunner ?? undefined,
     docsCommitPrefix: row.docsCommitPrefix ?? undefined,
-    orchestrator: row.orchestrator ?? undefined,
     closedAt: row.closedAt ?? undefined,
   })
 }
@@ -208,26 +206,6 @@ export function hasActiveRun(ctx: AppCtx, featureId: string): boolean {
 }
 
 // --- status mutations (each emits an event) ---------------------------------
-
-/**
- * Hand a feature to the orchestrator (`whole-cuts-plan-themselves` decision 9):
- * it created it from an `orchestrate` session, or the human handed it over.
- * `how` says which, on the event.
- */
-export function markOrchestrated(
-  ctx: AppCtx,
-  featureId: string,
-  how: 'created' | 'taken over',
-): Feature {
-  const current = getFeatureRow(ctx, featureId)
-  ctx.db.update(features).set({ orchestrated: true }).where(eq(features.id, featureId)).run()
-  emit(ctx, featureId, {
-    type: 'feature.orchestrated',
-    message: how === 'created' ? 'created by the orchestrator' : 'handed to the orchestrator',
-    data: { how },
-  })
-  return { ...current, orchestrated: true }
-}
 
 export function setFeatureStatus(
   ctx: AppCtx,

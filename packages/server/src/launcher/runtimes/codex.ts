@@ -121,9 +121,9 @@ interface CodexConfigInput {
  * degrading to a default).
  *
  * `acceptEdits`, the posture every worktree-scoped kind runs under, is `never`:
- * the agent writes inside its own checkout without stopping to ask. The project
- * session's `default` (decision 18 — whole-repo write access voids the
- * acceptEdits justification) is `on-request`, the CLI's own default, where the
+ * the agent writes inside its own checkout without stopping to ask. `default`
+ * (once the project session's, before it became the orchestrator) is
+ * `on-request`, the CLI's own default, where the
  * model decides when to ask — the closest prompting analogue config.toml still
  * accepts. Not `untrusted`, the stricter "always ask": current Codex demotes it
  * to an internal policy for projects it marks untrusted (reached through
@@ -131,8 +131,8 @@ interface CodexConfigInput {
  * `approval_policy = "untrusted" is no longer supported; remove this setting` —
  * which killed every interactive project session before it started.
  *
- * `bypassPermissions`, the orchestrator's posture (`whole-cuts-plan-themselves`
- * decision 10), is `never` too: it works while the human is away.
+ * `bypassPermissions`, the project session's posture (`one-orchestrator-no-mode`
+ * decision 1), is `never` too: the orchestrator works while the human is away.
  */
 function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-request' {
   return permissionMode === undefined ||
@@ -157,7 +157,7 @@ function approvalPolicyFor(permissionMode: string | undefined): 'never' | 'on-re
  * the CLI's sandbox. A session that asks (`on-request`) keeps `workspace-write`:
  * a downgraded write there is a question to the human, not a dead end.
  *
- * The orchestrator (`bypassPermissions`) runs unsandboxed on every platform: it
+ * The project session, the orchestrator (`bypassPermissions`), runs unsandboxed on every platform: it
  * resolves conflicts in other features' worktrees under the data dir, outside
  * its own workspace, which `workspace-write` would refuse.
  */

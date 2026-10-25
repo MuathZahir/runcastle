@@ -7,21 +7,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import { toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
 import { getFeatureRow } from '../src/services/repo'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
 import { openProject } from '../src/services/projects'
-import { updateSettings } from '../src/services/settings'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
  * `send_to_feature` (`whole-cuts-plan-themselves`, `the-feature-lead-runs-rounds`,
- * "Headless runs on a feature"): it reaches a relay or the lead of a feature
- * the orchestrator owns, and refuses through the shared gate otherwise.
+ * "Headless runs on a feature", `one-orchestrator-no-mode`): it reaches the
+ * lead of any feature of the project, and refuses through the shared gate.
  */
 
 async function gitRepo(): Promise<string> {
@@ -59,24 +58,16 @@ describe('the orchestrator’s headless-run tools', () => {
     rmTemp(repoPath)
   })
 
-  function projectSession(purpose?: 'orchestrate'): SessionRow {
-    const row = createSessionRow(ctx, {
-      projectId,
-      kind: 'project',
-      worktreePath: repoPath,
-      ...(purpose ? { purpose } : {}),
-    })
+  /** A live project session — the orchestrator. */
+  function orchestrator(): SessionRow {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     return getSessionRow(ctx, row.id) as SessionRow
   }
 
-  function orchestrator(): SessionRow {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    return projectSession('orchestrate')
-  }
-
+  /** A started feature the orchestrator did not create. */
   async function feature(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
-    const f = seedFeature(ctx, projectId, { slug, orchestrated: true, ...overrides })
+    const f = seedFeature(ctx, projectId, { slug, ...overrides })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return f
@@ -109,33 +100,22 @@ describe('the orchestrator’s headless-run tools', () => {
   })
 
   describe('refuses through the shared gate', () => {
-    it('for a feature the orchestrator does not own', async () => {
-      await feature('humans', { orchestrated: false })
-      const session = orchestrator()
-      await expect(
-        toolSendToFeature(ctx, session, { slug: 'humans', message: 'x' }),
-      ).rejects.toThrow(/the human's feature, not yours/)
+    it('from a session that is not a project session', async () => {
+      const f = await feature('humans')
+      const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+      const call = () => toolSendToFeature(ctx, chat, { slug: 'humans', message: 'x' })
+      await expect(call()).rejects.toBeInstanceOf(GateError)
+      await expect(call()).rejects.toThrow(/only the orchestrator/)
     })
 
-    it('from a session that is not orchestrating', async () => {
-      await feature('owned', {})
-      updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-      const ordinary = projectSession()
-      for (const call of [
-        () => toolSendToFeature(ctx, ordinary, { slug: 'owned', message: 'x' }),
-      ]) {
-        await expect(call()).rejects.toBeInstanceOf(GateError)
-        await expect(call()).rejects.toThrow(/only the orchestrator/)
-      }
-    })
-
-    it('once the setting is off', async () => {
-      await feature('stopped', {})
+    it('from a project session that has ended', async () => {
+      await feature('stopped')
       const session = orchestrator()
-      updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
+      markSessionEnded(ctx, session.id)
+      const ended = getSessionRow(ctx, session.id) as SessionRow
       await expect(
-        toolSendToFeature(ctx, session, { slug: 'stopped', message: 'x' }),
-      ).rejects.toThrow(/Orchestrator setting is off/)
+        toolSendToFeature(ctx, ended, { slug: 'stopped', message: 'x' }),
+      ).rejects.toThrow(/has ended/)
     })
   })
 })

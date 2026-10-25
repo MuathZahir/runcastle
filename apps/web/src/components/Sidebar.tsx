@@ -109,6 +109,14 @@ const TALK_WORDS: Record<ProjectSessionState, string> = {
 }
 
 /**
+ * The Orchestrator card's hover text: what the project chat is, and the warning
+ * the retired Orchestrator setting used to carry (`one-orchestrator-no-mode`
+ * decision 1).
+ */
+export const ORCHESTRATOR_TITLE =
+  "Your project's orchestrator: it plans, starts, messages and merges features when you ask, and edits this repo and runs commands without asking."
+
+/**
  * The project sidebar (DESIGN.md §Frame, "The project sidebar") on the canvas,
  * composed from the pieces in `SidebarParts` the way /preview/sidebar.html does:
  *
@@ -257,7 +265,6 @@ export function Sidebar(props: SidebarProps) {
     />
   )
 
-  const projectName = nav.currentProject?.name ?? 'This project'
   // The project chat stopped for an answer: the same turn state a feature's
   // live session carries (decisions §3).
   const talkWaiting = talk.state === 'live' && !!talk.session?.awaitingInput
@@ -306,11 +313,7 @@ export function Sidebar(props: SidebarProps) {
           active={view === 'project'}
           onOpen={onSelectProject}
           actions={orchestratorActions}
-          title={
-            openNotes > 0
-              ? `${projectName} — ${openNotes} open note${openNotes === 1 ? '' : 's'}`
-              : 'Talk to the project — intake, decomposition, and portfolio questions'
-          }
+          title={ORCHESTRATOR_TITLE}
         />
       </div>
 
