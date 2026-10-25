@@ -898,7 +898,7 @@ function renderOrchestratingSection(catchUp: string[], runtime: AgentRuntime): s
     '',
     ...(catchUp.length > 0
       ? ['### Since you were last live', ...catchUp.map((line) => `- ${line}`)]
-      : ['Nothing has happened on your features since you were last live.']),
+      : ['Nothing has happened on the features you follow since you were last live.']),
     '',
   ]
 }

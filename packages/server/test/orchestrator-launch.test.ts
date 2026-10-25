@@ -106,7 +106,7 @@ describe('the project session launch is the orchestrator', () => {
     const prompt = claudePrompt(sessionId)
     expect(prompt).toContain('## Orchestrating')
     expect(prompt).toContain('/runcastle:project')
-    expect(prompt).toContain('Nothing has happened on your features since you were last live.')
+    expect(prompt).toContain('Nothing has happened on the features you follow since you were last live.')
   })
 
   it('launches Codex with approvals never and no sandbox', async () => {

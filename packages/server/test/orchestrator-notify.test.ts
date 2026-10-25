@@ -66,6 +66,12 @@ describe('orchestratorLineFor — end events', () => {
       '[runcastle] export-csv declared ready to test (drive: empty-cart). Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
+      'an agent runcastle could not wake',
+      event('lead.wake_failed', { exitCode: 1, tail: '', messages: 1 }, { message: 'could not resume the agent headless' }),
+      followed,
+      '[runcastle] export-csv could not wake its agent, so messages sent to it have not reached it yet (could not resume the agent headless). Read it with get_feature_context({ slug: "export-csv" }).',
+    ],
+    [
       'a self-planning run that stopped short',
       event('session.self_plan_ended', { complete: false }),
       followed,

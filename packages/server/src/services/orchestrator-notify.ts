@@ -39,6 +39,7 @@ import { getTicket } from './tickets'
  * | `run.finished`                    | end  | a round finished or failed (`data.status`)  |
  * | `feature.waiting`                 | end  | the agent waits for the human (`data.why`)  |
  * | `feature.ready_declared`          | end  | the agent declared the work ready to test   |
+ * | `lead.wake_failed`                | end  | runcastle could not wake the agent          |
  * | `ticket.done` / `ticket.failed`   | end  | only for a review or verification ticket    |
  * | `feature.shipped`                 | end  | a merge landed                              |
  * | `merge.conflict`                  | end  | a merge conflicted                          |
@@ -83,6 +84,7 @@ const END_TYPES = [
   'run.finished',
   'feature.waiting',
   'feature.ready_declared',
+  'lead.wake_failed',
   'ticket.done',
   'ticket.failed',
   'feature.shipped',
@@ -146,6 +148,13 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       const scenario = typeof data.scenario === 'string' ? clip(data.scenario) : ''
       return { kind: 'end', text: `declared ready to test${scenario ? ` (drive: ${scenario})` : ''}. ${context}` }
     }
+    case 'lead.wake_failed':
+      // The messages wait for the agent's next wake; without this line a sender
+      // would believe its message was being worked on.
+      return {
+        kind: 'end',
+        text: `could not wake its agent, so messages sent to it have not reached it yet (${clip(event.message)}). ${context}`,
+      }
     case 'ticket.done':
     case 'ticket.failed': {
       if (ticket?.kind !== 'review') return null
