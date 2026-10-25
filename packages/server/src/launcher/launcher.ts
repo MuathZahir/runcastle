@@ -88,6 +88,7 @@ import {
   transcriptBytes,
   type ResumeCapVerdict,
 } from './sessions'
+import { forgetUntouched, markAutoResumed } from './untouched'
 
 const CODEX_RESUME_UNAVAILABLE_MESSAGE =
   'no resumable conversation was recorded — starting a fresh session'
@@ -808,6 +809,93 @@ export async function launchSession(
   return { sessionId: session.id, resumed: !!resumeSessionId }
 }
 
+/**
+ * Why an automatic resume did not happen. Never an error: opening a page must
+ * not surprise the human with a toast or a conversation they did not ask for,
+ * so the page stays at rest with its Resume button (decision 7).
+ */
+export interface AutoResumeSkipped {
+  autoSkipped: string
+}
+
+export type AutoResumeResult = LaunchSessionResult | AutoResumeSkipped
+
+/** The GateError a guard throws, as a quiet refusal; anything else still throws. */
+function skippedOnGate(guard: () => void): AutoResumeSkipped | null {
+  try {
+    guard()
+    return null
+  } catch (e) {
+    if (e instanceof GateError) return { autoSkipped: e.message }
+    throw e
+  }
+}
+
+/**
+ * Whether a runtime can take a resume on open: Codex is never resumed by
+ * itself, and one that cannot run right now (exempt for the `spawn:false`
+ * smoke path, as in {@link assertRuntimeReady}) is refused before anything exists.
+ */
+function autoResumeRuntimeRefusal(
+  model: ModelEntry,
+  opts: LaunchSessionOptions,
+): AutoResumeSkipped | null {
+  if (model.runtime === 'codex') return { autoSkipped: 'the Codex runtime cannot resume a conversation on open' }
+  return skippedOnGate(() => assertRuntimeReady(runtimeAdapterFor(model.runtime), opts))
+}
+
+/** Watch a session an automatic resume spawned, so it closes when left untouched. */
+function watchAutoResumed(ctx: AppCtx, result: LaunchSessionResult, opts: LaunchSessionOptions): void {
+  if (opts.spawn === false || !result.resumed) return
+  if (getSessionRow(ctx, result.sessionId)?.status === 'ended') return
+  markAutoResumed(ctx, result.sessionId)
+}
+
+/**
+ * Opening a feature resumes its chat (backs `feature.launchSession` with
+ * `auto: true`; `opening-a-feature-shows-its-chat-as-you-left-it`). It only ever
+ * resumes: every case that would otherwise refuse, or fall through to a fresh
+ * conversation, is answered with {@link AutoResumeSkipped} before anything is
+ * created — no row, no worktree, no artifacts. Only an in-progress feature
+ * resumes on open (decision 4). A live chat is the answer as it is, with nothing
+ * written to it: an automatic open carries no briefing.
+ *
+ * What does spawn is watched by the untouched-leave rule ({@link markAutoResumed}).
+ * Only a plain chat open resumes by itself, so a launch carrying any errand of
+ * its own is refused outright.
+ */
+export async function autoResumeChat(
+  ctx: AppCtx,
+  input: LaunchSessionInput,
+  opts: LaunchSessionOptions = {},
+): Promise<AutoResumeResult> {
+  if (input.kind !== 'chat' || input.purpose || input.purposeData || input.kickoffLine || input.message || input.fresh) {
+    throw new GateError('an automatic resume opens the feature chat alone, with no errand of its own')
+  }
+  const feature = getFeatureRow(ctx, input.featureId)
+  if (feature.status !== 'active') return { autoSkipped: `${feature.slug} is not in progress` }
+
+  const liveChat = activeSessionsForFeature(ctx, feature.id).find((s) => s.kind === 'chat')
+  if (liveChat?.headless) return { autoSkipped: headlessRunningError(feature, liveChat).message }
+  if (liveChat) return { sessionId: liveChat.id }
+  const held = skippedOnGate(() => assertSpawnable(ctx, feature))
+  if (held) return held
+
+  const project = projectForFeature(ctx, feature)
+  const refused = autoResumeRuntimeRefusal(resolveModelEntry('chat', rosterConfig(ctx), project), opts)
+  if (refused) return refused
+
+  const prior = mostRecentResumableSession(ctx, feature.id, 'chat')
+  if (!prior?.ccSessionId) return { autoSkipped: 'no resumable conversation is on record' }
+  // The talk worktree always stands at this path, whichever branch it rides.
+  const gone = resumeGoneReason(prior, worktreeDir(project.id, feature.slug))
+  if (gone) return { autoSkipped: `the conversation can't be resumed — ${gone}` }
+
+  const launched = await launchSession(ctx, { featureId: feature.id, kind: 'chat' }, opts)
+  watchAutoResumed(ctx, launched, opts)
+  return launched
+}
+
 export interface LaunchSideSessionInput {
   featureId: string
   /** A `side` row of this feature to reopen: its own conversation is resumed. Absent opens a new one. */
@@ -1388,6 +1476,13 @@ export async function launchScenarioSession(
   return { sessionId: session.id }
 }
 
+export interface ProjectLaunchInput {
+  projectId: string
+  fresh?: boolean
+  resumeSessionId?: string
+  purpose?: 'triage'
+}
+
 /**
  * Open the project's intake conversation (backs `project.talkToProject`) — the
  * session that turns a lump of raw intent into features (decisions 17–20).
@@ -1425,7 +1520,7 @@ export async function launchScenarioSession(
  */
 export async function launchProjectSession(
   ctx: AppCtx,
-  input: { projectId: string; fresh?: boolean; resumeSessionId?: string; purpose?: 'triage' },
+  input: ProjectLaunchInput,
   opts: LaunchSessionOptions = {},
 ): Promise<LaunchSessionResult> {
   const project = requireProjectById(ctx, input.projectId)
@@ -1553,7 +1648,7 @@ export async function launchProjectSession(
       message: 'project session prepared (terminal spawn skipped)',
       data: { sessionId: session.id, command: renderCommand(runtime, spec), spawned: false },
     })
-    return { sessionId: session.id }
+    return { sessionId: session.id, resumed: !!resumeSessionId }
   }
 
   const spawned = spawnEmbeddedPty(ctx, undefined, session, worktreePath, runtime, spec, {
@@ -1566,7 +1661,44 @@ export async function launchProjectSession(
       data: { sessionId: session.id, kind: 'project', line: kickoffLine, mechanism: 'argv' },
     })
   }
-  return { sessionId: session.id }
+  return { sessionId: session.id, resumed: !!resumeSessionId }
+}
+
+/**
+ * Opening the project page resumes the conversation it is showing (backs
+ * `project.talkToProject` with `auto: true`; decision 3) — the project twin of
+ * {@link autoResumeChat}. It only ever resumes `resumeSessionId`, a project
+ * conversation's row id: a live project session, a conversation Claude Code
+ * never picked up, one past the re-entry cap and the Codex runtime are each
+ * answered with {@link AutoResumeSkipped} before anything is created, never with
+ * a fresh chat and never with a throw. A launch that names no conversation, or
+ * asks for a fresh or triage one, is not an automatic resume and is refused.
+ */
+export async function autoResumeProjectChat(
+  ctx: AppCtx,
+  input: ProjectLaunchInput,
+  opts: LaunchSessionOptions = {},
+): Promise<AutoResumeResult> {
+  if (!input.resumeSessionId || input.fresh || input.purpose) {
+    throw new GateError('an automatic resume picks up the conversation it names, and nothing else')
+  }
+  const project = requireProjectById(ctx, input.projectId)
+  if (activeProjectSession(ctx, project.id, 'project')) {
+    return { autoSkipped: `a project session is already open for ${project.name}` }
+  }
+  const refused = autoResumeRuntimeRefusal(resolveModelEntry('project', rosterConfig(ctx), project), opts)
+  if (refused) return refused
+
+  const prior = getSessionRow(ctx, input.resumeSessionId)
+  if (prior?.projectId !== project.id || prior.kind !== 'project' || !prior.ccSessionId) {
+    return { autoSkipped: 'that conversation has nothing to resume' }
+  }
+  const capped = applyResumeCap(ctx, prior.ccSessionId, prior, { projectId: project.id, kind: 'project' })
+  if (capped) return { autoSkipped: capped.detail }
+
+  const launched = await launchProjectSession(ctx, { projectId: project.id, resumeSessionId: prior.id }, opts)
+  watchAutoResumed(ctx, launched, opts)
+  return launched
 }
 
 /**
@@ -1653,6 +1785,7 @@ export function handlePtyExit(
 ): Promise<void> | undefined {
   const diedBeforeLive = getSessionRow(ctx, session.id)?.status === 'launching'
   markSessionEnded(ctx, session.id)
+  forgetUntouched(session.id)
   // A project session's commits land on the base branch when its terminal goes
   // (decision 18) — including when it dies on its own; no-op for other kinds.
   landProjectSession(ctx, session)

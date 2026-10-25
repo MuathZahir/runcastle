@@ -114,8 +114,26 @@ export async function tearDownEntry(entry: PtyEntry): Promise<void> {
   log(`${id}: done after ${Date.now() - started}ms deadline=${finished ? 'no' : 'FIRED'}`)
 }
 
+/** Told how many transports a session has attached, each time one attaches or detaches. */
+export type SinksListener = (sessionId: string, attached: number) => void
+
 class PtyRegistry {
   private entries = new Map<string, PtyEntry>()
+  private sinksListeners = new Set<SinksListener>()
+
+  /**
+   * Hear every attach and detach — how something above the PTY layer learns
+   * whether anyone is watching a terminal without the WS endpoint knowing it
+   * exists. Returns an unsubscribe.
+   */
+  onSinksChanged(listener: SinksListener): () => void {
+    this.sinksListeners.add(listener)
+    return () => this.sinksListeners.delete(listener)
+  }
+
+  private notifySinks(entry: PtyEntry): void {
+    for (const listener of this.sinksListeners) listener(entry.sessionId, entry.sinks.size)
+  }
 
   /** Spawn + register a PTY for a session. Throws if the id is already live. */
   create(input: CreateEntryInput): PtyEntry {
@@ -174,12 +192,15 @@ class PtyRegistry {
         : { t: 'status', status: 'live' },
     )
     entry.sinks.add(sink)
+    this.notifySinks(entry)
     return true
   }
 
   /** Detach a transport. Detach is NOT kill — the PTY keeps running. */
   detach(sessionId: string, sink: TerminalSink): void {
-    this.entries.get(sessionId)?.sinks.delete(sink)
+    const entry = this.entries.get(sessionId)
+    if (!entry?.sinks.delete(sink)) return
+    this.notifySinks(entry)
   }
 
   /**

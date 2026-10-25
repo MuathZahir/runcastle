@@ -6,6 +6,7 @@ import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead }
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
+import { forgetUntouched } from '../launcher/untouched'
 import {
   getSessionRow,
   markAgentWorking,
@@ -122,7 +123,12 @@ hooks.post('/:event', async (c) => {
     // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
     // the per-scope handler for its injected context.
     if (event === 'user-prompt' || event === 'stop') checkInFromTurn(ctx, session, body.payload)
-    if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
+    if (event === 'user-prompt') {
+      markAgentWorking(ctx, sessionId)
+      // Any prompt, tagged runcastle's or the human's, keeps an auto-resumed
+      // chat up: it has started a turn, so leaving it must not end it.
+      forgetUntouched(sessionId)
+    }
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
       // The turn that just ended may have committed a conflict's merge, and the
