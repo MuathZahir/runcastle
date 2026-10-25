@@ -15,6 +15,7 @@ export function ProjectChat({
   transcriptId,
   onResume,
   resuming = false,
+  autoResuming = false,
   hidden,
   onEnded,
 }: {
@@ -25,6 +26,8 @@ export function ProjectChat({
   /** With nothing live: reopen it. Absent when Claude Code never picked it up. */
   onResume?: () => void
   resuming?: boolean
+  /** Showing it is resuming it by itself: "Resuming…" stands where Resume was. */
+  autoResuming?: boolean
   hidden: boolean
   /** Refresh the project's own session and conversation rows once it ends. */
   onEnded?: () => void
@@ -39,6 +42,7 @@ export function ProjectChat({
         transcriptId={transcriptId}
         onLaunch={onResume}
         launching={resuming}
+        autoResuming={autoResuming}
       />
     </div>
   )

@@ -434,7 +434,7 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, next)).not.toContain('--resume')
   })
 
-  it('sends every resumed chat its fresh feature-state header', async () => {
+  it('briefs a fresh chat, and resumes a plain chat with no kickoff at all', async () => {
     const f = await feature('kickoff')
     const first = await launch(f.id, 'chat')
     markSessionLive(ctx, first, { ccSessionId: 'cc-grill' })
@@ -445,7 +445,8 @@ describe('relaunching a terminal resumes its own conversation', () => {
     expect(commandFor(f.id, first)).toContain('Call get_feature_context for the full picture.')
     const command = commandFor(f.id, second)
     expect(command).toContain('--resume cc-grill')
-    expect(command).toContain('Feature status:')
+    expect(command).not.toContain('Feature status:')
+    expect(command).not.toContain('[runcastle]')
   })
 })
 
