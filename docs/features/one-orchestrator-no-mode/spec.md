@@ -23,7 +23,7 @@ The current mode also predates the feature lead: its news lines still talk about
 
 **What the orchestrator hears** (notifier, catch-up). A feature is **followed** when it is not shipped and at least one of its events carries `actor: 'orchestrator'` (decision 3). This is computed from the events table, and nothing is stored on the feature. Followed replaces "orchestrated" everywhere the notifier and the catch-up asked it. The line kinds:
 
-- END lines (also listed in the catch-up): a self-planning or headless run ended; a round finished or failed; a review ticket finished or failed; the feature's agent waits for the human, with its reason (`feature.waiting` with a non-null reason); the agent declared ready (`feature.ready_declared`); a merge landed or conflicted; a drive's dev server failed. When a self-plan end and the waiting reason it sets arrive together, they go as one line.
+- END lines (also listed in the catch-up): a self-planning or headless run ended; a round finished or failed; a review ticket finished or failed; the feature's agent waits for the human, with its reason (`feature.waiting` with a non-null reason); the agent declared ready (`feature.ready_declared`); a merge landed or conflicted; a drive's dev server failed. A self-plan end and the waiting reason it sets arrive together, so they reach the orchestrator in one message, and their two lines must not repeat each other.
 - ACT lines (the human did something on a followed feature): a chat with a terminal opened or ended, a drive started or stopped. Lines for things the orchestrator's own call already returned are still dropped.
 
 The wording speaks of rounds, and drops laps, burns and Go. The setting-off stop line goes.
