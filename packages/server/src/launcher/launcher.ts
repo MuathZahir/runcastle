@@ -77,6 +77,7 @@ import {
   hasCompletedProjectSession,
   kickoffLineFor,
   landProjectSession,
+  markAwaitingInput,
   markSessionEnded,
   mostRecentResumableProjectSession,
   mostRecentResumableSession,
@@ -785,6 +786,10 @@ export async function launchSession(
       ? { permissionMode: 'bypassPermissions' }
       : {}),
   })
+
+  // No prompt is coming, so no turn will ever end to say the agent is waiting:
+  // a quiet resume is idle from the start, not "Working".
+  if (quietResume) markAwaitingInput(ctx, session.id)
 
   // spawn:false fabricates a session MINUS any process (SPEC §11 smoke driver).
   if (opts.spawn === false) {
@@ -1641,6 +1646,9 @@ export async function launchProjectSession(
     // there stalls the whole cut (`whole-cuts-plan-themselves` decision 10).
     permissionMode: orchestrate ? 'bypassPermissions' : 'default',
   })
+
+  // A resume sends nothing, so it is idle from the start, not "Working".
+  if (!kickoffLine) markAwaitingInput(ctx, session.id)
 
   if (opts.spawn === false) {
     emitProject(ctx, project.id, {

@@ -14,6 +14,7 @@ import {
 } from '../src/launcher/launcher'
 import {
   createSessionRow,
+  getSessionRow,
   markSessionEnded,
   markSessionLive,
   projectSessions,
@@ -125,6 +126,8 @@ describe('auto resume on open', () => {
       const command = launchedCommand(listAfter(ctx, feature.id, 0))
       expect(command).toContain('--resume cc-prior')
       expect(command).not.toContain('Feature status:')
+      // nothing was sent, so it sits waiting on the human rather than "Working"
+      expect(getSessionRow(ctx, (result as { sessionId: string }).sessionId)?.awaitingInput).toBe(true)
     })
 
     it.each<FeatureStatus>(['shipped', 'archived'])('keeps a %s feature at rest', async (status) => {
@@ -228,6 +231,7 @@ describe('auto resume on open', () => {
 
       expect(result).toMatchObject({ resumed: true })
       expect(launchedCommand(listByProject(ctx, project.id))).toContain('--resume cc-project')
+      expect(getSessionRow(ctx, (result as { sessionId: string }).sessionId)?.awaitingInput).toBe(true)
     })
 
     it('never throws for a live project session', async () => {

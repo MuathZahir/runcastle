@@ -85,7 +85,9 @@ function leave(sessionId: string): void {
   untouched.delete(sessionId)
   try {
     const row = getSessionRow(entry.ctx, sessionId)
-    if (row && row.status !== 'ended') endSession(entry.ctx, sessionId)
+    if (row && row.status !== 'ended') {
+      endSession(entry.ctx, sessionId, 'chat closed — it resumed by itself and was left unused')
+    }
   } catch (err) {
     console.error(`[untouched] ending ${sessionId} failed`, err)
   }

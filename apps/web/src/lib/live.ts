@@ -399,6 +399,8 @@ export function useLiveSync(): LiveStatus {
       refetches.push(u.feature.mergeDelta.invalidate())
       refetches.push(u.project.prepSession.invalidate())
       refetches.push(u.project.projectSession.invalidate())
+      // Its conversation list marks which one is live, so an end moves it too.
+      refetches.push(u.project.conversations.invalidate())
       // The design view's frame follows `design.server_started` / `_stopped`:
       // a server that idled out shows its stopped state on the same push.
       refetches.push(u.design.status.invalidate())

@@ -144,6 +144,31 @@ describe('opening a feature', () => {
     rerender({ f: feature('active', [chat()]) })
     expect(featureLaunch).not.toHaveBeenCalled()
   })
+
+  /**
+   * Coming back to a feature whose untouched chat the leave timer closed: the
+   * cache from the last visit still shows it live. That stale row must not count
+   * as "up this visit", or the fresh one never resumes.
+   */
+  it('resumes on return although the cached data from the last visit still shows the chat live', () => {
+    const before = Date.now() - 60_000
+    const { rerender } = renderHook(({ f, at }) => useFeatureAutoResume('feat_1', f, at), {
+      initialProps: { f: feature('active', [chat({ status: 'live' })]), at: before },
+    })
+    expect(featureLaunch).not.toHaveBeenCalled()
+
+    rerender({ f: feature('active', [chat()]), at: Date.now() + 1 })
+    expect(featureLaunch).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for data fetched this visit before resuming', () => {
+    const { rerender } = renderHook(({ at }) => useFeatureAutoResume('feat_1', feature('active', [chat()]), at), {
+      initialProps: { at: Date.now() - 60_000 },
+    })
+    expect(featureLaunch).not.toHaveBeenCalled()
+    rerender({ at: Date.now() + 1 })
+    expect(featureLaunch).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the project page', () => {

@@ -12,11 +12,18 @@ import { activeSession, featureChat } from './feature-ui'
  * conversation already up during this visit is not resumed by itself once it
  * ends either: an End the human clicked must stay ended. `visit` is the page's
  * own id; a new one is a new visit and forgets what was tried.
+ *
+ * `updatedAt` is when the data behind `resumable` and `live` was fetched. Data
+ * older than the visit is the cache from the last one, and it can still show a
+ * chat live that the leave timer closed while the human was away — read as "up
+ * during this visit", that would keep the chat at rest for good. So nothing is
+ * read or tried until the page has data fetched since the visit began.
  */
 export function useAutoResumeOnce({
   visit,
   resumable,
   live = null,
+  updatedAt,
   resume,
 }: {
   visit: string
@@ -24,19 +31,22 @@ export function useAutoResumeOnce({
   resumable: string | null
   /** The conversation up right now, if any. */
   live?: string | null
+  /** When the data behind `resumable` and `live` was fetched (ms epoch); absent, it is trusted. */
+  updatedAt?: number
   resume: (conversation: string) => void
 }): void {
-  const tried = useRef<{ visit: string; conversations: Set<string> }>({ visit, conversations: new Set() })
+  const tried = useRef<{ visit: string; since: number; conversations: Set<string> } | null>(null)
   const latestResume = useRef(resume)
   latestResume.current = resume
   useEffect(() => {
-    if (tried.current.visit !== visit) tried.current = { visit, conversations: new Set() }
-    const { conversations } = tried.current
+    if (tried.current?.visit !== visit) tried.current = { visit, since: Date.now(), conversations: new Set() }
+    const { since, conversations } = tried.current
+    if (updatedAt !== undefined && updatedAt < since) return
     if (live) conversations.add(live)
     if (!resumable || conversations.has(resumable)) return
     conversations.add(resumable)
     latestResume.current(resumable)
-  }, [visit, resumable, live])
+  }, [visit, resumable, live, updatedAt])
 }
 
 /**
@@ -58,7 +68,11 @@ export function featureAutoResumeTarget(full: Pick<FeatureFull, 'feature' | 'ses
  * the session it started is the one the page shows, which `ChatView` keeps at
  * rest with "Resuming…" until it reports live.
  */
-export function useFeatureAutoResume(featureId: string, full: FeatureFull | undefined): { autoResuming: boolean } {
+export function useFeatureAutoResume(
+  featureId: string,
+  full: FeatureFull | undefined,
+  updatedAt?: number,
+): { autoResuming: boolean } {
   const utils = trpc.useUtils()
   const auto = trpc.feature.launchSession.useMutation({
     // Pending until the page has the session row, so "Resuming…" never
@@ -78,6 +92,7 @@ export function useFeatureAutoResume(featureId: string, full: FeatureFull | unde
     visit: featureId,
     resumable: full ? featureAutoResumeTarget(full) : null,
     live: liveChat?.status !== 'ended' ? (liveChat?.ccSessionId ?? null) : null,
+    updatedAt,
     resume: () => auto.mutate({ featureId, kind: 'chat', auto: true }),
   })
   const started = auto.data && 'sessionId' in auto.data ? auto.data.sessionId : undefined

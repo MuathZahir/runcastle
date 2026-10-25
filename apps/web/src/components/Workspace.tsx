@@ -469,7 +469,7 @@ export function Workspace({
     onError: (e) => toast.push(e.message),
   })
   // Opening the feature resumes its ended chat by itself.
-  const { autoResuming } = useFeatureAutoResume(featureId, q.data)
+  const { autoResuming } = useFeatureAutoResume(featureId, q.data, q.dataUpdatedAt)
 
   if (q.isLoading) {
     return (

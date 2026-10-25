@@ -21,7 +21,11 @@ export interface EndSessionResult {
  * via the launcher hook; this function additionally emits `session.ended` so the
  * "ended by user" intent is visible on the timeline regardless of PTY presence.
  */
-export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
+export function endSession(
+  ctx: AppCtx,
+  sessionId: string,
+  message = 'session ended by user',
+): EndSessionResult {
   const registry = ptyRegistry()
   // Before the kill: the exit it fires must read as asked for, not as a crash.
   noteRequestedEnd(sessionId)
@@ -37,7 +41,7 @@ export function endSession(ctx: AppCtx, sessionId: string): EndSessionResult {
     stopDesignServerForSession(ctx, session)
     emitForSession(ctx, session, {
       type: 'session.ended',
-      message: 'session ended by user',
+      message,
       data: { sessionId, killed },
     })
   } else {

@@ -70,7 +70,9 @@ describe('the untouched-leave rule', () => {
   const sink = (): TerminalSink => ({ sendData() {}, sendControl() {} })
   const status = (): string | undefined => getSessionRow(ctx, sessionId)?.status
   const endedByUser = (): boolean =>
-    listAfter(ctx, featureId, 0).some((e) => e.type === 'session.ended')
+    listAfter(ctx, featureId, 0).some(
+      (e) => e.type === 'session.ended' && e.message.includes('resumed by itself and was left unused'),
+    )
 
   async function prompt(text: string): Promise<void> {
     const app = new Hono()
