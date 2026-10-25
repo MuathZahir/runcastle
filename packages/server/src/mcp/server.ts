@@ -1001,7 +1001,9 @@ export function toolStartDesignServer(
   session: SessionRow,
   input: { command?: string },
 ): Promise<DesignServerInfo> {
-  return startDesignServer(ctx, requireChatFeatureId(session), input.command)
+  const featureId = requireChatFeatureId(session)
+  // A headless run owns the server it starts, so its end stops it (designs-wait-for-you decision 3).
+  return startDesignServer(ctx, featureId, input.command, session.headless ? { sessionId: session.id } : {})
 }
 
 /** The views the human's panel can show (decision 8). */
@@ -3605,7 +3607,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
           'server prints its localhost URL, or fails with the output tail after a minute without ' +
           'one. The command is recorded in `.runcastle/design.json` — commit that file with your ' +
           'design — so later calls may omit it. One server per feature: calling again returns ' +
-          'the running one; a different command restarts it. It stops when this session ends, ' +
+          'the running one; a different command restarts it. It stops when this session ends ' +
+          '(a headless run: when the run ends, unless the human has opened it since), ' +
           'when the feature ships, or after 30 minutes with the design view closed.',
         inputSchema: {
           command: z

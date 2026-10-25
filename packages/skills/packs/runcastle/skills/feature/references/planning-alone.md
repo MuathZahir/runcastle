@@ -7,10 +7,13 @@ instead (`./grilling.md`); nothing here binds that conversation.
 You still look facts up, model the domain and park scope creep as
 `./grilling.md` says. What changes is who answers.
 
-**This run plans; it does not build.** Never edit code, never install, and
-never call `dispatch_round` in this run, whatever the plan says: no round starts
-without the human's yes. You write the feature's docs (`decisions.md`, `spec.md`, `preview.html`)
-and, when the work is worth handing to workers, its tickets — nothing else.
+**This run plans; it does not build.** Whatever the plan says,
+never call `dispatch_round` in this run: no round starts without the human's
+yes. You write the feature's docs (`decisions.md`, `spec.md`, `preview.html`)
+and, when the work is worth handing to workers, its tickets. The one exception
+is designing its screens (**Designing alone**, below): for that, and only that,
+you may install dependencies and write components, preview pages and sample
+data. Write no other code.
 
 - **One turn.** Do the whole plan in this one turn. Never end the turn to ask a
   question or to report progress: nobody will reply, and ending the turn ends
@@ -48,7 +51,49 @@ and, when the work is worth handing to workers, its tickets — nothing else.
   guesses about their intent the brief did not settle, decisions that force
   several others, and decisions the challenger disagreed with. They open the
   preview's decisions part (`./preview.md`).
-- **No design.** Never open a design (`./design.md`): nobody is there to look.
+- **Design, but never show.** You may design the feature's screens
+  (**Designing alone**, below), but never call `show_panel`: nobody is there to
+  look, and the human opens the designs when they choose.
+
+## Designing alone
+
+Design when the feature **adds a screen or changes a screen's layout**. A small
+visual change (a colour, a label, one control) is described in the plan
+instead: it would not repay the install. A feature with no screen designs
+nothing.
+
+- **When.** Once the decisions are recorded and before the spec, so the spec,
+  the tickets and the preview can name the designed components.
+- **How.** As `./design.md` says for an attended chat: the project's own
+  install, the project's own frontend dev server, one preview page per state,
+  sample data, navigation off, real components, the project's design docs.
+  Design against the components on the feature's base branch; never read
+  another feature's worktree. If a screen needs a shared component changed, change
+  it here and say so in the closing message.
+- **Tweaks for taste.** Where a look is genuinely open (two layouts, a density,
+  an accent), leave a Tweaks menu on that preview page instead of guessing
+  (`./design.md`, Tweaks). **At most two
+  open choices per screen**: past that, pick, and list your picks in the
+  closing message. Everything the menu needs, the alternative styles included,
+  lives in the preview page, never in the app's own files.
+- **Look at your own screens.** Call `start_design_server({ command })`, which
+  also records the command so the human's Open in design starts it later. Then
+  check every preview page. With `agent-browser` on the PATH: `agent-browser
+  open <url>`, `agent-browser screenshot <path>` (a temporary path, never in the
+  repo), read the image, critique it against the project's design docs, fix it,
+  and look again; `agent-browser close` when done. Without it, check that each
+  page compiles and serves, and say in the closing message that you never saw
+  them. The design server stops by itself when this run ends.
+- **A screen you cannot serve** (no frontend dev server you can work out, a
+  page the server builds, native mobile) is a hand mock in `preview.html`, as
+  any plan draws one. Say so in the closing message. Do not stop or ask.
+- **Leave the designs uncommitted.** Never commit a component, preview page,
+  sample data or `.runcastle/design.json` you designed: only the human's
+  approval commits them. Commit your docs by path, so nothing designed rides
+  along.
+- **In the preview**, each designed screen is a designed-screen entry
+  (`./preview.md`, Designed screens) naming its component file and preview page.
+  A ticket that wires one follows `./tickets.md` on designed screens.
 
 ## Straight through, then ask
 
@@ -62,9 +107,14 @@ and, when the work is worth handing to workers, its tickets — nothing else.
    first (by number and title), whether it is tickets or work you will do
    yourself, and anything that stopped you doing the job (a refused or failed
    tool the plan needed, and what you decided without it). Leave out the state
-   of tools and connectors the plan did not need. Close the message by asking
+   of tools and connectors the plan did not need. **If you designed**, also
+   name each designed screen, the open Tweaks choices, any shared component you
+   changed, and whether you saw the screens in screenshots or only checked that
+   they compile, and say that the yes commits the designs as they stand. Close the message by asking
    the human for their yes to start round 1 (or to start the work, if there are
    no tickets).
-6. Call `mcp__runcastle__wait_for_you({ why: "start round 1?" })`, then end the
-   turn. The human answers in this chat when they are back; their yes is what
-   starts the work, in a later turn.
+6. Call `mcp__runcastle__wait_for_you({ why: "start round 1?" })`, or
+   `mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`
+   if you designed. With no tickets, say "start the work?" in place of "start
+   round 1?". Then end the turn. The human answers in this chat when they
+   are back; their yes is what starts the work, in a later turn.

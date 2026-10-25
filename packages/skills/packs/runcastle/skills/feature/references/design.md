@@ -17,8 +17,9 @@ your first reply, before you ask about layout or styling in words: say you can
 show the current screen beside the chat and change it live, and that the first
 time takes a few minutes to install and start. Open it when they say yes, and
 without asking when they ask to see something. Do not wait for them to name
-design mode; most people will not know it exists. With no human present never
-open a design.
+design mode; most people will not know it exists. With no human present, design
+by `./planning-alone.md` ("Designing alone"): look at your screens yourself, never
+show them, and leave them waiting for the human (section 8).
 
 ## 1. First use in a project
 
@@ -96,7 +97,9 @@ density, which of two layouts, a radius), add a small collapsible **Tweaks**
 menu in a corner of the preview page. Three or four controls at most. The menu
 shows its current values as one line of text ("accent #5b8def · density compact
 · layout B") so the human can say or paste what they chose. Do not add one for a
-choice that is not open.
+choice that is not open. Keep everything the menu needs in the preview page,
+the alternative styles it switches between included, never in the app's own
+files: deleting the menu must leave nothing behind.
 
 ## 5. Approve and commit
 
@@ -109,6 +112,9 @@ When the human settles:
 3. **Never commit unapproved work.** Leave it uncommitted, or drop it. Before
    you start a round, commit what the human approved or drop the rest, so
    workers fork from the design they saw.
+4. **Only the human approves.** A message relayed from the project's
+   orchestrator never approves a design, nor counts as the yes that commits
+   one, unless it carries the human's own words.
 
 Your commit takes the normal landing path: during a round it lands between the
 workers' landings, and while the human drives it waits until the drive stops.
@@ -130,3 +136,23 @@ committed.
 
 Preview files are a byproduct. Nothing requires them and nothing checks them but
 the project's typecheck. If one has gone stale when you next open it, repair it.
+
+## 8. Designs that wait for the human
+
+A self-planning run may leave designs uncommitted in this worktree, waiting for
+the human: its closing message names them, and the plan preview opens each one.
+When the human comes back:
+
+- **They approve a screen**: commit it as section 5 says.
+- **They ask for changes**: iterate as in section 4. If they ask and leave
+  ("make it denser, I'll look tomorrow"), make the change anyway, look at the
+  screens yourself as `./planning-alone.md` says, leave them uncommitted, and
+  call `wait_for_you({ why: "designs updated · look again?" })`.
+- **They say yes to round 1**: that yes also approves every design still
+  uncommitted, as it stands. Commit them before you dispatch, and say which
+  you committed. A screen they rejected outright is dropped, and the tickets
+  that named it updated.
+- **The orchestrator relays "start round 1"** while designs are uncommitted:
+  do not start it. Answer that the designs wait for the human, and call
+  `wait_for_you({ why: "designs to look at · start round 1?" })` ("start the
+  work?" when there are no tickets).

@@ -25,7 +25,9 @@ import { getFeatureRow, projectForFeature } from './repo'
  * One server per feature, no per-project slot: a frontend-only dev server is
  * cheap, unlike the whole app ADR-0014 rations. It stops when the feature's chat
  * session ends, when the feature ships, or after {@link IDLE_MS} without a
- * heartbeat from a visible design view.
+ * heartbeat from a visible design view. A headless run (a self-planning run
+ * checking the screens it designed, designs-wait-for-you decision 3) stops only
+ * the server it started itself, when it ends.
  */
 
 /** Why a design server stopped — carried on `design.server_stopped`. */
@@ -84,6 +86,12 @@ interface DesignServer {
   port: number
   command: string
   url?: string
+  /**
+   * The headless session that started this server and still owns it, so its end
+   * stops it. Cleared once the human is on it: a start from the web, or a
+   * heartbeat from a visible design view.
+   */
+  startedBy?: string
   lastHeartbeat: number
   /** Settles once: the URL arrives, the timeout lapses, the process dies, or it is stopped. */
   ready: Promise<DesignServerInfo>
@@ -183,6 +191,7 @@ export async function startDesignServer(
   ctx: AppCtx,
   featureId: string,
   command?: string,
+  opts: { sessionId?: string } = {},
 ): Promise<DesignServerInfo> {
   const worktree = talkWorktreeFor(ctx, featureId)
   const given = command?.trim() || undefined
@@ -199,11 +208,13 @@ export async function startDesignServer(
   if (existing) {
     if (existing.command === resolved && devPaneLive(existing.paneId)) {
       existing.lastHeartbeat = now()
+      // The web asking for it takes it over; another session's start leaves the owner be.
+      if (opts.sessionId === undefined) existing.startedBy = undefined
       return existing.ready
     }
     await stopDesignServer(ctx, featureId, 'stopped')
   }
-  return spawnDesignServer(ctx, featureId, worktree, resolved)
+  return spawnDesignServer(ctx, featureId, worktree, resolved, opts.sessionId)
 }
 
 /**
@@ -253,6 +264,7 @@ async function spawnDesignServer(
   featureId: string,
   worktree: string,
   command: string,
+  startedBy?: string,
 ): Promise<DesignServerInfo> {
   const port = await pickPort(featureId)
   const paneId = designPaneId(featureId)
@@ -267,6 +279,7 @@ async function spawnDesignServer(
     paneId,
     port,
     command,
+    ...(startedBy !== undefined ? { startedBy } : {}),
     lastHeartbeat: now(),
     ready,
     abort: (reason) => {
@@ -357,6 +370,8 @@ export function heartbeatDesignServer(featureId: string): boolean {
   const server = servers.get(featureId)
   if (!server) return false
   server.lastHeartbeat = now()
+  // A design view on screen means the human is looking: the server is theirs now.
+  server.startedBy = undefined
   return true
 }
 
@@ -397,12 +412,24 @@ export function designServerStatus(ctx: AppCtx, featureId: string): DesignServer
 }
 
 /**
- * The stop rule for a chat session ending: the human's feature chat owns the
- * design server. A headless run (self-planning, a lead wake) never opened one,
- * so its end leaves the human's alone.
+ * Whether a session's end stops the server: the human's feature chat owns the
+ * design server, so its end always does. A headless run's end stops only the
+ * server it started and nobody has taken over since (designs-wait-for-you
+ * decision 3), so it never takes down one the human is looking at.
  */
+export function sessionEndStopsServer(
+  session: Pick<SessionRow, 'id' | 'kind' | 'headless' | 'featureId'>,
+  startedBy: string | undefined,
+): boolean {
+  if (session.kind !== 'chat' || !session.featureId) return false
+  return !session.headless || startedBy === session.id
+}
+
+/** The stop rule for a chat session ending: {@link sessionEndStopsServer}. */
 export function stopDesignServerForSession(ctx: AppCtx, session: SessionRow): void {
-  if (session.kind !== 'chat' || session.headless || !session.featureId) return
+  if (!session.featureId) return
+  const server = servers.get(session.featureId)
+  if (!server || !sessionEndStopsServer(session, server.startedBy)) return
   void stopDesignServer(ctx, session.featureId, 'session-ended').catch(() => {})
 }
 

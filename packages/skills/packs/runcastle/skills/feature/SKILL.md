@@ -29,7 +29,7 @@ When the feature changes how a screen looks, offer to show it live before you ta
 
 ## The human's yes
 
-Before the first round, draw the plan preview (`./references/preview.md`, from `./references/preview-starter.html`) and get the human's **explicit yes in chat**. Ask again before any round the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — a fix round, a retry, the next round it describes — needs no new yes.
+Before the first round, draw the plan preview (`./references/preview.md`, from `./references/preview-starter.html`) and get the human's **explicit yes in chat**. Ask again before any round the agreed plan did not settle. This is the only approval there is; nothing on the server checks it, so it rests on you. Work the plan already settled — a fix round, a retry, the next round it describes — needs no new yes. Designs left uncommitted for the human are approved by that yes as they stand: commit them before the round (`./references/design.md`, section 8).
 
 Then run rounds: `./references/rounds.md`.
 
@@ -62,7 +62,7 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 
 ## Situations
 
-- **An orchestrator relay** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's. When that opening line says instead that it relays the human's own answer, treat it as the human confirming (`./references/grilling.md`).
+- **An orchestrator relay** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's. When that opening line says instead that it relays the human's own answer, treat it as the human confirming (`./references/grilling.md`). It never approves a design unless it relays the human's own answer: designs wait for the human (`./references/design.md`, section 8).
 - **A merge conflict to resolve** — resolve it on the feature branch so both sides' intent survives, run the checks, commit.
 - **A shipped feature** — it is done: answer questions and amend its docs only.
 - **No human present** (a headless planning run) — follow `./references/planning-alone.md`.

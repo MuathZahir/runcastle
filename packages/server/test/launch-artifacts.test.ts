@@ -506,7 +506,7 @@ describe('renderSystemPrompt', () => {
   it('adds one sentence for each errand, and nothing else', () => {
     // A self-planning run is unattended by definition, so it is compared with a headless brief.
     const errands: [SessionPurpose, RegExp, boolean][] = [
-      ['self-plan', /self-planning run: plan this feature by yourself and do not build it, .*`references\/planning-alone\.md`/, true],
+      ['self-plan', /self-planning run: plan this feature by yourself, designing its screens where it adds or reshapes them, and do not build it, .*`references\/planning-alone\.md`/, true],
       ['relay', /relay run: the project's orchestrator, not the human, sent this conversation a message/, false],
       ['resolve-conflict', /resolves a merge conflict: merge the base branch in, resolve the conflicts/, false],
     ]
