@@ -147,6 +147,7 @@ describe('the orchestrator’s gate', () => {
       'start_feature',
       'plan_feature',
       'send_to_feature',
+      'read_feature_chat',
       'stop_feature_run',
       'drive',
       'merge_feature',

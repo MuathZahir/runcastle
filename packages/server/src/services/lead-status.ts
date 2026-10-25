@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import type { AppCtx } from '../db/types'
-import { features } from '../db/schema'
+import { events, features } from '../db/schema'
 import { emit } from './events'
 
 /**
@@ -33,7 +33,7 @@ export function setWaiting(ctx: AppCtx, featureId: string, why: string | null): 
  * check reads, and clears the stopped mark and the waiting reason — the human
  * has acted.
  */
-export function markHumanMessage(ctx: AppCtx, featureId: string): void {
+export function markHumanMessage(ctx: AppCtx, featureId: string, opts: { typed?: boolean } = {}): void {
   const at = Date.now()
   ctx.db
     .update(features)
@@ -43,6 +43,24 @@ export function markHumanMessage(ctx: AppCtx, featureId: string): void {
   emit(ctx, featureId, {
     type: 'lead.human_message',
     message: 'a human message reached the agent',
-    data: { at },
+    data: { at, ...(opts.typed ? { typed: true } : {}) },
   })
+}
+
+/** When the human last typed in the feature's chat, or null if they never have. */
+export function humanTypedAt(ctx: AppCtx, featureId: string): number | null {
+  const row = ctx.db
+    .select({ ts: events.ts })
+    .from(events)
+    .where(
+      and(
+        eq(events.featureId, featureId),
+        eq(events.type, 'lead.human_message'),
+        sql`json_extract(${events.data}, '$.typed') = 1`,
+      ),
+    )
+    .orderBy(desc(events.id))
+    .limit(1)
+    .get()
+  return row?.ts ?? null
 }

@@ -51,7 +51,19 @@ describe('orchestratorLineFor — end events', () => {
       'a self-planning run that finished',
       event('session.self_plan_ended', { complete: true }),
       followed,
-      '[runcastle] export-csv finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "export-csv" }).',
+      '[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).',
+    ],
+    [
+      'an agent waiting for the human',
+      event('feature.waiting', { why: 'start round 1?' }),
+      followed,
+      '[runcastle] export-csv waits for you: start round 1?. Read what it asked with read_feature_chat({ slug: "export-csv" }).',
+    ],
+    [
+      'an agent declaring ready',
+      event('feature.ready_declared', { scenario: 'empty-cart' }),
+      followed,
+      '[runcastle] export-csv declared ready to test (drive: empty-cart). Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
       'a self-planning run that stopped short',
@@ -66,16 +78,16 @@ describe('orchestratorLineFor — end events', () => {
       '[runcastle] export-csv headless run finished. Read it with get_feature_context({ slug: "export-csv" }).',
     ],
     [
-      'a burn that succeeded',
+      'a round that succeeded',
       event('run.finished', { status: 'succeeded', summary: '3/3 tickets done' }),
       followed,
-      '[runcastle] export-csv burn finished (3/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
+      '[runcastle] export-csv round finished (3/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
-      'a burn that failed',
+      'a round that failed',
       event('run.finished', { status: 'failed', summary: '2/3 tickets done' }),
       followed,
-      '[runcastle] export-csv burn failed (2/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
+      '[runcastle] export-csv round failed (2/3 tickets done). Read it with list_tickets({ slug: "export-csv" }).',
     ],
     [
       'a review pass that finished',
@@ -157,12 +169,6 @@ describe('orchestratorLineFor — act events', () => {
       '[runcastle] export-csv the human opened a chat session on it; it is busy until that session ends.',
     ],
     [
-      'the human starting a lap',
-      event('session.launched', { sessionId: 's' }),
-      { ...followed, session: { ...chat, purpose: 'start-lap' } },
-      '[runcastle] export-csv the human started the next lap in a chat; it is busy until that session ends.',
-    ],
-    [
       'the human clicking Plan it yourself',
       event('session.launched', { sessionId: 's' }),
       { ...followed, session: { ...chat, purpose: 'self-plan', headless: true } },
@@ -173,12 +179,6 @@ describe('orchestratorLineFor — act events', () => {
       event('session.pty_exited', { sessionId: 's' }),
       { ...followed, session: chat },
       `[runcastle] export-csv the human's chat session on it ended; it is free again. Read it with get_feature_context({ slug: "export-csv" }).`,
-    ],
-    [
-      'a burn starting',
-      event('burn.started'),
-      followed,
-      '[runcastle] export-csv the human started a burn. Wait for it to finish.',
     ],
     [
       'a test drive starting',
@@ -209,7 +209,25 @@ describe('orchestratorLineFor — act events', () => {
 
   it('leaves a headless run’s exit to its own end event', () => {
     const e = event('session.pty_exited', { sessionId: 's' })
-    expect(orchestratorLineFor(e, { ...followed, session: { ...chat, purpose: 'relay' } })).toBeNull()
+    expect(orchestratorLineFor(e, { ...followed, session: { ...chat, headless: true } })).toBeNull()
+  })
+
+  it('says nothing for a cleared waiting reason or the ready reason the ready line covers', () => {
+    expect(orchestratorLineFor(event('feature.waiting', { why: null }), followed)).toBeNull()
+    expect(orchestratorLineFor(event('feature.waiting', { why: 'ready to test' }), followed)).toBeNull()
+  })
+
+  it('no line speaks of laps, burns or Go', () => {
+    const all = [
+      event('session.self_plan_ended', { complete: true }),
+      event('run.finished', { status: 'failed' }),
+      event('feature.waiting', { why: 'stuck' }),
+      event('feature.ready_declared', { scenario: 's' }),
+      event('burn.started'),
+      event('burn.restarted'),
+    ]
+    for (const e of all) expect(orchestratorLineFor(e, followed) ?? '').not.toMatch(/\b(lap|burn|go)\b/i)
+    expect(orchestratorLineFor(event('burn.started'), followed)).toBeNull()
   })
 
   it('leaves the review agent’s drive alone', () => {
@@ -302,7 +320,7 @@ describe('the notifier and the catch-up', () => {
     expect(await answer).toEqual({
       status: 'lines',
       lines: [
-        '[runcastle] export-csv finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "export-csv" }).',
+        '[runcastle] export-csv finished planning. Read it with get_feature_context({ slug: "export-csv" }).',
       ],
     })
     expect(typed).toEqual([])
@@ -320,8 +338,8 @@ describe('the notifier and the catch-up', () => {
     expect(await waitForOrchestratorLines(id, 'w1', 5000)).toEqual({
       status: 'lines',
       lines: [
-        '[runcastle] snake-core finished planning: decisions, preview, spec and tickets are in. Read it with get_feature_context({ slug: "snake-core" }).',
-        '[runcastle] snake-core burn finished (5/5 tickets done). Read it with list_tickets({ slug: "snake-core" }).',
+        '[runcastle] snake-core finished planning. Read it with get_feature_context({ slug: "snake-core" }).',
+        '[runcastle] snake-core round finished (5/5 tickets done). Read it with list_tickets({ slug: "snake-core" }).',
       ],
     })
     expect(typed).toEqual([])
@@ -408,11 +426,15 @@ describe('the notifier and the catch-up', () => {
     emit(ctx, mine.id, { type: 'session.self_plan_ended', message: 'x', data: { complete: false } })
     emit(ctx, human.id, { type: 'feature.shipped', message: 'merged to main' })
     emit(ctx, mine.id, { type: 'burn.started', message: 'burning' })
+    emit(ctx, mine.id, { type: 'feature.waiting', message: 'x', data: { why: 'which theme?' } })
+    emit(ctx, mine.id, { type: 'feature.ready_declared', message: 'x', data: { scenario: 'home' } })
     emit(ctx, mine.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
     emitProject(ctx, projectId, { type: 'project.renamed', message: 'renamed' })
 
     expect(orchestratorCatchUp(ctx, project())).toEqual([
       'mine stopped before the plan was complete. Read it with get_feature_context({ slug: "mine" }).',
+      'mine waits for you: which theme?. Read what it asked with read_feature_chat({ slug: "mine" }).',
+      'mine declared ready to test (drive: home). Read it with get_feature_context({ slug: "mine" }).',
       `mine merge conflicted in 1 file(s). Resolve it in the feature's worktree, then merge_feature again. Read it with get_feature_context({ slug: "mine" }).`,
     ])
   })

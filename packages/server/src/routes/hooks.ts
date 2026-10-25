@@ -416,7 +416,7 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id)
+  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
 }
 
 /**

@@ -8,7 +8,8 @@ import type { AppCtx } from '../src/db/types'
 import { GateError } from '../src/errors'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
 import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
+import { toolReadFeatureChat, toolSendToFeature } from '../src/mcp/orchestrator-run-tools'
+import { humanTypedAt, markHumanMessage } from '../src/services/lead-status'
 import { getFeatureRow } from '../src/services/repo'
 import { listAfter } from '../src/services/events'
 import { createFeatureBranch } from '../src/services/git'
@@ -92,11 +93,38 @@ describe('the orchestrator’s headless-run tools', () => {
       const pending = events.find((e) => e.type === 'lead.message_pending')
       expect(pending?.data).toEqual({
         source: 'human',
-        text: 'The empty state still says nothing.',
+        text: "From the project's orchestrator, not the human:\n\nThe empty state still says nothing.",
         sessionId: null,
       })
       expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toEqual(expect.any(Number))
     }
+  })
+
+  it('send_to_feature with relaysHuman marks the message as the human’s relayed answer', async () => {
+    const f = await feature('relayed')
+    await toolSendToFeature(ctx, orchestrator(), { slug: f.slug, message: 'Yes, go ahead.', relaysHuman: true })
+    const pending = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_pending')
+    expect((pending?.data as { text: string }).text).toBe(
+      "The human's own answer, relayed by the project's orchestrator:\n\nYes, go ahead.",
+    )
+  })
+
+  it('send_to_feature is not a typed human message, a typed prompt is', async () => {
+    const f = await feature('typed')
+    await toolSendToFeature(ctx, orchestrator(), { slug: f.slug, message: 'x' })
+    expect(humanTypedAt(ctx, f.id)).toBeNull()
+    markHumanMessage(ctx, f.id, { typed: true })
+    expect(humanTypedAt(ctx, f.id)).toEqual(expect.any(Number))
+  })
+
+  it('read_feature_chat gives a null quote with a reason when the feature has no chat', async () => {
+    const f = await feature('quiet')
+    expect(toolReadFeatureChat(ctx, orchestrator(), { slug: f.slug })).toEqual({
+      slug: 'quiet',
+      quote: null,
+      transcriptPath: null,
+      reason: 'no chat on disk yet',
+    })
   })
 
   describe('refuses through the shared gate', () => {

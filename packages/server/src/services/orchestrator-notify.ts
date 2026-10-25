@@ -35,19 +35,19 @@ import { getTicket } from './tickets'
  * | Event type                        | Kind | When                                        |
  * |-----------------------------------|------|---------------------------------------------|
  * | `session.self_plan_ended`         | end  | a self-planning run exited (`data.complete`) |
- * | `session.run_ended`               | end  | a `relay` / headless start-lap run exited   |
- * | `run.finished`                    | end  | a burn finished or failed (`data.status`)   |
+ * | `session.run_ended`               | end  | a headless run exited                       |
+ * | `run.finished`                    | end  | a round finished or failed (`data.status`)  |
+ * | `feature.waiting`                 | end  | the agent waits for the human (`data.why`)  |
+ * | `feature.ready_declared`          | end  | the agent declared the work ready to test   |
  * | `ticket.done` / `ticket.failed`   | end  | only for a review or verification ticket    |
  * | `feature.shipped`                 | end  | a merge landed                              |
  * | `merge.conflict`                  | end  | a merge conflicted                          |
  * | `testdrive.dev_failed`            | end  | a drive's dev server failed to start        |
  * | `session.launched`                | act  | a session with a terminal opened            |
  * | `session.pty_exited`              | act  | a session with a terminal ended             |
- * | `burn.started` / `burn.restarted` | act  | a burn started                              |
  * | `testdrive.started` / `.stopped`  | act  | a test drive (not the review agent's)       |
  *
- * A lap starting is the `start-lap` session opening; a merge is its landing or
- * conflict above. Project-level events produce nothing.
+ * A merge is its landing or conflict above. Project-level events produce nothing.
  */
 
 /** What the notifier needs to know about an event beyond its row. */
@@ -70,11 +70,19 @@ const SUMMARY_MAX = 80
 /** Lines the catch-up lists before it stops counting them out. */
 const CATCH_UP_MAX = 50
 
+/** The waiting reason `declareReady` sets; the ready line speaks for it. */
+const READY_REASON = 'ready to test'
+
+/** The longest a waiting reason gets in a line: it is what the agent asked, so it runs longer. */
+const WHY_MAX = 200
+
 /** The event types that can be END events — the catch-up's query filter. */
 const END_TYPES = [
   'session.self_plan_ended',
   'session.run_ended',
   'run.finished',
+  'feature.waiting',
+  'feature.ready_declared',
   'ticket.done',
   'ticket.failed',
   'feature.shipped',
@@ -104,7 +112,7 @@ function clip(text: string, max = SUMMARY_MAX): string {
 
 /** Whether a session runs without a terminal, for rows that predate the column too. */
 function isHeadless(session: NotifyState['session']): boolean {
-  return !!session && (session.headless === true || session.purpose === 'self-plan' || session.purpose === 'relay')
+  return !!session && (session.headless === true || session.purpose === 'self-plan')
 }
 
 /** What happened and what to read next, without the prefix or the slug; null for no line. */
@@ -115,7 +123,7 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
   switch (event.type) {
     case 'session.self_plan_ended':
       return data.complete === true
-        ? { kind: 'end', text: `finished planning: decisions, preview, spec and tickets are in. ${context}` }
+        ? { kind: 'end', text: `finished planning. ${context}` }
         : { kind: 'end', text: `stopped before the plan was complete. ${context}` }
     case 'session.run_ended':
       return data.complete === true
@@ -123,8 +131,20 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
         : { kind: 'end', text: `headless run stopped before it finished. ${context}` }
     case 'run.finished': {
       const summary = typeof data.summary === 'string' ? clip(data.summary) : ''
-      const verb = data.status === 'succeeded' ? 'burn finished' : 'burn failed'
+      const verb = data.status === 'succeeded' ? 'round finished' : 'round failed'
       return { kind: 'end', text: `${verb}${summary ? ` (${summary})` : ''}. ${tickets}` }
+    }
+    case 'feature.waiting': {
+      // "ready to test" is the ready line's; a cleared reason is not news.
+      if (typeof data.why !== 'string' || data.why === READY_REASON) return null
+      return {
+        kind: 'end',
+        text: `waits for you: ${clip(data.why, WHY_MAX)}. Read what it asked with read_feature_chat({ slug: "${slug}" }).`,
+      }
+    }
+    case 'feature.ready_declared': {
+      const scenario = typeof data.scenario === 'string' ? clip(data.scenario) : ''
+      return { kind: 'end', text: `declared ready to test${scenario ? ` (drive: ${scenario})` : ''}. ${context}` }
     }
     case 'ticket.done':
     case 'ticket.failed': {
@@ -148,18 +168,12 @@ function describe(event: EventRow, session: NotifyState['session'], ticket: Noti
       // A lead woken headless is runcastle delivering to it, not the human acting.
       // A side session never makes the feature busy: it holds no terminal slot.
       if (!session || session.purpose === 'lead-wake' || session.kind === 'side') return null
-      if (session.purpose === 'start-lap') {
-        return { kind: 'act', text: `the human started the next lap in a chat; it is busy until that session ends.` }
-      }
       if (isHeadless(session)) return { kind: 'act', text: `the human had it plan itself. Wait for the run to end.` }
       return { kind: 'act', text: `the human opened a ${session.kind} session on it; it is busy until that session ends.` }
     case 'session.pty_exited':
       // A headless run's end is its own END event above.
       if (!session || isHeadless(session) || session.kind === 'side') return null
       return { kind: 'act', text: `the human's ${session.kind} session on it ended; it is free again. ${context}` }
-    case 'burn.started':
-    case 'burn.restarted':
-      return { kind: 'act', text: `the human started a burn. Wait for it to finish.` }
     case 'testdrive.started':
       if (data.purpose === 'review') return null
       return { kind: 'act', text: `the human started a test drive of it.` }

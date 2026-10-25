@@ -54,6 +54,7 @@ import {
   stopRound,
 } from '../services/features'
 import { landChatCommits } from '../services/chat-branch'
+import { humanTypedAt } from '../services/lead-status'
 import {
   blocksOf,
   dependsOnOf,
@@ -439,6 +440,8 @@ export interface FeatureContext {
   driveActive: boolean
   stopped: boolean
   waitingReason: string | null
+  /** When the human last typed in this feature's chat; null if they never have. */
+  humanTypedAt: number | null
   /**
    * How many tickets this project burns at once (`config.burnConcurrency`). The
    * tickets skill budgets the batch's parallelism against it — a lap whose
@@ -611,6 +614,7 @@ export function featureContext(
     driveActive: git.activeTestDriveFeatureId(project.id) === feature.id,
     stopped: feature.stoppedAt !== null,
     waitingReason: feature.waitingReason,
+    humanTypedAt: humanTypedAt(ctx, feature.id),
     dependsOn: dependsOnOf(ctx, feature.id).map(dependencyMark),
     blocks: blocksOf(ctx, feature.id).map((b) => ({ slug: b.slug, upNext: b.upNext })),
     upNext: feature.upNext,
@@ -2528,6 +2532,7 @@ const TOOL_AUDIENCES: Record<string, readonly McpAudience[]> = {
   start_feature: ['project'],
   plan_feature: ['project'],
   send_to_feature: ['project'],
+  read_feature_chat: ['project'],
   stop_feature_run: ['project'],
   drive: ['project'],
   merge_feature: ['project'],
@@ -3166,7 +3171,8 @@ export function buildMcpServer(audience?: McpAudience): McpServer {
         'far, numbered from 1, with its tickets, landed/failed seqs and gate result), ' +
         '`latestReady` (your newest ready declaration), `driveActive` (the human is ' +
         'test-driving this feature — no round starts), `stopped` (the human pressed Stop and has ' +
-        'not replied — no round starts), `waitingReason`, `dependsOn` (the ' +
+        'not replied — no round starts), `waitingReason`, `humanTypedAt` (when the human last typed in this feature’s chat, ' +
+        'ms since the epoch, or null), `dependsOn` (the ' +
         'features it waits on to merge, each `satisfied` once shipped) and `blocks` (the ' +
         'drafts waiting on this feature, each with its `upNext` mark) and `upNext` (this ' +
         'feature’s own mark: it starts by itself when its dependencies ship), `annotatedModels` (the ' +
