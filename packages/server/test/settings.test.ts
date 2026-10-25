@@ -9,7 +9,7 @@ import { createCallerFactory } from '../src/trpc/context'
 import { appRouter } from '../src/trpc/router'
 import { listByProject } from '../src/services/events'
 import { getProjectById } from '../src/services/repo'
-import { getSettings, orchestratorOn, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
+import { getSettings, updateSettings, warnLegacyGlobalImage } from '../src/services/settings'
 import { readDiscoverySnapshot, writeDiscoverySnapshot } from '../src/services/model-discovery'
 import { makeTestCtx } from './helpers/db'
 import { seedProject } from './helpers/fixtures'
@@ -186,28 +186,13 @@ describe('settings service (#46)', () => {
     })
   })
 
-  it('the orchestrator is a project-only switch, off by default, that a project write turns on and off', () => {
+  it('has no orchestrator setting: every project session is the orchestrator', () => {
     const project = seedProject(ctx)
-    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({
-      value: false,
-      source: 'default',
-      scope: 'project',
-      editable: true,
-    })
+    expect(getSettings(ctx, project.id, io()).fields.find((f) => f.key === 'orchestrator')).toBeUndefined()
     expect(getSettings(ctx, undefined, io()).fields.find((f) => f.key === 'orchestrator')).toBeUndefined()
-    expect(orchestratorOn(ctx, project.id)).toBe(false)
-
-    updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: true }, io())
-    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({ value: true, source: 'project' })
-    expect(orchestratorOn(ctx, project.id)).toBe(true)
-
-    updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: false }, io())
-    expect(field(getSettings(ctx, project.id, io()), 'orchestrator')).toMatchObject({ value: false, source: 'project' })
-    expect(orchestratorOn(ctx, project.id)).toBe(false)
-
     expect(() =>
-      updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: 'yes' }, io()),
-    ).toThrow(/invalid value for orchestrator/)
+      updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: true }, io()),
+    ).toThrow(/unknown setting: orchestrator/)
   })
 
   it('env override wins, reports source env, and is not editable', () => {
