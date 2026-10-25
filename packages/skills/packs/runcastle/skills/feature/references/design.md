@@ -97,7 +97,9 @@ density, which of two layouts, a radius), add a small collapsible **Tweaks**
 menu in a corner of the preview page. Three or four controls at most. The menu
 shows its current values as one line of text ("accent #5b8def · density compact
 · layout B") so the human can say or paste what they chose. Do not add one for a
-choice that is not open.
+choice that is not open. Keep everything the menu needs in the preview page,
+the alternative styles it switches between included, never in the app's own
+files: deleting the menu must leave nothing behind.
 
 ## 5. Approve and commit
 
@@ -152,4 +154,5 @@ When the human comes back:
   that named it updated.
 - **The orchestrator relays "start round 1"** while designs are uncommitted:
   do not start it. Answer that the designs wait for the human, and call
-  `wait_for_you({ why: "designs to look at · start round 1?" })`.
+  `wait_for_you({ why: "designs to look at · start round 1?" })` ("start the
+  work?" when there are no tickets).

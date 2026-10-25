@@ -71,9 +71,11 @@ nothing.
   another feature's worktree. If a screen needs a shared component changed, change
   it here and say so in the closing message.
 - **Tweaks for taste.** Where a look is genuinely open (two layouts, a density,
-  an accent), leave a Tweaks menu on that preview page instead of guessing (`./design.md`, Tweaks). **At most two
+  an accent), leave a Tweaks menu on that preview page instead of guessing
+  (`./design.md`, Tweaks). **At most two
   open choices per screen**: past that, pick, and list your picks in the
-  closing message.
+  closing message. Everything the menu needs, the alternative styles included,
+  lives in the preview page, never in the app's own files.
 - **Look at your own screens.** Call `start_design_server({ command })`, which
   also records the command so the human's Open in design starts it later. Then
   check every preview page. With `agent-browser` on the PATH: `agent-browser
@@ -113,5 +115,6 @@ nothing.
    no tickets).
 6. Call `mcp__runcastle__wait_for_you({ why: "start round 1?" })`, or
    `mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`
-   if you designed, then end the turn. The human answers in this chat when they
+   if you designed. With no tickets, say "start the work?" in place of "start
+   round 1?". Then end the turn. The human answers in this chat when they
    are back; their yes is what starts the work, in a later turn.

@@ -152,10 +152,12 @@ describe('the feature skill, planning with no human present', () => {
     expect(alone).toContain('`start_design_server({ command })`')
     expect(alone).toContain('`agent-browser\n  open <url>`')
     expect(alone).toContain('**Leave the designs uncommitted.**')
+    expect(alone).toContain("lives in the preview page, never in the app's own files")
     expect(text()).toContain('never call `show_panel`')
     const close = text().slice(text().indexOf('## Straight through, then ask'))
     expect(close).toContain('the yes commits the designs as they stand')
     expect(close).toContain('`mcp__runcastle__wait_for_you({ why: "designs to look at · start round 1?" })`')
+    expect(close).toContain('With no tickets, say "start the work?"')
   })
 
   it('lets only the human approve a waiting design (designs-wait-for-you)', () => {
