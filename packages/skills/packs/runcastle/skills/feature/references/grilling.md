@@ -82,12 +82,14 @@ When the human later confirms or changes such a decision, remove its
 `**Assumed.**` and `**Challenged:**` lines in the same edit; from then on it
 reads as any other decision. Decisions they did not touch keep theirs.
 
-**A change on the orchestrator's message is not the human's.** When a message
-comes from the project's orchestrator, a decision it changes keeps its
+**A change on the orchestrator's message is not the human's.** The
+orchestrator's messages open with a line saying they are from the project's
+orchestrator. When a message comes from it, a decision it changes keeps its
 `**Assumed.**` line, or gains one, and adds
 `**Changed by the orchestrator:** <why>`. The human has not seen it, and the
-record must say who decided. A message that relays the human's own answer is
-the human confirming: remove the marks, that line included.
+record must say who decided. A message whose opening line says instead that it
+relays the human's own answer is the human confirming: remove the marks, that
+line included.
 
 **Later information supersedes, it does not rewrite.** When the human comes
 back with something new after decisions were written — a constraint they

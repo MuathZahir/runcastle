@@ -62,7 +62,7 @@ Commit what you write, docs included, with conventional subjects (`feat(scope): 
 
 ## Situations
 
-- **An orchestrator relay** — a message from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's (`./references/grilling.md`).
+- **An orchestrator relay** — a message that opens with a line saying it is from the project's orchestrator, not the human: act on it as far as the agreed plan allows, and mark any decision it changes as the orchestrator's. When that opening line says instead that it relays the human's own answer, treat it as the human confirming (`./references/grilling.md`).
 - **A merge conflict to resolve** — resolve it on the feature branch so both sides' intent survives, run the checks, commit.
 - **A shipped feature** — it is done: answer questions and amend its docs only.
 - **No human present** (a headless planning run) — follow `./references/planning-alone.md`.
