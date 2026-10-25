@@ -369,7 +369,7 @@ describe('a headless run on a feature', () => {
     })
 
     it('tells the orchestrator nothing: no human act, and no run of its own ended', async () => {
-      const f = await feature('lead-quiet', { orchestrated: true })
+      const f = await feature('lead-quiet')
       const sessionId = await wake(f.id, 'Round 1 returned')
       handlePtyExit(ctx, f, getSessionRow(ctx, sessionId)!, {}, 0)
       expect(listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.run_ended')).toEqual([])
