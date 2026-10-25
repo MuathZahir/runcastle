@@ -41,4 +41,3 @@ Nothing changes in the web, the schema, the status model or the panel: the waiti
 
 - **Are designs made alone worth reviewing?** The drive answers this. If the answer is no, the fix is to change decision 1 (design only on request) rather than to build more here.
 - **Screenshots without `agent-browser`.** A host without it gets compiled-but-unseen designs. Whether to require it, or ship a fallback, waits on how often that happens.
-- **Decisions to check first:** 2 (uncommitted vs. a proposal ref), 3 (a brief design server vs. designing blind), 5 (Plan view vs. opening the design panel on visit), 6 (the yes commits remaining designs) and 1 (design by default vs. opt-in).
