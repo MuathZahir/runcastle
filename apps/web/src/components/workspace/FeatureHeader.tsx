@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react'
 import type { FeatureFull } from '../../lib/api'
 import { useToast } from '../../lib/toast'
-import { MetaLine, OrchestratedTag, PageHeader, cx, type MetaItem } from '../../ui'
+import { MetaLine, PageHeader, cx, type MetaItem } from '../../ui'
 import { IconBranch } from '../../icons'
 import { copyText } from './copy-text'
 
 /**
  * The top of the feature page (`the-feature-lead-runs-rounds` decision 24):
- * the title once (22/28) with the Orchestrated tag beside it when the
- * orchestrator owns the feature, one meta line — the branch (a click copies
+ * the title once (22/28), one meta line — the branch (a click copies
  * it), then the age — and the status line's action row passed as `children`.
  * Nothing else: the status line says where the feature is, so there is no
  * phase stepper.
@@ -57,12 +56,7 @@ export function FeatureHeader({
 
   return (
     <PageHeader
-      title={
-        <>
-          {feature.title}
-          <OrchestratedTag orchestrated={feature.orchestrated} className="ml-2 align-middle" />
-        </>
-      }
+      title={feature.title}
       meta={meta}
       className={className}
     >

@@ -15,22 +15,20 @@ import {
 import { toolCreateFeature, toolGetProjectContext, toolsForAudience } from '../src/mcp/server'
 import {
   orchestratorTool,
-  requireOrchestratedFeature,
   requireOrchestratorSession,
-  toolTakeOverFeature,
+  requireProjectFeature,
 } from '../src/mcp/orchestrator-tools'
 import { emit, listAfter } from '../src/services/events'
 import { openProject } from '../src/services/projects'
-import { getFeatureRow } from '../src/services/repo'
-import { updateSettings } from '../src/services/settings'
 import { withTempDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
- * Ownership and the shared gate (`whole-cuts-plan-themselves` decisions 6, 9):
- * what an `orchestrate` session creates is its own, it can take over what the
- * human hands it, and every orchestrator tool refuses through one gate.
+ * The shared gate (`one-orchestrator-no-mode` decision 2): every live project
+ * session is the orchestrator and may act on any feature of its project; the
+ * gate refuses only a caller that is not a live project session. What a project
+ * session creates carries `actor: 'orchestrator'`, so it follows it (decision 3).
  */
 
 async function gitRepo(): Promise<string> {
@@ -45,7 +43,7 @@ async function gitRepo(): Promise<string> {
   return dir
 }
 
-describe('the orchestrator’s ownership and gate', () => {
+describe('the orchestrator’s gate', () => {
   let ctx: AppCtx
   let repoPath: string
   let projectId: string
@@ -65,20 +63,10 @@ describe('the orchestrator’s ownership and gate', () => {
     rmTemp(repoPath)
   })
 
-  function projectSession(purpose?: 'orchestrate'): SessionRow {
-    const row = createSessionRow(ctx, {
-      projectId,
-      kind: 'project',
-      worktreePath: repoPath,
-      ...(purpose ? { purpose } : {}),
-    })
+  function projectSession(): SessionRow {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     return getSessionRow(ctx, row.id) as SessionRow
-  }
-
-  function orchestrator(): SessionRow {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    return projectSession('orchestrate')
   }
 
   function refusal(call: () => unknown): string {
@@ -91,8 +79,8 @@ describe('the orchestrator’s ownership and gate', () => {
     throw new Error('expected a refusal')
   }
 
-  it('create_feature from an orchestrate session marks every shape it creates as owned', async () => {
-    const session = orchestrator()
+  it('create_feature from a project session stamps every event of every shape as the orchestrator’s', async () => {
+    const session = projectSession()
     const ordinary = await toolCreateFeature(ctx, session, { title: 'Login form', oneLiner: 'log in' })
     const draft = await toolCreateFeature(ctx, session, {
       title: 'Later thing',
@@ -101,81 +89,42 @@ describe('the orchestrator’s ownership and gate', () => {
     })
 
     for (const out of [ordinary, draft]) {
-      expect(getFeatureRow(ctx, out.id).orchestrated, out.slug).toBe(true)
-      expect(listAfter(ctx, out.id).map((e) => e.type), out.slug).toContain('feature.orchestrated')
+      const events = listAfter(ctx, out.id)
+      expect(events.length, out.slug).toBeGreaterThan(0)
+      for (const e of events) expect((e.data as { actor?: string })?.actor, `${out.slug} ${e.type}`).toBe('orchestrator')
     }
   })
 
-  it('create_feature from an ordinary project session leaves the feature the human’s', async () => {
-    const out = await toolCreateFeature(ctx, projectSession(), { title: 'Mine', oneLiner: 'human' })
-    expect(getFeatureRow(ctx, out.id).orchestrated).toBe(false)
+  it('accepts any feature of its project, one it did not create included', () => {
+    const session = projectSession()
+    const feature = seedFeature(ctx, projectId, { slug: 'humans' })
+    expect(requireProjectFeature(ctx, session, 'humans').id).toBe(feature.id)
+    expect(requireOrchestratorSession(session)).toBe(projectId)
   })
 
-  it('take_over_feature makes a human feature the orchestrator’s and says so on the timeline', () => {
-    const session = orchestrator()
-    const feature = seedFeature(ctx, projectId, { slug: 'handed' })
-    expect(() => requireOrchestratedFeature(ctx, session, 'handed')).toThrow(GateError)
-
-    expect(toolTakeOverFeature(ctx, session, { slug: 'handed' })).toEqual({
-      slug: 'handed',
-      orchestrated: true,
-    })
-    expect(getFeatureRow(ctx, feature.id).orchestrated).toBe(true)
-    expect(listAfter(ctx, feature.id).map((e) => e.type)).toContain('feature.orchestrated')
-    expect(requireOrchestratedFeature(ctx, session, 'handed').id).toBe(feature.id)
+  it('refuses a session that is not a project session', () => {
+    const feature = seedFeature(ctx, projectId, { slug: 'humans' })
+    const chat = createSessionRow(ctx, { featureId: feature.id, kind: 'chat', worktreePath: repoPath })
+    expect(refusal(() => requireProjectFeature(ctx, chat, 'humans'))).toMatch(/only the orchestrator/)
+    expect(refusal(() => requireOrchestratorSession(chat))).toMatch(/only the orchestrator/)
   })
 
-  it('refuses from a project session that is not orchestrating', () => {
-    seedFeature(ctx, projectId, { slug: 'handed', orchestrated: true })
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    const ordinary = projectSession()
-    expect(refusal(() => toolTakeOverFeature(ctx, ordinary, { slug: 'handed' }))).toMatch(
-      /only the orchestrator/,
-    )
-    expect(refusal(() => requireOrchestratedFeature(ctx, ordinary, 'handed'))).toMatch(
-      /only the orchestrator/,
-    )
-  })
-
-  it('refuses from an orchestrator session that has ended', () => {
-    seedFeature(ctx, projectId, { slug: 'handed', orchestrated: true })
-    const session = orchestrator()
+  it('refuses a project session that has ended', () => {
+    seedFeature(ctx, projectId, { slug: 'humans' })
+    const session = projectSession()
     markSessionEnded(ctx, session.id)
     const ended = getSessionRow(ctx, session.id) as SessionRow
-    expect(refusal(() => toolTakeOverFeature(ctx, ended, { slug: 'handed' }))).toMatch(/has ended/)
-    expect(refusal(() => requireOrchestratedFeature(ctx, ended, 'handed'))).toMatch(/has ended/)
+    expect(refusal(() => requireProjectFeature(ctx, ended, 'humans'))).toMatch(/has ended/)
   })
 
-  it('refuses once the setting is turned off', () => {
-    seedFeature(ctx, projectId, { slug: 'handed', orchestrated: true })
-    const session = orchestrator()
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
-    expect(refusal(() => toolTakeOverFeature(ctx, session, { slug: 'handed' }))).toMatch(
-      /setting is off/,
-    )
-    expect(refusal(() => requireOrchestratorSession(ctx, session))).toMatch(/setting is off/)
-    expect(refusal(() => requireOrchestratedFeature(ctx, session, 'handed'))).toMatch(
-      /setting is off/,
-    )
+  it('refuses a feature that does not exist in the project', () => {
+    expect(refusal(() => requireProjectFeature(ctx, projectSession(), 'nope'))).toMatch(/no feature `nope`/)
   })
 
-  it('the feature gate refuses a feature the orchestrator does not own, or one that does not exist', () => {
-    const session = orchestrator()
-    seedFeature(ctx, projectId, { slug: 'humans' })
-    expect(refusal(() => requireOrchestratedFeature(ctx, session, 'humans'))).toMatch(
-      /the human's feature, not yours/,
-    )
-    expect(refusal(() => requireOrchestratedFeature(ctx, session, 'nope'))).toMatch(
-      /no feature `nope`/,
-    )
-  })
-
-  it('get_project_context marks the orchestrator’s features in its index', async () => {
-    seedFeature(ctx, projectId, { slug: 'owned', title: 'Owned', orchestrated: true })
-    seedFeature(ctx, projectId, { slug: 'humans', title: 'Humans' })
+  it('get_project_context marks no feature as the orchestrator’s', async () => {
+    seedFeature(ctx, projectId, { slug: 'one', title: 'One' })
     const out = await toolGetProjectContext(ctx, projectSession())
-    expect(out.featureIndex.find((l) => l.startsWith('owned —'))).toMatch(/ · orchestrated$/)
-    expect(out.featureIndex.find((l) => l.startsWith('humans —'))).not.toContain('orchestrated')
+    expect(out.featureIndex.find((l) => l.startsWith('one —'))).not.toContain('orchestrated')
   })
 
   it('stamps events emitted inside an orchestrator tool with the orchestrator as actor', async () => {
@@ -195,13 +144,12 @@ describe('the orchestrator’s ownership and gate', () => {
 
   it('offers every orchestrator tool to the project session and to no other kind', () => {
     const tools = [
-      'take_over_feature',
       'start_feature',
       'plan_feature',
       'send_to_feature',
+      'read_feature_chat',
       'stop_feature_run',
       'drive',
-      'record_test_note',
       'merge_feature',
       'add_to_brief',
     ]
@@ -209,5 +157,11 @@ describe('the orchestrator’s ownership and gate', () => {
     for (const kind of ['chat', 'prepare', 'drive-fix', 'run'] as const) {
       expect(toolsForAudience(kind).filter((t) => tools.includes(t)), kind).toEqual([])
     }
+  })
+
+  it('offers no take_over_feature or record_test_note to the project session', () => {
+    const offered = toolsForAudience('project')
+    expect(offered).not.toContain('take_over_feature')
+    expect(offered).not.toContain('record_test_note')
   })
 })

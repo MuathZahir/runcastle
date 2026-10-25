@@ -12,22 +12,29 @@ import { resolvePluginDir } from '../src/launcher/skills-root'
 const read = (...parts: string[]): string =>
   readFileSync(join(resolvePluginDir(), 'skills', ...parts), 'utf8')
 
-const ORCHESTRATOR_TOOLS = [
+const PROJECT_TOOLS = [
   'get_project_context',
+  'read_adr',
+  'read_feature_brief',
+  'get_work_record',
   'create_feature',
-  'take_over_feature',
-  'start_feature',
-  'plan_feature',
-  'send_to_feature',
-  'stop_feature_run',
-  'drive',
-  'record_test_note',
-  'merge_feature',
-  'add_to_brief',
+  'set_feature_dependencies',
+  'record_event',
+  'list_project_notes',
+  'triage_project_note',
+  'update_project_note',
   'get_feature_context',
   'read_feature_doc',
   'list_tickets',
   'get_ticket',
+  'start_feature',
+  'plan_feature',
+  'send_to_feature',
+  'read_feature_chat',
+  'stop_feature_run',
+  'drive',
+  'merge_feature',
+  'add_to_brief',
 ]
 
 describe('the project skill, orchestrating', () => {
@@ -39,46 +46,57 @@ describe('the project skill, orchestrating', () => {
     return text.slice(at, text.indexOf('\n## ', at + 1))
   }
 
-  it('is announced near the top as applying only to the orchestrator', () => {
+  it('is always in force, with nothing making it conditional', () => {
     const text = skill()
     const top = text.slice(0, text.indexOf('## Your tools'))
-    expect(top).toContain('**When your briefing says you are the orchestrator**')
-    expect(top).toContain('still governs you')
-    expect(section()).toContain('applies only when your briefing says you are the orchestrator')
+    expect(top).toContain("**You are also always this project's orchestrator.**")
+    expect(section()).toContain('This is standing guidance')
+    expect(text).not.toMatch(/when your briefing says you are the orchestrator|applies only (then|when)/i)
+    expect(text).not.toMatch(/setting|experimental|turns? the mode/i)
   })
 
-  it('names every orchestrator tool', () => {
+  it('names every tool the project session has, and none it lost', () => {
+    const text = skill()
+    const tools = text.slice(text.indexOf('## Your tools'), text.indexOf('## 0.'))
+    for (const tool of PROJECT_TOOLS) expect(tools).toContain(`\`mcp__runcastle__${tool}(`)
+    expect(tools).toContain('`mcp__runcastle__send_to_feature({ slug, message, relaysHuman? })`')
+    expect(tools).toContain('`humanTypedAt`')
+    expect(text).not.toMatch(/take_over_feature|record_test_note|complete_phase/)
+  })
+
+  it('acts only on what the human asked, as far as they asked, or within a cut agreement', () => {
     const text = section()
-    for (const tool of ORCHESTRATOR_TOOLS) expect(text).toContain(`\`${tool}`)
+    expect(text).toContain(
+      '**Act only on what the human asked in this conversation, as far as they asked, or within a cut whose working agreement they made.**',
+    )
+    expect(text).toContain('"Check on X" is a read, not a licence to start X')
+    expect(text).toContain('**Questions, portfolio answers and health sweeps never lead to action on their own**')
+    expect(text).toContain("**A feature the human is running by hand is theirs** unless they ask you to act on it")
+    expect(text).toContain('**No limits beyond the human\'s buttons**')
   })
 
-  it('guards its context with cheaper subagents on both CLIs', () => {
+  it('stops when told, saying what is still in flight, and when the project chat ends', () => {
     const text = section()
-    expect(text).toContain('the Agent tool with `model: "sonnet"`')
-    expect(text).toContain('`spawn_agent` with a smaller model if it accepts one')
-    expect(text).toContain("**Do not go into a feature's details unless something needs it**")
-    expect(text).toContain("reorient from runcastle's record, not from memory")
+    expect(text).toContain('**When the human tells you to stop, start nothing new**')
+    expect(text).toContain('tell them what is still in flight')
+    expect(text).toContain('Ending the project chat stops you too')
   })
 
-  it('asks the human one question at a time, only when a wrong guess would cost a lap', () => {
-    const text = section()
-    expect(text).toContain('a wrong guess would cost a lap')
-    expect(text).toContain('**One question at a time**')
-    expect(text).toContain('**Keep everything else moving while you wait**')
-    expect(text).toContain("saying it is the human's answer")
-  })
-
-  it('agrees how the cut is run before creating anything, and works within it', () => {
+  it('agrees how the cut is run before creating anything, merging included, and works within it', () => {
     const text = section()
     const agreement = text.indexOf('### The working agreement')
     expect(agreement).toBeGreaterThanOrEqual(0)
-    expect(agreement).toBeLessThan(text.indexOf('### Grill, create, and what is yours'))
+    expect(agreement).toBeLessThan(text.indexOf('### Grill, create, plan, start'))
     expect(text).toContain('**Before you create anything for a cut, ask the human how they want the work run.**')
     expect(text).toContain('One question, with your recommendation')
-    expect(text).toContain('**Autonomous**')
+    expect(text).toContain('say what each means for merging')
+    expect(text).toContain('**Autonomous**: you carry everything through to merged')
     expect(text).toContain('**Checkpoints they name**')
+    expect(text).toContain('merge only what they have passed there')
     expect(text).toContain('**A check-in after each feature**')
-    expect(text).toContain('**"You decide" means autonomous.**')
+    expect(text).toContain('merge it only once they say so')
+    expect(text).toContain('**"You decide" means autonomous, merge included.**')
+    expect(text).toContain('**Outside a cut, merge only when the human asks you to.**')
     expect(text).toContain('**Always offer all three shapes**, even for a cut of one feature')
     expect(text).toContain('**Every new request is a new cut**')
     expect(text).toContain('unless the human has said the earlier agreement stands for it')
@@ -90,24 +108,76 @@ describe('the project skill, orchestrating', () => {
     expect(text).toContain('**Drive when the agreement calls for the human\'s eyes**')
   })
 
-  it('reads runcastle messages and the catch-up, and stops on one move', () => {
+  it('puts a shared thing in one place, and says so before departing from the literal ask', () => {
     const text = section()
-    expect(text).toContain('`[runcastle]`')
-    expect(text).toContain('"Since you were last live"')
-    expect(text).toContain('**One move stops you.**')
-    expect(text).toContain('start nothing new')
+    expect(text).toContain(
+      '**When several features would change the same shared thing — a theme, a component, a schema — the change belongs in one place**',
+    )
+    expect(text).toContain('agents editing the same files apart conflict and drift')
+    expect(text).toContain('Work out per task what that place is')
+    expect(text).toContain('**When that means doing something other than what the human literally said, say so before you act**')
+    expect(text).toContain('go ahead unless they object')
+    expect(text).toContain('**When the human judges one part, tell them what they are looking at.**')
+    expect(text).toContain('order the work so shared pieces merge first')
   })
 
-  it("acts only on its own features and never in a live session's worktree", () => {
+  it('gathers interruptions and weighs machine cost', () => {
     const text = section()
-    expect(text).toContain("**Features you did not create are the human's**")
-    expect(text).toContain('never act on them')
+    expect(text).toContain('**Gather what needs the human into one message**')
+    expect(text).toContain('unless one item blocks everything else')
+    expect(text).toContain('**Every feature you set working costs machine time**')
+    expect(text).toContain('Start only as many at once as the work gains from.')
+  })
+
+  it("talks to a feature's agent both ways, and leaves a busy feature alone", () => {
+    const text = section()
+    expect(text).toContain("it is from the project's orchestrator")
+    expect(text).toContain("**When you pass on the human's own answer, set `relaysHuman: true`**")
+    expect(text).toContain('**`read_feature_chat({ slug })`**')
+    expect(text).toContain("**A feature is busy while the human is using its chat**")
+    expect(text).toContain('within about the last 30 minutes (`humanTypedAt` in `get_feature_context`)')
+    expect(text).toContain('or its agent is mid-turn on their message')
+    expect(text).toContain('wait until it is free, or tell the human what you want to send')
+    expect(text).toContain('**A feature the human stepped into stays in the cut.**')
+    expect(text).toContain('treat what they told that agent as their decision')
+  })
+
+  it('guards its context with cheaper subagents on both CLIs', () => {
+    const text = section()
+    expect(text).toContain('the Agent tool with `model: "sonnet"`')
+    expect(text).toContain('`spawn_agent` with a smaller model if it accepts one')
+    expect(text).toContain("**Do not go into a feature's details unless something needs it**")
+    expect(text).toContain("reorient from runcastle's record, not from memory")
+  })
+
+  it('asks the human one question at a time, only when a wrong guess would cost a round', () => {
+    const text = section()
+    expect(text).toContain('a wrong guess would cost a round')
+    expect(text).toContain('**One question at a time**')
+    expect(text).toContain('**Keep everything else moving while you wait**')
+    expect(text).toContain("saying it is the human's answer")
+  })
+
+  it('hears about the features it has acted on, and shows no list of them', () => {
+    const text = section()
+    expect(text).toContain('**You hear about the features you have acted on**')
+    expect(text).toContain('until each ships')
+    expect(text).toContain('`[runcastle]`')
+    expect(text).toContain("a feature's agent is waiting for the human")
+    expect(text).toContain('an agent declared its work ready')
+    expect(text).toContain('"Since you were last live"')
+    expect(text).toContain('**The app shows no list of what you follow or run**')
+  })
+
+  it("merges through runcastle and never works in a live session's worktree", () => {
+    const text = section()
+    expect(text).toContain('**Merge through runcastle**: `merge_feature`')
     expect(text).toContain("**Never work in a feature's worktree while that feature has a live session.**")
     expect(text).toContain('**`decisions.md` is the record**')
   })
 })
 
-describe('the project skill, with no Go and no quick changes', () => {
+describe('the project skill, with no Go, no quick changes and no missing tools', () => {
   const texts = (): string[] =>
     ['SKILL.md', 'references/triage.md', 'references/health-sweeps.md'].map((f) => read('project', ...f.split('/')))
 
@@ -116,6 +186,16 @@ describe('the project skill, with no Go and no quick changes', () => {
       expect(text).not.toMatch(/\bGo\b/)
       expect(text).not.toMatch(/go_feature|quick[ -]change/i)
       expect(text).not.toMatch(/create_feature\(\{[^}]*tickets/)
+    }
+  })
+
+  it('speaks of rounds, never of phases, laps or burns', () => {
+    for (const text of texts()) expect(text).not.toMatch(/\b(phases?|laps?|burn\w*)\b/i)
+  })
+
+  it('never says it cannot launch, message or act on a feature', () => {
+    for (const text of texts()) {
+      expect(text).not.toMatch(/never launch|no tool for|have no tool|tell the human to open/i)
     }
   })
 
@@ -129,13 +209,20 @@ describe('the project skill, with no Go and no quick changes', () => {
 describe('the feature skill and the orchestrator', () => {
   const text = (): string => read('feature', 'references', 'grilling.md')
 
+  it("recognises an orchestrator message by its opening line, and a relayed human answer", () => {
+    const relay = read('feature', 'SKILL.md')
+    expect(relay).toContain("a message that opens with a line saying it is from the project's orchestrator")
+    expect(relay).toContain("relays the human's own answer, treat it as the human confirming")
+  })
+
   it('marks a change made on the orchestrator\'s message, and clears it for a relayed human answer', () => {
     const at = text().indexOf("**A change on the orchestrator's message is not the human's.**")
     expect(at).toBeGreaterThanOrEqual(0)
     const docs = text().slice(at, text().indexOf('\n\n', at))
+    expect(docs).toContain("open with a line saying they are from the project's\norchestrator")
     expect(docs).toContain('`**Changed by the orchestrator:** <why>`')
     expect(docs).toContain('keeps its\n`**Assumed.**` line, or gains one')
-    expect(docs).toContain("A message that relays the human's own answer is\nthe human confirming")
+    expect(docs).toContain("relays the human's own answer is the human confirming")
   })
 })
 

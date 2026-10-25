@@ -499,10 +499,10 @@ describe('launching, resuming and landing a project session', () => {
     expect(types).toContain('session.launching')
   })
 
-  it('launches with --permission-mode default and settings that do not pre-approve commits', async () => {
+  it('launches as the orchestrator, prompts off, with settings that do not pre-approve commits', async () => {
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    expect(launchCommand()).toContain('--permission-mode default')
+    expect(launchCommand()).toContain('--permission-mode bypassPermissions')
 
     const settings = JSON.parse(
       readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8'),

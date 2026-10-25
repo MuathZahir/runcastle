@@ -139,6 +139,7 @@ describe('read tools never outgrow the never-hidden ceiling', () => {
         'driveActive',
         'stopped',
         'waitingReason',
+        'humanTypedAt',
         'dependsOn',
         'blocks',
         'upNext',

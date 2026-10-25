@@ -48,7 +48,7 @@ file to write and nothing else to report.
 3. **Play the grouping back, and let the human correct it before any grilling:**
 
    > 9 notes, 4 themes: ticket-card density (4), the rail's empty states (2), two
-   > separate asks about the burn log, and one stray about Windows paths. Does
+   > separate asks about the run log, and one stray about Windows paths. Does
    > that grouping look right?
 
    Take their correction. A theme you split is often one thing, and one you
@@ -118,20 +118,25 @@ one per theme would give you a feature each.
   the ten-second line. The feature's agent reads it and judges the work.
 - A theme whose note has a screenshot ends with that note's
   `attachmentSentence`, **pasted verbatim**. That sentence is the whole contract:
-  the feature's agent carries it into any ticket it writes, and the burner scans
+  the feature's agent carries it into any ticket it writes, and the worker scans
   it back out of the ticket and puts the PNG in its sandbox.
 - Pass `baseBranch` the way §1c requires. The batch's review is then an ordinary
   feature test drive of its branch.
 
 ### A change to a feature in flight
 
-Destinations 3 and 4 have no tool. Give the human a **handoff line** to paste
-into that feature's own chat, carrying the grilled reasoning — not "see the
-notes":
+Destinations 3 and 4 go to that feature's agent. Once the human agrees the
+theme belongs there, send it with `send_to_feature`, carrying the grilled
+reasoning — not "see the notes":
 
-> Paste this into `burn-log-readability`'s chat: "Timestamps in the burn log
-> are unreadable at a glance; we settled that the want is relative ages with the
-> absolute time on hover, and that the run header keeps its absolute start time."
+> `send_to_feature({ slug: "run-log-readability", message: "Timestamps in the
+> run log are unreadable at a glance; we settled that the want is relative ages
+> with the absolute time on hover, and that the run header keeps its absolute
+> start time." })`
+
+When that feature is busy (the project skill's **Orchestrating**), or the human
+would rather say it themselves, give them the same text as a **handoff line** to
+paste into its chat.
 
 ### Nothing
 
@@ -152,7 +157,7 @@ note went. Use these forms:
 |---|---|
 | New feature | `→ new feature <title>` |
 | The batched feature | `→ batch feature <title>` |
-| A feature in flight | `→ handed to <slug> (handoff given)` |
+| A feature in flight | `→ sent to <slug>`, or `→ handed to <slug> (handoff given)` |
 | Dropped, or nothing | `dropped: <why>` |
 
 **Pass `featureId` whenever the destination is a feature.** `create_feature`
@@ -175,6 +180,6 @@ can reopen one from the inbox). Get the outcome line right the first time.
 ## Close
 
 Tell them what this pass produced: the batch and how many themes it carries,
-each new feature, each handoff line still to paste, and how many notes are still
-open. Then stop — you never launch what you created (§1c), and the cards
-appearing in the rail are the handoff.
+each new feature, each message sent and each handoff line still to paste, and
+how many notes are still open. Then stop: creating a feature sets nothing
+working (§1c). Plan or start what triage created only when the human asks.

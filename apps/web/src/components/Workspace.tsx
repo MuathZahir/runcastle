@@ -46,6 +46,7 @@ import {
   type DraftBaseMissing,
 } from '../lib/feature-ui'
 import { useReviewArtifacts } from '../lib/reviews'
+import { useFeatureAutoResume } from '../lib/use-auto-resume'
 import { useResolveConflict } from '../lib/use-resolve-conflict'
 import { DeleteFeatureDialog } from './DeleteFeatureDialog'
 import { FeatureActionsMenu, type FeatureAction } from './FeatureActionsMenu'
@@ -467,6 +468,8 @@ export function Workspace({
     },
     onError: (e) => toast.push(e.message),
   })
+  // Opening the feature resumes its ended chat by itself.
+  const { autoResuming } = useFeatureAutoResume(featureId, q.data, q.dataUpdatedAt)
 
   if (q.isLoading) {
     return (
@@ -1003,6 +1006,7 @@ export function Workspace({
                     hidden={chatHidden || column.inFront !== FEATURE_CHAT}
                     launching={launch.isPending}
                     launchError={launch.error?.message}
+                    autoResuming={autoResuming}
                     onLaunch={launchChat}
                     onView={(target) => {
                       if (views.includes(target)) panel.dispatch({ type: 'open', view: target, origin: 'human' })

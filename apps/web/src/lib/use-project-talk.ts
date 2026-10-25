@@ -42,6 +42,17 @@ export interface ProjectTalkApi {
   replace: (purpose?: ProjectTalkPurpose) => void
   /** Reopen a specific past conversation; no-op while one is open. */
   resume: (sessionId: string) => void
+  /**
+   * Resume the conversation the page is showing, because it is showing it
+   * (`opening-a-feature-shows-its-chat-as-you-left-it` decision 3): resume only,
+   * and a refusal is quiet — no toast.
+   */
+  autoResume: (sessionId: string) => void
+  /**
+   * The conversation an automatic resume is bringing back — in flight, or its
+   * session still launching — or null.
+   */
+  autoResuming: string | null
   starting: boolean
 }
 
@@ -65,6 +76,13 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     // refused server-side; it lands as a toast rather than taking the shell down.
     onError: (e) => toast.push(e.message),
   })
+  const auto = trpc.project.talkToProject.useMutation({
+    // Pending until the page has the session row, so "Resuming…" never
+    // flickers back to the button in between.
+    onSuccess: () =>
+      Promise.all([utils.project.projectSession.invalidate(), utils.project.conversations.invalidate()]),
+    onError: () => undefined,
+  })
   // What the relaunch after an end is for. Held in a ref rather than passed
   // through the mutation, because the launch happens in `endSession`'s callback
   // — a render later, with nothing of the click left to read.
@@ -83,7 +101,9 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
   const state = projectSessionState(session)
   // Guarded on the polled state so the doors read as "open the conversation"
   // rather than erroring when one is already up.
-  const canLaunch = (): boolean => state === 'none' && !launch.isPending
+  const canLaunch = (): boolean => state === 'none' && !launch.isPending && !auto.isPending
+  const autoFrom = auto.variables?.resumeSessionId ?? null
+  const autoResuming = (auto.isPending || (auto.isSuccess && session?.status === 'launching')) ? autoFrom : null
 
   return {
     session,
@@ -107,6 +127,10 @@ export function useProjectTalk(projectId: string): ProjectTalkApi {
     resume: (sessionId) => {
       if (canLaunch()) launch.mutate({ projectId, resumeSessionId: sessionId })
     },
+    autoResume: (sessionId) => {
+      if (canLaunch()) auto.mutate({ projectId, resumeSessionId: sessionId, auto: true })
+    },
+    autoResuming,
     starting: launch.isPending || end.isPending,
   }
 }

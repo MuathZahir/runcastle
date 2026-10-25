@@ -26,7 +26,7 @@ function preOrchestratorDir(): string {
 }
 
 describe('orchestrator migration', () => {
-  it('migrates an existing database: features stay the human’s, sessions have terminals, the setting is unset', async () => {
+  it('migrates an existing database: rows survive and sessions have terminals', async () => {
     const SQL = await initSqlJs()
     const db = drizzle(new SQL.Database(), { schema }) as unknown as Db
     runMigrations(db, preOrchestratorDir())
@@ -44,8 +44,8 @@ describe('orchestrator migration', () => {
     runMigrations(db, DRIZZLE_DIR)
     const ctx: AppCtx = { db, config: RuncastleConfig.parse({}) }
 
-    expect(getFeatureRow(ctx, 'feat_1').orchestrated).toBe(false)
+    expect(getFeatureRow(ctx, 'feat_1').slug).toBe('one')
     expect(listSessionsByFeature(ctx, 'feat_1').map((s) => s.headless)).toEqual([false])
-    expect(getProjectById(ctx, 'proj_1')?.orchestrator).toBeUndefined()
+    expect(getProjectById(ctx, 'proj_1')?.name).toBe('P')
   })
 })

@@ -367,10 +367,8 @@ describe('Settings — This project', () => {
   })
 })
 
-describe('Settings — the Orchestrator toggle', () => {
-  const withOrchestrator = (value: boolean, source: SettingField['source']) =>
-    view([...projectFields, field({ key: 'orchestrator', value, source })])
-
+// `one-orchestrator-no-mode`: the project session is always the orchestrator.
+describe('Settings — no Orchestrator switch', () => {
   beforeEach(() => {
     server.globals = view([])
     server.findings = []
@@ -379,41 +377,12 @@ describe('Settings — the Orchestrator toggle', () => {
   })
   afterEach(cleanup)
 
-  it('says what the mode does, tags it experimental, and shows it off by default', () => {
-    server.scoped = withOrchestrator(false, 'default')
+  it('offers no Orchestrator field on the project page', () => {
+    server.scoped = view(projectFields)
     open()
 
-    const toggle = screen.getByRole('switch', { name: 'Orchestrator' })
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
-    const row = toggle.closest('div.border-b')
-    expect(row?.textContent).toContain('experimental')
-    expect(row?.textContent).toContain(
-      'The project session runs your features for you: it creates them, has them plan themselves, gives them Go, drives them and merges by its own judgement. It edits this repo and runs commands without asking. Takes effect the next time the project session opens. Turning it off tells a live orchestrator to start nothing new.',
-    )
-    // A project-only key: no global twin, so no chip about where it came from.
-    expect(row?.textContent).not.toContain('Global')
-  })
-
-  it('turns the mode on for this project, as a boolean', () => {
-    server.scoped = withOrchestrator(false, 'default')
-    open()
-
-    fireEvent.click(screen.getByRole('switch', { name: 'Orchestrator' }))
-
-    expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'orchestrator', value: true }])
-    expect(server.invalidated).toContain('settings.get')
-  })
-
-  it('reflects a project that has it on, and turns it off', () => {
-    server.scoped = withOrchestrator(true, 'project')
-    open()
-
-    const toggle = screen.getByRole('switch', { name: 'Orchestrator' })
-    expect(toggle.getAttribute('aria-checked')).toBe('true')
-
-    fireEvent.click(toggle)
-
-    expect(server.updates).toEqual([{ projectId: 'proj_1', key: 'orchestrator', value: false }])
+    expect(screen.queryByRole('switch', { name: 'Orchestrator' })).toBeNull()
+    expect(screen.queryByLabelText('Orchestrator')).toBeNull()
   })
 })
 

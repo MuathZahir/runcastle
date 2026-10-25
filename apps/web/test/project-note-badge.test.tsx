@@ -87,8 +87,6 @@ describe('the Orchestrator card’s open-note count', () => {
     rail()
 
     expect(orchestrator().textContent).toBe('OrchestratorPlan, cut and ask · 4 notes')
-    // The tooltip says what the count is about.
-    expect(orchestrator().getAttribute('title')).toBe('runcastle — 4 open notes')
   })
 
   it('says "note" of a single one', () => {
@@ -97,13 +95,25 @@ describe('the Orchestrator card’s open-note count', () => {
     rail()
 
     expect(orchestrator().textContent).toContain('· 1 note')
-    expect(orchestrator().getAttribute('title')).toBe('runcastle — 1 open note')
   })
 
   it('is left out at zero — an empty pile is not news', () => {
     rail()
 
     expect(orchestrator().textContent).toBe('OrchestratorPlan, cut and ask')
-    expect(orchestrator().getAttribute('title')).toMatch(/^Talk to the project/)
+  })
+})
+
+describe('the Orchestrator card’s hover text (one-orchestrator-no-mode decision 1)', () => {
+  it('says what the project chat is and that it acts without asking, notes or none', () => {
+    const sentence =
+      "Your project's orchestrator: it plans, starts, messages and merges features when you ask, and edits this repo and runs commands without asking."
+    rail()
+    expect(orchestrator().getAttribute('title')).toBe(sentence)
+    cleanup()
+
+    count.value = 3
+    rail()
+    expect(orchestrator().getAttribute('title')).toBe(sentence)
   })
 })

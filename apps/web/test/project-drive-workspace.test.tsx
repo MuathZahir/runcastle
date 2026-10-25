@@ -147,6 +147,8 @@ const talk = (over: Partial<ProjectTalkApi> = {}): ProjectTalkApi => ({
   triage: vi.fn(),
   replace: vi.fn(),
   resume: vi.fn(),
+  autoResume: vi.fn(),
+  autoResuming: null,
   starting: false,
   ...over,
 })

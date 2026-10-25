@@ -24,6 +24,7 @@ export function FeatureChat({
   hidden,
   launching,
   launchError,
+  autoResuming = false,
   onLaunch,
   onView,
 }: {
@@ -36,13 +37,18 @@ export function FeatureChat({
   launching: boolean
   /** Why the last Resume or Start was refused (a talk worktree that cannot be made). */
   launchError?: string
+  /** Opening the feature is resuming its chat by itself: the ended transcript stays up until it is live. */
+  autoResuming?: boolean
   /** Resume or start the feature's chat — the same launch the bar's Chat door takes. */
   onLaunch: () => void
   /** Open the panel view a notice points at. */
   onView: (target: ChatNoticeTarget) => void
 }) {
   const live = activeSession(full.sessions)
-  const chat = featureChat(full.sessions)
+  // While resuming, the new row has no transcript yet: read back the one it continues.
+  const chat = autoResuming
+    ? full.sessions.findLast((s) => s.kind === 'chat' && s.status === 'ended')
+    : featureChat(full.sessions)
   const notices = (alerts || live) && (
     <>
       {alerts}
@@ -65,6 +71,7 @@ export function FeatureChat({
       onLaunch={onLaunch}
       launching={launching}
       launchError={launchError}
+      autoResuming={autoResuming}
       hidden={hidden}
     >
       <FeatureNoticeDeck events={events} tickets={full.tickets} active={!hidden} onView={onView} />

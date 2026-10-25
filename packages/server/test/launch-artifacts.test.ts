@@ -374,10 +374,11 @@ describe('renderSettings', () => {
   /**
    * `whole-cuts-plan-themselves` decision 20: the orchestrator hears about its
    * features through an `asyncRewake` hook that long-polls for its lines, never
-   * through keystrokes typed into its terminal.
+   * through keystrokes typed into its terminal. Every project session is the
+   * orchestrator (`one-orchestrator-no-mode`).
    */
-  it('gives an orchestrate session the asyncRewake message waiter on SessionStart and Stop', () => {
-    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project', undefined, 'orchestrate')
+  it('gives a project session the asyncRewake message waiter on SessionStart and Stop', () => {
+    const s = renderSettings('C:\\hooks\\hook-client.ts', 'project')
     const waiter = {
       type: 'command',
       command: 'bun run "C:\\hooks\\hook-client.ts" wait-messages',
@@ -405,12 +406,12 @@ describe('renderSettings', () => {
    */
   it('gives a feature chat with a terminal the same waiter, and a headless chat none', () => {
     const chat = renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack')
-    const orchestrate = renderSettings('C:\\hooks\\hook-client.ts', 'project', undefined, 'orchestrate')
+    const project = renderSettings('C:\\hooks\\hook-client.ts', 'project')
     const waiterOf = (s: typeof chat) => s.hooks.Stop[0].hooks.slice(1)
-    expect(waiterOf(chat)).toEqual(waiterOf(orchestrate))
+    expect(waiterOf(chat)).toEqual(waiterOf(project))
     expect(chat.hooks.SessionStart.every((e) => e.hooks[1]?.command.endsWith('wait-messages'))).toBe(true)
 
-    for (const purpose of [undefined, ...SessionPurpose.options.filter((p) => p !== 'orchestrate')]) {
+    for (const purpose of [undefined, ...SessionPurpose.options]) {
       const headless = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', 'chat', 'C:\\pack', purpose, true))
       expect(headless).not.toContain('wait-messages')
       expect(headless).not.toContain('asyncRewake')
@@ -418,25 +419,18 @@ describe('renderSettings', () => {
   })
 
   it('leaves every other session’s settings exactly as they were', () => {
-    const others = SessionPurpose.options.filter((p) => p !== 'orchestrate')
     for (const kind of SessionKind.options.filter((k) => k !== 'chat')) {
       const plain = JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack'))
-      expect(plain).not.toContain('wait-messages')
-      expect(plain).not.toContain('asyncRewake')
-      for (const purpose of others) {
+      if (kind !== 'project') {
+        expect(plain).not.toContain('wait-messages')
+        expect(plain).not.toContain('asyncRewake')
+      }
+      for (const purpose of SessionPurpose.options) {
         // Setup mode widens a scenario session's `git add` on purpose (scenario-session.test.ts).
         if (kind === 'scenario' && purpose === 'scenario-setup') continue
         expect(JSON.stringify(renderSettings('C:\\hooks\\hook-client.ts', kind, 'C:\\pack', purpose))).toBe(plain)
       }
     }
-    // An orchestrate session differs only by the waiter it adds.
-    const orchestrate = renderSettings('C:\\hooks\\hook-client.ts', 'project', 'C:\\pack', 'orchestrate')
-    const project = renderSettings('C:\\hooks\\hook-client.ts', 'project', 'C:\\pack')
-    expect(orchestrate.permissions).toEqual(project.permissions)
-    expect(orchestrate.hooks.SessionStart.map((e) => ({ ...e, hooks: e.hooks.slice(0, 1) }))).toEqual(
-      project.hooks.SessionStart,
-    )
-    expect(orchestrate.hooks.Stop[0].hooks.slice(0, 1)).toEqual(project.hooks.Stop[0].hooks)
   })
 })
 

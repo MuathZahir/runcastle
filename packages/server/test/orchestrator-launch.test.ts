@@ -4,24 +4,26 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentRuntime, Project } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { sessions } from '../src/db/schema'
 import type { AppCtx } from '../src/db/types'
 import { type ProjectBrief, renderProjectPrompt } from '../src/launcher/artifacts'
 import { launchProjectSession } from '../src/launcher/launcher'
 import { codexHomeDir } from '../src/launcher/runtimes/codex'
 import { awaitProjectLandings, getSessionRow } from '../src/launcher/sessions'
+import { endSession } from '../src/pty/end-session'
 import { PROJECT_BRANCH } from '../src/services/git'
-import { listByProject } from '../src/services/events'
-import { updateSettings } from '../src/services/settings'
+import { emit, listByProject, runAsActor } from '../src/services/events'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
-import { rmTemp, seedProject } from './helpers/fixtures'
+import { rmTemp, seedFeature, seedProject } from './helpers/fixtures'
 
 /**
- * The orchestrating launch (`whole-cuts-plan-themselves` decisions 10, 14): with
- * the project's Orchestrator setting on, the project session opens as the
- * orchestrator — purpose `orchestrate`, prompts off, the orchestrating briefing.
- * Off, it is the project session exactly as it was.
+ * The orchestrating launch (`one-orchestrator-no-mode` decision 1): every
+ * project session — fresh, resumed or triage — opens as the orchestrator:
+ * prompts off, the message waiter, the orchestrating briefing and its catch-up.
+ * No session row carries an `orchestrate` purpose any more.
  */
 
 function git(cwd: string, ...args: string[]): string {
@@ -37,7 +39,7 @@ function initRepo(dir: string): void {
   git(dir, 'commit', '-m', 'initial commit')
 }
 
-describe('the orchestrating project session launch', () => {
+describe('the project session launch is the orchestrator', () => {
   let ctx: AppCtx
   let project: Project
   const cleanup: string[] = []
@@ -66,10 +68,6 @@ describe('the orchestrating project session launch', () => {
     ctx.config = { ...ctx.config, model: id, models: [{ id, runtime }] }
   }
 
-  function setOrchestrator(on: boolean): void {
-    updateSettings(ctx, { projectId: project.id, key: 'orchestrator', value: on })
-  }
-
   function launchCommand(): string {
     const launched = listByProject(ctx, project.id)
       .filter((e) => e.type === 'session.launched')
@@ -81,25 +79,40 @@ describe('the orchestrating project session launch', () => {
     return readFileSync(join(sessionDir(sessionId), 'system-prompt.md'), 'utf8')
   }
 
-  it('with the setting on, launches Claude Code as the orchestrator with prompts off', async () => {
+  function claudeSettings(sessionId: string): string {
+    return readFileSync(join(sessionDir(sessionId), 'settings.json'), 'utf8')
+  }
+
+  /** A first session that ended `ago` ms back, with a conversation a resume can pick up. */
+  async function endedSession(ago = 10_000): Promise<string> {
+    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    endSession(ctx, sessionId)
+    ctx.db
+      .update(sessions)
+      .set({ ccSessionId: 'cc-prior', endedAt: Date.now() - ago })
+      .where(eq(sessions.id, sessionId))
+      .run()
+    await awaitProjectLandings()
+    return sessionId
+  }
+
+  it('launches Claude Code as the orchestrator with prompts off and the message waiter', async () => {
     useRuntime('claude-code')
-    setOrchestrator(true)
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    expect(getSessionRow(ctx, sessionId)?.purpose).toBe('orchestrate')
+    expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
     expect(launchCommand()).toContain('--permission-mode bypassPermissions')
+    expect(claudeSettings(sessionId)).toContain('wait-messages')
     const prompt = claudePrompt(sessionId)
     expect(prompt).toContain('## Orchestrating')
     expect(prompt).toContain('/runcastle:project')
-    expect(prompt).toContain('Nothing has happened on your features since you were last live.')
+    expect(prompt).toContain('Nothing has happened on the features you follow since you were last live.')
   })
 
-  it('with the setting on, launches Codex with approvals never and no sandbox', async () => {
+  it('launches Codex with approvals never and no sandbox', async () => {
     useRuntime('codex')
-    setOrchestrator(true)
     const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
 
-    expect(getSessionRow(ctx, sessionId)?.purpose).toBe('orchestrate')
     const home = codexHomeDir(sessionId)
     const toml = readFileSync(join(home, 'config.toml'), 'utf8')
     expect(toml).toContain('approval_policy = "never"')
@@ -109,19 +122,27 @@ describe('the orchestrating project session launch', () => {
     expect(prompt).toContain('$project')
   })
 
-  it('with the setting off, is the ordinary project session', async () => {
+  it('resumes as the orchestrator, with the catch-up of its followed features', async () => {
     useRuntime('claude-code')
-    setOrchestrator(false)
-    const { sessionId } = await launchProjectSession(ctx, { projectId: project.id }, { spawn: false })
+    const prior = await endedSession()
+    const followed = seedFeature(ctx, project.id, { slug: 'mine' })
+    runAsActor('orchestrator', () => emit(ctx, followed.id, { type: 'feature.created', message: 'created' }))
+    emit(ctx, followed.id, { type: 'merge.conflict', message: 'x', data: { files: ['a.ts'] } })
 
-    expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
-    expect(launchCommand()).toContain('--permission-mode default')
-    expect(claudePrompt(sessionId)).not.toContain('Orchestrating')
+    const { sessionId } = await launchProjectSession(
+      ctx,
+      { projectId: project.id, resumeSessionId: prior },
+      { spawn: false },
+    )
+
+    expect(launchCommand()).toContain('--resume cc-prior')
+    expect(launchCommand()).toContain('--permission-mode bypassPermissions')
+    expect(claudeSettings(sessionId)).toContain('wait-messages')
+    expect(claudePrompt(sessionId)).toContain('### Since you were last live\n- mine merge conflicted in 1 file(s).')
   })
 
-  it('a triage launch stays an ordinary session even with the setting on', async () => {
+  it('opens a triage launch as the orchestrator too, keeping its errand', async () => {
     useRuntime('codex')
-    setOrchestrator(true)
     const { sessionId } = await launchProjectSession(
       ctx,
       { projectId: project.id, purpose: 'triage' },
@@ -130,8 +151,9 @@ describe('the orchestrating project session launch', () => {
 
     expect(getSessionRow(ctx, sessionId)?.purpose).toBeUndefined()
     const home = codexHomeDir(sessionId)
-    expect(readFileSync(join(home, 'config.toml'), 'utf8')).toContain('approval_policy = "on-request"')
-    expect(readFileSync(join(home, 'AGENTS.md'), 'utf8')).not.toContain('Orchestrating')
+    expect(readFileSync(join(home, 'config.toml'), 'utf8')).toContain('approval_policy = "never"')
+    expect(readFileSync(join(home, 'AGENTS.md'), 'utf8')).toContain('## Orchestrating')
+    expect(launchCommand()).toContain('list_project_notes')
   })
 })
 
@@ -144,35 +166,25 @@ describe('the orchestrating section of the project prompt', () => {
     openNotes: 0,
   }
 
-  it('is absent when the brief does not orchestrate, leaving the prompt byte-identical', () => {
-    const ordinary = renderProjectPrompt(brief)
-    expect(renderProjectPrompt({ ...brief, orchestrate: false, catchUp: ['ignored'] })).toBe(ordinary)
-    expect(ordinary).not.toContain('Orchestrating')
-  })
-
-  it('is the only difference an orchestrating brief makes', () => {
-    const ordinary = renderProjectPrompt(brief)
-    const orchestrating = renderProjectPrompt({ ...brief, orchestrate: true, catchUp: [] })
-    const start = orchestrating.indexOf('## Orchestrating')
-    const end = orchestrating.indexOf('## Your task')
+  it('is always there, just before the task, and mentions no setting', () => {
+    const out = renderProjectPrompt(brief)
+    const start = out.indexOf('## Orchestrating')
+    const end = out.indexOf('## Your task')
     expect(start).toBeGreaterThan(0)
-    expect(orchestrating.slice(0, start) + orchestrating.slice(end)).toBe(ordinary)
+    expect(end).toBeGreaterThan(start)
+    expect(out.slice(start, end)).not.toMatch(/setting|experimental/i)
   })
 
   it('names the skill section, the prompts-off posture and the catch-up lines', () => {
     const out = renderProjectPrompt(
-      {
-        ...brief,
-        orchestrate: true,
-        catchUp: ['login-form: planning run finished', 'search: burn failed'],
-      },
+      { ...brief, catchUp: ['login-form: planning run finished', 'search: round failed'] },
       'codex',
     )
-    expect(out).toContain('you are the orchestrator')
-    expect(out).toContain('"Orchestrating" section of the\n`$project` skill')
+    expect(out).toContain("You are this project's orchestrator.")
+    expect(out).toContain('"Orchestrating" section of the `$project`\nskill')
     expect(out).toMatch(/without permission prompts/)
     expect(out).toContain(
-      '### Since you were last live\n- login-form: planning run finished\n- search: burn failed',
+      '### Since you were last live\n- login-form: planning run finished\n- search: round failed',
     )
     expect(out).not.toContain('Nothing has happened')
   })

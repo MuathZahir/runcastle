@@ -876,36 +876,30 @@ export interface ProjectBrief {
    */
   openNotes: number
   /**
-   * The project's Orchestrator setting was on at launch (`whole-cuts-plan-themselves`
-   * decision 14): this session is the orchestrator, and its prompt says so.
-   */
-  orchestrate?: boolean
-  /**
-   * One line per thing that ended on the orchestrator's features since its last
-   * session ended — read only when {@link orchestrate} is set.
+   * One line per thing that ended on the features the orchestrator follows since
+   * the last project session ended (`one-orchestrator-no-mode` decision 3).
    */
   catchUp?: string[]
 }
 
 /**
- * The orchestrating section of the project prompt: who this session is in the
- * mode, where its judgement is written down, that nothing will prompt it, and
- * what happened on its features while it was not live (decision 11).
+ * The orchestrating section of the project prompt: that this session is the
+ * project's orchestrator, where its judgement is written down, that nothing will
+ * prompt it, and what happened on the features it follows while it was not live.
  */
 function renderOrchestratingSection(catchUp: string[], runtime: AgentRuntime): string[] {
   return [
     `## ${ORCHESTRATING}`,
-    "This project's Orchestrator setting (experimental) is on: **you are the orchestrator** for",
-    'this project. You run the features you create, and any the human hands you, from planning',
-    `through merge. Read and follow the "${ORCHESTRATING}" section of the`,
-    `\`${skillRef(runtime, 'project')}\` skill — it is how you judge every step; nothing here`,
-    'replaces it. In this mode it is you, not the human, who decides what to work on next.',
+    "**You are this project's orchestrator.** You can check on, message, plan, start and merge",
+    'any of its features, and you act on what the human asked or agreed, as far as they asked.',
+    `Read and follow the "${ORCHESTRATING}" section of the \`${skillRef(runtime, 'project')}\``,
+    'skill — it is how you judge every step; nothing here replaces it.',
     '',
     'You run without permission prompts: you edit the repo and run commands without asking.',
     '',
     ...(catchUp.length > 0
       ? ['### Since you were last live', ...catchUp.map((line) => `- ${line}`)]
-      : ['Nothing has happened on your features since you were last live.']),
+      : ['Nothing has happened on the features you follow since you were last live.']),
     '',
   ]
 }
@@ -933,7 +927,7 @@ export function renderProjectPrompt(
   brief: ProjectBrief,
   runtime: AgentRuntime = DEFAULT_RUNTIME,
 ): string {
-  const { project, branch, worktreePath, base, openNotes, orchestrate, catchUp } = brief
+  const { project, branch, worktreePath, base, openNotes, catchUp } = brief
   return [
     `# runcastle — ${project.name} (project session)`,
     '',
@@ -979,7 +973,7 @@ export function renderProjectPrompt(
     "The runcastle skill pack also carries the feature sessions' entry skills; they are",
     'denied to this session by settings. Yours is the one named below.',
     '',
-    ...(orchestrate ? renderOrchestratingSection(catchUp ?? [], runtime) : []),
+    ...renderOrchestratingSection(catchUp ?? [], runtime),
     '## Your task',
     `Invoke the \`${skillRef(runtime, 'project')}\` skill, then open by asking the human what they brought.`,
     'Do not explore the project first: orienting before you know the ask spends their wait on',
@@ -1260,7 +1254,7 @@ export const SESSION_START_SOURCES = ['startup', 'resume', 'clear', 'compact', '
  * - Timeouts (seconds): SessionStart 20 (room for the hook client's retries — it
  *   records the conversation id a resume needs), UserPromptSubmit 5 (well inside its 30s
  *   hard budget), SessionEnd 10, Stop 5, PreToolUse 5 (it blocks every edit).
- * - An `orchestrate` session (`purpose`) also gets the message waiter on
+ * - A `project` session — the orchestrator — also gets the message waiter on
  *   SessionStart and Stop: an `asyncRewake` hook running the hook client's
  *   `wait-messages` mode, which long-polls for the orchestrator's pending
  *   `[runcastle]` lines and exits 2 with them, waking Claude whether it is idle
@@ -1287,7 +1281,7 @@ export function renderSettings(
     timeout: event === 'session-start' ? 20 : event === 'session-end' ? 10 : 5,
   })
   const waiter: CommandHook[] =
-    purpose === 'orchestrate' || (kind === 'chat' && !headless)
+    kind === 'project' || (kind === 'chat' && !headless)
       ? [
           {
             type: 'command',

@@ -6,6 +6,7 @@ import { type EditDenial, editDenyResponse, evaluateEditGuard, isUnguardedLead }
 import { evaluateInstallGuard } from '../launcher/install-guard'
 import { evaluateLeadGuard } from '../launcher/lead-guard'
 import { getRuntimeCtx } from '../launcher/runtime'
+import { forgetUntouched } from '../launcher/untouched'
 import {
   getSessionRow,
   markAgentWorking,
@@ -26,7 +27,7 @@ import {
   waitForOrchestratorLines,
 } from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
-import { getProjectById, tryGetFeature } from '../services/repo'
+import { getProjectById, listRunsByFeature, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
 
@@ -94,7 +95,7 @@ hooks.get('/orchestrator-messages', async (c) => {
 
 /** The message-store key a session's waiter waits on, or null for a session that has none. */
 function waiterKeyOf(session: SessionRow): string | null {
-  if (session.purpose === 'orchestrate') return session.id
+  if (session.kind === 'project') return session.id
   if (isLiveLeadSession(session) && session.featureId) return leadMessageKey(session.featureId)
   return null
 }
@@ -122,7 +123,12 @@ hooks.post('/:event', async (c) => {
     // `Stop` says nothing else, so it answers here; `user-prompt` carries on to
     // the per-scope handler for its injected context.
     if (event === 'user-prompt' || event === 'stop') checkInFromTurn(ctx, session, body.payload)
-    if (event === 'user-prompt') markAgentWorking(ctx, sessionId)
+    if (event === 'user-prompt') {
+      markAgentWorking(ctx, sessionId)
+      // Any prompt, tagged runcastle's or the human's, keeps an auto-resumed
+      // chat up: it has started a turn, so leaving it must not end it.
+      forgetUntouched(sessionId)
+    }
     if (event === 'stop') {
       markAwaitingInput(ctx, sessionId)
       // The turn that just ended may have committed a conflict's merge, and the
@@ -416,7 +422,7 @@ function handleUserPrompt(ctx: AppCtx, feature: Feature, session: SessionRow): u
 function handleLeadPrompt(ctx: AppCtx, feature: Feature, payload: Record<string, unknown> | undefined): void {
   releaseOrchestratorWaiter(leadMessageKey(feature.id), 'superseded')
   const prompt = typeof payload?.prompt === 'string' ? payload.prompt : undefined
-  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id)
+  if (prompt !== undefined && !isRuncastlePrompt(prompt)) markHumanMessage(ctx, feature.id, { typed: true })
 }
 
 /**
@@ -569,12 +575,16 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
       : `${tickets.length} (${Object.entries(byStatus)
           .map(([s, n]) => `${n} ${s}`)
           .join(', ')})`
+  // What the chat kickoff header carried too: a plain chat resume sends no
+  // kickoff, so this is where the agent learns it on resume.
+  const featureRuns = listRunsByFeature(ctx, feature.id)
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
     `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
+    `rounds run: ${featureRuns.length}; latest run: ${featureRuns[0]?.status ?? 'none'}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',
   ].join('\n')
 }

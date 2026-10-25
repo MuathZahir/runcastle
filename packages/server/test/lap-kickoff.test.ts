@@ -136,8 +136,9 @@ describe('launchSession — briefings', () => {
     const { command } = await launchAndRead(featureId, { kind: 'chat' })
 
     expect(command).toContain('--resume cc-prior')
-    // it carries the fresh state header (decision 13) and no lap briefing
-    expect(command).toContain('Feature status: Talking with you;')
+    // a plain resume says nothing: the conversation comes back as it was left
+    // (`opening-a-feature-shows-its-chat-as-you-left-it` decision 1)
+    expect(command).not.toContain('Feature status:')
     expect(command).not.toContain('FROM REVIEW')
     const events = listAfter(ctx, featureId, 0)
     expect(events.map((e) => e.type)).toContain('session.resumed')

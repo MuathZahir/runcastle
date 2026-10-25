@@ -145,7 +145,7 @@ export function StatusLabel({
 /**
  * A small `accent-subtle` tag with an `accent-text` word — the one boxed mark,
  * kept for a property the thing *is* rather than a state it is in: a setting
- * marked experimental, a feature the orchestrator owns.
+ * marked experimental.
  */
 export function Tag({ className, children }: { className?: string; children: ReactNode }) {
   return (
@@ -158,11 +158,6 @@ export function Tag({ className, children }: { className?: string; children: Rea
       {children}
     </span>
   )
-}
-
-/** The Orchestrated tag, beside a feature's title — nothing for a feature the orchestrator does not own. */
-export function OrchestratedTag({ orchestrated, className }: { orchestrated: boolean; className?: string }) {
-  return orchestrated ? <Tag className={className}>Orchestrated</Tag> : null
 }
 
 /** A ticket's status. `burning` spins; `cancelled` is struck through. */
