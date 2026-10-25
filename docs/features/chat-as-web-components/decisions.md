@@ -1,0 +1,5 @@
+# Decisions — chat-as-web-components
+
+## 1. The server drives the agent through structured protocols, not a terminal
+**Decision:** Claude Code chats run through Anthropic's Agent SDK (`@anthropic-ai/claude-agent-sdk`, already a server dependency for model discovery), pointed at the human's installed `claude` and launched with today's per-session flags (settings, MCP config, plugin dir, system prompt, permission mode, model). Codex chats run through `codex app-server`, the JSON protocol Codex's editor plugins use. Both sit behind the existing per-runtime adapter, so the rest of the server sees one interface.
+**Why:** The SDK already carries the hard parts of an interactive session (tool approvals, the multiple-choice question widget, interrupt, permission-mode changes, resume by id), so we don't hand-roll that protocol against a CLI that changes between versions. Running the human's own `claude` keeps their login, hooks, plugins and version, as the terminal does today. If the SDK proves wrong, the cost stays inside the Claude adapter: it speaks the same JSON messages as Claude Code's raw stream mode.
