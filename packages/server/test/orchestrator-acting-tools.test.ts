@@ -14,6 +14,7 @@ import {
   activeSessionsForFeature,
   createSessionRow,
   getSessionRow,
+  markSessionEnded,
   markSessionLive,
 } from '../src/launcher/sessions'
 import {
@@ -21,7 +22,6 @@ import {
   toolDrive,
   toolMergeFeature,
   toolPlanFeature,
-  toolRecordTestNote,
   toolStartFeature,
   toolStopFeatureRun,
 } from '../src/mcp/orchestrator-tools'
@@ -45,8 +45,6 @@ import {
 } from '../src/services/git'
 import { openProject } from '../src/services/projects'
 import { getFeatureRow, projectForFeature } from '../src/services/repo'
-import { updateSettings } from '../src/services/settings'
-import { listByFeature as listNotesByFeature } from '../src/services/test-notes'
 import { storeTickets } from '../src/services/tickets'
 import { workflowRegistry } from '../src/workflows/registry'
 import { withTempDataDir } from './helpers/data-dir'
@@ -55,8 +53,9 @@ import { rmTemp, seedFeature, tmpRepo } from './helpers/fixtures'
 
 /**
  * The orchestrator's acting tools (`whole-cuts-plan-themselves` decisions 4, 6,
- * 8, 16): each reaches the service under the human's button, passes that
- * service's own refusals through, and refuses through the one shared gate.
+ * 8, 16; `one-orchestrator-no-mode` decision 2): each reaches the service under
+ * the human's button on any feature of the project, passes that service's own
+ * refusals through, and refuses through the one shared gate.
  */
 
 const stubBurner: WorkflowDef = {
@@ -116,25 +115,16 @@ describe('the orchestrator’s acting tools', () => {
     rmTemp(repoPath)
   })
 
-  function projectSession(purpose?: 'orchestrate'): SessionRow {
-    const row = createSessionRow(ctx, {
-      projectId,
-      kind: 'project',
-      worktreePath: repoPath,
-      ...(purpose ? { purpose } : {}),
-    })
+  /** A live project session — the orchestrator. */
+  function orchestrator(): SessionRow {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: repoPath })
     markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
     return getSessionRow(ctx, row.id) as SessionRow
   }
 
-  function orchestrator(): SessionRow {
-    updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-    return projectSession('orchestrate')
-  }
-
-  /** An owned, started feature with its branch cut. */
-  async function owned(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
-    const f = seedFeature(ctx, projectId, { slug, orchestrated: true, ...overrides })
+  /** A started feature with its branch cut — one the orchestrator did not create. */
+  async function started(slug: string, overrides: Partial<Feature> = {}): Promise<Feature> {
+    const f = seedFeature(ctx, projectId, { slug, ...overrides })
     await createFeatureBranch({ id: projectId, name: 't', repoPath }, slug, 'main')
     cleanup.push(worktreeDir(projectId, slug))
     return f
@@ -156,38 +146,35 @@ describe('the orchestrator’s acting tools', () => {
       plan_feature: (c, s, slug) => toolPlanFeature(c, s, { slug }, { spawn: false }),
       stop_feature_run: (c, s, slug) => toolStopFeatureRun(c, s, { slug }),
       drive: (c, s, slug) => toolDrive(c, s, { slug, action: 'start' }),
-      record_test_note: (c, s, slug) =>
-        toolRecordTestNote(c, s, { slug, text: 'x', observedBy: 'orchestrator' }),
       merge_feature: (c, s, slug) => toolMergeFeature(c, s, { slug }),
       add_to_brief: (c, s, slug) => toolAddToBrief(c, s, { slug, text: 'x' }),
     }
 
     for (const [name, call] of Object.entries(calls)) {
-      it(`${name} refuses a non-orchestrate session, the mode off, and a feature not owned`, async () => {
-        seedFeature(ctx, projectId, { slug: 'mine', orchestrated: true })
-        seedFeature(ctx, projectId, { slug: 'humans' })
-        updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-        expect(await refusal(() => call(ctx, projectSession(), 'mine'))).toMatch(/only the orchestrator/)
+      it(`${name} refuses a session that is not a project session, and an ended one`, async () => {
+        const f = seedFeature(ctx, projectId, { slug: 'humans' })
+        const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+        expect(await refusal(() => call(ctx, chat, 'humans'))).toMatch(/only the orchestrator/)
 
         const session = orchestrator()
-        expect(await refusal(() => call(ctx, session, 'humans'))).toMatch(/the human's feature/)
-
-        updateSettings(ctx, { projectId, key: 'orchestrator', value: false })
-        expect(await refusal(() => call(ctx, session, 'mine'))).toMatch(/setting is off/)
+        markSessionEnded(ctx, session.id)
+        const ended = getSessionRow(ctx, session.id) as SessionRow
+        expect(await refusal(() => call(ctx, ended, 'humans'))).toMatch(/has ended/)
       })
     }
 
     it('drive without a slug refuses through the session gate', async () => {
-      updateSettings(ctx, { projectId, key: 'orchestrator', value: true })
-      expect(await refusal(() => toolDrive(ctx, projectSession(), { action: 'start' }))).toMatch(
+      const f = seedFeature(ctx, projectId, { slug: 'humans' })
+      const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
+      expect(await refusal(() => toolDrive(ctx, chat, { action: 'start' }))).toMatch(
         /only the orchestrator/,
       )
     })
   })
 
-  it('start_feature starts an owned draft, and passes Start’s refusal through', async () => {
+  it('start_feature starts a draft it did not create, and passes Start’s refusal through', async () => {
     const session = orchestrator()
-    const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft', orchestrated: true })
+    const draft = seedFeature(ctx, projectId, { slug: 'parked', status: 'draft' })
     cleanup.push(worktreeDir(projectId, 'parked'))
 
     const out = await toolStartFeature(ctx, session, { slug: 'parked', baseBranch: 'main' })
@@ -203,7 +190,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('plan_feature launches a headless self-planning run, and stop_feature_run ends it', async () => {
     const session = orchestrator()
-    const f = await owned('planner')
+    const f = await started('planner')
 
     const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'planner' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
@@ -219,7 +206,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('plan_feature passes the self-plan launch’s own refusal through', async () => {
     const session = orchestrator()
-    await owned('built', { status: 'shipped' })
+    await started('built', { status: 'shipped' })
     expect(
       await refusal(() => toolPlanFeature(ctx, session, { slug: 'built' }, { spawn: false })),
     ).toMatch(/is shipped/)
@@ -227,7 +214,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('a lead message while it plans itself, then stop_feature_run: the woken lead is never ended', async () => {
     const session = orchestrator()
-    const f = await owned('mid-plan')
+    const f = await started('mid-plan')
     const { sessionId } = await toolPlanFeature(ctx, session, { slug: 'mid-plan' }, { spawn: false })
     cleanup.push(sessionDir(sessionId))
     markSessionLive(ctx, sessionId, { ccSessionId: 'cc-plan' })
@@ -257,7 +244,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('stop_feature_run leaves a human’s interactive session alone', async () => {
     const session = orchestrator()
-    const f = await owned('chatting')
+    const f = await started('chatting')
     const chat = createSessionRow(ctx, { featureId: f.id, kind: 'chat', worktreePath: repoPath })
     markSessionLive(ctx, chat.id, { ccSessionId: 'cc-chat' })
     expect(await refusal(() => toolStopFeatureRun(ctx, session, { slug: 'chatting' }))).toMatch(
@@ -268,7 +255,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('drive starts and stops a feature drive, and the project drive is refused while it holds the slot', async () => {
     const session = orchestrator()
-    const f = await owned('drivable')
+    const f = await started('drivable')
 
     expect((await toolDrive(ctx, session, { slug: 'drivable', action: 'start' })).ok).toBe(true)
     expect(activeTestDriveFeatureId(projectId)).toBe(f.id)
@@ -283,26 +270,9 @@ describe('the orchestrator’s acting tools', () => {
     expect((await toolDrive(ctx, session, { action: 'stop' })).ok).toBe(true)
   })
 
-  it('record_test_note files the note as the human’s or the agent’s, as asked', async () => {
-    const session = orchestrator()
-    const f = await owned('noted')
-    toolRecordTestNote(ctx, session, { slug: 'noted', text: 'The button is grey.', observedBy: 'human' })
-    toolRecordTestNote(ctx, session, {
-      slug: 'noted',
-      text: 'The list never loads.',
-      observedBy: 'orchestrator',
-    })
-    expect(listNotesByFeature(ctx, f.id).map((n) => [n.text, n.author])).toEqual([
-      ['The button is grey.', 'human'],
-      ['The list never loads.', 'agent'],
-    ])
-    const added = listAfter(ctx, f.id).filter((e) => e.type === 'note.added')
-    expect(added.map((e) => e.data?.actor)).toEqual(['orchestrator', 'orchestrator'])
-  })
-
   it('merge_feature ships a clean feature with its outcome doc', async () => {
     const session = orchestrator()
-    const f = await owned('landing', {})
+    const f = await started('landing', {})
     await g.checkout('feature/landing')
     writeFileSync(join(repoPath, 'landing.txt'), 'work\n')
     await g.add(['landing.txt'])
@@ -317,7 +287,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('merge_feature returns a conflict’s files and records merge.conflict', async () => {
     const session = orchestrator()
-    const f = await owned('clash', {})
+    const f = await started('clash', {})
     await g.checkout('feature/clash')
     writeFileSync(join(repoPath, 'README.md'), 'feature-line\n')
     await g.add(['README.md'])
@@ -336,7 +306,7 @@ describe('the orchestrator’s acting tools', () => {
 
   it('add_to_brief appends a dated section to brief.md and commits it as a runcastle docs commit', async () => {
     const session = orchestrator()
-    const f = await owned('briefed')
+    const f = await started('briefed')
     const project = projectForFeature(ctx, f)
     const worktree = await ensureTalkWorktree(project, f)
     const briefPath = featureDocPath(project, f, 'brief.md')
@@ -369,7 +339,6 @@ describe('the orchestrator’s acting tools', () => {
     const draft = seedFeature(ctx, projectId, {
       slug: 'waiting',
       status: 'draft',
-      orchestrated: true,
       brief: 'The human wants a changelog.',
     })
     cleanup.push(worktreeDir(projectId, 'waiting'))
@@ -390,10 +359,10 @@ describe('the orchestrator’s acting tools', () => {
   })
 
   describe('feature reads from the project session', () => {
-    it('name any feature of the project by slug, owned or not, with the mode off', async () => {
-      const f = await owned('readable')
+    it('name any feature of the project by slug', async () => {
+      const f = await started('readable')
       seedFeature(ctx, projectId, { slug: 'humans' })
-      const session = projectSession()
+      const session = orchestrator()
       const [ticket] = storeTickets(ctx, f.id, [ticketInput('Read me')])
 
       const reader = projectFeatureReader(ctx, session, 'readable')
