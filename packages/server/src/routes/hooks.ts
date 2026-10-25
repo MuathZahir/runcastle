@@ -26,7 +26,7 @@ import {
   waitForOrchestratorLines,
 } from '../services/orchestrator-messages'
 import { keysToPrepare } from '../services/prep'
-import { getProjectById, tryGetFeature } from '../services/repo'
+import { getProjectById, listRunsByFeature, tryGetFeature } from '../services/repo'
 import { noteResolvedMerge, reconcileStandingConflict } from '../services/resolved-merge'
 import { listByFeature } from '../services/tickets'
 
@@ -569,12 +569,16 @@ function sessionStartContext(ctx: AppCtx, feature: Feature): string {
       : `${tickets.length} (${Object.entries(byStatus)
           .map(([s, n]) => `${n} ${s}`)
           .join(', ')})`
+  // What the chat kickoff header carried too: a plain chat resume sends no
+  // kickoff, so this is where the agent learns it on resume.
+  const featureRuns = listRunsByFeature(ctx, feature.id)
 
   return [
     `[runcastle] ${feature.title} — ${feature.oneLiner}`,
     `status: ${featureStateLine(ctx, feature)}; branch: ${feature.branch}`,
     `docs: docs/features/${feature.slug}/ (brief.md, decisions.md, spec.md)`,
     `tickets: ${ticketSummary}`,
+    `rounds run: ${featureRuns.length}; latest run: ${featureRuns[0]?.status ?? 'none'}`,
     'Call the runcastle MCP tool `get_feature_context` for the full docs + tickets.',
   ].join('\n')
 }

@@ -688,7 +688,12 @@ export async function launchSession(
     })
   }
 
-  if (input.kind === 'chat') {
+  // A plain chat resume says nothing: the human comes back to the conversation
+  // exactly as they left it, and the SessionStart hook's context carries the
+  // feature state the header used to (`opening-a-feature-shows-its-chat-as-you-
+  // left-it` decision 1). A purpose or an explicit briefing still speaks.
+  const quietResume = input.kind === 'chat' && !!resumeSessionId && !input.purpose && !plan.explicit
+  if (input.kind === 'chat' && !quietResume) {
     // Every opening re-orients the persistent conversation. Purpose-specific
     // text comes first so it remains the immediate task, followed by current
     // feature state rather than the state captured on the previous turn. A
@@ -712,7 +717,7 @@ export async function launchSession(
 
   // A chat's kickoff is runcastle's prompt, not the human's: tagged, so the
   // UserPromptSubmit hook does not count it as a human message.
-  const kickoffLine = resumeSessionId && input.kind !== 'chat'
+  const kickoffLine = quietResume || (resumeSessionId && input.kind !== 'chat')
     ? undefined
     : input.kind === 'chat'
       ? tagRuncastlePrompt(kickoffLineFor(input.kind, plan.line, runtime.id))

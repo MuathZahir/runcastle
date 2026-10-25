@@ -102,6 +102,29 @@ describe('hooks route', () => {
     expect(started[0].message).toContain('resumed')
   })
 
+  it('session-start context carries the rounds run and the latest run, which a resume no longer kicks off with', async () => {
+    const start = (): Promise<{ status: number; json: any }> =>
+      post(mount(), 'session-start', {
+        sessionId,
+        payload: { session_id: 'cc-resumed', hook_event_name: 'SessionStart', source: 'resume' },
+      })
+    expect((await start()).json.hookSpecificOutput.additionalContext).toContain(
+      'rounds run: 0; latest run: none',
+    )
+
+    ctx.db
+      .insert(runs)
+      .values({ id: 'run_old', featureId, workflow: 'ticket-burner', status: 'succeeded', startedAt: 1 })
+      .run()
+    ctx.db
+      .insert(runs)
+      .values({ id: 'run_new', featureId, workflow: 'ticket-burner', status: 'failed', startedAt: 2 })
+      .run()
+    expect((await start()).json.hookSpecificOutput.additionalContext).toContain(
+      'rounds run: 2; latest run: failed',
+    )
+  })
+
   /**
    * `/clear` and compaction start a NEW Claude Code conversation in the same
    * terminal: keep the id current (a stale one resumes the wrong transcript)
