@@ -104,8 +104,8 @@ describe('launchSession — briefings', () => {
     const plain = await launchAndRead(featureId, { kind: 'chat', purpose: 'start-lap' })
 
     expect(plain.sessionId).toBe(priorId)
-    expect(plain.said).toContain('Proceed with your task: invoke /runcastle:feature and continue this feature.')
-    expect(plain.said).not.toContain('FROM REVIEW')
+    // A plain open of a conversation under way says nothing.
+    expect(plain.said).toBe('')
     expect(plain.prompt).toContain("You are this feature's **lead**")
     expect(plain.prompt).not.toContain('This is lap')
   })

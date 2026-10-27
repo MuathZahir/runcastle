@@ -315,6 +315,8 @@ export async function launchSession(
 
   const feature = getFeatureRow(ctx, input.featureId)
   requireNotDraft(feature)
+  // The retired Start-lap door is a plain chat open: the lead runs rounds, not laps.
+  if (input.purpose === 'start-lap') input = { ...input, purpose: undefined }
   const selfPlan = input.purpose === 'self-plan'
   if (selfPlan && feature.status === 'shipped') {
     throw new GateError(`${feature.slug} is shipped, so there is nothing for it to plan — open its chat to change it`)
