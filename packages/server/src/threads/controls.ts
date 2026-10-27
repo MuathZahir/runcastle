@@ -52,11 +52,21 @@ export function currentConfig(options: readonly acp.SessionConfigOption[] | null
   return { model: model.currentValue, label, ...(effort.success ? { effort: effort.data } : {}), ...(fastOn !== undefined ? { fast: fastOn } : {}) }
 }
 
-/** The models a session offers, for the composer's picker. */
+/**
+ * The models a session offers, for the composer's picker. The session's
+ * options describe only the model it runs on, so only that one can say it
+ * offers fast mode.
+ */
 export function modelChoices(options: readonly acp.SessionConfigOption[] | null | undefined): ModelChoice[] {
   const model = modelOption(options)
   if (!model) return []
-  return selectValues(model).map((c) => ({ id: c.value, label: c.name, ...(c.description ? { note: c.description } : {}) }))
+  const fast = fastOption(options) !== undefined
+  return selectValues(model).map((c) => ({
+    id: c.value,
+    label: c.name,
+    ...(c.description ? { note: c.description } : {}),
+    ...(fast && c.value === model.currentValue ? { fast: true } : {}),
+  }))
 }
 
 /**

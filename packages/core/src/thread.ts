@@ -120,6 +120,8 @@ export interface ModelChoice {
   id: string
   label: string
   note?: string
+  /** The runtime offers fast mode on this model (Claude's `fast`, Codex's `fast-mode` option). */
+  fast?: boolean
 }
 
 /** One subscription limit (Claude's 5-hour and weekly windows, Codex's rate limits). */
@@ -154,6 +156,8 @@ export const ThreadEventBody = z.discriminatedUnion('type', [
     source: z.enum(['human', 'runcastle']),
     /** Sent while a turn ran: it joined that turn rather than starting one. */
     steered: z.boolean().optional(),
+    /** A command runcastle sent for the human (Compact now's `/compact`): it runs a turn but is no message in the thread. */
+    hidden: z.boolean().optional(),
   }),
   /** The agent process: starting on a prompt, running, stopped (idle, shutdown, crash). */
   z.object({
@@ -355,7 +359,7 @@ const BLANK_CALL: Omit<ToolCall, 'id'> = { kind: 'other', title: '', status: 'pe
  *   split is the same, so streaming words show as the answer until a tool call
  *   turns them into narration.
  * - A prompt sent before the process ran shows `starting` until the process
- *   runs or a turn starts.
+ *   runs or a turn starts. A `hidden` prompt (a command) shows nothing.
  * - A model divider appears only when the model changes after one was set.
  * - The plan shows only while the thread is not idle; a suggestion clears on
  *   the next prompt.
@@ -475,6 +479,11 @@ export function foldThread(log: readonly ThreadEvent[]): ThreadView {
   for (const e of events) {
     switch (e.type) {
       case 'prompt': {
+        if (e.hidden) {
+          // No message to show; what the command's turn does still folds as a turn.
+          if (turn) splitTurn(e)
+          break
+        }
         const item: Extract<ThreadItem, { kind: 'user' }> = {
           kind: 'user',
           id: e.id,

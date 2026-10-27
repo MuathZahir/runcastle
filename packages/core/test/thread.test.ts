@@ -250,6 +250,17 @@ describe('foldThread', () => {
     expect(v.cursor).toBe(9)
   })
 
+  it('a hidden command prompt shows no message; its turn still runs and ends in the compaction divider', () => {
+    const working = foldThread(log(prompt('p0', 'Hello'), prompt('c1', '/compact', { source: 'runcastle', hidden: true }), { type: 'turn_started' }))
+    expect(working.items.map((x) => (x.kind === 'user' ? x.text : x.kind))).toEqual(['Hello'])
+    expect(working.state).toBe('working')
+    const done = foldThread(
+      log(prompt('c1', '/compact', { source: 'runcastle', hidden: true }), { type: 'turn_started' }, { type: 'compacted' }, { type: 'turn_ended', reason: 'end_turn' }),
+    )
+    expect(kinds(done.items)).toEqual(['compacted'])
+    expect(done.state).toBe('idle')
+  })
+
   it('compaction, titles and commands carry through', () => {
     const v = foldThread(
       log({ type: 'compacted' }, { type: 'title', title: 'PDF export' }, { type: 'commands', commands: [{ name: 'compact', description: 'x' }] }),

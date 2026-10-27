@@ -76,6 +76,12 @@ export interface AgentHost {
   usage(threadId: string): Promise<UsageReport>
   /** The models the thread's runtime offers, read from its session; starts nothing. */
   models(threadId: string): ModelChoice[]
+  /**
+   * Compact the conversation: the runtime's compaction command, sent as a
+   * hidden runcastle prompt (starting the agent when none runs); the adapter's
+   * compaction update is the thread's divider. Refused while the agent works.
+   */
+  compact(threadId: string): Promise<void>
 }
 
 /** The process-wide host (see `host.ts`). */

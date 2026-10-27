@@ -146,6 +146,13 @@ export const threadRouter = router({
     return agentHost(ctx).fork(input.threadId, input.promptId, { into: 'new' })
   }),
 
+  /** Compact the conversation (the context meter's Compact now). Refused while a turn runs. */
+  compact: publicProcedure.input(threadId).mutation(async ({ ctx, input }): Promise<{ ok: true }> => {
+    threadRow(ctx, input.threadId)
+    await agentHost(ctx).compact(input.threadId)
+    return { ok: true }
+  }),
+
   /** The account's usage limits and plan (the context meter's popover). */
   usage: publicProcedure.input(threadId).query(({ ctx, input }): Promise<UsageReport> => {
     threadRow(ctx, input.threadId)

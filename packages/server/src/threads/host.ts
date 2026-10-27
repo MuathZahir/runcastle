@@ -182,6 +182,13 @@ const REPLAYED = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_th
 /** The adapter's steering extension (`InitializeResponse._meta.steering`). */
 const STEER_METHOD = '_session/steering'
 
+/**
+ * The compaction command. Both adapters take it as a prompt: claude-agent-acp
+ * hands it to Claude Code as its slash command, codex-acp runs it as its own
+ * `compact` command (`thread/compact/start`).
+ */
+const COMPACT_COMMAND = '/compact'
+
 /** What a self-planning run's asks are answered with: nobody is there to answer them. */
 const UNATTENDED_LINE = { what: 'Declined', answer: 'nobody is watching this run', denied: true }
 
@@ -214,6 +221,8 @@ interface Queued {
   images?: Attachment[]
   blocks: acp.ContentBlock[]
   source: PromptOptions['source']
+  /** A command (Compact now): logged so the fold knows a turn is coming, never shown as a message. */
+  hidden?: boolean
   /** Already in the log (a human's words show at once); runcastle's are logged when sent. */
   logged: boolean
 }
@@ -349,6 +358,22 @@ class Host implements AgentHost {
       this.logPrompt(t.id, item)
       this.enqueue(t, item)
     }
+  }
+
+  async compact(threadId: string): Promise<void> {
+    const row = this.row(threadId)
+    const t = this.threads.get(threadId)
+    if (t?.turn || t?.ask || t?.queue.length) throw new GateError('the agent is working: compact once its turn ends')
+    const item: Queued = {
+      id: newId('prompt'),
+      text: COMPACT_COMMAND,
+      blocks: [{ type: 'text', text: COMPACT_COMMAND }],
+      source: 'runcastle',
+      hidden: true,
+      logged: false,
+    }
+    this.logPrompt(threadId, item)
+    this.enqueue(t ?? this.start(row, 'runcastle'), item)
   }
 
   async stop(threadId: string, reason: StopReason): Promise<void> {
@@ -568,7 +593,13 @@ class Host implements AgentHost {
     const init = await conn.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // The agent uses its own tools on its own disk; runcastle is not an editor.
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} } },
+      // `session.compaction` asks both adapters for `compaction_update`, the thread's "Conversation compacted".
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+        elicitation: { form: {} },
+        session: { compaction: {} },
+      },
       clientInfo: { name: 'runcastle', version: runcastleVersion() },
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
@@ -682,6 +713,7 @@ class Host implements AgentHost {
       ...(item.images ? { images: item.images } : {}),
       source: item.source,
       ...(steered ? { steered: true } : {}),
+      ...(item.hidden ? { hidden: true } : {}),
     })
     item.logged = true
   }
@@ -708,10 +740,12 @@ class Host implements AgentHost {
     appendThreadEvent(t.id, { type: 'turn_started' })
     // The opening rides after the prompt's own words, so a human's message
     // still reads as the human's (the UserPromptSubmit hook looks at its start).
+    // A command is never given it: the opening would become the command's argument.
     const [first, ...rest] = item.blocks
+    const opening = item.hidden ? undefined : t.opening
     const prompt: acp.ContentBlock[] =
-      t.opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${t.opening}` }, ...rest] : item.blocks
-    t.opening = undefined
+      opening && first?.type === 'text' ? [{ type: 'text', text: `${first.text}\n\n${opening}` }, ...rest] : item.blocks
+    if (!item.hidden) t.opening = undefined
     let end: Extract<ThreadEventBody, { type: 'turn_ended' }>
     try {
       const res = await t.conn!.agent.request(acp.methods.agent.session.prompt, { sessionId: t.sessionId!, prompt })
