@@ -52,3 +52,19 @@ Supersedes: decision 4's "a card in the chat" for approvals and questions.
 ## 11. The capability inventory is the scope
 **Decision:** `capabilities.md` lists everything a person does in Claude Code's or Codex's terminal and where each lands. Every row marked in there is in scope for this feature; the "Not rebuilt" list is out: login and logout, the CLI's own settings screens (`/config`, `/permissions`, `/hooks`, `/memory`), themes, vim mode, keybindings, `!` shell mode, the CLI's `/resume` picker, plan mode and the permission-mode switch.
 **Why:** The human: "I want almost everything the user can do in claude code or codex to be available here … I want to make sure that I thought of everything." They approved the inventory as written.
+
+## Revisited 2026-10-27 (after the first test drive)
+
+## 12. A chat's opening and the human's first message are one prompt
+**Decision:** When a thread starts because the human sent its first message (a never-started feature chat, a new project chat, the preparation chat, New thread), runcastle's opening briefing and that message go to the agent as one prompt. The thread still shows the runcastle line and the human's bubble, and the agent answers once. Threads that start by themselves (self-planning, scenario and Fix-it chats, lead wakes) still send their opening at once.
+**Why:** The human, driving: "it seems to me that this is two different responses". Sending the opening first and steering the human's message into its turn made the agent greet twice.
+
+## 13. The model and effort controls: one list, searchable, grouped; effort on its own
+**Decision:** The model picker shows one list, the same before and after the agent starts: searchable, grouped by model family, newest first, older versions folded away, the current model checked. Effort is its own control beside the model, offering only the levels the model supports; fast mode is its own toggle where the runtime offers it. Both can be set on a thread that has not started yet and apply from its first message. Dividers name the real model, never "Default (recommended)".
+Refines: 9.
+**Why:** The human: "The model selector is hideous.. So many models, no grouping, no sorting, no search … The effort chooser also looks very bad. It should be a separate input anyway, not in the selector", "When I changed the model, the whole list of models changed", "I can't set the model before I start".
+
+## 14. New chat always opens a new thread
+**Decision:** New chat on the project page and New thread in the header do the same thing: open an empty thread, whatever else is running. Any number of a project's chats can run at once; there is no "one chat open" notice or "end it and start new". Every thread in a list is named by its generated title or its first message, never by its kind.
+Refines: 7.
+**Why:** The human: "I can't create a new chat when one is running???" while the header's New thread did create one, leaving two threads both called "Runcastle project session".
