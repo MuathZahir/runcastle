@@ -283,6 +283,10 @@ export const claudeRuntime: AgentRuntimeAdapter = {
           options: {
             model: input.model,
             permissionMode,
+            // The composer's suggested next message (`session_info_update._meta.promptSuggestions`).
+            promptSuggestions: true,
+            // Claude Code's file checkpoints, which an edit with "undo file changes" rewinds.
+            enableFileCheckpointing: true,
             extraArgs: {
               settings: files.settingsPath,
               'mcp-config': files.mcpConfigPath,

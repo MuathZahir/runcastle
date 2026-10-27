@@ -46,6 +46,17 @@ export interface FakeScript {
   sessionId?: string
   /** The model config option's current value. Default `claude-opus-5-5` ("Opus 5.5"). */
   model?: { id: string; label: string }
+  /** More models the model option offers, beside `model`. */
+  models?: { id: string; label: string }[]
+  /**
+   * Offer effort and fast mode the way an adapter does: Claude's `effort` and
+   * `fast` (a boolean when `fastBoolean`), or Codex's `reasoning_effort` and
+   * `fast-mode`. None by default.
+   */
+  options?: 'claude' | 'codex'
+  fastBoolean?: boolean
+  /** What `_auth/status_update` pushes once a session opens. */
+  authStatus?: unknown
   /** The session mode `session/new` / `session/load` report. Default `default`. */
   mode?: string
   /** What `session/load` replays before it answers. */
@@ -114,7 +125,26 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
   const received: FakeProcess['received'] = []
   let current: { cancel: () => void; steer: (blocks: acp.ContentBlock[]) => void } | null = null
   const model = script.model ?? { id: 'claude-opus-5-5', label: 'Opus 5.5' }
-  const opened = {
+  const select = (id: string, category: string, currentValue: string, values: string[]): acp.SessionConfigOption => ({
+    id,
+    name: id,
+    category,
+    type: 'select',
+    currentValue,
+    options: values.map((value) => ({ value, name: value })),
+  })
+  const extra: acp.SessionConfigOption[] =
+    script.options === 'claude'
+      ? [
+          select('effort', 'thought_level', 'high', ['default', 'low', 'medium', 'high', 'max']),
+          script.fastBoolean
+            ? { id: 'fast', name: 'Fast mode', category: 'model_config', type: 'boolean', currentValue: false }
+            : select('fast', 'model_config', 'off', ['on', 'off']),
+        ]
+      : script.options === 'codex'
+        ? [select('reasoning_effort', 'thought_level', 'medium', ['low', 'medium', 'high', 'xhigh']), select('fast-mode', 'model_config', 'off', ['off', 'on'])]
+        : []
+  const opened: { modes: acp.SessionModeState; configOptions: acp.SessionConfigOption[] } = {
     modes: { currentModeId: script.mode ?? 'default', availableModes: ['default', 'acceptEdits', 'bypassPermissions'].map((id) => ({ id, name: id })) },
     configOptions: [
       {
@@ -123,11 +153,16 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         category: 'model',
         type: 'select' as const,
         currentValue: model.id,
-        options: [{ value: model.id, name: model.label }],
+        options: [model, ...(script.models ?? [])].map((m) => ({ value: m.id, name: m.label })),
       },
+      ...extra,
     ],
   }
+  let forks = 0
   const note = (method: string, params: unknown) => received.push({ method, params })
+  const pushAuth = async (client: { notify: (method: string, params: unknown) => Promise<void> }) => {
+    if (script.authStatus !== undefined) await client.notify('_auth/status_update', { authStatus: script.authStatus })
+  }
 
   const app = acp
     .agent({ name: 'fake-agent' })
@@ -139,10 +174,23 @@ function fakeProcess(script: FakeScript): FakeProcess & AgentProcess {
         ...(script.steering === false ? {} : { _meta: { steering: { supported: true } } }),
       }
     })
-    .onRequest(acp.methods.agent.session.new, ({ params }) => {
+    .onRequest(acp.methods.agent.session.new, async ({ params, client }) => {
       note('session/new', params)
       if (script.failSession) throw new Error(script.failSession)
+      await pushAuth(client)
       return { sessionId: script.sessionId ?? 'acp-session-1', ...opened }
+    })
+    .onRequest(acp.methods.agent.session.fork, async ({ params, client }) => {
+      note('session/fork', params)
+      await pushAuth(client)
+      return { sessionId: `${params.sessionId}-fork-${++forks}`, ...opened }
+    })
+    .onRequest(acp.methods.agent.session.setConfigOption, ({ params }) => {
+      note('session/set_config_option', params)
+      const option = opened.configOptions.find((o) => o.id === params.configId)
+      if (!option) throw new Error(`no option ${params.configId}`)
+      option.currentValue = params.value as never
+      return { configOptions: opened.configOptions }
     })
     .onRequest(acp.methods.agent.session.load, async ({ params, client }) => {
       note('session/load', params)

@@ -1,13 +1,53 @@
 import { spawn } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import * as acp from '@agentclientprotocol/sdk/unstable'
-import { newId, TurnEnd, type Ask, type AskAnswer, type Attachment, type SessionRow, type ThreadEventBody } from '@runcastle/core'
+import {
+  DEFAULT_RUNTIME,
+  foldThread,
+  liveEvents,
+  modelRoster,
+  newId,
+  TurnEnd,
+  type AgentRuntime,
+  type Ask,
+  type AskAnswer,
+  type Attachment,
+  type ModelChoice,
+  type SessionRow,
+  type ThreadEvent,
+  type ThreadEventBody,
+  type UsageReport,
+} from '@runcastle/core'
+import { sessionDir } from '@runcastle/core/paths'
 import type { AppCtx } from '../db/types'
-import { GateError, NotImplementedError } from '../errors'
+import { GateError } from '../errors'
 import type { AcpLaunchSpec } from '../launcher/runtimes/types'
-import { getSessionRow, markAgentWorking, markAwaitingInput, markSessionEnded, markSessionLive } from '../launcher/sessions'
+import {
+  createSessionRow,
+  getSessionRow,
+  markAgentWorking,
+  markAwaitingInput,
+  markSessionEnded,
+  markSessionLive,
+  setSessionTitle,
+} from '../launcher/sessions'
 import { killProcessTree } from '../pty/kill-tree'
+import { emitForSession } from '../services/events'
+import { rosterConfig } from '../services/model-discovery'
 import { runcastleVersion } from '../version'
+import {
+  configRequests,
+  forkAtMeta,
+  lastAgentMessageId,
+  modelChoices,
+  threadMarkdown,
+  turnEndIndex,
+  type ConfigChoice,
+} from './controls'
+import { readClaudeUsage, readCodexRateLimits, rewindClaudeFiles } from './side-channels'
+import { claudeUsageReport, codexUsageReport } from './usage'
 import {
   createUpdateMapper,
   elicitationAnswer,
@@ -21,7 +61,7 @@ import {
 import { saveThreadImage } from './images'
 import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
-import { appendThreadEvent } from './log'
+import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 
 /**
@@ -59,6 +99,10 @@ export interface AgentHostDeps {
   idleMs?: number
   /** What the rest of the server does as a thread's process starts, works and stops. */
   lifecycle?: ThreadLifecycle
+  /** Where a runtime's account usage limits are read; see `side-channels.ts`. */
+  readUsage?: (runtime: AgentRuntime) => Promise<unknown>
+  /** How Claude Code's file checkpoints are rewound; see `side-channels.ts`. */
+  rewindFiles?: (input: { sessionId: string; cwd: string; text: string; occurrence: number }) => Promise<void>
 }
 
 /**
@@ -85,6 +129,45 @@ interface CodexHook {
   key: string
   currentHash: string
   trustStatus?: string
+}
+
+const readUsageOf = (runtime: AgentRuntime): Promise<unknown> => (runtime === 'codex' ? readCodexRateLimits() : readClaudeUsage())
+
+/** The account each adapter pushes (`_auth/status_update`), which names the plan. */
+const AUTH_STATUS_METHOD = '_auth/status_update'
+
+/**
+ * What a thread's next start, or its next prompt, does differently after an
+ * edit or a branch. Kept on disk beside the log, since a branch may wait for
+ * its first message across restarts.
+ * - `open`: instead of loading the row's conversation, fork `from` at the agent
+ *   message `messageId`, or (`fresh`) start a new conversation.
+ * - `preface`: said to the agent ahead of the next prompt's words, when the
+ *   conversation could not be forked where the thread now stands.
+ */
+interface PendingFork {
+  open?: { from: string; messageId: string } | 'fresh'
+  preface?: string
+}
+
+const pendingForkPath = (threadId: string): string => join(sessionDir(threadId), 'fork.json')
+
+function readPendingFork(threadId: string): PendingFork {
+  try {
+    return JSON.parse(readFileSync(pendingForkPath(threadId), 'utf8')) as PendingFork
+  } catch {
+    return {}
+  }
+}
+
+function writePendingFork(threadId: string, fork: PendingFork): void {
+  const path = pendingForkPath(threadId)
+  if (!fork.open && fork.preface === undefined) {
+    if (existsSync(path)) rmSync(path)
+    return
+  }
+  mkdirSync(sessionDir(threadId), { recursive: true })
+  writeFileSync(path, JSON.stringify(fork))
 }
 
 /** Decision 7: an idle agent process is stopped quietly after half an hour. */
@@ -154,6 +237,8 @@ interface Thread {
   startedBy: PromptOptions['source']
   /** The lifecycle's opening, sent with the first prompt and then forgotten. */
   opening?: string
+  /** The session's config options (model, effort, fast mode), as it last reported them. */
+  configOptions?: acp.SessionConfigOption[]
 }
 
 /** Read through a function so a check after an `await` is not narrowed away. */
@@ -181,6 +266,16 @@ class Host implements AgentHost {
   private readonly launch: (ctx: AppCtx, row: SessionRow) => Promise<AcpLaunchSpec>
   private readonly idleMs: number
   private readonly lifecycle: ThreadLifecycle
+  private readonly readUsage: (runtime: AgentRuntime) => Promise<unknown>
+  private readonly rewindFiles: NonNullable<AgentHostDeps['rewindFiles']>
+  /** Each thread's last config options, kept past its process for the model picker; and each runtime's. */
+  private readonly options = new Map<string, acp.SessionConfigOption[]>()
+  private readonly runtimeOptions = new Map<AgentRuntime, acp.SessionConfigOption[]>()
+  /** A model, effort or fast mode chosen while no session could take it, applied when one opens. */
+  private readonly pendingConfig = new Map<string, ConfigChoice>()
+  /** Each runtime's last usage report, and the account its adapter last pushed. */
+  private readonly usageReports = new Map<AgentRuntime, UsageReport>()
+  private readonly authStatus = new Map<AgentRuntime, unknown>()
 
   constructor(deps: AgentHostDeps) {
     this.ctx = deps.ctx
@@ -188,17 +283,23 @@ class Host implements AgentHost {
     this.launch = deps.launch ?? acpLaunchFor
     this.idleMs = deps.idleMs ?? IDLE_STOP_MS
     this.lifecycle = deps.lifecycle ?? {}
+    this.readUsage = deps.readUsage ?? readUsageOf
+    this.rewindFiles = deps.rewindFiles ?? rewindClaudeFiles
   }
 
   async prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }> {
     const row = this.row(threadId)
+    const change = this.configChange(threadId, opts)
+    if (change) await this.setConfig(threadId, change)
     const images = (input.images ?? []).map((image) => saveThreadImage(threadId, image))
+    const pending = readPendingFork(threadId)
+    if (pending.preface !== undefined) writePendingFork(threadId, { ...pending, preface: undefined })
     const item: Queued = {
       id: newId('prompt'),
       text: input.text,
       ...(images.length ? { images } : {}),
       blocks: [
-        { type: 'text', text: input.text },
+        { type: 'text', text: pending.preface !== undefined ? `${pending.preface}\n\n${input.text}` : input.text },
         ...(input.images ?? []).map((image): acp.ContentBlock => ({ type: 'image', data: image.data, mimeType: image.mimeType })),
       ],
       source: opts.source,
@@ -267,16 +368,152 @@ class Host implements AgentHost {
     return this.threads.has(threadId)
   }
 
-  async setConfig(): Promise<void> {
-    throw new NotImplementedError('chat-as-web-components ticket 5')
+  // ---- controls ----
+
+  /**
+   * On a session that is open, the change goes to the agent now and the model
+   * it then reports is logged. Otherwise the choice is logged as made and goes
+   * to the agent when its session next opens.
+   */
+  async setConfig(threadId: string, choice: ConfigChoice): Promise<void> {
+    this.row(threadId)
+    const t = this.threads.get(threadId)
+    if (t?.conn && t.sessionId && t.configOptions) {
+      await this.applyConfig(t, choice)
+      const model = modelEvent(t.configOptions)
+      if (model) appendThreadEvent(threadId, model)
+      return
+    }
+    this.pendingConfig.set(threadId, { ...this.pendingConfig.get(threadId), ...choice })
+    const now = foldThread(readThreadEvents(threadId)).model
+    const model = choice.model ?? now?.id
+    if (!model) return
+    const label = model === now?.id ? now.label : (this.models(threadId).find((m) => m.id === model)?.label ?? model)
+    const effort = choice.effort ?? now?.effort
+    const fast = choice.fast ?? now?.fast
+    appendThreadEvent(threadId, { type: 'model', model, label, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) })
   }
 
-  async fork(): Promise<{ threadId: string }> {
-    throw new NotImplementedError('chat-as-web-components ticket 5')
+  async fork(threadId: string, atPromptId: string, opts: { into: 'same' | 'new'; undoFiles?: boolean }): Promise<{ threadId: string }> {
+    const row = this.row(threadId)
+    const events = liveEvents(readThreadEvents(threadId))
+    const at = events.findIndex((e) => e.type === 'prompt' && e.id === atPromptId)
+    const prompt = events[at]
+    if (prompt?.type !== 'prompt') throw new GateError(`no message ${atPromptId} on this thread`)
+    if (opts.into === 'new') return this.branch(row, events, at)
+
+    const t = this.threads.get(threadId)
+    if (t?.turn || t?.ask) throw new GateError('the agent is working: stop it before editing a message')
+    if (opts.undoFiles && (row.runtime ?? DEFAULT_RUNTIME) === 'claude-code' && row.ccSessionId) {
+      const said = prompt.text.trim()
+      const occurrence = events.slice(0, at + 1).filter((e) => e.type === 'prompt' && e.text.includes(said)).length
+      await this.rewindFiles({ sessionId: row.ccSessionId, cwd: row.worktreePath, text: prompt.text, occurrence })
+    }
+    const point = lastAgentMessageId(events.slice(0, at))
+    if (point === 'unknown' && row.ccSessionId) {
+      // Nothing to fork at: the conversation carries on, told the message was replaced.
+      writePendingFork(threadId, {
+        ...readPendingFork(threadId),
+        preface: `[runcastle] The human edited an earlier message of theirs and sent the message below in its place. Disregard that earlier message ("${prompt.text}") and everything you did in answer to it.`,
+      })
+    } else {
+      // The next start opens the forked conversation; a running process would keep the old one.
+      if (t) await this.stop(threadId, 'idle')
+      writePendingFork(threadId, { open: point && point !== 'unknown' && row.ccSessionId ? { from: row.ccSessionId, messageId: point } : 'fresh' })
+    }
+    appendThreadEvent(threadId, { type: 'rewound', toPromptId: atPromptId })
+    return { threadId }
   }
 
-  async usage(): Promise<never> {
-    throw new NotImplementedError('chat-as-web-components ticket 5')
+  /**
+   * A new thread beside `row` carrying its conversation through the turn of the
+   * prompt at `at`: the log's prefix copied, the agent's conversation forked
+   * there when its next start opens it. Nothing is sent.
+   */
+  private branch(row: SessionRow, events: ThreadEvent[], at: number): { threadId: string } {
+    const prefix = events.slice(0, turnEndIndex(events, at)).filter((e) => e.type !== 'process')
+    const model = row.model ? { model: { id: row.model, runtime: row.runtime ?? DEFAULT_RUNTIME } } : {}
+    const created = row.featureId
+      ? createSessionRow(this.ctx, {
+          featureId: row.featureId,
+          kind: 'side',
+          worktreePath: row.worktreePath,
+          ...model,
+          ...(row.kind === 'chat' ? { openedBeside: row.id } : row.openedBeside ? { openedBeside: row.openedBeside } : {}),
+        })
+      : createSessionRow(this.ctx, { projectId: row.projectId!, kind: 'project', worktreePath: row.worktreePath, ...model })
+    seedThreadLog(created.id, prefix)
+    const point = lastAgentMessageId(prefix)
+    if (point && point !== 'unknown' && row.ccSessionId) writePendingFork(created.id, { open: { from: row.ccSessionId, messageId: point } })
+    else if (point) {
+      writePendingFork(created.id, {
+        open: 'fresh',
+        preface: `[runcastle] This thread branched off an earlier conversation, which is below up to where it branched. Carry on from there.\n\n${threadMarkdown(foldThread(prefix), 'The conversation so far')}`,
+      })
+    }
+    emitForSession(this.ctx, created, {
+      type: 'session.branched',
+      message: 'branched a thread off an earlier message',
+      data: { sessionId: created.id, from: row.id },
+    })
+    return { threadId: created.id }
+  }
+
+  /** Only a thread whose agent runs asks the account: reading usage is never a reason to start one. */
+  async usage(threadId: string): Promise<UsageReport> {
+    const runtime = this.row(threadId).runtime ?? DEFAULT_RUNTIME
+    const last = (): UsageReport => this.usageReports.get(runtime) ?? { limits: [] }
+    if (!this.threads.get(threadId)?.conn) return last()
+    try {
+      const read = await this.readUsage(runtime)
+      const raw = { ...(typeof read === 'object' && read !== null ? read : {}), authStatus: this.authStatus.get(runtime) }
+      const report = runtime === 'codex' ? codexUsageReport(raw) : claudeUsageReport(raw)
+      this.usageReports.set(runtime, report)
+      return report
+    } catch {
+      return last()
+    }
+  }
+
+  /** The session's models; else the last its runtime reported here; else runcastle's roster for the runtime. */
+  models(threadId: string): ModelChoice[] {
+    const runtime = this.row(threadId).runtime ?? DEFAULT_RUNTIME
+    const known = modelChoices(this.threads.get(threadId)?.configOptions ?? this.options.get(threadId) ?? this.runtimeOptions.get(runtime))
+    if (known.length) return known
+    return modelRoster(rosterConfig(this.ctx))
+      .filter((m) => m.runtime === runtime)
+      .map((m) => ({ id: m.id, label: m.id, ...(m.note ? { note: m.note } : {}) }))
+  }
+
+  /** What of the message's model, effort and fast mode differs from what the thread runs on; null when nothing does. */
+  private configChange(threadId: string, opts: PromptOptions): ConfigChoice | null {
+    if (opts.model === undefined && opts.effort === undefined && opts.fast === undefined) return null
+    const now = foldThread(readThreadEvents(threadId)).model
+    const change: ConfigChoice = {
+      ...(opts.model !== undefined && opts.model !== now?.id ? { model: opts.model } : {}),
+      ...(opts.effort !== undefined && opts.effort !== now?.effort ? { effort: opts.effort } : {}),
+      ...(opts.fast !== undefined && opts.fast !== now?.fast ? { fast: opts.fast } : {}),
+    }
+    return Object.keys(change).length ? change : null
+  }
+
+  /** Set each option in turn: the model first, since the effort levels and fast mode offered are the model's. */
+  private async applyConfig(t: Thread, choice: ConfigChoice): Promise<void> {
+    for (const key of ['model', 'effort', 'fast'] as const) {
+      if (choice[key] === undefined || !t.conn || !t.sessionId) continue
+      for (const req of configRequests(t.sessionId, t.configOptions, { [key]: choice[key] })) {
+        const res = await t.conn.agent.request(acp.methods.agent.session.setConfigOption, req)
+        this.noteOptions(t, res.configOptions)
+      }
+    }
+  }
+
+  private noteOptions(t: Thread, options: acp.SessionConfigOption[] | null | undefined): void {
+    if (!options) return
+    t.configOptions = options
+    this.options.set(t.id, options)
+    const runtime = getSessionRow(this.ctx, t.id)?.runtime ?? DEFAULT_RUNTIME
+    this.runtimeOptions.set(runtime, options)
   }
 
   // ---- the process ----
@@ -323,6 +560,9 @@ class Host implements AgentHost {
       .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.update))
       .onRequest(acp.methods.client.session.requestPermission, ({ params }) => this.onPermission(t, params))
       .onRequest(acp.methods.client.elicitation.create, ({ params }) => this.onElicitation(t, params))
+      .onNotification(AUTH_STATUS_METHOD, (raw: unknown) => raw as { authStatus?: unknown }, ({ params }) => {
+        if (params.authStatus !== undefined) this.authStatus.set(row.runtime ?? DEFAULT_RUNTIME, params.authStatus)
+      })
     const conn = proc.target instanceof acp.AgentApp ? app.connect(proc.target) : app.connect(proc.target)
     t.conn = conn
     const init = await conn.agent.request(acp.methods.agent.initialize, {
@@ -333,8 +573,17 @@ class Host implements AgentHost {
     })
     t.steering = (init._meta?.steering as { supported?: unknown } | undefined)?.supported === true
     const session: acp.NewSessionRequest = { cwd: row.worktreePath, mcpServers: [], _meta: spec.sessionMeta }
-    let opened: acp.NewSessionResponse | acp.LoadSessionResponse
-    if (row.ccSessionId) {
+    let opened: acp.NewSessionResponse | acp.LoadSessionResponse | acp.ForkSessionResponse
+    const fork = readPendingFork(t.id).open
+    if (fork && fork !== 'fresh') {
+      const forked = await conn.agent.request(acp.methods.agent.session.fork, {
+        ...session,
+        sessionId: fork.from,
+        _meta: { ...spec.sessionMeta, ...forkAtMeta(fork.messageId) },
+      })
+      t.sessionId = forked.sessionId
+      opened = forked
+    } else if (row.ccSessionId && !fork) {
       t.loading = true
       try {
         opened = await conn.agent.request(acp.methods.agent.session.load, { ...session, sessionId: row.ccSessionId })
@@ -352,12 +601,17 @@ class Host implements AgentHost {
       await conn.agent.request(acp.methods.agent.session.setMode, { sessionId: t.sessionId, modeId: mode })
     }
     if (spec.trustHooks) await this.trustHooks(conn, row.worktreePath)
+    this.noteOptions(t, opened.configOptions)
+    const chosen = this.pendingConfig.get(t.id)
+    this.pendingConfig.delete(t.id)
+    if (chosen) await this.applyConfig(t, chosen)
     // Stopped while it started (an archive, a shutdown): the stop already logged it.
     if (isStopped(t)) return
     const live = markSessionLive(this.ctx, t.id, { ccSessionId: t.sessionId })
+    if (fork) writePendingFork(t.id, { ...readPendingFork(t.id), open: undefined })
     t.state = 'running'
     appendThreadEvent(t.id, { type: 'process', state: 'running' })
-    const model = modelEvent(opened.configOptions)
+    const model = modelEvent(t.configOptions)
     if (model) appendThreadEvent(t.id, model)
     this.hook(() => this.lifecycle.started?.(live ?? row, t.startedBy))
   }
@@ -510,7 +764,15 @@ class Host implements AgentHost {
       if (update.status === 'failed') t.turn.diffs.delete(update.toolCallId)
       else if (diffs.length) t.turn.diffs.set(update.toolCallId, diffs)
     }
-    for (const body of t.map(update)) appendThreadEvent(t.id, body)
+    if (update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
+    for (const body of t.map(update)) {
+      if (body.type === 'title') {
+        // The runtime's generated title names a thread nobody named; a name the human gave stays.
+        if (getSessionRow(this.ctx, t.id)?.title) continue
+        setSessionTitle(this.ctx, t.id, body.title)
+      }
+      appendThreadEvent(t.id, body)
+    }
   }
 
   private unattended(t: Thread): boolean {

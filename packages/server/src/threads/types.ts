@@ -1,4 +1,4 @@
-import type { AskAnswer, Effort, UsageReport } from '@runcastle/core'
+import type { AskAnswer, Effort, ModelChoice, UsageReport } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
 import { processAgentHost } from './host'
 
@@ -74,6 +74,8 @@ export interface AgentHost {
   fork(threadId: string, atPromptId: string, opts: { into: 'same' | 'new'; undoFiles?: boolean }): Promise<{ threadId: string }>
   /** The account's usage limits and plan, from the runtime's adapter. */
   usage(threadId: string): Promise<UsageReport>
+  /** The models the thread's runtime offers, read from its session; starts nothing. */
+  models(threadId: string): ModelChoice[]
 }
 
 /** The process-wide host (see `host.ts`). */
