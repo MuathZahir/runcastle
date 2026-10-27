@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { ThreadEvent, type ThreadEventBody } from '@runcastle/core'
 import { sessionDir } from '@runcastle/core/paths'
@@ -107,6 +107,19 @@ export function appendThreadEvent(threadId: string, body: ThreadEventBody): Thre
     state.pending = { event: event as Chunk, timer }
   } else write(threadId, event)
   return event
+}
+
+/**
+ * Start a new thread's log with `events` (a branch's copy of the conversation
+ * it came from), re-indexed from 0 and keeping their times, so the copied turns
+ * read back as long as they took.
+ */
+export function seedThreadLog(threadId: string, events: readonly ThreadEvent[]): void {
+  const path = threadLogPath(threadId)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, events.map((e, i) => `${JSON.stringify({ ...e, i })}\n`).join(''))
+  states().set(threadId, { next: events.length })
+  publishLive({ kind: 'thread', threadId })
 }
 
 /**

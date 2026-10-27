@@ -1,5 +1,6 @@
 import type * as acp from '@agentclientprotocol/sdk/unstable'
 import type { DiffLine, FileChange, Question, ThreadEventBody, ToolCall, ToolKind } from '@runcastle/core'
+import { currentConfig } from './controls'
 
 /**
  * ACP → thread events, pure (chat-as-web-components; ADR-0015). The agent host
@@ -132,13 +133,10 @@ export function fileChanges(diffs: readonly ToolDiff[]): FileChange[] {
   return [...byPath.values()]
 }
 
-/** The model a session runs on, from its config options, as a `model` event. */
+/** The model (and effort, fast mode) a session runs on, from its config options, as a `model` event. */
 export function modelEvent(options: readonly acp.SessionConfigOption[] | null | undefined): ThreadEventBody | null {
-  const option = options?.find((o) => o.category === 'model' || o.id === 'model')
-  if (!option || option.type !== 'select') return null
-  const choices = option.options.flatMap((o) => ('group' in o ? o.options : [o]))
-  const current = choices.find((c) => c.value === option.currentValue)
-  return { type: 'model', model: option.currentValue, label: current?.name ?? option.currentValue }
+  const config = currentConfig(options)
+  return config ? { type: 'model', ...config } : null
 }
 
 /**

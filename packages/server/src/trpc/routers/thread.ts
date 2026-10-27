@@ -1,8 +1,11 @@
 import { AskAnswer, Effort, type ModelChoice, type ThreadEntry, type ThreadEvent, type ThreadView, type UsageReport } from '@runcastle/core'
 import * as z from 'zod'
 import { NotImplementedError } from '../../errors'
+import { setSessionTitle } from '../../launcher/sessions'
+import { threadMarkdown } from '../../threads/controls'
+import { matchWorktreeFiles } from '../../threads/files'
 import { listThreads, threadEvents, threadRow, threadView } from '../../threads/read'
-import { agentHost } from '../../threads/types'
+import { agentHost, appendThreadEvent } from '../../threads/types'
 import { publicProcedure, router } from '../context'
 
 /**
@@ -98,31 +101,59 @@ export const threadRouter = router({
   // ---- controls (ticket 5) ----
 
   /** The models this thread's runtime offers, for the composer's picker. */
-  models: publicProcedure.input(threadId).query((): ModelChoice[] => todo('5')),
+  models: publicProcedure.input(threadId).query(({ ctx, input }): ModelChoice[] => {
+    threadRow(ctx, input.threadId)
+    return agentHost(ctx).models(input.threadId)
+  }),
 
   /** Change the model, effort and fast mode the next message runs on. */
   setModel: publicProcedure
     .input(threadId.extend({ model: z.string(), effort: Effort.optional(), fast: z.boolean().optional() }))
-    .mutation((): { ok: true } => todo('5')),
+    .mutation(async ({ ctx, input }): Promise<{ ok: true }> => {
+      const { threadId: id, model, effort, fast } = input
+      threadRow(ctx, id)
+      await agentHost(ctx).setConfig(id, { model, ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) })
+      return { ok: true }
+    }),
 
   /** Rewind to just before `promptId` and send `text` in its place. `undoFiles` is honoured on Claude only. */
   edit: publicProcedure
     .input(threadId.extend({ promptId: z.string(), text: z.string().min(1), undoFiles: z.boolean().default(false) }))
-    .mutation((): { promptId: string } => todo('5')),
+    .mutation(async ({ ctx, input }): Promise<{ promptId: string }> => {
+      threadRow(ctx, input.threadId)
+      const host = agentHost(ctx)
+      await host.fork(input.threadId, input.promptId, { into: 'same', undoFiles: input.undoFiles })
+      return host.prompt(input.threadId, { text: input.text }, { source: 'human' })
+    }),
 
   /** A new side thread carrying the conversation up to (and including) the turn of `promptId`. */
-  branch: publicProcedure.input(threadId.extend({ promptId: z.string() })).mutation((): { threadId: string } => todo('5')),
+  branch: publicProcedure.input(threadId.extend({ promptId: z.string() })).mutation(({ ctx, input }): Promise<{ threadId: string }> => {
+    threadRow(ctx, input.threadId)
+    return agentHost(ctx).fork(input.threadId, input.promptId, { into: 'new' })
+  }),
 
   /** The account's usage limits and plan (the context meter's popover). */
-  usage: publicProcedure.input(threadId).query((): UsageReport => todo('5')),
+  usage: publicProcedure.input(threadId).query(({ ctx, input }): Promise<UsageReport> => {
+    threadRow(ctx, input.threadId)
+    return agentHost(ctx).usage(input.threadId)
+  }),
 
   /** The worktree's files for `@`, matching `query` (fuzzy), at most `limit`. */
   files: publicProcedure
     .input(threadId.extend({ query: z.string().default(''), limit: z.number().int().min(1).max(50).default(8) }))
-    .query((): string[] => todo('5')),
+    .query(({ ctx, input }): Promise<string[]> => matchWorktreeFiles(threadRow(ctx, input.threadId).worktreePath, input.query, input.limit)),
 
-  rename: publicProcedure.input(threadId.extend({ title: z.string().min(1).max(200) })).mutation((): { ok: true } => todo('5')),
+  rename: publicProcedure.input(threadId.extend({ title: z.string().min(1).max(200) })).mutation(({ ctx, input }): { ok: true } => {
+    threadRow(ctx, input.threadId)
+    setSessionTitle(ctx, input.threadId, input.title)
+    appendThreadEvent(input.threadId, { type: 'title', title: input.title })
+    return { ok: true }
+  }),
 
   /** The thread as Markdown, for Copy / Save. */
-  export: publicProcedure.input(threadId).query((): { markdown: string } => todo('5')),
+  export: publicProcedure.input(threadId).query(({ ctx, input }): { markdown: string } => {
+    const row = threadRow(ctx, input.threadId)
+    const view = threadView(ctx, input.threadId)
+    return { markdown: threadMarkdown(view, row.title ?? view.title ?? 'Thread') }
+  }),
 })
