@@ -11,6 +11,7 @@ import { settingsRouter } from './routers/settings'
 import { setupRouter } from './routers/setup'
 import { systemRouter } from './routers/system'
 import { testNotesRouter } from './routers/test-notes'
+import { threadRouter } from './routers/thread'
 import { ticketRouter } from './routers/ticket'
 
 /**
@@ -31,6 +32,7 @@ export const appRouter = router({
   settings: settingsRouter,
   setup: setupRouter,
   system: systemRouter,
+  thread: threadRouter,
 })
 
 export type AppRouter = typeof appRouter

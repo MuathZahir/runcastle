@@ -31,6 +31,8 @@ const ROLE_LABEL: Record<ThreadEntry['role'], string> = {
   main: 'Feature chat',
   side: 'Thread',
   scenario: 'Scenario chat',
+  project: 'Project chat',
+  prepare: 'Preparation',
 }
 
 /**

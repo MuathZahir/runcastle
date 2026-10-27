@@ -199,7 +199,7 @@ export const PLAN: PlanEntry[] = [
   { content: 'Run the full test suite', status: 'pending' },
 ]
 
-export const TASKS: BackgroundTask[] = [{ id: 'bg1', title: 'bun run dev --port 5173', seconds: 312 }]
+export const TASKS: BackgroundTask[] = [{ id: 'bg1', title: 'bun run dev --port 5173', startedAt: Date.now() - 312_000 }]
 
 const ASKING: ThreadItem[] = [
   ...HISTORY,
@@ -409,10 +409,10 @@ export const MOMENTS: MomentSample[] = [
 export function threads(current: Moment): ThreadEntry[] {
   const main = MOMENTS.find((m) => m.key === current)
   return [
-    { id: 'main', title: 'Feature chat', role: 'main', state: main?.thread === 'main' ? main.state : 'idle', updatedAt: NOW - 1 * MIN },
-    { id: 'side1', title: 'Why is the PDF font blurry?', role: 'side', state: 'waiting', updatedAt: NOW - 12 * MIN },
-    { id: 'scen', title: 'Scenario: a note with 40 pages', role: 'scenario', state: 'idle', updatedAt: NOW - 3 * 60 * MIN },
-    { id: 'old', title: 'Planning (before web chat)', role: 'main', state: 'idle', updatedAt: NOW - 4 * 24 * 60 * MIN },
-    ...(current === 'new' ? [{ id: 'new', title: 'New thread', role: 'side' as const, state: 'idle' as const, updatedAt: NOW }] : []),
+    { id: 'main', title: 'Feature chat', role: 'main', state: main?.thread === 'main' ? main.state : 'idle', updatedAt: NOW - 1 * MIN, runtime: 'claude-code' },
+    { id: 'side1', title: 'Why is the PDF font blurry?', role: 'side', state: 'waiting', updatedAt: NOW - 12 * MIN, runtime: 'claude-code' },
+    { id: 'scen', title: 'Scenario: a note with 40 pages', role: 'scenario', state: 'idle', updatedAt: NOW - 3 * 60 * MIN, runtime: 'claude-code' },
+    { id: 'old', title: 'Planning (before web chat)', role: 'main', state: 'idle', updatedAt: NOW - 4 * 24 * 60 * MIN, runtime: 'claude-code' },
+    ...(current === 'new' ? [{ id: 'new', title: 'New thread', role: 'side' as const, state: 'idle' as const, updatedAt: NOW, runtime: 'claude-code' as const }] : []),
   ]
 }

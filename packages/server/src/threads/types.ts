@@ -1,0 +1,95 @@
+import type { AskAnswer, Effort, ThreadEvent, ThreadEventBody, UsageReport } from '@runcastle/core'
+import type { AppCtx } from '../db/types'
+import { NotImplementedError } from '../errors'
+
+/**
+ * The agent host and the thread log (chat-as-web-components; ADR-0015) — the
+ * contract the round's tickets build against. A thread is a session row of a
+ * conversation kind; its id IS the session row id. The host owns every running
+ * agent connection (one ACP adapter child process per running thread); the log
+ * is the thread's append-only record, folded by core's `foldThread`.
+ *
+ * The bodies below are sockets: ticket 1 fills the host and the log, ticket 5
+ * fills the host's controls (`setConfig`, `fork`, `usage`). Replace, don't
+ * redesign; a ticket that finds this contract wrong says so in its digest.
+ */
+
+/** An image sent with a prompt, as the web uploads it. */
+export interface PromptImage {
+  name: string
+  mimeType: string
+  /** Base64, no `data:` prefix. */
+  data: string
+}
+
+export interface PromptInput {
+  text: string
+  images?: PromptImage[]
+}
+
+export interface PromptOptions {
+  /**
+   * `human`: sent now — into the running turn when one runs (steering).
+   * `runcastle`: queued to the end of a running turn (a kickoff, a lead wake,
+   * an orchestrator line, a kickoff override), sent at once otherwise.
+   */
+  source: 'human' | 'runcastle'
+  /** The model, effort and fast mode for this message, when they differ from the thread's. */
+  model?: string
+  effort?: Effort
+  fast?: boolean
+}
+
+/** Why a thread's process stops. None of them is shown to the human as "ended". */
+export type StopReason = 'idle' | 'shutdown' | 'archived' | 'crashed'
+
+export interface AgentHost {
+  /**
+   * Send a prompt, starting the thread's agent first when none runs
+   * (`session/load` when the row has an agent conversation id, `session/new`
+   * otherwise). Resolves once the prompt is logged and sent or queued — never
+   * when the turn ends. The returned id is the logged `prompt` event's id.
+   */
+  prompt(threadId: string, input: PromptInput, opts: PromptOptions): Promise<{ promptId: string }>
+  /** Stop the running turn (`session/cancel`). A no-op on an idle thread. */
+  cancel(threadId: string): Promise<void>
+  /** Answer the thread's open ask. Refuses an ask id that is not the open one. */
+  answer(threadId: string, askId: string, answer: AskAnswer): Promise<void>
+  /** Stop the thread's process, if one runs. Its log and row stay. */
+  stop(threadId: string, reason: StopReason): Promise<void>
+  /** Stop every process (server shutdown). */
+  stopAll(reason: StopReason): Promise<void>
+  isRunning(threadId: string): boolean
+
+  // ---- controls (ticket 5) ----
+
+  /** Set the model, effort and fast mode the next turns run on (ACP session config options). */
+  setConfig(threadId: string, config: { model?: string; effort?: Effort; fast?: boolean }): Promise<void>
+  /**
+   * Go back to just before the prompt `atPromptId`. `into: 'same'` rewinds this
+   * thread (logs `rewound`; with `undoFiles` on Claude, restores the files from
+   * Claude Code's checkpoints first). `into: 'new'` branches a new side thread
+   * carrying the conversation up to there, and returns its id.
+   */
+  fork(threadId: string, atPromptId: string, opts: { into: 'same' | 'new'; undoFiles?: boolean }): Promise<{ threadId: string }>
+  /** The account's usage limits and plan, from the runtime's adapter. */
+  usage(threadId: string): Promise<UsageReport>
+}
+
+/** The process-wide host. Ticket 1 replaces this body with the real singleton. */
+export function agentHost(_ctx: AppCtx): AgentHost {
+  throw new NotImplementedError('chat-as-web-components ticket 1: agent host')
+}
+
+/**
+ * Append one event to a thread's log and publish `{ kind: 'thread', threadId }`
+ * on the live bus. Assigns the next index and the timestamp. Ticket 1.
+ */
+export function appendThreadEvent(_threadId: string, _body: ThreadEventBody): ThreadEvent {
+  throw new NotImplementedError('chat-as-web-components ticket 1: thread log')
+}
+
+/** A thread's log, every event with an index greater than `after` (all when omitted). Ticket 1. */
+export function readThreadEvents(_threadId: string, _after?: number): ThreadEvent[] {
+  throw new NotImplementedError('chat-as-web-components ticket 1: thread log')
+}

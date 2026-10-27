@@ -212,14 +212,17 @@ export function PlanStrip({
   plan,
   tasks,
   onStopTask,
+  now = Date.now(),
 }: {
   plan: PlanEntry[]
   tasks: BackgroundTask[]
   onStopTask: (id: string) => void
+  /** The clock the running times are read against. */
+  now?: number
 }) {
   const [open, setOpen] = useState(false)
   const done = plan.filter((p) => p.status === 'completed').length
-  const now = plan.find((p) => p.status === 'in_progress')
+  const current = plan.find((p) => p.status === 'in_progress')
   if (plan.length === 0 && tasks.length === 0) return null
   return (
     <div className="mx-3 flex flex-col overflow-hidden rounded-t-lg border-x border-t border-border-subtle bg-surface-inset text-sm animate-rise-in">
@@ -233,7 +236,7 @@ export function PlanStrip({
           <span className="shrink-0 text-xs tabular-nums text-text-tertiary">
             {done} of {plan.length}
           </span>
-          <span className="min-w-0 flex-1 truncate text-text-secondary">{now?.content ?? 'All steps done'}</span>
+          <span className="min-w-0 flex-1 truncate text-text-secondary">{current?.content ?? 'All steps done'}</span>
           {open ? <IconChevronDown size={14} className="text-icon" /> : <IconChevronUp size={14} className="text-icon" />}
         </button>
       )}
@@ -259,7 +262,7 @@ export function PlanStrip({
         <div key={t.id} className="flex h-8 min-w-0 items-center gap-2 border-t border-border-subtle px-3">
           <IconTerminal size={13} className="shrink-0 text-icon" />
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-text-secondary">{t.title}</span>
-          <span className="shrink-0 text-xs tabular-nums text-text-tertiary">running {duration(t.seconds)}</span>
+          <span className="shrink-0 text-xs tabular-nums text-text-tertiary">running {duration(Math.max(0, Math.round((now - t.startedAt) / 1000)))}</span>
           <IconButton label="Stop this command" icon={<IconStop size={12} />} size="sm" onClick={() => onStopTask(t.id)} />
         </div>
       ))}
