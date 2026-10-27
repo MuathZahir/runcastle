@@ -171,8 +171,9 @@ describe('the Chat door on an open chat', () => {
     const again = await launchSession(ctx, { featureId: feature.id, kind: 'chat', kickoffLine: 'OVERRIDE' })
 
     expect(again.sessionId).toBe(first)
-    const said = promptsOf(first).map((p) => p.text)
+    // Queued behind the running turn, it is logged as it is sent.
     await vi.waitFor(() => expect(sentToAgent(fake)).toHaveLength(2))
+    const said = promptsOf(first).map((p) => p.text)
     expect(said.at(-1)?.startsWith('[runcastle] OVERRIDE ')).toBe(true)
     expect(said.at(-1)).toContain('Feature status:')
     expect(kickoffs(feature.id).at(-1)?.data).toMatchObject({
