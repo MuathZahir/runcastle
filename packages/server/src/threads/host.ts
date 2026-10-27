@@ -68,6 +68,7 @@ import { acpLaunchFor } from './launch'
 import { threadLifecycle } from './lifecycle'
 import { appendThreadEvent, readThreadEvents, seedThreadLog } from './log'
 import { readModelCatalog, threadModels, writeModelCatalog } from './model-catalog'
+import { runtimeMayName } from './naming'
 import type { AgentHost, PromptInput, PromptOptions, StopReason } from './types'
 
 /**
@@ -843,9 +844,10 @@ class Host implements AgentHost {
     if (own && update.sessionUpdate === 'config_option_update') this.noteOptions(t, update.configOptions)
     for (const body of t.map(update, own ? undefined : sessionId)) {
       if (body.type === 'title') {
-        // The runtime's generated title names a thread nobody named; a name the human gave stays.
+        // The runtime's generated title names a thread nobody named, unless it was made from
+        // runcastle's opening (see `naming.ts`); a name the human gave stays.
         if (getSessionRow(this.ctx, t.id)?.title) continue
-        setSessionTitle(this.ctx, t.id, body.title)
+        if (runtimeMayName(readThreadEvents(t.id))) setSessionTitle(this.ctx, t.id, body.title)
       }
       appendThreadEvent(t.id, body)
     }

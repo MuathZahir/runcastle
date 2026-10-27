@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ThreadEvent, ThreadEventBody } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
-import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
+import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import threadsApp from '../src/routes/threads'
 import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
 import { appendThreadEvent, readThreadEvents, type AgentHost } from '../src/threads/types'
@@ -162,7 +162,6 @@ describe('thread router', () => {
       { type: 'prompt', id: 'p', text: 'A notes  inbox\nfor the project', source: 'human' },
     ])
     const generated = thread([
-      briefing,
       { type: 'prompt', id: 'p', text: 'add dark mode', source: 'human' },
       { type: 'title', title: 'Dark mode for the app' },
     ])
@@ -175,6 +174,44 @@ describe('thread router', () => {
       [firstMessage]: 'A notes inbox for the project',
       [generated]: 'Dark mode for the app',
       [renamed]: 'Journal audit',
+    })
+  })
+
+  // decision 12 merges the opening into the first prompt: a title the runtime made of it names runcastle's words.
+  it('names a merged-opening thread by the human first message, never by the title made of the opening', async () => {
+    const row = createSessionRow(ctx, { projectId, kind: 'project', worktreePath: '/wt' })
+    markSessionLive(ctx, row.id, { ccSessionId: `acp-${row.id}` })
+    fake.script.turn = async (t) => {
+      await t.update({ sessionUpdate: 'session_info_update', title: 'Runcastle project skill session' })
+    }
+    await host.prompt(row.id, { text: 'You are the project session…' }, { source: 'runcastle', hold: true })
+    await caller.thread.send({ threadId: row.id, text: 'Tidy the release notes' })
+    await logUntil(row.id, (e) => e.some((x) => x.type === 'title'))
+    await logUntil(row.id, turnEnded)
+
+    expect((await caller.thread.list({ projectId }))[0]).toMatchObject({ id: row.id, title: 'Tidy the release notes' })
+    // Never stored on the row, where it would read as the human's rename.
+    expect(getSessionRow(ctx, row.id)?.title ?? null).toBeNull()
+  })
+
+  it('names a thread no human has spoken in by what it is doing', async () => {
+    const thread = (kind: 'chat' | 'scenario' | 'drive-fix', purpose?: 'self-plan'): string => {
+      const row = createSessionRow(ctx, { featureId, kind, worktreePath: '/wt', ...(purpose ? { purpose } : {}) })
+      appendThreadEvent(row.id, { type: 'prompt', id: 'k', text: 'Proceed with your task…', source: 'runcastle' })
+      appendThreadEvent(row.id, { type: 'title', title: 'Runcastle feature session' })
+      return row.id
+    }
+    const selfPlan = thread('chat', 'self-plan')
+    const scenario = thread('scenario')
+    const fix = thread('drive-fix')
+    const woken = thread('chat')
+
+    const names = Object.fromEntries((await caller.thread.list({ featureId })).map((t) => [t.id, t.title]))
+    expect(names).toEqual({
+      [selfPlan]: 'Planning by itself',
+      [scenario]: 'Scenario: writing scenarios',
+      [fix]: 'Fix: the test drive',
+      [woken]: 'Working by itself',
     })
   })
 

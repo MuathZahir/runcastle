@@ -13,6 +13,7 @@ import { GateError } from '../errors'
 import { featureSessions, getSessionRow, projectSessions, setSessionTitle } from '../launcher/sessions'
 import { conversationTranscript, deriveTitle } from '../services/conversations'
 import { hasThreadLog, readThreadEvents, threadLogPath } from './log'
+import { NEW_CHAT_NAME, threadName } from './naming'
 import { agentHost } from './types'
 
 /**
@@ -34,9 +35,6 @@ const ROLE: Record<SessionKind, ThreadEntry['role']> = {
   project: 'project',
   prepare: 'prepare',
 }
-
-/** What a thread with nothing said in it yet is called (chat-as-web-components decision 14). */
-const NEW_CHAT_NAME = 'New chat'
 
 /** The row behind a thread id; an unknown id is the caller's mistake. */
 export function threadRow(ctx: AppCtx, threadId: string): SessionRow {
@@ -99,29 +97,11 @@ function titleFrom(row: SessionRow, said: string[]): string | null {
   )
 }
 
-/**
- * A logged thread's name (decision 14): the human's rename (the row's title),
- * else the runtime's generated title, else the first thing the human said,
- * else "New chat" — never its kind. The runtime titles a conversation from its
- * first prompt, so a title that came before the human said anything was made
- * from runcastle's briefing ("Runcastle project session") and names nothing.
- */
-function loggedName(row: SessionRow, events: readonly ThreadEvent[]): string {
-  if (row.title) return row.title
-  const said: string[] = []
-  let generated: string | undefined
-  for (const e of events) {
-    if (e.type === 'prompt' && e.source === 'human') said.push(e.text)
-    else if (e.type === 'title' && said.length > 0) generated = e.title
-  }
-  return generated ?? titleFrom(row, said) ?? NEW_CHAT_NAME
-}
-
 function loggedEntry(ctx: AppCtx, row: SessionRow): ThreadEntry {
   const { view, events } = foldedLog(row.id)
   return {
     id: row.id,
-    title: loggedName(row, events),
+    title: threadName(row, events),
     role: ROLE[row.kind],
     // No process survives a restart: a log cut off mid-turn is not working.
     state: agentHost(ctx).isRunning(row.id) ? view.state : 'idle',
