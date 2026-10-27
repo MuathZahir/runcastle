@@ -24,10 +24,9 @@ import {
   kickoffLineFor,
   markSessionEnded,
   markSessionLive,
-  mostRecentResumableSession,
+  newestThread,
 } from '../src/launcher/sessions'
 import { toolDispatchRound, toolsForAudience } from '../src/mcp/server'
-import { ptyRegistry } from '../src/pty/registry'
 import hooksApp from '../src/routes/hooks'
 import { promptMatchesKickoff } from '../src/services/conversations'
 import { stopAllDocsWatch } from '../src/services/docs-watch'
@@ -35,20 +34,24 @@ import { listAfter } from '../src/services/events'
 import { deleteFeature } from '../src/services/features'
 import { recordFinding } from '../src/services/findings'
 import { __resetTestDriveState, createFeatureBranch, testDrive } from '../src/services/git'
-import { deliverToLead, type LeadLauncher, wakeLeadHeadless } from '../src/services/lead-delivery'
-import { leadMessageKey, takeOrchestratorLines } from '../src/services/orchestrator-messages'
+import { deliverToLead } from '../src/services/lead-delivery'
 import { openProject } from '../src/services/projects'
 import { getProjectById, listSessionsByFeature } from '../src/services/repo'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import type { AgentHost } from '../src/threads/types'
 import { useDataDir } from './helpers/data-dir'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
+import { acpLaunchOf, briefOf, kickoffOf, promptsOf } from './support/thread-launch'
 
 /**
  * Side sessions (several-sessions-per-feature): an extra conversation on a
  * feature, opened beside the main chat. It starts fresh, works in the talk
  * worktree under the main chat's write rules, never takes or waits on the
- * feature's one-terminal slot, and never runs rounds — every lookup keyed on the
- * `chat` kind keeps finding the main chat alone.
+ * feature's main chat, and never runs rounds — every lookup keyed on the
+ * `chat` kind keeps finding the main chat alone. Since chat-as-web-components
+ * it is a thread: its kickoff is its first prompt, and a reopen just opens it.
  */
 
 const tmpDirs: string[] = []
@@ -64,6 +67,8 @@ const SIDE_OPENING = 'Proceed as a side session'
 let ctx: AppCtx
 let project: Project
 let restoreDataDir: () => void
+let fake: FakeAcp
+let host: AgentHost
 
 beforeEach(async () => {
   restoreDataDir = useDataDir(mkTmp('rc-side-home-'))
@@ -79,9 +84,14 @@ beforeEach(async () => {
   await g.commit('initial commit')
   project = await openProject(ctx, repo)
   setRuntimeCtx(ctx)
+  fake = createFakeAcp()
+  host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH })
+  setAgentHostForTests(host)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await host.stopAll('shutdown')
+  setAgentHostForTests(undefined)
   vi.restoreAllMocks()
   clearRuntimeCtx()
   stopAllDocsWatch()
@@ -129,21 +139,6 @@ async function mainChat(featureId: string, ccSessionId: string, opts: { live?: b
   return id
 }
 
-function launchedCommand(featureId: string, sessionId: string): string {
-  const launched = listAfter(ctx, featureId, 0).find(
-    (e) => e.type === 'session.launched' && e.data?.sessionId === sessionId,
-  )
-  return String(launched?.data?.command)
-}
-
-function injectedPrompt(featureId: string, sessionId: string): string {
-  const codexHome = /CODEX_HOME=(\S+)/.exec(launchedCommand(featureId, sessionId))?.[1]
-  return readFileSync(
-    codexHome ? join(codexHome, 'AGENTS.md') : join(sessionDir(sessionId), 'system-prompt.md'),
-    'utf8',
-  )
-}
-
 describe('opening a side session', () => {
   for (const runtime of ['claude-code', 'codex'] as const) {
     it(`starts a fresh conversation on ${runtime}, briefed with its role and the feature state`, async () => {
@@ -153,15 +148,14 @@ describe('opening a side session', () => {
 
       const side = await openSide(f.id)
 
-      const command = launchedCommand(f.id, side)
-      expect(command).not.toContain('cc-main')
-      expect(command).not.toContain('--fork-session')
-      expect(command).not.toMatch(/--resume|codex (exec )?resume/)
-      expect(command).toContain(`[runcastle] ${SIDE_OPENING}: you are a side session of this feature`)
-      expect(command).toContain('Feature status: Talking with you;')
-      expect(command).toContain("Wait for the human's ask.")
+      expect(side).not.toBe(chat)
+      expect(getSessionRow(ctx, side)?.ccSessionId).toBeUndefined()
+      const kickoff = kickoffOf(side)
+      expect(promptsOf(side)[0]).toMatchObject({ source: 'runcastle' })
+      expect(kickoff).toContain(`[runcastle] ${SIDE_OPENING}: you are a side session of this feature`)
+      expect(kickoff).toContain('Feature status: Talking with you;')
+      expect(kickoff).toContain("Wait for the human's ask.")
       // Recognised as runcastle's kickoff, so titles and transcripts can drop it.
-      const kickoff = command.slice(command.indexOf('[runcastle]'))
       expect(promptMatchesKickoff(kickoffLineFor('side', undefined, runtime), kickoff)).toBe(true)
       expect(getSessionRow(ctx, side)).toMatchObject({ kind: 'side', openedBeside: chat })
       expect(listAfter(ctx, f.id, 0).find((e) => e.type === 'session.side_opened')?.data).toEqual({
@@ -171,7 +165,7 @@ describe('opening a side session', () => {
       })
     })
 
-    it(`reopens on ${runtime} by resuming its own conversation`, async () => {
+    it(`reopens on ${runtime} as the same thread, saying nothing`, async () => {
       useRuntime(runtime)
       const f = await feature(`reopen-${runtime}`)
       await mainChat(f.id, 'cc-main')
@@ -179,14 +173,11 @@ describe('opening a side session', () => {
       markSessionLive(ctx, first, { ccSessionId: 'cc-side' })
       markSessionEnded(ctx, first)
 
-      const again = await openSide(f.id, first)
+      const again = await launchSideSession(ctx, { featureId: f.id, reopenSessionId: first }, { spawn: false })
 
-      const command = launchedCommand(f.id, again)
-      expect(command).toMatch(runtime === 'codex' ? /resume .*cc-side/ : /--resume cc-side /)
-      expect(command).not.toContain('cc-main')
-      expect(command).not.toContain(SIDE_OPENING)
-      const opened = listAfter(ctx, f.id, 0).filter((e) => e.type === 'session.side_opened').at(-1)
-      expect(opened?.data).toMatchObject({ sessionId: again, reopened: true })
+      expect(again).toEqual({ sessionId: first, resumed: true })
+      expect(promptsOf(first)).toHaveLength(1)
+      expect(getSessionRow(ctx, first)?.ccSessionId).toBe('cc-side')
     })
   }
 
@@ -216,7 +207,7 @@ describe('opening a side session', () => {
   it('carries its role, its one limit, the shared folder and the wait in its system prompt', async () => {
     const f = await feature('prompt')
     const side = await openSide(f.id)
-    const prompt = injectedPrompt(f.id, side)
+    const prompt = await briefOf(ctx, side)
     expect(prompt).toContain(`You are a **side session** of feature \`${f.slug}\``)
     expect(prompt).toContain('alone dispatches, stops and declares ready')
     expect(prompt).toContain('The folder is shared with the main chat')
@@ -229,30 +220,26 @@ describe('opening a side session', () => {
     const fresh = await feature('perm-fresh')
     const building = await feature('perm-building', {})
     for (const f of [fresh, building]) {
-      expect(launchedCommand(f.id, await openSide(f.id))).toContain('--permission-mode bypassPermissions')
+      const spec = await acpLaunchOf(ctx, await openSide(f.id))
+      expect(spec.sessionMode).toBe('bypassPermissions')
     }
   })
 })
 
 describe('a side session never blocks and is never blocked', () => {
-  it('opens while the main chat is live, ended, or running headless — any number at once', async () => {
+  it('opens while the main chat is running or ended — any number at once', async () => {
     const live = await feature('beside-live')
     await mainChat(live.id, 'cc-live', { live: true })
     await openSide(live.id)
     await openSide(live.id)
-    expect(activeSessionsForFeature(ctx, live.id).filter((s) => s.kind === 'side')).toHaveLength(2)
+    expect(listSessionsByFeature(ctx, live.id).filter((s) => s.kind === 'side')).toHaveLength(2)
 
     const ended = await feature('beside-ended')
     await mainChat(ended.id, 'cc-ended')
     await expect(openSide(ended.id)).resolves.toBeTruthy()
-
-    const headless = await feature('beside-headless')
-    const run = await launch(headless.id, { purpose: 'relay', message: 'Drop decision 3.' })
-    expect(getSessionRow(ctx, run)?.headless).toBe(true)
-    await expect(openSide(headless.id)).resolves.toBeTruthy()
   })
 
-  it('lets the chat, a self-planning run, a relay and a lead wake launch while it is live', async () => {
+  it('lets the chat and a self-planning run launch while it is up', async () => {
     const chatFeature = await feature('let-chat')
     const side = await openSide(chatFeature.id)
     markSessionLive(ctx, side, { ccSessionId: 'cc-side' })
@@ -263,14 +250,6 @@ describe('a side session never blocks and is never blocked', () => {
     const plan = await feature('let-self-plan')
     await openSide(plan.id)
     await expect(launch(plan.id, { purpose: 'self-plan' })).resolves.toBeTruthy()
-
-    const relay = await feature('let-relay')
-    await openSide(relay.id)
-    await expect(launch(relay.id, { purpose: 'relay', message: 'Drop decision 3.' })).resolves.toBeTruthy()
-
-    const wake = await feature('let-lead-wake', {})
-    await openSide(wake.id)
-    await expect(launch(wake.id, { purpose: 'lead-wake', message: 'Round 1 returned' })).resolves.toBeTruthy()
   })
 
   it('lets a drive-fix session open on a failed drive', async () => {
@@ -292,41 +271,23 @@ describe('a side session never blocks and is never blocked', () => {
 })
 
 describe('the main chat stays the main chat', () => {
-  it('resume, the Chat door and the lead skip a live side session', async () => {
+  it('the Chat door and the lead skip a side session', async () => {
     const f = await feature('lookups', {})
     const chat = await mainChat(f.id, 'cc-main')
     const side = await openSide(f.id)
     markSessionLive(ctx, side, { ccSessionId: 'cc-side' })
-    const ended = await openSide(f.id)
-    markSessionLive(ctx, ended, { ccSessionId: 'cc-side-ended' })
-    markSessionEnded(ctx, ended)
 
-    expect(mostRecentResumableSession(ctx, f.id, 'chat')?.id).toBe(chat)
+    expect(newestThread(ctx, { featureId: f.id }, 'chat')?.id).toBe(chat)
 
-    // The Chat door resumes the main chat's conversation, not a side one.
-    const door = await launch(f.id)
-    expect(door).not.toBe(side)
-    expect(launchedCommand(f.id, door)).toContain('--resume cc-main ')
-    markSessionEnded(ctx, door)
+    // The Chat door reopens the main chat's thread, not a side one.
+    expect(await launch(f.id)).toBe(chat)
 
-    // Go or a round's message, with only a side session up: pending for the
-    // main chat, never queued for the side session…
+    // Go or a round's message reaches the main chat, never the side session.
     await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
-    const pending = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_pending')
-    expect(pending?.data).toMatchObject({ sessionId: null })
-    expect(listAfter(ctx, f.id, 0).some((e) => e.type === 'lead.message_queued')).toBe(false)
-
-    // …and the waker opens the main chat, which the live side session does not stop.
-    const asked: LaunchSessionInput[] = []
-    const launcher: LeadLauncher = async (c, input) => {
-      asked.push(input)
-      return launchSession(c, input, { spawn: false })
-    }
-    const woken = await wakeLeadHeadless(ctx, f.id, launcher)
-    expect(asked).toEqual([expect.objectContaining({ kind: 'chat', purpose: 'lead-wake' })])
-    expect(getSessionRow(ctx, woken as string)?.kind).toBe('chat')
-    expect(launchedCommand(f.id, woken as string)).toContain('--resume cc-main ')
-    takeOrchestratorLines(leadMessageKey(f.id))
+    const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
+    expect(queued?.data).toMatchObject({ sessionId: chat, route: 'prompt' })
+    expect(promptsOf(chat).at(-1)?.text).toBe('[runcastle] Round 1 returned')
+    expect(promptsOf(side)).toHaveLength(1)
   })
 
   it('stays the lead after a /clear moved its row onto a new conversation', async () => {
@@ -348,17 +309,10 @@ describe('the main chat stays the main chat', () => {
     })
     expect(getSessionRow(ctx, chat)?.ccSessionId).toBe('cc-after-clear')
 
-    vi.spyOn(ptyRegistry(), 'get').mockReturnValue(undefined)
     await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
     const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
     expect(queued?.data).toMatchObject({ sessionId: chat })
-    takeOrchestratorLines(leadMessageKey(f.id))
-
-    markSessionEnded(ctx, chat)
-    expect(mostRecentResumableSession(ctx, f.id, 'chat')).toMatchObject({
-      id: chat,
-      ccSessionId: 'cc-after-clear',
-    })
+    expect(newestThread(ctx, { featureId: f.id }, 'chat')).toMatchObject({ id: chat, ccSessionId: 'cc-after-clear' })
   })
 })
 
@@ -470,21 +424,17 @@ describe('the tools a side session gets', () => {
 })
 
 describe('deleting a feature', () => {
-  it('ends its live side sessions along with the main chat', async () => {
+  it('stops its running side threads along with the main chat', async () => {
     const f = await feature('deleted')
     const chat = await mainChat(f.id, 'cc-main', { live: true })
     const sides = [await openSide(f.id), await openSide(f.id)]
-    markSessionLive(ctx, sides[0], { ccSessionId: 'cc-side' })
+    for (const id of [chat, ...sides]) await host.prompt(id, { text: 'hi' }, { source: 'human' })
+    expect(fake.processes).toHaveLength(3)
 
-    // The rows go with the feature, so what is observable is each terminal killed.
-    const killed: string[] = []
-    vi.spyOn(ptyRegistry(), 'kill').mockImplementation((id: string) => {
-      killed.push(id)
-      return false
-    })
+    // The rows go with the feature, so what is observable is each process stopped.
     await deleteFeature(ctx, f.id)
-
-    expect(killed.sort()).toEqual([chat, ...sides].sort())
+    await vi.waitFor(() => expect(fake.processes.every((p) => p.killed)).toBe(true))
+    expect([chat, ...sides].some((id) => host.isRunning(id))).toBe(false)
     expect(listSessionsByFeature(ctx, f.id)).toEqual([])
   })
 })
@@ -505,11 +455,6 @@ describe('what a new side session knows of the main chat', () => {
     return path
   }
 
-  function kickoffOf(featureId: string, sessionId: string): string {
-    const command = launchedCommand(featureId, sessionId)
-    return command.slice(command.indexOf('[runcastle]'))
-  }
-
   for (const runtime of ['claude-code', 'codex'] as const) {
     it(`carries the role, state, marked quote and both paths on ${runtime}`, async () => {
       useRuntime(runtime)
@@ -522,7 +467,7 @@ describe('what a new side session knows of the main chat', () => {
       ])
       markSessionLive(ctx, chat, { transcriptPath: path })
 
-      const text = kickoffOf(f.id, await openSide(f.id))
+      const text = kickoffOf(await openSide(f.id))
 
       expect(text).toContain(SIDE_OPENING)
       expect(text).toContain('Feature status: Talking with you;')
@@ -563,7 +508,7 @@ describe('what a new side session knows of the main chat', () => {
     })
 
     const side = await openSide(f.id)
-    const text = kickoffOf(f.id, side)
+    const text = kickoffOf(side)
 
     const file = join(sessionDir(side), 'main-chat-excerpt.md')
     expect(text).toContain(file)
@@ -573,9 +518,9 @@ describe('what a new side session knows of the main chat', () => {
 
   it('says so in a line when there is no main chat, or nothing on disk', async () => {
     const f = await feature('nothing')
-    expect(kickoffOf(f.id, await openSide(f.id))).toContain('nothing on record to quote')
+    expect(kickoffOf(await openSide(f.id))).toContain('nothing on record to quote')
     await mainChat(f.id, 'cc-main')
-    expect(kickoffOf(f.id, await openSide(f.id))).toContain('nothing on record to quote')
+    expect(kickoffOf(await openSide(f.id))).toContain('nothing on record to quote')
   })
 
   it('quotes only the turns since a /clear', async () => {
@@ -606,7 +551,7 @@ describe('what a new side session knows of the main chat', () => {
       }),
     })
 
-    const text = kickoffOf(f.id, await openSide(f.id))
+    const text = kickoffOf(await openSide(f.id))
 
     expect(text).toContain('Human: fresh talk about plums')
     expect(text).not.toContain('pears')

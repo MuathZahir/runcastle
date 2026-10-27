@@ -419,11 +419,10 @@ export function sideKickoff(
  * main chat, on the chat's model step and talk worktree, recording the main
  * chat it was opened beside. Nothing is said until its first prompt.
  */
-export async function createSideThread(ctx: AppCtx, feature: Feature, opts: LaunchSessionOptions = {}): Promise<SessionRow> {
+export async function createSideThread(ctx: AppCtx, feature: Feature): Promise<SessionRow> {
   requireNotDraft(feature)
   const project = projectForFeature(ctx, feature)
   const model = resolveModelEntry('chat', rosterConfig(ctx), project)
-  assertRuntimeReady(model.runtime, opts)
   const worktreePath = await ensureFeatureWorktree(ctx, project, feature)
   const mainChat = newestThread(ctx, { featureId: feature.id }, 'chat')
   const row = createSessionRow(ctx, {
@@ -463,7 +462,8 @@ export async function launchSideSession(
     return { sessionId: reopen.id, resumed: underway(reopen) }
   }
 
-  const row = await createSideThread(ctx, feature, opts)
+  assertRuntimeReady(resolveModelEntry('chat', rosterConfig(ctx), projectForFeature(ctx, feature)).runtime, opts)
+  const row = await createSideThread(ctx, feature)
   emit(ctx, feature.id, {
     type: 'session.launching',
     message: 'launching a new side session',
@@ -732,9 +732,8 @@ export interface ProjectLaunchInput {
  * `runcastle/project` (decision 18) — never the human's checkout. Ensuring the
  * worktree also retries a landing an earlier conversation left behind.
  */
-export async function createProjectThread(ctx: AppCtx, project: Project, opts: LaunchSessionOptions = {}): Promise<SessionRow> {
+export async function createProjectThread(ctx: AppCtx, project: Project): Promise<SessionRow> {
   const model = resolveModelEntry('project', rosterConfig(ctx), project)
-  assertRuntimeReady(model.runtime, opts)
   const { worktreePath } = await git.ensureProjectWorktree(
     project,
     (res) => reportProjectLanding(ctx, project, res, { retried: true }),
@@ -779,7 +778,8 @@ export async function launchProjectSession(
     return { sessionId: prior.id, resumed: underway(prior) }
   }
 
-  const row = await createProjectThread(ctx, project, opts)
+  assertRuntimeReady(resolveModelEntry('project', rosterConfig(ctx), project).runtime, opts)
+  const row = await createProjectThread(ctx, project)
   emitProject(ctx, project.id, {
     type: 'session.launching',
     message: 'launching a new project chat',

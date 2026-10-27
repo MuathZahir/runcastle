@@ -316,7 +316,8 @@ class Host implements AgentHost {
     const proc = await this.transport(spec, row)
     t.proc = proc
     void proc.exited.then(({ stderr }) => this.crashed(t, stderr))
-    if (t.state === 'stopped') return
+    // Stopped while it spawned: the stop found no process to kill, so this one goes now.
+    if (t.state === 'stopped') return void (await proc.kill().catch(() => {}))
     const app = acp
       .client({ name: 'runcastle' })
       .onNotification(acp.methods.client.session.update, ({ params }) => this.onUpdate(t, params.update))

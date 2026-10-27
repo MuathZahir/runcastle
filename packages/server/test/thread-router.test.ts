@@ -58,8 +58,11 @@ async function logUntil(id: string, done: (events: ThreadEvent[]) => boolean): P
 }
 const turnEnded = (events: ThreadEvent[]) => events.some((e) => e.type === 'turn_ended')
 
+/** A thread whose conversation is under way, so a send is just the human's message. */
 function chat(kind: 'chat' | 'side' | 'scenario' | 'drive-fix' = 'chat'): string {
-  return createSessionRow(ctx, { featureId, kind, worktreePath: '/wt' }).id
+  const id = createSessionRow(ctx, { featureId, kind, worktreePath: '/wt' }).id
+  markSessionLive(ctx, id, { ccSessionId: `acp-${id}` })
+  return id
 }
 
 /** A conversation from before threads had logs: a row per relaunch, one Claude transcript. */

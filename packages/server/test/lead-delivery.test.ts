@@ -1,76 +1,61 @@
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Feature } from '@runcastle/core'
+import type { Feature, ThreadEvent } from '@runcastle/core'
 import type { AppCtx } from '../src/db/types'
 import { clearRuntimeCtx, setRuntimeCtx } from '../src/launcher/runtime'
-import { createSessionRow, getSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
-import { endSession } from '../src/pty/end-session'
-import { ptyRegistry } from '../src/pty/registry'
+import { createSessionRow, markSessionEnded, markSessionLive } from '../src/launcher/sessions'
 import hooksApp from '../src/routes/hooks'
-import { emit, listAfter } from '../src/services/events'
-import {
-  deliverToLead,
-  leadDeliveryFor,
-  leadDeliveryState,
-  startLeadWaker,
-  wakeLeadHeadless,
-  type LeadLauncher,
-} from '../src/services/lead-delivery'
+import { listAfter } from '../src/services/events'
+import { deliverToLead, leadDeliveryState } from '../src/services/lead-delivery'
 import { isRuncastlePrompt, tagRuncastlePrompt } from '../src/services/lead-prompt'
-import { asyncRewakeDelivery, codexQueueDelivery } from '../src/services/orchestrator-delivery'
-import {
-  hasOrchestratorLines,
-  leadMessageKey,
-  queueOrchestratorLine,
-  releaseOrchestratorWaiter,
-  requeueOrchestratorLines,
-  takeOrchestratorLines,
-  waitForOrchestratorLines,
-} from '../src/services/orchestrator-messages'
 import { getFeatureRow } from '../src/services/repo'
+import { createAgentHost, setAgentHostForTests } from '../src/threads/host'
+import { threadLifecycle } from '../src/threads/lifecycle'
+import { readThreadEvents, type AgentHost } from '../src/threads/types'
 import { makeTestCtx } from './helpers/db'
 import { seedFeature, seedProject } from './helpers/fixtures'
+import { createFakeAcp, FAKE_LAUNCH, type FakeAcp } from './support/fake-acp-agent'
+import { promptsOf } from './support/thread-launch'
 
 /**
  * How a message reaches a feature's lead (`the-feature-lead-runs-rounds`
- * decision 12, spec "Waking the lead"): the turn-end waiter on Claude Code,
- * `codex queue` on Codex, a headless resume when no terminal is open — never
- * typed into a terminal — and only a human-typed prompt counted as human.
+ * decision 12; chat-as-web-components decision 6): a runcastle prompt into the
+ * feature's main-chat thread, queued to the end of a running turn and starting
+ * the chat when no process runs — and only a human-typed prompt counted as
+ * human. A fake ACP agent stands behind the host.
  */
 
 let ctx: AppCtx
 let projectId: string
 let n = 0
+let fake: FakeAcp
+let host: AgentHost
 
 beforeEach(async () => {
   ctx = await makeTestCtx()
   projectId = seedProject(ctx).id
   setRuntimeCtx(ctx)
+  fake = createFakeAcp()
+  host = createAgentHost({ ctx, transport: fake.transport, launch: FAKE_LAUNCH, lifecycle: threadLifecycle(ctx) })
+  setAgentHostForTests(host)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await host.stopAll('shutdown')
+  setAgentHostForTests(undefined)
   clearRuntimeCtx()
   vi.restoreAllMocks()
-  vi.useRealTimers()
 })
 
 function feature(overrides: Partial<Feature> = {}): Feature {
   return seedFeature(ctx, projectId, { slug: `lead-${++n}`, ...overrides })
 }
 
-/** A chat session on the feature, live unless said otherwise. */
-function chat(
-  featureId: string,
-  opts: { headless?: boolean; runtime?: 'codex'; live?: boolean; ccSessionId?: string } = {},
-): string {
-  const row = createSessionRow(ctx, {
-    featureId,
-    kind: 'chat',
-    worktreePath: '/wt',
-    ...(opts.headless ? { headless: true } : {}),
-    ...(opts.runtime ? { model: { id: 'gpt-5.6-sol', runtime: 'codex' } } : {}),
-  })
-  if (opts.live !== false) markSessionLive(ctx, row.id, { ccSessionId: opts.ccSessionId ?? `cc-${row.id}` })
+/** The feature's main chat, its conversation on record and no process running. */
+function chat(featureId: string): string {
+  const row = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' })
+  markSessionLive(ctx, row.id, { ccSessionId: `cc-${row.id}` })
+  markSessionEnded(ctx, row.id)
   return row.id
 }
 
@@ -78,15 +63,26 @@ function types(featureId: string): string[] {
   return listAfter(ctx, featureId, 0).map((e) => e.type)
 }
 
+async function logUntil(id: string, done: (events: ThreadEvent[]) => boolean): Promise<ThreadEvent[]> {
+  await vi.waitFor(() => expect(done(readThreadEvents(id))).toBe(true))
+  return readThreadEvents(id)
+}
+
+const turnsEnded = (count: number) => (events: ThreadEvent[]) => events.filter((e) => e.type === 'turn_ended').length === count
+
+/** The text of each `session/prompt` the agent received, in order. */
+function sentToAgent(): string[] {
+  return fake.processes.flatMap((p) =>
+    p.received
+      .filter((r) => r.method === 'session/prompt')
+      .map((r) => ((r.params as { prompt: { type: string; text?: string }[] }).prompt[0]?.text ?? '')),
+  )
+}
+
 function mount(): Hono {
   const app = new Hono()
   app.route('/api/hooks', hooksApp)
   return app
-}
-
-async function poll(app: Hono, sessionId: string, waiter: string): Promise<unknown> {
-  const res = await app.request(`/api/hooks/orchestrator-messages?sessionId=${sessionId}&waiter=${waiter}`)
-  return res.json()
 }
 
 async function hook(app: Hono, event: string, sessionId: string, payload: Record<string, unknown>): Promise<void> {
@@ -105,7 +101,7 @@ describe('the prompt tag', () => {
     expect(isRuncastlePrompt('looks good, go on')).toBe(false)
   })
 
-  it('knows its own line when the live waiter hands it over as Stop-hook feedback', () => {
+  it('still knows its own line in a terminal-era transcript, as Stop-hook feedback', () => {
     const rewake =
       '<task-notification>\n<summary>Stop hook feedback</summary>\n</task-notification>\n<system-reminder>\n' +
       'Stop hook blocking error from command "Stop": [runcastle] The human pressed Stop. Dispatch nothing until the human replies.\n' +
@@ -116,126 +112,92 @@ describe('the prompt tag', () => {
   })
 })
 
-describe('the message store, for a lead', () => {
-  it('keeps lines when a waiter is let go, and puts handed-back lines first', async () => {
-    const key = leadMessageKey('f-store')
-    queueOrchestratorLine(key, 'b')
-    const held = waitForOrchestratorLines(key, 'w1', 5_000)
-    releaseOrchestratorWaiter(key, 'superseded')
-    expect(await held).toEqual({ status: 'superseded' })
-
-    requeueOrchestratorLines(key, ['a'])
-    expect(takeOrchestratorLines(key)).toEqual(['a', 'b'])
-  })
-})
-
 describe('deliverToLead', () => {
-  it('to a live Claude Code lead: queued for its waiter, never typed into the terminal', async () => {
+  it('starts an idle lead with the message as runcastle’s prompt, and says so', async () => {
     const f = feature()
     const id = chat(f.id)
-    const write = vi.fn()
-    vi.spyOn(ptyRegistry(), 'get').mockReturnValue({ sessionId: id, exited: false, pty: { write } } as never)
 
     await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
 
-    expect(write).not.toHaveBeenCalled()
+    expect(promptsOf(id)).toEqual([expect.objectContaining({ text: '[runcastle] Round 1 returned', source: 'runcastle' })])
+    expect(host.isRunning(id)).toBe(true)
     const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
-    expect(queued?.data).toMatchObject({ sessionId: id, route: 'waiter', source: 'runcastle' })
-    expect(await poll(mount(), id, 'w1')).toEqual({ status: 'lines', lines: ['[runcastle] Round 1 returned'] })
-    expect(types(f.id)).toContain('lead.woke')
+    expect(queued?.data).toMatchObject({ sessionId: id, route: 'prompt', source: 'runcastle', text: 'Round 1 returned' })
+    await logUntil(id, turnsEnded(1))
   })
 
-  it('to a live Codex lead: routed to codex queue', async () => {
+  it('hands a resumed lead the feature’s current state with the first prompt after its process starts, and only then', async () => {
     const f = feature()
-    const id = chat(f.id, { runtime: 'codex', live: false })
+    const id = chat(f.id)
 
-    await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
+    await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
+    await logUntil(id, turnsEnded(1))
+    await deliverToLead(ctx, f, { text: 'Round 2 returned', source: 'runcastle' })
+    await logUntil(id, turnsEnded(2))
 
-    expect(getSessionRow(ctx, id)?.runtime).toBe('codex')
-    const queued = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_queued')
-    expect(queued?.data).toMatchObject({ sessionId: id, route: 'codex-queue' })
-    // No conversation id yet: held until the session starts.
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['[runcastle] Go given'])
+    const [first, second] = sentToAgent()
+    expect(first.startsWith('[runcastle] Round 1 returned\n\n')).toBe(true)
+    expect(first).toContain('Feature status: Talking with you;')
+    expect(second).toBe('[runcastle] Round 2 returned')
+    // The log shows what was said, not the header the agent was handed with it.
+    expect(promptsOf(id)[0].text).toBe('[runcastle] Round 1 returned')
   })
 
-  it('with no live terminal: pending, and a human message still stamps the mark', async () => {
+  it('queues a message that arrives mid-turn to the turn’s end', async () => {
+    let release!: () => void
+    const released = new Promise<void>((r) => {
+      release = r
+    })
+    fake.script.turn = async (t) => {
+      if (t.prompt[0].type === 'text' && t.prompt[0].text.startsWith('[runcastle] first')) await released
+    }
     const f = feature()
-    const run = chat(f.id, { headless: true })
+    const id = chat(f.id)
+
+    await deliverToLead(ctx, f, { text: 'first', source: 'runcastle' })
+    await logUntil(id, (e) => e.some((x) => x.type === 'turn_started'))
+    await deliverToLead(ctx, f, { text: 'second', source: 'runcastle' })
+
+    // Nothing of the second is said while the first turn runs.
+    expect(promptsOf(id).map((p) => p.text)).toEqual(['[runcastle] first'])
+    release()
+    await logUntil(id, turnsEnded(2))
+    expect(promptsOf(id).map((p) => p.text)).toEqual(['[runcastle] first', '[runcastle] second'])
+  })
+
+  it('stamps the human’s mark for a human message, still said as runcastle’s prompt', async () => {
+    const f = feature()
+    const id = chat(f.id)
 
     await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
 
-    const pending = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.message_pending')
-    expect(pending?.data).toMatchObject({ sessionId: run, source: 'human', text: 'notes' })
     expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toBeGreaterThan(0)
-    expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(true)
-    takeOrchestratorLines(leadMessageKey(f.id))
-  })
-})
-
-describe('the live delivery per runtime', () => {
-  it('is the waiter on Claude Code and codex queue on Codex', () => {
-    expect(leadDeliveryFor({ runtime: 'claude-code' })).toBe(asyncRewakeDelivery)
-    expect(leadDeliveryFor({})).toBe(asyncRewakeDelivery)
-    expect(leadDeliveryFor({ runtime: 'codex' })).not.toBe(asyncRewakeDelivery)
+    expect(promptsOf(id)[0]).toMatchObject({ text: '[runcastle] notes', source: 'runcastle' })
+    await logUntil(id, turnsEnded(1))
   })
 
-  it('a failed codex queue can hold its lines for the headless fallback', async () => {
-    vi.useFakeTimers()
-    const key = leadMessageKey('f-codex-fail')
-    const delivery = codexQueueDelivery(async () => 1, 10, (k, lines) => {
-      requeueOrchestratorLines(k, lines)
-      return false
-    })
-    queueOrchestratorLine(key, 'one')
-    delivery.kick({ id: 's', runtime: 'codex', ccSessionId: 'conv' } as never, key)
-    await vi.advanceTimersByTimeAsync(20)
-
-    expect(takeOrchestratorLines(key)).toEqual(['one'])
-  })
-})
-
-describe('the waiter route, for a lead', () => {
-  it('waits on the feature’s messages, and refuses a headless chat', async () => {
+  it('keeps a message it could not deliver, says why, and sends it first with the next one', async () => {
+    // A feature with no chat thread and no checkout to open one in: the launch is refused.
     const f = feature()
-    const live = chat(f.id)
-    queueOrchestratorLine(leadMessageKey(f.id), 'one')
-    expect(await poll(mount(), live, 'w1')).toEqual({ status: 'lines', lines: ['one'] })
 
-    const g = feature()
-    expect(await poll(mount(), chat(g.id, { headless: true }), 'w2')).toEqual({ status: 'ended' })
-  })
+    await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
 
-  it('a session ending answers ended but keeps its feature’s messages', async () => {
-    const f = feature()
+    expect(types(f.id)).toContain('lead.wake_failed')
+    expect(types(f.id)).not.toContain('lead.message_queued')
+    const state = leadDeliveryState(f.id)
+    expect(state.waitingSince).toBeGreaterThan(0)
+    expect(state.lastFailure?.reason).toBeTruthy()
+
     const id = chat(f.id)
-    const held = poll(mount(), id, 'w1')
-    await new Promise((r) => setTimeout(r, 20))
+    await deliverToLead(ctx, f, { text: 'Round 2 returned', source: 'runcastle' })
 
-    markSessionEnded(ctx, id)
-    queueOrchestratorLine(leadMessageKey(f.id), 'late')
-
-    expect(await held).toEqual({ status: 'ended' })
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['late'])
+    expect(promptsOf(id)[0].text).toBe('[runcastle] Round 1 returned\n\n[runcastle] Round 2 returned')
+    expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
+    await logUntil(id, turnsEnded(1))
   })
 })
 
 describe('a lead’s turn (UserPromptSubmit)', () => {
-  it('lets the waiter go so a message waits for the turn’s end', async () => {
-    const app = mount()
-    const f = feature()
-    const id = chat(f.id)
-    const held = poll(app, id, 'w1')
-    await new Promise((r) => setTimeout(r, 20))
-
-    await hook(app, 'user-prompt', id, { prompt: 'try the other layout' })
-    await deliverToLead(ctx, f, { text: 'Round 2 returned', source: 'runcastle' })
-
-    expect(await held).toEqual({ status: 'superseded' })
-    // The Stop hook's next waiter takes it.
-    await hook(app, 'stop', id, {})
-    expect(await poll(app, id, 'w2')).toEqual({ status: 'lines', lines: ['[runcastle] Round 2 returned'] })
-  })
-
   it('marks a typed prompt as the human’s, and runcastle’s or an unreadable one not', async () => {
     const app = mount()
     const f = feature()
@@ -251,285 +213,16 @@ describe('a lead’s turn (UserPromptSubmit)', () => {
     })
     expect(marks()).toBe(0)
 
-    await hook(app, 'user-prompt', id, { prompt: 'drop ticket 4 and go' })
+    // What the composer sends, the opening appended after the human's words.
+    await hook(app, 'user-prompt', id, { prompt: 'drop ticket 4 and go\n\nFeature status: Working' })
     expect(marks()).toBe(1)
     expect(getFeatureRow(ctx, f.id).lastHumanMessageAt).toBeGreaterThan(0)
   })
 
-  it('does not mark a prompt in a headless run', async () => {
+  it('does not mark a prompt in a side thread', async () => {
     const f = feature()
-    await hook(mount(), 'user-prompt', chat(f.id, { headless: true }), { prompt: 'anything' })
+    const side = createSessionRow(ctx, { featureId: f.id, kind: 'side', worktreePath: '/wt' }).id
+    await hook(mount(), 'user-prompt', side, { prompt: 'anything' })
     expect(types(f.id)).not.toContain('lead.human_message')
-  })
-})
-
-describe('the lead waker — a headless resume when nothing is open', () => {
-  function recordingLauncher(): { launch: LeadLauncher; inputs: Array<Parameters<LeadLauncher>[1]> } {
-    const inputs: Array<Parameters<LeadLauncher>[1]> = []
-    return {
-      inputs,
-      launch: async (_ctx, input) => {
-        inputs.push(input)
-        return { sessionId: `sess-wake-${inputs.length}` }
-      },
-    }
-  }
-
-  it('resumes the chat headless with every pending message as one prompt', async () => {
-    const f = feature()
-    const { launch, inputs } = recordingLauncher()
-    const stop = startLeadWaker(ctx, launch)
-    try {
-      await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
-      await vi.waitFor(() => expect(inputs).toHaveLength(1))
-    } finally {
-      stop()
-    }
-    expect(inputs[0]).toEqual({
-      featureId: f.id,
-      kind: 'chat',
-      purpose: 'lead-wake',
-      message: '[runcastle] Round 1 returned',
-    })
-    expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
-  })
-
-  it('holds messages while a headless run is going, and resumes with them when it exits', async () => {
-    const f = feature()
-    const run = chat(f.id, { headless: true })
-    const { launch, inputs } = recordingLauncher()
-    const stop = startLeadWaker(ctx, launch)
-    try {
-      await deliverToLead(ctx, f, { text: 'A', source: 'runcastle' })
-      await deliverToLead(ctx, f, { text: 'B', source: 'human' })
-      await new Promise((r) => setTimeout(r, 10))
-      expect(inputs).toHaveLength(0)
-
-      markSessionEnded(ctx, run)
-      emit(ctx, f.id, { type: 'session.pty_exited', message: 'exited', data: { sessionId: run } })
-      await vi.waitFor(() => expect(inputs).toHaveLength(1))
-    } finally {
-      stop()
-    }
-    expect(inputs[0]?.message).toBe('[runcastle] A\n\n[runcastle] B')
-  })
-
-  it('retries the resume when a drive stops, for messages left waiting on it', async () => {
-    const f = feature()
-    queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] my drive notes')
-    const { launch, inputs } = recordingLauncher()
-    const stop = startLeadWaker(ctx, launch)
-    try {
-      emit(ctx, f.id, { type: 'testdrive.stopped', message: 'test drive stopped — back on main' })
-      await vi.waitFor(() => expect(inputs).toHaveLength(1))
-    } finally {
-      stop()
-    }
-    expect(inputs[0]?.message).toBe('[runcastle] my drive notes')
-  })
-
-  it('leaves a live lead’s messages to its own channel', async () => {
-    const f = feature()
-    chat(f.id)
-    queueOrchestratorLine(leadMessageKey(f.id), 'x')
-    const { launch, inputs } = recordingLauncher()
-    expect(await wakeLeadHeadless(ctx, f.id, launch)).toBeNull()
-    expect(inputs).toHaveLength(0)
-    takeOrchestratorLines(leadMessageKey(f.id))
-  })
-
-  describe('holding the messages until the agent checks in (decision 28)', () => {
-    /** A launcher that opens a real (process-less) headless chat row per wake. */
-    function rowLauncher(): { launch: LeadLauncher; inputs: Array<Parameters<LeadLauncher>[1]>; ids: string[] } {
-      const inputs: Array<Parameters<LeadLauncher>[1]> = []
-      const ids: string[] = []
-      return {
-        inputs,
-        ids,
-        launch: async (c, input) => {
-          inputs.push(input)
-          const row = createSessionRow(c, {
-            featureId: input.featureId,
-            kind: 'chat',
-            purpose: 'lead-wake',
-            worktreePath: '/wt',
-            headless: true,
-          })
-          ids.push(row.id)
-          return { sessionId: row.id, resumed: !input.fresh }
-        },
-      }
-    }
-
-    const exited = (featureId: string, sessionId: string, exitCode: number, tail?: string): void => {
-      markSessionEnded(ctx, sessionId)
-      emit(ctx, featureId, {
-        type: 'session.pty_exited',
-        message: 'exited',
-        data: { sessionId, exitCode, ...(tail ? { tail } : {}) },
-      })
-    }
-
-    it('releases them once the agent checks in, so its later exit puts nothing back', async () => {
-      const f = feature()
-      const { launch, ids } = rowLauncher()
-      const stop = startLeadWaker(ctx, launch)
-      try {
-        await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
-        await vi.waitFor(() => expect(ids).toHaveLength(1))
-        expect(leadDeliveryState(f.id).waitingSince).not.toBeNull()
-
-        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
-        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
-        expect(leadDeliveryState(f.id)).toEqual({ waitingSince: null, lastFailure: null })
-
-        exited(f.id, ids[0] as string, 0)
-        await new Promise((r) => setTimeout(r, 10))
-      } finally {
-        stop()
-      }
-      expect(ids).toHaveLength(1)
-      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
-      expect(types(f.id)).not.toContain('lead.wake_failed')
-    })
-
-    it('says why when the checked-in agent exits non-zero in its turn, without retrying', async () => {
-      const f = feature()
-      const { launch, ids } = rowLauncher()
-      const stop = startLeadWaker(ctx, launch)
-      try {
-        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
-        await vi.waitFor(() => expect(ids).toHaveLength(1))
-        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
-        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
-
-        exited(f.id, ids[0] as string, 1, 'Loaded skill runcastle:feature\nAPI Error: overloaded')
-        await new Promise((r) => setTimeout(r, 10))
-      } finally {
-        stop()
-      }
-      expect(ids).toHaveLength(1)
-      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
-      const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
-      expect(failed).toHaveLength(1)
-      expect(failed[0]?.data).toEqual({
-        sessionId: ids[0],
-        exitCode: 1,
-        tail: 'Loaded skill runcastle:feature\nAPI Error: overloaded',
-        messages: 1,
-      })
-      expect(failed[0]?.message).toBe(
-        "the agent's headless wake exited (code 1) during its turn — it had 1 message(s); open the chat to see " +
-          'where it stopped — last output: API Error: overloaded',
-      )
-    })
-
-    it('reads a wake the human ended (End session) as asked for, not as a failure', async () => {
-      const f = feature()
-      const { launch, ids } = rowLauncher()
-      const stop = startLeadWaker(ctx, launch)
-      try {
-        await deliverToLead(ctx, f, { text: 'Go given', source: 'runcastle' })
-        await vi.waitFor(() => expect(ids).toHaveLength(1))
-        markSessionLive(ctx, ids[0] as string, { ccSessionId: 'cc-1' })
-        emit(ctx, f.id, { type: 'session.started', message: 'live', data: { sessionId: ids[0] } })
-
-        // The kill makes the headless `claude -p` exit 1, as on 2026-10-19.
-        endSession(ctx, ids[0] as string)
-        exited(f.id, ids[0] as string, 1)
-        await new Promise((r) => setTimeout(r, 10))
-      } finally {
-        stop()
-      }
-      expect(ids).toHaveLength(1)
-      expect(types(f.id)).not.toContain('lead.wake_failed')
-    })
-
-    it('puts them back on an early death, retries once fresh, then waits for a real trigger', async () => {
-      const f = feature()
-      const { launch, inputs, ids } = rowLauncher()
-      const stop = startLeadWaker(ctx, launch)
-      try {
-        await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
-        await vi.waitFor(() => expect(ids).toHaveLength(1))
-
-        exited(f.id, ids[0] as string, 1)
-        await vi.waitFor(() => expect(ids).toHaveLength(2))
-        expect(inputs[1]).toMatchObject({ fresh: true, message: '[runcastle] notes' })
-        expect(leadDeliveryState(f.id).lastFailure?.reason).toBe('exited (code 1)')
-
-        exited(f.id, ids[1] as string, 1)
-        await new Promise((r) => setTimeout(r, 20))
-        expect(ids).toHaveLength(2)
-        expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['[runcastle] notes'])
-        queueOrchestratorLine(leadMessageKey(f.id), '[runcastle] notes')
-
-        await deliverToLead(ctx, f, { text: 'more', source: 'human' })
-        await vi.waitFor(() => expect(ids).toHaveLength(3))
-        expect(inputs[2]?.message).toBe('[runcastle] notes\n\n[runcastle] more')
-      } finally {
-        stop()
-      }
-      const failed = listAfter(ctx, f.id, 0).filter((e) => e.type === 'lead.wake_failed')
-      expect(failed.map((e) => e.data?.failures)).toEqual([1, 2])
-      expect(failed[0]?.data).toMatchObject({ sessionId: ids[0], exitCode: 1, tail: '', messages: 1 })
-    })
-
-    it('counts a clean exit as delivered even when no hook said so', async () => {
-      const f = feature()
-      const { launch, ids } = rowLauncher()
-      const stop = startLeadWaker(ctx, launch)
-      try {
-        await deliverToLead(ctx, f, { text: 'Round 1 returned', source: 'runcastle' })
-        await vi.waitFor(() => expect(ids).toHaveLength(1))
-        exited(f.id, ids[0] as string, 0)
-        await new Promise((r) => setTimeout(r, 10))
-      } finally {
-        stop()
-      }
-      expect(ids).toHaveLength(1)
-      expect(hasOrchestratorLines(leadMessageKey(f.id))).toBe(false)
-      expect(leadDeliveryState(f.id).waitingSince).toBeNull()
-    })
-
-    it('puts them back when the spawn failed inside the launch', async () => {
-      const f = feature()
-      queueOrchestratorLine(leadMessageKey(f.id), 'x')
-      const ids: string[] = []
-      const dies: LeadLauncher = async (c, input) => {
-        const row = createSessionRow(c, { featureId: input.featureId, kind: 'chat', worktreePath: '/wt', headless: true })
-        markSessionEnded(c, row.id)
-        ids.push(row.id)
-        return { sessionId: row.id }
-      }
-      await wakeLeadHeadless(ctx, f.id, dies)
-      // One immediate retry, fresh; it dies too and the feature waits.
-      await vi.waitFor(() => expect(ids).toHaveLength(2))
-      await new Promise((r) => setTimeout(r, 10))
-      expect(ids).toHaveLength(2)
-      expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
-      expect(types(f.id).filter((t) => t === 'lead.wake_failed')).toHaveLength(2)
-    })
-
-    it('says a message to a live lead is with the agent', async () => {
-      const f = feature()
-      chat(f.id)
-      await deliverToLead(ctx, f, { text: 'notes', source: 'human' })
-      expect(leadDeliveryState(f.id).waitingSince).toBeNull()
-      takeOrchestratorLines(leadMessageKey(f.id))
-    })
-  })
-
-  it('puts the messages back and says why when the resume is refused', async () => {
-    const f = feature()
-    queueOrchestratorLine(leadMessageKey(f.id), 'x')
-    const refused: LeadLauncher = async () => {
-      throw new Error('another terminal is open')
-    }
-    expect(await wakeLeadHeadless(ctx, f.id, refused)).toBeNull()
-    expect(takeOrchestratorLines(leadMessageKey(f.id))).toEqual(['x'])
-    const failed = listAfter(ctx, f.id, 0).find((e) => e.type === 'lead.wake_failed')
-    expect(failed?.message).toBe('could not resume the agent headless: another terminal is open')
-    expect(failed?.data).toEqual({ exitCode: null, tail: 'another terminal is open', messages: 1 })
   })
 })
