@@ -65,8 +65,16 @@ function chat(kind: 'chat' | 'side' | 'scenario' | 'drive-fix' = 'chat'): string
   return id
 }
 
-/** A conversation from before threads had logs: a row per relaunch, one Claude transcript. */
-function terminalEra(ccSessionId: string, turns: [string, string][]): string[] {
+/**
+ * A conversation from before threads had logs: a row per relaunch, one Claude
+ * transcript. An answer of `null` is a prompt that got none. With
+ * `newestUnrecorded` the newest relaunch never recorded the transcript's path.
+ */
+function terminalEra(
+  ccSessionId: string,
+  turns: [string, string | null][],
+  opts: { kind?: 'chat' | 'side' | 'project' | 'prepare'; newestUnrecorded?: boolean } = {},
+): string[] {
   const dir = mkdtempSync(join(tmpdir(), 'runcastle-transcript-'))
   tempDirs.push(dir)
   const path = join(dir, `${ccSessionId}.jsonl`)
@@ -75,13 +83,15 @@ function terminalEra(ccSessionId: string, turns: [string, string][]): string[] {
     turns
       .flatMap(([said, answered]) => [
         JSON.stringify({ type: 'user', message: { role: 'user', content: said } }),
-        JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: answered }] } }),
+        ...(answered === null ? [] : [JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: answered }] } })]),
       ])
       .join('\n'),
   )
-  return [0, 1].map(() => {
-    const row = createSessionRow(ctx, { featureId, kind: 'chat', worktreePath: '/wt' })
-    markSessionLive(ctx, row.id, { ccSessionId, transcriptPath: path })
+  const kind = opts.kind ?? 'chat'
+  const scope = kind === 'project' || kind === 'prepare' ? { projectId } : { featureId }
+  return [0, 1].map((n) => {
+    const row = createSessionRow(ctx, { ...scope, kind, worktreePath: '/wt' })
+    markSessionLive(ctx, row.id, { ccSessionId, ...(n === 1 && opts.newestUnrecorded ? {} : { transcriptPath: path }) })
     markSessionEnded(ctx, row.id)
     return row.id
   })
@@ -199,6 +209,25 @@ describe('thread router', () => {
       'user:And bold',
       'agent:Bold too.',
     ])
+  })
+
+  it.each(['project', 'prepare', 'side'] as const)('reads a terminal-era %s conversation back, by its first words, even where its newest row never recorded the transcript', async (kind) => {
+    const [, newer] = terminalEra(`cc-${kind}`, [['Set up the env file', 'Done, .env is in place.']], { kind, newestUnrecorded: true })
+    const list = await caller.thread.list(kind === 'side' ? { featureId } : { projectId })
+    expect(list).toEqual([expect.objectContaining({ id: newer, title: 'Set up the env file', readOnlyTranscript: true })])
+    const view = await caller.thread.view({ threadId: newer })
+    expect(view.items.map((i) => i.kind)).toEqual(['user', 'agent'])
+  })
+
+  it('reads a terminal-era conversation whose last prompt got no answer as idle, not starting', async () => {
+    const [, newer] = terminalEra('cc-unanswered', [
+      ['Make the header blue', 'Done.'],
+      ['And bold', null],
+    ])
+    const view = await caller.thread.view({ threadId: newer })
+    expect(view.state).toBe('idle')
+    expect(view.items.at(-1)).toMatchObject({ kind: 'user', text: 'And bold' })
+    expect(view.items.some((i) => i.kind === 'user' && i.starting)).toBe(false)
   })
 
   it('stores a sent image, logs its URL, passes it to the agent, and serves it back', async () => {

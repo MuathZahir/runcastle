@@ -46,15 +46,34 @@ export function threadRow(ctx: AppCtx, threadId: string): SessionRow {
 }
 
 /**
+ * The row whose transcript a terminal-era thread reads back: its own, or — when
+ * the relaunch that made this row never recorded one — another row of the same
+ * conversation that did. Null for a row with no conversation on record.
+ */
+function transcriptRow(ctx: AppCtx, row: SessionRow): SessionRow | null {
+  if (row.transcriptPath) return row
+  if (!row.ccSessionId) return null
+  const siblings = row.featureId
+    ? featureSessions(ctx, row.featureId, [row.kind])
+    : row.projectId
+      ? projectSessions(ctx, row.projectId, row.kind)
+      : []
+  return siblings.find((r) => r.ccSessionId === row.ccSessionId && r.transcriptPath) ?? null
+}
+
+/**
  * A terminal-era conversation's transcript as thread events: each human turn a
  * prompt, each answer a whole turn of words. The launcher's kickoff lines are
- * left out, as the transcript pane leaves them out.
+ * left out, as the transcript pane leaves them out. No process runs behind it,
+ * so a last prompt that got no answer folds as said, not as starting an agent.
  */
 function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
   const at = row.createdAt ?? 0
   const events: ThreadEvent[] = []
   const push = (body: Record<string, unknown>) => events.push({ ...body, i: events.length, at } as ThreadEvent)
-  conversationTranscript(ctx, row.id).turns.forEach((turn, n) => {
+  const source = transcriptRow(ctx, row)
+  if (!source) return events
+  conversationTranscript(ctx, source.id).turns.forEach((turn, n) => {
     if (turn.role === 'user') push({ type: 'prompt', id: `${row.id}-t${n}`, text: turn.text, source: 'human' })
     else {
       push({ type: 'turn_started' })
@@ -62,6 +81,7 @@ function transcriptEvents(ctx: AppCtx, row: SessionRow): ThreadEvent[] {
       push({ type: 'turn_ended', reason: 'end_turn' })
     }
   })
+  if (events.at(-1)?.type === 'prompt') push({ type: 'process', state: 'stopped' })
   return events
 }
 
@@ -142,12 +162,12 @@ function freshEntry(row: SessionRow): ThreadEntry {
   }
 }
 
-function transcriptEntry(ctx: AppCtx, row: SessionRow): ThreadEntry {
+function transcriptEntry(ctx: AppCtx, row: SessionRow, source: SessionRow): ThreadEntry {
   let title = row.title
   if (!title) {
     // Derived once and cached on the row, as the conversation list does: the
     // first thing said never changes, and the column saves re-reading transcripts.
-    const turns = conversationTranscript(ctx, row.id).turns
+    const turns = conversationTranscript(ctx, source.id).turns
     title = titleFrom(row, turns.flatMap((t) => (t.role === 'user' ? [t.text] : [])))
     if (title) setSessionTitle(ctx, row.id, title)
   }
@@ -179,8 +199,12 @@ export function listThreads(ctx: AppCtx, scope: { featureId: string } | { projec
   for (const row of rows) {
     if (row.ccSessionId && conversations.has(row.ccSessionId)) continue
     if (row.ccSessionId) conversations.add(row.ccSessionId)
-    if (hasThreadLog(row.id)) entries.push(loggedEntry(ctx, row))
-    else if (row.transcriptPath) entries.push(transcriptEntry(ctx, row))
+    if (hasThreadLog(row.id)) {
+      entries.push(loggedEntry(ctx, row))
+      continue
+    }
+    const source = transcriptRow(ctx, row)
+    if (source) entries.push(transcriptEntry(ctx, row, source))
     else if (row.status !== 'ended') entries.push(freshEntry(row))
   }
   return entries.sort((a, b) => b.updatedAt - a.updatedAt)
