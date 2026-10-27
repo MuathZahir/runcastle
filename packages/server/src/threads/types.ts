@@ -1,6 +1,6 @@
-import type { AskAnswer, Effort, ThreadEvent, ThreadEventBody, UsageReport } from '@runcastle/core'
+import type { AskAnswer, Effort, UsageReport } from '@runcastle/core'
 import type { AppCtx } from '../db/types'
-import { NotImplementedError } from '../errors'
+import { processAgentHost } from './host'
 
 /**
  * The agent host and the thread log (chat-as-web-components; ADR-0015) — the
@@ -76,9 +76,9 @@ export interface AgentHost {
   usage(threadId: string): Promise<UsageReport>
 }
 
-/** The process-wide host. Ticket 1 replaces this body with the real singleton. */
-export function agentHost(_ctx: AppCtx): AgentHost {
-  throw new NotImplementedError('chat-as-web-components ticket 1: agent host')
+/** The process-wide host (see `host.ts`). */
+export function agentHost(ctx: AppCtx): AgentHost {
+  return processAgentHost(ctx)
 }
 
 /**

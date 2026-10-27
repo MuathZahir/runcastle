@@ -19,6 +19,7 @@ import { terminalWebSocket, tryUpgradeTerminal } from './pty/ws'
 import hooksApp from './routes/hooks'
 import reviewsApp from './routes/reviews'
 import streamApp from './routes/stream'
+import threadsApp from './routes/threads'
 import { mountWebAppIfBuilt } from './routes/web'
 import { sweepFeatureWorktrees } from './services/feature-worktrees'
 import { startModelDiscovery } from './services/model-discovery'
@@ -27,6 +28,7 @@ import { startOrchestratorNotifier } from './services/orchestrator-notify'
 import { warnLegacyGlobalImage } from './services/settings'
 import { getUpdateInfo } from './services/update-check'
 import { createShutdown } from './shutdown'
+import { agentHost } from './threads/types'
 import { appRouter } from './trpc/router'
 import { runcastleVersion } from './version'
 import { reconcileStaleRuns } from './workflows/reconcile-runs'
@@ -81,6 +83,8 @@ export function buildApp(ctx: AppCtx): Hono {
   app.route(REVIEWS_BASE, reviewsApp)
   // Live-update SSE (routes/stream.ts) — the push channel the UI listens on.
   app.route('/api/stream', streamApp)
+  // Thread media (routes/threads.ts) — images sent with a thread's prompts.
+  app.route('/api/threads', threadsApp)
   app.route('/mcp', mcpApp)
 
   // Production: serve the built SPA from this same origin (issue #38). No-op in
@@ -190,7 +194,10 @@ export async function startServer(): Promise<void> {
   if (!g[SHUTDOWN_KEY]) {
     g[SHUTDOWN_KEY] = true
     const shutdown = createShutdown({
-      killAllTrees: () => ptyRegistry().killAllTrees(),
+      // The PTYs, and every thread's ACP adapter process (ADR-0015).
+      killAllTrees: async () => {
+        await Promise.all([ptyRegistry().killAllTrees(), agentHost(ctx).stopAll('shutdown')])
+      },
       stop: () => server.stop(),
       exit: (code) => process.exit(code),
     })
